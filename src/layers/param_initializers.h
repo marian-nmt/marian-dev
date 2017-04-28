@@ -39,11 +39,9 @@ void distribution(Tensor t, float a, float b) {
   t << vals;
 }
 
-std::function<void(Tensor)> normal(float scale = 0.1, bool ortho = true);
+std::function<void(Tensor)> normal(float scale = 0.1);
 
 std::function<void(Tensor)> uniform(float scale = 0.1);
-
-void ortho(Tensor t);
 
 void glorot_uniform(Tensor t);
 

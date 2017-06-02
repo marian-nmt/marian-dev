@@ -20,8 +20,8 @@ namespace marian {
 
 class GraphGroup {
   protected:
+    Ptr<Reporter> reporter_ = NULL;
     Ptr<Config> options_;
-    Ptr<Reporter> reporter_;
     Ptr<OptimizerBase> opt_;
 
     std::vector<Ptr<ExpressionGraph>> graphs_;
@@ -36,6 +36,10 @@ class GraphGroup {
 
     virtual void setReporter(Ptr<Reporter> reporter) {
       reporter_ = reporter;
+    }
+
+    virtual Ptr<Reporter> getReporter() const {
+      return reporter_;
     }
 
     virtual void load() = 0;
@@ -86,17 +90,17 @@ class Singleton : public GraphGroup {
         }
       }
       
-      if(reporter_) {
+      if(getReporter()) {
         reporter_->update(cost, batch);
         
-        if(reporter_->saving())
+        if(getReporter()->saving())
           this->save();
          
-        if(reporter_->validating())
+        if(getReporter()->validating())
           if(mvAvg_)
-            reporter_->validate(mvAvgGraph_);
+            getReporter()->validate(mvAvgGraph_);
           else
-            reporter_->validate(graph_);
+            getReporter()->validate(graph_);
       }
     }
 
@@ -127,7 +131,7 @@ class Singleton : public GraphGroup {
       if(!options_->get<bool>("no-reload")) {
         std::string init = options_->get<std::string>("model");
         if(boost::filesystem::exists(init)) {
-          reporter_->load(init);
+          getReporter()->load(init);
           builder_->load(graph_, init);
         }
       }
@@ -146,7 +150,7 @@ class Singleton : public GraphGroup {
         std::string name = options_->get<std::string>("model");
           
         builder_->save(graph_, name, true);
-        reporter_->save(name);
+        getReporter()->save(name);
       }
       else {
         std::string name = options_->get<std::string>("model");
@@ -154,12 +158,12 @@ class Singleton : public GraphGroup {
         if(!final) {
           std::string nameOverwrite = name;
           nameOverwrite.replace(name.size() - 4, 4,
-            ".iter" + std::to_string(reporter_->batches) + ".npz");
+            ".iter" + std::to_string(getReporter()->batches) + ".npz");
           builder_->save(graph_, nameOverwrite);
         }
 
         builder_->save(graph_, name, true);
-        reporter_->save(name);
+        getReporter()->save(name);
       }
     }
     
@@ -543,25 +547,25 @@ class AsyncGraphGroup : public GraphGroup {
         else
           pushGradients(graph->params()->grads());
 
-        if(reporter_) {
+        if(getReporter()) {
           boost::upgrade_lock<boost::shared_mutex> lock(reporterMutex_);
           {
             boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
-            reporter_->update(cost, batch);
+            getReporter()->update(cost, batch);
           }
           
-          if(reporter_->saving()) {
+          if(getReporter()->saving()) {
             boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
             if(movingAvg_)
               fetchParams(graph->params()->vals(), paramsAvg_);
             this->save(graph);
           }
            
-          if(reporter_->validating()) {
+          if(getReporter()->validating()) {
             boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
             if(movingAvg_)
               fetchParams(graph->params()->vals(), paramsAvg_);
-            reporter_->validate(graph);
+            getReporter()->validate(graph);
           }
         }
       };
@@ -606,7 +610,7 @@ class AsyncGraphGroup : public GraphGroup {
         std::string init = options_->get<std::string>("model");
         if(boost::filesystem::exists(init)) {
           size_t i = 0;
-          reporter_->load(init);
+          getReporter()->load(init);
           for(auto graph : graphs_)
             builders_[i++]->load(graph, init);
         }
@@ -631,7 +635,7 @@ class AsyncGraphGroup : public GraphGroup {
         std::string name = options_->get<std::string>("model");
           
         builders_[idx]->save(graphs_[idx], name, true);
-        reporter_->save(name);
+        getReporter()->save(name);
       }
       else {
         std::string name = options_->get<std::string>("model");
@@ -639,12 +643,12 @@ class AsyncGraphGroup : public GraphGroup {
         if(!final) {
           std::string nameOverwrite = name;
           nameOverwrite.replace(name.size() - 4, 4,
-            ".iter" + std::to_string(reporter_->batches) + ".npz");
+            ".iter" + std::to_string(getReporter()->batches) + ".npz");
           builders_[idx]->save(graphs_[idx], nameOverwrite);
         }
 
         builders_[idx]->save(graphs_[idx], name, true);
-        reporter_->save(name);
+        getReporter()->save(name);
       }
     }
     
@@ -719,9 +723,9 @@ class SyncGraphGroup : public GraphGroup {
         float cost = costNode->scalar();
         localGraph->backward();
 
-        if(reporter_) {
-          reporter_->update(cost, batch);
-          if(reporter_->batches % options_->get<size_t>("save-freq") == 0)
+        if(getReporter()) {
+          getReporter()->update(cost, batch);
+          if(getReporter()->batches % options_->get<size_t>("save-freq") == 0)
             this->save();
         }
       };
@@ -784,7 +788,7 @@ class SyncGraphGroup : public GraphGroup {
       }
       else {
         std::string name = options_->get<std::string>("model")
-          + "." + std::to_string(reporter_->batches) + ".npz";
+          + "." + std::to_string(getReporter()->batches) + ".npz";
         builder_->save(graphs_[0], name);
       }
     }

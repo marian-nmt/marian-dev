@@ -73,8 +73,8 @@ void createLoggers(const marian::Config* options) {
   Logger devnull{stderrLogger("devnull", "%v")};
   devnull->set_level(spdlog::level::off);
 
-  if (options->has("verbose")) {
-    std::string loglevel = options->get<std::string>("verbose");
+  if (options && options->has("loglevel")) {
+    std::string loglevel = options->get<std::string>("loglevel");
     if (!set_loglevel(*info, loglevel)) return;
     set_loglevel(*warn, loglevel);
     set_loglevel(*config, loglevel);

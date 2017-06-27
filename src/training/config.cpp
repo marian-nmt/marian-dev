@@ -36,8 +36,6 @@ uint16_t guess_terminal_width(uint16_t max_width) {
 size_t Config::seed = (size_t)time(0);
 
 bool Config::has(const std::string& key) const {
-  // @TODO: upgrade yaml-cpp: this is broken in yaml-cpp 0.5.2, see here:
-  // https://github.com/jbeder/yaml-cpp/issues/286
   return config_[key];
 }
 

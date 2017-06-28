@@ -624,6 +624,7 @@ void Config::addOptions(
 
   SET_OPTION("workspace", size_t);
   SET_OPTION_NONDEFAULT("log", std::string);
+  SET_OPTION_NONDEFAULT("loglevel", std::string);
   SET_OPTION("seed", size_t);
   SET_OPTION("relative-paths", bool);
   SET_OPTION("devices", std::vector<int>);
@@ -653,7 +654,9 @@ void Config::addOptions(
         loadModelParameters(vm_["model"].as<std::string>());
       } catch(std::runtime_error& e) {
         // @TODO: logging doesn't seem working here
-        //LOG(info)->info("No model settings found in model file");
+        // LOG(warn)->warn("No model settings found in model file");
+	// No loggers, yet, so we have to log to stderr
+	std::cerr << "WARNING: No model settings found in model file!" << std::endl;
       }
     }
   } else {
@@ -663,7 +666,9 @@ void Config::addOptions(
       loadModelParameters(model);
     } catch(std::runtime_error& e) {
       // @TODO: logging doesn't seem working here
-      //LOG(info)->info("No model settings found in model file");
+      // LOG(warn)->warn("No model settings found in model file");
+      // No loggers, yet, so we have to log to stderr
+      std::cerr << "WARNING: No model settings found in model file!" << std::endl;
     }
   }
 }

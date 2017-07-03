@@ -1,5 +1,6 @@
 #include "logging.h"
 #include "training/config.h"
+#include "spdlog/sinks/null_sink.h"
 
 std::shared_ptr<spdlog::logger> stderrLogger(
     const std::string& name,
@@ -40,7 +41,7 @@ set_loglevel(spdlog::logger& logger, std::string const level) {
     logger.set_level(spdlog::level::off);
   else {
     logger.warn("Unknown log level '{}' for logger '{}'",
-		level.c_str(), logger.name().c_str());
+                level.c_str(), logger.name().c_str());
     return false;
   }
   return true;
@@ -48,7 +49,13 @@ set_loglevel(spdlog::logger& logger, std::string const level) {
 
 Logger checkedLog(std::string logger) {
   Logger ret = spdlog::get(logger);
-  return ret ? ret : spdlog::get("devnull");
+  if(ret) {
+    return ret;
+  }
+  else {
+    auto null_sink = std::make_shared<spdlog::sinks::null_sink_st>();
+    return std::make_shared<spdlog::logger>("null_logger", null_sink);
+  }
 }
 
 void createLoggers(const marian::Config* options) {
@@ -73,8 +80,8 @@ void createLoggers(const marian::Config* options) {
   Logger devnull{stderrLogger("devnull", "%v")};
   devnull->set_level(spdlog::level::off);
 
-  if (options->has("verbose")) {
-    std::string loglevel = options->get<std::string>("verbose");
+  if (options->has("log-level")) {
+    std::string loglevel = options->get<std::string>("log-level");
     if (!set_loglevel(*info, loglevel)) return;
     set_loglevel(*warn, loglevel);
     set_loglevel(*config, loglevel);

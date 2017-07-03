@@ -175,7 +175,7 @@ void Config::addOptionsCommon(po::options_description& desc,
       "Preallocate  arg  MB of work space")
     ("log", po::value<std::string>(),
      "Log training process information to file given by  arg")
-    ("loglevel", po::value<std::string>()->default_value("warn")->implicit_value("info"),
+    ("log-level", po::value<std::string>()->default_value("info"),
       "set verbosity level of logging (trace - debug - info - warn - err(or) - critical - off).")
     ("seed", po::value<size_t>()->default_value(0),
      "Seed for all random number generators. 0 means initialize randomly")
@@ -215,16 +215,23 @@ void Config::addOptionsModel(po::options_description& desc,
       ->default_value(std::vector<int>({50000, 50000}), "50000 50000"),
      "Maximum items in vocabulary ordered by rank")
     ("dim-emb", po::value<int>()->default_value(512), "Size of embedding vector")
-    ("dim-pos", po::value<int>()->default_value(0), "Size of position embedding vector")
     ("dim-rnn", po::value<int>()->default_value(1024), "Size of rnn hidden state")
-    ("cell-enc", po::value<std::string>()->default_value("gru"), "Type of RNN cell: gru, lstm, tanh (s2s)")
-    ("cell-dec", po::value<std::string>()->default_value("gru"), "Type of RNN cell: gru, lstm, tanh (s2s)")
-    ("layers-enc", po::value<int>()->default_value(1), "Number of encoder layers (s2s)")
-    ("layers-dec", po::value<int>()->default_value(1), "Number of decoder layers (s2s)")
+    ("enc-type", po::value<std::string>()->default_value("bidirectional"), "Type of encoder RNN : bidirectional, bi-unidirectional, alternating (s2s)")
+    ("enc-cell", po::value<std::string>()->default_value("gru"), "Type of RNN cell: gru, lstm, tanh (s2s)")
+    ("enc-cell-depth", po::value<int>()->default_value(1), "Number of tansitional cells in encoder layers (s2s)")
+    ("enc-depth", po::value<int>()->default_value(1), "Number of encoder layers (s2s)")
+    ("dec-cell", po::value<std::string>()->default_value("gru"), "Type of RNN cell: gru, lstm, tanh (s2s)")
+    ("dec-cell-base-depth", po::value<int>()->default_value(2), "Number of tansitional cells in first decoder layer (s2s)")
+    ("dec-cell-high-depth", po::value<int>()->default_value(1), "Number of tansitional cells in next decoder layers (s2s)")
+    ("dec-depth", po::value<int>()->default_value(1), "Number of decoder layers (s2s)")
+    //("dec-high-context", po::value<std::string>()->default_value("none"),
+    // "Repeat attended context: none, repeat, conditional, conditional-repeat (s2s)")
     ("skip", po::value<bool>()->zero_tokens()->default_value(false),
      "Use skip connections (s2s)")
     ("layer-normalization", po::value<bool>()->zero_tokens()->default_value(false),
      "Enable layer normalization")
+    ("best-deep", po::value<bool>()->zero_tokens()->default_value(false),
+     "Use WMT-2017-style deep configuration (s2s)")
     ("special-vocab", po::value<std::vector<size_t>>()->multitoken(),
      "Model-specific special vocabulary ids")
     ("tied-embeddings", po::value<bool>()->zero_tokens()->default_value(false),
@@ -247,12 +254,16 @@ void Config::addOptionsModel(po::options_description& desc,
       "type",
       "dim-vocabs",
       "dim-emb",
-      "dim-pos",
       "dim-rnn",
-      "cell-enc",
-      "cell-dec",
-      "layers-enc",
-      "layers-dec",
+      "enc-cell",
+      "enc-type",
+      "enc-cell-depth",
+      "enc-depth",
+      "dec-depth",
+      "dec-cell",
+      "dec-cell-base-depth",
+      "dec-cell-high-depth",
+      //"dec-high-context",
       "skip",
       "layer-normalization",
       "special-vocab",
@@ -305,6 +316,8 @@ void Config::addOptionsTraining(po::options_description& desc) {
       "Determine mini-batch size dynamically based on sentence-length and reserved memory")
     ("maxi-batch", po::value<int>()->default_value(100),
       "Number of batches to preload for length-based sorting")
+    ("maxi-batch-sort", po::value<std::string>()->default_value("trg"),
+      "Sorting strategy for maxi-batch: trg (default) src none")
 
     ("optimizer,o", po::value<std::string>()->default_value("adam"),
      "Optimization algorithm (possible values: sgd, adagrad, adam")
@@ -328,7 +341,7 @@ void Config::addOptionsTraining(po::options_description& desc) {
      "Clip gradient norm to  arg  (0 to disable)")
     ("moving-average", po::value<bool>()->zero_tokens()->default_value(false),
      "Maintain and save moving average of parameters")
-    ("moving-decay", po::value<double>()->default_value(0.999),
+    ("moving-decay", po::value<double>()->default_value(0.9999),
      "Decay factor for moving average")
     //("lexical-table", po::value<std::string>(),
     // "Load lexical table")
@@ -381,6 +394,22 @@ void Config::addOptionsValid(po::options_description& desc) {
   ;
   // clang-format on
   desc.add(valid);
+}
+
+void Config::addOptionsSparceMatrixEncoding(po::options_description& desc) {
+  po::options_description encoding("Sparse matrix encoding options",
+                                guess_terminal_width());
+  // clang-format off
+  encoding.add_options()
+    ("bits", po::value<int>()->default_value(1),
+      "Number of bits to use for encoding")
+    ("column-wise", po::value<bool>()->zero_tokens()->default_value(false),
+      "Enable column-wise dropping")
+    ("min-drop", po::value<bool>()->zero_tokens()->default_value(false),
+      "Use min as the quantization center, default (false) uses mean.")
+  ;
+  // clang-format on
+  desc.add(encoding);
 }
 
 void Config::addOptionsTranslate(po::options_description& desc) {
@@ -469,6 +498,7 @@ void Config::addOptions(
     } else {
       addOptionsTraining(cmdline_options_);
       addOptionsValid(cmdline_options_);
+      addOptionsSparceMatrixEncoding(cmdline_options_);
     }
   } else {
     addOptionsTranslate(cmdline_options_);
@@ -497,7 +527,7 @@ void Config::addOptions(
   if(vm_.count("config")) {
     configPath = vm_["config"].as<std::string>();
     config_ = YAML::Load(InputFileStream(configPath));
-  } else if(!translate && boost::filesystem::exists(
+  } else if(!translate && !rescore && boost::filesystem::exists(
                               vm_["model"].as<std::string>() + ".yml")
             && !vm_["no-reload"].as<bool>()) {
     configPath = vm_["model"].as<std::string>() + ".yml";
@@ -519,15 +549,26 @@ void Config::addOptions(
   SET_OPTION("type", std::string);
   SET_OPTION("dim-vocabs", std::vector<int>);
   SET_OPTION("dim-emb", int);
-  SET_OPTION("dim-pos", int);
   SET_OPTION("dim-rnn", int);
-  SET_OPTION("cell-enc", std::string);
-  SET_OPTION("cell-dec", std::string);
-  SET_OPTION("layers-enc", int);
-  SET_OPTION("layers-dec", int);
+
+  SET_OPTION("enc-type", std::string);
+  SET_OPTION("enc-cell", std::string);
+  SET_OPTION("enc-cell-depth", int);
+  SET_OPTION("enc-depth", int);
+
+  SET_OPTION("dec-cell", std::string);
+  SET_OPTION("dec-cell-base-depth", int);
+  SET_OPTION("dec-cell-high-depth", int);
+  SET_OPTION("dec-depth", int);
+  //SET_OPTION("dec-high-context", std::string);
+
   SET_OPTION("skip", bool);
   SET_OPTION("tied-embeddings", bool);
   SET_OPTION("layer-normalization", bool);
+
+  SET_OPTION("best-deep", bool);
+
+
   SET_OPTION_NONDEFAULT("special-vocab", std::vector<size_t>);
 
   if(!translate && !rescore) {
@@ -570,6 +611,10 @@ void Config::addOptions(
     SET_OPTION("guided-alignment-cost", std::string);
     SET_OPTION("guided-alignment-weight", double);
     SET_OPTION("drop-rate", double);
+
+    SET_OPTION("bits", int);
+    SET_OPTION("column-wise", bool);
+    SET_OPTION("min-drop", bool);
   }
   /** training end **/
   else if(rescore) {
@@ -623,13 +668,28 @@ void Config::addOptions(
   }
 
   SET_OPTION("workspace", size_t);
+  SET_OPTION("log-level", std::string);
   SET_OPTION_NONDEFAULT("log", std::string);
   SET_OPTION("seed", size_t);
   SET_OPTION("relative-paths", bool);
   SET_OPTION("devices", std::vector<int>);
   SET_OPTION("mini-batch", int);
   SET_OPTION("maxi-batch", int);
+  if(!translate && !rescore)
+    SET_OPTION("maxi-batch-sort", std::string);
   SET_OPTION("max-length", size_t);
+
+  if(vm_["best-deep"].as<bool>()) {
+    config_["layer-normalization"] = true;
+    config_["tied-embeddings"] = true;
+    config_["enc-type"] = "alternating";
+    config_["enc-cell-depth"] = 2;
+    config_["enc-depth"] = 4;
+    config_["dec-cell-base-depth"] = 4;
+    config_["dec-cell-high-depth"] = 2;
+    config_["dec-depth"] = 4;
+    config_["skip"] = true;
+  }
 
   if(get<bool>("relative-paths") && !vm_["dump-config"].as<bool>())
     ProcessPaths(

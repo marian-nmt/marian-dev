@@ -32,6 +32,10 @@ public:
   size_t size() const { return tuple_.size(); }
 
   Words& operator[](size_t i) { return tuple_[i]; }
+
+  Words& back() { return tuple_.back(); }
+  const Words& back() const { return tuple_.back(); }
+
   const Words& operator[](size_t i) const { return tuple_[i]; }
 
   bool empty() const { return tuple_.empty(); }
@@ -44,7 +48,7 @@ public:
 
 class SubBatch {
 private:
-  std::vector<Word> indeces_;
+  std::vector<Word> indices_;
   std::vector<float> mask_;
 
   size_t size_;
@@ -53,13 +57,13 @@ private:
 
 public:
   SubBatch(int size, int width)
-      : indeces_(size * width, 0),
+      : indices_(size * width, 0),
         mask_(size * width, 0),
         size_(size),
         width_(width),
         words_(0) {}
 
-  std::vector<Word>& indeces() { return indeces_; }
+  std::vector<Word>& indices() { return indices_; }
   std::vector<float>& mask() { return mask_; }
 
   size_t batchSize() { return size_; }
@@ -97,7 +101,7 @@ public:
       for(size_t i = 0; i < sb->batchWidth(); i++) {
         std::cerr << "\t w: ";
         for(size_t j = 0; j < sb->batchSize(); j++) {
-          Word w = sb->indeces()[i * sb->batchSize() + j];
+          Word w = sb->indices()[i * sb->batchSize() + j];
           std::cerr << w << " ";
         }
         std::cerr << std::endl;
@@ -288,9 +292,9 @@ public:
 
     std::vector<size_t> words(maxDims.size(), 0);
     for(int i = 0; i < batchSize; ++i) {
-      for(size_t j = 0; j < maxDims.size(); ++j) {
-        for(size_t k = 0; k < batchVector[i][j].size(); ++k) {
-          subBatches[j]->indeces()[k * batchSize + i] = batchVector[i][j][k];
+      for(int j = 0; j < maxDims.size(); ++j) {
+        for(int k = 0; k < batchVector[i][j].size(); ++k) {
+          subBatches[j]->indices()[k * batchSize + i] = batchVector[i][j][k];
           subBatches[j]->mask()[k * batchSize + i] = 1.f;
           words[j]++;
         }

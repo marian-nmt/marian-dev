@@ -44,3 +44,7 @@ examples/mnist/*ubyte
 # Contrib
 /.ycm_extra_conf.py
 /.vimrc
+/.vscode
+
+
+copy_to_hodor.sh

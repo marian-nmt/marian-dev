@@ -44,8 +44,8 @@ __global__ void column_wise_quantize(float* input, float* temp_d, float* error,
   float* tmp = &temp_d[blockIdx.x * lda];
   // Accumulate per thread partial sum
   for(int i = threadIdx.x; i < lda; i += blockDim.x) {
-    if(blockIdx.x* lda + i >= n)
-      printf("%d vs %d\n", blockIdx.x* lda + i, n);
+    if(blockIdx.x * lda + i >= n)
+      printf("%d vs %d\n", blockIdx.x * lda + i, n);
     if(std::abs(p[i]) > T) {
       x += std::abs(p[i]);
       if(minimum > std::abs(p[i]))
@@ -200,14 +200,11 @@ class GradientDropBase {
 private:
   Ptr<Config> options_;
 
-public:
   float* feedback;
   float* temp_d;
   float cut_off;
   int step;
   int _device;
-
-  GradientDropBase(Ptr<Config> options) : options_(options) {}
 
   // A helper, returns i-th element from a GPU stored array.
   float get(float* data, int i) {
@@ -253,16 +250,22 @@ public:
     float mean2 = min_val + bucket_size;
 
     if(options_->get<bool>("column-wise") && col_size != 1) {
+      if (step == 0)
+        LOG(info)->info("COLUMN WISE...");
       column_wise_quantize<<<col_size, threads>>>(data, tmp, errors, min_val,
           row_size, len, options_->get<bool>("min-drop"));
       return;
     }
 
     if(options_->get<bool>("min-drop")) {
+      if (step == 0)
+        LOG(info)->info("MIN DROP...");
       grad_drop_quantized<<<blocks, threads>>>(data, tmp, errors, min_val,
           bucket_size, bucket_count - 1, len);
       return;
     }
+
+    LOG(info)->info("AVG DROP...");
 
     int* result;
     int idx;
@@ -287,6 +290,8 @@ std::vector<std::pair<int,int> > shape_vec;
 std::vector<std::pair<std::pair<int,int>, int > > shape_vec_size;
 
 public:
+  GradientDropBase(Ptr<Config> options) : options_(options) {}
+
   void dropGraph(Tensor t, SparseTensor destination, double rate = 0.99,
       std::vector<std::pair<int,int> > layer_sizes = {}) {
     cudaSetDevice(t->getDevice());
@@ -313,13 +318,14 @@ public:
 
     // If col-wise drop is disabled OR layer sizes info not provided, drop globally
     if(!options_->get<bool>("column-wise") || shape_vec.size() == 0) {
-        grad_drop_do(t->data(), feedback, temp_d, t->size(), 1, rate);
+      LOG(info)->info("NOT COLUMN WISE");
+      grad_drop_do(t->data(), feedback, temp_d, t->size(), 1, rate);
     } else {
-        for(auto &shape: shape_vec_size) {
-          int offset = shape.second;
-          grad_drop_do(t->data() + offset, feedback + offset, temp_d + offset,
-              shape.first.first, shape.first.second, rate);
-        }
+      for(auto &shape: shape_vec_size) {
+        int offset = shape.second;
+        grad_drop_do(t->data() + offset, feedback + offset, temp_d + offset,
+            shape.first.first, shape.first.second, rate);
+      }
     }
     if(rate < 0.9)
         return;

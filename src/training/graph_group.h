@@ -548,6 +548,9 @@ private:
 
         for (auto& x: graph->params()->getMap())
           layer_sizes.push_back({x.second->shape()[0], x.second->shape()[1]});
+
+        LOG(info)->info("Layer sizes {}",
+			      layer_sizes.size());
       }
 
       if(!dropper) {

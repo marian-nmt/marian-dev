@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
   int dimBatch = 5;
   int dimWord = 1;
   int batchLength = 50000;
-  int numLayers = 1;
+  int numLayers = 10;
   int beamSize = 12;
 
   int elemNum = dimBatch * dimWord * batchLength * numLayers;

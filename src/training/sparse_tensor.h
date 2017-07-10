@@ -53,7 +53,6 @@ class SparseTensorBase : public std::enable_shared_from_this<SparseTensorBase> {
   int capacity_;
   size_t device_;
 
-  int* d_is_unsorted;
   int* gstart_;
   int* gend_;
 

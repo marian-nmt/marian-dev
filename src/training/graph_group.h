@@ -321,7 +321,7 @@ private:
       t.join();
   }
 
-  void sparseFetchParams(Tensor oldParams, int worker_id, std::vector<std::pair<int,int>> const &layerShapes) {
+  void sparseFetchParams(Tensor oldParams, int worker_id) {
     if(graphs_.size() < 2)
       return;
 
@@ -357,8 +357,7 @@ private:
             cudaStreamSynchronize(0);
 
             // get sparse delta
-            fetchDropper[worker_id][idx]->dropGraph(
-                tmpTensor[idx], tmpSparseDelta[idx], dropRate_, layerShapes);
+            fetchDropper[worker_id][idx]->dropGraph(tmpTensor[idx], tmpSparseDelta[idx], dropRate_);
             cudaStreamSynchronize(0);
 
             // move sparse delta
@@ -404,7 +403,7 @@ private:
               sparseGrads_[idx]->copyFrom(subGrad);
               cudaStreamSynchronize(0);
 
-              // convert back to dense, with index offset of -pos
+              // convert back to dense, with index offset of -pos // Why?
               sparseGrads_[idx]->toDense(grads_[idx], -pos);
               cudaStreamSynchronize(0);
 
@@ -546,20 +545,20 @@ private:
       // gradient drop purpose
       thread_local GradientDrop dropper;
 
-      thread_local size_t my_id = 0;
+      thread_local size_t myId = 0;
 
       std::vector<std::pair<int,int>> layerShapes;
 
       if(!graph) {
         std::lock_guard<std::mutex> lock(sync_);
-        my_id = i;
+        myId = i;
         graph = graphs_[i];
         builder = builders_[i++];
 
-        LOG(info)->info("Layer sizes::::::");
         for (auto& x: graph->params()->getMap()) {
           layerShapes.push_back({x.second->shape()[0], x.second->shape()[1]});
-          LOG(info)->info("Layer size {} {}", x.second->shape()[0], x.second->shape()[1]);
+          if (myId == 0)
+            LOG(info)->info("Layer size {} {}", x.second->shape()[0], x.second->shape()[1]);
         }
       }
 
@@ -575,10 +574,10 @@ private:
       auto costNode = builder->build(graph, batch);
 
       if(dropRate_ && t > 0)
-        sparseFetchParams(graph->params()->vals(), my_id, layerShapes);
+        sparseFetchParams(graph->params()->vals(), myId);
       else
         fetchParams(graph->params()->vals(),
-                    params_[globalVersionNumber[my_id] % historySize_]);
+                    params_[globalVersionNumber[myId] % historySize_]);
 
       graph->forward();
       float cost = costNode->scalar();
@@ -589,8 +588,8 @@ private:
       cudaStreamSynchronize(0);
       if(dropRate_) {
         dropper->dropGraph(
-            graph->params()->grads(), localSparseGrads_[my_id], dropRate_, layerShapes);
-        sparsePushGradients(localSparseGrads_[my_id]);
+            graph->params()->grads(), localSparseGrads_[myId], dropRate_, layerShapes);
+        sparsePushGradients(localSparseGrads_[myId]);
       } else
         pushGradients(graph->params()->grads());
 
@@ -624,7 +623,7 @@ private:
                             scheduler_->numberOfBatches());
             for(int idx = 0; idx < paramsAvg_.size(); idx++) {
               std::lock_guard<std::mutex> guard(shardSync_[idx]);
-              params_[my_id][idx]->copyFrom(paramsAvg_[idx]);
+              params_[myId][idx]->copyFrom(paramsAvg_[idx]);
             }
           }
         }

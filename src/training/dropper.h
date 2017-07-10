@@ -160,17 +160,17 @@ __global__ void buildIndices(float* denseData,
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if(idx >= denseSize)
     return;
-  int t_id = round(denseSum[idx]);
-  if(t_id <= 0) {
+  int tId = round(denseSum[idx]);
+  if(tId <= 0) {
     return;
   }
 
-  if(idx == 0 && t_id > 0) {
-    sparseIndices[t_id - 1] = idx;
-    sparseData[t_id - 1] = denseData[idx];
-  } else if(idx > 0 && t_id > round(denseSum[idx - 1])) {
-    sparseIndices[t_id - 1] = idx;
-    sparseData[t_id - 1] = denseData[idx];
+  if(idx == 0 && tId > 0) {
+    sparseIndices[tId - 1] = idx;
+    sparseData[tId - 1] = denseData[idx];
+  } else if(idx > 0 && tId > round(denseSum[idx - 1])) {
+    sparseIndices[tId - 1] = idx;
+    sparseData[tId - 1] = denseData[idx];
   }
 }
 
@@ -182,11 +182,11 @@ __global__ void randomSampling(
   data[idx] = abs(originalData[idx * scale]);
 }
 
-__global__ void locate(float* data, float to_locate, int size, int* result) {
+__global__ void locate(float* data, float toLocate, int size, int* result) {
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if(idx >= size)
     return;
-  if(data[idx] <= to_locate && (idx == size - 1 || data[idx+1] > to_locate)) 
+  if(data[idx] <= toLocate && (idx == size - 1 || data[idx+1] > toLocate))
     *result = idx;
 }
 

@@ -1,3 +1,6 @@
+# Config files from CMake
+src/common/version.h
+
 # Compiled Object files
 *.slo
 *.lo
@@ -47,4 +50,4 @@ examples/mnist/*ubyte
 /.vscode
 
 
-copy_to_hodor.sh
+copy_to_valhalla.sh

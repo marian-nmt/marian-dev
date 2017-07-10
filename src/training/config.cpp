@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <set>
 #include <string>
@@ -5,6 +6,7 @@
 #include "3rd_party/cnpy/cnpy.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
+#include "common/version.h"
 #include "training/config.h"
 
 #define SET_OPTION(key, type)                    \
@@ -26,11 +28,21 @@ namespace po = boost::program_options;
 namespace marian {
 
 uint16_t guess_terminal_width(uint16_t max_width) {
-  struct winsize size;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
-  if(size.ws_col == 0)  // couldn't determine terminal width
-    size.ws_col = po::options_description::m_default_line_length;
-  return max_width ? std::min(size.ws_col, max_width) : size.ws_col;
+  uint16_t cols = 0;
+#ifdef TIOCGSIZE
+  struct ttysize ts;
+  ioctl(STDIN_FILENO, TIOCGSIZE, &ts);
+  if(ts.ts_cols != 0)
+    cols = ts.ts_cols;
+#elif defined(TIOCGWINSZ)
+  struct winsize ts;
+  ioctl(STDIN_FILENO, TIOCGWINSZ, &ts);
+  if(ts.ws_col != 0)
+    cols = ts.ws_col;
+#endif /* TIOCGSIZE */
+  if(cols == 0)  // couldn't determine terminal width
+    cols = po::options_description::m_default_line_length;
+  return max_width ? std::min(cols, max_width) : cols;
 }
 
 size_t Config::seed = (size_t)time(0);
@@ -105,6 +117,13 @@ void Config::validateOptions(bool translate, bool rescore) const {
     UTIL_THROW_IF2(get<std::vector<std::string>>("vocabs").size()
                        != get<std::vector<std::string>>("train-sets").size(),
                    "There should be as many vocabularies as training sets");
+  }
+
+  if(has("embedding-vectors")) {
+    UTIL_THROW_IF2(get<std::vector<std::string>>("embedding-vectors").size()
+                   != get<std::vector<std::string>>("train-sets").size(),
+                   "There should be as many files with embedding vectors as "
+                   "training sets");
   }
 
   if(rescore)
@@ -183,6 +202,8 @@ void Config::addOptionsCommon(po::options_description& desc,
      "All paths are relative to the config file location")
     ("dump-config", po::value<bool>()->zero_tokens()->default_value(false),
      "Dump current (modified) configuration to stdout and exit")
+    ("version", po::value<bool>()->zero_tokens()->default_value(false),
+      "Print version number and exit")
     ("help,h", po::value<bool>()->zero_tokens()->default_value(false),
       "Print this help message and exit")
   ;
@@ -235,7 +256,7 @@ void Config::addOptionsModel(po::options_description& desc,
     ("special-vocab", po::value<std::vector<size_t>>()->multitoken(),
      "Model-specific special vocabulary ids")
     ("tied-embeddings", po::value<bool>()->zero_tokens()->default_value(false),
-     "Tie target embeddings and output embeddings in output layer (s2s)")
+     "Tie target embeddings and output embeddings in output layer")
     ;
 
   if(!translate && !rescore) {
@@ -341,8 +362,10 @@ void Config::addOptionsTraining(po::options_description& desc) {
      "Clip gradient norm to  arg  (0 to disable)")
     ("moving-average", po::value<bool>()->zero_tokens()->default_value(false),
      "Maintain and save moving average of parameters")
-    ("moving-decay", po::value<double>()->default_value(0.9999),
+    ("moving-decay", po::value<double>()->default_value(0.9999, "0.9999"),
      "Decay factor for moving average")
+    ("moving-inject-freq", po::value<size_t>()->default_value(0),
+     "Replace model parameters with moving average every  arg  updates (0 to disable)")
     //("lexical-table", po::value<std::string>(),
     // "Load lexical table")
 
@@ -356,6 +379,21 @@ void Config::addOptionsTraining(po::options_description& desc) {
 
     ("drop-rate", po::value<double>()->default_value(0),
      "Gradient drop ratio. (read: https://arxiv.org/abs/1704.05021)")
+    ("embedding-vectors", po::value<std::vector<std::string>>()
+      ->multitoken(),
+     "Paths to files with custom source and target embedding vectors.")
+    ("embedding-normalization", po::value<bool>()
+      ->zero_tokens()
+      ->default_value(false),
+     "Enable normalization of custom embedding vectors")
+    ("embedding-fix-src", po::value<bool>()
+      ->zero_tokens()
+      ->default_value(false),
+     "Fix source embeddings. Affects all encoders")
+    ("embedding-fix-trg", po::value<bool>()
+      ->zero_tokens()
+      ->default_value(false),
+     "Fix target embeddings. Affects all decoders")
   ;
   // clang-format on
   desc.add(training);
@@ -396,20 +434,20 @@ void Config::addOptionsValid(po::options_description& desc) {
   desc.add(valid);
 }
 
-void Config::addOptionsSparceMatrixEncoding(po::options_description& desc) {
-  po::options_description encoding("Sparse matrix encoding options",
+void Config::addOptionsQuantize(po::options_description& desc) {
+  po::options_description quantize("Sparse matrix encoding and quantize options",
                                 guess_terminal_width());
   // clang-format off
-  encoding.add_options()
-    ("bits", po::value<int>()->default_value(1),
-      "Number of bits to use for encoding")
-    ("column-wise", po::value<bool>()->zero_tokens()->default_value(false),
-      "Enable column-wise dropping")
-    ("min-drop", po::value<bool>()->zero_tokens()->default_value(false),
+  quantize.add_options()
+    ("quantize-bits", po::value<int>()->default_value(32),
+      "Number of bits to use for encoding.")
+    ("quantize-column-wise", po::value<bool>()->zero_tokens()->default_value(false),
+      "Enable column-wise dropping for quantization.")
+    ("quantize-min-drop", po::value<bool>()->zero_tokens()->default_value(false),
       "Use min as the quantization center, default (false) uses mean.")
   ;
   // clang-format on
-  desc.add(encoding);
+  desc.add(quantize);
 }
 
 void Config::addOptionsTranslate(po::options_description& desc) {
@@ -498,7 +536,7 @@ void Config::addOptions(
     } else {
       addOptionsTraining(cmdline_options_);
       addOptionsValid(cmdline_options_);
-      addOptionsSparceMatrixEncoding(cmdline_options_);
+      addOptionsQuantize(cmdline_options_);
     }
   } else {
     addOptionsTranslate(cmdline_options_);
@@ -520,6 +558,11 @@ void Config::addOptions(
   if(vm_["help"].as<bool>()) {
     std::cerr << "Usage: " + std::string(argv[0]) + " [options]" << std::endl;
     std::cerr << cmdline_options_ << std::endl;
+    exit(0);
+  }
+
+  if(vm_["version"].as<bool>()) {
+    std::cerr << PROJECT_VERSION_FULL << std::endl;
     exit(0);
   }
 
@@ -605,6 +648,8 @@ void Config::addOptions(
     SET_OPTION("clip-norm", double);
     SET_OPTION("moving-average", bool);
     SET_OPTION("moving-decay", double);
+    SET_OPTION("moving-inject-freq", size_t);
+
     // SET_OPTION_NONDEFAULT("lexical-table", std::string);
 
     SET_OPTION_NONDEFAULT("guided-alignment", std::string);
@@ -612,9 +657,14 @@ void Config::addOptions(
     SET_OPTION("guided-alignment-weight", double);
     SET_OPTION("drop-rate", double);
 
-    SET_OPTION("bits", int);
-    SET_OPTION("column-wise", bool);
-    SET_OPTION("min-drop", bool);
+    SET_OPTION("quantize-bits", int);
+    SET_OPTION("quantize-column-wise", bool);
+    SET_OPTION("quantize-min-drop", bool);
+
+    SET_OPTION_NONDEFAULT("embedding-vectors", std::vector<std::string>);
+    SET_OPTION("embedding-normalization", bool);
+    SET_OPTION("embedding-fix-src", bool);
+    SET_OPTION("embedding-fix-trg", bool);
   }
   /** training end **/
   else if(rescore) {

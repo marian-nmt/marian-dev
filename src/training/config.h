@@ -69,7 +69,7 @@ public:
   void addOptionsRescore(boost::program_options::options_description&);
   void addOptionsValid(boost::program_options::options_description&);
   void addOptionsTranslate(boost::program_options::options_description&);
-  void addOptionsSparceMatrixEncoding(boost::program_options::options_description&);
+  void addOptionsQuantize(boost::program_options::options_description&);
 
   void log();
   void validateOptions(bool translate = false, bool rescore = false) const;

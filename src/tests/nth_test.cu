@@ -35,61 +35,38 @@ __global__ void gNthElementReduce(
   extern __shared__ float sdata[];
   int* indices = (int*)(sdata + blockDim.x);
 
-
   int tid = threadIdx.x;
 
   for (int batchIdx = 0; batchIdx < batchSize; ++batchIdx) {
     int begin = batchIdx * batchStride * vocabSize;
     int end = begin + batchStride * vocabSize;
 
-    int i = begin + blockIdx.x * (blockDim.x * 2) + tid;
+    int i = begin + blockIdx.x * (2 * blockDim.x) + tid;
 
-    if (i < end) {
-      sdata[tid] = -3.40282e+38f;
-    }
+    sdata[tid] = -3.40282e+38f;
 
-
-    if (i < end) {
-      sdata[tid] = inCosts[i];
-      indices[tid] = i;
-    }
-
-    if(i + blockDim.x < end) {
+    while (i < end) {
       float a = inCosts[i];
-      float b = inCosts[i + blockDim.x];
-
-      if(a > b) {
-        sdata[tid] = a;
-        indices[tid] = i;
-      } else {
-        sdata[tid] = b;
-        indices[tid] = i + blockDim.x;
-      }
-    }
-
-    while(i + 2 * gridDim.x * blockDim.x < end) {
-      i += 2 * gridDim.x * blockDim.x;
-
-      float a = inCosts[i];
-      if(a > sdata[tid]) {
+      if (a > sdata[tid]) {
         sdata[tid] = a;
         indices[tid] = i;
       }
 
-      if(i + blockDim.x < end) {
+      if (i + blockDim.x < end) {
         float b = inCosts[i + blockDim.x];
-        if(b > sdata[tid]) {
+        if (b > sdata[tid]) {
           sdata[tid] = b;
           indices[tid] = i + blockDim.x;
         }
       }
+      i += 2 * gridDim.x * blockDim.x;
     }
 
     __syncthreads();
 
-    for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
-      if(tid < s && tid + s < end) {
-        if(sdata[tid + s] > sdata[tid]) {
+    for (int s = (blockDim.x >> 1); s > 32; s >>= 1) {
+      if (tid < s) {
+        if (sdata[tid + s] > sdata[tid]) {
           sdata[tid] = sdata[tid + s];
           indices[tid] = indices[tid + s];
         }
@@ -104,7 +81,7 @@ __global__ void gNthElementReduce(
     UNROLL_MAXARG_LOOP(2, end);
     UNROLL_MAXARG_LOOP(1, end);
 
-    if(tid == 0) {
+    if (tid == 0) {
       outCosts[blockIdx.x + batchIdx * gridDim.x] = sdata[0];
       outIndices[blockIdx.x + batchIdx * gridDim.x] = indices[0];
     }
@@ -132,30 +109,12 @@ __global__ void gNthElementUpdate(
   const int tid = threadIdx.x;
   const int batchIdx = blockIdx.x;
 
-  for (int nth = 0; nth < beamSizes[batchIdx]; ++nth) {
+  for (int nth = 0; nth < (int)beamSizes[batchIdx]; ++nth) {
     int i = tid;
 
     sdata[tid] = -3.40282e+38f;
 
-    if(i < numBuckets) {
-      sdata[tid] = bucketCosts[batchIdx * numBuckets + i];
-      indices[tid] = i;
-    }
-
-    if(i + blockDim.x < numBuckets) {
-      float a = bucketCosts[batchIdx * numBuckets + i];
-      float b = bucketCosts[batchIdx * numBuckets + i + blockDim.x];
-      if(a > b) {
-        sdata[tid] = a;
-        indices[tid] = i;
-      } else {
-        sdata[tid] = b;
-        indices[tid] = i + blockDim.x;
-      }
-    }
-
-    while(i + 2 * blockDim.x < numBuckets) {
-      i += 2 * blockDim.x;
+    while(i < numBuckets) {
 
       float a = bucketCosts[batchIdx * numBuckets + i];
       if(a > sdata[tid]) {
@@ -165,17 +124,18 @@ __global__ void gNthElementUpdate(
 
       if(i + blockDim.x < numBuckets) {
         float b = bucketCosts[batchIdx * numBuckets + i + blockDim.x];
-        if(b > sdata[tid]) {
+        if (b > sdata[tid]) {
           sdata[tid] = b;
           indices[tid] = i + blockDim.x;
         }
       }
+      i += 2 * blockDim.x;
     }
 
     __syncthreads();
 
     for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
-      if(tid < s && tid + s < numBuckets) {
+      if(tid < s) {
         if(sdata[tid + s] > sdata[tid]) {
           sdata[tid] = sdata[tid + s];
           indices[tid] = indices[tid + s];
@@ -204,32 +164,13 @@ __global__ void gNthElementUpdate(
     __syncthreads();
 
     i = (bestBinCostIdx - batchIdx * numBuckets) * (blockDim.x * 2) //go to bucket
-        + tid;
+         + tid;
     const int dist = numBuckets * 2 * blockDim.x;
     float* batchProbs = inProbs + batchIdx * batchStride * vocabSize;
 
     sdata[tid] = -3.40282e+38f;
 
-    if(i < batchStride * vocabSize) {
-      sdata[tid] = batchProbs[i];
-      indices[tid] = i;
-    }
-
-    if(i + blockDim.x < batchStride * vocabSize) {
-      float a = batchProbs[i];
-      float b = batchProbs[i + blockDim.x];
-      if(a > b) {
-        sdata[tid] = a;
-        indices[tid] = i;
-      } else {
-        sdata[tid] = b;
-        indices[tid] = i + blockDim.x;
-      }
-    }
-
-    while(i + dist < batchStride * vocabSize) {
-      i += dist;
-
+    while(i < batchStride * vocabSize) {
       float a = batchProbs[i];
       if(a > sdata[tid]) {
         sdata[tid] = a;
@@ -243,13 +184,14 @@ __global__ void gNthElementUpdate(
           indices[tid] = i + blockDim.x;
         }
       }
+      i += dist;
     }
 
     __syncthreads();
 
-    for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
-      if(tid < s && tid + s < batchStride * vocabSize) {
-        if(sdata[tid + s] > sdata[tid]) {
+    for (int s = (blockDim.x >> 1); s > 32; s >>= 1) {
+      if (tid < s) {
+        if (sdata[tid + s] > sdata[tid]) {
           sdata[tid] = sdata[tid + s];
           indices[tid] = indices[tid + s];
         }
@@ -316,10 +258,11 @@ int main(int argc, char** argv) {
   graph->setDevice(0);
   graph->reserveWorkspaceMB(128);
 
-  int dimBatch = 2;
+  int dimBatch = 5;
   int dimWord = 1;
   int batchLength = 50000;
   int numLayers = 1;
+  int beamSize = 12;
 
   int elemNum = dimBatch * dimWord * batchLength * numLayers;
 
@@ -331,13 +274,13 @@ int main(int argc, char** argv) {
   auto x = graph->param("x", {dimBatch, batchLength, dimWord, numLayers},
                         keywords::init=inits::from_vector(embData));
 
-  auto y = graph->param("y", {dimBatch, 1, 1, 12},
+  auto y = graph->param("y", {dimBatch, 1, 1, beamSize},
                         keywords::init=inits::zeros);
   graph->forward();
 
-  const thrust::device_vector<size_t> beamSizes({12, 12});
-  thrust::device_vector<float> outCosts(24);
-  thrust::device_vector<size_t> outIdx(24);
+  const thrust::device_vector<size_t> beamSizes(dimBatch, beamSize);
+  thrust::device_vector<float> outCosts(dimBatch * beamSize);
+  thrust::device_vector<size_t> outIdx(dimBatch * beamSize);
 
   NthElement(y->val(), outIdx, x->val(), beamSizes);
 

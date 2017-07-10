@@ -4,10 +4,10 @@
 #include <string>
 
 #include "3rd_party/cnpy/cnpy.h"
+#include "common/config_parser.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
 #include "common/version.h"
-#include "training/config.h"
 
 #define SET_OPTION(key, type)                    \
   do {                                           \
@@ -39,28 +39,40 @@ uint16_t guess_terminal_width(uint16_t max_width) {
   ioctl(STDIN_FILENO, TIOCGWINSZ, &ts);
   if(ts.ws_col != 0)
     cols = ts.ws_col;
-#endif /* TIOCGSIZE */
+#endif
   if(cols == 0)  // couldn't determine terminal width
     cols = po::options_description::m_default_line_length;
   return max_width ? std::min(cols, max_width) : cols;
 }
 
-size_t Config::seed = (size_t)time(0);
-
-bool Config::has(const std::string& key) const {
-  return config_[key];
-}
-
-YAML::Node Config::get(const std::string& key) const {
-  return config_[key];
-}
-
-const YAML::Node& Config::get() const {
-  return config_;
-}
-
-YAML::Node& Config::get() {
-  return config_;
+void OutputYaml(const YAML::Node node, YAML::Emitter& out) {
+  // std::set<std::string> flow = { "devices" };
+  std::set<std::string> sorter;
+  switch(node.Type()) {
+    case YAML::NodeType::Null: out << node; break;
+    case YAML::NodeType::Scalar: out << node; break;
+    case YAML::NodeType::Sequence:
+      out << YAML::BeginSeq;
+      for(auto&& n : node)
+        OutputYaml(n, out);
+      out << YAML::EndSeq;
+      break;
+    case YAML::NodeType::Map:
+      for(auto& n : node)
+        sorter.insert(n.first.as<std::string>());
+      out << YAML::BeginMap;
+      for(auto& key : sorter) {
+        out << YAML::Key;
+        out << key;
+        out << YAML::Value;
+        // if(flow.count(key))
+        // out << YAML::Flow;
+        OutputYaml(node[key], out);
+      }
+      out << YAML::EndMap;
+      break;
+    case YAML::NodeType::Undefined: out << node; break;
+  }
 }
 
 void ProcessPaths(YAML::Node& node,
@@ -106,7 +118,11 @@ void ProcessPaths(YAML::Node& node,
   }
 }
 
-void Config::validateOptions(bool translate, bool rescore) const {
+bool ConfigParser::has(const std::string& key) const {
+  return config_[key];
+}
+
+void ConfigParser::validateOptions(bool translate, bool rescore) const {
   if(translate)
     return;
 
@@ -121,7 +137,7 @@ void Config::validateOptions(bool translate, bool rescore) const {
 
   if(has("embedding-vectors")) {
     UTIL_THROW_IF2(get<std::vector<std::string>>("embedding-vectors").size()
-                   != get<std::vector<std::string>>("train-sets").size(),
+                       != get<std::vector<std::string>>("train-sets").size(),
                    "There should be as many files with embedding vectors as "
                    "training sets");
   }
@@ -153,38 +169,8 @@ void Config::validateOptions(bool translate, bool rescore) const {
       "--lr-decay-start option");
 }
 
-void Config::OutputRec(const YAML::Node node, YAML::Emitter& out) const {
-  // std::set<std::string> flow = { "devices" };
-  std::set<std::string> sorter;
-  switch(node.Type()) {
-    case YAML::NodeType::Null: out << node; break;
-    case YAML::NodeType::Scalar: out << node; break;
-    case YAML::NodeType::Sequence:
-      out << YAML::BeginSeq;
-      for(auto&& n : node)
-        OutputRec(n, out);
-      out << YAML::EndSeq;
-      break;
-    case YAML::NodeType::Map:
-      for(auto& n : node)
-        sorter.insert(n.first.as<std::string>());
-      out << YAML::BeginMap;
-      for(auto& key : sorter) {
-        out << YAML::Key;
-        out << key;
-        out << YAML::Value;
-        // if(flow.count(key))
-        // out << YAML::Flow;
-        OutputRec(node[key], out);
-      }
-      out << YAML::EndMap;
-      break;
-    case YAML::NodeType::Undefined: out << node; break;
-  }
-}
-
-void Config::addOptionsCommon(po::options_description& desc,
-                              bool translate = false) {
+void ConfigParser::addOptionsCommon(po::options_description& desc,
+                                    bool translate = false) {
   po::options_description general("General options", guess_terminal_width());
   // clang-format off
   general.add_options()
@@ -211,9 +197,9 @@ void Config::addOptionsCommon(po::options_description& desc,
   desc.add(general);
 }
 
-void Config::addOptionsModel(po::options_description& desc,
-                             bool translate = false,
-                             bool rescore = false) {
+void ConfigParser::addOptionsModel(po::options_description& desc,
+                                   bool translate = false,
+                                   bool rescore = false) {
   po::options_description model("Model options", guess_terminal_width());
   // clang-format off
   if(!translate) {
@@ -271,31 +257,10 @@ void Config::addOptionsModel(po::options_description& desc,
   }
   // clang-format on
 
-  modelFeatures_ = {
-      "type",
-      "dim-vocabs",
-      "dim-emb",
-      "dim-rnn",
-      "enc-cell",
-      "enc-type",
-      "enc-cell-depth",
-      "enc-depth",
-      "dec-depth",
-      "dec-cell",
-      "dec-cell-base-depth",
-      "dec-cell-high-depth",
-      //"dec-high-context",
-      "skip",
-      "layer-normalization",
-      "special-vocab",
-      "tied-embeddings"
-      /*"lexical-table", "vocabs"*/
-  };
-
   desc.add(model);
 }
 
-void Config::addOptionsTraining(po::options_description& desc) {
+void ConfigParser::addOptionsTraining(po::options_description& desc) {
   po::options_description training("Training options", guess_terminal_width());
   // clang-format off
   training.add_options()
@@ -399,7 +364,7 @@ void Config::addOptionsTraining(po::options_description& desc) {
   desc.add(training);
 }
 
-void Config::addOptionsValid(po::options_description& desc) {
+void ConfigParser::addOptionsValid(po::options_description& desc) {
   po::options_description valid("Validation set options",
                                 guess_terminal_width());
   // clang-format off
@@ -434,7 +399,7 @@ void Config::addOptionsValid(po::options_description& desc) {
   desc.add(valid);
 }
 
-void Config::addOptionsQuantize(po::options_description& desc) {
+void ConfigParser::addOptionsQuantize(po::options_description& desc) {
   po::options_description quantize("Sparse matrix encoding and quantize options",
                                 guess_terminal_width());
   // clang-format off
@@ -450,7 +415,7 @@ void Config::addOptionsQuantize(po::options_description& desc) {
   desc.add(quantize);
 }
 
-void Config::addOptionsTranslate(po::options_description& desc) {
+void ConfigParser::addOptionsTranslate(po::options_description& desc) {
   po::options_description translate("Translator options",
                                     guess_terminal_width());
   // clang-format off
@@ -489,7 +454,7 @@ void Config::addOptionsTranslate(po::options_description& desc) {
   desc.add(translate);
 }
 
-void Config::addOptionsRescore(po::options_description& desc) {
+void ConfigParser::addOptionsRescore(po::options_description& desc) {
   po::options_description rescore("Rescorer options", guess_terminal_width());
   // clang-format off
   rescore.add_options()
@@ -522,7 +487,7 @@ void Config::addOptionsRescore(po::options_description& desc) {
   desc.add(rescore);
 }
 
-void Config::addOptions(
+void ConfigParser::parseOptions(
     int argc, char** argv, bool doValidate, bool translate, bool rescore) {
   UTIL_THROW_IF2(translate && rescore,
                  "Config does not support both modes: translate and rescore!");
@@ -570,8 +535,9 @@ void Config::addOptions(
   if(vm_.count("config")) {
     configPath = vm_["config"].as<std::string>();
     config_ = YAML::Load(InputFileStream(configPath));
-  } else if(!translate && !rescore && boost::filesystem::exists(
-                              vm_["model"].as<std::string>() + ".yml")
+  } else if(!translate && !rescore
+            && boost::filesystem::exists(vm_["model"].as<std::string>()
+                                         + ".yml")
             && !vm_["no-reload"].as<bool>()) {
     configPath = vm_["model"].as<std::string>() + ".yml";
     config_ = YAML::Load(InputFileStream(configPath));
@@ -603,14 +569,13 @@ void Config::addOptions(
   SET_OPTION("dec-cell-base-depth", int);
   SET_OPTION("dec-cell-high-depth", int);
   SET_OPTION("dec-depth", int);
-  //SET_OPTION("dec-high-context", std::string);
+  // SET_OPTION("dec-high-context", std::string);
 
   SET_OPTION("skip", bool);
   SET_OPTION("tied-embeddings", bool);
   SET_OPTION("layer-normalization", bool);
 
   SET_OPTION("best-deep", bool);
-
 
   SET_OPTION_NONDEFAULT("special-vocab", std::vector<size_t>);
 
@@ -744,99 +709,16 @@ void Config::addOptions(
   if(get<bool>("relative-paths") && !vm_["dump-config"].as<bool>())
     ProcessPaths(
         config_, boost::filesystem::path{configPath}.parent_path(), false);
+
   if(vm_["dump-config"].as<bool>()) {
     YAML::Emitter emit;
-    OutputRec(config_, emit);
+    OutputYaml(config_, emit);
     std::cout << emit.c_str() << std::endl;
     exit(0);
   }
-
-  if(vm_["seed"].as<size_t>() == 0)
-    seed = (size_t)time(0);
-  else
-    seed = vm_["seed"].as<size_t>();
-
-  if(!translate) {
-    if(boost::filesystem::exists(vm_["model"].as<std::string>())
-       && !vm_["no-reload"].as<bool>()) {
-      try {
-        loadModelParameters(vm_["model"].as<std::string>());
-      } catch(std::runtime_error& e) {
-        // @TODO: logging doesn't seem working here
-        //LOG(info)->info("No model settings found in model file");
-      }
-    }
-  } else {
-    auto models = vm_["models"].as<std::vector<std::string>>();
-    auto model = models[0];
-    try {
-      loadModelParameters(model);
-    } catch(std::runtime_error& e) {
-      // @TODO: logging doesn't seem working here
-      //LOG(info)->info("No model settings found in model file");
-    }
-  }
 }
 
-void Config::log() {
-  createLoggers(this);
-
-  YAML::Emitter out;
-  OutputRec(config_, out);
-  std::string conf = out.c_str();
-
-  std::vector<std::string> results;
-  boost::algorithm::split(results, conf, boost::is_any_of("\n"));
-  for(auto& r : results)
-    LOG(config)->info(r);
-}
-
-void Config::override(const YAML::Node& params) {
-  // YAML::Emitter out;
-  // OutputRec(params, out);
-  // std::string conf = out.c_str();
-  //
-  // std::vector<std::string> results;
-  // boost::algorithm::split(results, conf, boost::is_any_of("\n"));
-  //
-  // LOG(config)->info("Overriding model parameters:");
-  // for(auto &r : results)
-  //  LOG(config)->info(r);
-
-  for(auto& it : params) {
-    config_[it.first.as<std::string>()] = it.second;
-  }
-}
-
-YAML::Node Config::getModelParameters() {
-  YAML::Node modelParams;
-  for(auto& key : modelFeatures_)
-    modelParams[key] = config_[key];
-  return modelParams;
-}
-
-void Config::loadModelParameters(const std::string& name) {
-  YAML::Node config;
-  GetYamlFromNpz(config, "special:model.yml", name);
-  override(config);
-}
-
-void Config::GetYamlFromNpz(YAML::Node& yaml,
-                            const std::string& varName,
-                            const std::string& fName) {
-  yaml = YAML::Load(cnpy::npz_load(fName, varName).data);
-}
-
-void Config::saveModelParameters(const std::string& name) {
-  AddYamlToNpz(getModelParameters(), "special:model.yml", name);
-}
-
-void Config::AddYamlToNpz(const YAML::Node& yaml,
-                          const std::string& varName,
-                          const std::string& fName) {
-  YAML::Emitter out;
-  OutputRec(yaml, out);
-  unsigned shape = out.size() + 1;
-  cnpy::npz_save(fName, varName, out.c_str(), &shape, 1, "a");
+YAML::Node ConfigParser::getConfig() const {
+  return config_;
 }
 }

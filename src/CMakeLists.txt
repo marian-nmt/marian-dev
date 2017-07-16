@@ -12,6 +12,7 @@ cuda_add_library(marian
   graph/node.cu
   graph/node_operators.cu
   tensors/tensor.cu
+  tensors/device_gpu.cu
   kernels/tensor_operators.cu
   kernels/dropout.cu
   kernels/sparse.cu
@@ -22,7 +23,8 @@ cuda_add_library(marian
   optimizers/optimizers.cu
   common/utils.cpp
   common/logging.cpp
-  training/config.cpp
+  common/config.cpp
+  common/config_parser.cpp
   translator/history.cpp
   translator/output_collector.cpp
   translator/nth_element.cu

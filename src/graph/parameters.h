@@ -41,10 +41,11 @@ public:
 
   size_t size() { return params_.size(); }
 
-  size_t totalSize() {
+  size_t totalCapacity(Ptr<TensorAllocator> alloc) {
     size_t sum = 0;
-    for(auto p : params_)
-      sum += p->shape().elements();
+    for(auto p : params_) {
+      sum += alloc->capacity(p->shape());
+    }
     return sum;
   }
 
@@ -56,8 +57,8 @@ public:
   }
 
   void allocateForward() {
-    if(vals_->capacity() == 0) {
-      vals_->reserveExact(totalSize());
+    if(vals_->size() == 0) {
+      vals_->reserveExact(totalCapacity(vals_));
       for(auto p : params_)
         if(!p->val())
           vals_->allocate(p->val(), p->shape());
@@ -65,8 +66,8 @@ public:
   }
 
   void allocateBackward() {
-    if(grads_->capacity() == 0) {
-      grads_->reserveExact(totalSize());
+    if(grads_->size() == 0) {
+      grads_->reserveExact(totalCapacity(grads_));
       for(auto p : params_)
         if(!p->grad())
           grads_->allocate(p->grad(), p->shape());

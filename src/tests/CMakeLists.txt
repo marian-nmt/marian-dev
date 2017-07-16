@@ -16,7 +16,7 @@ add_executable(logger_test logger_test.cpp)
 #cuda_add_executable(bn_test bn_test.cu)
 cuda_add_executable(pooling_test pooling_test.cu)
 cuda_add_executable(dropout_test dropout_test.cu)
-#cuda_add_executable(marian_test marian_test.cu)
+cuda_add_executable(marian_test marian_test.cu)
 cuda_add_executable(tensor_test tensor_test.cu)
 cuda_add_executable(nth_test nth_test.cu)
 
@@ -25,11 +25,12 @@ foreach(exec
         logger_test
         dropout_test
         pooling_test
-        tensor_test
+
         nth_test
-        #marian_test
+        marian_test
         #bn_test
-    )
+        tensor_test
+)
     target_link_libraries(${exec} marian ${EXT_LIBS})
     cuda_add_cublas_to_target(${exec})
     set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
@@ -37,11 +38,12 @@ endforeach(exec)
 
 if(CUDNN_FOUND)
     cuda_add_executable(conv_test conv_test.cu)
-    cuda_add_executable(conv_char_test conv_char_test.cu)
+    # cuda_add_executable(conv_char_test conv_char_test.cu)
 
     foreach(exec
             conv_test
-            conv_char_test)
+            # conv_char_test
+    )
         target_link_libraries(${exec} marian ${EXT_LIBS})
         cuda_add_cublas_to_target(${exec})
         set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

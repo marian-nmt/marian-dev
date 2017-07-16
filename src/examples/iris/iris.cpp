@@ -35,7 +35,7 @@ Expr buildIrisClassifier(Ptr<ExpressionGraph> graph,
   auto o = affine(h, W2, b2);
 
   if(train) {
-    auto y = graph->constant({N, 1}, init = inits::from_vector(outputData));
+    auto y = graph->constant({N}, init = inits::from_vector(outputData));
     /* Define cross entropy cost on the output layer.
      * It can be also defined directly as:
      *   -mean(sum(logsoftmax(o) * y, axis=1), axis=0)
@@ -84,7 +84,7 @@ int main() {
 
       // Build classifier
       auto cost = buildIrisClassifier(graph, trainX, trainY, true);
-
+      
       // Train classifier and update weights
       graph->forward();
       graph->backward();

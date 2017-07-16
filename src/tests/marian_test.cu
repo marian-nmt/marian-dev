@@ -6,12 +6,12 @@
 #include <iomanip>
 #include <string>
 
+#include "common/config.h"
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "marian.h"
 #include "optimizers/clippers.h"
 #include "optimizers/optimizers.h"
-#include "training/config.h"
 
 #include "models/amun.h"
 #include "models/s2s.h"
@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
   using namespace marian;
   using namespace data;
 
-  auto options = New<Config>(argc, argv, false);
+  auto options = New<Config>(argc, argv, ConfigMode::training, false);
 
   auto corpus = New<Corpus>(options);
   BatchGenerator<Corpus> bg(corpus, options);
@@ -30,21 +30,19 @@ int main(int argc, char** argv) {
   auto device = options->get<std::vector<size_t>>("devices").front();
   graph->setDevice(device);
 
-  Ptr<LexProbs> lexProbs;
-  if(options->has("lexical-table"))
-    lexProbs = New<LexProbs>(options,
-                             corpus->getVocabs().front(),
-                             corpus->getVocabs().back(),
-                             device);
+  //Ptr<LexProbs> lexProbs;
+  //if(options->has("lexical-table"))
+  //  lexProbs = New<LexProbs>(options,
+  //                           corpus->getVocabs().front(),
+  //                           corpus->getVocabs().back(),
+  //                           device);
 
   auto type = options->get<std::string>("type");
   Ptr<EncoderDecoderBase> encdec;
   if(type == "s2s")
     encdec = New<S2S>(options);
-  else if(type == "multi-s2s")
-    encdec = New<MultiS2S>(options);
   else
-    encdec = New<Amun>(options, keywords::lex_probs = lexProbs);
+    encdec = New<Amun>(options);
 
   auto model = options->get<std::string>("model");
   if(boost::filesystem::exists(model))
@@ -58,12 +56,10 @@ int main(int argc, char** argv) {
     bg.prepare(false);
     while(bg) {
       auto batch = bg.next();
-      batch->debug();
+      //batch->debug();
 
       auto costNode = encdec->build(graph, batch);
-      // for(auto p : graph->params())
-      //  debug(p, p->name());
-
+      
       debug(costNode, "cost");
 
       // graph->graphviz("debug.dot");

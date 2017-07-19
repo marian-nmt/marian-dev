@@ -14,7 +14,7 @@ Named in honour of Marian Rejewski, a Polish mathematician and cryptologist.
 
 ## Website
 
-More information on https://amunmt.github.io
+More information on https://marian-nmt.github.io
 
 ## Acknowledgements
 
@@ -27,3 +27,4 @@ the Amazon Academic Research Awards program, and
 the World Intellectual Property Organization.
 
 This software contains source code provided by NVIDIA Corporation.
+

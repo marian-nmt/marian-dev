@@ -287,8 +287,8 @@ public:
     cudaSetDevice(sourceTensor->getDevice());    
     if(!feedback) {
       device_ = sourceTensor->getDevice();
-      cudaMalloc(&feedback, sizeof(float) * sourceTensor->size());
-      cudaMalloc(&tmpData, sizeof(float) * sourceTensor->size());
+      CUDA_CHECK(cudaMalloc(&feedback, sizeof(float) * sourceTensor->size()));
+      CUDA_CHECK(cudaMalloc(&tmpData, sizeof(float) * sourceTensor->size()));
       cudaMemset(feedback, 0, sizeof(float) * sourceTensor->size());
       cudaMemset(tmpData, 0, sizeof(float) * sourceTensor->size());
 

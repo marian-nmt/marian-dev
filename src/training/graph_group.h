@@ -80,12 +80,7 @@ private:
       if(!mvAvgGraph_) {
         mvAvgGraph_ = New<ExpressionGraph>();
         mvAvgGraph_->setDevice(graph_->getDevice());
-        mvAvgGraph_->reuseWorkspace(graph_);
-
-        builder_->build(mvAvgGraph_, batch);
-        mvAvgGraph_->forward();
-
-        mvAvgGraph_->params()->vals()->copyFrom(graph_->params()->vals());
+        mvAvgGraph_->copyParams(graph_);
       } else {
         updateMovingAverage(mvAvgGraph_->params()->vals(),
                             graph_->params()->vals(),
@@ -249,14 +244,15 @@ private:
   int historySize_{1};
 
   std::vector<Ptr<TensorAllocator>> allocators;
+
   Tensor newTensor(int size, int device) {
-    Tensor T;
+    Tensor t;
     Ptr<TensorAllocator> allocator_ = New<TensorAllocator>(device);
-    allocator_->reserveExact(size);
-    allocator_->allocate(T, {1, size});
+    allocator_->reserveExact(size * sizeof(float));
+    allocator_->allocate(t, {1, size});
     allocators.push_back(allocator_);
 
-    return T;
+    return t;
   }
 
   void fetchParams(Tensor oldParams, const std::vector<Tensor>& params) {
@@ -464,7 +460,7 @@ private:
           for(int h_id = 0; h_id < historySize_; h_id++) {
             Tensor param;
             Ptr<TensorAllocator> allocator = New<TensorAllocator>(device);
-            allocator->reserveExact(__size__);
+            allocator->reserveExact(__size__ * sizeof(float));
             allocator->allocate(param, {1, __size__});
             paramsAlloc_.push_back(allocator);
 
@@ -487,7 +483,7 @@ private:
           Tensor grad_;
           Ptr<TensorAllocator> allocator_ = New<TensorAllocator>(device);
 
-          allocator_->reserveExact(__size__);
+          allocator_->reserveExact(__size__ * sizeof(float));
           allocator_->allocate(grad_, {1, __size__});
           gradsAlloc_.push_back(allocator_);
           grads_.push_back(grad_);
@@ -504,7 +500,7 @@ private:
             Tensor paramAvg;
             Ptr<TensorAllocator> allocator = New<TensorAllocator>(device);
 
-            allocator->reserveExact(__size__);
+            allocator->reserveExact(__size__ * sizeof(float));
             allocator->allocate(paramAvg, {1, __size__});
 
             paramAvg->copyFrom(params_[0][i++]);

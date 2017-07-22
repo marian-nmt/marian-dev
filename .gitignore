@@ -49,5 +49,3 @@ examples/mnist/*ubyte
 /.vimrc
 /.vscode
 
-
-copy_to_valhalla.sh

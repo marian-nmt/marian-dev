@@ -21,6 +21,7 @@ private:
   size_t samplesDisp{0};
   size_t wordsDisp{0};
   size_t batches{0};
+  size_t batchesInEpoch{0};
 
   Ptr<TrainingState> trainState_;
 
@@ -56,6 +57,7 @@ public:
     epochs++;
     trainState_->newEpoch(epochs);
     samples = 0;
+    batchesInEpoch = 0;
 
     LOG(info)->info("Starting epoch {}", epochs);
   }
@@ -77,6 +79,9 @@ public:
   void validate(Ptr<ExpressionGraph> graph) {
     if(batches % options_->get<size_t>("valid-freq") != 0)
       return;
+
+    // stop measuring training time for all validation runs
+    timer.stop();
 
     bool firstValidator = true;
     for(auto validator : validators_) {
@@ -102,6 +107,8 @@ public:
         trainState_->newStalled(validator->stalled());
       firstValidator = false;
     }
+
+    timer.resume();
   }
 
   size_t stalled() {
@@ -112,11 +119,24 @@ public:
   }
 
   void update(float cost, Ptr<data::Batch> batch) {
-    costSum += cost * batch->size();
-    samples += batch->size();
-    samplesDisp += batch->size();
-    wordsDisp += batch->words();
     batches++;
+    batchesInEpoch++;
+
+    // Skip very first batches in each epoch in the calculation of the training
+    // time as they are longer due to the graph initialization on each device
+    // used.
+    size_t numDevices = options_->get<std::vector<size_t>>("devices").size();
+    if(batchesInEpoch <= numDevices) {
+      timer.start();
+      costSum = 0;
+      wordsDisp = 0;
+      samplesDisp = 0;
+    } else {
+      costSum += cost * batch->size();
+      samples += batch->size();
+      samplesDisp += batch->size();
+      wordsDisp += batch->words();
+    }
 
     if(batches % options_->get<size_t>("disp-freq") == 0) {
       LOG(info)
@@ -168,23 +188,25 @@ public:
     if(factor > 0.0) {
       bool decay = false;
       auto strategy = options_->get<std::string>("lr-decay-strategy");
-      int startEpoch
-          = options_->get<std::vector<size_t>>("lr-decay-start").front();
 
-      if(strategy == "epoch") {
+      if(strategy == "epoch" || strategy == "epoch+batches"
+         || strategy == "epoch+stalled") {
+        int startEpoch
+            = options_->get<std::vector<size_t>>("lr-decay-start").front();
         if(startEpoch && state.epochs >= startEpoch)
           decay = true;
       }
+
       if(strategy == "epoch+batches") {
         int startBatches
             = options_->get<std::vector<size_t>>("lr-decay-start")[1];
-        if(startEpoch && startBatches && state.batches >= startBatches)
+        if(startBatches && state.batches >= startBatches)
           decay = true;
       }
       if(strategy == "epoch+stalled") {
         int startStalled
             = options_->get<std::vector<size_t>>("lr-decay-start")[1];
-        if(startEpoch && startStalled && state.maxStalled >= startStalled)
+        if(startStalled && state.maxStalled >= startStalled)
           decay = true;
       }
 

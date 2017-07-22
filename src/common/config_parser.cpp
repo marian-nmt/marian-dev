@@ -427,22 +427,6 @@ void ConfigParser::addOptionsValid(po::options_description& desc) {
   desc.add(valid);
 }
 
-void ConfigParser::addOptionsQuantize(po::options_description& desc) {
-  po::options_description quantize("Sparse matrix encoding and quantize options",
-                                guess_terminal_width());
-  // clang-format off
-  quantize.add_options()
-    ("quantize-bits", po::value<int>()->default_value(32),
-      "Number of bits to use for encoding.")
-    ("quantize-column-wise", po::value<bool>()->zero_tokens()->default_value(false),
-      "Enable column-wise dropping for quantization.")
-    ("quantize-min-drop", po::value<bool>()->zero_tokens()->default_value(false),
-      "Use min as the quantization center, default (false) uses mean.")
-  ;
-  // clang-format on
-  desc.add(quantize);
-}
-
 void ConfigParser::addOptionsTranslate(po::options_description& desc) {
   po::options_description translate("Translator options",
                                     guess_terminal_width());
@@ -532,7 +516,6 @@ void ConfigParser::parseOptions(
     case ConfigMode::training:
       addOptionsTraining(cmdline_options_);
       addOptionsValid(cmdline_options_);
-      addOptionsQuantize(cmdline_options_);
       break;
   }
   // clang-format on
@@ -651,10 +634,6 @@ void ConfigParser::parseOptions(
     SET_OPTION("guided-alignment-cost", std::string);
     SET_OPTION("guided-alignment-weight", double);
     SET_OPTION("drop-rate", double);
-
-    SET_OPTION("quantize-bits", int);
-    SET_OPTION("quantize-column-wise", bool);
-    SET_OPTION("quantize-min-drop", bool);
 
     SET_OPTION_NONDEFAULT("embedding-vectors", std::vector<std::string>);
     SET_OPTION("embedding-normalization", bool);

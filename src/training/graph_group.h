@@ -563,7 +563,7 @@ private:
       thread_local Ptr<ExpressionGraph> graph;
       thread_local Ptr<Builder> builder;
       thread_local size_t t = 0;
-      thread_local size_t num_seen_words = 0;
+      thread_local size_t numSeenWords = 0;
 
       thread_local Tensor accGradients;
       thread_local Ptr<TensorAllocator> accAlloc;
@@ -573,27 +573,19 @@ private:
 
       thread_local size_t myId = 0;
 
-      std::vector<std::pair<int,int>> layerShapes;
-
       if(!graph) {
         std::lock_guard<std::mutex> lock(sync_);
         myId = i;
         graph = graphs_[i];
         builder = builders_[i++];
-
-        for (auto& x: graph->params()->getMap()) {
-          layerShapes.push_back({x.second->shape()[0], x.second->shape()[1]});
-          if (myId == 0)
-            LOG(info)->info("Layer size {} {}", x.second->shape()[0], x.second->shape()[1]);
-        }
       }
 
       if(!dropper) {
         std::lock_guard<std::mutex> lock(sync_);
-        dropper = GradientDrop(new GradientDropBase(options_));
+        dropper = GradientDrop(new GradientDropBase());
         std::vector<GradientDrop> tmp;
         for(int i = 0; i < devices_.size(); i++)
-          tmp.push_back(GradientDrop(new GradientDropBase(options_)));
+          tmp.push_back(GradientDrop(new GradientDropBase()));
         fetchDropper.push_back(tmp);
       }
 
@@ -627,11 +619,11 @@ private:
 
         Element(_1 += _2, accGradients, graph->params()->grads());
         gradients = accGradients;
-        num_seen_words += batchWords; //Keep track of how many words we've calculated the error from
+        numSeenWords += batchWords; //Keep track of how many words we've calculated the error from
       }
       else {
         gradients = graph->params()->grads();
-        num_seen_words = batchWords;
+        numSeenWords = batchWords;
       }
 
       t++;
@@ -641,12 +633,12 @@ private:
         cudaStreamSynchronize(0);
         if(dropRate_) {
           dropper->dropGraph(
-              graph->params()->grads(), localSparseGrads_[myId], dropRate_, layerShapes);
-          sparsePushGradients(localSparseGrads_[myId]);
+              graph->params()->grads(), localSparseGrads_[myId], dropRate_);
+          sparsePushGradients(localSparseGrads_[myId], numSeenWords);
         } else {
-          pushGradients(graph->params()->grads());
+          pushGradients(graph->params()->grads(), numSeenWords);
         }
-        num_seen_words = 0; //Reset the counter of seen words after gradient update
+        numSeenWords = 0; //Reset the counter of seen words after gradient update
 
         if(tau_ > 1) {
           gradients->set(0);

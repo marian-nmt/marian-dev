@@ -5,9 +5,7 @@
 #include <thrust/device_ptr.h>
 #include <thrust/sort.h>
 #include <memory>
-#include <cfloat>
 
-#include "common/definitions.h"
 #include "kernels/cuda_helpers.h"
 #include "kernels/tensor_operators.h"
 #include "training/sparse_tensor.h"
@@ -66,14 +64,6 @@ __global__ void randomSampling(
   data[idx] = abs(originalData[idx * scale]);
 }
 
-__global__ void locate(float* data, float toLocate, int size, int* result) {
-  int idx = blockDim.x * blockIdx.x + threadIdx.x;
-  if(idx >= size)
-    return;
-  if(data[idx] <= toLocate && (idx == size - 1 || data[idx+1] > toLocate))
-    *result = idx;
-}
-
 class GradientDropBase {
 private:
   float* feedback;
@@ -89,7 +79,7 @@ private:
   }
 
   void gradDropDo(
-      float* data, float* errors, float* tmpData, int totalSize, float dropRate) {
+      float* data, float* errors, float* tmpData, int totalSize, float rate) {
     int threads = 512;
     int blocks = 1 + totalSize / threads;
     cudaSetDevice(device_);
@@ -103,8 +93,7 @@ private:
     thrust::device_ptr<float> tmpDataPtr(tmpData);
     thrust::sort(tmpDataPtr, tmpDataPtr + sortSize);
 
-    // dont update the cut threshold every step
-    int cutOffIndex = std::max(0, (int)(sortSize * dropRate) - 1);
+    int cutOffIndex = std::max(0, (int)(sortSize * rate) - 1);
     float cutOffValue = get(tmpData, cutOffIndex);
 
     gradDrop<<<blocks, threads>>>(data, tmpData, errors, cutOffValue, totalSize);

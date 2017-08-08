@@ -12,33 +12,26 @@
 
 namespace marian {
 
-__global__ void grad_drop(
-    float* data, float* tmp, float* errors, float cut_off, int max_size) {
+__global__ void gradDrop(
+    float* data, float* tmpData, float* errors, float cutOffValue, int maxSize) {
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
-  if(idx >= max_size)
+  if(idx >= maxSize)
     return;
-  if(std::abs(data[idx]) <= cut_off) {
+  if(std::abs(data[idx]) <= cutOffValue) {
     errors[idx] = data[idx];
     data[idx] = 0;
-    tmp[idx] = 0;
+    tmpData[idx] = 0;
   } else {
     errors[idx] = 0;
-    tmp[idx] = 1;
+    tmpData[idx] = 1;
   }
 }
 
-__global__ void grad_add_error(float* data, float* errors, int max_size) {
+__global__ void gradAddError(float* data, float* errors, int maxSize) {
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
-  if(idx >= max_size)
+  if(idx >= maxSize)
     return;
   data[idx] += errors[idx];
-}
-
-__global__ void full_abs(float* data, int max_size) {
-  int idx = blockDim.x * blockIdx.x + threadIdx.x;
-  if(idx >= max_size)
-    return;
-  data[idx] = abs(data[idx]);
 }
 
 __global__ void buildIndices(float* denseData,
@@ -49,17 +42,17 @@ __global__ void buildIndices(float* denseData,
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if(idx >= denseSize)
     return;
-  int t_id = round(denseSum[idx]);
-  if(t_id <= 0) {
+  int tId = round(denseSum[idx]);
+  if(tId <= 0) {
     return;
   }
 
-  if(idx == 0 && t_id > 0) {
-    sparseIndices[t_id - 1] = idx;
-    sparseData[t_id - 1] = denseData[idx];
-  } else if(idx > 0 && t_id > round(denseSum[idx - 1])) {
-    sparseIndices[t_id - 1] = idx;
-    sparseData[t_id - 1] = denseData[idx];
+  if(idx == 0 && tId > 0) {
+    sparseIndices[tId - 1] = idx;
+    sparseData[tId - 1] = denseData[idx];
+  } else if(idx > 0 && tId > round(denseSum[idx - 1])) {
+    sparseIndices[tId - 1] = idx;
+    sparseData[tId - 1] = denseData[idx];
   }
 }
 
@@ -72,72 +65,75 @@ __global__ void randomSampling(
 }
 
 class GradientDropBase {
+private:
   float* feedback;
-  float* temp_d;
-  float cut_off;
+  float* tmpData;
   int step;
-  int _device;
+  int device_;
 
-  void grad_drop_do(
-      float* data, float* errors, float* tmp, int len, float rate) {
+  // A helper, returns i-th element from a GPU stored array.
+  float get(float* data, int i) {
+    float res;
+    cudaMemcpy(&res, data + i, sizeof(float), cudaMemcpyDeviceToHost);
+    return res;
+  }
+
+  void gradDropDo(
+      float* data, float* errors, float* tmpData, int totalSize, float rate) {
     int threads = 512;
-    int blocks = 1 + len / threads;
-    cudaSetDevice(_device);
+    int blocks = 1 + totalSize / threads;
+    cudaSetDevice(device_);
 
-    grad_add_error<<<blocks, threads>>>(data, errors, len);
+    gradAddError<<<blocks, threads>>>(data, errors, totalSize);
     // full sort
-    // int sortSize = len;
-    int sortSize = min(100000, len);
+    int sortSize = min(100000, totalSize);
     int blocksSample = 1 + sortSize / threads;
     randomSampling<<<blocksSample, threads>>>(
-        data, tmp, sortSize, len / sortSize, len);
-    // dont update the cut threshold every step
+        data, tmpData, sortSize, totalSize / sortSize, totalSize);
+    thrust::device_ptr<float> tmpDataPtr(tmpData);
+    thrust::sort(tmpDataPtr, tmpDataPtr + sortSize);
 
-    thrust::device_ptr<float> dev_data_ptr(tmp);
-    thrust::sort(dev_data_ptr, dev_data_ptr + sortSize);
+    int cutOffIndex = std::max(0, (int)(sortSize * rate) - 1);
+    float cutOffValue = get(tmpData, cutOffIndex);
 
-    int cut_index = std::max(0, (int)(sortSize * rate) - 1);
-    cudaMemcpy(
-        &cut_off, tmp + cut_index, sizeof(float), cudaMemcpyDeviceToHost);
-
-    grad_drop<<<blocks, threads>>>(data, tmp, errors, cut_off, len);
+    gradDrop<<<blocks, threads>>>(data, tmpData, errors, cutOffValue, totalSize);
   }
 
 public:
-  void dropGraph(Tensor t, SparseTensor destination, double rate = 0.99) {
-    cudaSetDevice(t->getDevice());
+  void dropGraph(Tensor sourceTensor, SparseTensor destinationTensor, double rate = 0.99) {
+    cudaSetDevice(sourceTensor->getDevice());    
     if(!feedback) {
-      _device = t->getDevice();
-      CUDA_CHECK(cudaMalloc(&feedback, sizeof(float) * t->size()));
-      CUDA_CHECK(cudaMalloc(&temp_d, sizeof(float) * t->size()));
-      cudaMemset(feedback, 0, sizeof(float) * t->size());
-      cudaMemset(temp_d, 0, sizeof(float) * t->size());
+      device_ = sourceTensor->getDevice();
+      CUDA_CHECK(cudaMalloc(&feedback, sizeof(float) * sourceTensor->size()));
+      CUDA_CHECK(cudaMalloc(&tmpData, sizeof(float) * sourceTensor->size()));
+      cudaMemset(feedback, 0, sizeof(float) * sourceTensor->size());
+      cudaMemset(tmpData, 0, sizeof(float) * sourceTensor->size());
 
       step = 0;
     }
 
-    grad_drop_do(t->data(), feedback, temp_d, t->size(), rate);
+    gradDropDo(sourceTensor->data(), feedback, tmpData, sourceTensor->size(), rate);
 
-    thrust::device_ptr<float> mask_ptr(temp_d);
-    int denseSize = t->size();
-    thrust::inclusive_scan(mask_ptr, mask_ptr + denseSize, mask_ptr);
+    thrust::device_ptr<float> maskPtr(tmpData);
+    int denseSize = sourceTensor->size();
+    thrust::inclusive_scan(maskPtr, maskPtr + denseSize, maskPtr);
     float sparseSize;
 
     cudaMemcpy(&sparseSize,
-               temp_d + denseSize - 1,
+               tmpData + denseSize - 1,
                sizeof(float),
                cudaMemcpyDeviceToHost);
 
-    // convert result of exscan to indices.
+    // Convert result of inclusive scan to indices.
     int threads = 512;
     int blocks = 1 + denseSize / threads;
-    cudaSetDevice(t->getDevice());
-    buildIndices<<<blocks, threads>>>(t->data(),
-                                      temp_d,
-                                      destination->data(),
-                                      destination->indices(),
+    cudaSetDevice(sourceTensor->getDevice());
+    buildIndices<<<blocks, threads>>>(sourceTensor->data(),
+                                      tmpData,
+                                      destinationTensor->data(),
+                                      destinationTensor->indices(),
                                       denseSize);
-    destination->setSize(sparseSize);
+    destinationTensor->setSize(sparseSize);
 
     cudaStreamSynchronize(0);
 

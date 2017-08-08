@@ -634,6 +634,7 @@ void ConfigParser::parseOptions(
     SET_OPTION("guided-alignment-cost", std::string);
     SET_OPTION("guided-alignment-weight", double);
     SET_OPTION("drop-rate", double);
+
     SET_OPTION_NONDEFAULT("embedding-vectors", std::vector<std::string>);
     SET_OPTION("embedding-normalization", bool);
     SET_OPTION("embedding-fix-src", bool);

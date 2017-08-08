@@ -23,15 +23,15 @@ class GraphGroup {
 protected:
   Ptr<Config> options_;
   Ptr<OptimizerBase> opt_;
-  bool scale_lr; // Whether to scale the learning rate
-  float average_batch_words;
+  bool scaleLR; // Whether to scale the learning rate
+  float averageBatchWords;
 
 public:
   GraphGroup(Ptr<Config> options)
       : options_(options),
       opt_(Optimizer(options)),
-      scale_lr(options->get<bool>("batch-flexible-lr")),
-      average_batch_words(options->get<float>("batch-normal-words")) {}
+      scaleLR(options->get<bool>("batch-flexible-lr")),
+      averageBatchWords(options->get<float>("batch-normal-words")) {}
 
   virtual ~GraphGroup() {}
 
@@ -80,12 +80,12 @@ private:
     graph_->backward();
 
     //Get batch stats
-    size_t batch_words = batch->words();
+    size_t batchWords = batch->words();
     //@TODO use this to gather statistics about the usual number of words per batch
-    //std::cout << "Batch size: " << batch->size() << " batch_words " << batch_words << std::endl;
+    //std::cout << "Batch size: " << batch->size() << " batchWords " << batchWords << std::endl;
 
-    if (scale_lr) {
-      opt_->update(graph_, batch_words/average_batch_words);
+    if (scaleLR) {
+      opt_->update(graph_, batchWords/averageBatchWords);
     } else {
       opt_->update(graph_);
     }
@@ -253,8 +253,8 @@ private:
 
   ThreadPool pool_;
 
-  double drop_rate_{0};
-  int history_size_{1};
+  double dropRate_{0};
+  int historySize_{1};
 
   size_t tau_{1};
 
@@ -293,7 +293,7 @@ private:
     }
   }
 
-  void pushGradients(Tensor newGrads, size_t batch_words) {
+  void pushGradients(Tensor newGrads, size_t batchWords) {
     // add instead of copy?
     std::vector<std::thread> threads;
     int pos = 0;
@@ -308,14 +308,14 @@ private:
             // apply and increment your version number, if history is enabled
             int latestVersion = 0;
 
-            if(history_size_ > 1) {
-              int pastVersion = globalVersionNumber[idx] % history_size_;
-              latestVersion = ++globalVersionNumber[idx] % history_size_;
+            if(historySize_ > 1) {
+              int pastVersion = globalVersionNumber[idx] % historySize_;
+              latestVersion = ++globalVersionNumber[idx] % historySize_;
               params_[latestVersion][idx]->copyFrom(params_[pastVersion][idx]);
             }
 
-            if (scale_lr) {
-              shardOpt_[idx]->update(params_[latestVersion][idx], grads_[idx], batch_words/average_batch_words);
+            if (scaleLR) {
+              shardOpt_[idx]->update(params_[latestVersion][idx], grads_[idx], batchWords/averageBatchWords);
             } else {
               shardOpt_[idx]->update(params_[latestVersion][idx], grads_[idx]);
             }
@@ -349,15 +349,15 @@ private:
             // individual mutex per-shard
             std::lock_guard<std::mutex> guard(shardSync_[idx]);
             // obtain the delta
-            int latestVersion = globalVersionNumber[idx] % history_size_;
+            int latestVersion = globalVersionNumber[idx] % historySize_;
             int currVersion
-                = localVersionNumbers[worker_id][idx] % history_size_;
+                = localVersionNumbers[worker_id][idx] % historySize_;
 
             // check if the current version is too old
             if(globalVersionNumber[idx] - localVersionNumbers[worker_id][idx]
-               >= history_size_)
+               >= historySize_)
               currVersion = (1 + globalVersionNumber[idx])
-                            % history_size_;  // if so, pick the best you can do
+                            % historySize_;  // if so, pick the best you can do
 
             // if already latest
             if(globalVersionNumber[idx] == localVersionNumbers[worker_id][idx])
@@ -371,8 +371,7 @@ private:
             cudaStreamSynchronize(0);
 
             // get sparse delta
-            fetchDropper[worker_id][idx]->dropGraph(
-                tmpTensor[idx], tmpSparseDelta[idx], drop_rate_);
+            fetchDropper[worker_id][idx]->dropGraph(tmpTensor[idx], tmpSparseDelta[idx], dropRate_);
             cudaStreamSynchronize(0);
 
             // move sparse delta
@@ -396,10 +395,10 @@ private:
     }
   }
 
-  void sparsePush(SparseTensor newGrads, size_t batch_words) {
+  void sparsePushGradients(SparseTensor newGrads, size_t batchWords) {
     if(graphs_.size() < 2) {
-      if (scale_lr) {
-        opt_->update(graphs_[0], batch_words/average_batch_words);
+      if (scaleLR) {
+        opt_->update(graphs_[0], batchWords/averageBatchWords);
       } else {
         opt_->update(graphs_[0]);
       }
@@ -422,16 +421,16 @@ private:
               sparseGrads_[idx]->copyFrom(subGrad);
               cudaStreamSynchronize(0);
 
-              // convert back to dense, with index offset of -pos
+              // convert back to dense, with index offset of -pos // Why?
               sparseGrads_[idx]->toDense(grads_[idx], -pos);
               cudaStreamSynchronize(0);
 
               // apply and increment your version number
-              int pastVersion = globalVersionNumber[idx] % history_size_;
-              int latestVersion = ++globalVersionNumber[idx] % history_size_;
+              int pastVersion = globalVersionNumber[idx] % historySize_;
+              int latestVersion = ++globalVersionNumber[idx] % historySize_;
               params_[latestVersion][idx]->copyFrom(params_[pastVersion][idx]);
-              if (scale_lr) {
-                shardOpt_[idx]->update(params_[latestVersion][idx], grads_[idx], batch_words/average_batch_words);
+              if (scaleLR) {
+                shardOpt_[idx]->update(params_[latestVersion][idx], grads_[idx], batchWords/averageBatchWords);
               } else {
                 shardOpt_[idx]->update(params_[latestVersion][idx], grads_[idx]);
               }
@@ -484,7 +483,7 @@ private:
           int __size__ = min(shardSize_, totalSize);
           totalSize -= __size__;
 
-          for(int h_id = 0; h_id < history_size_; h_id++) {
+          for(int h_id = 0; h_id < historySize_; h_id++) {
             Tensor param;
             Ptr<TensorAllocator> allocator = New<TensorAllocator>(device);
             allocator->reserveExact(__size__ * sizeof(float));
@@ -496,7 +495,7 @@ private:
             params_[h_id].push_back(param);
           }
 
-          if(drop_rate_)
+          if(dropRate_)
             tmpTensor.push_back(newTensor(__size__, device));
           pos += __size__;
         }
@@ -538,20 +537,20 @@ private:
         }
       }
 
-      if(drop_rate_ && first_) {
+      if(dropRate_ && first_) {
         int totalSize = graphs_[0]->params()->vals()->size();
-        int sparseCap = totalSize * 1.2 * (1.0 - drop_rate_);
+        int sparseCapacity = totalSize * 1.2 * (1.0 - dropRate_); // why 1.2?
         for(auto device : devices_) {
           sparseGrads_.push_back(
-              SparseTensor(new SparseTensorBase(sparseCap, device)));
+              SparseTensor(new SparseTensorBase(sparseCapacity, device)));
           localSparseGrads_.push_back(
-              SparseTensor(new SparseTensorBase(sparseCap, device)));
+              SparseTensor(new SparseTensorBase(sparseCapacity, device)));
           tmpSparseDelta.push_back(SparseTensor(
-              new SparseTensorBase(sparseCap / devices_.size(), device)));
+              new SparseTensorBase(sparseCapacity / devices_.size(), device)));
           std::vector<SparseTensor> tmp;
           for(int i = 0; i < devices_.size(); i++)
             tmp.push_back(SparseTensor(
-                new SparseTensorBase(sparseCap / devices_.size(), device)));
+                new SparseTensorBase(sparseCapacity / devices_.size(), device)));
           localSparseDelta.push_back(tmp);
         }
       }
@@ -564,7 +563,7 @@ private:
       thread_local Ptr<ExpressionGraph> graph;
       thread_local Ptr<Builder> builder;
       thread_local size_t t = 0;
-      thread_local size_t num_seen_words = 0;
+      thread_local size_t numSeenWords = 0;
 
       thread_local Tensor accGradients;
       thread_local Ptr<TensorAllocator> accAlloc;
@@ -572,11 +571,11 @@ private:
       // gradient drop purpose
       thread_local GradientDrop dropper;
 
-      thread_local size_t my_id = 0;
+      thread_local size_t myId = 0;
 
       if(!graph) {
         std::lock_guard<std::mutex> lock(sync_);
-        my_id = i;
+        myId = i;
         graph = graphs_[i];
         builder = builders_[i++];
       }
@@ -594,11 +593,11 @@ private:
 
       if(t % tau_ == 0) {
 
-        if(drop_rate_ && t > 0)
-          sparseFetchParams(graph->params()->vals(), my_id);
+        if(dropRate_ && t > 0)
+          sparseFetchParams(graph->params()->vals(), myId);
         else
           fetchParams(graph->params()->vals(),
-                      params_[globalVersionNumber[my_id] % history_size_]);
+                      params_[globalVersionNumber[myId] % historySize_]);
 
       }
 
@@ -607,7 +606,7 @@ private:
       graph->backward();
 
       //Get batch stats
-      size_t batch_words = batch->words();
+      size_t batchWords = batch->words();
 
       Tensor gradients;
       if(tau_ > 1) {
@@ -620,11 +619,11 @@ private:
 
         Element(_1 += _2, accGradients, graph->params()->grads());
         gradients = accGradients;
-        num_seen_words += batch_words; //Keep track of how many words we've calculated the error from
+        numSeenWords += batchWords; //Keep track of how many words we've calculated the error from
       }
       else {
         gradients = graph->params()->grads();
-        num_seen_words = batch_words;
+        numSeenWords = batchWords;
       }
 
       t++;
@@ -632,14 +631,14 @@ private:
       if(t % tau_ == 0) {
 
         cudaStreamSynchronize(0);
-        if(drop_rate_) {
+        if(dropRate_) {
           dropper->dropGraph(
-              gradients, localSparseGrads_[my_id], drop_rate_);
-          sparsePush(localSparseGrads_[my_id], num_seen_words);
+              graph->params()->grads(), localSparseGrads_[myId], dropRate_);
+          sparsePushGradients(localSparseGrads_[myId], numSeenWords);
         } else {
-          pushGradients(gradients, num_seen_words);
+          pushGradients(graph->params()->grads(), numSeenWords);
         }
-        num_seen_words = 0; //Reset the counter of seen words after gradient update
+        numSeenWords = 0; //Reset the counter of seen words after gradient update
 
         if(tau_ > 1) {
           gradients->set(0);
@@ -677,7 +676,7 @@ private:
                             scheduler_->numberOfBatches());
             for(int idx = 0; idx < paramsAvg_.size(); idx++) {
               std::lock_guard<std::mutex> guard(shardSync_[idx]);
-              params_[my_id][idx]->copyFrom(paramsAvg_[idx]);
+              params_[myId][idx]->copyFrom(paramsAvg_[idx]);
             }
           }
         }*/
@@ -696,12 +695,12 @@ public:
         shardSync_{devices_.size()},
         movingAvg_{options_->get<bool>("moving-average")},
         mvDecay_{(float)options_->get<double>("moving-decay")},
-        drop_rate_{options_->get<double>("drop-rate")},
+        dropRate_{options_->get<double>("drop-rate")},
         tau_{options_->get<size_t>("tau")} {
-    if(drop_rate_ > 0.0) {
-      history_size_ = devices_.size() * 1.5;
+    if(dropRate_ > 0.0) {
+      historySize_ = devices_.size() * 1.5;
     }
-    for(int i = 0; i < history_size_; i++)
+    for(int i = 0; i < historySize_; i++)
       params_.push_back(std::vector<Tensor>());
     for(auto device : devices_) {
       auto graph = New<ExpressionGraph>();

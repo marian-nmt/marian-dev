@@ -5,6 +5,7 @@
 #include "models/lm.h"
 #include "models/hardatt.h"
 #include "models/multi_s2s.h"
+#include "models/s2s_no_att.h"
 
 namespace marian {
 
@@ -36,6 +37,8 @@ Ptr<ModelTask> WrapModelType(Ptr<Config> options) {
   REGISTER_MODEL("multi-hard-att", MultiHardSoftAtt);
 
   REGISTER_MODEL("lm", LM);
+
+  REGISTER_MODEL("s2s-no=att", S2SNoAttention);
 
   UTIL_THROW2("Unknown model type: " << type);
 }

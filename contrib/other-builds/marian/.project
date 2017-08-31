@@ -576,6 +576,11 @@
 			<locationURI>PARENT-3-PROJECT_LOC/src/models/s2s.h</locationURI>
 		</link>
 		<link>
+			<name>src/models/s2s_no_att.h</name>
+			<type>1</type>
+			<locationURI>PARENT-3-PROJECT_LOC/src/models/s2s_no_att.h</locationURI>
+		</link>
+		<link>
 			<name>src/models/states.h</name>
 			<type>1</type>
 			<locationURI>PARENT-3-PROJECT_LOC/src/models/states.h</locationURI>

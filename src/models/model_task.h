@@ -38,7 +38,7 @@ Ptr<ModelTask> WrapModelType(Ptr<Config> options) {
 
   REGISTER_MODEL("lm", LM);
 
-  REGISTER_MODEL("s2s-no=att", S2SNoAttention);
+  REGISTER_MODEL("s2s-no-att", S2SNoAttention);
 
   UTIL_THROW2("Unknown model type: " << type);
 }

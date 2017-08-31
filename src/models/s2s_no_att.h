@@ -201,10 +201,6 @@ Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
     baseCell.push_back(rnn::cell(graph)
                        ("prefix", paramPrefix)
                        ("final", i > 1));
-    if(i == 1)
-      baseCell.push_back(rnn::attention(graph)
-                         ("prefix", prefix_)
-                         .set_state(state->getEncoderState()));
   }
   // Add cell to RNN (first layer)
   rnn.push_back(baseCell);
@@ -297,10 +293,6 @@ public:
     // in order to continue decoding for the next word
     rnn::States decoderStates = rnn_->lastCellStates();
 
-    // retrieve all the aligned contexts computed by the attention mechanism
-    auto att = rnn_->at(0)->as<rnn::StackedCell>()->at(1)->as<rnn::Attention>();
-    auto alignedContext = att->getContext();
-
     // construct deep output multi-layer network layer-wise
     auto layer1 = mlp::dense(graph)
                   ("prefix", prefix_ + "_ff_logit_l1")
@@ -326,7 +318,7 @@ public:
     auto logits = mlp::mlp(graph)
                   .push_back(layer1)
                   .push_back(layer2)
-                  ->apply(embeddings, decoderContext, alignedContext);
+                  ->apply(embeddings, decoderContext);
 
     // return unormalized(!) probabilities
     return New<DecoderState>(decoderStates, logits, state->getEncoderState());
@@ -334,8 +326,9 @@ public:
 
   // helper function for guided alignment
   virtual const std::vector<Expr> getAlignments() {
-    auto att = rnn_->at(0)->as<rnn::StackedCell>()->at(1)->as<rnn::Attention>();
-    return att->getAlignments();
+    //auto att = rnn_->at(0)->as<rnn::StackedCell>()->at(1)->as<rnn::Attention>();
+    //return att->getAlignments();
+	return std::vector<Expr>();
   }
 };
 

@@ -12,7 +12,6 @@
 #include "layers/generic.h"
 
 #include "rnn/types.h"
-#include "rnn/attention.h"
 #include "rnn/cells.h"
 
 namespace marian {

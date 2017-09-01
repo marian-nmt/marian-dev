@@ -1,7 +1,9 @@
 #pragma once
 
+#include "rnn/attention.h"
 #include "rnn/rnn.h"
 #include "layers/factory.h"
+#include "models/states.h"
 
 namespace marian {
 namespace rnn {

@@ -17,27 +17,26 @@ struct ModelServiceTask {
   virtual std::vector<std::string> run(const std::vector<std::string>&) = 0;
 };
 
-#define REGISTER_MODEL(name, model) \
-do { \
-  if(type == name) \
-    return New<TaskName<Wrapper<model>>>(options); \
-} while(0)
-
 template <template <class> class TaskName, template <class> class Wrapper>
-Ptr<ModelTask> WrapModelType(Ptr<Config> options) {
+Ptr<ModelTask>
+WrapModelType(Ptr<Config> options) {
   auto type = options->get<std::string>("type");
-
-  REGISTER_MODEL("s2s", S2S);
-  REGISTER_MODEL("amun", Amun);
-  REGISTER_MODEL("hard-att", HardAtt);
-  REGISTER_MODEL("hard-soft-att", HardSoftAtt);
-
-  REGISTER_MODEL("multi-s2s", MultiS2S);
-  REGISTER_MODEL("multi-hard-att", MultiHardSoftAtt);
-
-  REGISTER_MODEL("lm", LM);
-
-  UTIL_THROW2("Unknown model type: " << type);
+  if (type == "s2s")
+    return New<TaskName<Wrapper<S2S>>>(options);
+  else if (type == "amun")
+    return New<TaskName<Wrapper<Amun>>>(options);
+  else if (type == "hard-att")
+    return New<TaskName<Wrapper<HardAtt>>>(options);
+  else if (type == "hard-soft-att")
+    return New<TaskName<Wrapper<HardSoftAtt>>>(options);
+  else if (type == "multi-s2s")
+    return New<TaskName<Wrapper<MultiS2S>>>(options);
+  else if (type == "multi-hard-att")
+    return New<TaskName<Wrapper<MultiHardSoftAtt>>>(options);
+  else if (type == "lm")
+    return New<TaskName<Wrapper<LM>>>(options);
+  else
+    UTIL_THROW2("Unknown model type: " << type);
 }
 
 }

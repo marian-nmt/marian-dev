@@ -705,6 +705,44 @@ struct LexicalProbNodeOp : public NaryNodeOp {
   Ptr<sparse::CSR> lf_;
 };
 
+class MaxPooling2Op : public UnaryNodeOp {
+  public:
+    MaxPooling2Op( Expr x, Expr mask, int width, bool isEven=false)
+      : UnaryNodeOp(x),
+        mask_(mask),
+        width_(width),
+        isEven_(isEven)
+    {
+      auto xShape = x->shape();
+      int dimBatch = xShape[0];
+      int dimWord = xShape[1];
+      int cols = (isEven_) ? xShape[2] - 1 : xShape[2];
+      int dimSentence = (cols / width_) + (cols % width_ != 0);
+      shape_ = {dimBatch, dimWord, dimSentence};
+    }
+
+    NodeOps forwardOps() {
+      cudaSetDevice(val_->getDevice());
+
+      return { NodeOp( MaxPoolingForward(val_, child(0)->val(), mask_->val(), width_, isEven_) ) };
+    }
+
+    NodeOps backwardOps() {
+      cudaSetDevice(adj_->getDevice());
+      return { NodeOp( MaxPoolingBackward(adj_, child(0)->grad(), child(0)->val(), mask_->val(),
+                                          width_, isEven_) ) };
+    }
+
+    const std::string type() {
+      return "layer_pooling";
+    }
+
+  protected:
+    Expr mask_;
+    int width_;
+    bool isEven_;
+};
+
 #ifdef CUDNN
 
 class PoolingOp : public UnaryNodeOp {

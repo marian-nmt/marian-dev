@@ -111,4 +111,7 @@ Expr max_pooling(
         int height, int width,
         int padHeight, int padWidth,
         int strideHeight, int strideWidth);
+
+Expr max_pooling2(Expr x, Expr mask, int width, bool isEven=false);
+
 }

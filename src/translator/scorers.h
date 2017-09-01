@@ -7,6 +7,7 @@
 #include "models/hardatt.h"
 #include "models/multi_s2s.h"
 #include "models/lm.h"
+#include "models/schwenk.h"
 
 namespace marian {
 
@@ -224,6 +225,8 @@ Ptr<Scorer> scorerByType(std::string fname,
     return New<ScorerWrapper<MultiS2S>>(fname, weight, model, options);
   } else if(type == "multi-hard-att") {
     return New<ScorerWrapper<MultiHardSoftAtt>>(fname, weight, model, options);
+  } else if(type == "schwenk") {
+    return New<ScorerWrapper<Schwenk>>(fname, weight, model, options);
   } else {
     UTIL_THROW2("Unknown decoder type: " + type);
   }

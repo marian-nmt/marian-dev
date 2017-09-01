@@ -1101,4 +1101,8 @@ void Shift(Tensor out, Tensor in, ShapeGPU shift, bool invert = false);
 void SetSparse(float*,
                const std::vector<size_t>& indeces,
                const std::vector<float>& values);
+
+void MaxPoolingForward(Tensor out, Tensor in, Tensor mask, int width, bool isEven=false);
+void MaxPoolingBackward(Tensor adj, Tensor adjIn, Tensor in, Tensor mask, int width, bool isEven=false);
+
 }

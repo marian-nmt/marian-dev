@@ -206,6 +206,11 @@ Expr lexical_bias(Expr logits, Expr att, float eps, Ptr<sparse::CSR> lf) {
   return Expression<LexicalProbNodeOp>(logits, att, eps, lf);
 }
 
+Expr max_pooling2(Expr x, Expr mask, int width, bool isEven)
+{
+  return Expression<MaxPooling2Op>(x, mask, width, isEven);
+}
+
 #ifdef CUDNN
 
 Expr convolution(Expr x, Expr filters, Expr bias) {

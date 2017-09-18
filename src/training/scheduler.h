@@ -121,12 +121,13 @@ public:
     if(batches % options_->get<size_t>("disp-freq") == 0) {
       LOG(info)
           ->info(
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.2f} : Time {} : {:.2f} "
-              "words/s",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.2f} : Words {} : Time {} : "
+              "{:.2f} words/s",
               epochs,
               batches,
               samples,
               costSum / samplesDisp,
+              wordsDisp,
               timer.format(2, "%ws"),
               wordsDisp / std::stof(timer.format(5, "%w")));
       timer.start();

@@ -19,6 +19,8 @@ namespace marian {
 
 class BackendGPU : public Backend {
 public:
+  BackendGPU() : Backend(DEVICE_GPU) {}
+
   void setDevice(size_t device) { cudaSetDevice(device); }
 
   void setHandles(size_t device, size_t seed) {
@@ -29,6 +31,8 @@ public:
   cublasHandle_t getCublasHandle() { return cublasHandle_; }
 
   curandGenerator_t getCurandGenerator() { return curandGenerator_; }
+
+  RNG getRNG() { return getCurandGenerator(); }
 
 private:
   cublasHandle_t cublasHandle_;

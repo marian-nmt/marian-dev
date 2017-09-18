@@ -22,6 +22,8 @@
 
 namespace marian {
 
+namespace gpu {
+
 __global__ void gScale(float* data, int n, float p) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -47,6 +49,8 @@ void Gaussian(Tensor tensor, float mean, float stddev, curandGenerator_t gen) {
   CURAND_CALL(curandGenerateNormal(gen, tensor->data(), n, mean, stddev));
   //CURAND_CALL(curandGenerateUniform(gen, tensor->data(), n));
   //Element(_1 = 2.f * stddev * _1 - stddev, tensor);
+}
+
 }
 
 }

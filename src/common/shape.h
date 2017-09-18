@@ -132,6 +132,10 @@ struct Shape {
            + d[3] * bstride(3);
   }
 
+  inline int bindex(int i, int j, int k, int l) {
+    return i*bstride_[0] + j*bstride_[1] + k*bstride_[2] + l*bstride_[3];
+  }
+
   inline void dims(int i, int* d) const {
     d[0] = (i / stride_[0]) % shape_[0];
     d[1] = (i / stride_[1]) % shape_[1];

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "graph/backend_gpu.h"
+#include "graph/backend.h"
 #include "graph/node.h"
 #include "kernels/sparse.h"
 #include "kernels/tensor_operators.h"
@@ -502,14 +502,14 @@ struct TransposeNodeOp : public UnaryNodeOp {
 
   NodeOps forwardOps() {
     return {NodeOp(Transpose(
-        std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
+        getBackend(),
         val_,
         child(0)->val()))};
   }
 
   NodeOps backwardOps() {
     return {NodeOp(Transpose(
-        std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
+        getBackend(),
         child(0)->grad(),
         adj_))};
   }
@@ -553,15 +553,13 @@ public:
 
   Tensor& val() {
     auto childVal = reshapee_->val();
-    val_.reset(
-        new TensorBase(childVal->memory(), shape(), childVal->getDevice()));
+    val_ = childVal->view(shape());
     return val_;
   };
 
   Tensor& grad() {
     auto childGrad = reshapee_->grad();
-    adj_.reset(
-        new TensorBase(childGrad->memory(), shape(), childGrad->getDevice()));
+    adj_ = childGrad->view(shape());
     return adj_;
   };
 
@@ -612,19 +610,15 @@ public:
 
   Tensor& val() {
     auto childVal = stepNode_->val();
-    size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = New<MemoryPiece>(childVal->memory()->data() + offset,
-                                childVal->memory()->size());
-    val_.reset(new TensorBase(mem, shape(), childVal->getDevice()));
+    size_t offset = step_ * shape().elements();
+    val_ = childVal->view(shape(), offset);
     return val_;
   };
 
   Tensor& grad() {
     auto childGrad = stepNode_->grad();
-    size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = New<MemoryPiece>(childGrad->memory()->data() + offset,
-                                childGrad->memory()->size());
-    adj_.reset(new TensorBase(mem, shape(), childGrad->getDevice()));
+    size_t offset = step_ * shape().elements();
+    adj_ = childGrad->view(shape(), offset);
     return adj_;
   };
 

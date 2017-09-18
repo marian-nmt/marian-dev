@@ -2,7 +2,7 @@
 
 #include <thread>
 
-#include "graph/backend_gpu.h"
+#include "graph/backend.h"
 #include "graph/node.h"
 #include "kernels/tensor_operators.h"
 #include "kernels/thrust_functions.h"
@@ -23,6 +23,8 @@
 
 namespace marian {
 
+using namespace thrust::placeholders;
+
 struct DotNodeOp : public NaryNodeOp {
   template <typename... Args>
   DotNodeOp(Expr a, Expr b, Args... args)
@@ -42,7 +44,7 @@ struct DotNodeOp : public NaryNodeOp {
   NodeOps forwardOps() {
     // C = A*B
     return {NodeOp(Prod(
-        std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
+        getBackend(),
         val_,
         child(0)->val(),
         child(1)->val(),
@@ -56,16 +58,14 @@ struct DotNodeOp : public NaryNodeOp {
     // df/dB += A.T*D
     // beta set to 1.0 in gemm, C = dot(A,B) + beta * C
     // to sum gradients from different graph parts
-    return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
-                            ->getCublasHandle(),
+    return {NodeOp(Prod(getBackend(),
                         child(0)->grad(),
                         adj_,
                         child(1)->val(),
                         false,
                         true,
                         1.0)),
-            NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
-                            ->getCublasHandle(),
+            NodeOp(Prod(getBackend(),
                         child(1)->grad(),
                         child(0)->val(),
                         adj_,
@@ -338,8 +338,7 @@ struct AffineNodeOp : public NaryNodeOp {
 
   NodeOps forwardOps() {
     return {
-      NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
-                      ->getCublasHandle(),
+      NodeOp(Prod(getBackend(),
                   val_,
                   child(0)->val(),
                   child(1)->val(),
@@ -356,16 +355,14 @@ struct AffineNodeOp : public NaryNodeOp {
     // beta set to 1.0 in gemm, C = dot(A,B) + beta * C
     // to sum gradients from different graph parts
 
-    return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
-                            ->getCublasHandle(),
+    return {NodeOp(Prod(getBackend(),
                         child(0)->grad(),
                         adj_,
                         child(1)->val(),
                         false,
                         true,
                         1.0)),
-            NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
-                            ->getCublasHandle(),
+            NodeOp(Prod(getBackend(),
                         child(1)->grad(),
                         child(0)->val(),
                         adj_,

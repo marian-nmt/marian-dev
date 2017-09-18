@@ -51,11 +51,13 @@ protected:
   ExpressionGraph(ExpressionGraph&&) = delete;
 
 public:
+  const ResidentDevice residency;
+
   /** @brief Constructs a new expression graph
    *
    * Constructor should be used as New<ExpressionGraph>()
    */
-  ExpressionGraph(bool inference = false);
+  ExpressionGraph(ResidentDevice residency, bool inference = false);
 
   ~ExpressionGraph() {
     clear();

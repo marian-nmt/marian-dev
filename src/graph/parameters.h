@@ -19,9 +19,10 @@ private:
   Ptr<TensorAllocator> grads_;
 
 public:
+  template <typename TensorAllocator>
   void init(size_t device) {
-    vals_ = New<TensorAllocator>(device);
-    grads_ = New<TensorAllocator>(device);
+    vals_.reset(new TensorAllocator(device));
+    grads_.reset(new TensorAllocator(device));
   }
 
   auto begin() -> decltype(params_.begin()) { return params_.begin(); }

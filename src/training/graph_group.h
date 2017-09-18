@@ -1,11 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <future>
 #include <thread>
 
 #include <boost/filesystem.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/shared_mutex.hpp>
+#include <thrust/functional.h>
 
 #include "3rd_party/threadpool.h"
 #include "common/definitions.h"
@@ -18,6 +20,10 @@
 #include "training/validator.h"
 
 namespace marian {
+
+using namespace thrust::placeholders;
+using std::min;
+using std::max;
 
 class GraphGroup {
 protected:
@@ -92,7 +98,8 @@ private:
 
     if(mvAvg_) {
       if(!mvAvgGraph_) {
-        mvAvgGraph_ = New<ExpressionGraph>();
+        ResidentDevice residency = options_->get<bool>("use-cpu") ? DEVICE_CPU : DEVICE_GPU;
+        mvAvgGraph_ = New<ExpressionGraph>(residency);
         mvAvgGraph_->setDevice(graph_->getDevice());
         mvAvgGraph_->copyParams(graph_);
       } else {
@@ -132,9 +139,10 @@ public:
       : GraphGroup(options),
         mvAvg_{options_->get<bool>("moving-average")},
         mvDecay_{(float)options_->get<double>("moving-decay")} {
+    ResidentDevice residency = options_->get<bool>("use-cpu") ? DEVICE_CPU : DEVICE_GPU;
     size_t device = options_->get<std::vector<size_t>>("devices")[0];
 
-    graph_ = New<ExpressionGraph>();
+    graph_ = New<ExpressionGraph>(residency);
     graph_->setDevice(device);
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     opt_ = Optimizer(options_);
@@ -262,7 +270,16 @@ private:
 
   Tensor newTensor(int size, int device) {
     Tensor t;
-    Ptr<TensorAllocator> allocator_ = New<TensorAllocator>(device);
+    Ptr<TensorAllocator> allocator_;
+    if (options_->get<bool>("use-cpu")) {
+      allocator_.reset(new TensorAllocatorCPU(device));
+    }
+    #if CUDA_FOUND
+    else {
+      allocator_.reset(new TensorAllocatorGPU(device));
+    }
+    #endif
+
     allocator_->reserveExact(size * sizeof(float));
     allocator_->allocate(t, {1, size});
     allocators.push_back(allocator_);
@@ -470,37 +487,54 @@ private:
         int pos = 0;
         // parameter sharding
         for(auto device : devices_) {
-          int __size__ = min(shardSize_, totalSize);
-          totalSize -= __size__;
+          int size = min(shardSize_, totalSize);
+          totalSize -= size;
 
           for(int h_id = 0; h_id < history_size_; h_id++) {
             Tensor param;
-            Ptr<TensorAllocator> allocator = New<TensorAllocator>(device);
-            allocator->reserveExact(__size__ * sizeof(float));
-            allocator->allocate(param, {1, __size__});
+            Ptr<TensorAllocator> allocator;
+            if (options_->get<bool>("use-cpu")) {
+              allocator.reset(new TensorAllocatorCPU(device));
+            }
+            #if CUDA_FOUND
+            else {
+              allocator.reset(new TensorAllocatorGPU(device));
+            }
+            #endif
+
+            allocator->reserveExact(size * sizeof(float));
+            allocator->allocate(param, {1, size});
             paramsAlloc_.push_back(allocator);
 
             param->copyFrom(
-                graphs_[0]->params()->vals()->subtensor(pos, __size__));
+                graphs_[0]->params()->vals()->subtensor(pos, size));
             params_[h_id].push_back(param);
           }
 
           if(drop_rate_)
-            tmpTensor.push_back(newTensor(__size__, device));
-          pos += __size__;
+            tmpTensor.push_back(newTensor(size, device));
+          pos += size;
         }
       }
       if(grads_.size() == 0) {
         int totalSize = graphs_[0]->params()->vals()->size();
 
         for(auto device : devices_) {
-          int __size__ = min(shardSize_, totalSize);
-          totalSize -= __size__;
+          int size = min(shardSize_, totalSize);
+          totalSize -= size;
           Tensor grad_;
-          Ptr<TensorAllocator> allocator_ = New<TensorAllocator>(device);
+          Ptr<TensorAllocator> allocator_;
+          if (options_->get<bool>("use-cpu")) {
+            allocator_.reset(new TensorAllocatorCPU(device));
+          }
+          #if CUDA_FOUND
+          else {
+            allocator_.reset(new TensorAllocatorGPU(device));
+          }
+          #endif
 
-          allocator_->reserveExact(__size__ * sizeof(float));
-          allocator_->allocate(grad_, {1, __size__});
+          allocator_->reserveExact(size * sizeof(float));
+          allocator_->allocate(grad_, {1, size});
           gradsAlloc_.push_back(allocator_);
           grads_.push_back(grad_);
         }
@@ -511,13 +545,21 @@ private:
 
           int i = 0;
           for(auto device : devices_) {
-            int __size__ = min(shardSize_, totalSize);
-            totalSize -= __size__;
+            int size = min(shardSize_, totalSize);
+            totalSize -= size;
             Tensor paramAvg;
-            Ptr<TensorAllocator> allocator = New<TensorAllocator>(device);
+            Ptr<TensorAllocator> allocator;
+            if (options_->get<bool>("use-cpu")) {
+              allocator.reset(new TensorAllocatorCPU(device));
+            }
+            #if CUDA_FOUND
+            else {
+              allocator.reset(new TensorAllocatorGPU(device));
+            }
+            #endif
 
-            allocator->reserveExact(__size__ * sizeof(float));
-            allocator->allocate(paramAvg, {1, __size__});
+            allocator->reserveExact(size * sizeof(float));
+            allocator->allocate(paramAvg, {1, size});
 
             paramAvg->copyFrom(params_[0][i++]);
 
@@ -530,19 +572,38 @@ private:
       if(drop_rate_ && first_) {
         int totalSize = graphs_[0]->params()->vals()->size();
         int sparseCap = totalSize * 1.2 * (1.0 - drop_rate_);
-        for(auto device : devices_) {
-          sparseGrads_.push_back(
-              SparseTensor(new SparseTensorBase(sparseCap, device)));
-          localSparseGrads_.push_back(
-              SparseTensor(new SparseTensorBase(sparseCap, device)));
-          tmpSparseDelta.push_back(SparseTensor(
-              new SparseTensorBase(sparseCap / devices_.size(), device)));
-          std::vector<SparseTensor> tmp;
-          for(int i = 0; i < devices_.size(); i++)
-            tmp.push_back(SparseTensor(
-                new SparseTensorBase(sparseCap / devices_.size(), device)));
-          localSparseDelta.push_back(tmp);
+        if (options_->get<bool>("use-cpu")) {
+          for(auto device : devices_) {
+            sparseGrads_.push_back(
+                SparseTensor(new SparseTensorCPU(sparseCap, device)));
+            localSparseGrads_.push_back(
+                SparseTensor(new SparseTensorCPU(sparseCap, device)));
+            tmpSparseDelta.push_back(SparseTensor(
+                new SparseTensorCPU(sparseCap / devices_.size(), device)));
+            std::vector<SparseTensor> tmp;
+            for(int i = 0; i < devices_.size(); i++)
+              tmp.push_back(SparseTensor(
+                  new SparseTensorCPU(sparseCap / devices_.size(), device)));
+            localSparseDelta.push_back(tmp);
+          }
         }
+        #if CUDA_FOUND
+        else {
+          for(auto device : devices_) {
+            sparseGrads_.push_back(
+                SparseTensor(new SparseTensorGPU(sparseCap, device)));
+            localSparseGrads_.push_back(
+                SparseTensor(new SparseTensorGPU(sparseCap, device)));
+            tmpSparseDelta.push_back(SparseTensor(
+                new SparseTensorGPU(sparseCap / devices_.size(), device)));
+            std::vector<SparseTensor> tmp;
+            for(int i = 0; i < devices_.size(); i++)
+              tmp.push_back(SparseTensor(
+                  new SparseTensorGPU(sparseCap / devices_.size(), device)));
+            localSparseDelta.push_back(tmp);
+          }
+        }
+        #endif
       }
 
       first_ = false;
@@ -572,11 +633,22 @@ private:
 
       if(!dropper) {
         std::lock_guard<std::mutex> lock(sync_);
-        dropper = GradientDrop(new GradientDropBase());
-        std::vector<GradientDrop> tmp;
-        for(int i = 0; i < devices_.size(); i++)
-          tmp.push_back(GradientDrop(new GradientDropBase()));
-        fetchDropper.push_back(tmp);
+        if (graph->residency == DEVICE_CPU) {
+          dropper = GradientDrop(new GradientDropCPU());
+          std::vector<GradientDrop> tmp;
+          for(int i = 0; i < devices_.size(); i++)
+            tmp.push_back(GradientDrop(new GradientDropCPU()));
+          fetchDropper.push_back(tmp);
+        }
+        #if CUDA_FOUND
+        else {
+          dropper = GradientDrop(new GradientDropGPU());
+          std::vector<GradientDrop> tmp;
+          for(int i = 0; i < devices_.size(); i++)
+            tmp.push_back(GradientDrop(new GradientDropGPU()));
+          fetchDropper.push_back(tmp);
+        }
+        #endif
       }
 
       auto costNode = builder->build(graph, batch);
@@ -601,7 +673,15 @@ private:
       Tensor gradients;
       if(tau_ > 1) {
         if(t == 0) {
-          accAlloc = New<TensorAllocator>(graph->getDevice());
+          if (options_->get<bool>("use-cpu")) {
+            accAlloc.reset(new TensorAllocatorCPU(graph->getDevice()));
+          }
+          #if CUDA_FOUND
+          else {
+            accAlloc.reset(new TensorAllocatorGPU(graph->getDevice()));
+          }
+          #endif
+
           accAlloc->reserveExact(graph->params()->grads()->memory()->size());
           accAlloc->allocate(accGradients, graph->params()->grads()->shape());
           accGradients->set(0);
@@ -685,13 +765,15 @@ public:
         mvDecay_{(float)options_->get<double>("moving-decay")},
         drop_rate_{options_->get<double>("drop-rate")},
         tau_{options_->get<size_t>("tau")} {
+    ResidentDevice residency = options_->get<bool>("use-cpu") ? DEVICE_CPU : DEVICE_GPU;
+
     if(drop_rate_ > 0.0) {
       history_size_ = devices_.size() * 1.5;
     }
     for(int i = 0; i < history_size_; i++)
       params_.push_back(std::vector<Tensor>());
     for(auto device : devices_) {
-      auto graph = New<ExpressionGraph>();
+      auto graph = New<ExpressionGraph>(residency);
       graph->setDevice(device);
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

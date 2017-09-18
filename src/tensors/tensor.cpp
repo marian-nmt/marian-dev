@@ -1,85 +1,38 @@
-
-#include <cuda.h>
-#include <thrust/device_ptr.h>
-#include <thrust/device_vector.h>
-
-#include "kernels/cuda_helpers.h"
 #include "kernels/tensor_operators.h"
 #include "tensors/tensor.h"
 
 namespace marian {
 
-__global__ void gFill(float *d_in, int size, float val) {
-  for(int bid = 0; bid < size; bid += blockDim.x * gridDim.x) {
-    int index = bid + threadIdx.x + blockDim.x * blockIdx.x;
-    if(index < size) {
-      d_in[index] = val;
-    }
-  }
+float TensorCPU::get(size_t i) { return data()[i]; }
+
+void TensorCPU::set(size_t i, float value) { data()[i] = value; }
+
+void TensorCPU::get(std::vector<float> &v) {
+  v.clear();
+  v.reserve(size());
+  std::copy(data(), data() + size(), std::back_inserter(v));
 }
 
-float TensorGPU::get(size_t i) {
-  cudaSetDevice(device_);
-  float temp;
-  CUDA_CHECK(
-      cudaMemcpy(&temp, data() + i, sizeof(float), cudaMemcpyDeviceToHost));
-  cudaStreamSynchronize(0);
-  return temp;
-}
+void TensorCPU::set(float value) { std::fill(data(), data() + size(), value); }
 
-void TensorGPU::set(size_t i, float value) {
-  cudaSetDevice(device_);
-  CUDA_CHECK(
-      cudaMemcpy(data() + i, &value, sizeof(float), cudaMemcpyHostToDevice));
-  cudaStreamSynchronize(0);
-}
+void TensorCPU::set(const std::vector<float> &v) { std::copy(v.begin(), v.end(), data()); }
 
-void TensorGPU::get(std::vector<float> &v) {
-  CUDA_CHECK(cudaSetDevice(device_));
-  v.resize(size());
-  CUDA_CHECK(cudaMemcpy(
-      v.data(), data(), size() * sizeof(float), cudaMemcpyDeviceToHost));
-  cudaStreamSynchronize(0);
-}
-
-void TensorGPU::set(float value) {
-  cudaSetDevice(device_);
-  int threads = std::min(512, (int)size());
-  int blocks = (size() / threads) + (size() % threads != 0);
-  gFill<<<blocks, threads>>>(data(), size(), value);
-  cudaStreamSynchronize(0);
-}
-
-void TensorGPU::set(const std::vector<float> &v) {
-  CUDA_CHECK(cudaSetDevice(device_));
-  CUDA_CHECK(cudaMemcpy(
-      data(), v.data(), v.size() * sizeof(float), cudaMemcpyHostToDevice));
-  cudaStreamSynchronize(0);
-}
-
-void TensorGPU::setSparse(const std::vector<size_t> &k,
-                           const std::vector<float> &v) {
-  cudaSetDevice(device_);
+void TensorCPU::setSparse(const std::vector<size_t> &k, const std::vector<float> &v) {
   SetSparse(shared_from_this(), k, v);
-  cudaStreamSynchronize(0);
 }
 
-void TensorGPU::copyFrom(Tensor in) {
-  cudaSetDevice(device_);
-  CUDA_CHECK(cudaMemcpy(
-      data(), (float*)in->data(), in->size() * sizeof(float), cudaMemcpyDefault));
-  cudaStreamSynchronize(0);
-}
+void TensorCPU::copyFrom(Tensor in) { std::copy(in->data(), in->data() + in->size(), data()); }
 
-Tensor TensorGPU::view(const Shape& shape, ptrdiff_t offset) {
+// TODO: Refactor to reduce duplication with tensor.cu
+Tensor TensorCPU::view(const Shape& shape, ptrdiff_t offset) {
   size_t size = shape.elements() * sizeof(float);
   ptrdiff_t offset_bytes = offset * sizeof(float);
   auto mem = New<MemoryPiece>(memory()->data() + offset_bytes, size);
-  return New<TensorGPU>(mem, shape, device_);
+  return New<TensorCPU>(mem, shape, device_);
 }
 
-std::string TensorGPU::debug() {
-  cudaSetDevice(device_);
+// TODO: Refactor to reduce duplication with tensor.cu
+std::string TensorCPU::debug() {
   std::stringstream strm;
   assert(shape_.size());
   strm << shape_;
@@ -167,5 +120,5 @@ std::string TensorGPU::debug() {
   }
   return strm.str();
 }
-
+  
 }

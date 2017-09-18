@@ -71,21 +71,20 @@ class Gap {
 template <class Device>
 class Allocator {
   private:
-    Device device_{0};
+    Device device_;
     size_t available_{0};
-    size_t step_{128 * 1024 * 1024};
-    size_t alignment_{256};
+    size_t step_;
+    size_t alignment_;
     bool throw_{false};
 
     std::set<Gap> gaps_;
     std::unordered_map<uint8_t*, Ptr<MemoryPiece>> allocated_;
 
     size_t align(size_t size) {
-      return ceil(size / (float)alignment_) * alignment_;
+      return ((size + (alignment_-1)) / alignment_) * alignment_;
     }
 
     void grow(size_t add) {
-      add = align(add);
       uint8_t* oldData = device_.data();
       size_t oldSize = device_.size();
 
@@ -108,7 +107,6 @@ class Allocator {
     }
 
     Gap getGap(size_t size) {
-      size = align(size);
       auto it = std::lower_bound(gaps_.begin(), gaps_.end(),
                                  Gap(nullptr, size));
 
@@ -146,8 +144,8 @@ class Allocator {
 
   public:
 
-    Allocator(size_t deviceNo, size_t bytes, size_t step, size_t alignment=256)
-    : device_(deviceNo, alignment), step_(step), available_(0), alignment_(alignment) {
+    Allocator(size_t deviceNo, size_t bytes, size_t step, size_t alignment)
+    : device_(deviceNo), step_(step), alignment_(alignment) {
       reserve(bytes);
     }
 

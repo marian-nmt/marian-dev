@@ -30,6 +30,8 @@ public:
       : options_(options),
         corpus_(New<data::Corpus>(options_, true)),
         trgVocab_(New<Vocab>()) {
+    ResidentDevice residency = options_->get<bool>("use-cpu") ? DEVICE_CPU : DEVICE_GPU;
+
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
     trgVocab_->load(vocabs.back());
 
@@ -40,7 +42,7 @@ public:
 
     auto devices = options_->get<std::vector<int>>("devices");
     for(auto& device : devices) {
-      auto graph = New<ExpressionGraph>(true);
+      auto graph = New<ExpressionGraph>(residency, true);
       graph->setDevice(device);
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
@@ -117,6 +119,8 @@ public:
   }
 
   void init() {
+    ResidentDevice residency = options_->get<bool>("use-cpu") ? DEVICE_CPU : DEVICE_GPU;
+
     // initialize vocabs
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
@@ -129,7 +133,7 @@ public:
 
     // initialize scorers
     for(auto& device : devices_) {
-      auto graph = New<ExpressionGraph>(true);
+      auto graph = New<ExpressionGraph>(residency, true);
       graph->setDevice(device);
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

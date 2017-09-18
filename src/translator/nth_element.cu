@@ -264,14 +264,14 @@ __global__ void gGetValueByKey(float* d_in, float* d_out, int* indeces, int n) {
   }
 }
 
-NthElement::NthElement(size_t maxBeamSize,
+NthElementGPU::NthElementGPU(size_t maxBeamSize,
                        size_t maxBatchSize /*, cudaStream_t stream*/)
     : /*stream_(stream) ,*/
       NUM_BLOCKS(
           std::min(500,
                    int(maxBeamSize * 85000 / (2 * BLOCK_SIZE))
                        + int(maxBeamSize * 85000 % (2 * BLOCK_SIZE) != 0))) {
-  // std::cerr << "NthElement::NthElement" << std::endl;
+  // std::cerr << "NthElementGPU::NthElementGPU" << std::endl;
 
   CUDA_CHECK(
       cudaMalloc((void**)&d_ind, maxBatchSize * NUM_BLOCKS * sizeof(int)));
@@ -298,7 +298,7 @@ NthElement::NthElement(size_t maxBeamSize,
       cudaMalloc((void**)&d_cumBeamSizes, (maxBatchSize + 1) * sizeof(int)));
 }
 
-NthElement::~NthElement() {
+NthElementGPU::~NthElementGPU() {
   CUDA_CHECK(cudaFree(d_ind));
   CUDA_CHECK(cudaFree(d_out));
   CUDA_CHECK(cudaFree(d_res_idx));
@@ -310,7 +310,7 @@ NthElement::~NthElement() {
   CUDA_CHECK(cudaFree(d_cumBeamSizes));
 }
 
-void NthElement::getNBestList(float* probs,
+void NthElementGPU::getNBestList(float* probs,
                               const std::vector<int>& batchFirstElementIdxs,
                               const std::vector<int>& cummulatedBeamSizes) {
   CUDA_CHECK(cudaMemcpyAsync(d_batchPosition,
@@ -345,7 +345,7 @@ void NthElement::getNBestList(float* probs,
                                          NUM_BLOCKS);
 }
 
-void NthElement::getNBestList(const std::vector<size_t>& beamSizes,
+void NthElementGPU::getNBestList(const std::vector<size_t>& beamSizes,
                               Tensor Probs,
                               std::vector<float>& outCosts,
                               std::vector<unsigned>& outKeys,
@@ -364,7 +364,7 @@ void NthElement::getNBestList(const std::vector<size_t>& beamSizes,
   GetPairs(cummulatedBeamSizes.back(), outKeys, outCosts);
 }
 
-void NthElement::GetPairs(size_t number,
+void NthElementGPU::GetPairs(size_t number,
                           std::vector<unsigned>& outKeys,
                           std::vector<float>& outValues) {
   CUDA_CHECK(cudaMemcpyAsync(h_res,
@@ -387,7 +387,7 @@ void NthElement::GetPairs(size_t number,
   lastN = number;
 }
 
-void NthElement::getValueByKey(std::vector<float>& out, float* d_in) {
+void NthElementGPU::getValueByKey(std::vector<float>& out, float* d_in) {
   gGetValueByKey<<<1, lastN, 0, /* stream_ */ 0>>>(
       d_in, d_breakdown, h_res_idx, lastN);
 

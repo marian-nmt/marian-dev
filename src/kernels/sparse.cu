@@ -7,8 +7,10 @@ namespace marian {
 
 namespace sparse {
 
+namespace gpu {
+
 void multiply(
-    Ptr<CSR> C, const Ptr<CSR> A, const Ptr<CSR> B, bool transA, bool transB) {
+    Ptr<CSR_GPU> C, const Ptr<CSR_GPU> A, const Ptr<CSR_GPU> B, bool transA, bool transB) {
   cudaSetDevice(C->getDevice());
   int nnzTotal;
   C->allocRowIndices(A->rows());
@@ -87,7 +89,7 @@ void multiply(
 //  nonzeros);
 //}
 
-void LfaForward(Tensor out, Tensor logits, Tensor att, Ptr<CSR> sparseLf) {
+void LfaForward(Tensor out, Tensor logits, Tensor att, Ptr<CSR_GPU> sparseLf) {
   cudaSetDevice(out->getDevice());
 
   int batch = att->shape()[0];
@@ -116,7 +118,7 @@ void LfaForward(Tensor out, Tensor logits, Tensor att, Ptr<CSR> sparseLf) {
     values[i] = std::get<2>(coo[i]);
   }
 
-  auto sparseAtt = New<CSR>(batch * trgWords,
+  auto sparseAtt = New<CSR_GPU>(batch * trgWords,
                             batch * srcWords,
                             values,
                             rowInd,
@@ -124,7 +126,7 @@ void LfaForward(Tensor out, Tensor logits, Tensor att, Ptr<CSR> sparseLf) {
                             out->getDevice());
 
   auto sparseLfa
-      = New<CSR>(sparseAtt->rows(), sparseLf->cols(), out->getDevice());
+      = New<CSR_GPU>(sparseAtt->rows(), sparseLf->cols(), out->getDevice());
   multiply(sparseLfa, sparseAtt, sparseLf);
 
   sparseLfa->toTensor(out);
@@ -157,7 +159,7 @@ void CollapseAtt(Tensor out, Tensor in) {
       out->data(), in->data(), batch, srcWords, nonzeros);
 }
 
-void LfaBackward(Tensor gradAtt, Tensor adj, Ptr<CSR> sparseLf) {
+void LfaBackward(Tensor gradAtt, Tensor adj, Ptr<CSR_GPU> sparseLf) {
   cudaSetDevice(adj->getDevice());
 
   int batch = gradAtt->shape()[0];
@@ -191,10 +193,12 @@ void LfaBackward(Tensor gradAtt, Tensor adj, Ptr<CSR> sparseLf) {
                                  (float*)expandAttGradBuffer,
                                  batch * srcWords));
 
-  Tensor expandAttGrad(new TensorBase(
+  Tensor expandAttGrad(new TensorGPU(
       New<MemoryPiece>(expandAttGradBuffer, exSize), {batch * trgWords, batch * srcWords}, 0));
   CollapseAtt(gradAtt, expandAttGrad);
   CUDA_CHECK(cudaFree(expandAttGradBuffer));
+}
+
 }
 }
 }

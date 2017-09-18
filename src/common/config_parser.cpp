@@ -187,6 +187,12 @@ void ConfigParser::validateOptions() const {
 void ConfigParser::addOptionsCommon(po::options_description& desc) {
   int defaultWorkspace = (mode_ == ConfigMode::translating) ? 512 : 2048;
 
+  #if CUDA_FOUND
+  bool defaultUseCPU = false;
+  #else
+  bool defaultUseCPU = true;
+  #endif
+
   po::options_description general("General options", guess_terminal_width());
   // clang-format off
   general.add_options()
@@ -205,6 +211,8 @@ void ConfigParser::addOptionsCommon(po::options_description& desc) {
      "All paths are relative to the config file location")
     ("dump-config", po::value<bool>()->zero_tokens()->default_value(false),
      "Dump current (modified) configuration to stdout and exit")
+    ("use-cpu", po::value<bool>()->zero_tokens()->default_value(defaultUseCPU),
+     "Perform calculation on the CPU")
     ("version", po::value<bool>()->zero_tokens()->default_value(false),
       "Print version number and exit")
     ("help,h", po::value<bool>()->zero_tokens()->default_value(false),
@@ -572,6 +580,9 @@ void ConfigParser::parseOptions(
     configPath = vm_["model"].as<std::string>() + ".yml";
     config_ = YAML::Load(InputFileStream(configPath));
   }
+
+  /** general **/
+  SET_OPTION("use-cpu", bool);
 
   /** model **/
 

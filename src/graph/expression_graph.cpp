@@ -1,29 +1,39 @@
 #include <sstream>
-#include "graph/backend_gpu.h"
 #include "graph/expression_graph.h"
 #include "kernels/dropout.h"
 
 namespace marian {
 
-ExpressionGraph::ExpressionGraph(bool inference)
-    : inferenceOnly_(inference), backend_(New<BackendGPU>()) {}
+ExpressionGraph::ExpressionGraph(ResidentDevice residency, bool inference)
+    : inferenceOnly_(inference),
+      #if CUDA_FOUND
+      backend_(residency == DEVICE_CPU ? New<BackendCPU>() : New<BackendGPU>()),
+      #else
+      backend_(New<BackendCPU>()),
+      #endif
+      residency(residency) {}
 
 void ExpressionGraph::setDevice(size_t device) {
   device_ = device;
 
   params_ = New<Parameters>();
-  params_->init(device_);
+  if (residency == DEVICE_CPU) {
+    params_->init<TensorAllocatorCPU>(device_);
+    tensors_.reset(new TensorAllocatorCPU(device));
+  }
+  #if CUDA_FOUND
+  else {
+    params_->init<TensorAllocatorGPU>(device_);
+    tensors_.reset(new TensorAllocatorGPU(device));
+  }
+  #endif
 
-  tensors_ = New<TensorAllocator>(device);
-
-  std::static_pointer_cast<BackendGPU>(backend_)->setHandles(device,
-                                                             Config::seed);
+  backend_->setHandles(device, Config::seed);
 }
 
 Expr ExpressionGraph::dropout(float prob, Shape shape) {
   auto dropoutInit = [prob, this](Tensor t) {
-    Dropout(t, prob,
-      std::static_pointer_cast<BackendGPU>(backend_)->getCurandGenerator());
+    Dropout(t, prob, backend_->getRNG());
   };
 
   return Expression<ConstantNode>(shared_from_this(),
@@ -33,8 +43,7 @@ Expr ExpressionGraph::dropout(float prob, Shape shape) {
 
 Expr ExpressionGraph::gaussian(float mean, float stddev, Shape shape) {
   auto gaussianInit = [mean, stddev, this](Tensor t) {
-    Gaussian(t, mean, stddev,
-      std::static_pointer_cast<BackendGPU>(backend_)->getCurandGenerator());
+    Gaussian(t, mean, stddev, backend_->getRNG());
   };
 
   return Expression<ConstantNode>(shared_from_this(),

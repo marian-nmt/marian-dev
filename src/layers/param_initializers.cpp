@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <iterator>
 #include <random>
+#include <thrust/functional.h>
 
-#include "kernels/cuda_helpers.h"
 #include "kernels/tensor_operators.h"
 #include "layers/word2vec_reader.h"
 #include "layers/param_initializers.h"
@@ -12,6 +12,8 @@
 namespace marian {
 
 namespace inits {
+
+using namespace thrust::placeholders;
 
 float xor128() {
   static uint64_t x = 123456789;

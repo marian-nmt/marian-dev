@@ -6,26 +6,46 @@
 #include "common/definitions.h"
 #include "tensors/tensor.h"
 #include "tensors/allocator.h"
+#include "tensors/device_cpu.h"
+
+#if CUDA_FOUND
 #include "tensors/device_gpu.h"
+#endif
 
 namespace marian {
 
-class TensorAllocator {
+struct TensorAllocator {
+  const ResidentDevice residency;
+  TensorAllocator(ResidentDevice residency) : residency(residency) {}
+
+  virtual void throwAtReallocation(bool throwRealloc) = 0;
+  virtual void reserve(size_t bytes = 0) = 0;
+  virtual void reserveExact(size_t bytes = 0) = 0;
+  virtual void clear() = 0;
+  virtual size_t capacity(Shape shape) = 0;
+  virtual void allocate(Tensor& t, Shape shape) = 0;
+  virtual void free(Tensor& t) = 0;
+  virtual Tensor asTensor() = 0;
+  virtual size_t size() = 0;
+};
+
+template <typename Device, typename DeviceTensor, size_t ALIGN>
+class TensorAllocatorConcrete : public TensorAllocator {
 private:
   const size_t CHUNK = 512;
   const size_t MBYTE = 1024 * 1024;
   const size_t GROW = CHUNK * MBYTE;
-  const size_t ALIGN = 256;
 
-  Ptr<Allocator<DeviceGPU>> allocator_;
+  Ptr<Allocator<Device>> allocator_;
 
 
 public:
-  TensorAllocator(size_t device)
-    : allocator_(New<Allocator<DeviceGPU>>(device, 0, GROW, ALIGN))
+  TensorAllocatorConcrete(size_t device)
+    : TensorAllocator(residency_trait<DeviceTensor>::residency),
+      allocator_(New<Allocator<Device>>(device, 0, GROW, ALIGN))
   {}
 
-  ~TensorAllocator() { clear(); }
+  ~TensorAllocatorConcrete() { clear(); }
 
   void throwAtReallocation(bool throwRealloc) {
     allocator_->throwAtReallocation(throwRealloc);
@@ -56,14 +76,14 @@ public:
   }
 
   size_t capacity(Shape shape) {
-    return allocator_->capacity<float>(shape.elements());
+    return allocator_->template capacity<float>(shape.elements());
   }
 
   void allocate(Tensor& t, Shape shape) {
     if(!t || t->shape() != shape) {
       int size = shape.elements();
-      auto mem = allocator_->alloc<float>(size);
-      t = Tensor(new TensorBase(mem, shape, allocator_->getDevice()));
+      auto mem = allocator_->template alloc<float>(size);
+      t = Tensor(new DeviceTensor(mem, shape, allocator_->getDevice()));
     }
   }
 
@@ -74,11 +94,17 @@ public:
   Tensor asTensor() {
     auto mem = allocator_->memory();
     int size = mem->size() / sizeof(float);
-    return Tensor(new TensorBase(mem, {1, size}, allocator_->getDevice()));
+    return Tensor(new DeviceTensor(mem, {1, size}, allocator_->getDevice()));
   }
 
   size_t size() { return allocator_->size() / sizeof(float); }
 
 };
+
+typedef TensorAllocatorConcrete<DeviceCPU, TensorCPU, 64> TensorAllocatorCPU;
+
+#if CUDA_FOUND
+typedef TensorAllocatorConcrete<DeviceGPU, TensorGPU, 256> TensorAllocatorGPU;
+#endif
 
 }

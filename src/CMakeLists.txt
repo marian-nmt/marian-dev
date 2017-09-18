@@ -3,43 +3,88 @@ add_subdirectory(3rd_party)
 include_directories(.)
 include_directories(3rd_party)
 
-cuda_add_library(marian
-  3rd_party/cnpy/cnpy.cpp
-  3rd_party/exception.cpp
-  graph/expression_graph.cu
-  graph/expression_operators.cu
-  graph/node.cu
-  graph/node_operators.cu
-  tensors/tensor.cu
-  tensors/device_gpu.cu
-  kernels/tensor_operators.cu
-  kernels/dropout.cu
-  kernels/sparse.cu
-  layers/param_initializers.cu
-  rnn/attention.cu
-  rnn/cells.cu
-  optimizers/clippers.cu
-  optimizers/optimizers.cu
-  common/utils.cpp
-  common/logging.cpp
-  common/config.cpp
-  common/config_parser.cpp
-  translator/history.cpp
-  translator/output_collector.cpp
-  translator/nth_element.cu
-  translator/helpers.cu
-  data/vocab.cpp
-  data/corpus.cpp
-  data/text_input.cpp
-  rescorer/score_collector.cpp
-  $<TARGET_OBJECTS:libyaml-cpp>
-  STATIC
-)
+if(CUDA_FOUND)
+  cuda_add_library(marian
+    3rd_party/cnpy/cnpy.cpp
+    3rd_party/exception.cpp
+    graph/expression_graph.cpp
+    graph/expression_operators.cpp
+    graph/node.cpp
+    graph/node_operators.cpp
+    tensors/tensor.cu
+    tensors/tensor.cpp
+    tensors/device_gpu.cu
+    tensors/device_cpu.cpp
+    kernels/tensor_operators.cu
+    kernels/tensor_operators.cpp
+    kernels/dropout.cu
+    kernels/dropout.cpp
+    kernels/sparse.cu
+    kernels/sparse.cpp
+    layers/param_initializers.cpp
+    rnn/attention.cpp
+    rnn/cells.cpp
+    optimizers/clippers.cpp
+    optimizers/optimizers.cpp
+    common/utils.cpp
+    common/logging.cpp
+    common/config.cpp
+    common/config_parser.cpp
+    translator/history.cpp
+    translator/output_collector.cpp
+    translator/nth_element.cu
+    translator/nth_element.cpp
+    translator/helpers.cu
+    translator/helpers.cpp
+    data/vocab.cpp
+    data/corpus.cpp
+    data/text_input.cpp
+    rescorer/score_collector.cpp
+    $<TARGET_OBJECTS:libyaml-cpp>
+    STATIC
+  )
+else(CUDA_FOUND)
+  add_library(marian STATIC
+    3rd_party/cnpy/cnpy.cpp
+    3rd_party/exception.cpp
+    graph/expression_graph.cpp
+    graph/expression_operators.cpp
+    graph/node.cpp
+    graph/node_operators.cpp
+    tensors/tensor.cpp
+    tensors/device_cpu.cpp
+    kernels/tensor_operators.cpp
+    kernels/dropout.cpp
+    kernels/sparse.cpp
+    layers/param_initializers.cpp
+    rnn/attention.cpp
+    rnn/cells.cpp
+    optimizers/clippers.cpp
+    optimizers/optimizers.cpp
+    common/utils.cpp
+    common/logging.cpp
+    common/config.cpp
+    common/config_parser.cpp
+    translator/history.cpp
+    translator/output_collector.cpp
+    translator/nth_element.cpp
+    translator/helpers.cpp
+    data/vocab.cpp
+    data/corpus.cpp
+    data/text_input.cpp
+    rescorer/score_collector.cpp
+    $<TARGET_OBJECTS:libyaml-cpp>
+  )
+endif(CUDA_FOUND)
 
 set_target_properties(marian PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 set_target_properties(marian PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-cuda_add_executable(marian_train command/marian.cu)
+if(CUDA_FOUND)
+  cuda_add_executable(marian_train command/marian.cpp)
+else(CUDA_FOUND)
+  add_executable(marian_train command/marian.cpp)
+endif(CUDA_FOUND)
 set_target_properties(marian_train PROPERTIES OUTPUT_NAME marian)
 
 add_executable(marian_translate command/s2s_translator.cpp)
@@ -58,7 +103,9 @@ endif(COMPILE_SERVER)
 
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS})
-  cuda_add_cublas_to_target(${exec})
+  if(CUDA_FOUND)
+    cuda_add_cublas_to_target(${exec})
+  endif(CUDA_FOUND)
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endforeach(exec)
 

@@ -4,15 +4,30 @@
 #include "kernels/thrust_functions.h"
 
 namespace marian {
+
+using namespace thrust::placeholders;
+
 void Sgd::updateImpl(Tensor params, Tensor grads) {
   Element(_1 -= (multiply_factor*eta_) * _2, params, grads);
 
-  cudaStreamSynchronize(0);
+  #if CUDA_FOUND
+  if (params->residency == DEVICE_GPU) {
+    cudaStreamSynchronize(0);
+  }
+  #endif
 }
 
 void Adagrad::updateImpl(Tensor params, Tensor grads) {
-  if(!alloc_)
-    alloc_ = New<TensorAllocator>(params->getDevice());
+  if(!alloc_) {
+    if (params->residency == DEVICE_CPU) {
+      alloc_.reset(new TensorAllocatorCPU(params->getDevice()));
+    }
+    #if CUDA_FOUND
+    else {
+      alloc_.reset(new TensorAllocatorGPU(params->getDevice()));
+    }
+    #endif
+  }
 
   if(!gt_) {
     int elements = params->size();
@@ -25,14 +40,28 @@ void Adagrad::updateImpl(Tensor params, Tensor grads) {
 
   Element(_1 -= ((multiply_factor*eta_) / (Sqrt(_2) + eps_)) * _3, params, gt_, grads);
 
-  cudaStreamSynchronize(0);
+  #if CUDA_FOUND
+  if (params->residency == DEVICE_GPU) {
+    cudaStreamSynchronize(0);
+  }
+  #endif
 }
 
 void Adam::updateImpl(Tensor params, Tensor grads) {
-  if(!mtAlloc_)
-    mtAlloc_ = New<TensorAllocator>(params->getDevice());
-  if(!vtAlloc_)
-    vtAlloc_ = New<TensorAllocator>(params->getDevice());
+  if (params->residency == DEVICE_CPU) {
+    if(!mtAlloc_)
+      mtAlloc_.reset(new TensorAllocatorCPU(params->getDevice()));
+    if(!vtAlloc_)
+      vtAlloc_.reset(new TensorAllocatorCPU(params->getDevice()));
+  }
+  #if CUDA_FOUND
+  else {
+    if(!mtAlloc_)
+      mtAlloc_.reset(new TensorAllocatorGPU(params->getDevice()));
+    if(!vtAlloc_)
+      vtAlloc_.reset(new TensorAllocatorGPU(params->getDevice()));
+  }
+  #endif
 
   if(!mt_) {
     int elements = params->size();
@@ -57,7 +86,11 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
           mt_,
           vt_);
 
- cudaStreamSynchronize(0);
+ #if CUDA_FOUND
+ if (params->residency == DEVICE_GPU) {
+   cudaStreamSynchronize(0);
+ }
+ #endif
 }
 
 Ptr<OptimizerBase> Optimizer(Ptr<Config> options) {
@@ -80,4 +113,5 @@ Ptr<OptimizerBase> Optimizer(Ptr<Config> options) {
     UTIL_THROW2("Unknown optimizer: " << opt);
   }
 }
+
 }

@@ -67,7 +67,17 @@ public:
     bool first = true;
     bool final = false;
     std::vector<size_t> beamSizes(1, beamSize_);
-    auto nth = New<NthElement>(beamSize_, batch->size());
+
+    Ptr<NthElement> nth;
+    if (graph->residency == DEVICE_CPU) {
+      nth = New<NthElementCPU>(beamSize_, batch->size());
+    }
+    #if CUDA_FOUND
+    else {
+      nth = New<NthElementGPU>(beamSize_, batch->size());
+    }
+    #endif
+
     history->Add(beam);
 
     std::vector<Ptr<ScorerState>> states;

@@ -4,7 +4,26 @@
 
 namespace marian {
 
-void suppressUnk(Expr);
+namespace cpu {
 
-void suppressWord(Expr);
+void suppressUnk(Expr probs);
+
+void suppressWord(Expr probs, Word id);
+
+}
+
+#if CUDA_FOUND
+namespace gpu {
+
+void suppressUnk(Expr probs);
+
+void suppressWord(Expr probs, Word id);
+
+}
+#endif
+
+void suppressUnk(Expr probs);
+
+void suppressWord(Expr probs, Word id);
+
 }

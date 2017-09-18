@@ -46,7 +46,7 @@ public:
   Rescore(Ptr<Config> options)
       : options_(options),
         corpus_(New<Corpus>(options_)),
-        graph_(New<ExpressionGraph>(true)) {
+        graph_(options_->get<bool>("use-cpu") ? New<ExpressionGraph>(DEVICE_CPU, true) : New<ExpressionGraph>(DEVICE_GPU, true)) {
     corpus_->prepare();
 
     auto device = options_->get<std::vector<size_t>>("devices").front();

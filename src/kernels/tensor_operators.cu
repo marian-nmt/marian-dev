@@ -6,6 +6,8 @@
 
 namespace marian {
 
+namespace gpu {
+
 // static cudnnHandle_t create_handle_dnn() {
 //  cudnnHandle_t cudnnHandle;
 //  cudnnCreate(&cudnnHandle);
@@ -1214,7 +1216,7 @@ float L2Norm(Tensor in) {
 
   uint8_t* data;
   cudaMalloc(&data, sizeof(float));
-  Tensor out(new TensorBase(New<MemoryPiece>(data, sizeof(float)), {1, 1}, in->getDevice()));
+  Tensor out(new TensorGPU(New<MemoryPiece>(data, sizeof(float)), {1, 1}, in->getDevice()));
   ReduceAll(_1 * _1, out, in);
   float dataCpu = sqrtf(out->get(0));
   out.reset();
@@ -1961,5 +1963,7 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
       rows,
       cols);
 }
+
+}  // namespace gpu
 
 }  // namespace marian

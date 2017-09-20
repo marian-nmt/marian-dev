@@ -9,6 +9,10 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <thrust/functional.h>
 
+#if USE_VTUNE
+#include <ittnotify.h>
+#endif
+
 #include "3rd_party/threadpool.h"
 #include "common/definitions.h"
 #include "data/batch_generator.h"
@@ -78,7 +82,29 @@ private:
     Element(_1 = (decay * _1) + ((1.f - decay) * _2), mvAvgParams, params);
   }
 
+  #if USE_VTUNE
+  size_t vtune_after_count { 0 };
+  size_t vtune_for_count { 0 };
+  __itt_domain* vtune_domain { nullptr };
+  #endif
+
   void execute(Ptr<data::Batch> batch) {
+    #if USE_VTUNE
+    size_t vtune_after = options_->get<size_t>("vtune-after");
+    if (vtune_after == vtune_after_count) {
+      LOG(info)->info("VTune data collection begins");
+      __itt_resume();
+    }
+
+    vtune_for_count += vtune_after <= vtune_after_count;
+    ++vtune_after_count;
+
+    if (!vtune_domain) {
+      vtune_domain = __itt_domain_create("Model Update");
+    }
+    __itt_frame_begin_v3(vtune_domain, nullptr);
+    #endif
+
     auto costNode = builder_->build(graph_, batch);
 
     graph_->forward();
@@ -131,6 +157,14 @@ private:
         }
       }*/
     }
+
+    #if USE_VTUNE
+    __itt_frame_end_v3(vtune_domain, nullptr);
+    if (options_->get<size_t>("vtune-for") == vtune_for_count) {
+      __itt_pause();
+      LOG(info)->info("VTune data collection ends");
+    }
+    #endif
   }
 
 public:

@@ -217,6 +217,12 @@ void ConfigParser::addOptionsCommon(po::options_description& desc) {
       "Print version number and exit")
     ("help,h", po::value<bool>()->zero_tokens()->default_value(false),
       "Print this help message and exit")
+    #if USE_VTUNE
+    ("vtune-after", po::value<size_t>()->default_value(1),
+     "Begin VTune data collection after this many iterations")
+    ("vtune-for", po::value<size_t>()->default_value(1),
+     "End VTune data collection this many iterations after it began")
+    #endif
   ;
   // clang-format on
   desc.add(general);
@@ -583,6 +589,10 @@ void ConfigParser::parseOptions(
 
   /** general **/
   SET_OPTION("use-cpu", bool);
+  #if USE_VTUNE
+  SET_OPTION("vtune-after", size_t);
+  SET_OPTION("vtune-for", size_t);
+  #endif
 
   /** model **/
 

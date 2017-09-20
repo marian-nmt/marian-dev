@@ -1,13 +1,16 @@
 #pragma once
 
+#include <thrust/functional.h>
 #include "tensors/tensor.h"
 
 namespace marian {
 
 namespace cpu {
 
+using namespace thrust::placeholders;
+
 template <typename Functor, typename... Tensors>
-static void gAdd(Functor functor, float scale, const Shape& full, Tensor out_, Tensors... in_) {
+static void gAdd_fallback(Functor functor, float scale, const Shape& full, Tensor out_, Tensors... in_) {
   int lengths[] { in_->shape().elements()... };
   int outLength = out_->shape().elements();
 
@@ -51,6 +54,45 @@ static void gAdd(Functor functor, float scale, const Shape& full, Tensor out_, T
       out[index] += sum * scale;
     }
   }
+}
+
+template <typename Functor, typename... Tensors>
+static void gAdd(Functor functor, float scale, const Shape& full, Tensor out_, Tensors... in_) {
+  gAdd_fallback(functor, scale, full, out_, in_...);
+}
+
+template <template <typename T> class BinaryOperator>
+using ThrustBinaryOperator =
+  thrust::detail::functional::actor<
+    thrust::detail::functional::composite<
+      thrust::detail::functional::binary_operator<BinaryOperator>,
+      thrust::detail::functional::actor<thrust::detail::functional::argument<0u>>,
+      thrust::detail::functional::actor<thrust::detail::functional::argument<1u>>,
+      thrust::null_type,
+      thrust::null_type,
+      thrust::null_type,
+      thrust::null_type,
+      thrust::null_type,
+      thrust::null_type,
+      thrust::null_type,
+      thrust::null_type
+    >
+  >;
+
+template <>
+void gAdd<ThrustBinaryOperator<thrust::multiplies>, Tensor, Tensor>(
+    ThrustBinaryOperator<thrust::multiplies>, float scale, const Shape& full, Tensor out_, Tensor in1_, Tensor in2_) {
+  void gAddBinaryMultiply(float scale, const Shape& full, Tensor out_, Tensor in1_, Tensor in2_);
+  gAddBinaryMultiply(scale, full, out_, in1_, in2_);
+}
+
+typedef thrust::detail::functional::actor<thrust::detail::functional::argument<0u>> ThrustIdentityFunction;
+
+template <>
+void gAdd<ThrustIdentityFunction, Tensor>(
+    ThrustIdentityFunction, float scale, const Shape& full, Tensor out_, Tensor in_) {
+  void gAddIdentityFunction(float scale, const Shape& full, Tensor out_, Tensor in_);
+  gAddIdentityFunction(scale, full, out_, in_);
 }
 
 /* n.b. We can avoid this repetition (due to the default argument) with
@@ -118,6 +160,7 @@ static void Element(Functor functor, Tensor out_, Tensors... in_) {
       out[index] = functor(out[index], in_->data()[in_->shape().bindex(i, j, k, l)]...);
     }
   } else {
+    #pragma omp simd
     for (int index = 0; index < length; ++index) {
       out[index] = functor(out[index], in_->data()[index]...);
     }

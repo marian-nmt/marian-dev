@@ -9,6 +9,271 @@ namespace marian {
 
 namespace cpu {
 
+void gAddBinaryMultiply(float scale, const Shape& full, Tensor out_, Tensor in1_, Tensor in2_) {
+  auto fallback = [&]() { gAdd_fallback(_1 * _2, scale, full, out_, in1_, in2_); };
+
+  int outLength = out_->shape().elements();
+  bool same = in1_->shape().elements() == outLength && in2_->shape().elements() == outLength;
+  if (same) {
+    fallback();
+  } else {
+    const Shape& outShape = out_->shape();
+    int I = outShape[0];
+    int J = outShape[1];
+    int K = outShape[2];
+    int L = outShape[3];
+    int II = full[0] / I;
+    int JJ = full[1] / J;
+    int KK = full[2] / K;
+    int LL = full[3] / L;
+
+    float* out = out_->data();
+    const float* in1 = in1_->data();
+    const float* in2 = in2_->data();
+
+    long vdim0 = -1, vdim1 = -1, vdim2 = -1;
+    int storage[] { 1, 0, 2, 3 };
+    for (int i = 0; i < 4; ++i) {
+      int dim = storage[i];
+      vdim0 = vdim0 < 0 && out_->shape().bstride(dim) == 1 ? dim : vdim0;
+      vdim1 = vdim1 < 0 && in1_->shape().bstride(dim) == 1 ? dim : vdim1;
+      vdim2 = vdim2 < 0 && in2_->shape().bstride(dim) == 1 ? dim : vdim2;
+    }
+
+    long scalar = (vdim0 < 0) << 8 | (vdim1 < 0) << 4 | (vdim2 < 0);
+    vdim0 = vdim0 < 0 ? 1 : vdim0;
+    vdim1 = vdim1 < 0 ? 1 : vdim1;
+    vdim2 = vdim2 < 0 ? 1 : vdim2;
+
+    long vdim = scalar << 12 | vdim0 << 8 | vdim1 << 4 | vdim2;
+    long reduction = (II != 1) << 12 | (JJ != 1) << 8 | (KK != 1) << 4 | (LL != 1);
+
+    if (!reduction) {
+      switch (vdim) {
+        case 0x000101: // vector out=j, in1=i, in2=j
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i) {
+            int in1Index = in1_->shape().bindex(0, 0, k, l) + i;
+            #pragma omp simd
+            for (int j = 0; j < J; ++j) {
+              int in2Index = in2_->shape().bindex(i, 0, k, l) + j;
+              int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+              out[outIndex] += in1[in1Index] * in2[in2Index] * scale;
+            }
+          }
+          break;
+        case 0x000111: // vector out=j, in1=j, in2=j
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i)
+          #pragma omp simd
+          for (int j = 0; j < J; ++j) {
+            int in1Index = in1_->shape().bindex(i, 0, k, l) + j;
+            int in2Index = in2_->shape().bindex(i, 0, k, l) + j;
+            int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in1[in1Index] * in2[in2Index] * scale;
+          }
+          break;
+        case 0x000112: // vector out=j, in1=j, in2=k
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k) {
+            int in2Index = in2_->shape().bindex(0, 0, 0, l) + k;
+            for (int i = 0; i < I; ++i)
+            #pragma omp simd
+            for (int j = 0; j < J; ++j) {
+              int in1Index = in1_->shape().bindex(i, 0, k, l) + j;
+              int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+              out[outIndex] += in1[in1Index] * in2[in2Index] * scale;
+            }
+          }
+          break;
+        default:
+          std::printf("%s unhandled !reduction case: 0x%06lx\n", __func__, vdim);
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i)
+          for (int j = 0; j < J; ++j) {
+            int in1Index = in1_->shape().bindex(i, j, k, l);
+            int in2Index = in2_->shape().bindex(i, j, k, l);
+            int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in1[in1Index] * in2[in2Index] * scale;
+          }
+      };
+    } else {
+      long vdim_reduction = vdim << 16 | reduction;
+      switch (vdim_reduction) {
+        case 0x0000110100: // vector out=i, in1=j, in2=j; reduce j
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i) {
+            float sum = 0.f;
+            for (int j = 0; j < J; ++j) {
+              #pragma omp simd reduction(+:sum)
+              for (int jj = 0; jj < JJ; ++jj) {
+                int in1Index = in1_->shape().bindex(i, 0, k, l) + j + jj;
+                int in2Index = in2_->shape().bindex(i, 0, k, l) + j + jj;
+                sum += in1[in1Index] * in2[in2Index];
+              }
+            }
+
+            int outIndex = i*outShape.stride(0) + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += sum * scale;
+          }
+          break;
+        case 0x0001100010: // vector out=j, in1=j, in2=i; reduce k
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int kk = 0; kk < KK; ++kk)
+          for (int i = 0; i < I; ++i) {
+            int in2Index = in2_->shape().bindex(0, 0, k + kk, l) + i;
+            #pragma omp simd
+            for (int j = 0; j < J; ++j) {
+              int in1Index = in1_->shape().bindex(i, 0, k + kk, l) + j;
+              int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+              out[outIndex] += in1[in1Index] * in2[in2Index] * scale;
+            }
+          }
+          break;
+        default:
+          std::printf("%s unhandled reduction case: 0x%010lx\n", __func__, vdim_reduction);
+          fallback();
+      }
+    }
+  }
+}
+
+void gAddIdentityFunction(float scale, const Shape& full, Tensor out_, Tensor in_) {
+  auto fallback = [&]() { gAdd_fallback(_1, scale, full, out_, in_); };
+
+  bool same = in_->shape().elements() == out_->shape().elements();
+  if (same) {
+    fallback();
+  } else {
+    const Shape& outShape = out_->shape();
+    int I = outShape[0];
+    int J = outShape[1];
+    int K = outShape[2];
+    int L = outShape[3];
+    int II = full[0] / I;
+    int JJ = full[1] / J;
+    int KK = full[2] / K;
+    int LL = full[3] / L;
+
+    float* out = out_->data();
+    const float* in = in_->data();
+
+    long vdim0 = -1, vdim1 = -1;
+    int storage[] { 1, 0, 2, 3 };
+    for (int i = 0; i < 4; ++i) {
+      int dim = storage[i];
+      vdim0 = vdim0 < 0 && out_->shape().bstride(dim) == 1 ? dim : vdim0;
+      vdim1 = vdim1 < 0 &&  in_->shape().bstride(dim) == 1 ? dim : vdim1;
+    }
+
+    long scalar = (vdim0 < 0) << 4 | (vdim1 < 0);
+    vdim0 = vdim0 < 0 ? 1 : vdim0;
+    vdim1 = vdim1 < 0 ? 1 : vdim1;
+
+    long vdim = scalar << 8 | vdim0 << 4 | vdim1;
+    long reduction = (II != 1) << 12 | (JJ != 1) << 8 | (KK != 1) << 4 | (LL != 1);
+
+    if (!reduction) {
+      switch (vdim) {
+        case 0x0000: // vector out=i, in=i
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          #pragma omp simd
+          for (int i = 0; i < I; ++i) {
+            int inIndex = in_->shape().bindex(0, 0, k, l) + i;
+            int outIndex = i*outShape.stride(0) + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in[inIndex] * scale;
+          }
+          break;
+        case 0x0011: // vector out=j, in=j
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i)
+          #pragma omp simd
+          for (int j = 0; j < J; ++j) {
+            int inIndex = in_->shape().bindex(i, 0, k, l) + j;
+            int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in[inIndex] * scale;
+          }
+          break;
+        case 0x0101: // vector out=i; scalar in
+          {
+            float scalar = *in * scale;
+            for (int l = 0; l < L; ++l)
+            for (int k = 0; k < K; ++k)
+            #pragma omp simd
+            for (int i = 0; i < I; ++i) {
+              int outIndex = i*outShape.stride(0) + k*outShape.stride(2) + l*outShape.stride(3);
+              out[outIndex] += scalar;
+            }
+          }
+          break;
+        default:
+          std::printf("%s unhandled !reduction case: %04lx\n", __func__, vdim);
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i)
+          for (int j = 0; j < J; ++j) {
+            int inIndex = in_->shape().bindex(i, j, k, l);
+            int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in[inIndex] * scale;
+          }
+      }
+    } else {
+      long vdim_reduction = vdim << 16 | reduction;
+      switch (vdim_reduction) {
+        case 0x00000010: // vector out=i, in=i; reduce k
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int kk = 0; kk < KK; ++kk)
+          #pragma omp simd
+          for (int i = 0; i < I; ++i) {
+            int inIndex = in_->shape().bindex(0, 0, k + kk, l) + i;
+            int outIndex = i*outShape.stride(0) + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in[inIndex] * scale;
+          }
+          break;
+        case 0x00111010: // vector out=j, in=j; reduce i, k
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int kk = 0; kk < KK; ++kk)
+          for (int i = 0; i < I; ++i)
+          for (int ii = 0; ii < II; ++ii)
+          #pragma omp simd
+          for (int j = 0; j < J; ++j) {
+            int inIndex = in_->shape().bindex(i + ii, 0, k + kk, l) + j;
+            int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+            out[outIndex] += in[inIndex] * scale;
+          }
+          break;
+        case 0x10101000: // vector in=i; scalar out; reduce i
+          {
+            float sum = 0.f;
+            for (int l = 0; l < L; ++l)
+            for (int k = 0; k < K; ++k)
+            for (int i = 0; i < I; ++i)
+            #pragma omp simd reduction(+:sum)
+            for (int ii = 0; ii < II; ++ii) {
+              int inIndex = in_->shape().bindex(0, 0, k, l) + i + ii;
+              sum += in[inIndex];
+            }
+
+            *out += sum * scale;
+          }
+          break;
+        default:
+          std::printf("%s unhandled reduction case: 0x%08lx\n", __func__, vdim_reduction);
+          fallback();
+      }
+    }
+  }
+}
+
 void Softmax(Tensor out_, Tensor in_, Tensor mask_) {
   float* out = out_->data();
   const float* in = in_->data();
@@ -349,6 +614,7 @@ void GRUFastForward(Tensor out_, std::vector<Tensor> inputs, bool final) {
     const float* xWrow = xW + j * cols * 3;
     const float* sUrow = sU + j * cols * 3;
 
+    #pragma omp simd
     for (int i = 0; i < cols; ++i) {
       float ev1 = std::exp(-(xWrow[i] + sUrow[i] + b[i]));
       float r = 1.0f / (1.0f + ev1);
@@ -399,6 +665,7 @@ void GRUFastBackward(std::vector<Tensor> outputs, std::vector<Tensor> inputs,
     const float* rowSU = sU + j * cols * 3;
     const float* rowAdj = adj + j * cols;
 
+    #pragma omp simd
     for (int i = 0; i < cols; ++i) {
       int k = i + cols;
       int l = i + 2 * cols;
@@ -541,15 +808,18 @@ void Att(Tensor out_, Tensor va_, Tensor context_, Tensor state_, Tensor coverag
     const float* stateRow = state + (j / (b * t) + j % b) * k;
     const float* covRow = cov ? cov + (j % (b * t)) * k : nullptr;
 
-    out[j] = 0.f;
+    float sum = 0.f;
+    #pragma omp simd reduction(+:sum)
     for (size_t i = 0; i < k; ++i) {
       float z = ctxRow[i] + stateRow[i];
       if (cov) {
         z += covRow[i];
       }
 
-      out[j] += std::tanh(z) * vaRow[i];
+      sum += std::tanh(z) * vaRow[i];
     }
+
+    out[j] = sum;
   }
 }
 
@@ -580,6 +850,7 @@ void AttBack(Tensor gVa_, Tensor gContext_, Tensor gState_, Tensor gCoverage_,
     const float* sRow = state + (j % n) * k;
     const float* covRow = coverage ? coverage + j * k : nullptr;
 
+    #pragma omp simd
     for (size_t i = 0; i < k; ++i) {
       float z = cRow[i] + sRow[i];
       if (coverage) {
@@ -626,6 +897,7 @@ void LayerNormalization(Tensor out_, Tensor in_, Tensor gamma_, Tensor beta_, fl
 
     float sigma = std::sqrt(eps + sqSum / cols);
 
+    #pragma omp simd
     for (size_t i = 0; i < cols; ++i) {
       float t = alpha[i] * ((sp[i] - mean) / sigma);
       if (beta != nullptr) {
@@ -664,6 +936,7 @@ void LayerNormalizationGrad(Tensor gradX_, Tensor gradGamma_, Tensor gradBeta_,
     float sum_adj_x = 0.f;
     float sum_sqr = 0.f;
 
+    #pragma omp simd reduction(+:sum_x, sum_adj_x, sum_adj)
     for (size_t i = 0; i < cols; ++i) {
       sum_x += xRow[i];
       sum_adj_x += adjRow[i] * (yRow[i] - (beta ? beta[i] : 0.f)) / gamma[i];
@@ -671,12 +944,14 @@ void LayerNormalizationGrad(Tensor gradX_, Tensor gradGamma_, Tensor gradBeta_,
     }
 
     float mean = sum_x / cols;
+    #pragma omp simd reduction(+:sum_sqr)
     for (size_t i = 0; i < cols; ++i) {
       float ex = xRow[i] - mean;
       sum_sqr += ex*ex;
     }
 
     float sigma = std::sqrt(eps + sum_sqr / cols);
+    #pragma omp simd
     for (size_t i = 0; i < cols; ++i) {
       float grad_x = 0.f;
       float x_hat = (yRow[i] - (beta ? beta[i] : 0.f)) / gamma[i];

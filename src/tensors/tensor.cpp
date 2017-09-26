@@ -1,3 +1,5 @@
+#include <omp.h>
+
 #include "kernels/tensor_operators.h"
 #include "tensors/tensor.h"
 
@@ -13,7 +15,21 @@ void TensorCPU::get(std::vector<float> &v) {
   std::copy(data(), data() + size(), std::back_inserter(v));
 }
 
-void TensorCPU::set(float value) { std::fill(data(), data() + size(), value); }
+void TensorCPU::set(float value) {
+  #pragma omp parallel
+  {
+    int i = omp_get_thread_num(), n = omp_get_num_threads();
+    size_t span = size() / n;
+    if (span*sizeof(float) < 64) {
+      #pragma omp master
+      std::fill(data(), data() + size(), value);
+    } else {
+      float* begin = data() + i*span;
+      float* end = i != n-1 ? begin + span : data() + size();
+      std::fill(begin, end, value);
+    }
+  }
+}
 
 void TensorCPU::set(const std::vector<float> &v) { std::copy(v.begin(), v.end(), data()); }
 

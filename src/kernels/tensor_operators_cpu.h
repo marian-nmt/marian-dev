@@ -24,6 +24,7 @@ static void gAdd_fallback(Functor functor, float scale, const Shape& full, Tenso
 
   float* out = out_->data();
   if (same) {
+    #pragma omp parallel for simd
     for (int index = 0; index < outLength; ++index) {
       out[index] += functor(in_->data()[index]...) * scale;
     }
@@ -38,11 +39,13 @@ static void gAdd_fallback(Functor functor, float scale, const Shape& full, Tenso
     int KK = full[2] / K;
     int LL = full[3] / L;
 
+    #pragma omp parallel for collapse(4)
     for (int l = 0; l < L; ++l)
     for (int k = 0; k < K; ++k)
     for (int i = 0; i < I; ++i)
     for (int j = 0; j < J; ++j) {
       float sum = 0.f;
+      #pragma omp simd collapse(4) reduction(+:sum)
       for (int ll = 0; ll < LL; ++ll)
       for (int kk = 0; kk < KK; ++kk)
       for (int ii = 0; ii < II; ++ii)
@@ -152,6 +155,7 @@ static void Element(Functor functor, Tensor out_, Tensors... in_) {
     int K = outShape[2];
     int L = outShape[3];
 
+    #pragma omp parallel for simd collapse(4)
     for (int l = 0; l < L; ++l)
     for (int k = 0; k < K; ++k)
     for (int i = 0; i < I; ++i)
@@ -160,7 +164,7 @@ static void Element(Functor functor, Tensor out_, Tensors... in_) {
       out[index] = functor(out[index], in_->data()[in_->shape().bindex(i, j, k, l)]...);
     }
   } else {
-    #pragma omp simd
+    #pragma omp parallel for simd
     for (int index = 0; index < length; ++index) {
       out[index] = functor(out[index], in_->data()[index]...);
     }

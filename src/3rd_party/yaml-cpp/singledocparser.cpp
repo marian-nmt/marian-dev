@@ -15,17 +15,39 @@
 
 namespace YAML {
 SingleDocParser::SingleDocParser(Scanner& scanner, const Directives& directives)
-    : m_scanner(scanner),
+    : m_depth(0),
+      m_scanner(scanner),
       m_directives(directives),
       m_pCollectionStack(new CollectionStack),
       m_curAnchor(0) {}
 
 SingleDocParser::~SingleDocParser() {}
 
+template <unsigned limit>
+class LimitDepthTo {
+  unsigned& depth;
+
+  public:
+  LimitDepthTo(unsigned& depth, const Mark& mark)
+    : depth(depth) {
+    if (++depth > limit) {
+      throw ParserException(mark, ErrorMsg::TOO_DEEP);
+    }
+  }
+
+  ~LimitDepthTo() {
+    --depth;
+  }
+};
+
+typedef LimitDepthTo<16> ScopedDepthLimit;
+
 // HandleDocument
 // . Handles the next document
 // . Throws a ParserException on error.
 void SingleDocParser::HandleDocument(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   assert(!m_scanner.empty());  // guaranteed that there are tokens
   assert(!m_curAnchor);
 
@@ -46,6 +68,8 @@ void SingleDocParser::HandleDocument(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleNode(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // an empty node *is* a possibility
   if (m_scanner.empty()) {
     eventHandler.OnNull(m_scanner.mark(), NullAnchor);
@@ -134,6 +158,8 @@ void SingleDocParser::HandleNode(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleSequence(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // split based on start token
   switch (m_scanner.peek().type) {
     case Token::BLOCK_SEQ_START:
@@ -148,6 +174,8 @@ void SingleDocParser::HandleSequence(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleBlockSequence(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // eat start token
   m_scanner.pop();
   m_pCollectionStack->PushCollectionType(CollectionType::BlockSeq);
@@ -181,6 +209,8 @@ void SingleDocParser::HandleBlockSequence(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleFlowSequence(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // eat start token
   m_scanner.pop();
   m_pCollectionStack->PushCollectionType(CollectionType::FlowSeq);
@@ -214,6 +244,8 @@ void SingleDocParser::HandleFlowSequence(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleMap(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // split based on start token
   switch (m_scanner.peek().type) {
     case Token::BLOCK_MAP_START:
@@ -234,6 +266,8 @@ void SingleDocParser::HandleMap(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleBlockMap(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // eat start token
   m_scanner.pop();
   m_pCollectionStack->PushCollectionType(CollectionType::BlockMap);
@@ -273,6 +307,8 @@ void SingleDocParser::HandleBlockMap(EventHandler& eventHandler) {
 }
 
 void SingleDocParser::HandleFlowMap(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   // eat start token
   m_scanner.pop();
   m_pCollectionStack->PushCollectionType(CollectionType::FlowMap);
@@ -322,6 +358,8 @@ void SingleDocParser::HandleFlowMap(EventHandler& eventHandler) {
 
 // . Single "key: value" pair in a flow sequence
 void SingleDocParser::HandleCompactMap(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   m_pCollectionStack->PushCollectionType(CollectionType::CompactMap);
 
   // grab key
@@ -342,6 +380,8 @@ void SingleDocParser::HandleCompactMap(EventHandler& eventHandler) {
 
 // . Single ": value" pair in a flow sequence
 void SingleDocParser::HandleCompactMapWithNoKey(EventHandler& eventHandler) {
+  ScopedDepthLimit limit_depth(m_depth, m_scanner.mark());
+
   m_pCollectionStack->PushCollectionType(CollectionType::CompactMap);
 
   // null key

@@ -51,6 +51,8 @@ class SingleDocParser : private noncopyable {
   anchor_t LookupAnchor(const Mark& mark, const std::string& name) const;
 
  private:
+  unsigned m_depth; // cf. CVE-2017-5950
+
   Scanner& m_scanner;
   const Directives& m_directives;
   std::unique_ptr<CollectionStack> m_pCollectionStack;

@@ -30,6 +30,7 @@ if(CUDA_FOUND)
     common/logging.cpp
     common/config.cpp
     common/config_parser.cpp
+    training/multinode.cpp
     translator/history.cpp
     translator/output_collector.cpp
     translator/nth_element.cu
@@ -65,6 +66,7 @@ else(CUDA_FOUND)
     common/logging.cpp
     common/config.cpp
     common/config_parser.cpp
+    training/multinode.cpp
     translator/history.cpp
     translator/output_collector.cpp
     translator/nth_element.cpp

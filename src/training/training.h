@@ -64,6 +64,7 @@ public:
         scheduler->increaseEpoch();
     }
     scheduler->finished();
+    model->finished();
     model->save(true);
   }
 };

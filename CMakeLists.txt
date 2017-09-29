@@ -113,6 +113,13 @@ else(Boost_FOUND)
   message(SEND_ERROR "Cannot find Boost libraries. Terminating." )
 endif(Boost_FOUND)
 
+find_package(MPI)
+if(MPI_FOUND)
+  include_directories(${MPI_INCLUDE_PATH})
+  set(EXT_LIBS ${EXT_LIBS} ${MPI_LIBRARIES})
+  add_definitions(-DMPI_FOUND=1)
+endif(MPI_FOUND)
+
 if(COMPILE_TESTS)
   enable_testing()
 endif(COMPILE_TESTS)

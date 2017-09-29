@@ -411,6 +411,11 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
       ->zero_tokens()
       ->default_value(false),
      "Fix target embeddings. Affects all decoders")
+
+    ("multinode", po::value<bool>()->zero_tokens()->default_value(false),
+     "Distributed training using multiple nodes, if supported")
+    ("multinode-push", po::value<bool>()->zero_tokens()->default_value(false),
+     "When using multiple nodes, push (vs. pull) gradient at the end of each iteration")
   ;
   // clang-format on
   desc.add(training);
@@ -677,6 +682,9 @@ void ConfigParser::parseOptions(
     SET_OPTION("embedding-normalization", bool);
     SET_OPTION("embedding-fix-src", bool);
     SET_OPTION("embedding-fix-trg", bool);
+
+    SET_OPTION("multinode", bool);
+    SET_OPTION("multinode-push", bool);
   }
   if(mode_ == ConfigMode::rescoring) {
     SET_OPTION("no-reload", bool);

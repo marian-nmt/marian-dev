@@ -18,6 +18,7 @@
 #include "data/batch_generator.h"
 #include "optimizers/optimizers.h"
 #include "training/dropper.h"
+#include "training/multinode.h"
 #include "training/scheduler.h"
 #include "training/sparse_tensor.h"
 #include "training/training.h"
@@ -50,6 +51,8 @@ public:
   virtual void load() = 0;
 
   virtual void save(bool = false) = 0;
+
+  virtual void finished() {}
 
   virtual Ptr<data::BatchStats> collectStats() = 0;
 };
@@ -88,6 +91,8 @@ private:
   __itt_domain* vtune_domain { nullptr };
   #endif
 
+  Ptr<Multinode> multinode;
+
   void execute(Ptr<data::Batch> batch) {
     #if USE_VTUNE
     size_t vtune_after = options_->get<size_t>("vtune-after");
@@ -107,9 +112,39 @@ private:
 
     auto costNode = builder_->build(graph_, batch);
 
+    if (!multinode && options_->get<bool>("multinode")) {
+      #if MPI_FOUND
+      int n = graph_->params()->grads()->size();
+      if (n > 0) {
+        float* val = graph_->params()->vals()->data();
+        float* grad = graph_->params()->grads()->data();
+        RMA::GradientAction push = options_->get<bool>("multinode-push") ? RMA::PUSH : RMA::PULL;
+        multinode.reset(new RMA(val, grad, n, push));
+      }
+      #else
+      // n.b. We do expect to support multinode without MPI before too long.
+      static bool warn = true;
+      if (warn) {
+        LOG(multinode)->warn("Multinode option ignored: not built with MPI support");
+        warn = false;
+      }
+      #endif
+    }
+
+    if (multinode) {
+      multinode->begin_forward();
+    }
     graph_->forward();
     float cost = costNode->scalar();
+
+    if (multinode) {
+      multinode->begin_backward();
+    }
     graph_->backward();
+
+    if (multinode) {
+      multinode->begin_update();
+    }
 
     //Get batch stats
     size_t batch_words = batch->words();
@@ -120,6 +155,10 @@ private:
       opt_->update(graph_, batch_words/average_batch_words);
     } else {
       opt_->update(graph_);
+    }
+
+    if (multinode) {
+      multinode->end_iteration();
     }
 
     if(mvAvg_) {
@@ -207,6 +246,10 @@ public:
   }
 
   void save(Ptr<ExpressionGraph> graph, bool final = false) {
+    if (multinode && !multinode->save()) {
+      return;
+    }
+
     if(options_->get<bool>("overwrite")) {
       std::string name = options_->get<std::string>("model");
 
@@ -229,6 +272,12 @@ public:
       builder_->save(graph_, name, true);
       if(scheduler_)
         scheduler_->save(name);
+    }
+  }
+
+  void finished() {
+    if (multinode) {
+      multinode->finished();
     }
   }
 

@@ -139,7 +139,7 @@ public:
       int dimTrgVoc = totalCosts->shape()[1];
       beam = toHyps(outKeys, outCosts, dimTrgVoc, beam, states);
 
-      final = history->size() >= 3 * batch->words();
+      final = history->size() >= options_->get<size_t>("max-ratio") * batch->words();
       history->Add(beam, final);
       beam = pruneBeam(beam);
 

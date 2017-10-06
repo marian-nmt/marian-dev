@@ -510,6 +510,8 @@ void ConfigParser::addOptionsTranslate(po::options_description& desc) {
       "Number of batches to preload for length-based sorting")
     ("n-best", po::value<bool>()->zero_tokens()->default_value(false),
       "Display n-best list")
+    ("max-ratio", po::value<size_t>()->default_value(3),
+      "Max ratio between translation and source sentence lengths")
     //("lexical-table", po::value<std::string>(),
     // "Path to lexical table")
     ("weights", po::value<std::vector<float>>()
@@ -739,6 +741,7 @@ void ConfigParser::parseOptions(
     SET_OPTION("input", std::vector<std::string>);
     SET_OPTION("beam-size", size_t);
     SET_OPTION("normalize", bool);
+    SET_OPTION("max-ratio", size_t);
     SET_OPTION("allow-unk", bool);
     SET_OPTION("n-best", bool);
     SET_OPTION_NONDEFAULT("weights", std::vector<float>);

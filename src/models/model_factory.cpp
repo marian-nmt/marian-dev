@@ -105,11 +105,13 @@ Ptr<ModelBase> by_type(std::string type,
         .push_back(models::decoder()("type", "hard-soft-att"))
         .construct();
   }
+
   if(type == "char_conv") {
     return models::encoder_decoder()(options)
         .push_back(models::encoder()("type", "char_conv"))
         .push_back(models::decoder()("type", "s2s"))
         .construct();
+  }
 
   if(type == "multi-s2s") {
     size_t numEncoders = 2;

@@ -964,6 +964,7 @@ class PoolingOp : public UnaryNodeOp {
         Mode mode = Mode::AVERAGE_POOLING)
       : UnaryNodeOp(x)
     {
+
       CUDNN_CALL( cudnnCreate(&cudnnHandle_) );
 
 
@@ -987,8 +988,10 @@ class PoolingOp : public UnaryNodeOp {
           break;
       };
 
-      height = std::min(height, x->shape()[2]);
-      strideHeight = std::min(strideHeight, x->shape()[2]);
+      // if (height < x->shape()[2]) {
+        // height = std::min(height, x->shape()[2]);
+        // strideHeight = std::min(strideHeight, x->shape()[2]);
+      // }
 
       CUDNN_CALL( cudnnCreatePoolingDescriptor(&poolingDesc_) );
       CUDNN_CALL( cudnnSetPooling2dDescriptor(poolingDesc_,
@@ -998,6 +1001,7 @@ class PoolingOp : public UnaryNodeOp {
             padHeight, padWidth,
             strideHeight, strideWidth
       ));
+
 
       CUDNN_CALL(cudnnGetPooling2dForwardOutputDim(
             poolingDesc_,
@@ -1019,43 +1023,6 @@ class PoolingOp : public UnaryNodeOp {
       );
     }
 
-
-    NodeOps forwardOps() {
-      const float alpha = 1.0f;
-      const float beta = 0.0f;
-
-      cudaSetDevice(val_->getDevice());
-
-      return {
-        NodeOp(
-          CUDNN_CALL( cudnnPoolingForward(cudnnHandle_,
-                        poolingDesc_,
-                        &alpha,
-                        xDesc_, children_[0]->val()->data(),
-                        &beta,
-                        yDesc_, val_->data()))
-          )
-      };
-    }
-
-    NodeOps backwardOps() {
-      cudaSetDevice(adj_->getDevice());
-      const float alpha = 1.0f;
-      const float beta = 1.0f;
-      return {
-        NodeOp(
-          CUDNN_CALL( cudnnPoolingBackward(cudnnHandle_,
-                        poolingDesc_,
-                        &alpha,
-                        yDesc_, val_->data(),
-                        adjDesc_, adj_->data(),
-                        xDesc_, children_[0]->val()->data(),
-                        &beta,
-                        xDesc_, children_[0]->grad()->data()
-          )))
-      };
-    }
-
     const std::string type() {
       return "layer_max_pooling";
     }
@@ -1067,6 +1034,40 @@ class PoolingOp : public UnaryNodeOp {
       CUDNN_CALL( cudnnDestroyTensorDescriptor(yDesc_) );
       CUDNN_CALL( cudnnDestroyTensorDescriptor(adjDesc_) );
     }
+    NodeOps forwardOps() {
+      const float alpha = 1.0f;
+      const float beta = 0.0f;
+      cudaSetDevice(val_->getDevice());
+
+      return {
+        NodeOp(CUDNN_CALL(
+              cudnnPoolingForward(cudnnHandle_,
+                                  poolingDesc_,
+                                  &alpha,
+                                  xDesc_, children_[0]->val()->data(),
+                                  &beta,
+                                  yDesc_, val_->data()
+              )))
+      };
+    }
+
+    NodeOps backwardOps() {
+      cudaSetDevice(adj_->getDevice());
+      const float alpha = 1.0f;
+      const float beta = 1.0f;
+      return {
+        NodeOp(CUDNN_CALL(cudnnPoolingBackward(cudnnHandle_,
+                                               poolingDesc_,
+                                               &alpha,
+                                               yDesc_, val_->data(),
+                                               adjDesc_, adj_->data(),
+                                               xDesc_, children_[0]->val()->data(),
+                                               &beta,
+                                               xDesc_, children_[0]->grad()->data()
+        )))
+      };
+    }
+
 
   protected:
     cudnnHandle_t cudnnHandle_;
@@ -1078,4 +1079,43 @@ class PoolingOp : public UnaryNodeOp {
 };
 
 #endif
+
+class MaxPooling2Op : public UnaryNodeOp {
+  public:
+    MaxPooling2Op( Expr x, Expr mask, int width, bool isEven=false)
+      : UnaryNodeOp(x),
+        mask_(mask),
+        width_(width),
+        isEven_(isEven)
+    {
+      auto xShape = x->shape();
+      int dimBatch = xShape[0];
+      int dimWord = xShape[1];
+      int cols = (isEven_) ? xShape[2] - 1 : xShape[2];
+      int dimSentence = (cols / width_) + (cols % width_ != 0);
+      shape_ = {dimBatch, dimWord, dimSentence};
+    }
+
+    NodeOps forwardOps() {
+      cudaSetDevice(val_->getDevice());
+
+      return { NodeOp( MaxPoolingForward(val_, child(0)->val(), mask_->val(), width_, isEven_) ) };
+    }
+
+    NodeOps backwardOps() {
+      cudaSetDevice(adj_->getDevice());
+      return { NodeOp( MaxPoolingBackward(adj_, child(0)->grad(), child(0)->val(), mask_->val(),
+                                          width_, isEven_) ) };
+    }
+
+    const std::string type() {
+      return "layer_pooling";
+    }
+
+  protected:
+    Expr mask_;
+    int width_;
+    bool isEven_;
+};
+
 }

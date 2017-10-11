@@ -585,7 +585,11 @@ struct HighwayNodeOp : public NaryNodeOp {
 #ifdef CUDNN
 class ConvolutionOp : public NaryNodeOp {
   public:
-    ConvolutionOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes)
+    ConvolutionOp(
+        const std::vector<Expr>& nodes,
+        int padHeight, int padWidth,
+        int strideHeight, int strideWidth)
+      : NaryNodeOp(nodes)
     {
       CUDNN_CALL( cudnnCreate(&cudnnHandle_) );
 
@@ -596,21 +600,18 @@ class ConvolutionOp : public NaryNodeOp {
                     nodes[0]->shape()[2], nodes[0]->shape()[3]
       ));
 
-      int widthPad = 1;
-      int heightPad = 1;
-      int heightStride = 1;
-      int widthStride = 1;
-
       CUDNN_CALL( cudnnCreateConvolutionDescriptor(&convDesc_) );
 #if CUDNN_MAJOR > 5
       CUDNN_CALL( cudnnSetConvolution2dDescriptor(convDesc_,
-                    heightPad, widthPad, heightStride, widthStride,
+                    padHeight, padWidth,
+                    strideHeight, strideWidth,
                     1, 1,  // upscales
                     CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT
       ));
 #else
       CUDNN_CALL( cudnnSetConvolution2dDescriptor(convDesc_,
-                    heightPad, widthPad, heightStride, widthStride,
+                    padHeight, padWidth,
+                    strideHeight, strideWidth,
                     1, 1,  // upscales
                     CUDNN_CROSS_CORRELATION
       ));

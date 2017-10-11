@@ -1,13 +1,13 @@
 #pragma once
 
-#include "layers/generic.h"
+#include "layers/constructors.h"
 
 namespace marian {
 
-class Motorway : public Layer {
+class Motorway {
   public:
     Motorway(const std::string name, size_t depth)
-      : Layer(name),
+      : name_(name),
         depth_(depth)
     {}
 
@@ -15,15 +15,26 @@ class Motorway : public Layer {
       Expr input = x;
       for (size_t i = 0; i < depth_; ++i) {
         size_t out_dim = x->shape()[1];
-        auto g = Dense(name_ + "d1_" + std::to_string(i), out_dim, keywords::activation=act::logit)(x);
-        auto dense_2 = Dense(name_ + "d2_" + std::to_string(i), out_dim, keywords::activation=act::linear)(x);
-        auto rr = relu(dense_2);
+        auto gmlp = mlp::mlp(x->graph()).push_back(
+            mlp::dense(x->graph())
+            ("prefix", name_ + "_d1_" + std::to_string(i))
+            ("dim", out_dim)
+            ("activation", mlp::act::logit));
+        auto g = gmlp->apply(x);
+
+        auto dense2_mlp = mlp::mlp(x->graph()).push_back(
+            mlp::dense(x->graph())
+            ("prefix", name_ + "_d2_" + std::to_string(i))
+            ("dim", out_dim)
+            ("activation", mlp::act::linear));
+        auto rr = relu(dense2_mlp->apply(x));
         input = (g * rr) + ((1 - g) * input);
       }
       return input;
     }
 
   protected:
+    std::string name_;
     size_t depth_;
 };
 

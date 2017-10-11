@@ -108,7 +108,10 @@ Expr dropout(Expr x, Args... args) {
 
 Expr shift(Expr, Shape);
 
-Expr convolution(Expr x, Expr filters, Expr bias);
+Expr convolution(Expr x,
+        Expr filters, Expr bias,
+        int padHeight, int padWidth,
+        int strideHeight, int strideWidth);
 
 Expr avg_pooling(
         Expr x,
@@ -121,4 +124,7 @@ Expr max_pooling(
         int height, int width,
         int padHeight, int padWidth,
         int strideHeight, int strideWidth);
+
+Expr max_pooling2(Expr x, Expr mask, int width, bool isEven=false);
+
 }

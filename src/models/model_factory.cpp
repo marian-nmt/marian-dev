@@ -10,6 +10,7 @@
 #include "examples/mnist/model.h"
 #ifdef CUDNN
 #include "examples/mnist/model_lenet.h"
+#include "models/encoder_char_conv.h"
 #endif
 
 namespace marian {
@@ -20,6 +21,8 @@ Ptr<EncoderBase> EncoderFactory::construct() {
     return New<EncoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return New<EncoderTransformer>(options_);
+  if(options_->get<std::string>("type") == "char_conv")
+    return New<EncoderCharConv>(options_);
 
   UTIL_THROW2("Unknown encoder type");
 }
@@ -102,6 +105,11 @@ Ptr<ModelBase> by_type(std::string type,
         .push_back(models::decoder()("type", "hard-soft-att"))
         .construct();
   }
+  if(type == "char_conv") {
+    return models::encoder_decoder()(options)
+        .push_back(models::encoder()("type", "char_conv"))
+        .push_back(models::decoder()("type", "s2s"))
+        .construct();
 
   if(type == "multi-s2s") {
     size_t numEncoders = 2;

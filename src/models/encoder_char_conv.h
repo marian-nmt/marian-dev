@@ -16,7 +16,7 @@ public:
                           Ptr<data::CorpusBatch> batch) {
     using namespace keywords;
 
-    int dimVoc = opt<int>("dim-vocabs");
+    int dimVoc = opt<std::vector<int>>("dim-vocabs").front();
     int dimEmb = opt<int>("dim-emb");
 
     auto embFactory = embedding(graph)

@@ -198,7 +198,6 @@ public:
     int paddingWidth_;
     int strideHeight_;
     int strideWidth_;
-
 };
 
 

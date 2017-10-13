@@ -18,12 +18,15 @@ cuda_add_executable(pooling_test pooling_test.cu)
 cuda_add_executable(dropout_test dropout_test.cu)
 cuda_add_executable(marian_test marian_test.cu)
 cuda_add_executable(tensor_test tensor_test.cu)
+cuda_add_executable(nth_test nth_test.cu)
 
 
 foreach(exec
         logger_test
         dropout_test
         pooling_test
+
+        nth_test
         marian_test
         #bn_test
         tensor_test

@@ -11,3 +11,5 @@ void Split(const std::string& line,
 
 std::string Join(const std::vector<std::string>& words,
                  const std::string del = " ");
+
+void Poison(float* data, size_t length); // not thread-safe

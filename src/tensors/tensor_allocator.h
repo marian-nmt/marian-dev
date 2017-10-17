@@ -4,6 +4,7 @@
 #include <set>
 
 #include "common/definitions.h"
+#include "common/utils.h"
 #include "tensors/tensor.h"
 #include "tensors/allocator.h"
 #include "tensors/device_cpu.h"
@@ -83,6 +84,7 @@ public:
     if(!t || t->shape() != shape) {
       int size = shape.elements();
       auto mem = allocator_->template alloc<float>(size);
+      Poison(reinterpret_cast<float*>(mem->data()), size);
       t = Tensor(new DeviceTensor(mem, shape, allocator_->getDevice()));
     }
   }

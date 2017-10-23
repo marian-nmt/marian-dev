@@ -13,6 +13,9 @@ DeviceCPU::DeviceCPU(size_t device, size_t alignment)
 void DeviceCPU::reserve(size_t size) {
   size = align(size);
   UTIL_THROW_IF2(size < size_, "New size must be larger than old size");
+  if (size == size_) {
+    return;
+  }
 
   uint8_t* data = static_cast<uint8_t*>(_mm_malloc(size, alignment_));
   std::copy(data_.get(), data_.get() + size_, data);

@@ -7,10 +7,6 @@
 #include "kernels/tensor_operators.h"
 #include "kernels/thrust_functions.h"
 
-#ifdef CUDNN
-
-#include <cudnn.h>
-
 #define CUDA_CALL(x)                                  \
   do {                                                \
     if((x) != cudaSuccess) {                          \
@@ -18,6 +14,9 @@
       return EXIT_FAILURE;                            \
     }                                                 \
   } while(0)
+
+#ifdef CUDNN
+#include <cudnn.h>
 
 #define CUDNN_CALL(x)                 \
   do {                                \
@@ -940,6 +939,18 @@ protected:
   cudnnTensorDescriptor_t adjDesc_;
   int kernelH_;
   int kernelW_;
+};
+
+#else
+
+class ConvolutionOp : public NaryNodeOp {
+  public:
+    ConvolutionOp(const std::vector<Expr>& nodes, int, int, int, int)
+      : NaryNodeOp(nodes)
+    {
+      UTIL_THROW2("To use Pooling and Convolution you need to recompile with CUDNN.");
+    }
+  const std::string type() { return "layer_convolution"; }
 };
 
 #endif

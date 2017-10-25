@@ -253,7 +253,6 @@ Expr shift(Expr a, Shape shift) {
 //  return Expression<LexicalProbNodeOp>(logits, att, eps, lf);
 //}
 
-#ifdef CUDNN
 
 Expr convolution(Expr x,
   Expr filters, Expr bias,
@@ -291,7 +290,6 @@ Expr max_pooling(
       strideHeight, strideWidth,
       PoolingOp::Mode::MAX_POOLING);
 }
-#endif
 // clang-format on
 
 Expr max_pooling2(Expr x, Expr mask, int width, bool isEven) {

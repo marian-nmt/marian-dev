@@ -64,9 +64,7 @@ public:
   Ptr<History> search(Ptr<ExpressionGraph> graph,
                       Ptr<data::CorpusBatch> batch,
                       size_t sentenceId = 0) {
-    auto history = New<History>(
-        sentenceId,
-        options_->has("normalize") ? options_->get<bool>("normalize") : false);
+    auto history = New<History>(sentenceId, options_->get<float>("normalize"));
     Beam beam(1, New<Hypothesis>());
     bool first = true;
     bool final = false;

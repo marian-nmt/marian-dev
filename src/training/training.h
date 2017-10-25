@@ -24,12 +24,12 @@ public:
     dataset->prepare();
 
     Ptr<BatchStats> stats;
-    if(options_->get<bool>("dynamic-batching")) {
-      LOG(info)->info("[batching] Collecting statistics for dynamic batching");
+    if(options_->get<bool>("mini-batch-fit")) {
+      LOG(info, "[batching] Collecting statistics for batch fitting");
       // @TODO, better fake batch with vocabulary
       auto model = New<ModelWrapper>(options_);
       THREAD_GUARD(stats = model->collectStats());
-      LOG(info)->info("[batching] Done");
+      LOG(info, "[batching] Done");
     }
 
     auto trainState = New<TrainingState>(options_->get<float>("learn-rate"));
@@ -37,8 +37,7 @@ public:
 
     if((options_->has("valid-sets") || options_->has("valid-script-path"))
        && options_->get<size_t>("valid-freq") > 0) {
-      for(auto validator :
-          Validators(dataset->getVocabs(), options_))
+      for(auto validator : Validators(dataset->getVocabs(), options_))
         scheduler->addValidator(validator);
     }
 

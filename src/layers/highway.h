@@ -31,7 +31,7 @@ class Motorway {
         input = (g * rr) + ((1 - g) * input);
       }
       return input;
-    }
+  }
 
   protected:
     std::string name_;

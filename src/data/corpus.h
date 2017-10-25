@@ -73,7 +73,7 @@ public:
   std::vector<Ptr<SubBatch>> split(size_t n) {
     std::vector<Ptr<SubBatch>> splits;
 
-    size_t subSize = std::ceil(size_ / (float) n);
+    size_t subSize = std::ceil(size_ / (float)n);
     size_t totSize = size_;
 
     int pos = 0;
@@ -242,18 +242,17 @@ public:
     std::string line;
     size_t c = 0;
 
-    LOG(data)->info("Loading word alignment from {}", fname);
+    LOG(info, "[data] Loading word alignment from {}", fname);
 
     while(std::getline((std::istream&)aStream, line)) {
       data_.emplace_back();
       std::vector<std::string> atok = split(line, " -");
-      ;
       for(size_t i = 0; i < atok.size(); i += 2)
         data_.back().emplace_back(std::stoi(atok[i]), std::stoi(atok[i + 1]));
       c++;
     }
 
-    LOG(data)->info("Done");
+    LOG(info, "[data] Done");
   }
 
   std::vector<std::string> split(const std::string& input,
@@ -384,6 +383,5 @@ private:
     wordAlignment_ = New<WordAlignment>(path);
   }
 };
-
 }
 }

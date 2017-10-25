@@ -1,5 +1,8 @@
 #pragma once
+#include <cstdlib>
+
 #include "3rd_party/exception.h"
+#include "common/logging.h"
 
 #define CUDA_CHECK(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
@@ -9,8 +12,8 @@ inline void gpuAssert(cudaError_t code,
                       int line,
                       bool abort = true) {
   if(code != cudaSuccess) {
-    UTIL_THROW2("GPUassert: " << cudaGetErrorString(code) << " " << file << " "
-                              << line);
+    LOG(critical, "Error: {} - {}:{}", cudaGetErrorString(code), file, line);
+    std::abort();
   }
 }
 

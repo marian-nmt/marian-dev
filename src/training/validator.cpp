@@ -8,10 +8,8 @@ std::vector<Ptr<Validator<data::Corpus>>> Validators(
 
   auto validMetrics = config->get<std::vector<std::string>>("valid-metrics");
 
-  std::vector<std::string> ceMetrics = {
-    "cross-entropy", "ce-mean", "ce-sum",
-    "ce-mean-words", "perplexity"
-  };
+  std::vector<std::string> ceMetrics
+      = {"cross-entropy", "ce-mean", "ce-sum", "ce-mean-words", "perplexity"};
 
   for(auto metric : validMetrics) {
     if(std::find(ceMetrics.begin(), ceMetrics.end(), metric)
@@ -28,11 +26,10 @@ std::vector<Ptr<Validator<data::Corpus>>> Validators(
       auto validator = New<TranslationValidator>(vocabs, config);
       validators.push_back(validator);
     } else {
-      LOG(valid)->info("Unrecognized validation metric: {}", metric);
+      LOG_VALID(warn, "Unrecognized validation metric: {}", metric);
     }
   }
 
   return validators;
 }
-
 }

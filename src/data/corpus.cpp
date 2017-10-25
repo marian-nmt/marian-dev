@@ -54,26 +54,50 @@ Corpus::Corpus(Ptr<Config> options, bool translate)
     std::vector<Vocab> vocabs;
 
     if(vocabPaths.empty()) {
+      if(maxVocabs.size() < paths_.size())
+        maxVocabs.resize(paths_.size(), 0);
+
       // Create vocabs if not provided
       for(size_t i = 0; i < paths_.size(); ++i) {
         Ptr<Vocab> vocab = New<Vocab>();
-        vocab->loadOrCreate("", paths_[i], maxVocabs[i]);
+        int vocSize = vocab->loadOrCreate("", paths_[i], maxVocabs[i]);
+        LOG(info, "[data] Setting vocabulary size for input {} to {}", i, vocSize);
+        options_->get()["dim-vocabs"][i] = vocSize;
+
         options_->get()["vocabs"].push_back(paths_[i] + ".yml");
         vocabs_.emplace_back(vocab);
       }
     } else {
       // Load all vocabs
+      if(maxVocabs.size() < vocabPaths.size())
+        maxVocabs.resize(paths_.size(), 0);
+
       for(size_t i = 0; i < vocabPaths.size(); ++i) {
         Ptr<Vocab> vocab = New<Vocab>();
-        vocab->loadOrCreate(vocabPaths[i], paths_[i], maxVocabs[i]);
+        int vocSize
+            = vocab->loadOrCreate(vocabPaths[i], paths_[i], maxVocabs[i]);
+        LOG(info, "[data] Setting vocabulary size for input {} to {}", i, vocSize);
+        options_->get()["dim-vocabs"][i] = vocSize;
+
         vocabs_.emplace_back(vocab);
       }
     }
-  } else {
-    // Load all vocabs except the last one, which should be a target vocab
-    for(size_t i = 0; i < vocabPaths.size() - 1; ++i) {
+  } else {  // i.e., if translating
+    UTIL_THROW_IF2(vocabPaths.empty(),
+                   "translating but vocabularies are missing!");
+
+    if(maxVocabs.size() < vocabPaths.size())
+      maxVocabs.resize(paths_.size(), 0);
+
+    for(size_t i = 0; i + 1 < vocabPaths.size(); ++i) {
       Ptr<Vocab> vocab = New<Vocab>();
-      vocab->loadOrCreate(vocabPaths[i], paths_[i], maxVocabs[i]);
+      int vocSize = vocab->loadOrCreate(vocabPaths[i], paths_[i], maxVocabs[i]);
+      LOG(info,
+          "[data] Setting vocabulary size for input {} to {}",
+          i,
+          vocSize);
+      options_->get()["dim-vocabs"][i] = vocSize;
+
       vocabs_.emplace_back(vocab);
     }
   }
@@ -155,7 +179,7 @@ void Corpus::reset() {
 }
 
 void Corpus::shuffleFiles(const std::vector<std::string>& paths) {
-  LOG(data)->info("Shuffling files");
+  LOG(info, "[data] Shuffling files");
 
   std::vector<std::vector<std::string>> corpus;
 
@@ -201,8 +225,7 @@ void Corpus::shuffleFiles(const std::vector<std::string>& paths) {
     files_.emplace_back(new InputFileStream(*tempFiles_[i]));
   }
 
-  LOG(data)->info("Done");
+  LOG(info, "[data] Done");
 }
-
 }
 }

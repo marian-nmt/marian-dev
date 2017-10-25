@@ -11,13 +11,23 @@
 
 #include <cudnn.h>
 
-#define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
-      printf("Error at %s:%d\n",__FILE__,__LINE__);     \
-      return EXIT_FAILURE;}} while(0)
+#define CUDA_CALL(x)                                  \
+  do {                                                \
+    if((x) != cudaSuccess) {                          \
+      printf("Error at %s:%d\n", __FILE__, __LINE__); \
+      return EXIT_FAILURE;                            \
+    }                                                 \
+  } while(0)
 
-#define CUDNN_CALL(x) do { if((x) != CUDNN_STATUS_SUCCESS) { \
-      printf("Error (%s) at %s:%d\n",cudnnGetErrorString(x),__FILE__,__LINE__);     \
-      }} while(0)
+#define CUDNN_CALL(x)                 \
+  do {                                \
+    if((x) != CUDNN_STATUS_SUCCESS) { \
+      printf("Error (%s) at %s:%d\n", \
+             cudnnGetErrorString(x),  \
+             __FILE__,                \
+             __LINE__);               \
+    }                                 \
+  } while(0)
 
 #endif
 
@@ -31,11 +41,13 @@ private:
 
 public:
   template <typename... Args>
-  DotNodeOp(Expr a, Expr b,
-            bool transA, bool transB, float scalar,
-            Args... args)
-      : NaryNodeOp({a, b}, keywords::shape = newShape(a, b, transA, transB), args...),
-        transA_(transA), transB_(transB), scalar_(scalar) {}
+  DotNodeOp(
+      Expr a, Expr b, bool transA, bool transB, float scalar, Args... args)
+      : NaryNodeOp(
+            {a, b}, keywords::shape = newShape(a, b, transA, transB), args...),
+        transA_(transA),
+        transB_(transB),
+        scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b, bool transA, bool transB) {
     auto shapeA = a->shape();
@@ -78,27 +90,83 @@ public:
     // to sum gradients from different graph parts
 
     if(!transA_ && transB_)
-      return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(0)->grad(), adj_, child(1)->val(), false, false, 1.0, scalar_)),
-              NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(1)->grad(), adj_, child(0)->val(), true, false, 1.0, scalar_))};
+      return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                              ->getCublasHandle(),
+                          child(0)->grad(),
+                          adj_,
+                          child(1)->val(),
+                          false,
+                          false,
+                          1.0,
+                          scalar_)),
+              NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                              ->getCublasHandle(),
+                          child(1)->grad(),
+                          adj_,
+                          child(0)->val(),
+                          true,
+                          false,
+                          1.0,
+                          scalar_))};
 
     if(transA_ && !transB_)
-      return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(0)->grad(), child(1)->val(), adj_, false, true, 1.0, scalar_)),
-              NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(1)->grad(), child(0)->val(), adj_, false, false, 1.0, scalar_))};
+      return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                              ->getCublasHandle(),
+                          child(0)->grad(),
+                          child(1)->val(),
+                          adj_,
+                          false,
+                          true,
+                          1.0,
+                          scalar_)),
+              NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                              ->getCublasHandle(),
+                          child(1)->grad(),
+                          child(0)->val(),
+                          adj_,
+                          false,
+                          false,
+                          1.0,
+                          scalar_))};
 
     if(transA_ && transB_)
-      return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(0)->grad(), child(1)->val(), adj_, true, true, 1.0, scalar_)),
-              NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(1)->grad(), adj_, child(0)->val(), true, true, 1.0, scalar_))};
+      return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                              ->getCublasHandle(),
+                          child(0)->grad(),
+                          child(1)->val(),
+                          adj_,
+                          true,
+                          true,
+                          1.0,
+                          scalar_)),
+              NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                              ->getCublasHandle(),
+                          child(1)->grad(),
+                          adj_,
+                          child(0)->val(),
+                          true,
+                          true,
+                          1.0,
+                          scalar_))};
 
-    return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                        child(0)->grad(), adj_, child(1)->val(), false, true, 1.0, scalar_)),
-            NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                        child(1)->grad(), child(0)->val(), adj_, true, false, 1.0, scalar_))};
+    return {NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                            ->getCublasHandle(),
+                        child(0)->grad(),
+                        adj_,
+                        child(1)->val(),
+                        false,
+                        true,
+                        1.0,
+                        scalar_)),
+            NodeOp(Prod(std::static_pointer_cast<BackendGPU>(getBackend())
+                            ->getCublasHandle(),
+                        child(1)->grad(),
+                        child(0)->val(),
+                        adj_,
+                        true,
+                        false,
+                        1.0,
+                        scalar_))};
   }
 
   const std::string type() { return "•"; }
@@ -114,11 +182,13 @@ private:
 
 public:
   template <typename... Args>
-  DotBatchedNodeOp(Expr a, Expr b,
-            bool transA, bool transB, float scalar,
-            Args... args)
-      : NaryNodeOp({a, b}, keywords::shape = newShape(a, b, transA, transB), args...),
-        transA_(transA), transB_(transB), scalar_(scalar) {}
+  DotBatchedNodeOp(
+      Expr a, Expr b, bool transA, bool transB, float scalar, Args... args)
+      : NaryNodeOp(
+            {a, b}, keywords::shape = newShape(a, b, transA, transB), args...),
+        transA_(transA),
+        transB_(transB),
+        scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b, bool transA, bool transB) {
     auto shapeA = a->shape();
@@ -161,27 +231,87 @@ public:
     // to sum gradients from different graph parts
 
     if(!transA_ && transB_)
-      return {NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(0)->grad(), adj_, child(1)->val(), false, false, 1.0, scalar_)),
-              NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(1)->grad(), adj_, child(0)->val(), true, false, 1.0, scalar_))};
+      return {
+          NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                                 ->getCublasHandle(),
+                             child(0)->grad(),
+                             adj_,
+                             child(1)->val(),
+                             false,
+                             false,
+                             1.0,
+                             scalar_)),
+          NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                                 ->getCublasHandle(),
+                             child(1)->grad(),
+                             adj_,
+                             child(0)->val(),
+                             true,
+                             false,
+                             1.0,
+                             scalar_))};
 
     if(transA_ && !transB_)
-      return {NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(0)->grad(), child(1)->val(), adj_, false, true, 1.0, scalar_)),
-              NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(1)->grad(), child(0)->val(), adj_, false, false, 1.0, scalar_))};
+      return {
+          NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                                 ->getCublasHandle(),
+                             child(0)->grad(),
+                             child(1)->val(),
+                             adj_,
+                             false,
+                             true,
+                             1.0,
+                             scalar_)),
+          NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                                 ->getCublasHandle(),
+                             child(1)->grad(),
+                             child(0)->val(),
+                             adj_,
+                             false,
+                             false,
+                             1.0,
+                             scalar_))};
 
     if(transA_ && transB_)
-      return {NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(0)->grad(), child(1)->val(), adj_, true, true, 1.0, scalar_)),
-              NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                          child(1)->grad(), adj_, child(0)->val(), true, true, 1.0, scalar_))};
+      return {
+          NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                                 ->getCublasHandle(),
+                             child(0)->grad(),
+                             child(1)->val(),
+                             adj_,
+                             true,
+                             true,
+                             1.0,
+                             scalar_)),
+          NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                                 ->getCublasHandle(),
+                             child(1)->grad(),
+                             adj_,
+                             child(0)->val(),
+                             true,
+                             true,
+                             1.0,
+                             scalar_))};
 
-    return {NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                              child(0)->grad(), adj_, child(1)->val(), false, true, 1.0, scalar_)),
-            NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-                               child(1)->grad(), child(0)->val(), adj_, true, false, 1.0, scalar_))};
+    return {
+        NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                               ->getCublasHandle(),
+                           child(0)->grad(),
+                           adj_,
+                           child(1)->val(),
+                           false,
+                           true,
+                           1.0,
+                           scalar_)),
+        NodeOp(ProdBatched(std::static_pointer_cast<BackendGPU>(getBackend())
+                               ->getCublasHandle(),
+                           child(1)->grad(),
+                           child(0)->val(),
+                           adj_,
+                           true,
+                           false,
+                           1.0,
+                           scalar_))};
   }
 
   const std::string type() { return "•"; }
@@ -319,8 +449,8 @@ struct DivNodeOp : public ElementBinaryNodeOp {
   const std::string type() { return "÷"; }
 };
 
-//struct PowNodeOp : public ElementBinaryNodeOp {
-//public:
+// struct PowNodeOp : public ElementBinaryNodeOp {
+// public:
 //  template <typename... Args>
 //  PowNodeOp(Args... args) : ElementBinaryNodeOp(args...) {}
 //
@@ -341,7 +471,6 @@ struct DivNodeOp : public ElementBinaryNodeOp {
 //
 //  const std::string type() { return "pow"; }
 //};
-
 
 // Cross-entropy node. It computes -b*log(softmax(a)), summing rowwise.
 struct CrossEntropyNodeOp : public NaryNodeOp {
@@ -390,7 +519,7 @@ struct ConcatenateNodeOp : public NaryNodeOp {
     std::vector<Tensor> concatenees;
     for(int i = 0; i < children_.size(); ++i)
       concatenees.push_back(child(i)->val());
-    ConcatN(val_, concatenees, ax_);
+    Concatenate(val_, concatenees, ax_);
   }
 
   void backward() {
@@ -401,7 +530,7 @@ struct ConcatenateNodeOp : public NaryNodeOp {
           ->set_zero_adjoint();  // @TODO: this is a hotfix, do this properly
       deconcatenees.push_back(childPtr->grad());
     }
-    SplitN(deconcatenees, adj_, ax_);
+    Deconcatenate(deconcatenees, adj_, ax_);
   }
 
   virtual size_t hash() {
@@ -413,7 +542,7 @@ struct ConcatenateNodeOp : public NaryNodeOp {
   virtual bool equal(Expr node) {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ConcatenateNodeOp> cnode = std::dynamic_pointer_cast<ConcatenateNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ConcatenateNodeOp>(node);
     if(!cnode)
       return false;
     if(ax_ != cnode->ax_)
@@ -422,6 +551,64 @@ struct ConcatenateNodeOp : public NaryNodeOp {
   }
 
   const std::string type() { return "concat"; }
+
+  int ax_;
+};
+
+struct Concatenate2NodeOp : public NaryNodeOp {
+  template <typename... Args>
+  Concatenate2NodeOp(const std::vector<Expr>& nodes, Args... args)
+      : NaryNodeOp(nodes,
+                   keywords::shape
+                   = newShape(nodes, keywords::Get(keywords::axis, 0, args...)),
+                   args...),
+        ax_(keywords::Get(keywords::axis, 0, args...)) {}
+
+  Shape newShape(const std::vector<Expr>& nodes, int ax) {
+    Shape shape = nodes.back()->shape();
+    shape.set(ax, 0);
+    for(auto child : nodes)
+      shape.set(ax, shape[ax] + child->shape()[ax]);
+    // std::cerr << ax << " : " << shape[0] << " " << shape[1] << std::endl;
+    return shape;
+  }
+
+  void forward() {
+    std::vector<Tensor> concatenees;
+    for(int i = 0; i < children_.size(); ++i)
+      concatenees.push_back(child(i)->val());
+    ConcatN(graph()->allocator(), val_, concatenees, ax_);
+  }
+
+  void backward() {
+    std::vector<Tensor> deconcatenees;
+    for(int i = 0; i < children_.size(); ++i) {
+      auto childPtr = child(i);
+      childPtr
+          ->set_zero_adjoint();  // @TODO: this is a hotfix, do this properly
+      deconcatenees.push_back(childPtr->grad());
+    }
+    SplitN(graph()->allocator(), deconcatenees, adj_, ax_);
+  }
+
+  virtual size_t hash() {
+    size_t seed = NaryNodeOp::hash();
+    boost::hash_combine(seed, ax_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<Concatenate2NodeOp>(node);
+    if(!cnode)
+      return false;
+    if(ax_ != cnode->ax_)
+      return false;
+    return true;
+  }
+
+  const std::string type() { return "concat2"; }
 
   int ax_;
 };
@@ -524,20 +711,17 @@ struct AffineNodeOp : public NaryNodeOp {
 };
 
 struct LayerNormalizationOp : public NaryNodeOp {
-private:
-  float eps_;
-
 public:
-  LayerNormalizationOp(const std::vector<Expr>& nodes, float eps=1e-9)
-  : NaryNodeOp(nodes), eps_(eps) {}
+  LayerNormalizationOp(const std::vector<Expr>& nodes, float eps = 1e-9)
+      : NaryNodeOp(nodes), eps_(eps) {}
 
   NodeOps forwardOps() {
-    return {NodeOp(LayerNormalization(
-        val_,
-        child(0)->val(),
-        child(1)->val(),
-        (children_.size() == 3) ? child(2)->val() : nullptr,
-        eps_))};
+    return {NodeOp(
+        LayerNormalization(val_,
+                           child(0)->val(),
+                           child(1)->val(),
+                           (children_.size() == 3) ? child(2)->val() : nullptr,
+                           eps_))};
   }
 
   NodeOps backwardOps() {
@@ -554,29 +738,27 @@ public:
   }
 
   const std::string type() { return "layer_normalization"; }
+
+private:
+  float eps_;
 };
 
 struct HighwayNodeOp : public NaryNodeOp {
-  HighwayNodeOp(const std::vector<Expr>& nodes)
-  : NaryNodeOp(nodes) {}
+  HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes) {}
 
   NodeOps forwardOps() {
     return {NodeOp(HighwayForward(
-        val_,
-        child(0)->val(),
-        child(1)->val(),
-        child(2)->val()))};
+        val_, child(0)->val(), child(1)->val(), child(2)->val()))};
   }
 
   NodeOps backwardOps() {
-    return {NodeOp(HighwayBackward(
-        child(0)->grad(),
-        child(1)->grad(),
-        child(2)->grad(),
-        child(0)->val(),
-        child(1)->val(),
-        child(2)->val(),
-        adj_))};
+    return {NodeOp(HighwayBackward(child(0)->grad(),
+                                   child(1)->grad(),
+                                   child(2)->grad(),
+                                   child(0)->val(),
+                                   child(1)->val(),
+                                   child(2)->val(),
+                                   adj_))};
   }
 
   const std::string type() { return "highway"; }
@@ -617,147 +799,148 @@ class ConvolutionOp : public NaryNodeOp {
       ));
 #endif
 
-      // std::cerr << "data: " << nodes[0]->shape() << std::endl;
-      // std::cerr << "filter: " << nodes[1]->shape() << std::endl;
-      // std::cerr << "bias: " << nodes[2]->shape() << std::endl;
 
-      int layerIn = nodes[1]->shape()[0];
-      int layerOut  = nodes[1]->shape()[1];
-      kernelH_ = nodes[1]->shape()[2];
-      kernelW_ = nodes[1]->shape()[3];
-      CUDNN_CALL( cudnnCreateFilterDescriptor(&kernelDesc_) );
-      CUDNN_CALL( cudnnSetFilter4dDescriptor( kernelDesc_,
-                    CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW,
-                    layerOut, layerIn, kernelH_, kernelW_));
+    int layerIn = nodes[1]->shape()[0];
+    int layerOut = nodes[1]->shape()[1];
+    kernelH_ = nodes[1]->shape()[2];
+    kernelW_ = nodes[1]->shape()[3];
+    CUDNN_CALL(cudnnCreateFilterDescriptor(&kernelDesc_));
+    CUDNN_CALL(cudnnSetFilter4dDescriptor(kernelDesc_,
+                                          CUDNN_DATA_FLOAT,
+                                          CUDNN_TENSOR_NCHW,
+                                          layerOut,
+                                          layerIn,
+                                          kernelH_,
+                                          kernelW_));
 
-      CUDNN_CALL( cudnnCreateTensorDescriptor(&biasDesc_) );
-      CUDNN_CALL( cudnnSetTensor4dDescriptor( biasDesc_,
-                    CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
-                    nodes[2]->shape()[0], nodes[2]->shape()[1],
-                    nodes[2]->shape()[2], nodes[2]->shape()[3]
-      ));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&biasDesc_));
+    CUDNN_CALL(cudnnSetTensor4dDescriptor(biasDesc_,
+                                          CUDNN_TENSOR_NCHW,
+                                          CUDNN_DATA_FLOAT,
+                                          nodes[2]->shape()[0],
+                                          nodes[2]->shape()[1],
+                                          nodes[2]->shape()[2],
+                                          nodes[2]->shape()[3]));
 
-      CUDNN_CALL( cudnnGetConvolution2dForwardOutputDim(
-        convDesc_,
-        xDesc_,
-        kernelDesc_,
-        shape_.begin(), shape_.begin() + 1, shape_.begin() + 2, shape_.begin() + 3
-      ));
+    CUDNN_CALL(cudnnGetConvolution2dForwardOutputDim(convDesc_,
+                                                     xDesc_,
+                                                     kernelDesc_,
+                                                     shape_.begin(),
+                                                     shape_.begin() + 1,
+                                                     shape_.begin() + 2,
+                                                     shape_.begin() + 3));
 
-      CUDNN_CALL( cudnnCreateTensorDescriptor(&yDesc_) );
-      CUDNN_CALL( cudnnSetTensor4dDescriptor(yDesc_,
-                                CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
-                                shape_[0], shape_[1],
-                                shape_[2], shape_[3])
-      );
-      CUDNN_CALL( cudnnCreateTensorDescriptor(&adjDesc_) );
-      CUDNN_CALL( cudnnSetTensor4dDescriptor(adjDesc_,
-                                CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
-                                shape_[0], shape_[1],
-                                shape_[2], shape_[3])
-      );
-    }
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&yDesc_));
+    CUDNN_CALL(cudnnSetTensor4dDescriptor(yDesc_,
+                                          CUDNN_TENSOR_NCHW,
+                                          CUDNN_DATA_FLOAT,
+                                          shape_[0],
+                                          shape_[1],
+                                          shape_[2],
+                                          shape_[3]));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&adjDesc_));
+    CUDNN_CALL(cudnnSetTensor4dDescriptor(adjDesc_,
+                                          CUDNN_TENSOR_NCHW,
+                                          CUDNN_DATA_FLOAT,
+                                          shape_[0],
+                                          shape_[1],
+                                          shape_[2],
+                                          shape_[3]));
+  }
 
+  NodeOps forwardOps() {
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+    cudaSetDevice(val_->getDevice());
 
-    NodeOps forwardOps() {
-      const float alpha = 1.0f;
-      const float beta = 0.0f;
-      cudaSetDevice(val_->getDevice());
+    return {NodeOp(CUDNN_CALL(cudnnConvolutionForward(
+                cudnnHandle_,
+                &alpha,
+                xDesc_,
+                children_[0]->val()->data(),
+                kernelDesc_,
+                children_[1]->val()->data(),
+                convDesc_,
+                CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+                nullptr,
+                0,
+                &beta,
+                yDesc_,
+                val_->data()))),
+            NodeOp(CUDNN_CALL(cudnnAddTensor(cudnnHandle_,
+                                             &alpha,
+                                             biasDesc_,
+                                             children_[2]->val()->data(),
+                                             &alpha,
+                                             yDesc_,
+                                             val_->data())))};
+  }
 
-      return {
-        NodeOp(CUDNN_CALL(cudnnConvolutionForward(cudnnHandle_,
-                            &alpha,
-                            xDesc_, children_[0]->val()->data(),
-                            kernelDesc_,
-                            children_[1]->val()->data(),
-                            convDesc_,
-                            CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
-                            nullptr, 0,
-                            &beta,
-                            yDesc_, val_->data()))
-        ),
-        NodeOp(CUDNN_CALL(cudnnAddTensor(cudnnHandle_,
-                            &alpha,
-                            biasDesc_, children_[2]->val()->data(),
-                            &alpha,
-                            yDesc_, val_->data()))
-        )
-      };
-    }
+  NodeOps backwardOps() {
+    // const float alpha = 1.0f / std::sqrt(float(kernelH_ * kernelW_));
+    const float alpha = 1.0f;
+    const float beta = 1.0f;
+    // std::cerr << "BACKWARD" << std::endl;
+    return {NodeOp(CUDNN_CALL(
+                cudnnConvolutionBackwardData(cudnnHandle_,
+                                             &alpha,
+                                             kernelDesc_,
+                                             children_[1]->val()->data(),
+                                             adjDesc_,
+                                             adj_->data(),
+                                             convDesc_,
+                                             CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
+                                             nullptr,
+                                             0,
+                                             &beta,
+                                             xDesc_,
+                                             children_[0]->grad()->data()))),
+            NodeOp(CUDNN_CALL(cudnnConvolutionBackwardFilter(
+                cudnnHandle_,
+                &alpha,
+                xDesc_,
+                children_[0]->val()->data(),
+                adjDesc_,
+                adj_->data(),
+                convDesc_,
+                CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
+                nullptr,
+                0,
+                &beta,
+                kernelDesc_,
+                children_[1]->grad()->data()))),
+            NodeOp(CUDNN_CALL(
+                cudnnConvolutionBackwardBias(cudnnHandle_,
+                                             &alpha,
+                                             adjDesc_,
+                                             adj_->data(),
+                                             &beta,
+                                             biasDesc_,
+                                             children_[2]->grad()->data())))};
+  }
 
-    NodeOps backwardOps() {
-      // const float alpha = 1.0f / std::sqrt(float(kernelH_ * kernelW_));
-      const float alpha = 1.0f;
-      const float beta = 1.0f;
-      // std::cerr << "BACKWARD" << std::endl;
-      return {
-        NodeOp(CUDNN_CALL(
-          cudnnConvolutionBackwardData(cudnnHandle_,
-            &alpha,
-            kernelDesc_,
-            children_[1]->val()->data(),
-            adjDesc_,
-            adj_->data(),
-            convDesc_,
-            CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
-            nullptr, 0,
-            &beta,
-            xDesc_,
-            children_[0]->grad()->data())
-        )),
-        NodeOp(CUDNN_CALL(
-          cudnnConvolutionBackwardFilter(cudnnHandle_,
-            &alpha,
-            xDesc_,
-            children_[0]->val()->data(),
-            adjDesc_,
-            adj_->data(),
-            convDesc_,
-            CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
-            nullptr, 0,
-            &beta,
-            kernelDesc_,
-            children_[1]->grad()->data())
-        )),
-        NodeOp(CUDNN_CALL(
-          cudnnConvolutionBackwardBias(cudnnHandle_,
-            &alpha,
-            adjDesc_,
-            adj_->data(),
-            &beta,
-            biasDesc_,
-            children_[2]->grad()->data())
-        ))
-      };
-    }
+  const std::string type() { return "layer_convolution"; }
 
+  virtual ~ConvolutionOp() {
+    cudnnDestroyConvolutionDescriptor(convDesc_);
+    cudnnDestroyFilterDescriptor(kernelDesc_);
+    cudnnDestroy(cudnnHandle_);
+    cudnnDestroyTensorDescriptor(xDesc_);
+    cudnnDestroyTensorDescriptor(yDesc_);
+    cudnnDestroyTensorDescriptor(biasDesc_);
+  }
 
-    const std::string type() {
-      return "layer_convolution";
-    }
-
-    virtual ~ConvolutionOp() {
-      cudnnDestroyConvolutionDescriptor(convDesc_);
-      cudnnDestroyFilterDescriptor(kernelDesc_);
-      cudnnDestroy(cudnnHandle_);
-      cudnnDestroyTensorDescriptor(xDesc_);
-      cudnnDestroyTensorDescriptor(yDesc_);
-      cudnnDestroyTensorDescriptor(biasDesc_);
-    }
-
-  protected:
-    cudnnHandle_t cudnnHandle_;
-    cudnnConvolutionDescriptor_t convDesc_;
-    cudnnFilterDescriptor_t kernelDesc_;
-    cudnnTensorDescriptor_t biasDesc_;
-    cudnnTensorDescriptor_t xDesc_;
-    cudnnTensorDescriptor_t yDesc_;
-    cudnnTensorDescriptor_t adjDesc_;
-    int kernelH_;
-    int kernelW_;
-
+protected:
+  cudnnHandle_t cudnnHandle_;
+  cudnnConvolutionDescriptor_t convDesc_;
+  cudnnFilterDescriptor_t kernelDesc_;
+  cudnnTensorDescriptor_t biasDesc_;
+  cudnnTensorDescriptor_t xDesc_;
+  cudnnTensorDescriptor_t yDesc_;
+  cudnnTensorDescriptor_t adjDesc_;
+  int kernelH_;
+  int kernelW_;
 };
 
 #endif
-
 }

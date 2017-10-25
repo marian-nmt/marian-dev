@@ -11,13 +11,23 @@
 
 #include <cudnn.h>
 
-#define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
-      printf("Error at %s:%d\n",__FILE__,__LINE__);     \
-      return EXIT_FAILURE;}} while(0)
+#define CUDA_CALL(x)                                  \
+  do {                                                \
+    if((x) != cudaSuccess) {                          \
+      printf("Error at %s:%d\n", __FILE__, __LINE__); \
+      return EXIT_FAILURE;                            \
+    }                                                 \
+  } while(0)
 
-#define CUDNN_CALL(x) do { if((x) != CUDNN_STATUS_SUCCESS) { \
-      printf("Error (%s) at %s:%d\n",cudnnGetErrorString(x),__FILE__,__LINE__);     \
-      }} while(0)
+#define CUDNN_CALL(x)                 \
+  do {                                \
+    if((x) != CUDNN_STATUS_SUCCESS) { \
+      printf("Error (%s) at %s:%d\n", \
+             cudnnGetErrorString(x),  \
+             __FILE__,                \
+             __LINE__);               \
+    }                                 \
+  } while(0)
 
 #endif
 
@@ -84,11 +94,11 @@ struct LogitNodeOp : public UnaryNodeOp {
   const std::string type() { return "logit"; }
 };
 
-//struct Scalar2PowNodeOp : public UnaryNodeOp {
-//private:
+// struct Scalar2PowNodeOp : public UnaryNodeOp {
+// private:
 //  float scalar_{0};
 //
-//public:
+// public:
 //  template <typename... Args>
 //  Scalar2PowNodeOp(Expr a, float scalar, Args... args)
 //      : UnaryNodeOp(a, args...), scalar_{scalar} {}
@@ -98,17 +108,18 @@ struct LogitNodeOp : public UnaryNodeOp {
 //  }
 //
 //  NodeOps backwardOps() {
-//    return {NodeOp(Add(scalar_ * Pow(_1, scalar_ - 1.f) * _2, child(0)->grad(), child(0)->val(), adj_))};
+//    return {NodeOp(Add(scalar_ * Pow(_1, scalar_ - 1.f) * _2,
+//    child(0)->grad(), child(0)->val(), adj_))};
 //  }
 //
 //  const std::string type() { return "scalar_pow2"; }
 //};
 //
-//struct Scalar1PowNodeOp : public UnaryNodeOp {
-//private:
+// struct Scalar1PowNodeOp : public UnaryNodeOp {
+// private:
 //  float scalar_{0};
 //
-//public:
+// public:
 //  template <typename... Args>
 //  Scalar1PowNodeOp(float scalar, Expr a, Args... args)
 //      : UnaryNodeOp(a, args...), scalar_{scalar} {}
@@ -118,7 +129,8 @@ struct LogitNodeOp : public UnaryNodeOp {
 //  }
 //
 //  NodeOps backwardOps() {
-//    return {NodeOp(Add(Pow(scalar_, _1) * log(scalar_) * _2, child(0)->grad(), child(0)->val(), adj_))};
+//    return {NodeOp(Add(Pow(scalar_, _1) * log(scalar_) * _2, child(0)->grad(),
+//    child(0)->val(), adj_))};
 //  }
 //
 //  const std::string type() { return "scalar_pow1"; }
@@ -214,6 +226,22 @@ struct ReLUNodeOp : public UnaryNodeOp {
   }
 
   const std::string type() { return "ReLU"; }
+};
+
+struct SwishNodeOp : public UnaryNodeOp {
+  template <typename... Args>
+  SwishNodeOp(Args... args) : UnaryNodeOp(args...) {}
+
+  NodeOps forwardOps() {
+    return {NodeOp(Element(_1 = _2 * Sigma(_2), val_, child(0)->val()))};
+  }
+
+  NodeOps backwardOps() {
+    return {NodeOp(
+        Add(_1 * (_3 + Sigma(_2) * (1.f - _3)), child(0)->grad(), adj_, child(0)->val(), val_))};
+  }
+
+  const std::string type() { return "swish"; }
 };
 
 struct SoftmaxNodeOp : public NaryNodeOp {
@@ -608,14 +636,17 @@ struct ColsNodeOp : public UnaryNodeOp {
 struct SelectNodeOp : public UnaryNodeOp {
   SelectNodeOp(Expr a, int axis, const std::vector<size_t>& indeces)
       : UnaryNodeOp(a, keywords::shape = newShape(a, axis, indeces)),
-        indeces_(indeces), axis_(axis) {}
+        indeces_(indeces),
+        axis_(axis) {}
 
   NodeOps forwardOps() {
-    return {NodeOp(Select(val_, child(0)->val(), axis_, indeces_))};
+    return {NodeOp(
+        Select(graph()->allocator(), val_, child(0)->val(), axis_, indeces_))};
   }
 
   NodeOps backwardOps() {
-    return {NodeOp(Insert(child(0)->grad(), adj_, axis_, indeces_))};
+    return {NodeOp(
+        Insert(graph()->allocator(), child(0)->grad(), adj_, axis_, indeces_))};
   }
 
   Shape newShape(Expr a, int axis, const std::vector<size_t>& indeces) {
@@ -657,51 +688,18 @@ struct SelectNodeOp : public UnaryNodeOp {
 };
 
 struct TransposeNodeOp : public UnaryNodeOp {
-  template <typename... Args>
-  TransposeNodeOp(Expr a, Args... args)
-      : UnaryNodeOp(a, keywords::shape = newShape(a), args...) {}
-
-  NodeOps forwardOps() {
-    return {NodeOp(Transpose(
-        std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-        val_,
-        child(0)->val()))};
-  }
-
-  NodeOps backwardOps() {
-    return {NodeOp(Transpose(
-        std::static_pointer_cast<BackendGPU>(getBackend())->getCublasHandle(),
-        child(0)->grad(),
-        adj_))};
-  }
-
-  template <class... Args>
-  Shape newShape(Expr a) {
-    Shape shape = a->shape();
-    int temp = shape[0];
-    shape.set(0, shape[1]);
-    shape.set(1, temp);
-    return shape;
-  }
-
-  const std::string type() { return "transpose"; }
-
-  const std::string color() { return "orange"; }
-};
-
-struct Transpose4DNodeOp : public UnaryNodeOp {
   Shape permute_;
 
-  Transpose4DNodeOp(Expr a, Shape permute)
+  TransposeNodeOp(Expr a, Shape permute)
       : UnaryNodeOp(a, keywords::shape = newShape(a, permute)),
         permute_{permute} {}
 
   NodeOps forwardOps() {
-    return { NodeOp(Transpose4D(val_, child(0)->val(), permute_)) };
+    return {NodeOp(Transpose4D(val_, child(0)->val(), permute_))};
   }
 
   NodeOps backwardOps() {
-    return { NodeOp(Transpose4D(child(0)->grad(), adj_, permute_)) };
+    return {NodeOp(Transpose4D(child(0)->grad(), adj_, permute_))};
   }
 
   template <class... Args>
@@ -727,7 +725,8 @@ struct Transpose4DNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<Transpose4DNodeOp> cnode = std::dynamic_pointer_cast<Transpose4DNodeOp>(node);
+    Ptr<TransposeNodeOp> cnode
+        = std::dynamic_pointer_cast<TransposeNodeOp>(node);
     if(!cnode)
       return false;
     if(permute_ != cnode->permute_)
@@ -735,7 +734,7 @@ struct Transpose4DNodeOp : public UnaryNodeOp {
     return true;
   }
 
-  const std::string type() { return "transpose4d"; }
+  const std::string type() { return "transpose"; }
 
   const std::string color() { return "orange"; }
 };
@@ -914,7 +913,7 @@ struct ShiftNodeOp : public UnaryNodeOp {
   Shape shift_;
 };
 
-//struct LexicalProbNodeOp : public NaryNodeOp {
+// struct LexicalProbNodeOp : public NaryNodeOp {
 //  template <typename... Args>
 //  LexicalProbNodeOp(
 //      Expr logits, Expr att, float eps, Ptr<sparse::CSR> lf, Args... args)
@@ -1069,13 +1068,51 @@ class PoolingOp : public UnaryNodeOp {
     }
 
 
-  protected:
-    cudnnHandle_t cudnnHandle_;
-    cudnnPoolingDescriptor_t poolingDesc_;
-    cudnnTensorDescriptor_t xDesc_;
-    cudnnTensorDescriptor_t yDesc_;
-    cudnnTensorDescriptor_t adjDesc_;
+    return {NodeOp(CUDNN_CALL(cudnnPoolingForward(cudnnHandle_,
+                                                  poolingDesc_,
+                                                  &alpha,
+                                                  xDesc_,
+                                                  children_[0]->val()->data(),
+                                                  &beta,
+                                                  yDesc_,
+                                                  val_->data())))};
+  }
 
+  NodeOps backwardOps() {
+    cudaSetDevice(adj_->getDevice());
+    const float alpha = 1.0f;
+    const float beta = 1.0f;
+    return {
+        NodeOp(CUDNN_CALL(cudnnPoolingBackward(cudnnHandle_,
+                                               poolingDesc_,
+                                               &alpha,
+                                               yDesc_,
+                                               val_->data(),
+                                               adjDesc_,
+                                               adj_->data(),
+                                               xDesc_,
+                                               children_[0]->val()->data(),
+                                               &beta,
+                                               xDesc_,
+                                               children_[0]->grad()->data())))};
+  }
+
+  const std::string type() { return "layer_max_pooling"; }
+
+  virtual ~PoolingOp() {
+    CUDNN_CALL(cudnnDestroy(cudnnHandle_));
+    CUDNN_CALL(cudnnDestroyPoolingDescriptor(poolingDesc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(xDesc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(yDesc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(adjDesc_));
+  }
+
+protected:
+  cudnnHandle_t cudnnHandle_;
+  cudnnPoolingDescriptor_t poolingDesc_;
+  cudnnTensorDescriptor_t xDesc_;
+  cudnnTensorDescriptor_t yDesc_;
+  cudnnTensorDescriptor_t adjDesc_;
 };
 
 #endif

@@ -44,7 +44,6 @@ public:
       : CellInput(options),
         encState_(encState),
         contextDropped_(encState->getContext()) {
-
     int dimDecState = options_->get<int>("dimState");
     dropout_ = options_->get<float>("dropout", 0);
     layerNorm_ = options_->get<bool>("layer-normalization", false);
@@ -91,8 +90,10 @@ public:
                                        {1, dimEncState},
                                        keywords::init = inits::zeros);
 
-        mappedContext_ = layer_norm(
-            affine(contextDropped_, Ua_, ba_), Wc_att_lns_, Wc_att_lnb_);
+        mappedContext_ = layer_norm(affine(contextDropped_, Ua_, ba_),
+                                    Wc_att_lns_,
+                                    Wc_att_lnb_,
+                                    NEMATUS_LN_EPS);
       } else {
         gammaContext_ = graph->param(prefix + "_att_gamma1",
                                      {1, dimEncState},
@@ -124,14 +125,14 @@ public:
     int srcWords = contextDropped_->shape()[2];
     int dimBeam = recState->shape()[3];
 
-
     if(dropMaskState_)
       recState = dropout(recState, keywords::mask = dropMaskState_);
 
     auto mappedState = dot(recState, Wa_);
     if(layerNorm_)
       if(nematusNorm_)
-        mappedState = layer_norm(mappedState, W_comb_att_lns_, W_comb_att_lnb_);
+        mappedState = layer_norm(
+            mappedState, W_comb_att_lns_, W_comb_att_lnb_, NEMATUS_LN_EPS);
       else
         mappedState = layer_norm(mappedState, gammaState_);
 
@@ -142,7 +143,8 @@ public:
                      {dimBatch, 1, srcWords, dimBeam});
     // <- horrible
 
-    auto alignedSource = weighted_average(encState_->getAttended(), e, axis = 2);
+    auto alignedSource
+        = weighted_average(encState_->getAttended(), e, axis = 2);
 
     contexts_.push_back(alignedSource);
     alignments_.push_back(e);
@@ -151,9 +153,7 @@ public:
 
   std::vector<Expr>& getContexts() { return contexts_; }
 
-  Expr getContext() {
-    return concatenate(contexts_, keywords::axis=2);
-  }
+  Expr getContext() { return concatenate(contexts_, keywords::axis = 2); }
 
   std::vector<Expr>& getAlignments() { return alignments_; }
 
@@ -166,7 +166,5 @@ public:
 };
 
 using Attention = GlobalAttention;
-
 }
-
 }

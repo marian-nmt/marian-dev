@@ -6,9 +6,9 @@
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "models/model_task.h"
+#include "rescorer/score_collector.h"
 #include "training/scheduler.h"
 #include "training/validator.h"
-#include "rescorer/score_collector.h"
 
 namespace marian {
 
@@ -19,8 +19,7 @@ private:
   Ptr<models::ModelBase> builder_;
 
 public:
-  Rescorer(Ptr<Options> options) :
-    builder_(models::from_options(options)) {}
+  Rescorer(Ptr<Options> options) : builder_(models::from_options(options)) {}
 
   void load(Ptr<ExpressionGraph> graph, const std::string& modelFile) {
     builder_->load(graph, modelFile);
@@ -55,7 +54,7 @@ public:
     try {
       modelOptions->loadModelParameters(modelFile);
     } catch(std::runtime_error& e) {
-      LOG(warn)->warn("No model settings found in model file");
+      LOG(warn, "No model settings found in model file");
     }
 
     Ptr<Options> temp = New<Options>();
@@ -68,7 +67,7 @@ public:
   }
 
   void run() {
-    LOG(info)->info("Scoring");
+    LOG(info, "Scoring");
 
     auto batchGenerator = New<BatchGenerator<Corpus>>(corpus_, options_);
     batchGenerator->prepare(false);
@@ -115,10 +114,9 @@ public:
       else
         cost = -sumCost / sumSamples;
 
-      LOG(info)->info("Reporting {} summary", summary);
+      LOG(info, "Reporting {} summary", summary);
       std::cout << cost << std::endl;
     }
   }
 };
-
 }

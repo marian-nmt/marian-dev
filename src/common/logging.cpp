@@ -28,42 +28,34 @@ std::shared_ptr<spdlog::logger> stderrLogger(
   return logger;
 }
 
-bool
-set_loglevel(spdlog::logger& logger, std::string const level) {
-  if (level == "trace")
+bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
+  if(level == "trace")
     logger.set_level(spdlog::level::trace);
-  else if (level == "debug")
+  else if(level == "debug")
     logger.set_level(spdlog::level::debug);
-  else if (level == "info")
+  else if(level == "info")
     logger.set_level(spdlog::level::info);
-  else if (level == "err" or level == "error")
+  else if(level == "warn")
+    logger.set_level(spdlog::level::warn);
+  else if(level == "err" or level == "error")
     logger.set_level(spdlog::level::err);
-  else if (level == "critical")
+  else if(level == "critical")
     logger.set_level(spdlog::level::critical);
-  else if (level == "off")
+  else if(level == "off")
     logger.set_level(spdlog::level::off);
   else {
     logger.warn("Unknown log level '{}' for logger '{}'",
-                level.c_str(), logger.name().c_str());
+                level.c_str(),
+                logger.name().c_str());
     return false;
   }
   return true;
 }
 
-Logger checkedLog(std::string logger) {
-  Logger ret = spdlog::get(logger);
-  if(ret) {
-    return ret;
-  }
-  else {
-    auto null_sink = std::make_shared<spdlog::sinks::null_sink_st>();
-    return std::make_shared<spdlog::logger>("null_logger", null_sink);
-  }
-}
-
 void createLoggers(const marian::Config* options) {
   std::vector<std::string> generalLogs;
   std::vector<std::string> validLogs;
+
   if(options && options->has("log")) {
     generalLogs.push_back(options->get<std::string>("log"));
     validLogs.push_back(options->get<std::string>("log"));
@@ -73,26 +65,16 @@ void createLoggers(const marian::Config* options) {
     validLogs.push_back(options->get<std::string>("valid-log"));
   }
 
-  bool quiet = options->get<bool>("quiet");
-  Logger info{stderrLogger("info", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
-  Logger warn{stderrLogger("warn", "[%Y-%m-%d %T] [warn] %v", generalLogs, quiet)};
-  Logger config{stderrLogger("config", "[%Y-%m-%d %T] [config] %v", generalLogs, quiet)};
-  Logger memory{stderrLogger("memory", "[%Y-%m-%d %T] [memory] %v", generalLogs, quiet)};
-  Logger data{stderrLogger("data", "[%Y-%m-%d %T] [data] %v", generalLogs, quiet)};
-  Logger valid{stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
-  Logger translate{stderrLogger("translate", "%v", generalLogs, quiet)};
-  Logger devnull{stderrLogger("devnull", "%v", {}, quiet)};
-  devnull->set_level(spdlog::level::off);
+  bool quiet = options && options->get<bool>("quiet");
+  Logger general{
+      stderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
+  Logger valid{
+      stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
 
   if(options && options->has("log-level")) {
     std::string loglevel = options->get<std::string>("log-level");
-    if (!set_loglevel(*info, loglevel)) return;
-    set_loglevel(*warn, loglevel);
-    set_loglevel(*config, loglevel);
-    set_loglevel(*memory, loglevel);
-    set_loglevel(*data, loglevel);
-    set_loglevel(*valid, loglevel);
-    set_loglevel(*translate, loglevel);
+    if(!setLoggingLevel(*general, loglevel))
+      return;
+    setLoggingLevel(*valid, loglevel);
   }
-
 }

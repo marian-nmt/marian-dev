@@ -10,6 +10,9 @@ Expr plus(const std::vector<Expr>&);
 Expr logit(Expr a);
 Expr logit(const std::vector<Expr>&);
 
+Expr swish(Expr a);
+Expr swish(const std::vector<Expr>&);
+
 Expr tanh(const std::vector<Expr>&);
 
 template <typename... Args>
@@ -45,17 +48,26 @@ Expr operator/(Expr a, Expr b);
 Expr operator/(float a, Expr b);
 Expr operator/(Expr a, float b);
 
-//Expr pow(Expr a, Expr b);
-//Expr pow(float a, Expr b);
-//Expr pow(Expr a, float b);
+// Expr pow(Expr a, Expr b);
+// Expr pow(float a, Expr b);
+// Expr pow(Expr a, float b);
 
-Expr dot(Expr a, Expr b, bool transA=false, bool transB=false, float scalar=1.f);
-Expr bdot(Expr a, Expr b, bool transA=false, bool transB=false, float scalar=1.f);
+Expr dot(Expr a,
+         Expr b,
+         bool transA = false,
+         bool transB = false,
+         float scalar = 1.f);
+Expr bdot(Expr a,
+          Expr b,
+          bool transA = false,
+          bool transB = false,
+          float scalar = 1.f);
 
 Expr transpose(Expr a);
 Expr transpose(Expr a, Shape permute);
 
 Expr concatenate(const std::vector<Expr>& concats, keywords::axis_k ax = 0);
+Expr concatenate2(const std::vector<Expr>& concats, keywords::axis_k ax = 0);
 
 Expr reshape(Expr a, Shape shape);
 
@@ -89,7 +101,7 @@ Expr step(Expr a, size_t step);
 Expr sqrt(Expr a, float eps = 0.f);
 Expr square(Expr a);
 
-Expr layer_norm(Expr x, Expr gamma, Expr beta = nullptr, float eps=1e-9);
+Expr layer_norm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
 Expr highway(Expr y, Expr x, Expr t);
 
@@ -113,18 +125,21 @@ Expr convolution(Expr x,
         int padHeight, int padWidth,
         int strideHeight, int strideWidth);
 
-Expr avg_pooling(
-        Expr x,
-        int height, int width,
-        int padHeight, int padWidth,
-        int strideHeight, int strideWidth);
+Expr avg_pooling(Expr x,
+                 int height,
+                 int width,
+                 int padHeight,
+                 int padWidth,
+                 int strideHeight,
+                 int strideWidth);
 
-Expr max_pooling(
-        Expr x,
-        int height, int width,
-        int padHeight, int padWidth,
-        int strideHeight, int strideWidth);
+Expr max_pooling(Expr x,
+                 int height,
+                 int width,
+                 int padHeight,
+                 int padWidth,
+                 int strideHeight,
+                 int strideWidth);
 
 Expr max_pooling2(Expr x, Expr mask, int width, bool isEven=false);
-
 }

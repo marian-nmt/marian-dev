@@ -76,7 +76,6 @@ class Convolution : public ConvPoolingBase {
 
     Expr operator()(Expr x) {
       auto graph = x->graph();
-
       int layerIn = x->shape()[1];
 
       auto kernel = graph->param(name_,
@@ -89,8 +88,8 @@ class Convolution : public ConvPoolingBase {
                                 paddingHeight_, paddingWidth_,
                                 strideHeight_, strideWidth_);
 
-      return output;
-    }
+    return output;
+  }
 
     Expr operator()(Expr x, Expr mask) {
       return this->operator()(x, mask, 1);
@@ -240,7 +239,6 @@ class MultiConvolution : public ConvPoolingBase {
 
         auto output = convolution(input, kernel, bias, padWidth, 0, 1, 1);
         auto relued = relu(output);
-        // auto output2 = max_pooling(relued, 5, 1, 0, 0, 5, 1);
         auto output2 = max_pooling2(relued, maskNCHW, 5, kernelWidth % 2 == 0);
 
         outputs.push_back(output2);
@@ -251,11 +249,9 @@ class MultiConvolution : public ConvPoolingBase {
       return concated;
     }
 
-  private:
-    std::string name_;
-    int size_;
 
   protected:
+    int size_;
     int kernelHeight_;
     std::vector<int> kernelWidths_;
     std::vector<int> kernelNums_;

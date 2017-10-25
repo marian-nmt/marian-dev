@@ -1,8 +1,8 @@
 #pragma once
 
-#include <boost/program_options.hpp>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <boost/program_options.hpp>
 
 #include "3rd_party/yaml-cpp/yaml.h"
 #include "common/config_parser.h"
@@ -56,7 +56,7 @@ public:
         try {
           loadModelParameters(get<std::string>("model"));
         } catch(std::runtime_error& e) {
-          LOG(info)->info("No model settings found in model file");
+          LOG(info, "[config] No model settings found in model file");
         }
       }
     } else {
@@ -64,14 +64,13 @@ public:
       try {
         loadModelParameters(model);
       } catch(std::runtime_error& e) {
-        LOG(info)->info("No model settings found in model file");
+        LOG(info, "[config] No model settings found in model file");
       }
     }
     log();
   }
 
-  Config(const Config& other)
-      : config_(YAML::Clone(other.config_)) {}
+  Config(const Config& other) : config_(YAML::Clone(other.config_)) {}
 
   bool has(const std::string& key) const;
 
@@ -107,12 +106,16 @@ public:
     return out;
   }
 
-  static void AddYamlToNpz(const YAML::Node&, const std::string&, const std::string&);
+  static void AddYamlToNpz(const YAML::Node&,
+                           const std::string&,
+                           const std::string&);
 
 private:
   YAML::Node config_;
 
-  static void GetYamlFromNpz(YAML::Node&, const std::string&, const std::string&);
+  static void GetYamlFromNpz(YAML::Node&,
+                             const std::string&,
+                             const std::string&);
 
   void override(const YAML::Node& params);
 

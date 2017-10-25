@@ -28,6 +28,10 @@ Expr exp(Expr a) {
   return Expression<ExpNodeOp>(a);
 };
 
+Expr swish(Expr a) {
+  return Expression<SwishNodeOp>(a);
+}
+
 Expr operator-(Expr a) {
   return Expression<NegNodeOp>(a);
 };
@@ -88,25 +92,29 @@ Expr operator/(Expr a, float b) {
   return Expression<ScalarMultNodeOp>(a, 1.f / b);
 }
 
-//Expr pow(float a, Expr b) {
+// Expr pow(float a, Expr b) {
 //  return Expression<Scalar1PowNodeOp>(a, b);
 //
 //}
 //
-//Expr pow(Expr a, float b) {
+// Expr pow(Expr a, float b) {
 //  return Expression<Scalar2PowNodeOp>(a, b);
 //
 //}
 //
-//Expr pow(Expr a, Expr b) {
+// Expr pow(Expr a, Expr b) {
 //  return Expression<PowNodeOp>(a, b);
 //}
-
 
 /*********************************************************/
 
 Expr concatenate(const std::vector<Expr>& concats, keywords::axis_k ax) {
+  //return Expression<Concatenate2NodeOp>(concats, ax);
   return Expression<ConcatenateNodeOp>(concats, ax);
+}
+
+Expr concatenate2(const std::vector<Expr>& concats, keywords::axis_k ax) {
+  return Expression<Concatenate2NodeOp>(concats, ax);
 }
 
 Expr reshape(Expr a, Shape shape) {
@@ -157,11 +165,11 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scalar) {
 }
 
 Expr transpose(Expr a) {
-  return Expression<TransposeNodeOp>(a);
+  return Expression<TransposeNodeOp>(a, Shape({1, 0, 2, 3}));
 }
 
 Expr transpose(Expr a, Shape permute) {
-  return Expression<Transpose4DNodeOp>(a, permute);
+  return Expression<TransposeNodeOp>(a, permute);
 }
 
 Expr step(Expr a, size_t step) {
@@ -175,7 +183,7 @@ Expr cross_entropy(Expr a, Expr b) {
   sOut.set(1, 1);
   return reshape(Expression<CrossEntropyNodeOp>(reshape(a, sTemp), b), sOut);
 
-  //return Expression<CrossEntropyNodeOp>(a, b);
+  // return Expression<CrossEntropyNodeOp>(a, b);
 }
 
 Expr affine(Expr a, Expr b, Expr c) {
@@ -184,6 +192,10 @@ Expr affine(Expr a, Expr b, Expr c) {
 }
 
 Expr plus(const std::vector<Expr>&) {
+  UTIL_THROW2("Not implemented");
+}
+
+Expr swish(const std::vector<Expr>&) {
   UTIL_THROW2("Not implemented");
 }
 
@@ -207,7 +219,10 @@ Expr square(Expr a) {
   return Expression<SquareNodeOp>(a);
 }
 
-Expr layer_norm(Expr x, Expr gamma, Expr beta, float eps) {
+Expr layer_norm(Expr x,
+                Expr gamma,
+                Expr beta /*= nullptr*/,
+                float eps /*= 1e-9*/) {
   std::vector<Expr> nodes = {x, gamma};
   if(beta)
     nodes.push_back(beta);
@@ -234,7 +249,7 @@ Expr shift(Expr a, Shape shift) {
   return Expression<ShiftNodeOp>(a, shift);
 }
 
-//Expr lexical_bias(Expr logits, Expr att, float eps, Ptr<sparse::CSR> lf) {
+// Expr lexical_bias(Expr logits, Expr att, float eps, Ptr<sparse::CSR> lf) {
 //  return Expression<LexicalProbNodeOp>(logits, att, eps, lf);
 //}
 
@@ -250,6 +265,7 @@ Expr convolution(Expr x,
       padHeight, padWidth, strideHeight, strideWidth);
 }
 
+// clang-format off
 Expr avg_pooling(
     Expr x,
     int height, int width,
@@ -275,11 +291,10 @@ Expr max_pooling(
       strideHeight, strideWidth,
       PoolingOp::Mode::MAX_POOLING);
 }
-
 #endif
+// clang-format on
 
-Expr max_pooling2(Expr x, Expr mask, int width, bool isEven)
-{
+Expr max_pooling2(Expr x, Expr mask, int width, bool isEven) {
   return Expression<MaxPooling2Op>(x, mask, width, isEven);
 }
 

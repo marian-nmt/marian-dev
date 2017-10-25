@@ -14,7 +14,7 @@ void OutputCollector::Write(long sourceId,
                             bool nbest) {
   boost::mutex::scoped_lock lock(mutex_);
   if(sourceId == nextId_) {
-    LOG(translate)->info("Best translation {} : {}", sourceId, best1);
+    LOG(info, "Best translation {} : {}", sourceId, best1);
 
     if(nbest)
       ((std::ostream&)*outStrm_) << bestn << std::endl;
@@ -31,7 +31,7 @@ void OutputCollector::Write(long sourceId,
       if(currId == nextId_) {
         // 1st element in the map is the next
         const auto& currOutput = iter->second;
-        LOG(translate)->info("Best translation {} : {}", currId, currOutput.first);
+        LOG(info, "Best translation {} : {}", currId, currOutput.first);
         if(nbest)
           ((std::ostream&)*outStrm_) << currOutput.second << std::endl;
         else
@@ -57,17 +57,16 @@ void OutputCollector::Write(long sourceId,
   }
 }
 
-
 StringCollector::StringCollector() : maxId_(-1) {}
 
 void StringCollector::add(long sourceId,
                           const std::string& best1,
                           const std::string& bestn) {
   boost::mutex::scoped_lock lock(mutex_);
-  LOG(translate)->info("Best translation {} : {}", sourceId, best1);
+  LOG(info, "Best translation {} : {}", sourceId, best1);
   outputs_[sourceId] = std::make_pair(best1, bestn);
-  if (maxId_ <= sourceId)
-      maxId_ = sourceId;
+  if(maxId_ <= sourceId)
+    maxId_ = sourceId;
 }
 
 std::vector<std::string> StringCollector::collect(bool nbest) {
@@ -76,5 +75,4 @@ std::vector<std::string> StringCollector::collect(bool nbest) {
     outputs.emplace_back(nbest ? outputs_[id].second : outputs_[id].first);
   return outputs;
 }
-
 }

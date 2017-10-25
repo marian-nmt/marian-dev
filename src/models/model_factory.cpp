@@ -1,10 +1,10 @@
 #include "models/model_factory.h"
 
+#include "hardatt.h"
 #include "models/amun.h"
 #include "models/model_base.h"
 #include "models/nematus.h"
 #include "models/s2s.h"
-#include "hardatt.h"
 #include "models/transformer.h"
 
 #include "examples/mnist/model.h"
@@ -28,7 +28,6 @@ Ptr<EncoderBase> EncoderFactory::construct() {
 }
 
 Ptr<DecoderBase> DecoderFactory::construct() {
-
   if(options_->get<std::string>("type") == "s2s")
     return New<DecoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
@@ -52,58 +51,62 @@ Ptr<EncoderDecoder> EncoderDecoderFactory::construct() {
   if(!encdec)
     encdec = New<EncoderDecoder>(options_);
 
-  for(auto& ef: encoders_)
+  for(auto& ef : encoders_)
     encdec->push_back(ef(options_).construct());
 
-  for(auto& df: decoders_)
+  for(auto& df : decoders_)
     encdec->push_back(df(options_).construct());
 
   return encdec;
 }
 
-Ptr<ModelBase> by_type(std::string type,
-                       Ptr<Options> options) {
-
+Ptr<ModelBase> by_type(std::string type, Ptr<Options> options) {
   if(type == "s2s" || type == "amun" || type == "nematus") {
-    return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "s2s")("original-type", type))
-        .push_back(models::decoder()("type", "s2s")("original-type", type))
-        .construct();
+    return models::encoder_decoder()(options)             //
+        ("original-type", type)                           //
+            .push_back(models::encoder()("type", "s2s"))  //
+            .push_back(models::decoder()("type", "s2s"))  //
+            .construct();
   }
 
   if(type == "transformer") {
-    return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "transformer"))
-        .push_back(models::decoder()("type", "transformer"))
+    return models::encoder_decoder()(options)                 //
+        .push_back(models::encoder()("type", "transformer"))  //
+        .push_back(models::decoder()("type", "transformer"))  //
         .construct();
   }
 
   if(type == "transformer_s2s") {
-    return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "transformer"))
-        .push_back(models::decoder()("type", "s2s"))
-        .construct();
+    return models::encoder_decoder()(options)                     //
+        ("original-type", type)                                   //
+            .push_back(models::encoder()("type", "transformer"))  //
+            .push_back(models::decoder()("type", "s2s"))          //
+            .construct();
   }
 
   if(type == "lm") {
     auto idx = options->has("index") ? options->get<size_t>("index") : 0;
-    return models::encoder_decoder()(options)("type", "s2s")
-        .push_back(models::decoder()("index", idx))
-        .construct();
+    return models::encoder_decoder()(options)            //
+        ("type", "s2s")                                  //
+        ("original-type", type)                          //
+            .push_back(models::decoder()("index", idx))  //
+            .construct();
   }
 
   if(type == "hard-att") {
-    return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "s2s"))
-        .push_back(models::decoder()("type", "hard-att"))
-        .construct();
+    return models::encoder_decoder()(options)                  //
+        ("original-type", type)                                //
+            .push_back(models::encoder()("type", "s2s"))       //
+            .push_back(models::decoder()("type", "hard-att"))  //
+            .construct();
   }
 
   if(type == "hard-soft-att") {
-    return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "s2s"))
-        .push_back(models::decoder()("type", "hard-soft-att"))
-        .construct();
+    return models::encoder_decoder()(options)                       //
+        ("original-type", type)                                     //
+            .push_back(models::encoder()("type", "s2s"))            //
+            .push_back(models::decoder()("type", "hard-soft-att"))  //
+            .construct();
   }
 
   if(type == "char_conv") {
@@ -115,7 +118,9 @@ Ptr<ModelBase> by_type(std::string type,
 
   if(type == "multi-s2s") {
     size_t numEncoders = 2;
-    auto ms2sFactory = models::encoder_decoder()(options)("type", "s2s");
+    auto ms2sFactory = models::encoder_decoder()(options)  //
+        ("type", "s2s")                                    //
+        ("original-type", type);
 
     for(size_t i = 0; i < numEncoders; ++i) {
       auto prefix = "encoder" + std::to_string(i + 1);
@@ -129,18 +134,44 @@ Ptr<ModelBase> by_type(std::string type,
 
   if(type == "multi-hard-att") {
     size_t numEncoders = 2;
-    auto ms2sFactory = models::encoder_decoder()(options)("type", "s2s");
+    auto ms2sFactory = models::encoder_decoder()(options)  //
+        ("type", "s2s")                                    //
+        ("original-type", type);
 
     for(size_t i = 0; i < numEncoders; ++i) {
       auto prefix = "encoder" + std::to_string(i + 1);
       ms2sFactory.push_back(models::encoder()("prefix", prefix)("index", i));
     }
 
-    ms2sFactory.push_back(models::decoder()
-                          ("index", numEncoders)
+    ms2sFactory.push_back(models::decoder()       //
+                          ("index", numEncoders)  //
                           ("type", "hard-soft-att"));
 
     return ms2sFactory.construct();
+  }
+
+  if(type == "multi-transformer") {
+    size_t numEncoders = 2;
+    auto mtransFactory = models::encoder_decoder()(options)  //
+        ("type", "transformer")                              //
+        ("original-type", type);
+
+    for(size_t i = 0; i < numEncoders; ++i) {
+      auto prefix = "encoder" + std::to_string(i + 1);
+      mtransFactory.push_back(models::encoder()("prefix", prefix)("index", i));
+    }
+    mtransFactory.push_back(models::decoder()("index", numEncoders));
+
+    return mtransFactory.construct();
+  }
+
+  if(type == "lm-transformer") {
+    auto idx = options->has("index") ? options->get<size_t>("index") : 0;
+    return models::encoder_decoder()(options)            //
+        ("type", "transformer")                          //
+        ("original-type", type)                          //
+            .push_back(models::decoder()("index", idx))  //
+            .construct();
   }
 
   // @TODO: examples should be compiled optionally
@@ -166,6 +197,5 @@ Ptr<ModelBase> from_config(Ptr<Config> config) {
   options->merge(config);
   return from_options(options);
 }
-
 }
 }

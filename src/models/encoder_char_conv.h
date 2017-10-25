@@ -7,6 +7,35 @@
 
 namespace marian {
 
+/***********************************************************
+ *
+Implementation of a model from ''Fully Character-Level Neural
+Machine Translation without Explicit Segmentation'' by Lee et all.
+
+There are four parameters you can set:
+ * conv-char-widths (type: std::vector<int>)
+   The widths of convolutions. The encoder consists of many
+   convolution layers which can have different widths.
+   The default value is "{1, 2, 3, 4, 5, 6, 7, 8}". That means
+   there are 8 convolution layers with widths from 1 to 8.
+
+ * conv-char-filters (type: std::vector<int>)
+   The numbers of convolution fitlers of each width.
+   The default value is "{200, 200, 250, 250, 300, 300, 300, 300}".
+   That means there are 200 filters of width 1, 200 filters of width 2
+   and so on.
+
+  * conv-char-stride (type: int)
+    The stride of pooling. The default value is 5
+
+  * conv-char-highway (type: int)
+    Number of highway layers before RNN. The default value is 4.
+
+The default values are proposed by the authors of the paper.
+
+***********************************************************/
+
+
 class EncoderCharConv : public EncoderBase {
 public:
   EncoderCharConv(Ptr<Options> options)
@@ -71,7 +100,7 @@ public:
     if (options_->has("conv-char-filters")) {
       convWidths = options_->get<std::vector<int>>("conv-char-filters");
     } else {
-      convWidths = {300, 300, 250, 250, 200, 200, 200, 200};
+      convWidths = {200, 200, 250, 250, 300, 300, 300, 300};
     }
 
     int stride;

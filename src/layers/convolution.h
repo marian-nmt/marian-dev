@@ -206,12 +206,14 @@ class MultiConvolution : public ConvPoolingBase {
       const std::string& name,
       int kernelHeight,
       std::vector<int> kernelWidths,
-      std::vector<int> kernelNums)
+      std::vector<int> kernelNums,
+      int stride)
       : ConvPoolingBase(name),
         size_(kernelNums.size()),
         kernelHeight_(kernelHeight),
         kernelWidths_(kernelWidths),
-        kernelNums_(kernelNums)
+        kernelNums_(kernelNums),
+        stride_(stride)
     {
     }
 
@@ -239,7 +241,7 @@ class MultiConvolution : public ConvPoolingBase {
 
         auto output = convolution(input, kernel, bias, padWidth, 0, 1, 1);
         auto relued = relu(output);
-        auto output2 = max_pooling2(relued, maskNCHW, 5, kernelWidth % 2 == 0);
+        auto output2 = max_pooling2(relued, maskNCHW, stride_, kernelWidth % 2 == 0);
 
         outputs.push_back(output2);
       }
@@ -255,6 +257,7 @@ class MultiConvolution : public ConvPoolingBase {
     int kernelHeight_;
     std::vector<int> kernelWidths_;
     std::vector<int> kernelNums_;
+    int stride_;
 };
 
 }

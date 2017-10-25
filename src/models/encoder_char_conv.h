@@ -60,13 +60,37 @@ public:
       batchEmbeddings = dropout(batchEmbeddings, mask = dropMask);
     }
 
-    std::vector<int> convWidths({1, 2, 3, 4, 5, 6, 7, 8});
-    std::vector<int> convSizes({200, 200, 200, 200, 200, 200, 200, 200});
-    int stride = 5;
+    std::vector<int> convWidths;
+    if (options_->has("conv-char-widths")) {
+      convWidths = options_->get<std::vector<int>>("conv-char-widths");
+    } else {
+      convWidths = {1, 2, 3, 4, 5, 6, 7, 8};
+    }
 
-    auto convolution = MultiConvolution("multi_conv", dimEmb, convWidths, convSizes)
+    std::vector<int> convSizes;
+    if (options_->has("conv-char-filters")) {
+      convWidths = options_->get<std::vector<int>>("conv-char-filters");
+    } else {
+      convWidths = {300, 300, 250, 250, 200, 200, 200, 200};
+    }
+
+    int stride;
+    if (options_->has("conv-char-stride")) {
+      stride = options_->get<int>("conv-char-stride");
+    } else {
+      stride = 5;
+    }
+
+    int highwayNum;
+    if (options_->has("conv-char-highway")) {
+      highwayNum = options_->get<int>("conv-char-highway");
+    } else {
+      highwayNum = 5;
+    }
+
+    auto convolution = MultiConvolution("multi_conv", dimEmb, convWidths, convSizes, stride)
       (batchEmbeddings, batchMask);
-    auto highway = Highway("highway", 4)(convolution);
+    auto highway = Highway("highway", highwayNum)(convolution);
     Expr stridedMask = getStridedMask(graph, batch, stride);
     Expr context = applyEncoderRNN(graph, highway, stridedMask);
 

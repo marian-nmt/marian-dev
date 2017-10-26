@@ -98,9 +98,9 @@ public:
 
     std::vector<int> convSizes;
     if (options_->has("conv-char-filters")) {
-      convWidths = options_->get<std::vector<int>>("conv-char-filters");
+      convSizes = options_->get<std::vector<int>>("conv-char-filters");
     } else {
-      convWidths = {200, 200, 250, 250, 300, 300, 300, 300};
+      convSizes = {200, 200, 250, 250, 300, 300, 300, 300};
     }
 
     int stride;
@@ -114,7 +114,7 @@ public:
     if (options_->has("conv-char-highway")) {
       highwayNum = options_->get<int>("conv-char-highway");
     } else {
-      highwayNum = 5;
+      highwayNum = 4;
     }
 
     auto convolution = MultiConvolution("multi_conv", dimEmb, convWidths, convSizes, stride)

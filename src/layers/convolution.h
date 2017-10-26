@@ -247,7 +247,6 @@ class MultiConvolution : public ConvPoolingBase {
       }
 
       auto concated = concatenate(outputs, 1);
-
       return concated;
     }
 

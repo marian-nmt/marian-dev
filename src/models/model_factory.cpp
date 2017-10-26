@@ -19,7 +19,7 @@ Ptr<EncoderBase> EncoderFactory::construct() {
     return New<EncoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return New<EncoderTransformer>(options_);
-  if(options_->get<std::string>("type") == "char_conv")
+  if(options_->get<std::string>("type") == "char-conv")
     return New<EncoderCharConv>(options_);
 
   UTIL_THROW2("Unknown encoder type");
@@ -107,9 +107,10 @@ Ptr<ModelBase> by_type(std::string type, Ptr<Options> options) {
             .construct();
   }
 
-  if(type == "char_conv") {
+  if(type == "char-conv") {
+    std::cerr << "Ceating conv-char model" << std::endl;
     return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "char_conv"))
+        .push_back(models::encoder()("type", "char-conv"))
         .push_back(models::decoder()("type", "s2s"))
         .construct();
   }

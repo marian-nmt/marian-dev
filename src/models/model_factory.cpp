@@ -6,6 +6,7 @@
 #include "models/nematus.h"
 #include "models/s2s.h"
 #include "models/transformer.h"
+#include "models/sutskever.h"
 
 #include "examples/mnist/model.h"
 #ifdef CUDNN
@@ -20,6 +21,8 @@ Ptr<EncoderBase> EncoderFactory::construct() {
     return New<EncoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return New<EncoderTransformer>(options_);
+  if(options_->get<std::string>("type") == "sutskever")
+    return New<EncoderSutskever>(options_);
 
   ABORT("Unknown encoder type");
 }
@@ -29,6 +32,9 @@ Ptr<DecoderBase> DecoderFactory::construct() {
     return New<DecoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return New<DecoderTransformer>(options_);
+  if(options_->get<std::string>("type") == "sutskever")
+    return New<DecoderSutskever>(options_);
+
   if(options_->get<std::string>("type") == "hard-att")
     return New<DecoderHardAtt>(options_);
   if(options_->get<std::string>("type") == "hard-soft-att")
@@ -70,6 +76,13 @@ Ptr<ModelBase> by_type(std::string type, Ptr<Options> options) {
     return models::encoder_decoder()(options)                 //
         .push_back(models::encoder()("type", "transformer"))  //
         .push_back(models::decoder()("type", "transformer"))  //
+        .construct();
+  }
+
+  if(type == "sutskever") {
+    return models::encoder_decoder()(options)                 //
+        .push_back(models::encoder()("type", "sutskever"))  //
+        .push_back(models::decoder()("type", "sutskever"))  //
         .construct();
   }
 

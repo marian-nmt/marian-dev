@@ -96,6 +96,12 @@ struct ConstantShape {
     return elements_;
   }
 
+  __HDI__ ConstantShape row(int i) {
+    ConstantShape rowShape;
+    rowShape.set(rowShape.size() - 1, back());
+    return rowShape;
+  }
+
   __HDI__ int index(const Array<int, N>& d) const {
     int i = 0;
     for(int j = 0; j < N; ++j)

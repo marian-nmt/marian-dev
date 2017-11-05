@@ -11,7 +11,7 @@ namespace marian {
       X x;
 
       template <class Arg>
-      UnaryFunctor(Arg a) : x(a) {}
+      __HD__ UnaryFunctor(Arg a) : x(a) {}
 
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) {
@@ -29,7 +29,7 @@ namespace marian {
       Y y;
 
       template <class Arg1, class Arg2>
-      BinaryFunctor(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
+      __HD__ BinaryFunctor(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
 
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) {
@@ -52,10 +52,10 @@ namespace marian {
     }\
     template <class X> using name = UnaryFunctor<elem::name, X>;\
     template <typename X>\
-    name<IsClass<X>> name2(X x) {\
+    __HDI__ name<IsClass<X>> name2(X x) {\
       return name<X>(x);\
     }\
-    static name<Capture> name2(Capture x) {\
+    __HDI__ static name<Capture> name2(Capture x) {\
       return name<Capture>(x);\
     }
 
@@ -68,15 +68,15 @@ namespace marian {
     }\
     template <class X, class Y> using name = BinaryFunctor<elem::name, X, Y>;\
     template <class X, class Y>\
-    name<IsClass<X>, IsClass<Y>> name2(X x, Y y) {\
+    __HDI__ name<IsClass<X>, IsClass<Y>> name2(X x, Y y) {\
       return name<X, Y>(x, y);\
     }\
     template <class Y>\
-    name<Capture, IsClass<Y>> name2(Capture x, Y y) {\
+    __HDI__ name<Capture, IsClass<Y>> name2(Capture x, Y y) {\
       return name<Capture, Y>(x, y);\
     }\
     template <class X>\
-    name<IsClass<X>, Capture> name2(X x, Capture y) {\
+    __HDI__ name<IsClass<X>, Capture> name2(X x, Capture y) {\
       return name<X, Capture>(x, y);\
     }
 
@@ -117,6 +117,9 @@ namespace marian {
 
     BINARY(Clip, clip, fabs(x) >= y ? sgn(x) * y : x);
 
+    BINARY(Max, max, x >= y ? x : y);
+    BINARY(Min, min, x < y ? x : y);
+
     UNARY(sReLU, ReLU, x > 0.f ? x : 0.f);
     UNARY(sReLUBack, ReLUback, x > 0.f ? 1.f : 0.f);
     BINARY(sPReLU, PReLU, x > 0.f ? x : x * y);
@@ -146,33 +149,31 @@ namespace marian {
     }\
     template <class X, class Y, class Z> using name = TernaryFunctor<elem::name, X, Y, Z>;\
     template <typename X, typename Y, typename Z>\
-    name<IsClass<X>, IsClass<Y>, IsClass<Z>> name2(X x, Y y, Z z) {\
+    __HDI__ name<IsClass<X>, IsClass<Y>, IsClass<Z>> name2(X x, Y y, Z z) {\
       return name<X, Y, Z>(x, y, z);\
     }\
     template <typename X, typename Z>\
-    name<IsClass<X>, Capture, IsClass<Z>> name2(X x, Capture y, Z z) {\
+    __HDI__ name<IsClass<X>, Capture, IsClass<Z>> name2(X x, Capture y, Z z) {\
       return name2(x, y, z);\
     }\
     template <typename Y, typename Z>\
-    name<Capture, IsClass<Y>, IsClass<Z>> name2(Capture x, Y y, Z z) {\
+    __HDI__ name<Capture, IsClass<Y>, IsClass<Z>> name2(Capture x, Y y, Z z) {\
       return name2(x, y, z);\
     }\
     template <typename X>\
-    name<IsClass<X>, Capture, Capture> name2(X x, Capture y, Capture z) {\
+    __HDI__ name<IsClass<X>, Capture, Capture> name2(X x, Capture y, Capture z) {\
       return name2(x, y, z);\
     }\
     template <typename Y>\
-    name<Capture, IsClass<Y>, Capture> name2(Capture x, Y y, Capture z) {\
+    __HDI__ name<Capture, IsClass<Y>, Capture> name2(Capture x, Y y, Capture z) {\
       return name2(x, y, z);\
     }\
     template <typename Z>\
-    name<Capture, Capture, IsClass<Z>> name2(Capture x, Capture y, Z z) {\
+    __HDI__ name<Capture, Capture, IsClass<Z>> name2(Capture x, Capture y, Z z) {\
       return name2(x, y, z);\
     }
 
     TERNARY(IfThenElse, if_then_else, x ? y : z);
-
-
 
     template <class X, class Y>
     struct Assign {
@@ -180,7 +181,7 @@ namespace marian {
       Y y;
 
       template <class Arg1, class Arg2>
-      Assign(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
+      __HD__ Assign(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
 
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) {
@@ -188,12 +189,14 @@ namespace marian {
       }
     };
 
+/******************************************************************************/
+
     template <int N>
     struct Assignee {
       Var<N> var;
 
-      Assignee() {}
-      Assignee(Var<N> v) : var(v) {}
+      __HD__ Assignee() {}
+      __HD__ Assignee(Var<N> v) : var(v) {}
 
       template <typename ...Args>
       __HDI__ float& operator()(Args&&... args) {
@@ -201,31 +204,31 @@ namespace marian {
       }
 
       template <class X>
-      Assign<Var<N>, IsClass<X>> operator=(X x) {
+      __HDI__ Assign<Var<N>, IsClass<X>> operator=(X x) {
         return Assign<Var<N>, X>(var, x);
       }
 
-      Assign<Var<N>, Capture> operator=(Capture x) {
+      __HDI__ Assign<Var<N>, Capture> operator=(Capture x) {
         return Assign<Var<N>, Capture>(var, x);
       }
 
       template <class X>
-      auto operator+=(X x)->decltype(*this = *this + x)  {
+      __HDI__ auto operator+=(X x)->decltype(*this = *this + x)  {
         return *this = *this + x;
       }
 
       template <class X>
-      auto operator-=(X x)->decltype(*this = *this - x)  {
+      __HDI__ auto operator-=(X x)->decltype(*this = *this - x)  {
         return *this = *this - x;
       }
 
       template <class X>
-      auto operator*=(X x)->decltype(*this = *this * x)  {
+      __HDI__ auto operator*=(X x)->decltype(*this = *this * x)  {
         return *this = *this * x;
       }
 
       template <class X>
-      auto operator/=(X x)->decltype(*this = *this / x)  {
+      __HDI__ auto operator/=(X x)->decltype(*this = *this / x)  {
         return *this = *this / x;
       }
 

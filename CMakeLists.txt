@@ -31,9 +31,9 @@ if(CUDA_FOUND)
 endif(CUDA_FOUND)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS -std=c++11; --default-stream per-thread; -O0; -g; -Xcompiler '-fPIC'; -arch=sm_35;)
+  list(APPEND CUDA_NVCC_FLAGS -std=c++11; --default-stream per-thread; -O0; -g; --expt-extended-lambda; -Xcompiler '-fPIC'; -arch=sm_35;)
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS -std=c++11; --default-stream per-thread; -O3; --use_fast_math; -Xcompiler '-fPIC'; -arch=sm_35;)
+  list(APPEND CUDA_NVCC_FLAGS -std=c++11; --default-stream per-thread; -O3; --expt-extended-lambda; --use_fast_math; -Xcompiler '-fPIC'; -arch=sm_35;)
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 list(REMOVE_DUPLICATES CUDA_NVCC_FLAGS)

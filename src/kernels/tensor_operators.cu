@@ -317,74 +317,20 @@ void Softmax(Tensor out, Tensor in, Tensor mask) {
         out->data(), out->shape(), in->data(), 0, out->shape());
 }
 
-__global__ void gLogSoftmax(float* out,
-                            const gpu::Shape outShape,
-                            const float* in) {
-  int rows = outShape.elements() / outShape.back();
-  int cols = outShape.back();
+__global__ void gLogSoftmax(gpu::Tensor<float> out, gpu::Tensor<float> in) {
+  int rows = out.shape().elements() / out.shape().back();
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
-    if(j < rows) {
-      float* so = out + j * cols;
-      const float* sp = in + j * cols;
+  int cols = out.shape().back();
+  using namespace functional;
+  auto lambda = [&](int row_index) {
+    gpu::Array<gpu::Tensor<float>, 1> rowArgs = { in.row(row_index) };
+    
+    float fmax = gpu::reduce_row(cols, rowArgs, _1, false, _1 = max(_1, _2), _1);
+    float fsum = gpu::reduce_row(cols, rowArgs, exp(_1 - fmax), false, _1 += _2, _1);
+    gpu::transform_row<false>(out.row(row_index), _1 - (fmax - log(fsum)), rowArgs);
+  };
 
-      extern __shared__ float _share[];
-
-      float* _max = _share + blockDim.x;
-      _max[threadIdx.x] = sp[threadIdx.x];
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          if(sp[id] > _max[threadIdx.x])
-            _max[threadIdx.x] = sp[id];
-        }
-      }
-      __syncthreads();
-      int len = blockDim.x;
-      while(len != 1) {
-        __syncthreads();
-        int skip = (len + 1) >> 1;
-        if(threadIdx.x < (len >> 1)) {
-          if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
-            _max[threadIdx.x] = _max[threadIdx.x + skip];
-          }
-        }
-        len = (len + 1) >> 1;
-      }
-      __syncthreads();
-      float max = _max[0];
-      __syncthreads();
-
-      float* _sum = _share + blockDim.x;
-
-      _sum[threadIdx.x] = 0.0;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          float sm = sp[id] - max;
-          float ex = __expf(sm);
-          so[id] = sm;
-          _sum[threadIdx.x] += ex;
-        }
-      }
-      __syncthreads();
-      len = blockDim.x;
-      while(len != 1) {
-        __syncthreads();
-        int skip = (len + 1) >> 1;
-        if(threadIdx.x < (len >> 1))
-          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
-        len = (len + 1) >> 1;
-      }
-      __syncthreads();
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols)
-          so[id] -= __logf(_sum[0]);
-      }
-    }
-  }
+  gpu::foreach_row(rows, lambda);
 }
 
 void LogSoftmax(Tensor out, Tensor in) {
@@ -397,8 +343,7 @@ void LogSoftmax(Tensor out, Tensor in) {
   int threads = std::min(MAX_THREADS, (int)k);
   int shared = sizeof(float) * threads * 2;
 
-  gLogSoftmax<<<blocks, threads, shared>>>(
-      out->data(), out->shape(), in->data());
+  gLogSoftmax<<<blocks, threads, shared>>>(out, in);
 }
 
 ///////////////////////////////////////////////////////

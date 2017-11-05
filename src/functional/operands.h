@@ -44,7 +44,7 @@ namespace marian {
     struct Capture {
       float value;
 
-      Capture(float val) : value(val) {};
+      __HD__ Capture(float val) : value(val) {};
 
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) { return value; }

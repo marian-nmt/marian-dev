@@ -36,6 +36,14 @@ struct Tensor {
 
   __HDI__ Shape& shape() { return shape_; }
   __HDI__ const Shape& shape() const { return shape_; }
+
+  __HDI__ size_t size() const { return shape_.elements(); }
+
+  __HDI__ Tensor<T> row(size_t i) {
+
+    T* rowPtr = data_ + i * shape_.back();
+    return Tensor(rowPtr, shape_.row(i));
+  }
 };
 
 }

@@ -23,50 +23,239 @@ const int MAX_BLOCKS = 65535;
 
 cublasHandle_t create_handle(size_t);
 
-template <size_t K, bool broadcast, class Functor>
-__global__ void gElement(Functor functor,
-                         gpu::Array<gpu::Tensor<float>, K> tensors) {
+namespace gpu {
 
-  int length = tensors[0].shape().elements();
-  gpu::Array<int, gpu::Shape::size()> dims;
-  gpu::Array<int, K> indices;
-
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
-    if(index < length) {
-
-      indices.fill(index);
-
-      if(broadcast) {
-        tensors[0].shape().dims(index, dims);
-        for(int i = 1; i < K; ++i)
-          indices[i] = tensors[i].shape().bindex(dims);
-      }
-
-      tensors[0][index] = gpu::apply(functor, tensors, indices);
+  template <class Lambda>
+  __DI__ void foreach(size_t length, Lambda& lambda) {
+    for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+      int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+      if(index < length)
+        lambda(index);
     }
+  }
+
+  template <size_t K, typename T>
+  __DI__ gpu::Array<gpu::Tensor<T>, K> rows(gpu::Array<gpu::Tensor<T>, K>& args,
+                                            size_t i) {
+    gpu::Array<gpu::Tensor<T>, K> rowArgs;
+    for(int j = 0; j < K; ++j)
+      rowArgs[j] = args[j].row(i);
+    return rowArgs;
+  }
+
+  template <size_t K, typename T>
+  __DI__ gpu::Array<gpu::Tensor<T>, K> rows(gpu::Array<gpu::Tensor<T>, K>& args,
+                                            gpu::Array<int, K>& indices) {
+    gpu::Array<gpu::Tensor<T>, K> rowArgs;
+    for(int j = 0; j < K; ++j)
+      rowArgs[j] = args[j].row(indices[j]);
+    return rowArgs;
+  }
+
+  template <bool broadcast, size_t K, class Functor, typename T>
+  __DI__ void transform_row(gpu::Tensor<T> rowOut,
+                            Functor functor,
+                            gpu::Array<gpu::Tensor<T>, K> rowArgs) {
+    int cols = rowOut.shape().elements();
+    for(int tid = 0; tid < cols; tid += blockDim.x) {
+      int index = tid + threadIdx.x;
+      if(index < cols) {
+        if(broadcast) {
+          gpu::Array<int, gpu::Shape::size()> dims;
+          rowOut.shape().dims(index, dims);
+
+          gpu::Array<int, K> indices;
+          for(int i = 0; i < K; ++i)
+            indices[i] = rowArgs[i].shape().bindex(dims);
+          rowOut[index] = gpu::apply(functor, rowArgs, indices);
+        }
+        else {
+          rowOut[index] = gpu::apply(functor, rowArgs, index);
+        }
+      }
+    }
+  }
+
+  template <bool broadcast, size_t K, class Functor, typename T>
+  __DI__ void transform_rows(gpu::Tensor<T>& out,
+                             Functor& functor,
+                             gpu::Array<gpu::Tensor<T>, K>& args) {
+
+    int rows = out.shape().elements() / out.shape().back();
+
+    for(int bid = 0; bid < rows; bid += gridDim.x) {
+      int j = bid + blockIdx.x;
+      if(j < rows) {
+
+        //*********************************************************************/
+
+        auto rowArgs = gpu::rows(args, j);
+        transform_row<broadcast>(out.row(j),
+                                 functor,
+                                 rowArgs);
+
+        //*********************************************************************/
+
+      }
+    }
+  }
+
+  template <class Lambda>
+  __device__ inline void foreach_row(size_t rows, Lambda& lambda) {
+
+    for(int bid = 0; bid < rows; bid += gridDim.x) {
+      int row_index = bid + blockIdx.x;
+      if(row_index < rows)
+        lambda(row_index);
+    }
+  }
+
+  template <size_t K,
+            class Functor,
+            class Accumulator,
+            class AccumulatorZero,
+            typename T>
+  __device__ inline T reduce_row(int cols,
+                                 gpu::Array<gpu::Tensor<T>, K>& rowArgs,
+                                 Functor functor,
+                                 bool broadcast,
+                                 Accumulator acc,
+                                 AccumulatorZero accZero) {
+
+    extern __shared__ T _share[];
+    T* _reduce = _share + blockDim.x;
+
+    _reduce[threadIdx.x] = accZero(gpu::apply(functor, rowArgs, 0));
+    for(int tid = 0; tid < cols; tid += blockDim.x) {
+      int index = tid + threadIdx.x;
+      if(index < cols) {
+
+        //*********************************************************************/
+        if(broadcast) {
+          gpu::Array<int, K> indices;
+          for(int i = 0; i < K; ++i)
+            indices[i] = cols == rowArgs[i].shape().back() ? index : 0;
+          acc(_reduce[threadIdx.x], gpu::apply(functor, rowArgs, indices));
+        }
+        else {
+          acc(_reduce[threadIdx.x], gpu::apply(functor, rowArgs, index));
+        }
+        //*********************************************************************/
+
+      }
+    }
+
+    __syncthreads();
+    int len = blockDim.x;
+    while(len != 1) {
+      __syncthreads();
+      int skip = (len + 1) >> 1;
+      if(threadIdx.x < (len >> 1)) {
+
+        //*********************************************************************/
+        acc(_reduce[threadIdx.x], _reduce[threadIdx.x + skip]);
+        //*********************************************************************/
+
+      }
+      len = (len + 1) >> 1;
+    }
+    __syncthreads();
+    return _reduce[0];
+  }
+
+  namespace kernels {
+    using namespace functional;
+
+    template <size_t K,
+              class PreReduceFunctor,
+              class Accumulator = decltype(_1 += _2),
+              class AccumulatorZero = decltype(_0c),
+              class AssignFunctor = decltype(_1 = _2),
+              typename T>
+    __global__ void gReduceRows(gpu::Tensor<T>& out,
+                                gpu::Array<gpu::Tensor<T>, K>& args,
+                                PreReduceFunctor& preFunc,
+                                gpu::Shape& full,
+                                bool broadcast = false,
+                                Accumulator& accFunc = _1 += _2,
+                                AccumulatorZero& accZero = _0c,
+                                AssignFunctor& assignFunc = _1 = _2) {
+
+      auto lambda = [&](size_t row_index) {
+
+        int cols = full.back();
+        gpu::Array<gpu::Tensor<T>, K> rowArgs;
+        if(broadcast) {
+          gpu::Array<int, K> indices;
+          for(int i = 0; i < K; ++i) {
+            int argRows = args[i].shape().elements() / args[i].shape().back();
+            indices[i] = argRows % row_index;
+          }
+          rowArgs = gpu::rows(args, indices);
+        }
+        else {
+          rowArgs = gpu::rows(args, row_index);
+        }
+
+        T result = gpu::reduce_row(cols,
+                                   rowArgs,
+                                   preFunc,
+                                   broadcast,
+                                   accFunc,
+                                   accZero);
+
+        assignFunc(out[row_index], result);
+      };
+
+      size_t rows = full.elements() / full.back();
+      gpu::foreach_row(rows, lambda);
+    }
+
+    template <size_t K, class Functor, typename T>
+    __global__ void gForeach(gpu::Tensor<T> out,
+                             Functor functor,
+                             gpu::Array<gpu::Tensor<T>, K> args,
+                             bool broadcast = false) {
+
+      auto lambda = [&](size_t index) {
+        if(broadcast) {
+          gpu::Array<int, gpu::Shape::size()> dims;
+          out.shape().dims(index, dims);
+
+          gpu::Array<int, K> indices;
+          for(int i = 0; i < K; ++i)
+            indices[i] = args[i].shape().bindex(dims);
+          out[index] = gpu::apply(functor, args, indices);
+        }
+        else {
+          out[index] = gpu::apply(functor, args, index);
+        }
+      };
+
+      gpu::foreach(out.size(), lambda);
+    }
+
   }
 }
 
 template <class Functor, class ...Tensors>
-void Element(Functor functor, Tensor out, Tensors ...tensors) {
+void Element(Functor gFunctor, Tensor out, Tensors ...tensors) {
   cudaSetDevice(out->getDevice());
 
   constexpr size_t K = sizeof...(tensors) + 1;
-  gpu::Array<gpu::Tensor<float>, K> gTensors = {out, tensors...};
 
-  int length = gTensors[0].shape().elements();
+  gpu::Tensor<float> gOut = out;
+  gpu::Array<gpu::Tensor<float>, K> gArgs = {out, tensors...};
+
+  int length = gOut.shape().elements();
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   bool broadcast = false;
   for(int i = 1; i < K; ++i)
-    broadcast = broadcast || gTensors[0].shape() != gTensors[i].shape();
+    broadcast = broadcast || gOut.shape() != gArgs[i].shape();
 
-  if(broadcast)
-    gElement<K, true><<<blocks, threads>>>(functor, gTensors);
-  else
-    gElement<K, false><<<blocks, threads>>>(functor, gTensors);
+  gpu::kernels::gForeach<<<blocks, threads>>>(gOut, gFunctor, gArgs, broadcast);
 }
 
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis);
@@ -146,64 +335,6 @@ __global__ void gAddEqual(Functor functor,
   }
 }
 
-template <size_t K, class Functor>
-__global__ void gAddReduce(Functor functor,
-                           const gpu::Shape full,
-                           gpu::Tensor<float> out,
-                           gpu::Array<gpu::Tensor<float>, K> ins,
-                           float scale = 1.0) {
-
-  int rows = full.elements() / full.back();
-  int cols = full.back();
-
-  bool same = true;
-  for(int i = 0; i < K; ++i)
-    same = same && ins[i].shape().elements() == full.elements();
-
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
-    if(j < rows) {
-      extern __shared__ float _share[];
-      float* _sum = _share + blockDim.x;
-
-      if(same) {
-        _sum[threadIdx.x] = 0;
-        for(int tid = 0; tid < cols; tid += blockDim.x) {
-          int id = tid + threadIdx.x;
-          if(id < cols)
-            _sum[threadIdx.x] += gpu::apply(functor, ins, j * cols + id);
-        }
-      } else {
-        gpu::Array<int, gpu::Shape::size()> dims;
-        _sum[threadIdx.x] = 0;
-
-        for(int tid = 0; tid < cols; tid += blockDim.x) {
-          int id = tid + threadIdx.x;
-          if(id < cols) {
-            full.dims(j * cols + id, dims);
-            gpu::Array<int, K> indices;
-            for(int i = 0; i < K; ++i)
-              indices[i] = ins[i].shape().bindex(dims);
-            _sum[threadIdx.x] += gpu::apply(functor, ins, indices);
-          }
-        }
-      }
-      __syncthreads();
-      int len = blockDim.x;
-      while(len != 1) {
-        __syncthreads();
-        int skip = (len + 1) >> 1;
-        if(threadIdx.x < (len >> 1)) {
-          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
-        }
-        len = (len + 1) >> 1;
-      }
-      __syncthreads();
-      out[j] += _sum[0] * scale;
-    }
-  }
-}
-
 template <class Functor, class ...Tensors>
 void Add(Functor functor,
          float scale,
@@ -228,7 +359,18 @@ void Add(Functor functor,
     int threads = std::min(MAX_THREADS, (int)k);
     int shared = sizeof(float) * threads * 2;
 
-    gAddReduce<<<blocks, threads, shared>>>(functor, full, gOut, gIns, scale);
+    gpu::Shape gFull = full;
+    bool broadcast = false;
+    for(int i = 0; i < K; ++i)
+      broadcast = broadcast || gFull != gIns[i].shape();
+
+    namespace f = functional;
+    auto addScale = f::_1 += f::_2 * scale;
+    auto acc = f::_1 += f::_2;
+    auto accZero = f::_1c;
+
+    gpu::kernels::gReduceRows<<<blocks, threads, shared>>>(
+      gOut, gIns, functor, gFull, broadcast, acc, accZero, addScale);
 
   } else if(out->shape() == full) {
     int threads = std::min(MAX_THREADS, length);

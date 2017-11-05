@@ -122,6 +122,7 @@ namespace gpu {
                                  Accumulator acc,
                                  AccumulatorZero accZero) {
 
+    __syncthreads();
     extern __shared__ T _share[];
     T* _reduce = _share + blockDim.x;
 

@@ -324,10 +324,10 @@ __global__ void gLogSoftmax(gpu::Tensor<float> out, gpu::Tensor<float> in) {
   using namespace functional;
   auto lambda = [&](int row_index) {
     gpu::Array<gpu::Tensor<float>, 1> rowArgs = { in.row(row_index) };
-    
+
     float fmax = gpu::reduce_row(cols, rowArgs, _1, false, _1 = max(_1, _2), _1);
-    float fsum = gpu::reduce_row(cols, rowArgs, exp(_1 - fmax), false, _1 += _2, _1);
-    gpu::transform_row<false>(out.row(row_index), _1 - (fmax - log(fsum)), rowArgs);
+    float fsum = gpu::reduce_row(cols, rowArgs, exp(_1), false, _1 += _2, _0c);
+    gpu::transform_row<false>(out.row(row_index), _1 - (logf(fsum) + max), rowArgs);
   };
 
   gpu::foreach_row(rows, lambda);

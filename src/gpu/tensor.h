@@ -9,7 +9,7 @@ namespace gpu {
 
 template<typename T>
 struct Tensor {
-  T* data_;
+  T* data_{nullptr};
   gpu::Shape shape_;
 
   __HD__ Tensor() {}
@@ -43,6 +43,10 @@ struct Tensor {
 
     T* rowPtr = data_ + i * shape_.back();
     return Tensor(rowPtr, shape_.row(i));
+  }
+
+  __HDI__ operator bool() const {
+    return data_ != nullptr;
   }
 };
 

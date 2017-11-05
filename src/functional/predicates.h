@@ -132,7 +132,7 @@ namespace marian {
       Z z;
 
       template <class Arg1, class Arg2, class Arg3>
-      TernaryFunctor(Arg1 arg1, Arg2 arg2, Arg3 arg3)
+      __HD__ TernaryFunctor(Arg1 arg1, Arg2 arg2, Arg3 arg3)
       : x(arg1), y(arg2), z(arg3) {}
 
       template <typename ...Args>

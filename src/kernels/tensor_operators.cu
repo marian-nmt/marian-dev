@@ -201,39 +201,102 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   gTransposeND<<<blocks, threads>>>(out, in, axes);
 }
 
-__global__ void gSoftmax(gpu::Tensor<float> out,
-                         gpu::Tensor<float> in,
-                         gpu::Tensor<float> mask) {
+__global__ void gSoftmax(float* out,
+                         gpu::Shape outShape,
+                         const float* in,
+                         const float* mask,
+                         const gpu::Shape maskShape) {
+  int rows = outShape.elements() / outShape.back();
+  int cols = outShape.back();
 
-  int rows = out.shape().elements() / out.shape().back();
-  int cols = out.shape().back();
+  bool broadcast = outShape != maskShape;
+  gpu::Array<int, gpu::Shape::size()> dims;
 
-  using namespace functional;
-  auto lambda = [&](int row_index) {
-    auto inRow = in.row(row_index);
-    auto outRow = out.row(row_index);
+  for(int bid = 0; bid < rows; bid += gridDim.x) {
+    int j = bid + blockIdx.x;
+    if(j < rows) {
+      float* so = out + j * cols;
+      const float* sp = in + j * cols;
 
-    if(mask) {
-      int maskRows = mask.shape().elements() / mask.shape().back();
-      int maskIndex = maskRows % row_index;
-      auto maskRow = mask.row(maskIndex);
-      gpu::Array<gpu::Tensor<float>, 2> inRows = { inRow, maskRow };
+      extern __shared__ float _share[];
 
-      auto fmin = Capture(-CUDA_FLT_MAX);
-      float fmax = gpu::reduce_row<true>(cols, inRows,
-                                         if_then_else(_2, _1, fmin),
-                                         _1 = max(_1, _2), fmin);
-      float fsum = gpu::reduce_row<true>(cols, inRows, exp(_1 - fmax) * _2);
-      gpu::transform_row(outRow, inRows, exp(_1 - fmax) * _2 / fsum);
+      float* _max = _share + blockDim.x;
+      _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          float mVal = 1.f;
+          if(mask) {
+            int mIndex = id + j * cols;
+            if(broadcast) {
+              outShape.dims(mIndex, dims);
+              mIndex = maskShape.bindex(dims);
+            }
+            mVal = mask[mIndex];
+          }
+
+          if(mVal && sp[id] > _max[threadIdx.x])
+            _max[threadIdx.x] = sp[id];
+        }
+      }
+      __syncthreads();
+      int len = blockDim.x;
+      while(len != 1) {
+        __syncthreads();
+        int skip = (len + 1) >> 1;
+        if(threadIdx.x < (len >> 1)) {
+          if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
+            _max[threadIdx.x] = _max[threadIdx.x + skip];
+          }
+        }
+        len = (len + 1) >> 1;
+      }
+      __syncthreads();
+      float max = _max[0];
+      __syncthreads();
+
+      float* _sum = _share + blockDim.x;
+
+      _sum[threadIdx.x] = 0.0;
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          float mVal = 1.f;
+          if(mask) {
+            int mIndex = id + j * cols;
+            if(broadcast) {
+              outShape.dims(mIndex, dims);
+              mIndex = maskShape.bindex(dims);
+            }
+            mVal = mask[mIndex];
+          }
+
+          float ex = 0;
+          if(mVal)
+            ex = __expf(sp[id] - max);
+          so[id] = ex;
+
+          _sum[threadIdx.x] += ex;
+        }
+      }
+      __syncthreads();
+      len = blockDim.x;
+      while(len != 1) {
+        __syncthreads();
+        int skip = (len + 1) >> 1;
+        if(threadIdx.x < (len >> 1))
+          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
+        len = (len + 1) >> 1;
+      }
+      __syncthreads();
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          so[id] = so[id] / _sum[0];
+        }
+      }
     }
-    else {
-      float fmax = gpu::reduce_row(cols, inRow, _1, _1 = max(_1, _2), _1);
-      float fsum = gpu::reduce_row(cols, inRow, exp(_1 - fmax));
-      gpu::transform_row(outRow, inRow, exp(_1 - fmax) / fsum);
-    }
-  };
-
-  gpu::foreach_row(rows, lambda);
+  }
 }
 
 void Softmax(Tensor out, Tensor in, Tensor mask) {
@@ -246,14 +309,67 @@ void Softmax(Tensor out, Tensor in, Tensor mask) {
   int threads = std::min(MAX_THREADS, (int)k);
   int shared = sizeof(float) * threads * 2;
 
-  gpu::Tensor<float> gOut = out;
-  gpu::Tensor<float> gIn = in;
-  gpu::Tensor<float> gMask;
   if(mask)
-    gMask = mask;
-
-  gSoftmax<<<blocks, threads, shared>>>(gOut, gIn, gMask);
+    gSoftmax<<<blocks, threads, shared>>>(
+        out->data(), out->shape(), in->data(), mask->data(), mask->shape());
+  else
+    gSoftmax<<<blocks, threads, shared>>>(
+        out->data(), out->shape(), in->data(), 0, out->shape());
 }
+
+//__global__ void gSoftmax(gpu::Tensor<float> out,
+//                         gpu::Tensor<float> in,
+//                         gpu::Tensor<float> mask) {
+//
+//  int rows = out.shape().elements() / out.shape().back();
+//  int cols = out.shape().back();
+//
+//  using namespace functional;
+//  auto lambda = [&](int row_index) {
+//    auto inRow = in.row(row_index);
+//    auto outRow = out.row(row_index);
+//
+//    if(mask) {
+//      int maskRows = mask.shape().elements() / mask.shape().back();
+//      int maskIndex = maskRows % row_index;
+//      auto maskRow = mask.row(maskIndex);
+//      gpu::Array<gpu::Tensor<float>, 2> inRows = { inRow, maskRow };
+//
+//      auto fmin = Capture(-CUDA_FLT_MAX);
+//      float fmax = gpu::reduce_row<true>(cols, inRows,
+//                                         if_then_else(_2, _1, fmin),
+//                                         _1 = max(_1, _2), fmin);
+//      float fsum = gpu::reduce_row<true>(cols, inRows, exp(_1 - fmax) * _2);
+//      gpu::transform_row(outRow, inRows, exp(_1 - fmax) * _2 / fsum);
+//    }
+//    else {
+//      float fmax = gpu::reduce_row(cols, inRow, _1, _1 = max(_1, _2), _1);
+//      float fsum = gpu::reduce_row(cols, inRow, exp(_1 - fmax));
+//      gpu::transform_row(outRow, inRow, exp(_1 - fmax) / fsum);
+//    }
+//  };
+//
+//  gpu::foreach_row(rows, lambda);
+//}
+//
+//void Softmax(Tensor out, Tensor in, Tensor mask) {
+//  cudaSetDevice(out->getDevice());
+//
+//  size_t m = out->shape().elements() / out->shape().back();
+//  size_t k = out->shape().back();
+//
+//  int blocks = std::min(MAX_BLOCKS, (int)m);
+//  int threads = std::min(MAX_THREADS, (int)k);
+//  int shared = sizeof(float) * threads * 2;
+//
+//  gpu::Tensor<float> gOut = out;
+//  gpu::Tensor<float> gIn = in;
+//  gpu::Tensor<float> gMask;
+//  if(mask)
+//    gMask = mask;
+//
+//  gSoftmax<<<blocks, threads, shared>>>(gOut, gIn, gMask);
+//}
 
 template <typename T>
 __global__ void gLogSoftmax(gpu::Tensor<T> out,

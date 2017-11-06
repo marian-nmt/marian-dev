@@ -10,6 +10,8 @@ namespace marian {
     struct UnaryFunctor {
       X x;
 
+      __HD__ UnaryFunctor() {}
+
       template <class Arg>
       __HD__ UnaryFunctor(Arg a) : x(a) {}
 
@@ -27,6 +29,8 @@ namespace marian {
     struct BinaryFunctor {
       X x;
       Y y;
+
+      __HD__ BinaryFunctor() {}
 
       template <class Arg1, class Arg2>
       __HD__ BinaryFunctor(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
@@ -179,6 +183,8 @@ namespace marian {
     struct Assign {
       X x;
       Y y;
+
+      __HD__ Assign() {}
 
       template <class Arg1, class Arg2>
       __HD__ Assign(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}

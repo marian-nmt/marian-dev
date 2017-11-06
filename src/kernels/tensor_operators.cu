@@ -220,7 +220,8 @@ __global__ void gSoftmax(gpu::Tensor<float> out,
       gpu::Array<gpu::Tensor<float>, 2> inRows = { inRow, maskRow };
 
       auto fmin = Capture(-CUDA_FLT_MAX);
-      float fmax = gpu::reduce_row<true>(cols, inRows, if_then_else(_2, _1, fmin),
+      float fmax = gpu::reduce_row<true>(cols, inRows,
+                                         if_then_else(_2, _1, fmin),
                                          _1 = max(_1, _2), fmin);
       float fsum = gpu::reduce_row<true>(cols, inRows, exp(_1 - fmax) * _2);
       gpu::transform_row(outRow, inRows, exp(_1 - fmax) * _2 / fsum);
@@ -230,8 +231,6 @@ __global__ void gSoftmax(gpu::Tensor<float> out,
       float fsum = gpu::reduce_row(cols, inRow, exp(_1 - fmax));
       gpu::transform_row(outRow, inRow, exp(_1 - fmax) / fsum);
     }
-
-
   };
 
   gpu::foreach_row(rows, lambda);
@@ -256,139 +255,41 @@ void Softmax(Tensor out, Tensor in, Tensor mask) {
   gSoftmax<<<blocks, threads, shared>>>(gOut, gIn, gMask);
 }
 
-/*
-__global__ void gSoftmax(float* out,
-                         gpu::Shape outShape,
-                         const float* in,
-                         const float* mask,
-                         const gpu::Shape maskShape) {
-  int rows = outShape.elements() / outShape.back();
-  int cols = outShape.back();
+template <typename T>
+__global__ void gLogSoftmax(gpu::Tensor<T> out,
+                            gpu::Tensor<T> in) {
 
-  bool broadcast = outShape != maskShape;
-  gpu::Array<int, gpu::Shape::size()> dims;
+  /****************************************************************************/
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
-    if(j < rows) {
-      float* so = out + j * cols;
-      const float* sp = in + j * cols;
+  //using namespace functional;
+  //
+  //ref<1> x;
+  //auto r_max = row_max(x); // cache results of reduces
+  //auto r_sum = row_sum(exp(x - r_max));
+  //auto logsoftmax = x - log(r_sum) - r_max;
+  //
+  //gpu::foreach(out, in, logsoftmax);
 
-      extern __shared__ float _share[];
-
-      float* _max = _share + blockDim.x;
-      _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          float mVal = 1.f;
-          if(mask) {
-            int mIndex = id + j * cols;
-            if(broadcast) {
-              outShape.dims(mIndex, dims);
-              mIndex = maskShape.bindex(dims);
-            }
-            mVal = mask[mIndex];
-          }
-
-          if(mVal && sp[id] > _max[threadIdx.x])
-            _max[threadIdx.x] = sp[id];
-        }
-      }
-      __syncthreads();
-      int len = blockDim.x;
-      while(len != 1) {
-        __syncthreads();
-        int skip = (len + 1) >> 1;
-        if(threadIdx.x < (len >> 1)) {
-          if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
-            _max[threadIdx.x] = _max[threadIdx.x + skip];
-          }
-        }
-        len = (len + 1) >> 1;
-      }
-      __syncthreads();
-      float max = _max[0];
-      __syncthreads();
-
-      float* _sum = _share + blockDim.x;
-
-      _sum[threadIdx.x] = 0.0;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          float mVal = 1.f;
-          if(mask) {
-            int mIndex = id + j * cols;
-            if(broadcast) {
-              outShape.dims(mIndex, dims);
-              mIndex = maskShape.bindex(dims);
-            }
-            mVal = mask[mIndex];
-          }
-
-          float ex = 0;
-          if(mVal)
-            ex = __expf(sp[id] - max);
-          so[id] = ex;
-
-          _sum[threadIdx.x] += ex;
-        }
-      }
-      __syncthreads();
-      len = blockDim.x;
-      while(len != 1) {
-        __syncthreads();
-        int skip = (len + 1) >> 1;
-        if(threadIdx.x < (len >> 1))
-          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
-        len = (len + 1) >> 1;
-      }
-      __syncthreads();
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          so[id] = so[id] / _sum[0];
-        }
-      }
-    }
-  }
-}
-*/
-
-/*void Softmax(Tensor out, Tensor in, Tensor mask) {
-  cudaSetDevice(out->getDevice());
-
-  size_t m = out->shape().elements() / out->shape().back();
-  size_t k = out->shape().back();
-
-  int blocks = std::min(MAX_BLOCKS, (int)m);
-  int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads * 2;
-
-  if(mask)
-    gSoftmax<<<blocks, threads, shared>>>(
-        out->data(), out->shape(), in->data(), mask->data(), mask->shape());
-  else
-    gSoftmax<<<blocks, threads, shared>>>(
-        out->data(), out->shape(), in->data(), 0, out->shape());
-}
-*/
-__global__ void gLogSoftmax(gpu::Tensor<float> out,
-                            gpu::Tensor<float> in) {
+  /****************************************************************************/
 
   int rows = out.shape().elements() / out.shape().back();
   int cols = out.shape().back();
 
   using namespace functional;
+  namespace facc = functional::accumulator;
+
   auto lambda = [&](int row_index) {
     auto inRow = in.row(row_index);
     auto outRow = out.row(row_index);
 
-    float fmax = gpu::reduce_row(cols, inRow, _1, _1 = max(_1, _2), _1);
-    float fsum = gpu::reduce_row(cols, inRow, exp(_1 - fmax));
+    ref<1> x;
+    auto r_max = max_row(x);
+    auto r_sum = sum_row(exp(x - r_max));
+    auto logsoftmax = x - log(r_sum) - r_max;
 
-    gpu::transform_row(outRow, inRow, _1 - (logf(fsum) + fmax));
+    auto logsoftmax_x = reduce(logsoftmax, inRow);
+
+    gpu::transform_row(outRow, inRow, logsoftmax_x);
   };
 
   gpu::foreach_row(rows, lambda);
@@ -404,7 +305,9 @@ void LogSoftmax(Tensor out, Tensor in) {
   int threads = std::min(MAX_THREADS, (int)k);
   int shared = sizeof(float) * threads * 2;
 
-  gLogSoftmax<<<blocks, threads, shared>>>(out, in);
+  gpu::Tensor<float> gOut = out;
+  gpu::Tensor<float> gIn = in;
+  gLogSoftmax<<<blocks, threads, shared>>>(gOut, gIn);
 }
 
 ///////////////////////////////////////////////////////

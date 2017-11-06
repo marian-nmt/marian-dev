@@ -176,35 +176,35 @@ TEST_CASE("Expression graph supports basic math operations", "[operator]") {
 
     auto a = graph->constant({2, 4}, keywords::init = inits::from_vector(vA));
 
-    auto s1 = sum(a, keywords::axis=0);
+    //auto s1 = sum(a, keywords::axis=0);
     auto s2 = sum(a, keywords::axis=1);
 
-    auto m3 = mean(s1, keywords::axis=1);
-
-    auto sp = scalar_product(s2, s2, keywords::axis=0);
-
-    auto wa = weighted_average(a, s1, keywords::axis=-1);
-
+    //auto m3 = mean(s1, keywords::axis=1);
+    //
+    //auto sp = scalar_product(s2, s2, keywords::axis=0);
+    //
+    //auto wa = weighted_average(a, s1, keywords::axis=-1);
+    //
     graph->forward();
 
-    CHECK(s1->shape() == Shape({1, 4}));
+    //CHECK(s1->shape() == Shape({1, 4}));
     CHECK(s2->shape() == Shape({2, 1}));
-    CHECK(m3->shape() == Shape({1, 1}));
-    CHECK(sp->shape() == Shape({1, 1}));
-    CHECK(wa->shape() == Shape({2, 1}));
-
-    s1->val()->get(values);
-    CHECK( values == vS1 );
+    //CHECK(m3->shape() == Shape({1, 1}));
+    //CHECK(sp->shape() == Shape({1, 1}));
+    //CHECK(wa->shape() == Shape({2, 1}));
+    //
+    //s1->val()->get(values);
+    //CHECK( values == vS1 );
 
     s2->val()->get(values);
     CHECK( values == vS2 );
-
-    CHECK( m3->val()->scalar() == 9 );
-    CHECK( sp->val()->scalar() == 776 );
-
-    wa->val()->get(values);
-    CHECK( std::equal(values.begin(), values.end(),
-                      vW.begin(), floatApprox) );
+    //
+    //CHECK( m3->val()->scalar() == 9 );
+    //CHECK( sp->val()->scalar() == 776 );
+    //
+    //wa->val()->get(values);
+    //CHECK( std::equal(values.begin(), values.end(),
+    //                  vW.begin(), floatApprox) );
   }
 
   SECTION("concatenation") {

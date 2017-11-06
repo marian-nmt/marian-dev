@@ -64,41 +64,49 @@ namespace marian {
     }
 
 
-
     template <int N, typename T>
-    __DI__ C<N>& reduce(C<N>& c, gpu::Tensor<T>& row) {
+    __HDI__ C<N> reduce(C<N> c, gpu::Tensor<T> row) {
       return c;
     }
 
     template <int N, typename T>
-    __DI__ Var<N>& reduce(Var<N>& var, gpu::Tensor<T>& row) {
+    __HDI__ Var<N> reduce(Var<N> var, gpu::Tensor<T> row) {
       return var;
     }
 
+    template <int N, typename T>
+    __HDI__ Assignee<N> reduce(Assignee<N> a, gpu::Tensor<T> row) {
+      return a;
+    }
+
     template <class X, class Acc, class Zero, typename T>
-    __DI__ Capture reduce(ReduceRow<X, Acc, Zero>& r, gpu::Tensor<T>& row) {
-      return Capture(r(row));
+    __HDI__ Capture reduce(ReduceRow<X, Acc, Zero> r, gpu::Tensor<T> row) {
+      return Capture(reduce_row(reduce(r.x, row), r.acc, r.acc_zero)(row));
     }
 
-    template <template <class> class F, class X, typename T>
-    __DI__ auto reduce(F<X>& f, gpu::Tensor<T>& row)->decltype(F<decltype(reduce(f.x, row))>(f.x)) {
-      return F<decltype(reduce(f.x, row))>(f.x);
+    template <class F, class X, typename T>
+    __HDI__ auto reduce(UnaryFunctor<F, X> f, gpu::Tensor<T> row)
+    ->decltype(UnaryFunctor<F, decltype(reduce(f.x, row))>(reduce(f.x, row))) {
+      return UnaryFunctor<F, decltype(reduce(f.x, row))>(reduce(f.x, row));
     }
 
-    template <template <class, class> class F, class X, class Y, typename T>
-    __DI__ auto reduce(F<X, Y>& f, gpu::Tensor<T>& row)
+    template <class F, class X, class Y, typename T>
+    __HDI__ auto reduce(BinaryFunctor<F, X, Y> f, gpu::Tensor<T> row)
     ->decltype(
-      F<decltype(reduce(f.x, row)), decltype(reduce(f.y, row))>(
+      BinaryFunctor<F, decltype(reduce(f.x, row)), decltype(reduce(f.y, row))>(
         reduce(f.x, row),
         reduce(f.y, row)
       )
-    ) {
+    )
+    {
       return
-        F<decltype(reduce(f.x, row)), decltype(reduce(f.y, row))>(
+        BinaryFunctor<F, decltype(reduce(f.x, row)), decltype(reduce(f.y, row))>(
           reduce(f.x, row),
           reduce(f.y, row)
         );
     }
+
+
 
 /******************************************************************************/
 

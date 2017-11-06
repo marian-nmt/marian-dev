@@ -110,12 +110,12 @@ namespace marian {
     BINARY(And, operator&&, x && y);
     BINARY(Or, operator||, x || y);
 
-    template <typename T>
-    __HDI__ T sgn(T val) {
-      return (float(0) < val) - (val < float(0));
+    namespace elem { \
+      template <typename T>
+      __HDI__ T sgn(T val) {
+        return val;
+      }
     }
-
-    UNARY(Sgn, sgn, sgn(x));
 
     BINARY(Pow, pow, pow(x, y));
 

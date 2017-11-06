@@ -287,9 +287,7 @@ __global__ void gLogSoftmax(gpu::Tensor<T> out,
     auto r_sum = sum_row(exp(x - r_max));
     auto logsoftmax = x - log(r_sum) - r_max;
 
-    auto logsoftmax_x = reduce(logsoftmax, inRow);
-
-    gpu::transform_row(outRow, inRow, logsoftmax_x);
+    gpu::transform_row(outRow, inRow, reduce(logsoftmax, inRow));
   };
 
   gpu::foreach_row(rows, lambda);

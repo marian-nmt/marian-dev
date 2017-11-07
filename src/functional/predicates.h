@@ -102,10 +102,19 @@ namespace marian {
     UNARY(Neg, operator-, -x);
     UNARY(Logit, logit, x > 0 ? (1.f / (1.f + expf(-x))) : (expf(x) / (1.f + expf(x))));
 
+    namespace elem { \
+      template <typename T>
+      __HDI__ T sgnf(T val) {
+        return (0.f < val) - (val < 0.f);
+      }
+    }
+    UNARY(Sgn, sgn, sgnf(x));
+
     BINARY(Plus, operator+, x + y);
     BINARY(Minus, operator-, x - y);
     BINARY(Mult, operator*, x * y);
     BINARY(Div, operator/, x / y);
+    BINARY(Pow, pow, pow(x, y));
 
     UNARY(Negate, operator!, !x);
     BINARY(Eq, operator==, x == y);
@@ -117,16 +126,8 @@ namespace marian {
     BINARY(And, operator&&, x && y);
     BINARY(Or, operator||, x || y);
 
-    namespace elem { \
-      template <typename T>
-      __HDI__ T sgn(T val) {
-        return val;
-      }
-    }
 
-    BINARY(Pow, pow, pow(x, y));
-
-    BINARY(Clip, clip, fabs(x) >= y ? sgn(x) * y : x);
+    BINARY(Clip, clip, fabs(x) >= y ? sgnf(x) * y : x);
 
     BINARY(Max, max, x >= y ? x : y);
     BINARY(Min, min, x < y ? x : y);
@@ -150,12 +151,24 @@ namespace marian {
       __HDI__ float operator()(Args&&... args) {
         return Function::apply(x(args...), y(args...), z(args...));
       }
+
+      std::string to_string() const {
+        return Function::n() +
+          "(" + x.to_string() +
+          "," + y.to_string() +
+          "," + z.to_string() + ")";
+      }
+
+      constexpr static bool isFunctor() {
+        return true;
+      }
     };
 
     #define TERNARY(name, name2, func) \
     namespace elem { \
       struct name { \
         __HDI__ static float apply(float x, float y, float z) { return func; } \
+        static std::string n() { return #name; }\
       }; \
     }\
     template <class X, class Y, class Z> using name = TernaryFunctor<elem::name, X, Y, Z>;\

@@ -10,18 +10,21 @@ namespace marian {
     struct UnaryFunctor {
       X x;
 
-      __HD__ UnaryFunctor() {}
+      __HD__ UnaryFunctor() : x() {}
 
-      template <class Arg>
-      __HD__ UnaryFunctor(Arg a) : x(a) {}
+      __HD__ UnaryFunctor(X a) : x(a) {}
 
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) {
         return Function::apply(x(args...));
       }
 
-      std::string to_string() {
-        return Function::n() + "<" + x.to_string() + ">";
+      std::string to_string() const {
+        return Function::n() + "(" + x.to_string() + ")";
+      }
+
+      constexpr static bool isFunctor() {
+        return true;
       }
     };
 
@@ -32,19 +35,23 @@ namespace marian {
 
       __HD__ BinaryFunctor() {}
 
-      template <class Arg1, class Arg2>
-      __HD__ BinaryFunctor(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
+      __HD__ BinaryFunctor(X arg1, Y arg2) : x(arg1), y(arg2) {}
 
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) {
         return Function::apply(x(args...), y(args...));
       }
 
-      std::string to_string() {
+      std::string to_string() const {
         return Function::n() +
-          "<" + x.to_string() +
-          "," + y.to_string() + ">";
+          "(" + x.to_string() +
+          "," + y.to_string() + ")";
       }
+
+      constexpr static bool isFunctor() {
+        return true;
+      }
+
     };
 
     #define UNARY(name, name2, func) \
@@ -193,6 +200,11 @@ namespace marian {
       __HDI__ float operator()(Args&&... args) {
         return x(args...) = y(args...);
       }
+
+      constexpr static bool isFunctor() {
+        return true;
+      }
+
     };
 
 /******************************************************************************/
@@ -238,9 +250,14 @@ namespace marian {
         return *this = *this / x;
       }
 
-      std::string to_string() {
+      std::string to_string() const {
         return var.to_string();
       }
+
+      constexpr static bool isFunctor() {
+        return true;
+      }
+
     };
 
 /******************************************************************************/

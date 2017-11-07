@@ -13,7 +13,7 @@ Expr Cost(Expr logits,
 
   if(smoothing > 0) {
     // @TODO: add this to CE kernels instead
-    auto ceq = mean(logsoftmax(logits), axis = -1);
+    auto ceq = mean(log(softmax(logits)), axis = -1);
     ce = (1 - smoothing) * ce - smoothing * ceq;
   }
 

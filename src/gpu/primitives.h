@@ -162,5 +162,29 @@ namespace marian {
       }
     }
 
+    struct ReduceRow {
+      template <typename ...Args>
+      __device__ inline static float apply(Args ...args) {
+        return gpu::reduce_row(args...);
+      }
+    };
+
+    template <class Functor, typename T>
+    __device__ inline void foreach_row(gpu::Tensor<T>& out,
+                                       gpu::Tensor<T>& in,
+                                       Functor functor) {
+      int rows = out.shape().elements() / out.shape().back();
+      for(int bid = 0; bid < rows; bid += gridDim.x) {
+        int row_index = bid + blockIdx.x;
+        if(row_index < rows) {
+          auto outRow = out.row(row_index);
+          auto inRow = in.row(row_index);
+
+          gpu::transform_row(outRow, inRow,
+                             f::reduce<ReduceRow>(functor, inRow));
+        }
+      }
+    }
+
   }
 }

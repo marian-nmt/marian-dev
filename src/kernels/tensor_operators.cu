@@ -371,57 +371,40 @@ void Softmax(Tensor out, Tensor in, Tensor mask) {
 //  gSoftmax<<<blocks, threads, shared>>>(gOut, gIn, gMask);
 //}
 
-template <typename T>
-__global__ void gLogSoftmax(gpu::Tensor<T> out,
+template <class Functor, typename T>
+__global__ void gForeachRow(Functor func,
+                            gpu::Tensor<T> out,
                             gpu::Tensor<T> in) {
 
-  /****************************************************************************/
+  gpu::foreach_row(out, in, func);
 
-  //using namespace functional;
-  //
-  //ref<1> x;
-  //auto r_max = row_max(x); // cache results of reduces
-  //auto r_sum = row_sum(exp(x - r_max));
-  //auto logsoftmax = x - log(r_sum) - r_max;
-  //
-  //gpu::foreach(out, in, logsoftmax);
-
-  /****************************************************************************/
-
-  int rows = out.shape().elements() / out.shape().back();
-  int cols = out.shape().back();
-
-  using namespace functional;
-  namespace facc = functional::accumulator;
-
-  auto lambda = [&](int row_index) {
-    auto inRow = in.row(row_index);
-    auto outRow = out.row(row_index);
-
-    ref<1> x;
-    auto r_max = max_row(x);
-    auto r_sum = sum_row(exp(x - r_max));
-    auto logsoftmax = x - log(r_sum) - r_max;
-
-    gpu::transform_row(outRow, inRow, reduce(logsoftmax, inRow));
-  };
-
-  gpu::foreach_row(rows, lambda);
 }
 
-void LogSoftmax(Tensor out, Tensor in) {
+template<class Functor>
+void ForeachRow(Functor func, Tensor out, Tensor in) {
   cudaSetDevice(out->getDevice());
+  int rows = out->shape().elements() / out->shape().back();
+  int cols = out->shape().back();
 
-  size_t m = out->shape().elements() / out->shape().back();
-  size_t k = out->shape().back();
-
-  int blocks = std::min(MAX_BLOCKS, (int)m);
-  int threads = std::min(MAX_THREADS, (int)k);
+  int blocks = std::min(MAX_BLOCKS, (int)rows);
+  int threads = std::min(MAX_THREADS, (int)cols);
   int shared = sizeof(float) * threads * 2;
 
   gpu::Tensor<float> gOut = out;
   gpu::Tensor<float> gIn = in;
-  gLogSoftmax<<<blocks, threads, shared>>>(gOut, gIn);
+  gForeachRow<<<blocks, threads, shared>>>(func, gOut, gIn);
+}
+
+void LogSoftmax(Tensor out, Tensor in) {
+
+  using namespace functional;
+  var<1> x;
+
+  auto r_max = max_row(x);
+  auto r_sum = sum_row(exp(x - r_max));
+  auto logsoftmax = x - log(r_sum) - r_max;
+
+  ForeachRow(logsoftmax, out, in);
 }
 
 ///////////////////////////////////////////////////////
@@ -500,6 +483,7 @@ __global__ void gLogSoftmaxGrad(float* grad,
       float* gradRow = grad + j * cols;
       const float* adjRow = adj + j * cols;
       const float* valRow = val + j * cols;
+
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -526,8 +510,16 @@ __global__ void gLogSoftmaxGrad(float* grad,
   }
 }
 
+
 void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
-  cudaSetDevice(adj->getDevice());
+
+  //using namespace functional;
+  //
+  //ref<1> _val;
+  //ref<2> _adj
+  //logsoftmax_bw = _adj - exp(_val) * sum_row(_adj);
+  //
+  //ForeachRowAdd(logsoftmax_bw, grad, val, adj);
 
   // grad and val are both m-by-k matrices, passed as input.
   // A weighted average of each row of grad (according to the weights
@@ -542,28 +534,6 @@ void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
   gLogSoftmaxGrad<<<blocks, threads, shared>>>(
       grad->data(), adj->data(), val->data(), m, k);
 }
-
-///////////////////////////////////////////////////////
-__global__ void gArgmax(float* out,
-                        const float* data,
-                        size_t rows,
-                        size_t cols) {
-  size_t row = blockIdx.x;
-  size_t startInd = row * cols;
-  float maxScore = -99999;
-  size_t maxInd;
-  for(size_t col = 0; col < cols; ++col) {
-    size_t ind = startInd + col;
-    float score = data[ind];
-    if(score > maxScore) {
-      maxScore = score;
-      maxInd = col;
-    }
-  }
-  out[row] = maxInd;
-}
-
-///////////////////////////////////////////////////////
 
 void Prod(cublasHandle_t handle,
           Tensor C,

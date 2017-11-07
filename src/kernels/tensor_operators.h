@@ -230,7 +230,7 @@ void Add(Functor functor,
     using namespace functional;
     auto addScale = _1 += _2 * scale;
 
-    std::cerr << broadcast << std::endl;
+    //std::cerr << broadcast << std::endl;
 
     if(broadcast)
       gpu::kernels::gReduceRows<true><<<blocks, threads, shared>>>(

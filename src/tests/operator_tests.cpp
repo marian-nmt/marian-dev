@@ -176,15 +176,15 @@ TEST_CASE("Expression graph supports basic math operations", "[operator]") {
 
     auto a = graph->constant({2, 4}, keywords::init = inits::from_vector(vA));
 
-    //auto s1 = sum(a, keywords::axis=0);
+    auto s1 = sum(a, keywords::axis=0);
     auto s2 = sum(a, keywords::axis=1);
 
-    //auto m3 = mean(s1, keywords::axis=1);
-    //
-    //auto sp = scalar_product(s2, s2, keywords::axis=0);
-    //
-    //auto wa = weighted_average(a, s1, keywords::axis=-1);
-    //
+    auto m3 = mean(s1, keywords::axis=1);
+
+    auto sp = scalar_product(s2, s2, keywords::axis=0);
+
+    auto wa = weighted_average(a, s1, keywords::axis=-1);
+
     graph->forward();
 
     //CHECK(s1->shape() == Shape({1, 4}));

@@ -34,8 +34,12 @@ namespace marian {
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) { return V; }
 
-      std::string to_string() {
-        return "C<" + std::to_string(V) + ">";
+      std::string to_string() const {
+        return std::to_string(V);
+      }
+
+      constexpr static bool isFunctor() {
+        return false;
       }
     };
 
@@ -49,9 +53,14 @@ namespace marian {
       template <typename ...Args>
       __HDI__ float operator()(Args&&... args) { return value; }
 
-      std::string to_string() {
-        return "Cap(" + std::to_string(value) + ")";
+      std::string to_string() const {
+        return std::to_string(value);
       }
+
+      constexpr static bool isFunctor() {
+        return true;
+      }
+
     };
 
 /******************************************************************************/
@@ -65,9 +74,14 @@ namespace marian {
         return Select<N-1>::apply(args...);
       }
 
-      std::string to_string() {
-        return "Var<" + std::to_string(N) + ">";
+      std::string to_string() const {
+        return "x_" + std::to_string(N);
       }
+
+      constexpr static bool isFunctor() {
+        return true;
+      }
+
     };
 
   }

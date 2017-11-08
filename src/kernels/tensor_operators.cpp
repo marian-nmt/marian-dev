@@ -67,6 +67,20 @@ void gAddBinaryMultiply(float scale, const Shape& full, Tensor out_, Tensor in1_
             }
           }
           break;
+        case 0x000110: // vector out=j, in1=j, in2=i
+          #pragma omp parallel for collapse(3)
+          for (int l = 0; l < L; ++l)
+          for (int k = 0; k < K; ++k)
+          for (int i = 0; i < I; ++i) {
+            int in2Index = in2_->shape().bindex(0, 0, k, l) + i;
+            #pragma omp simd
+            for (int j = 0; j < J; ++j) {
+              int in1Index = in1_->shape().bindex(i, 0, k, l) + j;
+              int outIndex = i*outShape.stride(0) + j + k*outShape.stride(2) + l*outShape.stride(3);
+              out[outIndex] += in1[in1Index] * in2[in2Index] * scale;
+            }
+          }
+          break;
         case 0x000111: // vector out=j, in1=j, in2=j
           #pragma omp parallel for collapse(3) schedule(static, 1)
           for (int l = 0; l < L; ++l)

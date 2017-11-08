@@ -188,22 +188,38 @@ struct MultNodeOp : public ElementBinaryNodeOp {
 };
 
 struct DivNodeOp : public ElementBinaryNodeOp {
+  Tensor child1_temp;
+
   template <typename... Args>
   DivNodeOp(Args... args) : ElementBinaryNodeOp(args...) {}
 
   NodeOps forwardOps() {
+    if (!child1_temp) {
+      graph()->tensor(child1_temp, child(1)->shape());
+    }
+
     return {
-        NodeOp(Element(_1 = _2 / _3, val_, child(0)->val(), child(1)->val()))};
+      [=]() {
+        Element(_1 = 1.f / _2, child1_temp, child(1)->val());
+        Element(_1 = _2 * _3, val_, child(0)->val(), child1_temp);
+      }
+    };
   }
 
   NodeOps backwardOps() {
+    if (!child1_temp) {
+      graph()->tensor(child1_temp, child(1)->shape());
+    }
+
     return {
-        NodeOp(Add(_1 * 1.0f / _2, child(0)->grad(), adj_, child(1)->val())),
-        NodeOp(Add(-_1 * _2 / (_3 * _3),
-                   child(1)->grad(),
-                   adj_,
-                   child(0)->val(),
-                   child(1)->val()))};
+      [=]() {
+        Element(_1 = 1.f / _2, child1_temp, child(1)->val());
+        Add(_1 * _2, child(0)->grad(), adj_, child1_temp);
+      },
+      [=]() {
+        Add(-_1 * _2 * _3, child(1)->grad(), adj_, child(0)->val(), child1_temp);
+      }
+    };
   }
 
   const std::string type() { return "÷"; }

@@ -100,7 +100,9 @@ namespace marian {
     UNARY(Abs, abs, fabs(x));
     UNARY(Sqrt, sqrt, sqrtf(x));
     UNARY(Neg, operator-, -x);
-    UNARY(Logit, logit, x > 0 ? (1.f / (1.f + expf(-x))) : (expf(x) / (1.f + expf(x))));
+    UNARY(Logit, logit, x > 0 ?
+                        (1.f / (1.f + expf(-x))) :
+                        (expf(x) / (1.f + expf(x))));
 
     namespace elem { \
       template <typename T>

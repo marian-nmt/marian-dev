@@ -172,7 +172,5 @@ namespace marian {
                                decltype(simplify(f.z))>(
             f.x, simplify(f.y), simplify(f.z)));
     }
-
-
   }
 }

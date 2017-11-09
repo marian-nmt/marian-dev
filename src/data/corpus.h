@@ -172,6 +172,14 @@ public:
 
   size_t words() const { return batches_[0]->batchWords(); }
 
+  size_t width() const { return batches_[0]->batchWidth(); }
+
+  size_t sizeTrg() const { return batches_.back()->batchSize(); }
+
+  size_t wordsTrg() const { return batches_.back()->batchWords(); };
+
+  size_t widthTrg() const { return batches_.back()->batchWidth(); };
+
   size_t sets() const { return batches_.size(); }
 
   static Ptr<CorpusBatch> fakeBatch(std::vector<size_t>& lengths,

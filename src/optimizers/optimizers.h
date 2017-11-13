@@ -14,25 +14,24 @@ namespace marian {
 class OptimizerBase : public TrainingObserver {
 public:
   OptimizerBase(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : eta_(eta), clipper_(clipper) {}
+      : eta_(eta), clipper_(clipper), multiplyFactor_(1.0f) {}
 
-  void update(Ptr<ExpressionGraph> graph, float multiplyFactor = 1.0f) {
+  void update(Ptr<ExpressionGraph> graph) {
     Tensor p = graph->params()->vals();
     Tensor g = graph->params()->grads();
 
-    update(p, g, multiplyFactor);
+    update(p, g);
   }
 
-  void update(Tensor params, Tensor grads, float multiplyFactor = 1.0f) {
+  void update(Tensor params, Tensor grads) {
     if(clipper_)
       clipper_->clip(grads);
 
-    // In case we want to add a multiply factor to our learning rate
-    multiplyFactor_ = multiplyFactor;
     updateImpl(params, grads);
   }
 
   virtual void actAfterEpoch(TrainingState& state) { eta_ = state.eta; }
+  virtual void actBeforeBatches(TrainingState& state, size_t batchWords) { multiplyFactor_ = state.multiplyFactor_; }
   virtual void actAfterBatches(TrainingState& state) { eta_ = state.eta; }
   virtual void actAfterStalled(TrainingState& state) { eta_ = state.eta; }
 
@@ -45,7 +44,8 @@ protected:
   // Learning rate
   float eta_;
   // Compensates for larger batch
-  float multiplyFactor_;
+  float multiplyFactor_; //@TODO this would break local optimizers + tau combinations or any 
+                                             //scenario where you have 2 optimizers on the same thread executing on different batches
   // Clip gradient norm
   Ptr<ClipperBase> clipper_;
 };

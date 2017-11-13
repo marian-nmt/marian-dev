@@ -139,7 +139,7 @@ void SyncGraphGroup::execute(Ptr<data::Batch> batch) {
         i++;
       }
 
-      shardOpt_[idx]->update(params_[idx], grads_[idx], scaleLearningRate_ ? batch_size_perthread_[idx] / avgBatchWords_ : 1);
+      shardOpt_[idx]->update(params_[idx], grads_[idx]);
 
       if(movingAvg_)
         updateMovingAverage(

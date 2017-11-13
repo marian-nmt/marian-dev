@@ -48,8 +48,7 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads) {
           grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()));
 
           shardOpt_[idx]->update(
-                params_[idx], grads_[idx],
-                  batch_size_perthread_[threadIDs_.find(std::this_thread::get_id())->second]);
+                params_[idx], grads_[idx]);
 
           if(movingAvg_)
             updateMovingAverage(

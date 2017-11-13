@@ -19,6 +19,9 @@ void SingletonGraph::updateMovingAverage(Tensor mvAvgParams,
 }
 
 void SingletonGraph::execute(Ptr<data::Batch> batch) {
+  if(scheduler_) {
+    scheduler_->preUpdate(batch);
+  }
   auto costNode = builder_->build(graph_, batch);
 
   graph_->forward();
@@ -28,7 +31,7 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
   // Get batch stats
   size_t batch_words = batch->wordsTrg();
 
-  opt_->update(graph_, scaleLearningRate_ ? batch_words / avgBatchWords_ : 1);
+  opt_->update(graph_);
 
 
   if(mvAvg_) {

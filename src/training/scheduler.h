@@ -12,6 +12,7 @@ private:
 
   Ptr<Config> options_;
   std::vector<Ptr<ValidatorBase>> validators_;
+  float scaledLR_{1.0f}; //@TODO maybe do an array here.
 
   float costSum{0};
   size_t samples{0};
@@ -110,6 +111,11 @@ public:
       if(validators_[0])
         return validators_[0]->stalled();
     return 0;
+  }
+
+  void preUpdate(Ptr<data::Batch> batch) {
+    size_t batchWords = batch->wordsTrg();
+    state_->preBatch(batchWords);
   }
 
   void update(float cost, Ptr<data::Batch> batch) {
@@ -251,6 +257,17 @@ public:
         }
       }
     }
+  }
+
+  void actBeforeBatches(TrainingState& state, size_t batchWords) {
+    bool scaleLearningRate_ = options_->get<bool>("batch-flexible-lr");
+    float avgBatchWords_ = options_->get<float>("batch-normal-words");
+
+    if (scaleLearningRate_) {
+      state.multiplyFactor_ = batchWords/avgBatchWords_; //@TODO is this how we access the underlying
+                                                        //training observer which is an optimizer.
+    }
+
   }
 
   void actAfterBatches(TrainingState& state) {

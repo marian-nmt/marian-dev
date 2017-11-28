@@ -114,6 +114,7 @@ void SyncGraphGroup::execute(Ptr<data::Batch> batch) {
         graph->forward();
         costs[idx] = costNode->scalar();
         graph->backward();
+        batch_size_perthread_[idx] = batch->wordsTrg();
       }
     };
 

@@ -13,6 +13,8 @@ protected:
   Ptr<Config> options_;
   Ptr<OptimizerBase> opt_;
   Ptr<Scheduler> scheduler_;
+  std::vector<size_t> batch_size_perthread_;
+  std::unordered_map<std::thread::id, size_t> threadIDs_;
 
   bool scaleLearningRate_;
   float avgBatchWords_;
@@ -22,7 +24,8 @@ public:
       : options_(options),
         opt_(Optimizer(options)),
         scaleLearningRate_(options->get<bool>("batch-flexible-lr")),
-        avgBatchWords_(options->get<float>("batch-normal-words")) {}
+        avgBatchWords_(options->get<float>("batch-normal-words")),
+          batch_size_perthread_(options->get<std::vector<int> >("devices").size()) {}
 
   virtual ~GraphGroup() {}
 

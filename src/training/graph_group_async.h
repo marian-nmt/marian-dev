@@ -50,7 +50,7 @@ private:
 
   void fetchParams(Tensor oldParams, const std::vector<Tensor>& params);
 
-  void pushGradients(Tensor newGrads, size_t batch_words);
+  void pushGradients(Tensor newGrads);
 
   void updateMovingAverage(Tensor paramsAvg, Tensor params, size_t batches);
 

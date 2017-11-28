@@ -36,7 +36,7 @@ void AsyncGraphGroup::fetchParams(Tensor oldParams,
   }
 }
 
-void AsyncGraphGroup::pushGradients(Tensor newGrads, size_t batch_words) {
+void AsyncGraphGroup::pushGradients(Tensor newGrads) {
   // add instead of copy?
   std::vector<std::thread> threads;
   int pos = 0;
@@ -47,12 +47,8 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads, size_t batch_words) {
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
           grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()));
 
-          if(scaleLearningRate_) {
-            shardOpt_[idx]->update(
-                params_[idx], grads_[idx], batch_words / avgBatchWords_);
-          } else {
-            shardOpt_[idx]->update(params_[idx], grads_[idx]);
-          }
+          shardOpt_[idx]->update(
+                params_[idx], grads_[idx]);
 
           if(movingAvg_)
             updateMovingAverage(
@@ -157,8 +153,12 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     thread_local Tensor accGradients;
     thread_local Ptr<TensorAllocator> accAlloc;
 
+    thread_local size_t my_id = 0;
+
     if(!graph) {
       std::lock_guard<std::mutex> lock(sync_);
+      my_id = i;
+      threadIDs_.insert(std::pair<std::thread::id, size_t>(std::this_thread::get_id(), my_id));
       graph = graphs_[i];
       builder = builders_[i++];
     }
@@ -174,7 +174,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     graph->backward();
 
     // Get batch stats
-    size_t batch_words = batch->words();
+    size_t batch_words = batch->wordsTrg();
 
     Tensor gradients;
     if(tau_ > 1) {
@@ -199,7 +199,8 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     t++;
 
     if(t % tau_ == 0) {
-      pushGradients(gradients, num_seen_words);
+      batch_size_perthread_[my_id] = scaleLearningRate_ ? num_seen_words/avgBatchWords_ : 1; //Optionally scale learning rate
+      pushGradients(gradients);
       // Reset the counter of seen words after gradient update
       num_seen_words = 0;
 

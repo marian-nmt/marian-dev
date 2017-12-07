@@ -334,7 +334,8 @@ static void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
 }
 
 static void LSTMCellBackward(std::vector<Tensor> outputs, std::vector<Tensor> inputs, Tensor adj) {
-  if (outputs[0]->residency == DEVICE_CPU) {
+  // Any of the outputs may be nullptr, so check input instead, even if inconsistent with others in this file
+  if (inputs[0]->residency == DEVICE_CPU) {
     return cpu::LSTMCellBackward(outputs, inputs, adj);
   }
   #if CUDA_FOUND
@@ -345,7 +346,8 @@ static void LSTMCellBackward(std::vector<Tensor> outputs, std::vector<Tensor> in
 }
 
 static void LSTMOutputBackward(std::vector<Tensor> outputs, std::vector<Tensor> inputs, Tensor adj) {
-  if (outputs[0]->residency == DEVICE_CPU) {
+  // Any of the outputs may be nullptr, so check input instead, even if inconsistent with others in this file
+  if (inputs[0]->residency == DEVICE_CPU) {
     return cpu::LSTMOutputBackward(outputs, inputs, adj);
   }
   #if CUDA_FOUND

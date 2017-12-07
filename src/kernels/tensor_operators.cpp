@@ -1164,10 +1164,10 @@ void LSTMCellBackward(std::vector<Tensor> outputs, std::vector<Tensor> inputs, T
   int rows = adj_->shape()[0] * adj_->shape()[2] * adj_->shape()[3];
   int cols = adj_->shape()[1];
 
-  float* outCell = outputs[0]->data();
-  float* outXW = outputs[1]->data();
-  float* outSU = outputs[2]->data();
-  float* outB = outputs[3]->data();
+  float* outCell = outputs[0] ? outputs[0]->data() : nullptr;
+  float* outXW = outputs[1] ? outputs[1]->data() : nullptr;
+  float* outSU = outputs[2] ? outputs[2]->data() : nullptr;
+  float* outB = outputs[3] ? outputs[3]->data() : nullptr;
 
   const float* cell = inputs[0]->data();
   const float* xW = inputs[1]->data();
@@ -1231,10 +1231,10 @@ void LSTMOutputBackward(std::vector<Tensor> outputs, std::vector<Tensor> inputs,
   int rows = adj_->shape()[0] * adj_->shape()[2] * adj_->shape()[3];
   int cols = adj_->shape()[1];
 
-  float* outCell = outputs[0]->data();
-  float* outXW = outputs[1]->data();
-  float* outSU = outputs[2]->data();
-  float* outB = outputs[3]->data();
+  float* outCell = outputs[0] ? outputs[0]->data() : nullptr;
+  float* outXW = outputs[1] ? outputs[1]->data() : nullptr;
+  float* outSU = outputs[2] ? outputs[2]->data() : nullptr;
+  float* outB = outputs[3] ? outputs[3]->data() : nullptr;
 
   const float* cell = inputs[0]->data();
   const float* xW = inputs[1]->data();

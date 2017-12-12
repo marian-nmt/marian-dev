@@ -35,8 +35,11 @@ cuda_add_library(marian
   translator/nth_element.cu
   translator/helpers.cu
   translator/scorers.cpp
+  translator/printer.cpp
   training/graph_group_async.cu
+  training/graph_group_async.cpp
   training/graph_group_sync.cu
+  training/graph_group_sync.cpp
   training/graph_group_singleton.cu
   training/validator.cpp
   data/vocab.cpp

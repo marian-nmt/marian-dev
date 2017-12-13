@@ -21,6 +21,7 @@ cuda_add_library(marian
   layers/param_initializers.cu
   layers/generic.cpp
   layers/guided_alignment.cpp
+  layers/convolution.cu
   models/model_factory.cpp
   rnn/attention.cu
   rnn/cells.cu
@@ -38,9 +39,13 @@ cuda_add_library(marian
   translator/printer.cpp
   training/graph_group_async.cu
   training/graph_group_async.cpp
+  training/graph_group_async_drop.cu
+  training/graph_group_async_drop.cpp
+  training/dropper.cu
   training/graph_group_sync.cu
   training/graph_group_sync.cpp
   training/graph_group_singleton.cu
+  training/sparse_tensor.cu
   training/validator.cpp
   data/vocab.cpp
   data/corpus.cpp

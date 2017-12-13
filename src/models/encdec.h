@@ -125,36 +125,30 @@ public:
   virtual void selectEmbeddings(Ptr<ExpressionGraph> graph,
                                 Ptr<DecoderState> state,
                                 const std::vector<size_t>& embIdx,
-                                int beamSize) {
+                                int dimBatch, int dimBeam) {
     using namespace keywords;
 
     int dimTrgEmb = opt<int>("dim-emb");
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
-    int dimBatch = 1;
-    if(state->getEncoderStates().size() > 0)
-      dimBatch = state->getEncoderStates()[0]->getContext()->shape()[-2];
+    // embeddings are loaded from model during translation, no fixing required
+    auto yEmbFactory = embedding(graph)  //
+        ("dimVocab", dimTrgVoc)          //
+        ("dimEmb", dimTrgEmb);
 
-    int dimBeam = embIdx.size() / dimBatch;
+    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+      yEmbFactory("prefix", "Wemb");
+    else
+      yEmbFactory("prefix", prefix_ + "_Wemb");
+
+    auto yEmb = yEmbFactory.construct();
 
     Expr selectedEmbs;
     if(embIdx.empty()) {
       selectedEmbs = graph->constant({1, 1, dimBatch, dimTrgEmb},
                                      init = inits::zeros);
     } else {
-      // embeddings are loaded from model during translation, no fixing required
-      auto yEmbFactory = embedding(graph)  //
-          ("dimVocab", dimTrgVoc)          //
-          ("dimEmb", dimTrgEmb);
-
-      if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
-        yEmbFactory("prefix", "Wemb");
-      else
-        yEmbFactory("prefix", prefix_ + "_Wemb");
-
-      auto yEmb = yEmbFactory.construct();
       selectedEmbs = rows(yEmb, embIdx);
-
       selectedEmbs
           = reshape(selectedEmbs, {dimBeam, 1, dimBatch, dimTrgEmb});
     }
@@ -176,14 +170,14 @@ public:
   virtual void selectEmbeddings(Ptr<ExpressionGraph> graph,
                                 Ptr<DecoderState> state,
                                 const std::vector<size_t>&,
-                                int beamSize)
+                                int dimBatch, int beamSize)
       = 0;
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
                                  Ptr<DecoderState>,
                                  const std::vector<size_t>&,
                                  const std::vector<size_t>&,
-                                 int beamSize)
+                                 int dimBatch, int beamSize)
       = 0;
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph>, Ptr<DecoderState>) = 0;
@@ -219,8 +213,13 @@ protected:
     YAML::Node decoder;
     decoder["models"] = std::vector<std::string>({name});
     decoder["vocabs"] = options_->get<std::vector<std::string>>("vocabs");
-    decoder["normalize"] = 1.0f;
-    decoder["beam-size"] = 12;
+    decoder["normalize"] = opt<float>("normalize");
+    decoder["beam-size"] = opt<size_t>("beam-size");
+
+    decoder["mini-batch"] = opt<size_t>("valid-mini-batch");
+    decoder["maxi-batch"] = opt<size_t>("valid-mini-batch") > 1 ? 100 : 1;
+    decoder["maxi-batch-sort"] = opt<size_t>("valid-mini-batch") > 1 ? "src" : "none";
+
     decoder["relative-paths"] = false;
 
     OutputFileStream out(name + ".decoder.yml");
@@ -271,7 +270,7 @@ public:
   void push_back(Ptr<DecoderBase> decoder) { decoders_.push_back(decoder); }
 
   virtual void load(Ptr<ExpressionGraph> graph, const std::string& name) {
-    graph->load(name);
+    graph->load(name, !opt<bool>("ignore-model-config"));
   }
 
   virtual void save(Ptr<ExpressionGraph> graph,
@@ -311,9 +310,9 @@ public:
                                  Ptr<DecoderState> state,
                                  const std::vector<size_t>& hypIndices,
                                  const std::vector<size_t>& embIndices,
-                                 int beamSize) {
+                                 int dimBatch, int beamSize) {
     auto selectedState = hypIndices.empty() ? state : state->select(hypIndices, beamSize);
-    selectEmbeddings(graph, selectedState, embIndices, beamSize);
+    selectEmbeddings(graph, selectedState, embIndices, dimBatch, beamSize);
     selectedState->setSingleStep(true);
     auto nextState = step(graph, selectedState);
     nextState->setProbs(logsoftmax(nextState->getProbs()));
@@ -323,8 +322,8 @@ public:
   virtual void selectEmbeddings(Ptr<ExpressionGraph> graph,
                                 Ptr<DecoderState> state,
                                 const std::vector<size_t>& embIdx,
-                                int beamSize) {
-    decoders_[0]->selectEmbeddings(graph, state, embIdx, beamSize);
+                                int dimBatch, int beamSize) {
+    decoders_[0]->selectEmbeddings(graph, state, embIdx, dimBatch, beamSize);
   }
 
   virtual Expr build(Ptr<ExpressionGraph> graph,

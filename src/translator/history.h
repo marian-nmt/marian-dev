@@ -19,53 +19,17 @@ private:
 public:
   History(size_t lineNo, float alpha = 1.f);
 
-  float LengthPenalty(size_t length) { return std::pow((float)length, alpha_); }
+  float LengthPenalty(size_t length);
 
-  void Add(const Beam& beam, bool last = false) {
-    if(beam.back()->GetPrevHyp() != nullptr) {
-      for(size_t j = 0; j < beam.size(); ++j)
-        if(beam[j]->GetWord() == 0 || last) {
-          float cost = beam[j]->GetCost() / LengthPenalty(history_.size());
-          topHyps_.push({history_.size(), j, cost});
-          //std::cerr << "Add " << history_.size() << " " << j << " " << cost << std::endl;
-        }
-    }
-    history_.push_back(beam);
-  }
+  void Add(const Beam& beam, bool last = false);
 
-  size_t size() const { return history_.size(); }
+  size_t size() const;
 
-  NBestList NBest(size_t n) const {
-    NBestList nbest;
-    auto topHypsCopy = topHyps_;
-    while(nbest.size() < n && !topHypsCopy.empty()) {
-      auto bestHypCoord = topHypsCopy.top();
-      topHypsCopy.pop();
+  NBestList NBest(size_t n) const;
 
-      size_t start = bestHypCoord.i;
-      size_t j = bestHypCoord.j;
-      //float c = bestHypCoord.cost;
-      //std::cerr << "h: " << start << " " << j << " " << c << std::endl;
+  Result Top() const;
 
-      Words targetWords;
-      Ptr<Hypothesis> bestHyp = history_[start][j];
-      while(bestHyp->GetPrevHyp() != nullptr) {
-        targetWords.push_back(bestHyp->GetWord());
-        //std::cerr << bestHyp->GetWord() << " " << bestHyp << std::endl;
-        bestHyp = bestHyp->GetPrevHyp();
-      }
-
-      std::reverse(targetWords.begin(), targetWords.end());
-      nbest.emplace_back(targetWords,
-                         history_[bestHypCoord.i][bestHypCoord.j],
-                         bestHypCoord.cost);
-    }
-    return nbest;
-  }
-
-  Result Top() const { return NBest(1)[0]; }
-
-  size_t GetLineNum() const { return lineNo_; }
+  size_t GetLineNum() const;
 
 private:
   std::vector<Beam> history_;

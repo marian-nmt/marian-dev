@@ -38,6 +38,8 @@ protected:
                    const std::vector<Tensor>& params,
                    int device_id);
 
+  void computeDelta(Tensor delta, Tensor param, Tensor local);
+
 public:
   AsyncGraphGroupDrop(Ptr<Config> options)
       : AsyncGraphGroup(options),

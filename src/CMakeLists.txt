@@ -36,10 +36,14 @@ cuda_add_library(marian
   translator/nth_element.cu
   translator/helpers.cu
   translator/scorers.cpp
-  training/dropper.cu
+  translator/printer.cpp
   training/graph_group_async.cu
+  training/graph_group_async.cpp
   training/graph_group_async_drop.cu
+  training/graph_group_async_drop.cpp
+  training/dropper.cu
   training/graph_group_sync.cu
+  training/graph_group_sync.cpp
   training/graph_group_singleton.cu
   training/sparse_tensor.cu
   training/validator.cpp

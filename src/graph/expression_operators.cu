@@ -29,6 +29,10 @@ Expr prelu(Expr a, float alpha) {
   return Expression<PReLUNodeOp>(alpha, a);
 }
 
+Expr selu(Expr x) {
+  return Expression<SeLUNodeOp>(x);
+}
+
 Expr log(Expr a) {
   return Expression<LogNodeOp>(a);
 };

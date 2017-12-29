@@ -30,6 +30,8 @@ Expr leakyrelu(const std::vector<Expr>&);
 Expr prelu(Expr a, float alpha = 0.01);
 Expr prelu(const std::vector<Expr>&, float alpha = 0.01);
 
+Expr selu(Expr x);
+
 Expr log(Expr a);
 
 Expr exp(Expr a);
@@ -124,6 +126,23 @@ Expr layer_norm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
 Expr highway(Expr y, Expr x, Expr t);
 Expr highway(const std::string prefix, Expr x);
+
+template <typename... Args>
+Expr dropout_selu(Expr x, Args... args) {
+  float dropout_prob = Get(keywords::dropout_prob, 0.0f, args...);
+  float keep = 1.0 - dropout_prob;
+
+  ABORT_IF(!dropout_prob, "Neither mask nor dropout prob given");
+  auto graph = x->graph();
+  const float alpha= -1.7580993408473766f;
+  auto mask = graph->dropout(dropout_prob, x->shape());
+  auto masked =  x * mask + (1.0f - mask) * alpha;
+
+  float a =  1.0f / std::sqrt(keep + keep * (1.0f - keep) * alpha * alpha);
+  float b = -a * (1.0f - keep) * alpha;
+  masked = a * masked + b;
+  return masked;
+}
 
 template <typename... Args>
 Expr dropout(Expr x, Args... args) {

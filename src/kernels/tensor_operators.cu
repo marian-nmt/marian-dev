@@ -2232,4 +2232,43 @@ void PoolingWithMaskingBackward(Tensor adj,
       width, lastWidth);
 }
 
+__global__ void gSeLUForward(int n, float* in, float* out) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    float scale = 1.0507009873554804934193349852946f;
+    float alpha = 1.6732632423543772848170429916717f;
+
+    if (tid < n) {
+        out[tid] = scale * ((in[tid] > 0.0f) ? in[tid] : alpha * (exp(in[tid]) - 1.0f));
+    }
+}
+
+void SeLUForward(Tensor in, Tensor out) {
+  cudaSetDevice(out->getDevice());
+
+  int length = in->shape().elements();
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  gSeLUForward<<<blocks, threads>>>(length, in->data(), out->data());
+}
+
+__global__ void gSeLUBackward(int n, float* yGrad, float* x, float* xGrad) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    float scale = 1.0507009873554804934193349852946f;
+    float alpha = 1.6732632423543772848170429916717f;
+
+    if (tid < n) {
+        xGrad[tid] += yGrad[tid] * ((x[tid] > 0.0f) ? scale : scale * alpha * exp(x[tid]));
+    }
+}
+
+void SeLUBackward(Tensor yGrad, Tensor x, Tensor xGrad) {
+  cudaSetDevice(yGrad->getDevice());
+
+  int length = x->shape().elements();
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  gSeLUBackward<<<blocks, threads>>>(length, yGrad->data(), x->data(), xGrad->data());
+}
 }  // namespace marian

@@ -11,14 +11,23 @@ Expr Convolution::apply(Expr x) {
   auto kernelNum = opt<int>("kernel-num");
   auto paddings = opt<std::pair<int, int>>("paddings", std::make_pair(0, 0));
   auto strides = opt<std::pair<int, int>>("strides", std::make_pair(1, 1));
+  auto seluInit = opt<bool>("selu-init");
 
   int layerIn = x->shape()[1];
-  auto kernel = graph_->param(prefix + "_conv_kernels",
-                              {layerIn,
-                               kernelNum,
-                               kernelDims.first,
-                               kernelDims.second},
-                              keywords::init=inits::glorot_uniform);
+
+  auto kernel = seluInit ?
+      graph_->param(prefix + "_conv_kernels",
+                    {layerIn,
+                    kernelNum,
+                    kernelDims.first,
+                    kernelDims.second},
+                    keywords::init=inits::lecun_normal)
+      : graph_->param(prefix + "_conv_kernels",
+                    {layerIn,
+                    kernelNum,
+                    kernelDims.first,
+                    kernelDims.second},
+                    keywords::init=inits::he_normal);
 
   auto bias = graph_->param(prefix + "_conv_bias",
                             {1, kernelNum, 1, 1},

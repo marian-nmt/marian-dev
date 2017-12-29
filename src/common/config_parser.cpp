@@ -334,6 +334,8 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      ->default_value(std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8}), "1 2 3 4 5 6 7 8")
       ->multitoken(),
      "Convolution window widths in char-s2s model")
+    ("char-use-selu", po::value<bool>()->default_value(false),
+     "Use SeLU instead of ReLU activation function in char-s2s model")
 #endif
     ;
 

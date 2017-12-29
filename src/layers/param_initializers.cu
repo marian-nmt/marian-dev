@@ -82,6 +82,17 @@ void glorot_normal(Tensor t) {
   distribution<std::normal_distribution<float>>(t, 0, scale);
 }
 
+void he_normal(Tensor t) {
+  float scale = sqrtf(2.0f / (t->shape()[-1] * t->shape()[-2]));
+  distribution<std::normal_distribution<float>>(t, 0, scale);
+}
+
+void lecun_normal(Tensor t) {
+  float scale = sqrtf(1.0f / (t->shape()[-1] * t->shape()[-2]));
+  distribution<std::normal_distribution<float>>(t, 0, scale);
+}
+
+
 void svd(std::vector<float>& vec, Shape shape) {
   int rows = shape[0] * shape[2] * shape[3];
   int cols = shape[1];

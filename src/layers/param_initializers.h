@@ -47,6 +47,9 @@ void ortho(Tensor t);
 
 void glorot_uniform(Tensor t);
 
+void he_normal(Tensor t);
+void lecun_normal(Tensor t);
+
 void xorshift(Tensor t);
 
 void glorot_normal(Tensor t);

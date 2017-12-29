@@ -29,13 +29,15 @@ class CharConvPooling {
       int kernelHeight,
       std::vector<int> kernelWidths,
       std::vector<int> kernelNums,
-      int stride)
+      int stride,
+      bool useSelu)
       : name_(prefix),
         size_(kernelNums.size()),
         kernelHeight_(kernelHeight),
         kernelWidths_(kernelWidths),
         kernelNums_(kernelNums),
-        stride_(stride) {}
+        stride_(stride),
+        useSelu_(useSelu) {}
 
     Expr operator()(Expr x, Expr mask) {
       auto graph = x->graph();
@@ -52,14 +54,21 @@ class CharConvPooling {
         int kernelNum = kernelNums_[i];
         int padWidth = kernelWidth / 2;
 
-
         auto output = convolution(graph)
           ("prefix", name_ + "_width_" + std::to_string(kernelWidth))
           ("kernel-dims", std::make_pair(kernelWidth, x->shape()[-1]))
           ("kernel-num", kernelNum)
           ("paddings", std::make_pair(padWidth, 0))
-          .apply(input);;
-        auto relued = relu(output);
+          ("selu-init", useSelu_)
+          .apply(input);
+
+        Expr relued;
+        if (useSelu_) {
+          relued = selu(output);
+        } else {
+          relued = relu(output);
+        }
+
         auto output2 = pooling_with_masking(relued,
             maskNCHW, stride_, kernelWidth % 2 == 0);
 
@@ -81,6 +90,7 @@ protected:
   std::vector<int> kernelWidths_;
   std::vector<int> kernelNums_;
   int stride_;
+  bool useSelu_;
 };
 
 }

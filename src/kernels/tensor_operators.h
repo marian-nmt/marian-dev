@@ -394,4 +394,9 @@ void PoolingWithMaskingBackward(Tensor adj,
                                 Tensor mask,
                                 int width,
                                 bool isEven=false);
+
+void SeLUForward(Tensor in, Tensor out);
+
+void SeLUBackward(Tensor yGrad, Tensor x, Tensor xGrad);
+
 }

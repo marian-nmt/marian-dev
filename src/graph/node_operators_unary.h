@@ -251,6 +251,21 @@ struct ReLUNodeOp : public UnaryNodeOp {
   const std::string type() { return "ReLU"; }
 };
 
+struct SeLUNodeOp : public UnaryNodeOp {
+  template <typename... Args>
+  SeLUNodeOp(Args... args) : UnaryNodeOp(args...) {}
+
+  NodeOps forwardOps() {
+    return {NodeOp(SeLUForward(child(0)->val(), val_))};
+  }
+
+  NodeOps backwardOps() {
+    return {NodeOp(SeLUBackward(adj_, child(0)->val(), child(0)->grad()))};
+  }
+
+  const std::string type() { return "SeLU"; }
+};
+
 /**
  * Represents a <a
  * href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)">parametric

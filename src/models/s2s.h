@@ -6,7 +6,36 @@ namespace marian {
 
 class EncoderS2S : public EncoderBase {
 public:
-  Expr applyEncoderRNN(Ptr<ExpressionGraph> graph,
+  EncoderS2S(Ptr<Options> options) : EncoderBase(options) {}
+
+  virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
+                                  Ptr<data::CorpusBatch> batch) {
+    auto embeddings = buildSourceEmbeddings(graph);
+
+    using namespace keywords;
+    // select embeddings that occur in the batch
+    Expr batchEmbeddings, batchMask;
+    std::tie(batchEmbeddings, batchMask)
+        = EncoderBase::lookup(embeddings, batch);
+
+    // apply dropout over source words
+    float dropProb = inference_ ? 0 : opt<float>("dropout-src");
+    if(dropProb) {
+      int srcWords = batchEmbeddings->shape()[-3];
+      auto dropMask = graph->dropout(dropProb, {srcWords, 1, 1});
+      batchEmbeddings = dropout(batchEmbeddings, mask = dropMask);
+    }
+
+    Expr context = applyEncoderRNN(
+        graph, batchEmbeddings, batchMask, opt<std::string>("enc-type"));
+
+    return New<EncoderState>(context, batchMask, batch);
+  }
+
+  void clear() {}
+
+protected:
+  virtual Expr applyEncoderRNN(Ptr<ExpressionGraph> graph,
                        Expr embeddings,
                        Expr mask,
                        std::string type) {
@@ -116,7 +145,7 @@ public:
     return context;
   }
 
-  Expr buildSourceEmbeddings(Ptr<ExpressionGraph> graph) {
+  virtual Expr buildSourceEmbeddings(Ptr<ExpressionGraph> graph) {
     // create source embeddings
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
     int dimEmb = opt<int>("dim-emb");
@@ -142,34 +171,6 @@ public:
 
     return embFactory.construct();
   }
-
-  EncoderS2S(Ptr<Options> options) : EncoderBase(options) {}
-
-  virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
-                                  Ptr<data::CorpusBatch> batch) {
-    auto embeddings = buildSourceEmbeddings(graph);
-
-    using namespace keywords;
-    // select embeddings that occur in the batch
-    Expr batchEmbeddings, batchMask;
-    std::tie(batchEmbeddings, batchMask)
-        = EncoderBase::lookup(embeddings, batch);
-
-    // apply dropout over source words
-    float dropProb = inference_ ? 0 : opt<float>("dropout-src");
-    if(dropProb) {
-      int srcWords = batchEmbeddings->shape()[-3];
-      auto dropMask = graph->dropout(dropProb, {srcWords, 1, 1});
-      batchEmbeddings = dropout(batchEmbeddings, mask = dropMask);
-    }
-
-    Expr context = applyEncoderRNN(
-        graph, batchEmbeddings, batchMask, opt<std::string>("enc-type"));
-
-    return New<EncoderState>(context, batchMask, batch);
-  }
-
-  void clear() {}
 };
 
 class DecoderS2S : public DecoderBase {

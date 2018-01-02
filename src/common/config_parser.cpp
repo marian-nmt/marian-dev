@@ -336,6 +336,8 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Convolution window widths in char-s2s model")
     ("char-use-selu", po::value<bool>()->default_value(false),
      "Use SeLU instead of ReLU activation function in char-s2s model")
+    ("dropout-selu", po::value<float>()->default_value(0.0f),
+     "Dropout value for SeLU dropout version")
 #endif
     ;
 
@@ -750,6 +752,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("char-highway", int);
   SET_OPTION("char-conv-filters-num", std::vector<int>);
   SET_OPTION("char-conv-filters-widths", std::vector<int>);
+  SET_OPTION("char-use-selu", bool);
+  SET_OPTION("dropout-selu",float);
 #endif
 
   SET_OPTION("best-deep", bool);

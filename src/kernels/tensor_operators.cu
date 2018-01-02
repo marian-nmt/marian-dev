@@ -2233,13 +2233,14 @@ void PoolingWithMaskingBackward(Tensor adj,
 }
 
 __global__ void gSeLUForward(int n, float* in, float* out) {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    float scale = 1.0507009873554804934193349852946f;
-    float alpha = 1.6732632423543772848170429916717f;
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  float scale = 1.0507009873554804934193349852946f;
+  float alpha = 1.6732632423543772848170429916717f;
 
-    if (tid < n) {
-        out[tid] = scale * ((in[tid] > 0.0f) ? in[tid] : alpha * (exp(in[tid]) - 1.0f));
-    }
+  while (tid < n) {
+    out[tid] = scale * ((in[tid] > 0.0f) ? in[tid] : alpha * (exp(in[tid]) - 1.0f));
+    tid += gridDim.x * blockDim.x;
+  }
 }
 
 void SeLUForward(Tensor in, Tensor out) {
@@ -2253,13 +2254,14 @@ void SeLUForward(Tensor in, Tensor out) {
 }
 
 __global__ void gSeLUBackward(int n, float* yGrad, float* x, float* xGrad) {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    float scale = 1.0507009873554804934193349852946f;
-    float alpha = 1.6732632423543772848170429916717f;
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  float scale = 1.0507009873554804934193349852946f;
+  float alpha = 1.6732632423543772848170429916717f;
 
-    if (tid < n) {
-        xGrad[tid] += yGrad[tid] * ((x[tid] > 0.0f) ? scale : scale * alpha * exp(x[tid]));
-    }
+  while (tid < n) {
+    xGrad[tid] += yGrad[tid] * ((x[tid] > 0.0f) ? scale : scale * alpha * exp(x[tid]));
+    tid += gridDim.x * blockDim.x;
+  }
 }
 
 void SeLUBackward(Tensor yGrad, Tensor x, Tensor xGrad) {
@@ -2271,4 +2273,54 @@ void SeLUBackward(Tensor yGrad, Tensor x, Tensor xGrad) {
 
   gSeLUBackward<<<blocks, threads>>>(length, yGrad->data(), x->data(), xGrad->data());
 }
+
+__global__ void gGLUForward(float* y, float* x, int rows, int cols, int n) {
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  while (tid < n) {
+    int row = tid / cols;
+    int col = tid % cols;
+
+    y[tid] = x[(row * 2 * cols) + col] * stableLogit(x[(row * 2 * cols) + cols + col]);
+    tid += gridDim.x * blockDim.x;
+  }
+}
+
+void GLUForward(Tensor y, Tensor x) {
+  cudaSetDevice(x->getDevice());
+
+  int cols = y->shape()[-1];
+  int rows = y->shape().elements() / cols;
+  int length = y->shape().elements();
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  gGLUForward<<<blocks, threads>>>(y->data(), x->data(), rows, cols, length);
+}
+
+__global__ void gGLUBackward(float* xGrad, float* yGrad, float* x, int rows, int cols, int n) {
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  while (tid < n) {
+    int row = tid / cols;
+    int col = tid % cols;
+
+    float sigma_b = stableLogit(x[(row * 2 * cols) + cols + col]);
+    xGrad[(row * 2 * cols) + col] += yGrad[tid] * sigma_b;
+    xGrad[(row * 2 * cols) + cols + col] += yGrad[tid] * xGrad[(row * 2 * cols) + col] *
+                                            sigma_b * (1 - sigma_b);
+    tid += gridDim.x * blockDim.x;
+  }
+}
+
+void GLUBackward(Tensor xGrad, Tensor yGrad, Tensor x) {
+  cudaSetDevice(x->getDevice());
+
+  int cols = yGrad->shape()[-1];
+  int rows = yGrad->shape().elements() / cols;
+  int length = yGrad->shape().elements();
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  gGLUBackward<<<blocks, threads>>>(xGrad->data(), yGrad->data(), x->data(), rows, cols, length);
+}
+
 }  // namespace marian

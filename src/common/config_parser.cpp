@@ -311,6 +311,10 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      ->default_value(std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8}), "1 2 3 4 5 6 7 8")
       ->multitoken(),
      "Convolution window widths in char-s2s model")
+    ("char-dim-src-emb", po::value<int>()->default_value(128),
+     "Dimension of source embeddings in char-s2s model.")
+    ("char-dim-src-rnn", po::value<int>()->default_value(512),
+     "Dimension of source RNN state in char-s2s model.")
     ("char-use-selu", po::value<bool>()->default_value(false),
      "Use SeLU instead of ReLU activation function in char-s2s model")
     ("dropout-selu", po::value<float>()->default_value(0.0f),
@@ -720,6 +724,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("char-highway", int);
   SET_OPTION("char-conv-filters-num", std::vector<int>);
   SET_OPTION("char-conv-filters-widths", std::vector<int>);
+  SET_OPTION("char-dim-src-emb", int);
+  SET_OPTION("char-dim-src-rnn", int);
   SET_OPTION("char-use-selu", bool);
   SET_OPTION("dropout-selu",float);
 #endif

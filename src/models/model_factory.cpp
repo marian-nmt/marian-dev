@@ -7,6 +7,7 @@
 #include "models/s2s.h"
 #include "models/char_s2s.h"
 #include "models/transformer.h"
+#include "models/frantic.h"
 
 #include "examples/mnist/model.h"
 #include "examples/mnist/model_lenet.h"
@@ -28,6 +29,8 @@ Ptr<EncoderBase> EncoderFactory::construct() {
 Ptr<DecoderBase> DecoderFactory::construct() {
   if(options_->get<std::string>("type") == "s2s")
     return New<DecoderS2S>(options_);
+  if(options_->get<std::string>("type") == "frantic")
+    return New<DecoderFrantic>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return New<DecoderTransformer>(options_);
   if(options_->get<std::string>("type") == "hard-att")
@@ -66,6 +69,13 @@ Ptr<ModelBase> by_type(std::string type, Ptr<Options> options) {
             .push_back(models::encoder()("type", "s2s"))
             .push_back(models::decoder()("type", "s2s"))
             .construct();
+  }
+  
+  if(type == "frantic") {
+    return models::encoder_decoder()(options)
+        .push_back(models::encoder()("type", "s2s"))
+        .push_back(models::decoder()("type", "frantic"))
+        .construct();
   }
 
   if(type == "transformer") {

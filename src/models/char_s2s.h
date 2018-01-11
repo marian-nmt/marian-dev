@@ -45,12 +45,6 @@ public:
         useSelu)
       (batchEmbeddings, batchMask);
 
-    if (useSelu) {
-      float dropSelu = inference_ ? 0 : opt<float>("dropout-selu");
-      if(dropSelu) {
-        conved = dropout_selu(conved, dropout_prob = dropSelu);
-      }
-    }
 
     auto inHighway = conved;
     for (int i = 0; i < highwayNum; ++i) {
@@ -78,6 +72,15 @@ public:
       Expr hgate = relu(affine(inHighway, hgate_W, hgate_b));
 
       inHighway = highway(hgate, inHighway, tgate);
+    }
+
+    float charDropout = inference_ ? 0 : opt<float>("char-dropout");
+    if(charDropout) {
+      if (useSelu) {
+        conved = dropout_selu(conved, dropout_prob = charDropout);
+      } else {
+        conved = dropout(conved, dropout_prob = charDropout);
+      }
     }
 
     Expr stridedMask = getStridedMask(graph, batch, stride);

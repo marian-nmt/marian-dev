@@ -340,8 +340,8 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Dimension of source RNN state in char-s2s model.")
     ("char-use-selu", po::value<bool>()->default_value(false),
      "Use SeLU instead of ReLU activation function in char-s2s model")
-    ("dropout-selu", po::value<float>()->default_value(0.0f),
-     "Dropout value for SeLU dropout version")
+    ("char-dropout", po::value<float>()->default_value(0.0f),
+     "Dropout value applied after highway nets.")
 #endif
     ;
 
@@ -759,7 +759,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("char-dim-src-emb", int);
   SET_OPTION("char-dim-src-rnn", int);
   SET_OPTION("char-use-selu", bool);
-  SET_OPTION("dropout-selu",float);
+  SET_OPTION("char-dropout",float);
 #endif
 
   SET_OPTION("best-deep", bool);

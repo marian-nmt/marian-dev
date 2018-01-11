@@ -267,6 +267,15 @@ public:
     modelFeatures_.push_back("transformer-preprocess");
     modelFeatures_.push_back("transformer-postprocess");
     modelFeatures_.push_back("transformer-postprocess-emb");
+#ifdef CUDNN
+    modelFeatures_.push_back("char-stride");
+    modelFeatures_.push_back("char-highway");
+    modelFeatures_.push_back("char-conv-filters-num");
+    modelFeatures_.push_back("char-conv-filters-widths");
+    modelFeatures_.push_back("char-dim-src-emb");
+    modelFeatures_.push_back("char-dim-src-rnn");
+    modelFeatures_.push_back("char-use-selu");
+#endif
   }
 
   std::vector<Ptr<EncoderBase>>& getEncoders() { return encoders_; }

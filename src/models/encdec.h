@@ -211,6 +211,8 @@ protected:
     if(options_->has("original-type"))
       modelParams["type"] = options_->getOptions()["original-type"];
 
+    modelParams["version"] = PROJECT_VERSION_FULL;
+
     Config::AddYamlToNpz(modelParams, "special:model.yml", name);
   }
 

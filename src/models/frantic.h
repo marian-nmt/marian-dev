@@ -17,15 +17,20 @@ public:
         ("type", opt<std::string>("enc-cell"))                     //
         ("direction", rnn::dir::forward)                           //
         ("dimInput", embeddings->shape()[-1])                      //
-        //("dimState", opt<int>("dim-rnn"))                        //
+        ("dimState", 512)                                          // hard-coded!
+        ("dropout", dropoutRnn)                                    //
+        ("layer-normalization", opt<bool>("layer-normalization"))  //
+        ("skip", opt<bool>("skip"));
+    
+    auto rnnBw = rnn::rnn(graph)                                   //
+        ("type", opt<std::string>("enc-cell"))                     //
+        ("direction", rnn::dir::backward)                          //
+        ("dimInput", embeddings->shape()[-1])                      //
         ("dimState", 512)                                          // hard-coded!
         ("dropout", dropoutRnn)                                    //
         ("layer-normalization", opt<bool>("layer-normalization"))  //
         ("skip", opt<bool>("skip"));
 
-    auto rnnBw = rnnFw.clone()
-        ("direction", rnn::dir::forward);
-        
     for(int i = 1; i <= opt<int>("enc-depth"); ++i) {
       rnnFw.push_back(rnn::cell(graph)
                       ("prefix", prefix_ + "_bi_ltr_l" + std::to_string(i)));
@@ -93,10 +98,14 @@ public:
       ("activation", mlp::act::tanh)                             //
       ("layer-normalization", opt<bool>("layer-normalization"))  //
       .push_back(mlp::dense(graph));
+    
+    auto ffValues = mlp::mlp(graph)                              //
+      ("prefix", prefix_ + "_ff_values")                         //
+      ("dim", 512)                                               // hard-coded!
+      ("activation", mlp::act::tanh)                             //
+      ("layer-normalization", opt<bool>("layer-normalization"))  //
+      .push_back(mlp::dense(graph));
         
-    auto ffValues = ffKeys.clone()
-      ("prefix", prefix_ + "_ff_values");
-  
     auto keys = ffKeys->apply(context);
     auto values = ffValues->apply(context);
 
@@ -150,8 +159,11 @@ public:
       std::vector<Ptr<EncoderState>>& encStates) {
     using namespace keywords;
 
-    int lastIdx = encStates[0]->getContext()->shape()[-3] - 1;
-    auto lastContext = marian::step(encStates[0]->getContext(), lastIdx, -3); // hard-coded!
+    auto lastContext = weighted_average(encStates[0]->getContext(),
+                                        encStates[0]->getMask(),
+                                        axis = -3);
+    
+    //auto lastContext = marian::mean(encStates[0]->getContext(), lastIdx, -3); // hard-coded!
     
     auto mlp = mlp::mlp(graph)
       .push_back(mlp::dense(graph)                                  //
@@ -189,7 +201,7 @@ public:
     int dimState = decoderContext->shape()[-1];
     
     int dimFrantic = 768;
-    int decoderDepth = 6; // hard-coded, 6 instead of 8
+    int decoderDepth = opt<int>("dec-depth");
     
     auto Wgru = graph->param(prefix_ + "_rnn2frantic_W", {dimState, dimFrantic},
                              init = inits::glorot_uniform);

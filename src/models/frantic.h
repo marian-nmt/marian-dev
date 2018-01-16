@@ -220,6 +220,16 @@ public:
       if(i % 2 == 0) {
         frantic = relu(affine(frantic, W, b) + franticPrev);
         franticPrev = frantic;
+        
+        if(opt<bool>("layer-normalization")) {
+          auto gamma = graph->param(prefix_ + "_frantic_gamma" + std::to_string(i),
+                                    {1, dimFrantic},
+                                    keywords::init = inits::from_value(1.0));
+          auto beta = graph->param(prefix_ + "_frantic_beta" + std::to_string(i),
+                                   {1, dimFrantic},
+                                   keywords::init = inits::from_value(0.0));
+          frantic = layer_norm(frantic, gamma, beta);
+        }
       }
       else {
         frantic = relu(affine(frantic, W, b));

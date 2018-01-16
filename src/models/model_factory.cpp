@@ -18,6 +18,8 @@ namespace models {
 Ptr<EncoderBase> EncoderFactory::construct() {
   if(options_->get<std::string>("type") == "s2s")
     return New<EncoderS2S>(options_);
+  if(options_->get<std::string>("type") == "frantic")
+    return New<EncoderFrantic>(options_);
   if(options_->get<std::string>("type") == "char-s2s")
     return New<CharS2SEncoder>(options_);
   if(options_->get<std::string>("type") == "transformer")
@@ -73,7 +75,7 @@ Ptr<ModelBase> by_type(std::string type, Ptr<Options> options) {
   
   if(type == "frantic") {
     return models::encoder_decoder()(options)
-        .push_back(models::encoder()("type", "s2s"))
+        .push_back(models::encoder()("type", "frantic"))
         .push_back(models::decoder()("type", "frantic"))
         .construct();
   }

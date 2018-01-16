@@ -4,6 +4,112 @@
 
 namespace marian {
 
+class EncoderFrantic : public EncoderBase {
+public:
+  Expr applyEncoderRNN(Ptr<ExpressionGraph> graph,
+                       Expr embeddings,
+                       Expr mask) {
+    
+    using namespace keywords;
+    float dropoutRnn = inference_ ? 0 : opt<float>("dropout-rnn");
+
+    auto rnnFw = rnn::rnn(graph)                                   //
+        ("type", opt<std::string>("enc-cell"))                     //
+        ("direction", rnn::dir::forward)                           //
+        ("dimInput", embeddings->shape()[-1])                      //
+        //("dimState", opt<int>("dim-rnn"))                        //
+        ("dimState", 512)                                          // hard-coded!
+        ("dropout", dropoutRnn)                                    //
+        ("layer-normalization", opt<bool>("layer-normalization"))  //
+        ("skip", opt<bool>("skip"));
+
+    auto rnnBw = rnnFw.clone()
+        ("direction", rnn::dir::forward);
+        
+    for(int i = 1; i <= opt<int>("enc-depth"); ++i) {
+      rnnFw.push_back(rnn::cell(graph)
+                      ("prefix", prefix_ + "_bi_ltr_l" + std::to_string(i)));
+      rnnBw.push_back(rnn::cell(graph)
+                      ("prefix", prefix_ + "_bi_rtl_l" + std::to_string(i)));
+    }
+    
+    return concatenate({rnnFw->transduce(embeddings, mask),
+                        rnnBw->transduce(embeddings, mask)},
+                       axis = -1);
+  }
+
+  Expr buildSourceEmbeddings(Ptr<ExpressionGraph> graph) {
+    // create source embeddings
+    int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+    int dimEmb = opt<int>("dim-emb");
+
+    auto embFactory = embedding(graph)  //
+        ("dimVocab", dimVoc)            //
+        ("dimEmb", dimEmb);
+
+    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+      embFactory("prefix", "Wemb");
+    else
+      embFactory("prefix", prefix_ + "_Wemb");
+
+    if(options_->has("embedding-fix-src"))
+      embFactory("fixed", opt<bool>("embedding-fix-src"));
+
+    if(options_->has("embedding-vectors")) {
+      auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
+      embFactory                              //
+          ("embFile", embFiles[batchIndex_])  //
+          ("normalization", opt<bool>("embedding-normalization"));
+    }
+
+    return embFactory.construct();
+  }
+
+  EncoderFrantic(Ptr<Options> options) : EncoderBase(options) {}
+
+  virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
+                                  Ptr<data::CorpusBatch> batch) {
+    auto embeddings = buildSourceEmbeddings(graph);
+
+    using namespace keywords;
+    // select embeddings that occur in the batch
+    Expr batchEmbeddings, batchMask;
+    std::tie(batchEmbeddings, batchMask)
+        = EncoderBase::lookup(embeddings, batch);
+
+    // apply dropout over source words
+    float dropProb = inference_ ? 0 : opt<float>("dropout-src");
+    if(dropProb) {
+      int srcWords = batchEmbeddings->shape()[-3];
+      auto dropMask = graph->dropout(dropProb, {srcWords, 1, 1});
+      batchEmbeddings = dropout(batchEmbeddings, mask = dropMask);
+    }
+
+    auto context = applyEncoderRNN(graph, batchEmbeddings, batchMask);
+    
+    auto ffKeys = mlp::mlp(graph)                                //
+      ("prefix", prefix_ + "_ff_keys")                           //
+      ("dim", 512)                                               // hard-coded!
+      ("activation", mlp::act::tanh)                             //
+      ("layer-normalization", opt<bool>("layer-normalization"))  //
+      .push_back(mlp::dense(graph));
+        
+    auto ffValues = ffKeys.clone()
+      ("prefix", prefix_ + "_ff_values");
+  
+    auto keys = ffKeys->apply(context);
+    auto values = ffValues->apply(context);
+
+    auto state = New<EncoderState>(context, batchMask, batch);
+    state->setKeys(keys);
+    state->setValues(values);
+    
+    return state;
+  }
+
+  void clear() {}
+};
+
 class DecoderFrantic : public DecoderBase {
 private:
   Ptr<rnn::RNN> rnn_;
@@ -11,43 +117,27 @@ private:
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
                                     Ptr<DecoderState> state) {
     float dropoutRnn = inference_ ? 0 : opt<float>("dropout-rnn");
+    
     auto rnn = rnn::rnn(graph)                                     //
         ("type", opt<std::string>("dec-cell"))                     //
         ("dimInput", opt<int>("dim-emb"))                          //
-        ("dimState", opt<int>("dim-rnn"))                          //
+        ("dimState", 1024)                                         // hard-coded!
         ("dropout", dropoutRnn)                                    //
         ("layer-normalization", opt<bool>("layer-normalization"))  //
-        ("nematus-normalization",
-         options_->has("original-type")
-             && opt<std::string>("original-type") == "nematus")  //
         ("skip", opt<bool>("skip"));
 
-    size_t decoderBaseDepth = 2;
-    // setting up conditional (transitional) cell
-    auto baseCell = rnn::stacked_cell(graph);
-    for(int i = 1; i <= decoderBaseDepth; ++i) {
-      bool transition = (i > 2);
-      auto paramPrefix = prefix_ + "_cell" + std::to_string(i);
-      baseCell.push_back(rnn::cell(graph)         //
-                         ("prefix", paramPrefix)  //
-                         ("final", i > 1)         //
-                         ("transition", transition));
-      if(i == 1) {
-        for(int k = 0; k < state->getEncoderStates().size(); ++k) {
-          auto attPrefix = prefix_;
-          if(state->getEncoderStates().size() > 1)
-            attPrefix += "_att" + std::to_string(k + 1);
-
-          auto encState = state->getEncoderStates()[k];
-
-          baseCell.push_back(rnn::attention(graph)  //
-                             ("prefix", attPrefix)  //
-                                 .set_state(encState));
-        }
-      }
-    }
-    // Add cell to RNN (first layer)
-    rnn.push_back(baseCell);
+    // setting up conditional cell
+    auto condCell = rnn::stacked_cell(graph)                 //
+        .push_back(rnn::cell(graph)                          //
+                   ("prefix", prefix_ + "_cell1"))           //
+        .push_back(rnn::attention(graph)                     //
+                   ("prefix", prefix_ + "_att")              //
+                   .set_state(state->getEncoderStates()[0])) // hard-coded!
+        .push_back(rnn::cell(graph)                          //
+                   ("prefix", prefix_ + "_cell2"));          //
+    
+    rnn.push_back(condCell);
+    
     return rnn.construct();
   }
 
@@ -60,36 +150,18 @@ public:
       std::vector<Ptr<EncoderState>>& encStates) {
     using namespace keywords;
 
-    std::vector<Expr> meanContexts;
-    for(auto& encState : encStates) {
-      // average the source context weighted by the batch mask
-      // this will remove padded zeros from the average
-      meanContexts.push_back(weighted_average(
-          encState->getContext(), encState->getMask(), axis = -3));
-    }
-
-    Expr start;
-    if(!meanContexts.empty()) {
-      // apply single layer network to mean to map into decoder space
-      auto mlp = mlp::mlp(graph).push_back(
-          mlp::dense(graph)                                          //
-          ("prefix", prefix_ + "_ff_state")                          //
-          ("dim", opt<int>("dim-rnn"))                               //
-          ("activation", mlp::act::tanh)                             //
-          ("layer-normalization", opt<bool>("layer-normalization"))  //
-          ("nematus-normalization",
-           options_->has("original-type")
-               && opt<std::string>("original-type") == "nematus")  //
-          );
-      start = mlp->apply(meanContexts);
-    } else {
-      int dimBatch = batch->size();
-      int dimRnn = opt<int>("dim-rnn");
-
-      start = graph->constant({dimBatch, dimRnn}, init = inits::zeros);
-    }
-
-    rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
+    int lastIdx = encStates[0]->getContext()->shape()[-3] - 1;
+    auto lastContext = marian::step(encStates[0]->getContext(), lastIdx, -3); // hard-coded!
+    
+    auto mlp = mlp::mlp(graph)
+      .push_back(mlp::dense(graph)                                  //
+        ("prefix", prefix_ + "_ff_state")                           //
+        ("dim", 1024)                                               // hard-coded!
+        ("layer-normalization", opt<bool>("layer-normalization"))); //
+    
+    auto start = mlp->apply(lastContext);
+  
+    rnn::States startStates(1, {start, start}); // hard-coded!
     return New<DecoderState>(startStates, nullptr, encStates);
   }
 
@@ -115,19 +187,23 @@ public:
     auto decoderContext = rnn_->transduce(embeddings, state->getStates());
 
     int dimState = decoderContext->shape()[-1];
-    int dimFrantic = 768;
-    int decoderDepth = opt<int>("dec-depth") - 1;
     
-    auto Wgru = graph->param(prefix_ + "_gru2frantic_W", {dimState, dimFrantic},
+    int dimFrantic = 768;
+    int decoderDepth = 6; // hard-coded, 6 instead of 8
+    
+    auto Wgru = graph->param(prefix_ + "_rnn2frantic_W", {dimState, dimFrantic},
                              init = inits::glorot_uniform);
-    auto bgru = graph->param(prefix_ + "_gru2frantic_b", {1, dimFrantic},
+    auto bgru = graph->param(prefix_ + "_rnn2frantic_b", {1, dimFrantic},
                              init = inits::zeros);  
     auto frantic = relu(affine(decoderContext, Wgru, bgru));
+    
     auto franticPrev = frantic;
     for(int i = 1; i <= decoderDepth; ++i) {
-      auto W = graph->param(prefix_ + "_frantic_W" + std::to_string(i), {dimFrantic, dimFrantic},
+      auto W = graph->param(prefix_ + "_frantic_W" + std::to_string(i),
+                            {dimFrantic, dimFrantic},
                             init = inits::glorot_uniform);
-      auto b = graph->param(prefix_ + "_frantic_b" + std::to_string(i), {1, dimFrantic},
+      auto b = graph->param(prefix_ + "_frantic_b" + std::to_string(i),
+                            {1, dimFrantic},
                             init = inits::zeros);
       if(i % 2 == 0) {
         frantic = relu(affine(frantic, W, b) + franticPrev);
@@ -142,32 +218,15 @@ public:
     // in order to continue decoding for the next word
     rnn::States decoderStates = rnn_->lastCellStates();
     
-    std::vector<Expr> alignedContexts;
-    for(int k = 0; k < state->getEncoderStates().size(); ++k) {
-      // retrieve all the aligned contexts computed by the attention mechanism
-      auto att = rnn_->at(0)
-                     ->as<rnn::StackedCell>()
-                     ->at(k + 1)
-                     ->as<rnn::Attention>();
-      alignedContexts.push_back(att->getContext());
-    }
-
-    Expr alignedContext;
-    if(alignedContexts.size() > 1)
-      alignedContext = concatenate(alignedContexts, axis = -1);
-    else if(alignedContexts.size() == 1)
-      alignedContext = alignedContexts[0];
-
+    auto att = rnn_->at(0)->as<rnn::StackedCell>()->at(1)->as<rnn::Attention>(); // hard-coded
+    auto alignedContext = att->getContext();
       
     // construct deep output multi-layer network layer-wise
     auto layer1 = mlp::dense(graph)                                //
         ("prefix", prefix_ + "_ff_logit_l1")                       //
         ("dim", opt<int>("dim-emb"))                               //
         ("activation", mlp::act::tanh)                             //
-        ("layer-normalization", opt<bool>("layer-normalization"))  //
-        ("nematus-normalization",
-         options_->has("original-type")
-             && opt<std::string>("original-type") == "nematus");
+        ("layer-normalization", opt<bool>("layer-normalization"));
 
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
@@ -188,11 +247,7 @@ public:
                       .push_back(layer1)  //
                       .push_back(layer2);
 
-    Expr logits;
-    if(alignedContext)
-      logits = output->apply(embeddings, frantic, alignedContext);
-    else
-      logits = output->apply(embeddings, frantic);
+    auto logits = output->apply(frantic, alignedContext);
       
     // return unormalized(!) probabilities
     return New<DecoderState>(decoderStates, logits, state->getEncoderStates());

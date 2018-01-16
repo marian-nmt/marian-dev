@@ -151,7 +151,7 @@ public:
 
   int dimAttended() {
     ABORT_IF(!state_, "EncoderState not set");
-    return state_->getAttended()->shape()[1];
+    return state_->getValues()->shape()[1];
   }
 };
 

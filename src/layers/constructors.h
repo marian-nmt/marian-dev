@@ -23,7 +23,7 @@ struct LayerFactory : public Factory {
     return as<Cast>() != nullptr;
   }
 
-  virtual Ptr<Layer> construct() = 0;
+  virtual Ptr<Layer> construct() = 0;  
 };
 
 class DenseFactory : public LayerFactory {
@@ -54,6 +54,15 @@ public:
       dense->tie_transposed(p.first, p.second);
     return dense;
   }
+  
+  DenseFactory clone() {
+    DenseFactory aClone(graph_);
+    aClone.options_->merge(options_);
+    aClone.tiedParams_ = tiedParams_;
+    aClone.tiedParamsTransposed_ = tiedParamsTransposed_;
+    return aClone;
+  }
+
 };
 
 typedef Accumulator<DenseFactory> dense;
@@ -86,11 +95,12 @@ public:
   }
 
   void push_back(Ptr<Layer> layer) { layers_.push_back(layer); }
+  
 };
 
 class MLPFactory : public Factory {
 private:
-  std::vector<Ptr<LayerFactory>> layers_;
+  std::vector<Ptr<DenseFactory>> layers_;
 
 public:
   MLPFactory(Ptr<ExpressionGraph> graph) : Factory(graph) {}
@@ -111,6 +121,15 @@ public:
     layers_.push_back(New<LF>(lf));
     return Accumulator<MLPFactory>(*this);
   }
+  
+  MLPFactory clone() {
+    MLPFactory aClone(graph_);
+    aClone.options_->merge(options_);
+    for(auto lf : layers_)
+      aClone.push_back(lf->clone());
+    return aClone;
+  }
+
 };
 
 typedef Accumulator<MLPFactory> mlp;

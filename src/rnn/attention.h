@@ -43,14 +43,14 @@ public:
                   Ptr<EncoderState> encState)
       : CellInput(options),
         encState_(encState),
-        contextDropped_(encState->getContext()) {
+        contextDropped_(encState->getKeys()) {
     int dimDecState = options_->get<int>("dimState");
     dropout_ = options_->get<float>("dropout", 0);
     layerNorm_ = options_->get<bool>("layer-normalization", false);
     nematusNorm_ = options_->get<bool>("nematus-normalization", false);
     std::string prefix = options_->get<std::string>("prefix");
 
-    int dimEncState = encState_->getContext()->shape()[-1];
+    int dimEncState = encState_->getKeys()->shape()[-1];
 
     Wa_ = graph->param(prefix + "_W_comb_att",
                        {dimDecState, dimEncState},
@@ -146,7 +146,7 @@ public:
     // <- horrible
 
     auto alignedSource
-        = scalar_product(encState_->getAttended(), e, axis = -3);
+        = scalar_product(encState_->getValues(), e, axis = -3);
     
     contexts_.push_back(alignedSource);
     alignments_.push_back(e);
@@ -164,7 +164,7 @@ public:
     alignments_.clear();
   }
 
-  int dimOutput() { return encState_->getContext()->shape()[-1]; }
+  int dimOutput() { return encState_->getKeys()->shape()[-1]; }
 };
 
 using Attention = GlobalAttention;

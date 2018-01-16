@@ -10,7 +10,11 @@ namespace marian {
 class EncoderState {
 private:
   Expr context_;
+  Expr keys_;
+  Expr values_;
+  
   Expr mask_;
+  
   Ptr<data::CorpusBatch> batch_;
 
 public:
@@ -20,9 +24,14 @@ public:
   EncoderState() {}
 
   virtual Expr getContext() { return context_; }
-  virtual Expr getAttended() { return context_; }
+  virtual Expr getKeys() { return keys_ ? keys_ : context_; }
+  virtual Expr getValues() { return values_ ? values_ : context_; }
+  
   virtual Expr getMask() { return mask_; }
 
+  virtual void setKeys(Expr keys) { keys_ = keys; }
+  virtual void setValues(Expr values) { values_ = values; }
+  
   virtual const std::vector<size_t>& getSourceWords() {
     return batch_->front()->indices();
   }

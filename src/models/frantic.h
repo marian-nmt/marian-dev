@@ -200,40 +200,59 @@ public:
 
     int dimState = decoderContext->shape()[-1];
     
-    int dimFrantic = 768;
+    int dimFrantic = 768; // hard-coded!
     int decoderDepth = opt<int>("dec-depth");
     
-    auto Wgru = graph->param(prefix_ + "_rnn2frantic_W", {dimState, dimFrantic},
+    auto Wgru = graph->param(prefix_ + "_rnn2frantic_W",
+                             {dimState, dimFrantic},
                              init = inits::glorot_uniform);
-    auto bgru = graph->param(prefix_ + "_rnn2frantic_b", {1, dimFrantic},
+    auto bgru = graph->param(prefix_ + "_rnn2frantic_b",
+                             {1, dimFrantic},
                              init = inits::zeros);  
-    auto frantic = relu(affine(decoderContext, Wgru, bgru));
+    
+    auto frantic = affine(decoderContext, Wgru, bgru);
+    
+    if(opt<bool>("layer-normalization")) {
+      auto gamma = graph->param(prefix_ + "_rnn2frantic_gamma",
+                                {1, dimFrantic},
+                                init = inits::ones);
+      auto beta = graph->param(prefix_ + "_rnn2frantic_beta",
+                               {1, dimFrantic},
+                               init = inits::zeros);
+      frantic = layer_norm(frantic, gamma, beta);
+    }
+    
+    frantic = swish(frantic);
     
     auto franticPrev = frantic;
+    
     for(int i = 1; i <= decoderDepth; ++i) {
       auto W = graph->param(prefix_ + "_frantic_W" + std::to_string(i),
                             {dimFrantic, dimFrantic},
                             init = inits::glorot_uniform);
       auto b = graph->param(prefix_ + "_frantic_b" + std::to_string(i),
                             {1, dimFrantic},
-                            init = inits::zeros);
-      if(i % 2 == 0) {
-        frantic = relu(affine(frantic, W, b) + franticPrev);
-        franticPrev = frantic;
+                            init = inits::zeros);  
+      
+      frantic = affine(frantic, W, b);
+
+      if(i % 2 == 0)
+        frantic = frantic + franticPrev;
+    
+      if(opt<bool>("layer-normalization")) {
+        auto gamma = graph->param(prefix_ + "_frantic_gamma" + std::to_string(i),
+                                  {1, dimFrantic},
+                                  init = inits::ones);
+        auto beta = graph->param(prefix_ + "_frantic_beta" + std::to_string(i),
+                                 {1, dimFrantic},
+                                 init = inits::zeros);
+        frantic = layer_norm(frantic, gamma, beta);
+      }
+      
+      frantic = swish(frantic);
         
-        if(opt<bool>("layer-normalization")) {
-          auto gamma = graph->param(prefix_ + "_frantic_gamma" + std::to_string(i),
-                                    {1, dimFrantic},
-                                    keywords::init = inits::from_value(1.0));
-          auto beta = graph->param(prefix_ + "_frantic_beta" + std::to_string(i),
-                                   {1, dimFrantic},
-                                   keywords::init = inits::from_value(0.0));
-          frantic = layer_norm(frantic, gamma, beta);
-        }
-      }
-      else {
-        frantic = relu(affine(frantic, W, b));
-      }
+      if(i % 2 == 0)
+        franticPrev = frantic;
     }
     
     // retrieve the last state per layer. They are required during translation

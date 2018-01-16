@@ -206,6 +206,8 @@ protected:
     if(options_->has("original-type"))
       modelParams["type"] = options_->getOptions()["original-type"];
 
+    modelParams["version"] = PROJECT_VERSION_FULL;
+
     Config::AddYamlToNpz(modelParams, "special:model.yml", name);
   }
 
@@ -248,6 +250,7 @@ public:
         "dec-cell-high-depth",
         "skip",
         "layer-normalization",
+        "right-left",
         "special-vocab",
         "tied-embeddings",
         "tied-embeddings-src",
@@ -269,8 +272,10 @@ public:
 
   void push_back(Ptr<DecoderBase> decoder) { decoders_.push_back(decoder); }
 
-  virtual void load(Ptr<ExpressionGraph> graph, const std::string& name) {
-    graph->load(name, !opt<bool>("ignore-model-config"));
+  virtual void load(Ptr<ExpressionGraph> graph,
+                    const std::string& name,
+                    bool markedReloaded = true) {
+    graph->load(name, markedReloaded && !opt<bool>("ignore-model-config"));
   }
 
   virtual void save(Ptr<ExpressionGraph> graph,

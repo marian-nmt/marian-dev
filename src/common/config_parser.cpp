@@ -134,9 +134,16 @@ bool ConfigParser::has(const std::string& key) const {
 }
 
 void ConfigParser::validateOptions() const {
-  //UTIL_THROW_IF2(!has("vocabs"), "No vocabularies provided");
-
   if(mode_ == ConfigMode::translating) {
+    UTIL_THROW_IF2(!has("vocabs") || get<std::vector<std::string>>("vocabs").empty(),
+        "Translating, but vocabularies are not given!");
+
+    for(const auto& modelFile : get<std::vector<std::string>>("models")) {
+      boost::filesystem::path modelPath(modelFile);
+      UTIL_THROW_IF2(!boost::filesystem::exists(modelPath),
+          "Model file does not exist: " + modelFile);
+    }
+
     return;
   }
 
@@ -155,10 +162,18 @@ void ConfigParser::validateOptions() const {
       "There should be as many files with embedding vectors as "
       "training sets");
 
-  if(mode_ == ConfigMode::rescoring)
-    return;
-
   boost::filesystem::path modelPath(get<std::string>("model"));
+
+  if(mode_ == ConfigMode::rescoring) {
+    UTIL_THROW_IF2(!boost::filesystem::exists(modelPath),
+        "Model file does not exist: " + modelPath.string());
+
+    UTIL_THROW_IF2(!has("vocabs") || get<std::vector<std::string>>("vocabs").empty(),
+        "Scoring, but vocabularies are not given!");
+
+    return;
+  }
+
   auto modelDir = modelPath.parent_path();
   if(modelDir.empty())
     modelDir = boost::filesystem::current_path();
@@ -240,6 +255,12 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
     model.add_options()
       ("model,m", po::value<std::string>()->default_value("model.npz"),
       "Path prefix for model to be saved/resumed");
+
+    if(mode_ == ConfigMode::training) {
+      model.add_options()
+        ("pretrained-model", po::value<std::string>(),
+        "Path prefix for pre-trained model to initialize model weights");
+    }
   }
 
   model.add_options()
@@ -277,6 +298,8 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Use skip connections (s2s)")
     ("layer-normalization", po::value<bool>()->zero_tokens()->default_value(false),
      "Enable layer normalization")
+    ("right-left", po::value<bool>()->zero_tokens()->default_value(false),
+     "Train right-to-left model")
     ("best-deep", po::value<bool>()->zero_tokens()->default_value(false),
      "Use Edinburgh deep RNN configuration (s2s)")
     ("special-vocab", po::value<std::vector<size_t>>()->multitoken(),
@@ -322,8 +345,12 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
        "Dropout source words (0 = no dropout)")
       ("dropout-trg", po::value<float>()->default_value(0),
        "Dropout target words (0 = no dropout)")
-      ("gradient-dropping", po::value<float>()->default_value(0),
+      ("grad-dropping-rate", po::value<float>()->default_value(0),
        "Gradient Dropping rate (0 = no gradient Dropping)")
+      ("grad-dropping-momentum", po::value<float>()->default_value(0),
+       "Gradient Dropping momentum decay rate (0.0 to 1.0)")
+      ("grad-dropping-warmup", po::value<size_t>()->default_value(100),
+       "Do not apply gradient dropping for the first arg steps")
       ("transformer-dropout", po::value<float>()->default_value(0),
        "Dropout between transformer layers (0 = no dropout)")
       ("transformer-dropout-attention", po::value<float>()->default_value(0),
@@ -677,6 +704,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION_NONDEFAULT("models", std::vector<std::string>);
   } else {
     SET_OPTION("model", std::string);
+    if(mode_ == ConfigMode::training)
+      SET_OPTION_NONDEFAULT("pretrained-model", std::string);
   }
 
   if(!vm_["vocabs"].empty()) {
@@ -704,6 +733,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("tied-embeddings-src", bool);
   SET_OPTION("tied-embeddings-all", bool);
   SET_OPTION("layer-normalization", bool);
+  SET_OPTION("right-left", bool);
   SET_OPTION("transformer-heads", int);
   SET_OPTION("transformer-preprocess", std::string);
   SET_OPTION("transformer-postprocess", std::string);
@@ -728,7 +758,9 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("dropout-src", float);
     SET_OPTION("dropout-trg", float);
 
-    SET_OPTION("gradient-dropping", float);
+    SET_OPTION("grad-dropping-rate", float);
+    SET_OPTION("grad-dropping-momentum", float);
+    SET_OPTION("grad-dropping-warmup", size_t);
 
     SET_OPTION("transformer-dropout", float);
     SET_OPTION("transformer-dropout-attention", float);
@@ -825,18 +857,6 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("n-best", bool);
   }
 
-  if(doValidate) {
-    try {
-      validateOptions();
-    } catch(util::Exception& e) {
-      std::cerr << "Error: " << e.what() << std::endl << std::endl;
-
-      std::cerr << "Usage: " + std::string(argv[0]) + " [options]" << std::endl;
-      std::cerr << cmdline_options_ << std::endl;
-      exit(1);
-    }
-  }
-
   SET_OPTION("workspace", size_t);
   SET_OPTION("log-level", std::string);
   SET_OPTION("quiet", bool);
@@ -868,6 +888,18 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   if(get<bool>("relative-paths") && !vm_["dump-config"].as<bool>())
     ProcessPaths(
         config_, boost::filesystem::path{configPath}.parent_path(), false);
+
+  if(doValidate) {
+    try {
+      validateOptions();
+    } catch(util::Exception& e) {
+      std::cerr << "Error: " << e.what() << std::endl << std::endl;
+
+      std::cerr << "Usage: " + std::string(argv[0]) + " [options]" << std::endl;
+      std::cerr << cmdline_options_ << std::endl;
+      exit(1);
+    }
+  }
 
   if(vm_["dump-config"].as<bool>()) {
     YAML::Emitter emit;

@@ -188,6 +188,27 @@ Ptr<ModelBase> by_type(std::string type, Ptr<Options> options) {
             .construct();
   }
 
+  if(type == "multi-s2s-char") {
+    size_t numEncoders = 2;
+    auto ms2sFactory = models::encoder_decoder()(options)
+        ("type", "s2s")
+        ("original-type", type);
+
+    std::vector<std::string> encoderTypes = {"s2s", "char-s2s"};
+
+    for(size_t i = 0; i < numEncoders; ++i) {
+      auto prefix = "encoder" + std::to_string(i + 1);
+      ms2sFactory.push_back(models::encoder()
+              ("prefix", prefix)
+              ("index", i)
+              ("type", encoderTypes[i]));
+    }
+
+    ms2sFactory.push_back(models::decoder()("index", numEncoders));
+
+    return ms2sFactory.construct();
+  }
+
   // clang-format on
   ABORT("Unknown model type: {}", type);
 }

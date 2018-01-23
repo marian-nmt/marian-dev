@@ -16,12 +16,13 @@ namespace marian {
     }                                 \
   } while(0)
 
-CUDNNWrapper::CUDNNWrapper() {
+CUDNNWrapper::CUDNNWrapper(int device) : device_(device) {
+  cudaSetDevice(device_);
   CUDNN_CALL(cudnnCreate(&cudnnHandle_));
 }
 
 CUDNNWrapper::~CUDNNWrapper() {
-  // std::cerr << "destroy wrapper" << std::endl;
+  cudaSetDevice(device_);
   CUDNN_CALL(cudnnDestroy(cudnnHandle_));
 }
 
@@ -45,12 +46,14 @@ void CUDNNWrapper::setCudnnTensor(cudnnTensorDescriptor_t& desc,
  * ConvolutionWrapper
  *****************************************************************************/
 
-ConvolutionWrapper::ConvolutionWrapper(const Shape& kernelShape,
+ConvolutionWrapper::ConvolutionWrapper(int device,
+                                       const Shape& kernelShape,
                                        const Shape& biasShape,
                                        int hPad,
                                        int wPad,
                                        int hStride,
-                                       int wStride) {
+                                       int wStride)
+    : CUDNNWrapper(device) {
   setKernelDescriptor(kernelShape);
   setConvDescriptor(hPad, wPad, hStride, wStride);
   setCudnnTensor(biasDesc_, biasShape);
@@ -209,13 +212,15 @@ void ConvolutionWrapper::setKernelDescriptor(const Shape& shape) {
  * PoolingWrapper
  *****************************************************************************/
 
-PoolingWrapper::PoolingWrapper(int height,
+PoolingWrapper::PoolingWrapper(int device,
+                               int height,
                                int width,
                                int padHeight,
                                int padWidth,
                                int strideHeight,
                                int strideWidth,
-                               std::string mode) {
+                               std::string mode)
+    : CUDNNWrapper(device) {
   if(mode == "max") {
     poolingMode_ = CUDNN_POOLING_MAX;
   } else if(mode == "avg") {

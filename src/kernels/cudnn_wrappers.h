@@ -13,7 +13,7 @@ namespace marian {
 
 class CUDNNWrapper {
 public:
-  CUDNNWrapper();
+  CUDNNWrapper(int device);
   virtual ~CUDNNWrapper();
 
 protected:
@@ -22,12 +22,14 @@ protected:
   void setCudnnTensor(cudnnTensorDescriptor_t& desc, const Shape& shape);
 
 protected:
+  int device_;
   cudnnHandle_t cudnnHandle_;
 };
 
 class ConvolutionWrapper : public CUDNNWrapper {
 public:
-  ConvolutionWrapper(const Shape& kernelShape,
+  ConvolutionWrapper(int device,
+                     const Shape& kernelShape,
                      const Shape& biasShape,
                      int hPad = 0,
                      int wPad = 0,
@@ -60,7 +62,8 @@ protected:
 
 class PoolingWrapper : public CUDNNWrapper {
 public:
-  PoolingWrapper(int height,
+  PoolingWrapper(int device,
+                 int height,
                  int width,
                  int padHeight,
                  int padWidth,
@@ -96,7 +99,7 @@ namespace marian {
 
 class CUDNNWrapper {
 public:
-  CUDNNWrapper();
+  CUDNNWrapper(int device);
   virtual ~CUDNNWrapper();
 };
 

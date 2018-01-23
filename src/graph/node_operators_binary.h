@@ -717,7 +717,8 @@ public:
       int hStride = 1,
       int wStride = 1)
     : NaryNodeOp(nodes),
-      conv_(nodes[1]->shape(),
+      conv_(nodes[0]->graph()->getDevice(),
+            nodes[1]->shape(),
             nodes[2]->shape(),
             hPad,
             wPad,

@@ -1093,7 +1093,8 @@ public:
             int strideWidth,
             std::string mode)
       : UnaryNodeOp(x),
-        pooling_(height,
+        pooling_(x->graph()->getDevice(),
+                 height,
                  width,
                  padHeight,
                  padWidth,
@@ -1123,7 +1124,7 @@ protected:
 
 class PoolingWithMaskingOp : public UnaryNodeOp {
   public:
-    PoolingWithMaskingOp( Expr x, Expr mask, int width, bool isEven=false)
+    PoolingWithMaskingOp(Expr x, Expr mask, int width, bool isEven=false)
       : UnaryNodeOp(x),
         mask_(mask),
         width_(width),

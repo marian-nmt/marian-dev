@@ -422,6 +422,8 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
      "Parameters for optimization algorithm, e.g. betas for adam")
     ("optimizer-delay", po::value<size_t>()->default_value(1),
      "SGD update delay, 1 = no delay")
+    ("gradient-buffer", po::value<size_t>()->default_value(1),
+     "Gradient buffer delay, 1 = no buffer")
     ("learn-rate,l", po::value<double>()->default_value(0.0001),
      "Learning rate")
     ("lr-decay", po::value<double>()->default_value(0.0),
@@ -787,6 +789,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("optimizer", std::string);
     SET_OPTION_NONDEFAULT("optimizer-params", std::vector<float>);
     SET_OPTION("optimizer-delay", size_t);
+    SET_OPTION("gradient-buffer", size_t);
     SET_OPTION("learn-rate", double);
     SET_OPTION("sync-sgd", bool);
     SET_OPTION("mini-batch-words", int);

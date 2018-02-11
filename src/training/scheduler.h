@@ -155,6 +155,47 @@ public:
     validated_ = false;
   }
 
+
+  void update(float cost, int sentences, int words) {
+    costSum += cost * sentences;
+    samples += sentences;
+    samplesDisp += sentences;
+    wordsDisp += words;
+    state_->newBatch();
+
+    if(state_->batches % options_->get<size_t>("disp-freq") == 0) {
+      if(options_->get<bool>("lr-report")) {
+        LOG(info,
+            "Ep. {} : Up. {} : Sen. {} : Cost {:.2f} : Time {} : {:.2f} "
+            "words/s : L.r. {:.4e}",
+            state_->epochs,
+            state_->batches,
+            samples,
+            costSum / samplesDisp,
+            timer.format(2, "%ws"),
+            wordsDisp / std::stof(timer.format(5, "%w")),
+            state_->eta);
+      } else {
+        LOG(info,
+            "Ep. {} : Up. {} : Sen. {} : Cost {:.2f} : Time {} : {:.2f} "
+            "words/s",
+            state_->epochs,
+            state_->batches,
+            samples,
+            costSum / samplesDisp,
+            timer.format(2, "%ws"),
+            wordsDisp / std::stof(timer.format(5, "%w")));
+      }
+      timer.start();
+      costSum = 0;
+      wordsDisp = 0;
+      samplesDisp = 0;
+    }
+
+    validated_ = false;
+  }
+
+
   void load(const std::string& name) {
     std::string nameYaml = name + ".yml";
     if(boost::filesystem::exists(nameYaml)) {

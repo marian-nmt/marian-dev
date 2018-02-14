@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by Intel under license:
+ *   Copyright (C) 2017-2018 Intel Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include <algorithm>
 #include "3rd_party/exception.h"
 #include "tensors/device_cpu.h"

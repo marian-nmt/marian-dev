@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by Intel under license:
+ *   Copyright (C) 2017-2018 Intel Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "kernels/sparse.h"
 #include "kernels/tensor_operators.h"
 #include "kernels/thrust_functions.h"

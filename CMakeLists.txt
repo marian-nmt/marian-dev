@@ -1,3 +1,7 @@
+# All or part of this file was contributed by Intel under license:
+#   Copyright (C) 2017-2018 Intel Corporation
+#   SPDX-License-Identifier: MIT
+
 cmake_minimum_required(VERSION 3.5.1)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} /usr/local/cuda-8.0/lib64)

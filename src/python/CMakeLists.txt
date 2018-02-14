@@ -1,3 +1,7 @@
+# All or part of this file was contributed by Intel under license:
+#   Copyright (C) 2017-2018 Intel Corporation
+#   SPDX-License-Identifier: MIT
+
 if(CUDA_FOUND)
   cuda_add_library(pymarian SHARED
     mariannmt.cpp

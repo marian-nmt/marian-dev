@@ -147,6 +147,8 @@ public:
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
       alignedSources.push_back(alignedSource);
       if (headI == 0) {
+        // Note: we return the first set of attention weights
+        // for multi-head attention this might not be necessarily the most relevant one
         first_e = e;
       }
     }

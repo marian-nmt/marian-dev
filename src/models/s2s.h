@@ -215,7 +215,9 @@ private:
           auto encState = state->getEncoderStates()[k];
 
           baseCell.push_back(
-              rnn::attention(graph)("prefix", attPrefix).set_state(encState));
+              rnn::attention(graph)("prefix", attPrefix)
+                                   ("attentionHeads", opt<int>("dec-attention-heads"))
+                                   .set_state(encState));
         }
       }
     }

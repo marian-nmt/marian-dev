@@ -78,3 +78,8 @@ void createLoggers(const marian::Config* options) {
     setLoggingLevel(*valid, loglevel);
   }
 }
+
+// Dummy abort function used to allow setting a breakpoint on abort
+void abort() noexcept {
+  std::abort();
+}

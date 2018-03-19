@@ -45,7 +45,7 @@
     checkedLog("general", "critical", __VA_ARGS__);                     \
     std::cerr << "Aborted from " << FUNCTION_NAME << " in " << __FILE__ \
               << ": " << __LINE__ << std::endl;                         \
-    std::abort();                                                       \
+    abort();                                                            \
   } while(0)
 
 /**
@@ -103,3 +103,5 @@ void checkedLog(std::string logger, std::string level, Args... args) {
 }
 
 void createLoggers(const marian::Config* options = nullptr);
+
+void abort() noexcept;

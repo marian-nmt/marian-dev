@@ -49,6 +49,7 @@ add_library(marian STATIC
   translator/helpers.cpp
   translator/scorers.cpp
 
+  training/gradient_dropping/cpu/dropper.cpp
   training/graph_group_async.cpp
   training/graph_group_async_drop.cpp
   training/graph_group_sync.cpp

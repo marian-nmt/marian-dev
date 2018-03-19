@@ -9,10 +9,8 @@ namespace marian {
 namespace cpu {
 
 float GradientDropBase::find_threshold(Tensor grads, float rate) { 
-  cudaSetDevice(grads->getDevice().no);
-
   int size = grads->size();
-  int sortSize = min(100000, size);
+  int sortSize = std::min(100000, size);
 
   if (!tmp) {
     tmp = newTensor(sortSize, grads->getBackend());
@@ -24,7 +22,7 @@ float GradientDropBase::find_threshold(Tensor grads, float rate) {
     tmp->data()[i++] = grads->data()[rand() % size];
   }
 
-  sort(tmp, tmp + sortSize);
+  std::sort(tmp->data(), tmp->data() + sortSize);
   int cut_index = std::max(0, (int)(sortSize * rate) - 1);
 
   return tmp->data()[cut_index];

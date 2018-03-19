@@ -50,6 +50,18 @@ namespace gpu {
   };
 }
 
+namespace cpu {
+  class GradientDropBase : public marian::GradientDropBase {
+  protected:
+    float find_threshold(Tensor grads, float rate);
+  public:
+    void dropGraph(Tensor t,
+                 SparseTensor destination,
+                 float rate = 0.99,
+                 float momentum = 0.0);
+  };
+}
+
 typedef Ptr<GradientDropBase> GradientDrop;
 
 static inline GradientDrop PrepareGradientDrop(DeviceId deviceId) {
@@ -57,12 +69,12 @@ static inline GradientDrop PrepareGradientDrop(DeviceId deviceId) {
   if(deviceId.type == DeviceType::gpu)
     return GradientDrop(new gpu::GradientDropBase());
   else
-    ABORT("Gradient Dropping for CPU is not yet supported");
+    return GradientDrop(new cpu::GradientDropBase());
 #else
   if(deviceId.type == DeviceType::gpu)
     ABORT("CUDA support not compiled into marian");
   else
-    ABORT("Gradient Dropping for CPU is not yet supported");
+    return GradientDrop(new cpu::GradientDropBase());
 #endif
 }
 

@@ -63,7 +63,8 @@ public:
   void copyFrom(float* ndata, int* nindices, int nsize) {
     size_ = nsize;
     if(backend_->getDevice().type == DeviceType::cpu) {
-      ABORT("Gradient Dropping for CPU is not yet supported");
+      std::copy(ndata, ndata + nsize, data());
+      std::copy(nindices, nindices + nsize, indices());
     }
 #ifdef CUDA_FOUND
     else {
@@ -84,19 +85,28 @@ public:
 
   void fromDense(Tensor t) {
     if(backend_->getDevice().type == DeviceType::cpu) {
-      ABORT("Gradient Dropping for CPU is not yet supported");
+      int sparse_size = 0;
+      for (int i=0;i<t->size();i++) {
+        indices()[sparse_size] = i;
+        data()[sparse_size++] = t->data()[i];
+      }
+      setSize(sparse_size);
     }
 #ifdef CUDA_FOUND
     else {
       int sparse_size = gpu::buildSparse(t, data(), indices());
       setSize(sparse_size);
     }
+    
 #endif
   }
 
   void scatterAdd(Tensor t, int offset = 0) {
     if(backend_->getDevice().type == DeviceType::cpu) {
-      ABORT("Gradient Dropping for CPU is not yet supported");
+#pragma omp parallel for simd
+      for (int i=0;i<size();i++){
+        t->data()[indices()[i] + offset] += data()[i];
+      }
     }
 #ifdef CUDA_FOUND
     else {
@@ -114,7 +124,10 @@ public:
     values[1] = pos + subsize - 1;
 
     if(backend_->getDevice().type == DeviceType::cpu) {
-      ABORT("Gradient Dropping for CPU is not yet supported");
+      startOffset = std::lower_bound(
+        indices(), indices() + size(), values[0]) - indices();
+      endOffset = std::lower_bound(
+        indices(), indices() + size(), values[1]) - indices();
     }
 #ifdef CUDA_FOUND
     else {

@@ -262,6 +262,10 @@ public:
         "tied-embeddings",
         "tied-embeddings-src",
         "tied-embeddings-all",
+
+        // Multi-head attention
+        "dec-attention-heads",
+        "dec-attention-hops"
     };
 
     modelFeatures_.push_back("transformer-heads");

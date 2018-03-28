@@ -178,6 +178,7 @@ public:
 class DecoderS2S : public DecoderBase {
 private:
   Ptr<rnn::RNN> rnn_;
+  int numBaseCells;
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
                                     Ptr<DecoderState> state) {
@@ -202,6 +203,7 @@ private:
 
     // setting up conditional (transitional) cell
     auto baseCell = rnn::stacked_cell(graph);
+    numBaseCells = 0;
     for(int i = 1; i <= decoderBaseDepth; ++i) {
       bool transition = (i > 1+decoderAttentionHops);
       auto paramPrefix = prefix_ + "_cell" + std::to_string(i);
@@ -209,6 +211,7 @@ private:
                          ("prefix", paramPrefix)  //
                          ("final", i > 1)         //
                          ("transition", transition));
+      ++numBaseCells;
       //LOG(info, "Decoder, create cell: i:{} paramPrefix:{} transition:{} final:{}", i, paramPrefix, transition, i > 1);
       if(i <= decoderAttentionHops) {
         for(int k = 0; k < state->getEncoderStates().size(); ++k) {
@@ -226,6 +229,7 @@ private:
               rnn::attention(graph)("prefix", attPrefix)
                                    ("attentionHeads", opt<int>("dec-attention-heads"))
                                    .set_state(encState));
+          ++numBaseCells;
         }
       }
     }
@@ -321,7 +325,7 @@ public:
       // retrieve all the aligned contexts computed by the attention mechanism
       auto att = rnn_->at(0)
                      ->as<rnn::StackedCell>()
-                     ->at(k + 1)
+                     ->at(numBaseCells - state->getEncoderStates().size() + k - 1)
                      ->as<rnn::Attention>();
       alignedContexts.push_back(att->getContext());
     }

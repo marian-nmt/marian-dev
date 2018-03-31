@@ -331,6 +331,13 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Number of decoder layers (s2s)")
     //("dec-high-context", po::value<std::string>()->default_value("none"),
     // "Repeat attended context: none, repeat, conditional, conditional-repeat (s2s)")
+
+    // Multi-head attention
+    ("dec-attention-heads", po::value<int>()->default_value(1),
+     "Number of parallel attention heads in s2s decoder")
+    ("dec-attention-hops", po::value<int>()->default_value(1),
+     "Number of sequential attention hops in s2s decoder")
+
     ("skip", po::value<bool>()->zero_tokens()->default_value(false),
      "Use skip connections (s2s)")
     ("layer-normalization", po::value<bool>()->zero_tokens()->default_value(false),
@@ -825,6 +832,10 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("dec-cell-high-depth", int);
   SET_OPTION("dec-depth", int);
 
+  // Multi-head attention
+  SET_OPTION("dec-attention-heads", int);
+  SET_OPTION("dec-attention-hops", int);
+
   SET_OPTION("skip", bool);
   SET_OPTION("tied-embeddings", bool);
   SET_OPTION("tied-embeddings-src", bool);
@@ -1030,6 +1041,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   //  mkl_set_num_threads(vm_["omp-threads"].as<size_t>());
   //#endif
   //#endif
+
 }
 
 std::vector<DeviceId> ConfigParser::getDevices() {

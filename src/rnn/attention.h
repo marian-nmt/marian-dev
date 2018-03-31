@@ -12,7 +12,8 @@ Expr attOps(Expr va, Expr context, Expr state);
 
 class GlobalAttention : public CellInput {
 private:
-  Expr Wa_, ba_, Ua_, va_;
+  Expr Wa_, ba_, Ua_;
+  std::vector<Expr>vas_;
 
   Expr gammaContext_;
   Expr gammaState_;
@@ -34,6 +35,8 @@ private:
   Expr W_comb_att_lns_, W_comb_att_lnb_;
   bool nematusNorm_;
 
+  int numAttentionHeads_;
+
 public:
   GlobalAttention(Ptr<ExpressionGraph> graph,
                   Ptr<Options> options,
@@ -45,7 +48,9 @@ public:
     dropout_ = options_->get<float>("dropout", 0);
     layerNorm_ = options_->get<bool>("layer-normalization", false);
     nematusNorm_ = options_->get<bool>("nematus-normalization", false);
+    numAttentionHeads_ = options_->get<int>("attentionHeads", 1);
     std::string prefix = options_->get<std::string>("prefix");
+    //LOG(info, "Attention heads: {}", numAttentionHeads_);
 
     int dimEncState = encState_->getContext()->shape()[-1];
 
@@ -54,8 +59,10 @@ public:
                        inits::glorot_uniform);
     Ua_ = graph->param(
         prefix + "_Wc_att", {dimEncState, dimEncState}, inits::glorot_uniform);
-    va_ = graph->param(
-        prefix + "_U_att", {dimEncState, 1}, inits::glorot_uniform);
+    for (int headI = 0; headI < numAttentionHeads_; ++headI) {
+      vas_.push_back(graph->param(
+          prefix + "_U_att", {dimEncState, 1}, inits::glorot_uniform));
+    }
     ba_ = graph->param(prefix + "_b_att", {1, dimEncState}, inits::zeros);
 
     if(dropout_ > 0.0f) {
@@ -126,18 +133,30 @@ public:
       else
         mappedState = layer_norm(mappedState, gammaState_);
 
-    auto attReduce = attOps(va_, mappedContext_, mappedState);
+    Expr first_e;
+    std::vector<Expr> alignedSources;
+    for (int headI = 0; headI < numAttentionHeads_; ++headI) { 	// TODO: Compute all attention heads in a single CUDA kernel
 
-    // @TODO: horrible ->
-    auto e = reshape(transpose(softmax(transpose(attReduce), softmaxMask_)),
-                     {dimBeam, srcWords, dimBatch, 1});
-    // <- horrible
+      auto attReduce = attOps(vas_[headI], mappedContext_, mappedState);
 
-    auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
+      // @TODO: horrible ->
+      auto e = reshape(transpose(softmax(transpose(attReduce), softmaxMask_)),
+                       {dimBeam, srcWords, dimBatch, 1});
+      // <- horrible
 
-    contexts_.push_back(alignedSource);
-    alignments_.push_back(e);
-    return alignedSource;
+      auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
+      alignedSources.push_back(alignedSource);
+      if (headI == 0) {
+        // Note: we return the first set of attention weights
+        // for multi-head attention this might not be necessarily the most relevant one
+        first_e = e;
+      }
+    }
+
+    auto concatenatedAlignedSources = concatenate(alignedSources, axis=-1);
+    contexts_.push_back(concatenatedAlignedSources);
+    alignments_.push_back(first_e);
+    return concatenatedAlignedSources;
   }
 
   std::vector<Expr>& getContexts() { return contexts_; }
@@ -151,7 +170,7 @@ public:
     alignments_.clear();
   }
 
-  int dimOutput() { return encState_->getContext()->shape()[-1]; }
+  int dimOutput() { return encState_->getContext()->shape()[-1] * numAttentionHeads_; }
 };
 
 using Attention = GlobalAttention;

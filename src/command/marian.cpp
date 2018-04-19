@@ -8,6 +8,7 @@
 
 #ifdef CUDA_FOUND
 #include "training/graph_group_async_drop.h"
+#include "tensors/gpu/cuda_helpers.h"
 #endif
 
 bool configureMPI(int, char**);
@@ -17,6 +18,21 @@ int main(int argc, char** argv) {
 
   auto options = New<Config>(argc, argv);
   auto devices = options->getDevices();
+
+#ifdef CUDA_FOUND
+  for (auto deviceA : devices) {
+    if (deviceA.type == DeviceType::gpu) {
+      for (auto deviceB : devices) {
+        if (deviceA != deviceB) {
+          enablePeerAccess(deviceA.no, deviceB.no);
+        }
+      }
+    } else {
+      break;
+    }
+  }
+#endif
+
 
   if(options->get<bool>("multi-node")) {
     ABORT_IF(!configureMPI(argc, argv), "MPI not found.");

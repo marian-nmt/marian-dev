@@ -32,6 +32,8 @@ public:
   virtual size_t size() { return size_; }
 
   virtual DeviceId getDevice() { return deviceId_; }
+
+  virtual void synchronize() {};
 };
 
 namespace gpu {
@@ -43,6 +45,7 @@ public:
   ~Device();
 
   void reserve(size_t size);
+  void synchronize();
 };
 }
 

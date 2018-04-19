@@ -15,6 +15,7 @@
 
 #ifdef CUDA_FOUND
 #include "tensors/gpu/algorithm.h"
+#include "tensors/gpu/cuda_helpers.h"
 #endif
 
 namespace marian {
@@ -222,6 +223,7 @@ public:
 #ifdef CUDA_FOUND
     else {
       gpu::copy(backend_, in->data(), in->data() + in->size(), data());
+      backend_->synchronize();
     }
 #endif
   }

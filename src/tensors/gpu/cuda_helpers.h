@@ -23,6 +23,25 @@ inline void gpuAssert(cudaError_t code,
   }
 }
 
+void enablePeerAccess(size_t deviceA, size_t deviceB) {
+  //Attempt to enable peer access
+  int result;
+  CUDA_CHECK(cudaDeviceCanAccessPeer(&result, deviceA, deviceB));
+  if (result) {
+    cudaSetDevice(deviceA);
+    cudaDeviceEnablePeerAccess (deviceB, 0);
+  } else {
+    LOG(warn, "Warning: PeerMemoryAccess unavailable between devices {} and {}", deviceA, deviceB);
+  }
+  CUDA_CHECK(cudaDeviceCanAccessPeer(&result, deviceB, deviceA));
+  if (result) {
+    cudaSetDevice(deviceB);
+    cudaDeviceEnablePeerAccess (deviceA, 0);
+  } else {
+    LOG(warn, "Warning: PeerMemoryAccess unavailable between devices {} and {}", deviceB, deviceA);
+  }
+}
+
 template <typename T>
 void CudaCopy(const T* start, const T* end, T* dest) {
   CUDA_CHECK(cudaMemcpy(

@@ -36,5 +36,10 @@ void Device::reserve(size_t size) {
 
   size_ = size;
 }
+
+void Device::synchronize() {
+  cudaSetDevice(deviceId_.no);
+  cudaDeviceSynchronize();
+}
 }
 }

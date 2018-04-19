@@ -12,6 +12,7 @@
 #endif
 
 bool configureMPI(int, char**);
+void enablePeerAccess(size_t, size_t);
 
 int main(int argc, char** argv) {
   using namespace marian;
@@ -23,7 +24,7 @@ int main(int argc, char** argv) {
   for (auto deviceA : devices) {
     if (deviceA.type == DeviceType::gpu) {
       for (auto deviceB : devices) {
-        if (deviceA != deviceB) {
+        if (!(deviceA == deviceB)) {
           enablePeerAccess(deviceA.no, deviceB.no);
         }
       }

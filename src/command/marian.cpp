@@ -8,11 +8,33 @@
 
 #ifdef CUDA_FOUND
 #include "training/graph_group_async_drop.h"
-#include "tensors/gpu/cuda_helpers.h"
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+void enablePeerAccess(size_t deviceA, size_t deviceB) {
+  //Attempt to enable peer access
+  int result;
+  cudaDeviceCanAccessPeer(&result, deviceA, deviceB);
+  if (result) {
+    cudaSetDevice(deviceA);
+    cudaDeviceEnablePeerAccess (deviceB, 0);
+    LOG(info, "PeerMemoryAccess enabled between devices {} and {}", deviceA, deviceB);
+  } else {
+    LOG(warn, "PeerMemoryAccess unavailable between devices {} and {}", deviceA, deviceB);
+  }
+  cudaDeviceCanAccessPeer(&result, deviceB, deviceA);
+  if (result) {
+    cudaSetDevice(deviceB);
+    cudaDeviceEnablePeerAccess (deviceA, 0);
+    LOG(info, "PeerMemoryAccess enabled between devices {} and {}", deviceB, deviceA);
+  } else {
+    LOG(warn, "PeerMemoryAccess unavailable between devices {} and {}", deviceB, deviceA);
+  }
+}
 #endif
 
 bool configureMPI(int, char**);
-void enablePeerAccess(size_t, size_t);
+
 
 int main(int argc, char** argv) {
   using namespace marian;

@@ -454,6 +454,8 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
 #ifdef CUDA_FOUND
     ("cpu-threads", po::value<size_t>()->default_value(0)->implicit_value(1),
       "Use CPU-based computation with this many independent threads, 0 means GPU-based computation")
+    ("peer-access", po::value<bool>()->zero_tokens()->default_value(false),
+      "Enable peer access for inter-GPU communication. This should improve performance, especially on nvlink connected devices.")
     //("omp-threads", po::value<size_t>()->default_value(1),
     //  "Set number of OpenMP threads for each CPU-based thread")
 #else
@@ -991,6 +993,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("relative-paths", bool);
   SET_OPTION("devices", std::vector<std::string>);
   SET_OPTION("cpu-threads", size_t);
+  SET_OPTION("peer-access", bool);
   // SET_OPTION("omp-threads", size_t);
 
   SET_OPTION("mini-batch", int);

@@ -18,18 +18,11 @@ void enablePeerAccess(size_t deviceA, size_t deviceB) {
   if (result) {
     cudaSetDevice(deviceA);
     cudaDeviceEnablePeerAccess (deviceB, 0);
-    LOG(info, "PeerMemoryAccess enabled between devices {} and {}", deviceA, deviceB);
+    LOG(info, "[GPU] PeerMemoryAccess enabled between devices {} and {}", deviceA, deviceB);
   } else {
-    LOG(warn, "PeerMemoryAccess unavailable between devices {} and {}", deviceA, deviceB);
+    LOG(warn, "[GPU[ PeerMemoryAccess unavailable between devices {} and {}", deviceA, deviceB);
   }
   cudaDeviceCanAccessPeer(&result, deviceB, deviceA);
-  if (result) {
-    cudaSetDevice(deviceB);
-    cudaDeviceEnablePeerAccess (deviceA, 0);
-    LOG(info, "PeerMemoryAccess enabled between devices {} and {}", deviceB, deviceA);
-  } else {
-    LOG(warn, "PeerMemoryAccess unavailable between devices {} and {}", deviceB, deviceA);
-  }
 }
 #endif
 
@@ -43,15 +36,17 @@ int main(int argc, char** argv) {
   auto devices = options->getDevices();
 
 #ifdef CUDA_FOUND
-  for (auto deviceA : devices) {
-    if (deviceA.type == DeviceType::gpu) {
-      for (auto deviceB : devices) {
-        if (!(deviceA == deviceB)) {
-          enablePeerAccess(deviceA.no, deviceB.no);
+  if (options->get<bool>("peer-access")) {
+    for (auto deviceA : devices) {
+      if (deviceA.type == DeviceType::gpu) {
+        for (auto deviceB : devices) {
+          if (deviceA != deviceB) {
+            enablePeerAccess(deviceA.no, deviceB.no);
+          }
         }
+      } else {
+        break;
       }
-    } else {
-      break;
     }
   }
 #endif

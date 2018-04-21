@@ -28,7 +28,7 @@ public:
 
   NodeOps forwardOps() {
     using namespace functional;
-    return {NodeOp(Element(_1 = _2 + 2, val_, child(0)->val()))};
+    return {NodeOp(Element(_1 = abs(_2), val_, child(0)->val()))};
   }
 
   NodeOps backwardOps() {

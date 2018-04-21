@@ -3,7 +3,6 @@
 #include "models/encoder_decoder.h"
 #include "layers/generic.h"
 #include "layers/guided_alignment.h"
-#include "tensors/tensor_operators.h"
 
 namespace marian {
 namespace models {

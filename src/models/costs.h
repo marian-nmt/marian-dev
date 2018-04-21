@@ -3,6 +3,7 @@
 #include "models/encoder_decoder.h"
 #include "layers/generic.h"
 #include "layers/guided_alignment.h"
+#include "tensors/tensor_operators.h"
 
 namespace marian {
 namespace models {
@@ -62,6 +63,19 @@ public:
                costType,
                ls,
                weights);
+    
+    // L1 and L2 Reguralization
+    if (options_->get<std::string>("regularization-type") == "l1") {
+      float lambda = options_->get<float>("regularization-weight");
+      for(auto p : *graph->params()) {
+        cost = cost + lambda * sum(flatten(abs(p)));
+      }
+    } else if (options_->get<std::string>("regularization-type") == "l2") {
+      float lambda = options_->get<float>("regularization-weight");
+      for(auto p : *graph->params()) {
+        cost = cost + lambda * sum(flatten(p * p));
+      }
+    }
 
     if(options_->has("guided-alignment") && !inference) {
       auto alignments = encdec->getDecoders()[0]->getAlignments();

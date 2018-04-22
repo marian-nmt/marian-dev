@@ -35,8 +35,8 @@ public:
     using namespace functional;
     return {NodeOp(Add(if_then_else(_1 < 0, -1,
                        if_then_else(_1 > 0, 1, 0)) * _2,
-                       child(0)->val(),
                        child(0)->grad(),
+                       child(0)->val(),
                        adj_))};
   }
 

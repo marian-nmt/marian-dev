@@ -178,7 +178,8 @@ public:
 class DecoderS2S : public DecoderBase {
 private:
   Ptr<rnn::RNN> rnn_;
-  int numBaseCells;
+  size_t numBaseCells_;
+  std::vector<size_t> lastAttentionCellIds_;
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
                                     Ptr<DecoderState> state) {
@@ -203,7 +204,8 @@ private:
 
     // setting up conditional (transitional) cell
     auto baseCell = rnn::stacked_cell(graph);
-    numBaseCells = 0;
+    lastAttentionCellIds_ = std::vector<size_t>(state->getEncoderStates().size(), -1);
+    numBaseCells_ = 0;
     for(int i = 1; i <= decoderBaseDepth; ++i) {
       bool transition = (i > 1+decoderAttentionHops);
       auto paramPrefix = prefix_ + "_cell" + std::to_string(i);
@@ -211,7 +213,7 @@ private:
                          ("prefix", paramPrefix)  //
                          ("final", i > 1)         //
                          ("transition", transition));
-      ++numBaseCells;
+      ++numBaseCells_;
       //LOG(info, "Decoder, create cell: i:{} paramPrefix:{} transition:{} final:{}", i, paramPrefix, transition, i > 1);
       if(i <= decoderAttentionHops) {
         for(int k = 0; k < state->getEncoderStates().size(); ++k) {
@@ -225,11 +227,13 @@ private:
 
           auto encState = state->getEncoderStates()[k];
 
-          baseCell.push_back(
-              rnn::attention(graph)("prefix", attPrefix)
+         
+          baseCell.push_back(rnn::attention(graph)("prefix", attPrefix)
                                    ("attentionHeads", opt<int>("dec-attention-heads"))
                                    .set_state(encState));
-          ++numBaseCells;
+          lastAttentionCellIds_[k] = numBaseCells_;
+          //LOG(info, "attention head for encoder state {} created at numBaseCells_: {}", k, numBaseCells_);
+          ++numBaseCells_;
         }
       }
     }
@@ -323,9 +327,11 @@ public:
     std::vector<Expr> alignedContexts;
     for(int k = 0; k < state->getEncoderStates().size(); ++k) {
       // retrieve all the aligned contexts computed by the attention mechanism
+      size_t headId = lastAttentionCellIds_[k];
+      //LOG(info, "attention for encoder state {} headId: {}", k, headId);
       auto att = rnn_->at(0)
                      ->as<rnn::StackedCell>()
-                     ->at(numBaseCells - state->getEncoderStates().size() + k - 1)
+                     ->at(headId)
                      ->as<rnn::Attention>();
       alignedContexts.push_back(att->getContext());
     }

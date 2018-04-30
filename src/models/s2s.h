@@ -230,6 +230,7 @@ private:
          
           baseCell.push_back(rnn::attention(graph)("prefix", attPrefix)
                                    ("attentionHeads", opt<int>("dec-attention-heads"))
+                                   ("attentionProjectionDim", opt<int>("dec-attention-projection-dim"))
                                    .set_state(encState));
           lastAttentionCellIds_[k] = numBaseCells_;
           //LOG(info, "attention head for encoder state {} created at numBaseCells_: {}", k, numBaseCells_);

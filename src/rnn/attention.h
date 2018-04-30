@@ -36,6 +36,9 @@ private:
   bool nematusNorm_;
 
   int numAttentionHeads_;
+  int attentionProjectionDim_;
+
+  std::vector<Expr> attentionProjectionMatrices_;
 
 public:
   GlobalAttention(Ptr<ExpressionGraph> graph,
@@ -49,6 +52,7 @@ public:
     layerNorm_ = options_->get<bool>("layer-normalization", false);
     nematusNorm_ = options_->get<bool>("nematus-normalization", false);
     numAttentionHeads_ = options_->get<int>("attentionHeads", 1);
+    attentionProjectionDim_ = options_->get<int>("attentionProjectionDim", -1);
     std::string prefix = options_->get<std::string>("prefix");
     //LOG(info, "Attention heads: {}", numAttentionHeads_);
 
@@ -60,8 +64,17 @@ public:
     Ua_ = graph->param(
         prefix + "_Wc_att", {dimEncState, dimEncState}, inits::glorot_uniform);
     for (int headI = 0; headI < numAttentionHeads_; ++headI) {
+      std::string suffix;
+      if (headI > 0) {
+        suffix += "_" + std::to_string(headI);
+      }
       vas_.push_back(graph->param(
-          prefix + "_U_att", {dimEncState, 1}, inits::glorot_uniform));
+          prefix + "_U_att" + suffix, {dimEncState, 1}, inits::glorot_uniform));
+
+      if (attentionProjectionDim_ != -1) {
+        attentionProjectionMatrices_.push_back(graph->param(
+          prefix + "_projectionMatrix" + suffix, {dimEncState, attentionProjectionDim_}, inits::glorot_uniform));
+      }
     }
     ba_ = graph->param(prefix + "_b_att", {1, dimEncState}, inits::zeros);
 
@@ -110,6 +123,7 @@ public:
       Shape shape = {softmaxMask->shape()[-3], softmaxMask->shape()[-2]};
       softmaxMask_ = transpose(reshape(softmaxMask, shape));
     }
+
   }
 
   Expr apply(State state) {
@@ -145,6 +159,11 @@ public:
       // <- horrible
 
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
+      //LOG(info, "alignedSource shape (before proj): {}", alignedSource->shape());
+      if (attentionProjectionDim_ != -1) {
+        alignedSource = dot(alignedSource, attentionProjectionMatrices_[headI]);
+        //LOG(info, "alignedSource shape (after proj): {}", alignedSource->shape());
+      }
       alignedSources.push_back(alignedSource);
       if (headI == 0) {
         // Note: we return the first set of attention weights
@@ -170,7 +189,10 @@ public:
     alignments_.clear();
   }
 
-  int dimOutput() { return encState_->getContext()->shape()[-1] * numAttentionHeads_; }
+  int dimOutput() {
+    int alignedSourcesDimPerHead = (attentionProjectionDim_ == -1)? (encState_->getContext()->shape()[-1]): attentionProjectionDim_;
+    return alignedSourcesDimPerHead * numAttentionHeads_;
+  }
 };
 
 using Attention = GlobalAttention;

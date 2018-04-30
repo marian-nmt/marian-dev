@@ -265,7 +265,8 @@ public:
 
         // Multi-head attention
         "dec-attention-heads",
-        "dec-attention-hops"
+        "dec-attention-hops",
+        "dec-attention-projection-dim"
     };
 
     modelFeatures_.push_back("transformer-heads");

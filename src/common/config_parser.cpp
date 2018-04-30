@@ -337,6 +337,8 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Number of parallel attention heads in s2s decoder")
     ("dec-attention-hops", po::value<int>()->default_value(1),
      "Number of sequential attention hops in s2s decoder")
+    ("dec-attention-projection-dim", po::value<int>()->default_value(-1),
+     "Project the context state to this size, per hop (-1 disables projection)")
 
     ("skip", po::value<bool>()->zero_tokens()->default_value(false),
      "Use skip connections (s2s)")
@@ -835,6 +837,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   // Multi-head attention
   SET_OPTION("dec-attention-heads", int);
   SET_OPTION("dec-attention-hops", int);
+  SET_OPTION("dec-attention-projection-dim", int);
 
   SET_OPTION("skip", bool);
   SET_OPTION("tied-embeddings", bool);

@@ -11,6 +11,12 @@
 #include "3rd_party/threadpool.h"
 #include "training/graph_group.h"
 
+//Profiling
+#ifdef CUDA_FOUND
+#include <cuda_profiler_api.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#endif
 namespace marian {
 
 class AsyncGraphGroup : public GraphGroup {
@@ -80,6 +86,7 @@ public:
       shardOpt_.push_back(Optimizer(options_));
 
       builders_.push_back(models::from_config(options_, models::usage::training));
+      cudaProfilerStart();
     }
   }
 

@@ -6,7 +6,9 @@
 namespace marian {
 
 ExpressionGraph::ExpressionGraph(bool inference, bool optimized)
-    : inferenceOnly_(inference), optimized_(optimized), backend_(nullptr) {}
+    : inferenceOnly_(inference), optimized_(optimized), backend_(nullptr) {
+    cudaProfilerStart();
+}
 
 void ExpressionGraph::setDevice(DeviceId deviceId) {
   if(!backend_) {

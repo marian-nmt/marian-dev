@@ -16,6 +16,7 @@
 #include "graph/parameters.h"
 
 #include "3rd_party/cnpy/cnpy.h"
+#include <cuda_profiler_api.h>
 
 namespace marian {
 
@@ -156,6 +157,7 @@ public:
   ~ExpressionGraph() {
     clear();
     params_->clear();
+    cudaProfilerStop();
   }
 
   void setDevice(DeviceId deviceId = {0, DeviceType::gpu});

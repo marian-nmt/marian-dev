@@ -11,12 +11,6 @@
 #include "3rd_party/threadpool.h"
 #include "training/graph_group.h"
 
-//Profiling
-#ifdef CUDA_FOUND
-#include <cuda_profiler_api.h>
-#include <cuda.h>
-#include <cuda_runtime.h>
-#endif
 namespace marian {
 
 class AsyncGraphGroup : public GraphGroup {
@@ -78,7 +72,6 @@ public:
         tau_{options_->get<size_t>("optimizer-delay")} {
     pool_.reset(new ThreadPool(devices_.size(), devices_.size()));
 
-    cudaProfilerStart();
     for(auto device : devices_) {
       auto graph = New<ExpressionGraph>();
       graph->setDevice(device);
@@ -90,7 +83,10 @@ public:
     }
   }
 
-  void update(Ptr<data::Batch> batch) { execute(batch); }
+  void update(Ptr<data::Batch> batch) {
+    ABORT_IF(finalized_, "Training has already finished.");
+    execute(batch);
+  }
 
   void load() {
     if(!options_->get<bool>("no-reload")) {
@@ -123,7 +119,7 @@ public:
 
   void save(bool final = false) {
     if(final && scheduler_) {
-      if(movingAvg_)
+      if(movingAvg_ && paramsAvg_.size())
           for(auto g : graphs_)
             fetchParams(g->params()->vals(), paramsAvg_, 0 /* safe? */);
 
@@ -173,8 +169,6 @@ public:
   }
 
   void wait();
-  ~AsyncGraphGroup(){
-    cudaProfilerStop();
-  }
+  virtual void finalize();
 };
 }

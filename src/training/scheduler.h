@@ -4,6 +4,14 @@
 #include "training/training_state.h"
 #include "training/validator.h"
 
+//Profiling
+#ifdef CUDA_FOUND
+#include <cuda_profiler_api.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#endif
+
+
 namespace marian {
 
 class Scheduler : public TrainingObserver {
@@ -76,13 +84,19 @@ public:
     LOG(info, "Starting epoch {}", state_->epochs);
   }
 
-  void started() { LOG(info, "Training started"); }
-  void finished() { LOG(info, "Training finished"); }
+  void started() {
+     LOG(info, "Training started");
+     cudaProfilerStart();
+  }
+  void finished() {
+     LOG(info, "Training finished");
+     cudaProfilerStop();
+  }
 
   void addValidator(Ptr<ValidatorBase> validator) {
     validators_.push_back(validator);
 
-    registerTrainingObserver(validators_.front());
+    registerTrainingObserver(validators_.back());
     if(!state_->loaded) {
       state_->validators[validator->type()]["last-best"] = validator->initScore();
       state_->validators[validator->type()]["stalled"] = 0;

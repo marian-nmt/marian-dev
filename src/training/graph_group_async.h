@@ -78,6 +78,7 @@ public:
         tau_{options_->get<size_t>("optimizer-delay")} {
     pool_.reset(new ThreadPool(devices_.size(), devices_.size()));
 
+    cudaProfilerStart();
     for(auto device : devices_) {
       auto graph = New<ExpressionGraph>();
       graph->setDevice(device);
@@ -86,7 +87,6 @@ public:
       shardOpt_.push_back(Optimizer(options_));
 
       builders_.push_back(models::from_config(options_, models::usage::training));
-      cudaProfilerStart();
     }
   }
 
@@ -173,5 +173,8 @@ public:
   }
 
   void wait();
+  ~AsyncGraphGroup(){
+    cudaProfilerStop();
+  }
 };
 }

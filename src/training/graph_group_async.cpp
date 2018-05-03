@@ -283,5 +283,6 @@ void AsyncGraphGroup::wait() {
     pool_->wait_for_others(lock);
     pool_->notify_others();
   }
+  cudaProfilerStop();
 }
 }

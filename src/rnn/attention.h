@@ -37,8 +37,12 @@ private:
 
   int numAttentionHeads_;
   int attentionProjectionDim_;
+  bool attentionProjectionLayerNorm_;
+  bool attentionProjectionTanH_;
 
   std::vector<Expr> attentionProjectionMatrices_;
+  std::vector<Expr> attentionProjectionMatrixGammas_;
+  std::vector<Expr> attentionProjectionMatrixBs_;
 
 public:
   GlobalAttention(Ptr<ExpressionGraph> graph,
@@ -53,6 +57,8 @@ public:
     nematusNorm_ = options_->get<bool>("nematus-normalization", false);
     numAttentionHeads_ = options_->get<int>("attentionHeads", 1);
     attentionProjectionDim_ = options_->get<int>("attentionProjectionDim", -1);
+    attentionProjectionLayerNorm_ = options->get<bool>("attentionProjectionLayerNorm", false);
+    attentionProjectionTanH_ = options->get<bool>("attentionProjectionTanH", false);
     std::string prefix = options_->get<std::string>("prefix");
     //LOG(info, "Attention heads: {}", numAttentionHeads_);
 
@@ -71,9 +77,19 @@ public:
       vas_.push_back(graph->param(
           prefix + "_U_att" + suffix, {dimEncState, 1}, inits::glorot_uniform));
 
+      // Attended context projection
       if (attentionProjectionDim_ != -1) {
         attentionProjectionMatrices_.push_back(graph->param(
           prefix + "_projectionMatrix" + suffix, {dimEncState, attentionProjectionDim_}, inits::glorot_uniform));
+        if (attentionProjectionLayerNorm_) {
+          Expr gamma = graph->param(
+            prefix + "_projectionMatrix_gamma" + suffix, {1, attentionProjectionDim_}, inits::from_value(1.0));
+          attentionProjectionMatrixGammas_.push_back(gamma);
+        }
+        Expr beta = (attentionProjectionTanH_)? graph->param(
+          prefix + "_projectionMatrix_b" + suffix, {1, attentionProjectionDim_}, inits::zeros):
+          nullptr;
+        attentionProjectionMatrixBs_.push_back(beta);
       }
     }
     ba_ = graph->param(prefix + "_b_att", {1, dimEncState}, inits::zeros);
@@ -159,10 +175,23 @@ public:
       // <- horrible
 
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
+
+      // Attended context projection
       //LOG(info, "alignedSource shape (before proj): {}", alignedSource->shape());
       if (attentionProjectionDim_ != -1) {
         alignedSource = dot(alignedSource, attentionProjectionMatrices_[headI]);
         //LOG(info, "alignedSource shape (after proj): {}", alignedSource->shape());
+        if (attentionProjectionLayerNorm_) {
+          alignedSource = layer_norm(alignedSource, attentionProjectionMatrixGammas_[headI], attentionProjectionMatrixBs_[headI]);
+        }
+        if (attentionProjectionTanH_) {
+          if (attentionProjectionLayerNorm_) {
+            alignedSource = tanh(alignedSource);
+          }
+          else {
+            alignedSource = tanh(alignedSource + attentionProjectionMatrixBs_[headI]);
+          }
+        }
       }
       alignedSources.push_back(alignedSource);
       if (headI == 0) {

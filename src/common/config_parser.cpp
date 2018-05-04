@@ -339,6 +339,10 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Number of sequential attention hops in s2s decoder")
     ("dec-attention-projection-dim", po::value<int>()->default_value(-1),
      "Project the context state to this size, per hop (-1 disables projection)")
+    ("dec-attention-projection-layernorm", po::value<bool>()->zero_tokens()->default_value(false),
+     "Apply layer normalization after the context projection in the attention mechanism")
+    ("dec-attention-projection-tanh", po::value<bool>()->zero_tokens()->default_value(false),
+     "Apply a bias and tanh non-linearity after the context projection in the attention mechanism")
 
     ("skip", po::value<bool>()->zero_tokens()->default_value(false),
      "Use skip connections (s2s)")
@@ -838,6 +842,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("dec-attention-heads", int);
   SET_OPTION("dec-attention-hops", int);
   SET_OPTION("dec-attention-projection-dim", int);
+  SET_OPTION("dec-attention-projection-layernorm", bool);
+  SET_OPTION("dec-attention-projection-tanh", bool);
 
   SET_OPTION("skip", bool);
   SET_OPTION("tied-embeddings", bool);

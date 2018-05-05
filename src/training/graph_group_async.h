@@ -168,7 +168,6 @@ public:
     return GraphGroup::collectStats(graphs_[0], builders_[0]);
   }
 
-  void wait();
   virtual void finalize();
 };
 }

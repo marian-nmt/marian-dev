@@ -3,13 +3,15 @@
 
 #include "3rd_party/exception.h"
 #include "common/logging.h"
+#include <cuda_runtime.h>
+#include "tensors/gpu/common_helpers.h"
 
 const float CUDA_FLT_MAX = 1.70141e+38;
 const int MAX_THREADS = 512;
 const int MAX_BLOCKS = 65535;
 
 #ifdef __CUDACC__
-
+/*
 #define CUDA_CHECK(ans) \
   { gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -43,7 +45,7 @@ inline void enablePeerAccess(size_t deviceA, size_t deviceB) {
     LOG(warn, "PeerMemoryAccess unavailable between devices {} and {}", deviceB, deviceA);
   }
 }
-
+*/
 template <typename T>
 void CudaCopy(const T* start, const T* end, T* dest) {
   CUDA_CHECK(cudaMemcpy(

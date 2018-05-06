@@ -8,6 +8,12 @@
 
 namespace marian {
 
+#ifdef CUDA_FOUND
+cudaStream_t gpu::Backend::streams[MAX_DEVICES][MAX_DEVICES];
+std::mutex gpu::Backend::createStreamMutex;
+bool gpu::Backend::streamsCreated;
+#endif
+
 Ptr<Backend> BackendByDevice(DeviceId deviceId, size_t seed) {
 #ifdef CUDA_FOUND
   if(deviceId.type == DeviceType::gpu)

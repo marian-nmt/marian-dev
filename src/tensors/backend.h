@@ -15,6 +15,8 @@ public:
   virtual DeviceId getDevice() { return deviceId_; };
   virtual void setDevice() = 0;
   virtual void synchronize() = 0;
+  virtual void synchronizeAllStreams() = 0;
+  virtual void * getStream(int this_id, int other_id) = 0;
 };
 
 Ptr<Backend> BackendByDevice(DeviceId deviceId, size_t seed);

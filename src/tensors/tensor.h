@@ -69,6 +69,11 @@ public:
     return get<T>(0);
   }
 
+  void allSynchronize() {
+    //Synchronizes all GPUs. Does nothing in case of CPU backend
+    backend_->synchronizeAllStreams();
+  }
+
   Ptr<Backend> getBackend() { return backend_; }
   DeviceId getDevice() { return backend_->getDevice(); }
 
@@ -212,7 +217,7 @@ public:
 #endif
   }
 
-  void copyFrom(Tensor in) {
+  void copyFrom(Tensor in, bool interGPU=false) {
     // @TODO: solve this later
     ABORT_IF(!matchType<float>(type_), "Requested type ({}) and underlying type ({}) do not match", request<float>(), type_);
 
@@ -222,8 +227,11 @@ public:
     }
 #ifdef CUDA_FOUND
     else {
-      gpu::copy(backend_, in->data(), in->data() + in->size(), data());
-      backend_->synchronize();
+        if (interGPU) {
+          gpu::copy(backend_, in->data(), in->data() + in->size(), data(), in->getBackend());
+        } else {
+          gpu::copy(backend_, in->data(), in->data() + in->size(), data());
+        }
     }
 #endif
   }

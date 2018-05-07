@@ -42,6 +42,10 @@ public:
     }
   }
 
+  void synchronizeWithOther(int other_id) {
+    CUDA_CHECK(cudaStreamSynchronize(streams[this->deviceId_.no][other_id]));
+  }
+
   cublasHandle_t getCublasHandle() { return cublasHandle_; }
 
   curandGenerator_t getCurandGenerator() { return curandGenerator_; }
@@ -67,7 +71,7 @@ private:
           CUDA_CHECK(cudaStreamCreate(&streams[i][j]));
         }
       }
-      std::cout << "Streams created successfully." << std::endl;
+      LOG(info, "[GPU] Successfully initialized {} GPU streams.", MAX_DEVICES*MAX_DEVICES);
     }
   }
 

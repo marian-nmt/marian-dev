@@ -50,8 +50,8 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
         [&](int idx, int pos) {
           // individual mutex per-shard
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size())); //true
-          //graphs_[0]->getBackend()->synchronizeAllStreams(); //Sync after copy @TODO move this outside of the threads in order to make it useful
+          grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()), true);
+          grads_[idx]->getBackend()->synchronizeWithOther(newGrads->getBackend()->getDevice().no);
           if(scaleLearningRate_) {
             shardOpt_[idx]->update(
                 params_[idx], grads_[idx], batch_words / avgBatchWords_);

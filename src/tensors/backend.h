@@ -16,6 +16,7 @@ public:
   virtual void setDevice() = 0;
   virtual void synchronize() = 0;
   virtual void synchronizeAllStreams() = 0;
+  virtual void synchronizeWithOther(int other_id) = 0;
   virtual void * getStream(int this_id, int other_id) = 0;
 };
 

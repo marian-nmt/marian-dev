@@ -23,6 +23,8 @@ public:
 
   void synchronizeAllStreams() {}
 
+  void synchronizeWithOther(int other_id) {}
+
   void * getStream(int this_id, int other_id) {return nullptr; }
 
   std::default_random_engine& getRandomGenerator() { return gen_; }

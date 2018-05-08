@@ -10,14 +10,14 @@ namespace marian {
 namespace gpu {
 
 template <typename T>
-void copy(Ptr<Backend> backend, const T* begin, const T* end, T* dest, Ptr<Backend> dest_backend) {
-  if (!dest_backend) {
+void copy(Ptr<Backend> backend, const T* begin, const T* end, T* dest, Ptr<Backend> source_backend) {
+  if (!source_backend) {
     CUDA_CHECK(cudaSetDevice(backend->getDevice().no));
     CudaCopy(begin, end, dest);
     CUDA_CHECK(cudaStreamSynchronize(0));
   } else {
-    int sourceDevice = backend->getDevice().no;
-    int targetDevice = dest_backend->getDevice().no;
+    int targetDevice = backend->getDevice().no;
+    int sourceDevice = source_backend->getDevice().no;
     cudaStream_t * stream = (cudaStream_t *) backend->getStream(sourceDevice, targetDevice);
     CUDA_CHECK(cudaMemcpyAsync(
       (void*)dest, (void*)begin, (end - begin) * sizeof(T), cudaMemcpyDefault, *stream));

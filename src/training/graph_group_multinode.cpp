@@ -206,6 +206,9 @@ void MultiNodeGraphGroup::calculateShardSizes() {
  */
 void MultiNodeGraphGroup::initShardGpuTensors() {
   size_t offset = 0;
+  for (int i = 0; i < mpi_my_rank_; i++) {
+    offset += nodeSizes_[i];
+  }
   for(int shard = 0; shard < devices_.size(); shard++) {
     Tensor gpuParams
         = newTensor(shardSizes_[shard], clientGraphs_[shard]->getBackend());
@@ -214,6 +217,7 @@ void MultiNodeGraphGroup::initShardGpuTensors() {
     shardParams_.push_back(gpuParams);
     shardGrads_.push_back(
         newTensor(shardSizes_[shard], clientGraphs_[shard]->getBackend()));
+    offset += shardSizes_[shard];
   }
 }
 
@@ -235,7 +239,7 @@ void MultiNodeGraphGroup::launchServerThread() {
                4,
                MPI_UNSIGNED_LONG,
                MPI_ANY_SOURCE,
-               MPI_TAG_GRAD_PUSH_,
+               MPI_TAG_GRAD_PUSH_MSG_,
                MPI_COMM_WORLD,
                &status);
       if(messageInfo[MSG_INFO_STATUS_] == STATUS_NODE_FINISHED_) {
@@ -405,7 +409,7 @@ void MultiNodeGraphGroup::synchronizeWithServerShards(Tensor newGrads,
                 4,
                 MPI_UNSIGNED_LONG,
                 node,
-                MPI_TAG_GRAD_PUSH_,
+                MPI_TAG_GRAD_PUSH_MSG_,
                 MPI_COMM_WORLD);
       MPI_Ssend(clientCommBuffersCPU_[gpu].data(),
                 nodeSize,
@@ -492,6 +496,7 @@ void MultiNodeGraphGroup::execute(Ptr<data::Batch> batch) {
     thread_local Ptr<ExpressionGraph> graph;
     thread_local Ptr<models::ModelBase> builder;
     thread_local size_t my_id = 0;
+    thread_local size_t t = 0;
 
     if(!graph) {
       std::lock_guard<std::mutex> lock(mutexClientInit_);
@@ -502,9 +507,18 @@ void MultiNodeGraphGroup::execute(Ptr<data::Batch> batch) {
 
     auto costNode = builder->build(graph, batch);
 
+    if (t == 0) {
+      MPI_Barrier(MPI_COMM_WORLD);
+      if (my_id != 0)
+        graph->params()->vals()->copyFrom(clientGraphs_[0]->params()->vals());
+      MPI_Barrier(MPI_COMM_WORLD);
+    }
+
     graph->forward();
     float cost = costNode->scalar();
     graph->backward();
+
+    t++;
 
     graph->getBackend()->synchronize();
 
@@ -566,19 +580,26 @@ void MultiNodeGraphGroup::execute(Ptr<data::Batch> batch) {
 
       scheduler_->update(cost, batch);
 
-      if(scheduler_->saving() || scheduler_->validating()) {
+      if((scheduler_->saving() || scheduler_->validating())) {
         // Wait with validation or saving until all other threads are done with
         // update.
         // We want to reuse the graphs for validation, so they need to be in
         // a safe state.
         clientThreadPool_->wait_for_others(lock);
 
-        if(scheduler_->saving())
-          this->save(graph);
+        //wait until other nodes are ready
+        MPI_Barrier(MPI_COMM_WORLD);
+ 
+        // TODO: Saving is broken
+        //if(mpi_my_rank_ == 0 && scheduler_->saving())
+        //  this->save(graph);
 
-        if(scheduler_->validating())
+        if(mpi_my_rank_ == 0 && scheduler_->validating())
           scheduler_->validate(clientGraphs_);
 
+        // inform other nodes to continue
+        MPI_Barrier(MPI_COMM_WORLD);
+        
         // Validation or saving is done, tell other threads to continue work.
         clientThreadPool_->notify_others();
       }

@@ -20,6 +20,10 @@
 #include "3rd_party/threadpool.h"
 #include "training/graph_group.h"
 
+
+#include "training/gradient_dropping/dropper.h"
+#include "training/gradient_dropping/sparse_tensor.h"
+
 #if CUDA_FOUND
 inline void gpuAssert2(cudaError_t code,
                       const char* file,
@@ -95,16 +99,31 @@ protected:
    * Variables for optimizer delay and synchronous SGD
    */
   size_t tau_{1};
+  float droping_rate{0.99};
+  float dropping_momentum{0};
+  
   std::mutex sumGradientMutex_;
   std::mutex updateParamsMutex_;
   std::mutex sumCostMutex_;
   Tensor accGradientsSync;
   Tensor sumGradientBuffer;
+  Tensor quantized;
+  Tensor paramsAvg_;
   std::vector<float> accGradientsSync_cpu;
   std::vector<float> receiveBuffer_cpu;
   bool synchronization_happened{false};
+  bool movingAvg_{false};
+  float mvDecay_{1e-4};
 
-  Ptr<OptimizerBase> syncOptimizer_;
+  /**
+   * Variables for gradient dropping
+   */
+  std::vector<float> sparseGrad_cpu, gatherGrads_cpu;
+  std::vector<int> sparseIndices_cpu, gatherIndices_cpu;
+  SparseTensor sparseGradient;
+  GradientDrop dropper;  
+
+  Ptr<OptimizerBase> syncOptimizer_, localOptimizer_;
 
   std::vector<std::mutex> optDelayMutex_;
   std::vector<size_t> delay_count;
@@ -159,8 +178,12 @@ protected:
    * @TODO ALHAM. God function too godly?
    */
   void sendReceiveUpdateSync();
+  void sendReceiveUpdateSparse();
+  void sendReceiveUpdateQuantized();
 
   void execute(Ptr<data::Batch> batch);
+
+  void updateMovingAverage(Tensor paramsAvg, Tensor params, size_t batches);
 
   /**
    * Load the GPU configuration of this node (i.e. which GPUs to use) and the
@@ -193,7 +216,11 @@ public:
   MultiNodeGraphGroupSync(Ptr<Config> options)
       : GraphGroup(options),
         tau_{options_->get<size_t>("optimizer-delay")},
+        movingAvg_{options_->get<float>("exponential-smoothing") > 0},
+        mvDecay_{options_->get<float>("exponential-smoothing")},
+        droping_rate{options->get<float>("grad-dropping-rate")},
         syncOptimizer_{Optimizer(options_)} {
+    localOptimizer_ = Optimizer(options_);
     // Set up devices for this node
     setupMPI(); //Setup MPI before creating device vectors
     std::vector<size_t> devices;

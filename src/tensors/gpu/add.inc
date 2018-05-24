@@ -14,4 +14,4 @@ template void Add<BinaryFunctor<elem::Mult, Assignee<1>, BinaryFunctor<elem::Div
 template void Add<BinaryFunctor<elem::Mult, Assignee<1>, BinaryFunctor<elem::sPReLUBack, Assignee<2>, Capture>>, marian::Tensor, marian::Tensor>(BinaryFunctor<elem::Mult, Assignee<1>, BinaryFunctor<elem::sPReLUBack, Assignee<2>, Capture>>, float, marian::Tensor, marian::Tensor, marian::Tensor);
 template void Add<BinaryFunctor<elem::Mult, Assignee<1>, UnaryFunctor<elem::sReLUBack, Assignee<2>>>, marian::Tensor, marian::Tensor>(BinaryFunctor<elem::Mult, Assignee<1>, UnaryFunctor<elem::sReLUBack, Assignee<2>>>, float, marian::Tensor, marian::Tensor, marian::Tensor);
 template void Add<BinaryFunctor<elem::Mult, BinaryFunctor<elem::Mult, Assignee<1>, Assignee<2>>, BinaryFunctor<elem::Minus, Capture, Assignee<2>>>, marian::Tensor, marian::Tensor>(BinaryFunctor<elem::Mult, BinaryFunctor<elem::Mult, Assignee<1>, Assignee<2>>, BinaryFunctor<elem::Minus, Capture, Assignee<2>>>, float, marian::Tensor, marian::Tensor, marian::Tensor);
-
+template void Add<UnaryFunctor<elem::Abs, Assignee<1> >, marian::Tensor >(UnaryFunctor<elem::Abs, Assignee<1> >, float, marian::Tensor, marian::Tensor);

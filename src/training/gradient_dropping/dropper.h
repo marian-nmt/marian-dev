@@ -31,6 +31,10 @@ protected:
   virtual float find_threshold(Tensor grads, float rate) = 0;
 
 public:
+  Tensor error() {
+    return residual;
+  }
+
   virtual void dropGraph(Tensor t,
                  SparseTensor destination,
                  float rate = 0.99,

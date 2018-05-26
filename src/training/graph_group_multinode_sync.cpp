@@ -20,7 +20,6 @@ void MultiNodeGraphGroupSync::updateMovingAverage(Tensor paramsAvg,
   Element(_1 = ((1.f - decay) * _1) + (decay * _2), paramsAvg, params);
 }
 
-
 /**
  * Set given scheduler to register training observers on the shard optimizers.
  */
@@ -64,9 +63,10 @@ void MultiNodeGraphGroupSync::init(Ptr<data::Batch> batch) {
   // setup sync sgd storage, We keep the summed gradient on Node 0
   sumGradientBuffer = newTensor(network_size, clientGraphs_[0]->getBackend());
   accGradientsSync = newTensor(network_size, clientGraphs_[0]->getBackend());
-
-  // quantized = newTensor(clientGraphs_[0]->params()->vals()->size() / 32, clientGraphs_[0]->getBackend());
+  
+  quantized = newTensor(network_size, clientGraphs_[0]->getBackend());
 }
+
 
 /**
  * Initialize the CPU arrays, with pinned memory for faster CudaMemCpy operations.
@@ -225,7 +225,6 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
 
   //set the accumulating buffers to zero;
   accGradientsSync->set(0);
-  std::fill(accGradientsSync_cpu.begin(), accGradientsSync_cpu.end(), 0);
   std::fill(gatherQuantized_cpu.begin(), gatherQuantized_cpu.end(), 0);
   #endif
 }
@@ -480,7 +479,7 @@ void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
       MPI_Barrier(MPI_COMM_WORLD);
       #endif
     }
-    }
+  }
 
 }
 }

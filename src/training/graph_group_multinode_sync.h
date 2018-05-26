@@ -135,6 +135,11 @@ protected:
    */
   Tensor newTensor(int size, Ptr<Backend> backend);
 
+  /*
+   * exponential smoothing
+   */
+  void updateMovingAverage(Tensor paramsAvg, Tensor params, size_t batches);
+
   /**
    * Setup training environment and launch server thread and (if enabled) client
    * communication overlap threads..
@@ -182,8 +187,6 @@ protected:
   void sendReceiveUpdateQuantized();
 
   void execute(Ptr<data::Batch> batch);
-
-  void updateMovingAverage(Tensor paramsAvg, Tensor params, size_t batches);
 
   /**
    * Load the GPU configuration of this node (i.e. which GPUs to use) and the

@@ -2,6 +2,7 @@
 #include "functional/functional.h"
 #include "tensors/tensor_operators.h"
 #include "data/corpus_base.h"
+#include "cuda_runtime.h"
 
 namespace marian {
 
@@ -14,11 +15,29 @@ void AsyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) {
     scheduler_->registerTrainingObserver(opt);
 }
 
+#define MAX_DEVICES 8
+  static cudaStream_t streams[MAX_DEVICES][MAX_DEVICES];
+  
+  static int alreadyCreated[MAX_DEVICES];
+  
+
 void AsyncGraphGroup::fetchParams(Tensor oldParams,
                                   const std::vector<Tensor>& params,
                                   int device_id) {
+
+  if(!alreadyCreated[device_id]){
+    cudaSetDevice(device_id);
+    for (int j = 0; j < devices_.size(); j++) {
+      cudaStreamCreate(&streams[device_id][j]);
+    }
+    alreadyCreated[device_id]=1;
+  }
+
+
+
   // @TODO read guard on parameters
   int pos = 0;
+
 
   std::vector<std::thread> threads;
   for(int idx = 0; idx < devices_.size(); idx++) {
@@ -26,22 +45,40 @@ void AsyncGraphGroup::fetchParams(Tensor oldParams,
         [&](int idx, int pos) {
           // individual mutex per-shard
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx], true);
+          //oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx]);
+	  oldParams->subtensor(pos, params[idx]->size())->copyFromStream(params[idx],streams[device_id][idx]);
         },
         idx,
         pos));
 
     pos += shardSize_;
   }
-  graphs_[0]->getBackend()->synchronizeAllStreams(); //Sync after copy
   for(auto&& t : threads) {
     t.join();
   }
+
+  for (int j = 0; j < devices_.size(); j++)
+    cudaStreamSynchronize(streams[device_id][j]);
+
 }
+
 
 void AsyncGraphGroup::pushGradients(Tensor newGrads,
                                     size_t batch_words,
                                     int device_id) {
+
+
+
+  if(!alreadyCreated[device_id]){
+    cudaSetDevice(device_id);
+    for (int j = 0; j < devices_.size(); j++) {
+      cudaStreamCreate(&streams[device_id][j]);
+    }
+    alreadyCreated[device_id]=1;
+  }
+
+
+
   // add instead of copy?
   std::vector<std::thread> threads;
   int pos = 0;
@@ -50,8 +87,10 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
         [&](int idx, int pos) {
           // individual mutex per-shard
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()), true);
-          grads_[idx]->getBackend()->synchronizeWithOther(newGrads->getBackend()->getDevice().no);
+          //grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()));
+
+	  grads_[idx]->copyFromStream(newGrads->subtensor(pos, grads_[idx]->size()),streams[device_id][idx]);
+
           if(scaleLearningRate_) {
             shardOpt_[idx]->update(
                 params_[idx], grads_[idx], batch_words / avgBatchWords_);
@@ -70,6 +109,11 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
   }
   for(auto&& t : threads)
     t.join();
+
+  for (int j = 0; j < devices_.size(); j++) 
+    cudaStreamSynchronize(streams[device_id][j]);
+  
+
 }
 
 void AsyncGraphGroup::updateMovingAverage(Tensor paramsAvg,
@@ -83,6 +127,7 @@ void AsyncGraphGroup::updateMovingAverage(Tensor paramsAvg,
 
 void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
   // initialize the parameters
+
 
   {
     ThreadPool pool(graphs_.size(), graphs_.size());
@@ -237,13 +282,13 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
         cost /= tau_;
 
       if (tau_ > 1) {
-        std::vector<size_t> fakeLength = {1, 1};
+        std::vector<size_t> fakeLength = {1, 1}; 
         auto fb = data::CorpusBatch::fakeBatch(fakeLength,
                                           num_seen_sentences,
                                           NULL);
         fb->front()->setWords(num_seen_words);
         scheduler_->update(cost, fb);
-
+        
         num_seen_words = 0;
         num_seen_sentences = 0;
       } else {

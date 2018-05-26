@@ -3,7 +3,6 @@
 
 #include "3rd_party/exception.h"
 #include "common/logging.h"
-#include <cuda_runtime.h>
 #include "tensors/gpu/common_helpers.h"
 
 const float CUDA_FLT_MAX = 1.70141e+38;
@@ -50,6 +49,13 @@ template <typename T>
 void CudaCopy(const T* start, const T* end, T* dest) {
   CUDA_CHECK(cudaMemcpy(
       (void*)dest, (void*)start, (end - start) * sizeof(T), cudaMemcpyDefault));
+}
+
+
+template <typename T>
+void CudaCopyStream(const T* start, const T* end, T* dest,  cudaStream_t stream) {
+  CUDA_CHECK(cudaMemcpyAsync(
+			     (void*)dest, (void*)start, (end - start) * sizeof(T), cudaMemcpyDefault, stream));
 }
 
 #define CUSPARSE_CHECK(x)                               \

@@ -3,39 +3,54 @@
 // clang-format off
 #include "tensors/tensor_operators.h"
 #include "tensors/gpu/cuda_helpers.h"
-#include "tensors/gpu/common_helpers.h"
 // clang-format on
 
 namespace marian {
 namespace gpu {
 
 template <typename T>
-void copy(Ptr<Backend> backend, const T* begin, const T* end, T* dest, Ptr<Backend> source_backend) {
-  if (!source_backend) {
-    CUDA_CHECK(cudaSetDevice(backend->getDevice().no));
-    CudaCopy(begin, end, dest);
-    CUDA_CHECK(cudaStreamSynchronize(0));
-  } else {
-    int targetDevice = backend->getDevice().no;
-    int sourceDevice = source_backend->getDevice().no;
-    cudaStream_t * stream = (cudaStream_t *) backend->getStream(sourceDevice, targetDevice);
-    CUDA_CHECK(cudaMemcpyAsync(
-      (void*)dest, (void*)begin, (end - begin) * sizeof(T), cudaMemcpyDefault, *stream));
-  }
+void copy(Ptr<Backend> backend, const T* begin, const T* end, T* dest) {
+  CUDA_CHECK(cudaSetDevice(backend->getDevice().no));
+  CudaCopy(begin, end, dest);
+  CUDA_CHECK(cudaStreamSynchronize(0));
 }
 
-template void copy<int8_t>(Ptr<Backend>, const int8_t*, const int8_t*, int8_t*, Ptr<Backend>);
-template void copy<int16_t>(Ptr<Backend>, const int16_t*, const int16_t*, int16_t*, Ptr<Backend>);
-template void copy<int32_t>(Ptr<Backend>, const int32_t*, const int32_t*, int32_t*, Ptr<Backend>);
-template void copy<int64_t>(Ptr<Backend>, const int64_t*, const int64_t*, int64_t*, Ptr<Backend>);
+template void copy<int8_t>(Ptr<Backend>, const int8_t*, const int8_t*, int8_t*);
+template void copy<int16_t>(Ptr<Backend>, const int16_t*, const int16_t*, int16_t*);
+template void copy<int32_t>(Ptr<Backend>, const int32_t*, const int32_t*, int32_t*);
+template void copy<int64_t>(Ptr<Backend>, const int64_t*, const int64_t*, int64_t*);
 
-template void copy<uint8_t>(Ptr<Backend>, const uint8_t*, const uint8_t*, uint8_t*, Ptr<Backend>);
-template void copy<uint16_t>(Ptr<Backend>, const uint16_t*, const uint16_t*, uint16_t*, Ptr<Backend>);
-template void copy<uint32_t>(Ptr<Backend>, const uint32_t*, const uint32_t*, uint32_t*, Ptr<Backend>);
-template void copy<uint64_t>(Ptr<Backend>, const uint64_t*, const uint64_t*, uint64_t*, Ptr<Backend>);
+template void copy<uint8_t>(Ptr<Backend>, const uint8_t*, const uint8_t*, uint8_t*);
+template void copy<uint16_t>(Ptr<Backend>, const uint16_t*, const uint16_t*, uint16_t*);
+template void copy<uint32_t>(Ptr<Backend>, const uint32_t*, const uint32_t*, uint32_t*);
+template void copy<uint64_t>(Ptr<Backend>, const uint64_t*, const uint64_t*, uint64_t*);
 
-template void copy<float>(Ptr<Backend>, const float*, const float*, float*, Ptr<Backend>);
-template void copy<double>(Ptr<Backend>, const double*, const double*, double*, Ptr<Backend>);
+template void copy<float>(Ptr<Backend>, const float*, const float*, float*);
+template void copy<double>(Ptr<Backend>, const double*, const double*, double*);
+
+
+template <typename T>
+void copyStream(Ptr<Backend> backend, const T* begin, const T* end, T* dest, cudaStream_t stream) {
+  CUDA_CHECK(cudaSetDevice(backend->getDevice().no));
+  //CudaCopy(begin, end, dest);
+  CudaCopyStream(begin, end, dest, stream);
+}
+
+
+  template void copyStream<int8_t>(Ptr<Backend>, const int8_t*, const int8_t*, int8_t*, cudaStream_t stream);
+  template void copyStream<int16_t>(Ptr<Backend>, const int16_t*, const int16_t*, int16_t*, cudaStream_t stream);
+  template void copyStream<int32_t>(Ptr<Backend>, const int32_t*, const int32_t*, int32_t*, cudaStream_t stream);
+  template void copyStream<int64_t>(Ptr<Backend>, const int64_t*, const int64_t*, int64_t*, cudaStream_t stream);
+
+  template void copyStream<uint8_t>(Ptr<Backend>, const uint8_t*, const uint8_t*, uint8_t*, cudaStream_t stream);
+  template void copyStream<uint16_t>(Ptr<Backend>, const uint16_t*, const uint16_t*, uint16_t*, cudaStream_t stream);
+  template void copyStream<uint32_t>(Ptr<Backend>, const uint32_t*, const uint32_t*, uint32_t*, cudaStream_t stream);
+  template void copyStream<uint64_t>(Ptr<Backend>, const uint64_t*, const uint64_t*, uint64_t*, cudaStream_t stream);
+
+  template void copyStream<float>(Ptr<Backend>, const float*, const float*, float*, cudaStream_t stream);
+  template void copyStream<double>(Ptr<Backend>, const double*, const double*, double*, cudaStream_t stream);
+
+
 
 template <typename T>
 __global__ void gFill(T* d_in, int size, T val) {

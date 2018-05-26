@@ -10,6 +10,7 @@
 #include "tensors/backend.h"
 #include "tensors/memory_piece.h"
 #include "tensors/types.h"
+#include "cuda_runtime.h"
 
 #include <algorithm>
 
@@ -67,11 +68,6 @@ public:
 
     ABORT_IF(size() != 1, "Tensor is not a scalar");
     return get<T>(0);
-  }
-
-  void allSynchronize() {
-    //Synchronizes all GPUs. Does nothing in case of CPU backend
-    backend_->synchronizeAllStreams();
   }
 
   Ptr<Backend> getBackend() { return backend_; }
@@ -217,7 +213,7 @@ public:
 #endif
   }
 
-  void copyFrom(Tensor in, bool interGPU=false) {
+  void copyFrom(Tensor in) {
     // @TODO: solve this later
     ABORT_IF(!matchType<float>(type_), "Requested type ({}) and underlying type ({}) do not match", request<float>(), type_);
 
@@ -227,14 +223,30 @@ public:
     }
 #ifdef CUDA_FOUND
     else {
-        if (interGPU) {
-          gpu::copy(backend_, in->data(), in->data() + in->size(), data(), in->getBackend());
-        } else {
-          gpu::copy(backend_, in->data(), in->data() + in->size(), data());
-        }
+      gpu::copy(backend_, in->data(), in->data() + in->size(), data());
+      backend_->synchronize();
     }
 #endif
   }
+
+
+  void copyFromStream(Tensor in, cudaStream_t stream) {
+    // @TODO: solve this later
+    ABORT_IF(!matchType<float>(type_), "Requested type ({}) and underlying type ({}) do not match", request<float>(), type_);
+
+    if(in->getBackend()->getDevice().type == DeviceType::cpu
+       && backend_->getDevice().type == DeviceType::cpu) {
+      std::copy(in->data(), in->data() + in->size(), data());
+    }
+#ifdef CUDA_FOUND
+    else {
+      gpu::copyStream(backend_, in->data(), in->data() + in->size(), data(), stream);
+      //backend_->synchronize();
+    }
+#endif
+  }
+
+
 
   template <typename T>
   std::string debug() {

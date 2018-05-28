@@ -39,11 +39,11 @@ void AsyncGraphGroup::fetchParams(Tensor oldParams,
 
     pos += shardSize_;
   }
+  for(auto&& t : threads) {
+    t.join();
+  }
   if (peer_access_) {
-  graphs_[0]->getBackend()->synchronizeAllStreams(); //Sync after copy
-    for(auto&& t : threads) {
-      t.join();
-    }
+    graphs_[0]->getBackend()->synchronizeAllStreams(); //Sync after copy
   }
 }
 

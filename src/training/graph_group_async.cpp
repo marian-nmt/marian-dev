@@ -191,11 +191,6 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     thread_local Ptr<TensorAllocator> accAlloc;
     thread_local std::ofstream outfile;
 
-    if (t == 0) {
-      std::string filename = std::to_string(t_id);
-      outfile.open(filename, std::ios_base::app);
-    }
-
     if(!graph) {
       std::lock_guard<std::mutex> lock(sync_);
       t_id = i;
@@ -204,6 +199,11 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     }
 
     auto costNode = builder->build(graph, batch);
+
+    if (t == 0) {
+      std::string filename = std::to_string(t_id);
+      outfile.open(filename, std::ios_base::app);
+    }
 
     if(t % tau_ == 0) {
       auto fetch_start = std::chrono::system_clock::now();

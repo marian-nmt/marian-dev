@@ -48,6 +48,8 @@ protected:
 
   size_t tau_{1};
 
+  bool peer_access_{false};
+
   virtual void init(Ptr<data::Batch> batch);
 
   virtual void fetchParams(Tensor oldParams,
@@ -69,7 +71,8 @@ public:
         shardSync_(devices_.size()),
         movingAvg_{options_->get<float>("exponential-smoothing") > 0},
         mvDecay_{options_->get<float>("exponential-smoothing")},
-        tau_{options_->get<size_t>("optimizer-delay")} {
+        tau_{options_->get<size_t>("optimizer-delay")},
+        peer_access_{options_->get<bool>("peer-access")} {
     pool_.reset(new ThreadPool(devices_.size(), devices_.size()));
 
     for(auto device : devices_) {

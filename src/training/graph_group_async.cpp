@@ -2,6 +2,8 @@
 #include "functional/functional.h"
 #include "tensors/tensor_operators.h"
 #include "data/corpus_base.h"
+#include <chrono>
+#include <fstream>
 
 namespace marian {
 
@@ -26,16 +28,22 @@ void AsyncGraphGroup::fetchParams(Tensor oldParams,
         [&](int idx, int pos) {
           // individual mutex per-shard
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx], true);
+          if (peer_access_) {
+            oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx], true);
+          } else {
+            oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx]);
+          }
         },
         idx,
         pos));
 
     pos += shardSize_;
   }
+  if (peer_access_) {
   graphs_[0]->getBackend()->synchronizeAllStreams(); //Sync after copy
-  for(auto&& t : threads) {
-    t.join();
+    for(auto&& t : threads) {
+      t.join();
+    }
   }
 }
 
@@ -50,8 +58,12 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
         [&](int idx, int pos) {
           // individual mutex per-shard
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()), true);
-          grads_[idx]->getBackend()->synchronizeWithOther(newGrads->getBackend()->getDevice().no);
+          if (peer_access_) {
+            grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()), true);
+            grads_[idx]->getBackend()->synchronizeWithOther(newGrads->getBackend()->getDevice().no);
+          } else {
+            grads_[idx]->copyFrom(newGrads->subtensor(pos, grads_[idx]->size()));
+          }
           if(scaleLearningRate_) {
             shardOpt_[idx]->update(
                 params_[idx], grads_[idx], batch_words / avgBatchWords_);
@@ -177,6 +189,12 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
 
     thread_local Tensor accGradients;
     thread_local Ptr<TensorAllocator> accAlloc;
+    thread_local std::ofstream outfile;
+
+    if (t == 0) {
+      std::string filename = std::to_string(t_id);
+      outfile.open(filename, std::ios_base::app);
+    }
 
     if(!graph) {
       std::lock_guard<std::mutex> lock(sync_);
@@ -188,7 +206,11 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     auto costNode = builder->build(graph, batch);
 
     if(t % tau_ == 0) {
+      auto fetch_start = std::chrono::system_clock::now();
       fetchParams(graph->params()->vals(), params_, t_id);
+      auto fetch_end = std::chrono::system_clock::now();
+      std::chrono::duration<double> elapsed_seconds = fetch_end-fetch_start;
+      outfile << "Fetch took: " << elapsed_seconds.count() << " seconds." << std::endl;
     }
 
     graph->forward();
@@ -220,7 +242,11 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     t++;
 
     if(t % tau_ == 0) {
+      auto push_start = std::chrono::system_clock::now();
       pushGradients(gradients, num_seen_trg, t_id);
+      auto push_end = std::chrono::system_clock::now();
+      std::chrono::duration<double> elapsed_seconds = push_end-push_start;
+      outfile << "Push took: " << elapsed_seconds.count() << " seconds." << std::endl;
       // Reset the counter of seen target words after gradient update
       num_seen_trg = 0;
       if(tau_ > 1)

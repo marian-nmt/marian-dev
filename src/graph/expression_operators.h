@@ -101,6 +101,8 @@ Expr select(Expr a, int axis, const std::vector<size_t>& indices);
 
 /*********************************************************/
 
+Expr abs(Expr a);
+
 Expr sum(Expr a, keywords::axis_k ax = 0);
 
 Expr softmax(Expr a, Expr mask = nullptr);

@@ -21,6 +21,29 @@ struct UnaryNodeOp : public NaryNodeOp {
   const std::string color() { return "yellow"; }
 };
 
+
+struct AbsNodeOp : public UnaryNodeOp {
+public:
+  AbsNodeOp(Expr a) : UnaryNodeOp(a){}
+
+  NodeOps forwardOps() {
+    using namespace functional;
+    return {NodeOp(Element(_1 = abs(_2), val_, child(0)->val()))};
+  }
+
+  NodeOps backwardOps() {
+    using namespace functional;
+    return {NodeOp(Add(if_then_else(_1 < 0, -1,
+                       if_then_else(_1 > 0, 1, 0)) * _2,
+                       child(0)->grad(),
+                       child(0)->val(),
+                       adj_))};
+  }
+
+  const std::string type() { return "absolute"; }
+};
+
+
 struct ScalarAddNodeOp : public UnaryNodeOp {
 private:
   float scalar_{0};

@@ -184,7 +184,11 @@ Expr select(Expr a, int axis, const std::vector<size_t>& indices) {
   return Expression<SelectNodeOp>(a, axis, indices);
 }
 
-Expr sum(Expr a, keywords::axis_k ax) {
+Expr abs(Expr a) {
+  return Expression<AbsNodeOp>(a);
+}
+
+Expr sum(Expr a, keywords::axis_k ax) { 
   return Expression<SumNodeOp>(a, ax);
 }
 

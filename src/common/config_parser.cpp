@@ -544,6 +544,10 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
     ("data-weighting-type", po::value<std::string>()->default_value("sentence"),
      "Processing level for data weighting. Possible values: sentence, word")
 
+    ("regularization-type", po::value<std::string>()->default_value("none"),
+     "Regularization type. Possible values: none, l1, l2")
+    ("regularization-weight", po::value<float>()->default_value(0.001),
+     "Weight for L1 and L2 regularization")
     //("drop-rate", po::value<double>()->default_value(0),
     // "Gradient drop ratio (read: https://arxiv.org/abs/1704.05021)")
     ("embedding-vectors", po::value<std::vector<std::string>>()
@@ -928,6 +932,9 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("guided-alignment-weight", double);
     SET_OPTION_NONDEFAULT("data-weighting", std::string);
     SET_OPTION("data-weighting-type", std::string);
+
+    SET_OPTION("regularization-type", std::string);
+    SET_OPTION("regularization-weight", float);
 
     // SET_OPTION("drop-rate", double);
     SET_OPTION_NONDEFAULT("embedding-vectors", std::vector<std::string>);

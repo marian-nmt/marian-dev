@@ -66,13 +66,22 @@ void GradientDropBase::dropGraph(Tensor grads,
   }
 
   if(!velocity && momentum > 0.0) {
+    LOG(info, "apply momentum");
     velocity = newTensor(grads->size(), grads->getBackend());
   }
 
+  // step 0 (optional) : Nesterov momentum
+  if (momentum > 0.0) {
+    using namespace functional;
+    marian::gpu::Element(_1 = momentum * (_1 + _2), velocity, grads);
+  }
   // Step 1: add residual to the current gradient
   {
     using namespace functional;
-    marian::gpu::Element(_1 = _1 + _2, grads, residual);
+    if (momentum == 0.0) 
+      marian::gpu::Element(_1 = _1 + _2, grads, residual);
+    else
+      marian::gpu::Element(_1 = _1 + _2 + _3, grads, residual, velocity);
   }
 
   // step 2: find threshold 
@@ -84,6 +93,9 @@ void GradientDropBase::dropGraph(Tensor grads,
     using namespace functional;
     marian::gpu::Element(_1 = if_then_else(abs(_2) > t, 0, _2), residual, grads);
     marian::gpu::Element(_1 = if_then_else(abs(_1) <= t, 0, _1), grads);
+    // momentum factor masking
+    if (velocity)
+      marian::gpu::Element(_1 = if_then_else(abs(_2) > t, 0, _1), velocity, grads);
   }
 
   destination->fromDense(grads);

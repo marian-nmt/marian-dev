@@ -7,7 +7,6 @@
 
 
 #include "training/1bit_quantization/quantizer.h"
-#include <chrono>
 
 namespace marian {
 
@@ -29,9 +28,6 @@ void MultiNodeGraphGroupSync::setScheduler(Ptr<Scheduler> scheduler) {
   scheduler_->registerTrainingObserver(scheduler_);
 
   scheduler_->registerTrainingObserver(syncOptimizer_);
-
-  scheduler_->registerTrainingObserver(localOptimizer_);
-
 }
 
 /**
@@ -63,8 +59,8 @@ void MultiNodeGraphGroupSync::init(Ptr<data::Batch> batch) {
   // setup sync sgd storage, We keep the summed gradient on Node 0
   sumGradientBuffer = newTensor(network_size, clientGraphs_[0]->getBackend());
   accGradientsSync = newTensor(network_size, clientGraphs_[0]->getBackend());
-  
-  quantized = newTensor(network_size, clientGraphs_[0]->getBackend());
+
+  // quantized = newTensor(network_size, clientGraphs_[0]->getBackend());
 }
 
 
@@ -75,9 +71,10 @@ void MultiNodeGraphGroupSync::init(Ptr<data::Batch> batch) {
 void MultiNodeGraphGroupSync::initCPUArrays() {
   int network_size = clientGraphs_[0]->params()->vals()->size();
 
+  accGradientsSync_cpu = std::vector<float>(network_size);
+  receiveBuffer_cpu = std::vector<float>(network_size);
+
   if (droping_rate == 0.0) {
-    accGradientsSync_cpu = std::vector<float>(network_size);
-    receiveBuffer_cpu = std::vector<float>(network_size);
   } else {
     sparseGrad_cpu = std::vector<float>(network_size * (1.0 - droping_rate));
     sparseIndices_cpu = std::vector<int>(network_size * (1.0 - droping_rate));
@@ -242,15 +239,19 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
   int network_size = accGradientsSync->size();
   int sparse_size = sparseGrad_cpu.size();
 
+  static int step = 0;
+
   if (!sparseGradient) {
     sparseGradient = SparseTensor(
-          new SparseTensorBase(sparse_size * mpi_comm_world_size_ * 1.2,
+          new SparseTensorBase(sparse_size * 1.2,
                                accGradientsSync->getBackend()));
   }
 
   if (!dropper) {
     dropper = PrepareGradientDrop(accGradientsSync->getDevice());
   }
+
+  // clientGraphs_.back()->params()->grads()->copyFrom(accGradientsSync);
 
   // drop the gradient
   dropper->dropGraph(accGradientsSync,
@@ -260,6 +261,8 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
 
   // Copy the gradient and indices to CPU
   sparseGradient->get(sparseGrad_cpu, sparseIndices_cpu);
+  // clientGraphs_.back()->params()->grads()->copyFrom(dropper->error());
+  // dropper->error()->set(0);
 
   // Wait until all nodes are ready
   MPI_Barrier(MPI_COMM_WORLD);
@@ -276,16 +279,33 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
 
   // Update params
   // Do update with last GPU to distribute the memory
-  static SparseTensor tmp = SparseTensor(
+  static SparseTensor tmp;
+
+  if (!tmp)
+    tmp = SparseTensor(
           new SparseTensorBase(sparse_size * mpi_comm_world_size_,
                                clientGraphs_.back()->getBackend()));
 
   // Copy the data back to the GPU and do optimizer update
   tmp->set(gatherGrads_cpu, gatherIndices_cpu);
   tmp->toDense(clientGraphs_.back()->params()->grads(), 0);
+  // tmp->scatterAdd(clientGraphs_.back()->params()->grads());
 
   // Perform optimizer step
   syncOptimizer_->update(clientGraphs_.back());
+ 
+  // param averaging synchronize
+  if (false && step++ % 1000 == 0){
+    LOG(info, "model averaging");
+    auto param = clientGraphs_.back()->params()->vals();
+    param->get(accGradientsSync_cpu);
+    MPI_Allreduce(accGradientsSync_cpu.data(), receiveBuffer_cpu.data(), network_size,
+              MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+    param->set(receiveBuffer_cpu);
+
+    using namespace functional;
+    Element(_1 = _1 / mpi_comm_world_size_, param);
+  }
 
   if(movingAvg_)
     updateMovingAverage(
@@ -379,7 +399,6 @@ void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
     init(fullBatch);
     initialized_ = true;
   }
-  static double avgBatch = 0;
   std::vector<Ptr<data::Batch>> batches = fullBatch->split(devices_.size());
   
   static int t = 0;
@@ -429,6 +448,8 @@ void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
       sendReceiveUpdateSparse();
     else
       sendReceiveUpdateSync();
+
+  t++;
 
   // Run scheduler (if enabled)
   if(t % tau_ == 0 && scheduler_) {

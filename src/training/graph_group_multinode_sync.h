@@ -123,7 +123,7 @@ protected:
   SparseTensor sparseGradient;
   GradientDrop dropper;  
 
-  Ptr<OptimizerBase> syncOptimizer_, localOptimizer_;
+  Ptr<OptimizerBase> syncOptimizer_;
 
   std::vector<std::mutex> optDelayMutex_;
   std::vector<size_t> delay_count;
@@ -222,8 +222,8 @@ public:
         movingAvg_{options_->get<float>("exponential-smoothing") > 0},
         mvDecay_{options_->get<float>("exponential-smoothing")},
         droping_rate{options->get<float>("grad-dropping-rate")},
+        dropping_momentum{options->get<float>("grad-dropping-momentum")},
         syncOptimizer_{Optimizer(options_)} {
-    localOptimizer_ = Optimizer(options_);
     // Set up devices for this node
     setupMPI(); //Setup MPI before creating device vectors
     std::vector<size_t> devices;

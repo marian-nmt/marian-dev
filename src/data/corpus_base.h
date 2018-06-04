@@ -16,6 +16,7 @@
 #include "data/dataset.h"
 #include "data/rng_engine.h"
 #include "data/vocab.h"
+#include "data/xml.h"
 
 namespace marian {
 namespace data {
@@ -34,6 +35,7 @@ private:
   std::vector<Words> tuple_;
   std::vector<float> weights_;
   WordAlignment alignment_;
+  std::vector<XmlOption> xmlOptions_;
 
 public:
   typedef Words value_type;
@@ -98,6 +100,13 @@ public:
 
   const WordAlignment& getAlignment() const { return alignment_; }
   void setAlignment(const WordAlignment& alignment) { alignment_ = alignment; }
+
+  /**
+   * @brief  Get XML Options for this sentence
+   */
+  const std::vector<XmlOption>& GetXmlOptions() { return xmlOptions_; }
+  bool hasXmlOptions() { return xmlOptions_.size() > 0; }
+  void addXmlOption( XmlOption& option ) { xmlOptions_.push_back( option ); }
 };
 
 /**
@@ -484,11 +493,25 @@ protected:
   void addWeightsToSentenceTuple(const std::string& line,
                                  SentenceTuple& tup) const;
 
+  /**
+   * @brief Helper function parsing a line with XML tags, stripping them out
+   * and adding XML Options to the sentence tuple
+   */
+  void processXml(const std::string& line,
+                  std::string& stripped_line,
+                  SentenceTuple& tup) const;
+
+  std::vector<std::string> tokenizeXml(const std::string& line) const;
+  std::string TrimXml(const std::string& str) const;
+  bool isXmlTag(const std::string& tag) const;
+  std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName) const;
+
   void addAlignmentsToBatch(Ptr<CorpusBatch> batch,
                             const std::vector<sample>& batchVector);
 
   void addWeightsToBatch(Ptr<CorpusBatch> batch,
                          const std::vector<sample>& batchVector);
+
 };
 
 class CorpusIterator

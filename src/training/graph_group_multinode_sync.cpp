@@ -60,7 +60,30 @@ void MultiNodeGraphGroupSync::init(Ptr<data::Batch> batch) {
   sumGradientBuffer = newTensor(network_size, clientGraphs_[0]->getBackend());
   accGradientsSync = newTensor(network_size, clientGraphs_[0]->getBackend());
 
-  // quantized = newTensor(network_size, clientGraphs_[0]->getBackend());
+  // init for dropping
+  if (droping_rate > 0.0) {
+    int sparse_size = network_size * (1.0 - droping_rate);
+    sparseGradient = SparseTensor(
+          new SparseTensorBase(sparse_size * 1.2,
+                               accGradientsSync->getBackend()));
+    sparseGather = SparseTensor(
+          new SparseTensorBase(sparse_size * mpi_comm_world_size_,
+                               clientGraphs_.back()->getBackend()));
+
+    dropper = PrepareGradientDrop(accGradientsSync->getDevice());
+  }
+  // init for quantization
+  if (quantize_bit < 32) {
+    int quantized_size = network_size * quantize_bit / 32;
+    quantized = newTensor(quantized_size, 
+                          accGradientsSync->getBackend());
+
+    Quantizer quantizer = Quantizer(new QuantizerBase());
+
+    // test
+    if (mpi_my_rank_ == 0)
+      quantizer->test(accGradientsSync->getBackend());
+  }
 }
 
 
@@ -74,19 +97,25 @@ void MultiNodeGraphGroupSync::initCPUArrays() {
   accGradientsSync_cpu = std::vector<float>(network_size);
   receiveBuffer_cpu = std::vector<float>(network_size);
 
-  if (droping_rate == 0.0) {
-  } else {
-    sparseGrad_cpu = std::vector<float>(network_size * (1.0 - droping_rate));
-    sparseIndices_cpu = std::vector<int>(network_size * (1.0 - droping_rate));
+  // inits for gradient dropping
+  if (droping_rate > 0.0) {
+    int sparse_size = network_size * (1.0 - droping_rate);
+    sparseGrad_cpu = std::vector<float>(sparse_size);
+    sparseIndices_cpu = std::vector<int>(sparse_size);
 
 
-    gatherGrads_cpu = std::vector<float>(network_size * 
-                                        (1.0 - droping_rate) * 
+    gatherGrads_cpu = std::vector<float>(sparse_size * 
                                         mpi_comm_world_size_);
 
-    gatherIndices_cpu = std::vector<int>(network_size * 
-                                        (1.0 - droping_rate) * 
+    gatherIndices_cpu = std::vector<int>(sparse_size * 
                                         mpi_comm_world_size_);
+  }
+  // init for quantization
+  if (quantize_bit < 32) {
+    int quantized_size = network_size * quantize_bit / 32;
+    quantized_cpu =  std::vector<float>(quantized_size);
+    gatherQuantized_cpu = std::vector<float>(quantized_size * 
+                                             mpi_comm_world_size_); 
   }
 }
 
@@ -137,8 +166,31 @@ void MultiNodeGraphGroupSync::sumGRAD(Tensor gradient) {
   Element(_1 += _2, accGradientsSync, sumGradientBuffer);
 }
 
+void MultiNodeGraphGroupSync::performUpdate(){
+  // Perform optimizer step
+  syncOptimizer_->update(clientGraphs_.back());
 
+  if(movingAvg_)
+    updateMovingAverage(
+      paramsAvg_, clientGraphs_.back()->params()->vals(),
+      scheduler_->numberOfBatches());
+}
 
+void MultiNodeGraphGroupSync::nodeParamSync(){
+  //Distribute the graph to the rest of the devices
+  std::vector<std::thread> threads;
+  for(int idx = 0; idx < devices_.size() - 1; idx++) {
+    threads.emplace_back(std::thread(
+        [=](int idx) {
+          clientGraphs_[idx]->params()->vals()->copyFrom(
+            clientGraphs_.back()->params()->vals());
+        },
+        idx));
+  }
+  for(auto&& t : threads) {
+    t.join();
+  }
+}
 
 /**
  * If it's rank 0, it's a local update, if it's rank one it's remote
@@ -147,14 +199,8 @@ void MultiNodeGraphGroupSync::sumGRAD(Tensor gradient) {
 void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
   #if MPI_FOUND
   int network_size = clientGraphs_[0]->params()->vals()->size();
-  static std::vector<float> quantized_cpu( network_size / 32);
-  int quantized_size = quantized_cpu.size();
+  int quantized_size = quantized->size();
 
-  static Quantizer quantizer = Quantizer(new QuantizerBase());
-  static Quantizer quantizerFetch = Quantizer(new QuantizerBase());
-
-  static std::vector<float> gatherQuantized_cpu(quantized_size * mpi_comm_world_size_);
-  //LOG(info, "quantizing");
   float fetchAvg = 0;
   float avg = quantizer->quantize(accGradientsSync, quantized);
   float averages[mpi_comm_world_size_];
@@ -167,13 +213,12 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
   MPI_Barrier(MPI_COMM_WORLD);
 
   // Gather quantized gradients
-  MPI_Gather(quantized_cpu.data(), quantized_size, MPI_FLOAT,
-    gatherQuantized_cpu.data(), quantized_size, MPI_FLOAT, 0,
+  MPI_Gather(quantized_cpu.data(), quantized_size, MPI_CHAR,
+    gatherQuantized_cpu.data(), quantized_size, MPI_CHAR, 0,
     MPI_Comm MPI_COMM_WORLD);
-  //LOG(info, "gather avg");
+
   // Gather averages
-  MPI_Gather(&avg, 1, MPI_FLOAT,
-    averages, 1, MPI_FLOAT, 0,
+  MPI_Gather(&avg, 1, MPI_FLOAT, averages, 1, MPI_FLOAT, 0,
     MPI_Comm MPI_COMM_WORLD);
 
   // Construct the gradients
@@ -199,26 +244,8 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
 
   clientGraphs_.back()->params()->grads()->copyFrom(accGradientsSync);
 
-  // Perform optimizer step
-  syncOptimizer_->update(clientGraphs_.back());
-  if(movingAvg_)
-          updateMovingAverage(
-            paramsAvg_, clientGraphs_.back()->params()->vals(),
-            scheduler_->numberOfBatches());
-
-//Distribute the graph to the rest of the devices
-  std::vector<std::thread> threads;
-  for(int idx = 0; idx < devices_.size() - 1; idx++) {
-    threads.emplace_back(std::thread(
-        [=](int idx) {
-          clientGraphs_[idx]->params()->vals()->copyFrom(
-            clientGraphs_.back()->params()->vals());
-        },
-        idx));
-  }
-  for(auto&& t : threads) {
-    t.join();
-  }
+  performUpdate();
+  nodeParamSync();
 
   //set the accumulating buffers to zero;
   accGradientsSync->set(0);
@@ -226,32 +253,15 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
   #endif
 }
 
-
-
-
 /**
  * If it's rank 0, it's a local update, if it's rank one it's remote
  * send and receive. Make sure you only call from device 0.
  */
-
 void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
   #if MPI_FOUND
   int network_size = accGradientsSync->size();
   int sparse_size = sparseGrad_cpu.size();
-
   static int step = 0;
-
-  if (!sparseGradient) {
-    sparseGradient = SparseTensor(
-          new SparseTensorBase(sparse_size * 1.2,
-                               accGradientsSync->getBackend()));
-  }
-
-  if (!dropper) {
-    dropper = PrepareGradientDrop(accGradientsSync->getDevice());
-  }
-
-  // clientGraphs_.back()->params()->grads()->copyFrom(accGradientsSync);
 
   // drop the gradient
   dropper->dropGraph(accGradientsSync,
@@ -261,8 +271,6 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
 
   // Copy the gradient and indices to CPU
   sparseGradient->get(sparseGrad_cpu, sparseIndices_cpu);
-  // clientGraphs_.back()->params()->grads()->copyFrom(dropper->error());
-  // dropper->error()->set(0);
 
   // Wait until all nodes are ready
   MPI_Barrier(MPI_COMM_WORLD);
@@ -278,53 +286,12 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
     MPI_Comm MPI_COMM_WORLD);
 
   // Update params
-  // Do update with last GPU to distribute the memory
-  static SparseTensor tmp;
-
-  if (!tmp)
-    tmp = SparseTensor(
-          new SparseTensorBase(sparse_size * mpi_comm_world_size_,
-                               clientGraphs_.back()->getBackend()));
-
   // Copy the data back to the GPU and do optimizer update
-  tmp->set(gatherGrads_cpu, gatherIndices_cpu);
-  tmp->toDense(clientGraphs_.back()->params()->grads(), 0);
-  // tmp->scatterAdd(clientGraphs_.back()->params()->grads());
+  sparseGather->set(gatherGrads_cpu, gatherIndices_cpu);
+  sparseGather->toDense(clientGraphs_.back()->params()->grads(), 0);
 
-  // Perform optimizer step
-  syncOptimizer_->update(clientGraphs_.back());
- 
-  // param averaging synchronize
-  if (false && step++ % 1000 == 0){
-    LOG(info, "model averaging");
-    auto param = clientGraphs_.back()->params()->vals();
-    param->get(accGradientsSync_cpu);
-    MPI_Allreduce(accGradientsSync_cpu.data(), receiveBuffer_cpu.data(), network_size,
-              MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-    param->set(receiveBuffer_cpu);
-
-    using namespace functional;
-    Element(_1 = _1 / mpi_comm_world_size_, param);
-  }
-
-  if(movingAvg_)
-    updateMovingAverage(
-      paramsAvg_, clientGraphs_.back()->params()->vals(),
-      scheduler_->numberOfBatches());
-
-  //Distribute the graph to the rest of the devices
-  std::vector<std::thread> threads;
-  for(int idx = 0; idx < devices_.size() - 1; idx++) {
-    threads.emplace_back(std::thread(
-        [=](int idx) {
-          clientGraphs_[idx]->params()->vals()->copyFrom(
-            clientGraphs_.back()->params()->vals());
-        },
-        idx));
-  }
-  for(auto&& t : threads) {
-    t.join();
-  }
+  performUpdate();
+  nodeParamSync();
 
   //set the accumulating buffers to zero;
   accGradientsSync->set(0);
@@ -358,30 +325,13 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSync() {
   // Do update with last GPU to distribute the memory
   clientGraphs_.back()->params()->grads()->set(receiveBuffer_cpu);
 
-  // Perform optimizer step
-  syncOptimizer_->update(clientGraphs_.back());
-
-  if(movingAvg_)
-      updateMovingAverage(
-        paramsAvg_, clientGraphs_.back()->params()->vals(),
-        scheduler_->numberOfBatches());
-
-  //Distribute the graph to the rest of the devices
-  std::vector<std::thread> threads;
-  for(int idx = 0; idx < devices_.size() - 1; idx++) {
-    threads.emplace_back(std::thread(
-        [=](int idx) {
-          clientGraphs_[idx]->params()->vals()->copyFrom(
-            clientGraphs_.back()->params()->vals());
-        },
-        idx));
-  }
-  for(auto&& t : threads) {
-    t.join();
-  }
+  performUpdate();
+  nodeParamSync();
 
   //set the accumulating buffers to zero;
   accGradientsSync->set(0);
+  std::fill(accGradientsSync_cpu.begin(), accGradientsSync_cpu.end(), 0);
+  std::fill(receiveBuffer_cpu.begin(), receiveBuffer_cpu.end(), 0);
   #endif
 }
 
@@ -439,12 +389,10 @@ void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
       pool.enqueue(task, idx);
   }
 
-  // local optimizer
-  // localOptimizer_->update(clientGraphs_[0]->params()->vals(),
-  //                       accGradientsSync);
-
   if (t % tau_ == 0)
-    if (droping_rate > 0.0)
+    if (quantize_bit < 32)
+      sendReceiveUpdateQuantized();
+    else if (droping_rate > 0.0)
       sendReceiveUpdateSparse();
     else
       sendReceiveUpdateSync();

@@ -9,6 +9,8 @@
 
 #endif
 
+#include <stdint.h>
+
 #include <condition_variable>
 #include <future>
 #include <thread>
@@ -23,6 +25,8 @@
 
 #include "training/gradient_dropping/dropper.h"
 #include "training/gradient_dropping/sparse_tensor.h"
+
+#include "training/1bit_quantization/quantizer.h"
 
 #if CUDA_FOUND
 inline void gpuAssert2(cudaError_t code,
@@ -101,13 +105,13 @@ protected:
   size_t tau_{1};
   float droping_rate{0.99};
   float dropping_momentum{0};
+  int quantize_bit{1};
   
   std::mutex sumGradientMutex_;
   std::mutex updateParamsMutex_;
   std::mutex sumCostMutex_;
   Tensor accGradientsSync;
   Tensor sumGradientBuffer;
-  Tensor quantized;
   Tensor paramsAvg_;
   std::vector<float> accGradientsSync_cpu;
   std::vector<float> receiveBuffer_cpu;
@@ -120,8 +124,15 @@ protected:
    */
   std::vector<float> sparseGrad_cpu, gatherGrads_cpu;
   std::vector<int> sparseIndices_cpu, gatherIndices_cpu;
-  SparseTensor sparseGradient;
+  SparseTensor sparseGradient, sparseGather;
   GradientDrop dropper;  
+
+  /**
+   * Variables for Quantization
+   */
+  Quantizer quantizer;
+  Tensor quantized;
+  std::vector<float> quantized_cpu, gatherQuantized_cpu;
 
   Ptr<OptimizerBase> syncOptimizer_;
 
@@ -177,6 +188,16 @@ protected:
    */
 
   void sumGRAD(Tensor gradient);
+
+  /*
+   * helper function - apply optimizer and moving average
+   */
+  void performUpdate();
+
+  /*
+   * helper function - synchronize all gpu parameters on a node
+   */
+  void nodeParamSync();
 
   /**
    * Does the MPI Communication, parameter update and copying back parameters.

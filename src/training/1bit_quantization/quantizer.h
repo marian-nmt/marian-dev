@@ -11,7 +11,7 @@ class QuantizerBase {
 protected:
   Tensor residual;
   Tensor tmp;
-
+  
   std::vector<Ptr<TensorAllocator>> allocators;
 
   Tensor newTensor(int size, Ptr<Backend> backend) {
@@ -31,6 +31,10 @@ public:
   QuantizerBase() {}
   ~QuantizerBase() {}
 
+  Tensor error() {
+    return residual;
+  }
+
   virtual void test(Ptr<Backend> backend){
     LOG(info, " Quantization testing");
     // only needs the backend information
@@ -38,35 +42,29 @@ public:
 
     Tensor t = newTensor(size, backend);
     
-    int bits[3] = {1, 2, 4};
+    int bits[4] = {1, 2, 4, 8};
     for (int bit: bits){
       LOG(info, "Quantize to {}-bits", bit);
 
       // init
       Tensor quantized = newTensor(size * bit / 32, backend);
       std::vector<float> ori(size), quant(size);
-
-      LOG(info, "  original bits          : {}", t->size() * 32);
-      LOG(info, "  quantized bits          : {}", quantized->size() * 32);
-      
-
-      // random [-5,5]
+ 
+      // random [-0.05,0.05]
       for (int i=0;i<size;i++){
-        LOG(info,"set {}", i);
-        t->set(i, (float) (((rand() % 1000) / 100.0) - 5.0));
+        t->set(i, (float) (((rand() % 1000) / 10000.0) - 0.05));
       }
-      t->get(ori);
-      LOG(info, "done fill");
 
       float step = quantize_do(t, quantized, bit);
-
-      // validate
-      LOG(info, "  step size               : {}", step);
+      t->get(ori);
 
       // revert back
       dequantize_do(t, quantized, step, bit);
       t->get(quant);
 
+      LOG(info, "  original bits    : {}", t->size() * 32);
+      LOG(info, "  quantized bits   : {}", quantized->size() * 32);
+      LOG(info, "  step size        : {}", step);
       LOG(info, "  quantized values : ");
       for (int j=0;j<=10;j++)
         LOG(info, "   {} -> {}", ori[j], quant[j]);
@@ -76,22 +74,19 @@ public:
   }
 
   virtual float quantize(Tensor t, Tensor quantized, int quantize_bit = 1) {
-    if (!tmp) {
-      tmp = newTensor(1, t->getBackend());
-    }
-
     if (!residual) {
       residual = newTensor(t->size(), t->getBackend());
     }
-
     using namespace functional;
-    // add residual
-    Element(_1 = _1 + _2, t, residual);
 
-    // quantize
-    float step = quantize_do(t, quantized, quantize_bit);
+    // add gradient to error residual
+    Element(_1 = _1 + _2, residual, t);
 
-    // update residual
+    // quantize gradient
+    float step = quantize_do(residual, quantized, quantize_bit);
+
+    // dequantize back to get the new error residual
+    dequantize_do(t, quantized, step, quantize_bit);
     Element(_1 = _1 - _2, residual, t);
 
     return step;

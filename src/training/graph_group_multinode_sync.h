@@ -105,7 +105,7 @@ protected:
   size_t tau_{1};
   float droping_rate{0.99};
   float dropping_momentum{0};
-  int quantize_bit{1};
+  int quantize_bit{32};
   
   std::mutex sumGradientMutex_;
   std::mutex updateParamsMutex_;

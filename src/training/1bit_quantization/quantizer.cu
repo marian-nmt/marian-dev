@@ -6,128 +6,151 @@
 #include "tensors/gpu/cuda_helpers.h"
 #include "tensors/tensor_operators.h"
 #include "training/1bit_quantization/quantizer.h"
-
+#include "training/1bit_quantization/quantized_float.h"
 #include <thrust/extrema.h>
 #include <thrust/device_ptr.h>
 #include <thrust/device_vector.h>
 
 
 namespace marian {
+
+__global__ void gQuantize8bit(float* data, float8_s* q, int size) {
+  int idx = blockDim.x * blockIdx.x + threadIdx.x;
+  if(idx >= size)
+    return; 
+  q[idx].fromFloat(data[idx]);
+}
+
+
+__global__ void gDequantize8bit(float* data, float8_s* q, int size) {
+  int idx = blockDim.x * blockIdx.x + threadIdx.x;
+  if(idx >= size)
+    return; 
+  q[idx].toFloat(data + idx);
+}
+
+
+template<typename T>
 __global__ void gQuantize(float* original,
-                          uint8_t* quantized,
+                          T q,
                           float step,
                           int size,
-                          int bucket_size,
-                          int quantize_bit) {
+                          uint8_t bit) {
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if(idx >= size)
     return;
-
-  printf("idx = %d\n", idx);
-
-  // for each K bits
-  for (int i=0;i < 8 / quantize_bit;i++) {
-    int original_idx = idx * 8 / quantize_bit + i;
-
-    // get the sign
-    bool sign = (original[original_idx] > 0);
-
-    int bucket = min(bucket_size - 1, 
-                    (int) (abs(original[original_idx]) / bucket_size));
-    
-    if (idx == 0) 
-      printf("original = %d | bucket %d | sign %d | wut %d\n", original_idx, bucket, sign, ((bucket * 2 + sign) << (i * quantize_bit)));
-    // include sign into the quantization ID.
-    quantized[idx] += ((bucket * 2 + sign) << (i * quantize_bit));
-    if (sign)
-      original[original_idx] = step * (0.5 + bucket);
-    else
-      original[original_idx] = -step * (0.5 + bucket);
-  }
-  if (idx == 0)
-    printf("jadi %d\n", quantized[idx]);
+ 
+  uint8_t bucket_size = (1<<bit)>>1;
+  q[idx].fromFloat(original + (idx * 8 / bit),
+              step,
+              bucket_size);
 }
 
+
+template<typename T>
 __global__ void gDequantize(float* original,
-                            uint8_t* quantized,
+                            T q,
                             float step,
                             int size,
-                            int quantize_bit) {
+                            uint8_t bit) {
   int idx = blockDim.x * blockIdx.x + threadIdx.x;
   if(idx >= size)
     return;
-
-  // obtain 'quantize_bit' amount of bits from the quantized container,
-  // offset the corresponding location
-  int K = 8 / quantize_bit;
-  int bucket = (quantized[idx / K] >> (quantize_bit * (idx % K))) 
-               % (1 << quantize_bit);
-  if (idx < 8)
-    printf("idx = %d | bucket = %d\n", idx, bucket);
-  // get the sign
-  bool sign = bucket % 2;
-  bucket /= 2;
-  if (sign)
-    original[idx] = step * (0.5 + bucket);
-  else {
-    original[idx] = -step * (0.5 + bucket);
-  }
+  q[idx].toFloat(original + (idx * 8 / bit), step);
 }
 
-// t[i] = avg if t[i] > 0, 
-// t[i] = -avg otherwise
-// quantized's i-th bit will be 1 if t[i] > 0, 0 otherwise
+// Equal-width discretization of 2^quantize_bit number of bins
 float QuantizerBase::quantize_do(Tensor t, Tensor quantized, int quantize_bit) { 
   cudaSetDevice(t->getDevice().no);
-  LOG(info, "AA");
+  if (quantize_bit <= 4) {
+    // get average
+    if (!tmp) {
+        tmp = newTensor(1, t->getBackend());
+      }
 
-  // get step size: maximum value / 2^(quantize_bit - 1)
-  // TODO: Remove thrust dependency
-  thrust::device_ptr<float> d_vec(t->data());
-  float max_val = *thrust::max_element(d_vec, d_vec + t->size());
+    using namespace functional;
+    
+    float scale = 1.f / t->size();
+    Reduce(abs(_1), scale, tmp, t);
+    float step = 2.0 * tmp->get(0) / (1<<(quantize_bit-1));
 
+    // when doing quantization, we work in 8-bit int
+    // each int8 holds information of (8/quantize_bit) gradients
+    // Hence in total, there will be t->size() * quantize_bit / 8 8-bit ints
+    int size = t->size() * quantize_bit / 8;
+    int threads = 512;
+    int blocksSample = (size + threads - 1) / threads;
+    if (quantize_bit == 1)
+      gQuantize<<<blocksSample, threads>>>(t->data(),
+                                         (float1_s*) quantized->data(), 
+                                         step,
+                                         size,
+                                         quantize_bit);
+ 
+    if (quantize_bit == 2)
+      gQuantize<<<blocksSample, threads>>>(t->data(),
+                                         (float2_s*) quantized->data(),
+                                         step,
+                                         size,
+                                         quantize_bit);
+    if (quantize_bit == 4)
+      gQuantize<<<blocksSample, threads>>>(t->data(),
+                                         (float4_s*) quantized->data(),
+                                         step,
+                                         size,
+                                         quantize_bit);
 
-  LOG(info, "maxval {}", max_val);
+    return step;
+  } else {
+    // TODO: NICK
+    int size = t->size();
 
-  float step = max_val / (1 << (quantize_bit - 1));
-
-  LOG(info, "STEP {}", step);
-
-  // when doing quantization, we work in 8-bit int
-  // each int8 holds information of (8/quantize_bit) gradients
-  // Hence in total, there will be t->size() * quantize_bit / 8 8-bit ints
-  int size = t->size() * quantize_bit / 8;
-
-  int threads = 512;
-  int blocksSample = (size + threads - 1) / threads;
-  LOG(info, "BB");
-  // convert to int8 as you can't do bit manipulation in float
-  quantized->set(0);
-  LOG(info, "CC");
-  gQuantize<<<blocksSample, threads>>>(t->data(),
-                                       (uint8_t*) quantized->data(), 
-                                       step,
-                                       size,
-                                       (1<<(quantize_bit-1)),
-                                       quantize_bit);
-  return step;
+    int threads = 512;
+    int blocksSample = (size + threads - 1) / threads;
+    gQuantize8bit<<<blocksSample, threads>>>(t->data(), (float8_s*) quantized->data(), size);
+    // 8 and 16 bit quantization does not need step information
+    return 0;
+  }
 }
 
 // revert quantized bit into a full tensor
 void QuantizerBase::dequantize_do(Tensor t, Tensor quantized, float step, int quantize_bit) { 
-  cudaSetDevice(t->getDevice().no);
+  if (quantize_bit <= 4) {
+    cudaSetDevice(t->getDevice().no);
 
-  int size = t->size();
+    // when doing quantization, we work in 8-bit int
+    // each int8 holds information of (8/quantize_bit) gradients
+    // Hence in total, there will be t->size() * quantize_bit / 8 8-bit ints
+    int size = t->size() * quantize_bit / 8;;
 
-  int threads = 512;
-  int blocksSample = (size + threads - 1) / threads;
+    int threads = 512;
+    int blocksSample = (size + threads - 1) / threads;
+    if (quantize_bit == 1)
+      gDequantize<<<blocksSample, threads>>>(t->data(),
+                                           (float1_s*) quantized->data(), 
+                                           step,
+                                           size,
+                                           quantize_bit);
+    if (quantize_bit == 2)
+      gDequantize<<<blocksSample, threads>>>(t->data(),
+                                           (float2_s*) quantized->data(),
+                                           step,
+                                           size,
+                                           quantize_bit);
+    if (quantize_bit == 4)
+      gDequantize<<<blocksSample, threads>>>(t->data(),
+                                           (float4_s*) quantized->data(),
+                                           step,
+                                           size,
+                                           quantize_bit);
+  } else {
+    // TODO: NICK
+    int size = t->size();
 
-  // convert to int8 as you can't do bit manipulation in float
-  gDequantize<<<blocksSample, threads>>>(t->data(),
-                                         (uint8_t*) quantized->data(), 
-                                         step,
-                                         size,
-                                         quantize_bit);
+    int threads = 512;
+    int blocksSample = (size + threads - 1) / threads;
+    gDequantize8bit<<<blocksSample, threads>>>(t->data(), (float8_s*) quantized->data(), size); 
+  }
 }
 
 }

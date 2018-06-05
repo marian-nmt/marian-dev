@@ -78,7 +78,7 @@ void MultiNodeGraphGroupSync::init(Ptr<data::Batch> batch) {
     quantized = newTensor(quantized_size, 
                           accGradientsSync->getBackend());
 
-    Quantizer quantizer = Quantizer(new QuantizerBase());
+    quantizer = Quantizer(new QuantizerBase());
 
     // test
     if (mpi_my_rank_ == 0)
@@ -202,28 +202,28 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
   int quantized_size = quantized->size();
 
   float fetchAvg = 0;
-  float avg = quantizer->quantize(accGradientsSync, quantized);
+  float avg = quantizer->quantize(accGradientsSync, quantized, quantize_bit);
   float averages[mpi_comm_world_size_];
   // Tensor quantized now holds quantized version of a accGradientsSync
-  
+
   // Copy the quantized gradient to cpu
   quantized->get(quantized_cpu);
 
   // Wait until all nodes are ready
   MPI_Barrier(MPI_COMM_WORLD);
-
+  
   // Gather quantized gradients
-  MPI_Gather(quantized_cpu.data(), quantized_size, MPI_CHAR,
-    gatherQuantized_cpu.data(), quantized_size, MPI_CHAR, 0,
+  MPI_Allgather(quantized_cpu.data(), quantized_size, MPI_FLOAT,
+    gatherQuantized_cpu.data(), quantized_size, MPI_FLOAT,
     MPI_Comm MPI_COMM_WORLD);
 
   // Gather averages
-  MPI_Gather(&avg, 1, MPI_FLOAT, averages, 1, MPI_FLOAT, 0,
+  MPI_Allgather(&avg, 1, MPI_FLOAT, averages, 1, MPI_FLOAT,
     MPI_Comm MPI_COMM_WORLD);
-
   // Construct the gradients
   // TODO: not effective when nodes > 2
   // we will sum all the gradients here
+
   accGradientsSync->set(0);
   int pos = 0;
   for (int i=0;i < mpi_comm_world_size_; i++) {
@@ -232,16 +232,13 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
                    gatherQuantized_cpu.data() + pos + quantized_size);
 
     // revert back to dense
-    quantizer->dequantize(sumGradientBuffer, quantized, averages[i]);
-
+    quantizer->dequantize(sumGradientBuffer, quantized, averages[i], quantize_bit);
     // accumulate the gradients
     using namespace functional;
     Element(_1 = _1 + _2, accGradientsSync, sumGradientBuffer);
     pos += quantized_size;
   }
-
-  // copy gradient to last GPU
-
+  // copy gradient to last GPU 
   clientGraphs_.back()->params()->grads()->copyFrom(accGradientsSync);
 
   performUpdate();

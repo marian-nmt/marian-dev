@@ -99,3 +99,38 @@ typedef union {
   }
 } float4_s;
 
+typedef union {
+  float v;
+  struct {
+    uint32_t m:23;
+    uint32_t e:8;
+    uint32_t s:1;
+   } bits;
+} float32_s; 
+
+
+typedef union {
+  uint8_t v;
+  struct {
+    // type determines alignment!
+    uint8_t m:4;
+    uint8_t e:3;
+    uint8_t s:1;
+   } bits;
+
+  __device__ void fromFloat(float input) {
+    float32_s f32={input};
+    bits.s=f32.bits.s;
+    bits.e=max(-3,min(4,(int)(f32.bits.e-127))) +3;
+    bits.m=f32.bits.m >> 19;
+  }
+
+  __device__ void toFloat(float* output){
+    float32_s f32;
+    f32.bits.s=bits.s;
+    f32.bits.e=(bits.e-3)+127; // safe in this direction
+    f32.bits.m=((uint32_t)bits.m) << 19;
+    output[0] = f32.v;
+  }
+} float8_s;
+

@@ -108,7 +108,6 @@ typedef union {
    } bits;
 } float32_s; 
 
-
 typedef union {
   uint8_t v;
   struct {
@@ -133,4 +132,58 @@ typedef union {
     output[0] = f32.v;
   }
 } float8_s;
+
+/* Variance on the precision of float_8
+//3 bit mantissa, 4 bit exponent. More accurate for 0.00X
+typedef union {
+  uint8_t v;
+  struct {
+    // type determines alignment!
+    uint8_t m:3;
+    uint8_t e:4;
+    uint8_t s:1;
+   } bits;
+
+  __device__ void fromFloat(float input) {
+    float32_s f32={input};
+    bits.s=f32.bits.s;
+    bits.e=max(-7,min(8,(int)(f32.bits.e-127))) +7;
+    bits.m=f32.bits.m >> 20;
+  }
+
+  __device__ void toFloat(float* output){
+    float32_s f32;
+    f32.bits.s=bits.s;
+    f32.bits.e=(bits.e-7)+127; // safe in this direction
+    f32.bits.m=((uint32_t)bits.m) << 20;
+    output[0] = f32.v;
+  }
+} float8_s;
+
+//2 bit mantissa, 5 bit exponent. Even more accurate for 0.00. Whole numbers only above 2
+typedef union {
+  uint8_t v;
+  struct {
+    // type determines alignment!
+    uint8_t m:2;
+    uint8_t e:5;
+    uint8_t s:1;
+   } bits;
+
+  __device__ void fromFloat(float input) {
+    float32_s f32={input};
+    bits.s=f32.bits.s;
+    bits.e=max(-15,min(16,(int)(f32.bits.e-127))) +15;
+    bits.m=f32.bits.m >> 21;
+  }
+
+  __device__ void toFloat(float* output){
+    float32_s f32;
+    f32.bits.s=bits.s;
+    f32.bits.e=(bits.e-15)+127; // safe in this direction
+    f32.bits.m=((uint32_t)bits.m) << 21;
+    output[0] = f32.v;
+  }
+} float8_s;
+*/
 

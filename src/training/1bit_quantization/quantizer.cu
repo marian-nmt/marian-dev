@@ -1,5 +1,6 @@
 #include <curand.h>
 #include <curand_kernel.h>
+#include <cuda_fp16.h>
 
 #include <memory>
 
@@ -27,6 +28,20 @@ __global__ void gDequantize8bit(float* data, float8_s* q, int size) {
   if(idx >= size)
     return; 
   q[idx].toFloat(data + idx);
+}
+
+__global__ void gQuantize16bit(float * data, __half * q, int size) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= size)
+      return;
+    q[idx] = __float2half(data[idx]);
+}
+
+__global__ void gDequantize16bit(float * data, __half * q, int size) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx >= size)
+      return;
+    data[idx] = __half2float(q[idx]);
 }
 
 
@@ -102,14 +117,22 @@ float QuantizerBase::quantize_do(Tensor t, Tensor quantized, int quantize_bit) {
 
     return step;
   } else {
-    // TODO: NICK
     int size = t->size();
 
     int threads = 512;
     int blocksSample = (size + threads - 1) / threads;
-    gQuantize8bit<<<blocksSample, threads>>>(t->data(), (float8_s*) quantized->data(), size);
-    // 8 and 16 bit quantization does not need step information
-    return 0;
+    if (quantize_bit == 8) {
+      gQuantize8bit<<<blocksSample, threads>>>(t->data(), (float8_s*) quantized->data(), size);
+      // 8 and 16 bit quantization does not need step information
+      return 0;
+    } else if (quantize_bit == 16) {
+      gQuantize16bit<<<blocksSample, threads>>>(t->data(), (__half *) quantized->data(), size);
+      // 8 and 16 bit quantization does not need step information
+      return 0;
+    } else {
+      LOG(critical, " Unsupported quantization value: {}.", quantize_bit);
+      std::abort();
+    }
   }
 }
 
@@ -144,12 +167,18 @@ void QuantizerBase::dequantize_do(Tensor t, Tensor quantized, float step, int qu
                                            size,
                                            quantize_bit);
   } else {
-    // TODO: NICK
     int size = t->size();
 
     int threads = 512;
     int blocksSample = (size + threads - 1) / threads;
-    gDequantize8bit<<<blocksSample, threads>>>(t->data(), (float8_s*) quantized->data(), size); 
+    if (quantize_bit == 8) {
+      gDequantize8bit<<<blocksSample, threads>>>(t->data(), (float8_s*) quantized->data(), size);
+    } else if (quantize_bit == 16) {
+      gDequantize16bit<<<blocksSample, threads>>>(t->data(), (__half *) quantized->data(), size);
+    } else {
+      LOG(critical, " Unsupported quantization value: {}.", quantize_bit);
+      std::abort();
+    }
   }
 }
 

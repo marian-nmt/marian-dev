@@ -42,7 +42,7 @@ public:
 
     Tensor t = newTensor(size, backend);
     
-    int bits[4] = {1, 2, 4, 8};
+    int bits[5] = {1, 2, 4, 8, 16};
     for (int bit: bits){
       LOG(info, "Quantize to {}-bits", bit);
 

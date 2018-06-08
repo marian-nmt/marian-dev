@@ -230,7 +230,10 @@ private:
          
           baseCell.push_back(rnn::attention(graph)("prefix", attPrefix)
                                    ("attentionHeads", opt<int>("dec-attention-heads"))
+                                   ("attentionLookupDim", opt<int>("dec-attention-lookup-dim"))
                                    ("attentionProjectionDim", opt<int>("dec-attention-projection-dim"))
+                                   ("attentionIndependentHeads", opt<bool>("dec-attention-independent-heads"))
+                                   ("attentionBilinearLookup", opt<bool>("dec-attention-bilinear-lookup"))
                                    ("attentionProjectionLayerNorm", opt<bool>("dec-attention-projection-layernorm"))
                                    ("attentionProjectionTanH", opt<bool>("dec-attention-projection-tanh"))
                                    .set_state(encState));

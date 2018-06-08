@@ -266,7 +266,10 @@ public:
         // Multi-head attention
         "dec-attention-heads",
         "dec-attention-hops",
+        "dec-attention-lookup-dim",
         "dec-attention-projection-dim",
+        "dec-attention-independent-heads",
+        "dec-attention-bilinear-lookup",
         "dec-attention-projection-layernorm",
         "dec-attention-projection-tanh"
     };

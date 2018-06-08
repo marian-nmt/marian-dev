@@ -12,15 +12,16 @@ Expr attOps(Expr va, Expr context, Expr state);
 
 class GlobalAttention : public CellInput {
 private:
-  Expr Wa_, ba_, Ua_;
+  std::vector<Expr> Was_, bas_, Uas_;
   std::vector<Expr>vas_;
 
-  Expr gammaContext_;
-  Expr gammaState_;
+  std::vector<Expr> gammaContexts_;
+  std::vector<Expr> gammaStates_;
 
   Ptr<EncoderState> encState_;
   Expr softmaxMask_;
-  Expr mappedContext_;
+  std::vector<Expr> mappedContexts_;
+  std::vector<Expr> time_transposed_mapped_contexts_;
   std::vector<Expr> contexts_;
   std::vector<Expr> alignments_;
   bool layerNorm_;
@@ -31,18 +32,23 @@ private:
   Expr dropMaskState_;
 
   // for Nematus-style layer normalization
-  Expr Wc_att_lns_, Wc_att_lnb_;
-  Expr W_comb_att_lns_, W_comb_att_lnb_;
+  std::vector<Expr> Wc_att_lnss_, Wc_att_lnbs_;
+  std::vector<Expr> W_comb_att_lnss_, W_comb_att_lnbs_;
   bool nematusNorm_;
 
   int numAttentionHeads_;
+  int attentionLookupDim_;
   int attentionProjectionDim_;
+  bool attentionIndependentHeads_;
+  bool attentionBilinearLookup_;
   bool attentionProjectionLayerNorm_;
   bool attentionProjectionTanH_;
 
   std::vector<Expr> attentionProjectionMatrices_;
   std::vector<Expr> attentionProjectionMatrixGammas_;
   std::vector<Expr> attentionProjectionMatrixBs_;
+
+  int filteredHeadI(int headI) {return (attentionIndependentHeads_)? headI: 0;}
 
 public:
   GlobalAttention(Ptr<ExpressionGraph> graph,
@@ -56,7 +62,10 @@ public:
     layerNorm_ = options_->get<bool>("layer-normalization", false);
     nematusNorm_ = options_->get<bool>("nematus-normalization", false);
     numAttentionHeads_ = options_->get<int>("attentionHeads", 1);
+    attentionLookupDim_ = options_->get<int>("attentionLookupDim", -1);
     attentionProjectionDim_ = options_->get<int>("attentionProjectionDim", -1);
+    attentionIndependentHeads_ = options->get<bool>("attentionIndependentHeads", false);
+    attentionBilinearLookup_ = options->get<bool>("attentionBilinearLookup", false);
     attentionProjectionLayerNorm_ = options->get<bool>("attentionProjectionLayerNorm", false);
     attentionProjectionTanH_ = options->get<bool>("attentionProjectionTanH", false);
     std::string prefix = options_->get<std::string>("prefix");
@@ -64,18 +73,27 @@ public:
 
     int dimEncState = encState_->getContext()->shape()[-1];
 
-    Wa_ = graph->param(prefix + "_W_comb_att",
-                       {dimDecState, dimEncState},
-                       inits::glorot_uniform);
-    Ua_ = graph->param(
-        prefix + "_Wc_att", {dimEncState, dimEncState}, inits::glorot_uniform);
+    attentionLookupDim_ = (attentionLookupDim_ == -1)? dimEncState: attentionLookupDim_;
+    attentionIndependentHeads_ = (attentionBilinearLookup_)? true: attentionIndependentHeads_;
     for (int headI = 0; headI < numAttentionHeads_; ++headI) {
       std::string suffix;
       if (headI > 0) {
         suffix += "_" + std::to_string(headI);
       }
-      vas_.push_back(graph->param(
-          prefix + "_U_att" + suffix, {dimEncState, 1}, inits::glorot_uniform));
+
+      if ((headI == 0) || attentionIndependentHeads_) {
+        Was_.push_back(graph->param(prefix + "_W_comb_att" + suffix,
+                       {dimDecState, attentionLookupDim_},
+                       inits::glorot_uniform));
+        Uas_.push_back(graph->param(prefix + "_Wc_att" + suffix, {dimEncState, attentionLookupDim_}, inits::glorot_uniform));
+        bas_.push_back(graph->param(prefix + "_b_att" + suffix, {1, attentionLookupDim_}, inits::zeros));
+      }
+
+
+      if (!attentionBilinearLookup_) {
+        vas_.push_back(graph->param(
+            prefix + "_U_att" + suffix, {attentionLookupDim_, 1}, inits::glorot_uniform));
+      }
 
       // Attended context projection
       if (attentionProjectionDim_ != -1) {
@@ -92,7 +110,6 @@ public:
         attentionProjectionMatrixBs_.push_back(beta);
       }
     }
-    ba_ = graph->param(prefix + "_b_att", {1, dimEncState}, inits::zeros);
 
     if(dropout_ > 0.0f) {
       dropMaskContext_ = graph->dropout(dropout_, {1, dimEncState});
@@ -102,36 +119,51 @@ public:
     if(dropMaskContext_)
       contextDropped_ = dropout(contextDropped_, dropMaskContext_);
 
-    if(layerNorm_) {
-      if(nematusNorm_) {
-        // instead of gammaContext_
-        Wc_att_lns_ = graph->param(
-            prefix + "_Wc_att_lns", {1, dimEncState}, inits::from_value(1.f));
-        Wc_att_lnb_ = graph->param(
-            prefix + "_Wc_att_lnb", {1, dimEncState}, inits::zeros);
-        // instead of gammaState_
-        W_comb_att_lns_ = graph->param(prefix + "_W_comb_att_lns",
-                                       {1, dimEncState},
-                                       inits::from_value(1.f));
-        W_comb_att_lnb_ = graph->param(
-            prefix + "_W_comb_att_lnb", {1, dimEncState}, inits::zeros);
-
-        mappedContext_ = layer_norm(affine(contextDropped_, Ua_, ba_),
-                                    Wc_att_lns_,
-                                    Wc_att_lnb_,
-                                    NEMATUS_LN_EPS);
-      } else {
-        gammaContext_ = graph->param(
-            prefix + "_att_gamma1", {1, dimEncState}, inits::from_value(1.0));
-        gammaState_ = graph->param(
-            prefix + "_att_gamma2", {1, dimEncState}, inits::from_value(1.0));
-
-        mappedContext_
-            = layer_norm(dot(contextDropped_, Ua_), gammaContext_, ba_);
+    for (int headI = 0; headI < numAttentionHeads_; ++headI) {
+      std::string suffix;
+      if (headI > 0) {
+        suffix += "_" + std::to_string(headI);
       }
 
-    } else {
-      mappedContext_ = affine(contextDropped_, Ua_, ba_);
+      if ((headI == 0) || attentionIndependentHeads_) {
+        if(layerNorm_) {
+          if(nematusNorm_) {
+            // instead of gammaContext_
+            Wc_att_lnss_.push_back(graph->param(
+                prefix + "_Wc_att_lns" + suffix, {1, attentionLookupDim_}, inits::from_value(1.f)));
+            Wc_att_lnbs_.push_back(graph->param(
+                prefix + "_Wc_att_lnb" + suffix, {1, attentionLookupDim_}, inits::zeros));
+            // instead of gammaState_
+            W_comb_att_lnss_.push_back(graph->param(prefix + "_W_comb_att_lns" + suffix,
+                                       {1, attentionLookupDim_},
+                                       inits::from_value(1.f)));
+            W_comb_att_lnbs_.push_back(graph->param(
+                prefix + "_W_comb_att_lnb" + suffix, {1, attentionLookupDim_}, inits::zeros));
+
+            mappedContexts_.push_back(layer_norm(affine(contextDropped_, Uas_[headI], bas_[headI]),
+                                                 Wc_att_lnss_[headI],
+                                                 Wc_att_lnbs_[headI],
+                                                 NEMATUS_LN_EPS));
+          } else {
+            gammaContexts_.push_back(graph->param(
+                                     prefix + "_att_gamma1" + suffix, {1, attentionLookupDim_}, inits::from_value(1.0)));
+            gammaStates_.push_back(graph->param(
+                                   prefix + "_att_gamma2" + suffix, {1, attentionLookupDim_}, inits::from_value(1.0)));
+
+            mappedContexts_.push_back(layer_norm(dot(contextDropped_, Uas_[headI]), gammaContexts_[headI], bas_[headI]));
+          }
+
+      } else {
+        mappedContexts_.push_back(affine(contextDropped_, Uas_[headI], bas_[headI]));
+      }
+
+//      if (attentionBilinearLookup_) {
+//        time_transposed_mapped_contexts_.push_back(transpose(reshape(mappedContexts_[headI], 
+//                                                    //{1, mappedContexts_[headI]->shape()[0], mappedContexts_[headI]->shape()[1], mappedContexts_[headI]->shape()[2]}),
+//                                                    {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
+//                                                    {0, 2, 1, 3}));
+//        }
+      }
     }
 
     auto softmaxMask = encState_->getMask();
@@ -140,6 +172,10 @@ public:
       softmaxMask_ = transpose(reshape(softmaxMask, shape));
     }
 
+    //if (attentionBilinearLookup_) {
+    //  mappedContexts_.clear();
+    //}
+    //LOG(info, "Attention constructor complete");
   }
 
   Expr apply(State state) {
@@ -148,6 +184,10 @@ public:
 
     int dimBatch = contextDropped_->shape()[-2];
     int srcWords = contextDropped_->shape()[-3];
+
+    // uncomment the following line to test with a beam size larger than 1 (debug only)
+    //recState = repeat(reshape(recState, {1, recState->shape()[0], recState->shape()[1], recState->shape()[2]}), 3);
+
     int dimBeam = 1;
     if(recState->shape().size() > 3)
       dimBeam = recState->shape()[-4];
@@ -155,28 +195,58 @@ public:
     if(dropMaskState_)
       recState = dropout(recState, dropMaskState_);
 
-    auto mappedState = dot(recState, Wa_);
-    if(layerNorm_)
-      if(nematusNorm_)
-        mappedState = layer_norm(
-            mappedState, W_comb_att_lns_, W_comb_att_lnb_, NEMATUS_LN_EPS);
-      else
-        mappedState = layer_norm(mappedState, gammaState_);
-
+    Expr mappedState;
     Expr first_e;
     std::vector<Expr> alignedSources;
     for (int headI = 0; headI < numAttentionHeads_; ++headI) { 	// TODO: Compute all attention heads in a single CUDA kernel
 
-      auto attReduce = attOps(vas_[headI], mappedContext_, mappedState);
+      if (headI == 0 || attentionIndependentHeads_) {
+        mappedState = dot(recState, Was_[headI]);
+        if(layerNorm_)
+          if(nematusNorm_)
+            mappedState = layer_norm(mappedState, W_comb_att_lnss_[headI], W_comb_att_lnbs_[headI], NEMATUS_LN_EPS);
+          else
+            mappedState = layer_norm(mappedState, gammaStates_[headI]);
+      }
 
-      // @TODO: horrible ->
-      auto e = reshape(transpose(softmax(transpose(attReduce), softmaxMask_)),
-                       {dimBeam, srcWords, dimBatch, 1});
-      // <- horrible
+      //LOG(info, "headI: {}", headI);
+      //LOG(info, "mappedContext_ shape: {}", mappedContexts_[filteredHeadI(headI)]->shape());
+      //LOG(info, "mappedState shape: {}", mappedState->shape());
+
+      Expr e;
+      if (!attentionBilinearLookup_) {
+        auto attReduce = attOps(vas_[headI], mappedContexts_[filteredHeadI(headI)], mappedState);
+        // @TODO: horrible ->
+        e = reshape(transpose(softmax(transpose(attReduce), softmaxMask_)),
+                    {dimBeam, srcWords, dimBatch, 1});
+        // <- horrible
+        //LOG(info, "attReduce shape: {}", attReduce->shape());
+        //LOG(info, "transpose(attReduce) shape: {}", transpose(attReduce)->shape());
+      }
+      else {
+        auto reshaped_state = reshape(mappedState, {1, dimBatch, attentionLookupDim_, dimBeam});
+        //LOG(info, "reshaped_state shape: {}", reshaped_state->shape());
+
+        // auto time_transposed_mapped_context = time_transposed_mapped_contexts_[headI];
+        auto time_transposed_mapped_context = transpose(reshape(mappedContexts_[headI], 
+                                                        {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
+                                                        {0, 2, 1, 3});
+        auto bilinear_score = bdot(time_transposed_mapped_context, reshaped_state, false, false, (1.0 / std::sqrt(attentionLookupDim_)));
+        e = reshape(transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_)),
+                    {dimBeam, srcWords, dimBatch, 1});
+//        e = e * 0.0 + e2;
+        //LOG(info, "time_transposed_mapped_context shape: {}", time_transposed_mapped_context->shape());
+        //LOG(info, "bilinear_score shape: {}", bilinear_score->shape());
+        //LOG(info, "transpose(bilinear_score, ...) shape: {}", transpose(bilinear_score, {3, 0, 1, 2})->shape());
+        //auto dummy = transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_));
+        //LOG(info, "transpose(softmax ...) shape: {}", dummy->shape());
+        //LOG(info, "softmaxMask_ shape: {}", softmaxMask_->shape());
+      }
 
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
 
       // Attended context projection
+      //LOG(info, "e shape: {}", e->shape());
       //LOG(info, "alignedSource shape (before proj): {}", alignedSource->shape());
       if (attentionProjectionDim_ != -1) {
         alignedSource = dot(alignedSource, attentionProjectionMatrices_[headI]);
@@ -193,6 +263,7 @@ public:
           }
         }
       }
+      //LOG(info, "--------------------------------------");
       alignedSources.push_back(alignedSource);
       if (headI == 0) {
         // Note: we return the first set of attention weights
@@ -202,6 +273,7 @@ public:
     }
 
     auto concatenatedAlignedSources = concatenate(alignedSources, axis=-1);
+    //LOG(info, "concatenatedAlignedSources shape: {}", concatenatedAlignedSources->shape());
     contexts_.push_back(concatenatedAlignedSources);
     alignments_.push_back(first_e);
     return concatenatedAlignedSources;

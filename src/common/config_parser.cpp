@@ -503,6 +503,35 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
      ->zero_tokens()->default_value(false),
      "Report learning rate for each update")
 
+    ("log-template", po::value<std::string>(),
+     // Currently, the default is NOT defined here but set after
+     // parsing the command line options. This is in order to preserve
+     // the option lr-report for the time being, define the default
+     // progress update message once it is known if lr-report was
+     // specified or not. In the long run, lr-report should go. (UG)
+     "Template for training update log messages.\n"
+     "   See http://fmtlib.net/latest/syntax.html for details about the format\n"
+     "syntax in general. The specification for TIME is a special case. Any\n"
+     "format specification after the colon in a {TIME:...} field is passed to\n"
+     "boost::timer::cpu_timer format member function, e.g. {TIME:2,%ws},\n"
+     "where the integer indicates the precision and %w,%u,%s,%t,%p indicate\n"
+     "wall, user, system, user+system time, and percentage of user+system\n"
+     "w.r.t. wall time, respectively.\n"
+     "Template variables (if unambiguous, first case-sensitive letter serves as\n"
+     "shortcut):\n"
+     "        EPOCH: current epoch\n"
+     "        BATCH: current batch\n"
+     "       SAMPLE: number of samples (sentence pairs) processed so far\n"
+     "         wTIME: wall time (in seconds) lapsed since last update\n"
+     "         uTIME: user time (in seconds) lapsed since last update\n"
+     "         sTIME: system time (in seconds) lapsed since last update\n"
+     // the following two are not implemented yet ...
+     // "         tTIME: user + system time (in seconds) lapsed since last update\n"
+     // "         pTIME: percentage of user + system time against wall time\n"
+     // "                since last update\n"
+     "          WPS: words per sececond since last update.\n"
+     "        LRATE: current learning rate\n")
+    
     ("batch-flexible-lr", po::value<bool>()->zero_tokens()->default_value(false),
       "Scales the learning rate based on the number of words in a mini-batch")
     ("batch-normal-words", po::value<double>()->default_value(1920.0),
@@ -514,9 +543,10 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
      "Epsilon for label smoothing (0 to disable)")
     ("clip-norm", po::value<double>()->default_value(1.f),
      "Clip gradient norm to  arg  (0 to disable)")
-    ("exponential-smoothing", po::value<float>()->default_value(0.f)->implicit_value(1e-4, "1e-4"),
-     "Maintain smoothed version of parameters for validation and saving with smoothing factor arg. "
-     " 0 to disable.")
+    ("exponential-smoothing",
+     po::value<float>()->default_value(0.f)->implicit_value(1e-4, "1e-4"),
+     "Maintain smoothed version of parameters for validation and saving with "
+     "smoothing factor arg. 0 to disable.")
     ("guided-alignment", po::value<std::string>(),
      "Use guided alignment to guide attention")
     ("guided-alignment-cost", po::value<std::string>()->default_value("ce"),

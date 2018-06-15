@@ -345,5 +345,9 @@ public:
       }
     }
   }
+  
+ private:
+  void trnReportProgress();
+  
 };
 }

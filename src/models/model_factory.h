@@ -51,6 +51,24 @@ public:
 
 typedef Accumulator<EncoderDecoderFactory> encoder_decoder;
 
+class EncoderSimilarityFactory : public Factory {
+private:
+  std::vector<encoder> encoders_;
+
+public:
+  EncoderSimilarityFactory(Ptr<ExpressionGraph> graph = nullptr)
+      : Factory(graph) {}
+
+  Accumulator<EncoderSimilarityFactory> push_back(encoder enc) {
+    encoders_.push_back(enc);
+    return Accumulator<EncoderSimilarityFactory>(*this);
+  }
+
+  virtual Ptr<ModelBase> construct();
+};
+
+typedef Accumulator<EncoderSimilarityFactory> encoder_similarity;
+
 Ptr<ModelBase> by_type(std::string type, usage, Ptr<Options> options);
 
 Ptr<ModelBase> from_options(Ptr<Options> options, usage);

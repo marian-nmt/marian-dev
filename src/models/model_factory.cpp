@@ -10,6 +10,8 @@
 #include "models/s2s.h"
 #include "models/transformer.h"
 
+#include "models/encoder_similarity.h"
+
 #ifdef CUDNN
 #include "models/char_s2s.h"
 #endif
@@ -70,6 +72,18 @@ Ptr<ModelBase> EncoderDecoderFactory::construct() {
     encdec->push_back(df(options_).construct());
 
   return add_cost(encdec, options_);
+}
+
+Ptr<ModelBase> EncoderSimilarityFactory::construct() {
+  Ptr<EncoderSimilarity> encsim;
+
+  if(!encsim)
+    encsim = New<EncoderSimilarity>(options_);
+
+  for(auto& ef : encoders_)
+    encsim->push_back(ef(options_).construct());
+
+  return encsim;
 }
 
 Ptr<ModelBase> by_type(std::string type, usage use, Ptr<Options> options) {
@@ -167,6 +181,21 @@ Ptr<ModelBase> by_type(std::string type, usage use, Ptr<Options> options) {
     ms2sFactory.push_back(models::decoder()("index", numEncoders));
 
     return ms2sFactory.construct();
+  }
+
+  if(type == "sim-s2s") {
+    auto simFactory = models::encoder_similarity()(options)
+        ("usage", use)
+        ("type", "s2s")
+        ("original-type", type)
+        .push_back(models::encoder()
+                   ("prefix", "encoder")
+                   ("index", 0))
+        .push_back(models::encoder()
+                   ("prefix", "encoder")
+                   ("index", 1));
+
+    return simFactory.construct();
   }
 
   if(type == "multi-hard-att") {

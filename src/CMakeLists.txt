@@ -48,6 +48,7 @@ add_library(marian STATIC
 
   models/model_factory.cpp
   models/encoder_decoder.cpp
+  models/encoder_similarity.cpp
 
   translator/history.cpp
   translator/output_collector.cpp
@@ -96,10 +97,13 @@ set_target_properties(marian_decoder PROPERTIES OUTPUT_NAME marian-decoder)
 add_executable(marian_scorer command/marian_scorer.cpp)
 set_target_properties(marian_scorer PROPERTIES OUTPUT_NAME marian-scorer)
 
+add_executable(marian_similarity command/marian_similarity.cpp)
+set_target_properties(marian_similarity PROPERTIES OUTPUT_NAME marian-similarity)
+
 add_executable(marian_vocab command/marian_vocab.cpp)
 set_target_properties(marian_vocab PROPERTIES OUTPUT_NAME marian-vocab)
 
-set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab)
+set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab marian_similarity)
 
 # marian.zip and marian.tgz
 # This combines marian, marian_decoder in a single ZIP or TAR file for

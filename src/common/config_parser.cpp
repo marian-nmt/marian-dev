@@ -992,11 +992,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("mini-batch-words", int);
     SET_OPTION_NONDEFAULT("weights", std::vector<float>);
     SET_OPTION_NONDEFAULT("shortlist", std::vector<std::string>);
-<<<<<<< HEAD
     SET_OPTION("xml-input", bool);
-=======
     SET_OPTION("alignment", bool);
->>>>>>> origin/master
     SET_OPTION("port", size_t);
     SET_OPTION("optimize", bool);
     SET_OPTION("max-length-factor", float);

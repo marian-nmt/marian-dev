@@ -675,6 +675,8 @@ void ConfigParser::addOptionsTranslate(po::options_description& desc) {
     ("weights", po::value<std::vector<float>>()
       ->multitoken(),
       "Scorer weights")
+    ("xml-input", po::value<bool>()->zero_tokens()->default_value(false),
+     "Process XML tags in input to direct decoder")
     // TODO: the options should be available only in server
     ("port,p", po::value<size_t>()->default_value(8080),
       "Port number for web socket server")
@@ -960,6 +962,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("n-best", bool);
     SET_OPTION_NONDEFAULT("weights", std::vector<float>);
     SET_OPTION_NONDEFAULT("shortlist", std::vector<std::string>);
+    SET_OPTION("xml-input", bool);
     SET_OPTION("port", size_t);
     SET_OPTION("optimize", bool);
   }

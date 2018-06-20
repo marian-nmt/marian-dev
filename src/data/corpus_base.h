@@ -452,6 +452,7 @@ public:
 protected:
   std::vector<UPtr<InputFileStream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
+  Ptr<Vocab> target_vocab_;
 
   size_t pos_{0};
 

@@ -6,7 +6,7 @@ namespace data {
 void CorpusBase::processXml(const std::string& line,
                             std::string& stripped_line,
                             SentenceTuple& tup) const {
-  std::cout << "called CorpusBase::processXml\n";
+  std::cerr << "called CorpusBase::processXml\n";
 
   // no xml tag? we're done.
   if (line.find("<") == std::string::npos) {
@@ -150,7 +150,10 @@ void CorpusBase::processXml(const std::string& line,
           Trim(translation);
           Split(translation, translationWords, " ");
           std::cerr << "new option (" << startPos << "," << endPos << ") " << translation << ", size " << translationWords.size() << "\n";
-          // tup.addXmlOption( XmlOption(startPos, endPos, god.GetTargetVocab()(translationWords, false)) );
+          Words translation_words = (*target_vocab_)(translationWords);
+          std::cerr << "word id = " << translation_words[0] << "\n";
+          auto xmlOption = new XmlOption(startPos, endPos, translation_words);
+          tup.addXmlOption( *xmlOption );
         }
       }
     }

@@ -126,6 +126,14 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
 
       vocabs_.emplace_back(vocab);
     }
+    if (options_->get<bool>("xml-input")) {
+      target_vocab_ = New<Vocab>();
+      size_t id = vocabPaths.size()-1;
+      int vocSize = target_vocab_->load(vocabPaths[id], maxVocabs[id]);
+      LOG(info,
+          "[data] Setting vocabulary size for output {}",
+          vocSize);
+    }
   }
 
   for(auto path : paths_) {

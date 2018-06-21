@@ -189,7 +189,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
 
     thread_local Tensor accGradients;
     thread_local Ptr<TensorAllocator> accAlloc;
-    thread_local std::ofstream outfile;
+    //thread_local std::ofstream outfile;
 
     if(!graph) {
       std::lock_guard<std::mutex> lock(sync_);
@@ -200,17 +200,17 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
 
     auto costNode = builder->build(graph, batch);
 
-    if (t == 0) {
-      std::string filename = std::to_string(t_id);
-      outfile.open(filename, std::ios_base::app);
-    }
+    //if (t == 0) {
+    //  std::string filename = std::to_string(t_id);
+    //  outfile.open(filename, std::ios_base::app);
+    //}
 
-    if(t % tau_ == 0) {
-      auto fetch_start = std::chrono::system_clock::now();
+    if(t % optimizerDelay_ == 0) {
+      //auto fetch_start = std::chrono::system_clock::now();
       fetchParams(graph->params()->vals(), params_, t_id);
-      auto fetch_end = std::chrono::system_clock::now();
-      std::chrono::duration<double> elapsed_seconds = fetch_end-fetch_start;
-      outfile << "Fetch took: " << elapsed_seconds.count() << " seconds." << std::endl;
+      //auto fetch_end = std::chrono::system_clock::now();
+      //std::chrono::duration<double> elapsed_seconds = fetch_end-fetch_start;
+      //outfile << "Fetch took: " << elapsed_seconds.count() << " seconds." << std::endl;
     }
 
     graph->forward();
@@ -218,7 +218,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     graph->backward();
 
     Tensor gradients;
-    if(tau_ > 1) {
+    if(optimizerDelay_ > 1) {
       if(t == 0) {
         accAlloc = New<TensorAllocator>(graph->getBackend());
         accAlloc->reserveExact(graph->params()->grads()->memory()->size());
@@ -241,28 +241,28 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
 
     t++;
 
-    if(t % tau_ == 0) {
-      auto push_start = std::chrono::system_clock::now();
+    if(t % optimizerDelay_ == 0) {
+      //auto push_start = std::chrono::system_clock::now();
       pushGradients(gradients, num_seen_trg, t_id);
-      auto push_end = std::chrono::system_clock::now();
-      std::chrono::duration<double> elapsed_seconds = push_end-push_start;
-      outfile << "Push took: " << elapsed_seconds.count() << " seconds." << std::endl;
+      //auto push_end = std::chrono::system_clock::now();
+      //std::chrono::duration<double> elapsed_seconds = push_end-push_start;
+      //outfile << "Push took: " << elapsed_seconds.count() << " seconds." << std::endl;
       // Reset the counter of seen target words after gradient update
       num_seen_trg = 0;
-      if(tau_ > 1)
+      if(optimizerDelay_ > 1)
         gradients->set(0);
     }
 
-    if(t % tau_ == 0 && scheduler_) {
+    if(t % optimizerDelay_ == 0 && scheduler_) {
       std::unique_lock<std::mutex> lock(schedulerMutex_);
 
       // Wait until the thread that wants to do validation is finished.
       pool_->wait_for_one(lock);
 
       if (options_->get<std::string>("cost-type") != "ce-sum")
-        cost /= tau_;
+        cost /= optimizerDelay_;
 
-      if (tau_ > 1) {
+      if (optimizerDelay_ > 1) {
         std::vector<size_t> fakeLength = {1, 1};
         auto fb = data::CorpusBatch::fakeBatch(fakeLength,
                                           num_seen_sentences,

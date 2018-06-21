@@ -30,7 +30,7 @@ void SyncGraphGroup::fetchParams(Tensor oldParams,
   for(int idx = 0; idx < devices_.size(); idx++) {
     threads.emplace_back(std::thread(
         [=](int idx, int pos) {
-          oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx]);
+          oldParams->subtensor(pos, params[idx]->size())->copyFrom(params[idx], true); //@TODO if peer_access
         },
         idx,
         pos));
@@ -39,6 +39,8 @@ void SyncGraphGroup::fetchParams(Tensor oldParams,
   for(auto&& t : threads) {
     t.join();
   }
+  //@TODO if peer_access
+  graphs_[0]->getBackend()->synchronizeAllStreams();
 }
 
 void SyncGraphGroup::execute(Ptr<data::Batch> fullBatch) {
@@ -53,7 +55,7 @@ void SyncGraphGroup::execute(Ptr<data::Batch> fullBatch) {
   for(auto batch : delayedBatches) {
     std::vector<Ptr<data::Batch>> batches = batch->split(devices_.size());
 
-    if(first_) {
+    if(first_) { //peer_access not necessary here, everything happens only once.
       {
         THREAD_GUARD(builders_[0]->build(graphs_[0], batches[0]);
                      graphs_[0]->forward(););
@@ -63,7 +65,7 @@ void SyncGraphGroup::execute(Ptr<data::Batch> fullBatch) {
           auto init = [&](size_t i) {
             builders_[i]->build(graphs_[i], batches[0]);
             graphs_[i]->forward();
-            graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
+            graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals()); //asynchronously copying not necessary here happens only once.
           };
           pool.enqueue(init, i);
         }
@@ -155,8 +157,9 @@ void SyncGraphGroup::execute(Ptr<data::Batch> fullBatch) {
         for(auto graph : graphs_) {
           if(batches[i]->size() > 0) {
             auto subGrad = graph->params()->grads()->subtensor(pos, size);
-            tmpTensors_[idx]->copyFrom(subGrad);
-
+            tmpTensors_[idx]->copyFrom(subGrad, true); //@TODO if peer_access.
+            //@MARCIN copying here should be done asynchronously from the addition?
+            graph->getBackend()->synchronizeWithOther(tmpTensors_[idx]->getBackend()->getDevice().no);
             using namespace functional;
             Element(_1 = _1 + (_2 / div), grads_[idx], tmpTensors_[idx]);
           }
@@ -173,8 +176,10 @@ void SyncGraphGroup::execute(Ptr<data::Batch> fullBatch) {
 
           for(auto graph : graphs_) {
             auto subParam = graph->params()->vals()->subtensor(pos, size);
-            subParam->copyFrom(params_[idx]);
+            subParam->copyFrom(params_[idx], true); //@TODO if peer_access
           }
+          //@TODO if peer_access
+          graphs_[0]->getBackend()->synchronizeAllStreams();
         }
 
       };

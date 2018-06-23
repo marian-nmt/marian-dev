@@ -34,7 +34,8 @@ public:
                std::vector<Ptr<ScorerState>>& states,
                size_t beamSize,
                bool first,
-               Ptr<data::CorpusBatch> batch) {
+               Ptr<data::CorpusBatch> batch,
+               const std::vector<size_t>& batchIndeces) {
     Beams newBeams(beams.size());
 
     std::vector<float> alignments;
@@ -89,8 +90,13 @@ public:
 
         // Set alignments
         if(!alignments.empty()) {
+          // special handling if beam subdivided
+          int batchIdx = beamIdx;
+          if (batchIndeces.size() > 0 ) {
+            batchIdx = batchIndeces[ beamIdx ];
+          }
           auto align = getHardAlignmentsForHypothesis(
-              alignments, batch, beamSize, beamHypIdx, beamIdx);
+              alignments, batch, beamSize, beamHypIdx, batchIdx);
           hyp->SetAlignment(align);
         }
 
@@ -153,6 +159,7 @@ public:
 
   Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
     int dimBatch = batch->size();
+    // initialize data structure for the search graph
     Histories histories;
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
@@ -164,15 +171,17 @@ public:
 
     size_t localBeamSize = beamSize_;
 
+    // XML TODO: not dimBatch*2, but maximum number of subbeams
     // @TODO: unify this
     Ptr<NthElement> nth;
 #ifdef CUDA_FOUND
     if(graph->getDevice().type == DeviceType::gpu)
-      nth = New<NthElementGPU>(localBeamSize, dimBatch, graph->getDevice());
+      nth = New<NthElementGPU>(localBeamSize, dimBatch*2, graph->getDevice());
     else
 #endif
-      nth = New<NthElementCPU>(localBeamSize, dimBatch);
+      nth = New<NthElementCPU>(localBeamSize, dimBatch*2);
 
+    // create a new beam (one for each input sentence = dimBatch)
     Beams beams(dimBatch);
     for(auto& beam : beams)
       beam.resize(localBeamSize, New<Hypothesis>());
@@ -180,32 +189,66 @@ public:
     bool first = true;
     bool final = false;
 
+    // add each beam to its history (the complete search graph)
     for(int i = 0; i < dimBatch; ++i)
       histories[i]->Add(beams[i]);
 
-    std::vector<Ptr<ScorerState>> states;
-
+    // initialize computation graph
     for(auto scorer : scorers_) {
       scorer->clear(graph);
     }
 
+    // create and add start states
+    std::vector<Ptr<ScorerState>> states;
     for(auto scorer : scorers_) {
       states.push_back(scorer->startState(graph, batch));
     }
 
+    // loop over output word predictions
     do {
       //**********************************************************************
       // create constant containing previous costs for current beam
       std::vector<size_t> hypIndices;
       std::vector<size_t> embIndices;
+      std::vector<size_t> batchIndeces;;
       Expr prevCosts;
+
       if(first) {
-        // no cost
+        // initial hypothesis, no cost, no subbeams
         prevCosts = graph->constant({1, 1, 1, 1}, inits::from_value(0));
       } else {
         std::vector<float> beamCosts;
 
-        int dimBatch = batch->size();
+        // XML TODO break up beam into subbeams, based on xml state
+        if (options_->get<bool>("xml-input")) {
+          std::cerr << "splitting up beams\n";
+          Beams subbeams(0);
+          for(int j = 0; j < beams.size(); ++j) {
+            auto& beam = beams[j];
+            Beams singleSubbeams(2);
+            for(int i = 0; i < beam.size(); ++i) {
+              auto hyp = beam[i];
+              size_t word = hyp->GetWord();
+              // BELOW IS A DUMMY DIVISION - TODO: XML state
+              singleSubbeams[ word % 2 ].push_back( hyp );
+            }
+            // merge into consolidated list
+            for(int jj=0; jj<2; jj++) {
+              auto& subbeam = singleSubbeams[jj];
+              subbeams.push_back( subbeam );
+              batchIndeces.push_back( j );
+            }
+          }
+          beams = subbeams;
+        }
+        // XML TODO -------------------/
+
+        std::cerr << "beam sizes ...";
+        for(int j = 0; j < beams.size(); ++j) {
+          auto& beam = beams[j];
+          std::cerr << " " << beam.size();
+        }
+        std::cerr << "\n";
 
         for(int i = 0; i < localBeamSize; ++i) {
           for(int j = 0; j < beams.size(); ++j) {
@@ -216,6 +259,7 @@ public:
               embIndices.push_back(hyp->GetWord());
               beamCosts.push_back(hyp->GetCost());
             } else {
+              // WHY ALL THESE EMPTY ENTRIES???
               hypIndices.push_back(0);
               embIndices.push_back(0);
               beamCosts.push_back(-9999);
@@ -223,7 +267,7 @@ public:
           }
         }
 
-        prevCosts = graph->constant({(int)localBeamSize, 1, dimBatch, 1},
+        prevCosts = graph->constant({(int)localBeamSize, 1, (int)beams.size(), 1},
                                     inits::from_vector(beamCosts));
       }
 
@@ -231,12 +275,13 @@ public:
       // prepare costs for beam search
       auto totalCosts = prevCosts;
 
+      int beamCount = beams.size();
       for(int i = 0; i < scorers_.size(); ++i) {
         states[i] = scorers_[i]->step(graph,
                                       states[i],
                                       hypIndices,
                                       embIndices,
-                                      dimBatch,
+                                      beamCount,
                                       localBeamSize);
 
         if(scorers_[i]->getWeight() != 1.f)
@@ -247,9 +292,10 @@ public:
       }
 
       // make beams continuous
-      if(dimBatch > 1 && localBeamSize > 1)
+      if(beamCount > 1 && localBeamSize > 1)
         totalCosts = transpose(totalCosts, {2, 1, 0, 3});
 
+      // forward step in computation graph - predict next word distribution
       if(first)
         graph->forward();
       else
@@ -267,7 +313,8 @@ public:
       std::vector<unsigned> outKeys;
       std::vector<float> outCosts;
 
-      std::vector<size_t> beamSizes(dimBatch, localBeamSize);
+      // create maximum number of hypotheses for each beam
+      std::vector<size_t> beamSizes(beamCount, localBeamSize);
       nth->getNBestList(beamSizes, totalCosts->val(), outCosts, outKeys, first);
 
       int dimTrgVoc = totalCosts->shape()[-1];
@@ -278,10 +325,38 @@ public:
                      states,
                      localBeamSize,
                      first,
-                     batch);
+                     batch,
+                     batchIndeces);
 
+      // XML TODO create additional hyps
+      // XML TODO - that enter constraints
+      // XML TODO - that continue constraints
+      // XML TODO ---------------------------/
+
+      // XML TODO merge subbeams
+      if (options_->get<bool>("xml-input") && beamCount > 1) {
+        Beams combinedBeams(batch->size()); 
+        for(int j = 0; j < beams.size(); j++) {
+          auto& beam = beams[j];
+          for(int i = 0; i < beam.size(); ++i) {
+            auto hyp = beam[i];
+            combinedBeams[ batchIndeces[j] ].push_back( hyp );
+          }
+        }
+        beams = combinedBeams;
+      }
+      // XML TODO ---------------------------/
+      std::cerr << "merged beams ...";
+      for(int j = 0; j < beams.size(); ++j) {
+        auto& beam = beams[j];
+        std::cerr << " " << beam.size();
+      }
+      std::cerr << "\n";
+
+      // remove hypothesis that hit end of sentence (</s>)
       auto prunedBeams = pruneBeam(beams);
-      for(int i = 0; i < dimBatch; ++i) {
+
+      for(int i = 0; i < (int)beams.size(); ++i) {
         if(!beams[i].empty()) {
           final = final
                   || histories[i]->size()
@@ -292,6 +367,7 @@ public:
       }
       beams = prunedBeams;
 
+      // reduce maximum beam size
       if(!first) {
         size_t maxBeam = 0;
         for(auto& beam : beams)
@@ -300,6 +376,12 @@ public:
         localBeamSize = maxBeam;
       }
       first = false;
+      std::cerr << "pruned beams ...";
+      for(int j = 0; j < beams.size(); ++j) {
+        auto& beam = beams[j];
+        std::cerr << " " << beam.size();
+      }
+      std::cerr << "\n";
 
     } while(localBeamSize != 0 && !final);
 

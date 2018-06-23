@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "common/definitions.h"
+//#include "data/xml.h"
 
 namespace marian {
 
@@ -33,6 +34,7 @@ private:
   const size_t prevIndex_;
   const size_t word_;
   const float cost_;
+//  std::vector<data::XmlOptionCovered> xmlOptionCovered_;
 
   std::vector<float> costBreakdown_;
   std::vector<float> alignment_;

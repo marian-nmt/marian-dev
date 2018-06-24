@@ -66,6 +66,7 @@ public:
             = (hypIdx / beamSize) + (hypIdx % beamSize) * beams.size();
         if(first)
           hypIdxTrans = hypIdx;
+        std::cerr << "mapping state " << hypIdx << " (" << (hypIdx / beamSize) << "," << (hypIdx % beamSize) << " -> " << hypIdxTrans << "\n";
 
         int beamHypIdx = hypIdx % beamSize;
         if(beamHypIdx >= beam.size())
@@ -161,6 +162,14 @@ public:
     int dimBatch = batch->size();
     // initialize data structure for the search graph
     Histories histories;
+
+    // XML TODO - this is just for debugging, remove it afterwards
+    std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
+    std::vector<std::string> vocabPaths = options_->get<std::vector<std::string>>("vocabs");
+    auto targetVocab = New<Vocab>();
+    size_t id = vocabPaths.size()-1;
+    int vocSize = targetVocab->load(vocabPaths[id], maxVocabs[id]);
+    // XML TODO ----/
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
       auto history = New<History>(sentId,
@@ -249,6 +258,19 @@ public:
           std::cerr << " " << beam.size();
         }
         std::cerr << "\n";
+        for(int j = 0; j < beams.size(); j++) {
+         auto& beam = beams[j];
+         for(int i = 0; i < beam.size(); ++i) {
+          auto hyp = beam[i];
+          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetCost() << "\t";
+          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+          while (hyp->GetWord() != 0) {
+            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+            hyp = hyp->GetPrevHyp();
+          }
+          std::cerr << std::endl;
+         }
+        }
 
         for(int i = 0; i < localBeamSize; ++i) {
           for(int j = 0; j < beams.size(); ++j) {
@@ -266,6 +288,10 @@ public:
             }
           }
         }
+        for(int i=0; i<hypIndices.size(); ++i) {
+          std::cerr << hypIndices[i] << " ";
+        }
+        std::cerr << "\n";
 
         prevCosts = graph->constant({(int)localBeamSize, 1, (int)beams.size(), 1},
                                     inits::from_vector(beamCosts));
@@ -316,8 +342,25 @@ public:
       // create maximum number of hypotheses for each beam
       std::vector<size_t> beamSizes(beamCount, localBeamSize);
       nth->getNBestList(beamSizes, totalCosts->val(), outCosts, outKeys, first);
+      std::cerr << "outCosts.size() = " << outCosts.size() << "\n";
 
       int dimTrgVoc = totalCosts->shape()[-1];
+      for(size_t i=0; i<outCosts.size(); i++) {
+        int embIdx = outKeys[i] % dimTrgVoc;
+        int beamNo = i / localBeamSize;
+        int hypInBeam = i % localBeamSize;
+        int hypIdx = (outKeys[i] / dimTrgVoc) % localBeamSize;
+        auto& beam = beams[beamNo];
+        if (beam.size() == 0) continue;
+        auto hyp = beam[hypIdx];
+        std::cerr << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost " << outCosts[i] << "\t " << (*targetVocab)[embIdx] << " ...";
+        std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+        while (hyp->GetWord() != 0) {
+           std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+           hyp = hyp->GetPrevHyp();
+        }
+        std::cerr << std::endl;
+      }
       beams = toHyps(outKeys,
                      outCosts,
                      dimTrgVoc,
@@ -327,6 +370,20 @@ public:
                      first,
                      batch,
                      batchIndeces);
+
+      for(int j = 0; j < beams.size(); j++) {
+        auto& beam = beams[j];
+        for(int i = 0; i < beam.size(); ++i) {
+          auto hyp = beam[i];
+          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetCost() << "\t";
+          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+          while (hyp->GetWord() != 0) {
+            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+            hyp = hyp->GetPrevHyp();
+          }
+          std::cerr << std::endl;
+        }
+      }
 
       // XML TODO create additional hyps
       // XML TODO - that enter constraints

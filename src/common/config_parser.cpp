@@ -577,10 +577,6 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
     ("multi-node-overlap", po::value<bool>()
       ->default_value(true),
      "Overlap model computations with MPI communication")
-    ("multi-node-local-optimizers", po::value<bool>()
-      ->zero_tokens()
-      ->default_value(false),
-     "Enable local optimizers with multi-node. Requires optimizer delay to be turned on.")
   ;
   // clang-format on
   desc.add(training);
@@ -692,9 +688,10 @@ void ConfigParser::addOptionsTranslate(po::options_description& desc) {
       "Display n-best list")
     ("shortlist", po::value<std::vector<std::string>>()->multitoken(),
      "Use softmax shortlist: path first best prune")
-    ("weights", po::value<std::vector<float>>()
-      ->multitoken(),
+    ("weights", po::value<std::vector<float>>()->multitoken(),
       "Scorer weights")
+    ("alignment", po::value<bool>()->zero_tokens()->default_value(false),
+     "Return word alignments")
     // TODO: the options should be available only in server
     ("port,p", po::value<size_t>()->default_value(8080),
       "Port number for web socket server")
@@ -969,7 +966,6 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
 
     SET_OPTION("multi-node", bool);
     SET_OPTION("multi-node-overlap", bool);
-    SET_OPTION("multi-node-local-optimizers", bool);
   }
 
   if(mode_ == ConfigMode::rescoring) {
@@ -994,6 +990,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("mini-batch-words", int);
     SET_OPTION_NONDEFAULT("weights", std::vector<float>);
     SET_OPTION_NONDEFAULT("shortlist", std::vector<std::string>);
+    SET_OPTION("alignment", bool);
     SET_OPTION("port", size_t);
     SET_OPTION("optimize", bool);
     SET_OPTION("max-length-factor", float);

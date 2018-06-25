@@ -167,15 +167,17 @@ public:
 
   NodeOps forwardOps() {
     using namespace functional;
+
     return {
-      NodeOp(ProdWithBias(val_,
-                          child(0)->val(),
-                          child(1)->val(),
-                          child(2)->val(),
-                          transA_,
-                          transB_,
-                          0.f,
-                          scalar_))
+      NodeOp(Prod(val_,
+                  child(0)->val(),
+                  child(1)->val(),
+                  transA_, transB_, 0.f, scalar_);
+             Prod(val_,
+                  child(3)->val(),
+                  child(2)->val(),
+                  false, false, 1.f, 1.f)
+             )
     };
   }
 
@@ -202,7 +204,12 @@ public:
                           false,
                           1.0,
                           scalar_)),
-              NodeOp(Add(_1, child(2)->grad(), adj_))};
+              NodeOp(Prod(child(2)->grad(),
+                          child(3)->val(), adj_,
+                          true, false,
+                          0.f, 1.f))
+              //NodeOp(Add(_1, child(2)->grad(), adj_))
+      };
 
     if(transA_ && !transB_)
       return {NodeOp(Prod(child(0)->grad(),
@@ -219,7 +226,12 @@ public:
                           false,
                           1.0,
                           scalar_)),
-              NodeOp(Add(_1, child(2)->grad(), adj_))};
+              NodeOp(Prod(child(2)->grad(),
+                          child(3)->val(), adj_,
+                          true, false,
+                          0.f, 1.f))
+              //NodeOp(Add(_1, child(2)->grad(), adj_))
+      };
 
     if(transA_ && transB_)
       return {NodeOp(Prod(child(0)->grad(),
@@ -236,7 +248,12 @@ public:
                           true,
                           1.0,
                           scalar_)),
-              NodeOp(Add(_1, child(2)->grad(), adj_))};
+              NodeOp(Prod(child(2)->grad(),
+                          child(3)->val(), adj_,
+                          true, false,
+                          0.f, 1.f))
+              //NodeOp(Add(_1, child(2)->grad(), adj_))
+      };
 
     return {NodeOp(Prod(child(0)->grad(),
                         adj_,
@@ -252,7 +269,12 @@ public:
                         false,
                         1.0,
                         scalar_)),
-            NodeOp(Add(_1, child(2)->grad(), adj_))};
+            NodeOp(Prod(child(2)->grad(),
+                        child(3)->val(), adj_,
+                        true, false,
+                        0.f, 1.f))
+            //NodeOp(Add(_1, child(2)->grad(), adj_))
+    };
   }
 
   const std::string type() { return "affine"; }
@@ -294,6 +316,7 @@ public:
   NodeOps forwardOps() {
     // C = alpha * dot(op(A), op(B))
     return {NodeOp(ProdBatched(val_,
+                               graph()->allocator(),
                                child(0)->val(),
                                child(1)->val(),
                                transA_,
@@ -311,6 +334,7 @@ public:
 
     if(!transA_ && transB_)
       return {NodeOp(ProdBatched(child(0)->grad(),
+                                 graph()->allocator(),
                                  adj_,
                                  child(1)->val(),
                                  false,
@@ -318,6 +342,7 @@ public:
                                  1.0,
                                  scalar_)),
               NodeOp(ProdBatched(child(1)->grad(),
+                                 graph()->allocator(),
                                  adj_,
                                  child(0)->val(),
                                  true,
@@ -327,6 +352,7 @@ public:
 
     if(transA_ && !transB_)
       return {NodeOp(ProdBatched(child(0)->grad(),
+                                 graph()->allocator(),
                                  child(1)->val(),
                                  adj_,
                                  false,
@@ -334,6 +360,7 @@ public:
                                  1.0,
                                  scalar_)),
               NodeOp(ProdBatched(child(1)->grad(),
+                                 graph()->allocator(),
                                  child(0)->val(),
                                  adj_,
                                  false,
@@ -343,6 +370,7 @@ public:
 
     if(transA_ && transB_)
       return {NodeOp(ProdBatched(child(0)->grad(),
+                                 graph()->allocator(),
                                  child(1)->val(),
                                  adj_,
                                  true,
@@ -350,6 +378,7 @@ public:
                                  1.0,
                                  scalar_)),
               NodeOp(ProdBatched(child(1)->grad(),
+                                 graph()->allocator(),
                                  adj_,
                                  child(0)->val(),
                                  true,
@@ -358,6 +387,7 @@ public:
                                  scalar_))};
 
     return {NodeOp(ProdBatched(child(0)->grad(),
+                               graph()->allocator(),
                                adj_,
                                child(1)->val(),
                                false,
@@ -365,6 +395,7 @@ public:
                                1.0,
                                scalar_)),
             NodeOp(ProdBatched(child(1)->grad(),
+                               graph()->allocator(),
                                child(0)->val(),
                                adj_,
                                true,

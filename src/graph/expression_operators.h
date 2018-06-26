@@ -34,6 +34,8 @@ Expr log(Expr a);
 
 Expr exp(Expr a);
 
+Expr clip(Expr a, float c);
+
 Expr operator-(Expr a);
 
 /*********************************************************/
@@ -63,6 +65,7 @@ Expr dot(Expr a,
          bool transA = false,
          bool transB = false,
          float scalar = 1.f);
+
 Expr bdot(Expr a,
           Expr b,
           bool transA = false,

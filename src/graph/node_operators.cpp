@@ -1,13 +1,14 @@
 #include "node_operators.h"
 #include "expression_graph.h"
 
+#include "tensors/tensor_operators.h"
+
 namespace marian {
 
 size_t ConstantNode::allocate() {
-  // @TODO params
   size_t elements = 0;
   if(!val_) {
-    graph()->tensor(val_, shape_);
+    graph()->allocateForward(shared_from_this());
     elements = val_->shape().elements();
   }
   return elements;
@@ -21,15 +22,17 @@ void ConstantNode::init() {
   init_.reset();
 }
 
-size_t ParamNode::allocate() {
-  // @TODO params
-  size_t elements = 0;
-  if(!val_) {
-    graph()->tensor(val_, shape_);
-    elements = val_->shape().elements();
-  }
-  return elements;
+ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
+                     const Shape& shape,
+                     const NodeInitializer& init,
+                     bool fixed)
+    : Node(graph, shape), // TODO: add value_type
+      init_(new NodeInitializer(init)),
+      initialized_(false) {
+  setTrainable(!fixed);
+  setMemoize(graph->isInference());
 }
+
 
 void ParamNode::init() {
   if(!initialized_) {

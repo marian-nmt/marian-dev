@@ -2,14 +2,15 @@
 
 #include "training/graph_group_async.h"
 
-#include "training/dropper.h"
-#include "training/sparse_tensor.h"
+#include "training/gradient_dropping/dropper.h"
+#include "training/gradient_dropping/sparse_tensor.h"
 
 namespace marian {
 
 class AsyncGraphGroupDrop : public AsyncGraphGroup {
   std::vector<int> fetchStep_;
   std::vector<int> pushStep_;
+  std::vector<bool> fetch_ready;
 
   bool drop_first = 1;
 
@@ -17,21 +18,9 @@ class AsyncGraphGroupDrop : public AsyncGraphGroup {
   float droping_rate;
   float dropping_momentum;
 
-  std::vector<GradientDrop> pushDropper_;
-  std::vector<std::vector<GradientDrop>> fetchDropper;
+  std::vector<std::vector<GradientDrop>> droppers_;
 
-  std::vector<SparseTensor> pushSparseGradient_;
-  std::vector<SparseTensor> pushShardedSparseGradient_;
-
-  std::vector<SparseTensor> fetchSparseGradient_;
-  std::vector<std::vector<SparseTensor>> fetchShardedSparseGradient_;
-
-  std::vector<Tensor> paramsDelta_;
-  std::vector<std::vector<Tensor>> paramsLocal_;
-
-  std::vector<Ptr<TensorAllocator>> allocators;
-
-  Tensor newTensor(int size, Ptr<Backend> backend);
+  std::vector<std::vector<SparseTensor>> sparseGrads_, sparseShards_;
 
 protected:
   void init(Ptr<data::Batch> batch);

@@ -226,7 +226,7 @@ public:
       else {
         auto reshaped_state = reshape(mappedState, {1, dimBatch, attentionLookupDim_, dimBeam});
         //auto reshaped_state = mappedState->graph()->constant({1, dimBatch, attentionLookupDim_, dimBeam}, inits::zeros) + 0.0 * sum(sum(sum(mappedState)));
-        LOG(info, "reshaped_state shape: {}", reshaped_state->shape());
+        //LOG(info, "reshaped_state shape: {}", reshaped_state->shape());
 
         // auto time_transposed_mapped_context = time_transposed_mapped_contexts_[headI];
         auto time_transposed_mapped_context = transpose(reshape(mappedContexts_[headI], 
@@ -236,12 +236,12 @@ public:
         e = reshape(transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_)),
                     {dimBeam, srcWords, dimBatch, 1});
 //        e = e * 0.0 + e2;
-        LOG(info, "time_transposed_mapped_context shape: {}", time_transposed_mapped_context->shape());
-        LOG(info, "bilinear_score shape: {}", bilinear_score->shape());
-        LOG(info, "transpose(bilinear_score, ...) shape: {}", transpose(bilinear_score, {3, 0, 1, 2})->shape());
-        auto dummy = transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_));
-        LOG(info, "transpose(softmax ...) shape: {}", dummy->shape());
-        LOG(info, "softmaxMask_ shape: {}", softmaxMask_->shape());
+        //LOG(info, "time_transposed_mapped_context shape: {}", time_transposed_mapped_context->shape());
+        //LOG(info, "bilinear_score shape: {}", bilinear_score->shape());
+        //LOG(info, "transpose(bilinear_score, ...) shape: {}", transpose(bilinear_score, {3, 0, 1, 2})->shape());
+        //auto dummy = transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_));
+        //LOG(info, "transpose(softmax ...) shape: {}", dummy->shape());
+        //LOG(info, "softmaxMask_ shape: {}", softmaxMask_->shape());
       }
 
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);

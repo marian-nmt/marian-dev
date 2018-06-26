@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Faster training (20-30%) by optimizing gradient popagation of biases
+- Returning hard alignments during decoding
+
+## [1.5.0] - 2018-06-17
+
+### Added
+
+- Average Attention Networks for Transformer model
+- 16-bit matrix multiplication on CPU
+- Memoization for constant nodes for decoding
+- Autotuning for decoding
+
+### Fixed
+
+- GPU decoding optimizations, about 2x faster decoding of transformer models
+- Multi-node MPI-based training on GPUs
+
+## [1.4.0] - 2018-03-13
 
 ### Added
 - Data weighting with `--data-weighting` at sentence or word level
@@ -14,13 +34,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Experimental multi-node asynchronous training
 - Restoring optimizer and training parameters such as learning rate, validation
   results, etc.
-- Experimental CPU training/translation with `--cpu-threads=N`
+- Experimental multi-CPU training/translation/scoring with `--cpu-threads=N`
 - Restoring corpus iteration after training is restarted
+- N-best-list scoring in marian-scorer
 
 ### Fixed
 - Deterministic data shuffling with specific seed for SQLite3 corpus storage
 - Mini-batch fitting with binary search for faster fitting
-- Better batch packing with due to sorting
+- Better batch packing due to sorting
 
 
 ## [1.3.1] - 2018-02-04

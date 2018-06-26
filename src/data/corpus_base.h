@@ -150,7 +150,7 @@ public:
    */
   size_t batchWidth() { return width_; };
   /**
-   * @brief The total number of words in the batch, including masking.
+   * @brief The total number of words in the batch, considering the mask.
    */
   size_t batchWords() { return words_; }
 
@@ -239,9 +239,29 @@ public:
   size_t size() const { return batches_[0]->batchSize(); }
 
   /**
+   * @brief The total number of words for the longest sentence in the batch plus one. Pass which=0 for source and -1 for target.
+   */
+  size_t words(int which = 0) const { return batches_[which >= 0 ? which : which + (ptrdiff_t)batches_.size()]->batchWords(); }
+
+  /**
+   * @brief The width of the source mini-batch. Num words + padded?
+   */
+  size_t width() const { return batches_[0]->batchWidth(); }
+
+  /**
+   * @brief The number of sentences in the batch, target words.
+   */
+  size_t sizeTrg() const { return batches_.back()->batchSize(); }
+  
+  /**
    * @brief The number of words for the longest sentence in the batch plus one.
    */
-  size_t words() const { return batches_[0]->batchWords(); }
+  size_t wordsTrg() const { return batches_.back()->batchWords(); };
+
+  /**
+   * @brief The width of the target mini-batch. Num words + padded?
+   */
+  size_t widthTrg() const { return batches_.back()->batchWidth(); };
 
   /**
    * @brief The number of source and targets.
@@ -271,6 +291,8 @@ public:
     }
 
     auto batch = New<CorpusBatch>(batches);
+    
+    if(!options) return batch;
 
     if(options->has("guided-alignment")) {
       std::vector<float> alignment(batchSize * lengths.front() * lengths.back(),

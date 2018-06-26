@@ -12,9 +12,11 @@
 namespace marian {
 
 struct UnaryNodeOp : public NaryNodeOp {
-  UnaryNodeOp(Expr a, Shape shape) : NaryNodeOp({a}, shape) {}
+  UnaryNodeOp(Expr a, Shape shape, Type value_type = Type::float32)
+  : NaryNodeOp({a}, shape, value_type) {}
 
-  UnaryNodeOp(Expr a) : NaryNodeOp({a}, a->shape()) {}
+  UnaryNodeOp(Expr a, Type value_type = Type::float32)
+  : NaryNodeOp({a}, a->shape(), value_type) {}
 
   const std::string color() { return "yellow"; }
 };
@@ -75,7 +77,7 @@ public:
     return {NodeOp(Add(scalar_ * _1, child(0)->grad(), adj_))};
   }
 
-  const std::string type() { return "scalar_add"; }
+  const std::string type() { return "scalar_mult"; }
 
   virtual size_t hash() {
     if(!hash_) {
@@ -92,6 +94,45 @@ public:
     if(!cnode)
       return false;
     if(scalar_ != cnode->scalar_)
+      return false;
+    return true;
+  }
+};
+
+struct ClipNodeOp : public UnaryNodeOp {
+private:
+  float clip_{0};
+
+public:
+  ClipNodeOp(Expr a, float clip) : UnaryNodeOp(a), clip_{clip} {}
+
+  NodeOps forwardOps() {
+    using namespace functional;
+    return {NodeOp(Element(_1 = clip(_2, clip_), val_, child(0)->val()))};
+  }
+
+  NodeOps backwardOps() {
+    using namespace functional;
+    return {NodeOp(Add(bump(_1, clip_) * _2, child(0)->grad(), child(0)->val(), adj_))};
+  }
+
+  const std::string type() { return "clip"; }
+
+  virtual size_t hash() {
+    if(!hash_) {
+      hash_ = NaryNodeOp::hash();
+      boost::hash_combine(hash_, clip_);
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<ClipNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(clip_ != cnode->clip_)
       return false;
     return true;
   }
@@ -603,8 +644,11 @@ struct NegNodeOp : public UnaryNodeOp {
 };
 
 struct RowsNodeOp : public UnaryNodeOp {
-  RowsNodeOp(Expr a, const std::vector<size_t>& indeces)
-      : UnaryNodeOp(a, newShape(a, indeces)), indices_(indeces) {}
+  RowsNodeOp(Expr a, const std::vector<size_t>& indices)
+      : UnaryNodeOp(a, newShape(a, indices)), indices_(indices) {
+    // @TODO: fix this by using int32 tensor for indices
+    setMemoize(false);
+  }
 
   NodeOps forwardOps() {
     // @TODO: solve this with a tensor!

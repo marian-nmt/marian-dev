@@ -15,9 +15,9 @@ template <class Backend> struct PrepareANodeOp : public UnaryNodeOp {
 
   PrepareANodeOp(Expr a, float clipValue)
     // TODO(emjotde): map from template argument to Type.
-  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 16 ? Type::int16 : Type::int8),
+  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8),
     // TODO(emjotde): just directly expose the quantization multiplier.
-    quantMult_{sizeof(typename Backend::Integer) == 16 ? 1024.0f : (127.0f / clipValue)} {}
+    quantMult_{sizeof(typename Backend::Integer) == 2 ? 1024.0f : (127.0f / clipValue)} {}
 
   NodeOps forwardOps() {
     return {
@@ -46,9 +46,9 @@ template <class Backend> struct PrepareBNodeOp : public UnaryNodeOp {
 
   PrepareBNodeOp(Expr a, float clipValue)
     // TODO(emjotde): map from template argument to Type.
-  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 16 ? Type::int16 : Type::int8),
+  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8),
     // TODO(emjotde): just directly expose the quantization multiplier.
-    quantMult_{sizeof(typename Backend::Integer) == 16 ? 1024.0f : (127.0f / clipValue)} {}
+    quantMult_{sizeof(typename Backend::Integer) == 2 ? 1024.0f : (127.0f / clipValue)} {}
 
   NodeOps forwardOps() {
     return { NodeOp(

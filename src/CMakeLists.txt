@@ -27,8 +27,11 @@ add_library(marian STATIC
   tensors/cpu/prod.cpp
   tensors/cpu/tensor_operators.cpp
 
-  tensors/cpu/sharp/avx_gemm.cpp
-  tensors/cpu/sharp/sse_gemm.cpp
+  tensors/cpu/intgemm/sse2_gemm.cc
+  tensors/cpu/intgemm/ssse3_gemm.cc
+  tensors/cpu/intgemm/avx2_gemm.cc
+  tensors/cpu/intgemm/avx512_gemm.cc
+  tensors/cpu/intgemm/intgemm.cc
 
   graph/expression_graph.cpp
   graph/expression_operators.cpp
@@ -67,6 +70,12 @@ add_library(marian STATIC
   $<TARGET_OBJECTS:libyaml-cpp>
   $<TARGET_OBJECTS:SQLiteCpp>
 )
+
+#Compile GEMM routines for specific CPU architectures.
+set_source_files_properties(tensors/cpu/intgemm/sse2_gemm.cc PROPERTIES COMPILE_FLAGS -msse2)
+set_source_files_properties(tensors/cpu/intgemm/ssse3_gemm.cc PROPERTIES COMPILE_FLAGS "-msse2 -mssse3")
+set_source_files_properties(tensors/cpu/intgemm/avx2_gemm.cc PROPERTIES COMPILE_FLAGS -mavx2)
+set_source_files_properties(tensors/cpu/intgemm/avx512_gemm.cc PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512bw -mavx512vl -mavx512dq")
 
 if(CUDA_FOUND)
 cuda_add_library(marian_cuda

@@ -6,7 +6,7 @@
 #include "graph/node_operators_unary.h"
 
 #include "graph/auto_tuner.h"
-#include "tensors/cpu/int16.h"
+#include "tensors/cpu/integer.h"
 
 namespace marian {
 
@@ -214,11 +214,9 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   float clipValue = a->graph()->getBackend()->getClip();
 
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
-    // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-    // if transA = false and transB = false.
-
-    return cpu::int16::dot(cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-                           cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+    // TODO(emjotde) choice of 16 or 8 bit.
+    return cpu::int16::dot(cpu::int16::prepareA(transA ? transpose(a) : a, clipValue),
+                           cpu::int16::prepareB(transB ? transpose(b) : b, clipValue),
                            scale);
   }
   else {
@@ -268,8 +266,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         return e;
       };
       auto alg1 = [=]() {
-        return rec1(cpu::int16::affine(rec1(cpu::int16::quantize(transA ? rec1(transpose(a)) : a, clipValue)),
-                                       cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+        // TODO(emjotde) choice of 16 or 8 bit.
+        return rec1(cpu::int16::affine(rec1(cpu::int16::prepareA(transA ? rec1(transpose(a)) : a, clipValue)),
+                                       cpu::int16::prepareB(transB ? transpose(b) : b, clipValue),
                                        bias,
                                        scale),
                     true);
@@ -308,8 +307,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     }
     else {
       // cpu int16 version
-      return cpu::int16::affine(cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-                                cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+      return cpu::int16::affine(cpu::int16::prepareA(transA ? transpose(a) : a, clipValue),
+                                cpu::int16::prepareB(transB ? transpose(b) : b, clipValue),
                                 bias,
                                 scale);
     }

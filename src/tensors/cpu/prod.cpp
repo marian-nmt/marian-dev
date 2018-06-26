@@ -14,7 +14,7 @@
 #endif
 #endif
 
-#include "sharp/int_gemm.h"
+#include "bias.h"
 
 namespace marian {
 
@@ -159,7 +159,7 @@ void ProdWithBias(marian::Tensor C,
                   float beta,
                   float scalar) {
   cpu::Prod(C, A, B, transA, transB, beta, scalar);
-  cpu::int16::AddBias(C, bias);
+  cpu::AddBias(C, bias);
 }
 
 }

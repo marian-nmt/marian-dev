@@ -14,7 +14,6 @@ namespace intgemm {
  */
 template <class Register> inline Register set1_epi16(int16_t to);
 template <class Register> inline Register set1_ps(float to);
-template <class Register> inline Register setzero_si();
 #ifdef __SSE2__
 inline __m128i add_epi32(__m128i first, __m128i second) {
   return _mm_add_epi32(first, second);
@@ -27,9 +26,6 @@ template <> inline __m128i set1_epi16<__m128i>(int16_t to) {
 }
 template <> inline __m128 set1_ps<__m128>(float to) {
   return _mm_set1_ps(to);
-}
-template <> inline __m128i setzero_si<__m128i>() {
-  return _mm_setzero_si128();
 }
 inline __m128i madd_epi16(__m128i first, __m128i second) {
   return _mm_madd_epi16(first, second);
@@ -64,9 +60,6 @@ template <> inline __m256i set1_epi16<__m256i>(int16_t to) {
 template <> inline __m256 set1_ps<__m256>(float to) {
   return _mm256_set1_ps(to);
 }
-template <> inline __m256i setzero_si<__m256i>() {
-  return _mm256_setzero_si256();
-}
 inline __m256i madd_epi16(__m256i first, __m256i second) {
   return _mm256_madd_epi16(first, second);
 }
@@ -99,9 +92,6 @@ template <> inline __m512i set1_epi16<__m512i>(int16_t to) {
 }
 template <> inline __m512 set1_ps<__m512>(float to) {
   return _mm512_set1_ps(to);
-}
-template <> inline __m512i setzero_si<__m512i>() {
-  return _mm512_setzero_si512();
 }
 inline __m512i madd_epi16(__m512i first, __m512i second) {
   return _mm512_madd_epi16(first, second);
@@ -231,73 +221,6 @@ template <class Integer, class Float> inline void Multiply16(const int16_t *A, c
     }
   }
 }
-
-/* This is the C version of the below (for AVX2)
- *void AVX2_8Bit::Multiply(const __m256i *A, const __m256i *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
- *  assert(width % 32 == 0);
- *  assert(reinterpret_cast<uintptr_t>(A) % 32 == 0);
- *  assert(reinterpret_cast<uintptr_t>(B) % 32 == 0);
- *  assert(reinterpret_cast<uintptr_t>(C) % 32 == 0);
- *  assert(num_B_rows % 8 == 0);
- *  __m256 unquant_reg = _mm256_set1_ps(unquant_mult);
- *  const int simd_width = width / 32;
- *  int B0_rowidx = 0;
- *  // Go over 8 rows of B at a time. 
- *  for (const __m256i *B0_row = B; B0_rowidx != num_B_rows; B0_row += 8 * simd_width, B0_rowidx += 8) {
- *    // Process one row of A at a time.  Doesn't seem to be faster to do multiple rows of A at once.
- *    for (int A_rowidx = 0; A_rowidx < A_rows; ++A_rowidx) {
- *      const __m256i *A_row = A + A_rowidx * simd_width;
- *      // These will be packed 16-bit integers containing sums for each row of B multiplied by the row of A.
- *      __m256i sum0 = _mm256_setzero_si256();
- *      __m256i sum1 = _mm256_setzero_si256();
- *      __m256i sum2 = _mm256_setzero_si256();
- *      __m256i sum3 = _mm256_setzero_si256();
- *      __m256i sum4 = _mm256_setzero_si256();
- *      __m256i sum5 = _mm256_setzero_si256();
- *      __m256i sum6 = _mm256_setzero_si256();
- *      __m256i sum7 = _mm256_setzero_si256();
- *      // Iterate over shared (inner) dimension.
- *      for (int k = 0; k < simd_width; ++k) {
- *        // Read in 64 8-bit signed integers from A.
- *        __m256i a = *(A_row + k);
- *        // Negate 8-bit values in b if the corresponding a was negative.
- *        // Negation is implemented by subtraction from zero.
- *        __m256i b0 = _mm256_sign_epi8(*(B0_row + k * 8), a);
- *        __m256i b1 = _mm256_sign_epi8(*(B0_row + k * 8 + 1), a);
- *        __m256i b2 = _mm256_sign_epi8(*(B0_row + k * 8 + 2), a);
- *        __m256i b3 = _mm256_sign_epi8(*(B0_row + k * 8 + 3), a);
- *        __m256i b4 = _mm256_sign_epi8(*(B0_row + k * 8 + 4), a);
- *        __m256i b5 = _mm256_sign_epi8(*(B0_row + k * 8 + 5), a);
- *        __m256i b6 = _mm256_sign_epi8(*(B0_row + k * 8 + 6), a);
- *        __m256i b7 = _mm256_sign_epi8(*(B0_row + k * 8 + 7), a);
- *        __m256i a_positive = _mm256_abs_epi8(a);
- *        // Multiply 8-bit unsigned * signed, horizontally add to packed 16-bit integers.
- *        __m256i mult0 = _mm256_maddubs_epi16(a_positive, b0);
- *        __m256i mult1 = _mm256_maddubs_epi16(a_positive, b1);
- *        __m256i mult2 = _mm256_maddubs_epi16(a_positive, b2);
- *        __m256i mult3 = _mm256_maddubs_epi16(a_positive, b3);
- *        __m256i mult4 = _mm256_maddubs_epi16(a_positive, b4);
- *        __m256i mult5 = _mm256_maddubs_epi16(a_positive, b5);
- *        __m256i mult6 = _mm256_maddubs_epi16(a_positive, b6);
- *        __m256i mult7 = _mm256_maddubs_epi16(a_positive, b7);
- *        // Sum packed 16-bit integers with saturation.
- *        // With larger matrices there is a danger of saturating so TODO upcast to 32-bit every so often.
- *        sum0 = _mm256_adds_epi16(mult0, sum0);
- *        sum1 = _mm256_adds_epi16(mult1, sum1);
- *        sum2 = _mm256_adds_epi16(mult2, sum2);
- *        sum3 = _mm256_adds_epi16(mult3, sum3);
- *        sum4 = _mm256_adds_epi16(mult4, sum4);
- *        sum5 = _mm256_adds_epi16(mult5, sum5);
- *        sum6 = _mm256_adds_epi16(mult6, sum6);
- *        sum7 = _mm256_adds_epi16(mult7, sum7);
- *      }
- *      // Write to C.
- *      __m256i combined = Reduce16to32(sum0, sum1, sum2, sum3, sum4, sum5, sum6, sum7);
- *      *reinterpret_cast<__m256*>(C + A_rowidx * num_B_rows + B0_rowidx) = _mm256_mul_ps(_mm256_cvtepi32_ps(combined), unquant_reg);
- *    }
- *  }
- *}
-*/
 
 /* 8-bit matrix multiply used by AVX and AVX2.
  * These have two peculiar properties:

@@ -20,15 +20,18 @@ template <class Backend> struct PrepareANodeOp : public UnaryNodeOp {
     quantMult_{sizeof(typename Backend::Integer) == 2 ? 1024.0f : (127.0f / clipValue)} {}
 
   NodeOps forwardOps() {
-    return {
-      NodeOp(Backend::PrepareA(
-            child(0)->val()->data(),
+    return { [=] {
+      auto c = child(0)->val();
+      std::pair<const float *, const float *> minmax = std::minmax_element(c->data(), c->data() + c->shape().elements());
+      quantMult_ = 63.0f / std::max<float>(fabs(*minmax.first), fabsf(*minmax.second));
+      Backend::PrepareA(
+            c->data(),
             val_->data<typename Backend::Integer>(),
             quantMult_,
             // Number of rows
-            child(0)->val()->shape().elements() / child(0)->val()->shape()[-1],
-            child(0)->val()->shape()[-1]))
-    };
+            c->shape().elements() / child(0)->val()->shape()[-1],
+            c->shape()[-1]);
+    }};
   }
 
   NodeOps backwardOps() {
@@ -51,16 +54,18 @@ template <class Backend> struct PrepareBNodeOp : public UnaryNodeOp {
     quantMult_{sizeof(typename Backend::Integer) == 2 ? 1024.0f : (127.0f / clipValue)} {}
 
   NodeOps forwardOps() {
-    return { NodeOp(
-        auto c = child(0)->val();
+    return { [=] {
+      auto c = child(0)->val();
+      std::pair<const float *, const float *> minmax = std::minmax_element(c->data(), c->data() + c->shape().elements());
+      quantMult_ = 63.0f / std::max<float>(fabs(*minmax.first), fabsf(*minmax.second));
         Backend::PrepareB(
           c->data(),
           val_->data<typename Backend::Integer>(),
           quantMult_,
           // Number of rows
           c->shape().elements() / c->shape()[-1],
-          c->shape()[-1])
-      )};
+          c->shape()[-1]);
+      }};
   }
 
   NodeOps backwardOps() {
@@ -172,7 +177,7 @@ public:
 };
 } // namespace integer
 
-namespace int16 {
+/*namespace int16 {
 
 static inline Expr dot(Expr a, Expr b, float scalar) {
   return Expression<integer::DotNodeOp<intgemm::Int16> >(a, b, scalar);
@@ -191,7 +196,7 @@ static inline Expr prepareB(Expr b, float clipValue) {
   return Expression<integer::PrepareBNodeOp<intgemm::Int16> >(b, clipValue);
 }
 
-} // namespace int16
+} // namespace int16*/
 
 namespace int8 {
 

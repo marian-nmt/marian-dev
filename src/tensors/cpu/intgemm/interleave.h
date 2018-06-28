@@ -44,14 +44,25 @@ inline void Interleave64(type &first, type &second) { \
   first = temp; \
 }
 
+
+template <class Register> inline Register setzero_si();
 #ifdef __SSE2__
 INTGEMM_INTERLEAVE(__m128i, )
+template <> inline __m128i setzero_si<__m128i>() {
+  return _mm_setzero_si128();
+}
 #endif
 #ifdef __AVX2__
 INTGEMM_INTERLEAVE(__m256i, 256)
+template <> inline __m256i setzero_si<__m256i>() {
+  return _mm256_setzero_si256();
+}
 #endif
 #ifdef __AVX512F__
 INTGEMM_INTERLEAVE(__m512i, 512)
+template <> inline __m512i setzero_si<__m512i>() {
+  return _mm512_setzero_si512();
+}
 #endif
 
 template <class Register> inline void Swap(Register &a, Register &b) {
@@ -233,6 +244,26 @@ template <class Quantizer> inline void PrepareBFor16(const float *input, int16_t
         output[k] = q.ForReshape(input + cols * (r + k) + c, cols);
       }
       Transpose16InLane(output[0], output[1], output[2], output[3], output[4], output[5], output[6], output[7]);
+    }
+  }
+}
+
+/* Select columns of B from PrepareB format to PrepareB format.
+ */
+template <class Register> inline void SelectColumnsOfB(const Register *input, Register *output, int rows_bytes /* number of bytes in a row */, const int *cols_begin, const int *cols_end) {
+  // Do columns for multiples of 8.
+  int register_rows = rows_bytes / sizeof(Register);
+  const int *cols_end8 = cols_begin + ((cols_end - cols_begin) & ~7);
+  const Register *starts[8];
+  for (; cols_begin != cols_end8; cols_begin += 8) {
+    for (int k = 0; k < 8; ++k) {
+      starts[k] = input + (cols_begin[k] & 7) + (cols_begin[k] & ~7) * register_rows;
+    }
+    for (int r = 0; r < register_rows; ++r) {
+      for (int k = 0; k < 8; ++k) {
+        *(output++) = *starts[k];
+        starts[k] += 8;
+      }
     }
   }
 }

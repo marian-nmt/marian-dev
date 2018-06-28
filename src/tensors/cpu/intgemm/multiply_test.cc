@@ -223,10 +223,14 @@ template <class Routine> void TestMultiply(int A_rows, int width, int B_cols) {
 }
 
 void TestBoth(int A_rows, int width, int B_cols) {
+#ifndef INTGEMM_NO_AVX512
   TestMultiply<AVX512_16bit>(A_rows, width, B_cols);
+#endif
   TestMultiply<AVX2_16bit>(A_rows, width, B_cols);
   TestMultiply<SSE2_16bit>(A_rows, width, B_cols);
+#ifndef INTGEMM_NO_AVX512
   TestMultiply<AVX512_8bit>(A_rows, width, B_cols);
+#endif
   TestMultiply<AVX2_8bit>(A_rows, width, B_cols);
   TestMultiply<SSSE3_8bit>(A_rows, width, B_cols);
 }
@@ -243,10 +247,12 @@ int main(int argc, char ** argv) {
     if (kCPU >= CPU_SSSE3) {
       TestTranspose8();
     }
+#ifndef INTGEMM_NO_AVX512
     TestPrepare<AVX512_8bit>(64, 8);
     TestPrepare<AVX512_8bit>(256, 32);
     TestPrepare<AVX512_16bit>(32, 8);
     TestPrepare<AVX512_16bit>(256, 32);
+#endif
     TestPrepare<AVX2_8bit>(64, 32);
     TestPrepare<AVX2_16bit>(64, 32);
     TestPrepare<SSSE3_8bit>(16, 8);
@@ -264,5 +270,3 @@ int main(int argc, char ** argv) {
     TestBoth(200, 256, 256);
     return 0;
 }
-
-

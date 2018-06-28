@@ -78,10 +78,12 @@ template <class Backend> bool TestMany() {
 int main() {
   using namespace intgemm;
   bool success = true;
+#ifndef INTGEMM_NO_AVX512
   if (kCPU >= CPU_AVX512BW) {
     success &= TestMany<AVX512_8bit>();
     success &= TestMany<AVX512_16bit>();
   }
+#endif
   if (kCPU >= CPU_AVX2) {
     success &= TestMany<AVX2_8bit>();
     success &= TestMany<AVX2_16bit>();

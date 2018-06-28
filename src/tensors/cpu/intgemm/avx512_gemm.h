@@ -34,6 +34,8 @@ struct AVX512_16bit {
 
   static void PrepareB(const float *input, int16_t *output, float quant_mult, int rows, int cols);
 
+  static void SelectColumnsB(const int16_t *input, int16_t *output, int rows, const int *cols_begin, const int *cols_end);
+
   static void Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
 
   static const char *const kName;
@@ -58,6 +60,8 @@ struct AVX512_8bit {
   static const int kBTileCol = 8;
 
   static void PrepareB(const float *input, int8_t *output, float quant_mult, int rows, int cols);
+
+  static void SelectColumnsB(const int8_t *input, int8_t *output, int rows, const int *cols_begin, const int *cols_end);
 
   static void Multiply(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
 

@@ -144,8 +144,10 @@ int main(int argc, char ** argv) {
     RunAll<SSE2_16bit>(matrices, end, stats.sse2_16bit);
     RunAll<AVX2_8bit>(matrices, end, stats.avx2_8bit);
     RunAll<AVX2_16bit>(matrices, end, stats.avx2_16bit);
+#ifndef INTGEMM_NO_AVX512
     RunAll<AVX512_8bit>(matrices, end, stats.avx512_8bit);
     RunAll<AVX512_16bit>(matrices, end, stats.avx512_16bit);
+#endif
   }
 
   if (stats.sse2_16bit.empty()) {
@@ -156,11 +158,14 @@ int main(int argc, char ** argv) {
     std::cout << "Multiply\t" << matrices[i].A_rows << '\t' << matrices[i].width << '\t' << matrices[i].B_cols << '\t' << "Samples=" << (kOutlierThreshold * stats.sse2_16bit[i].size()) << '\n';
     Print<SSSE3_8bit>(stats.ssse3_8bit, i);
     Print<AVX2_8bit>(stats.avx2_8bit, i);
+#ifndef INTGEMM_NO_AVX512
     Print<AVX512_8bit>(stats.avx512_8bit, i);
-
+#endif
     Print<SSE2_16bit>(stats.sse2_16bit, i);
     Print<AVX2_16bit>(stats.avx2_16bit, i);
+#ifndef INTGEMM_NO_AVX512
     Print<AVX512_16bit>(stats.avx512_16bit, i);
+#endif
   }
   return 0;
 }

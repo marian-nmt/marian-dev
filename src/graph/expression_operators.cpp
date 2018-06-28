@@ -215,8 +215,8 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
-    return cpu::int16::dot(cpu::int16::prepareA(transA ? transpose(a) : a, clipValue),
-                           cpu::int16::prepareB(transB ? transpose(b) : b, clipValue),
+    return cpu::int8::dot(cpu::int8::prepareA(transA ? transpose(a) : a, clipValue),
+                           cpu::int8::prepareB(transB ? transpose(b) : b, clipValue),
                            scale);
   }
   else {
@@ -267,8 +267,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       };
       auto alg1 = [=]() {
         // TODO(emjotde) choice of 16 or 8 bit.
-        return rec1(cpu::int16::affine(rec1(cpu::int16::prepareA(transA ? rec1(transpose(a)) : a, clipValue)),
-                                       cpu::int16::prepareB(transB ? transpose(b) : b, clipValue),
+        return rec1(cpu::int8::affine(rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a, clipValue)),
+                                       cpu::int8::prepareB(transB ? transpose(b) : b, clipValue),
                                        bias,
                                        scale),
                     true);
@@ -306,9 +306,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
     }
     else {
-      // cpu int16 version
-      return cpu::int16::affine(cpu::int16::prepareA(transA ? transpose(a) : a, clipValue),
-                                cpu::int16::prepareB(transB ? transpose(b) : b, clipValue),
+      // cpu int8 version
+      return cpu::int8::affine(cpu::int8::prepareA(transA ? transpose(a) : a, clipValue),
+                                cpu::int8::prepareB(transB ? transpose(b) : b, clipValue),
                                 bias,
                                 scale);
     }

@@ -11,8 +11,6 @@
 
 namespace intgemm {
 
-#ifdef __SSE2__
-
 namespace {
 // Same implementation as AVX512, just width.  Grabs 4 32-bit values.
 inline __m128i QuantizerGrab(const float *input, const __m128 quant_mult_reg) {
@@ -25,12 +23,12 @@ class QuantizeTile16 {
 
     explicit QuantizeTile16(float mult) : mult_reg_(_mm_set1_ps(mult)) {}
 
-               // Quantize 8xfloat into 8xint16_t
-               inline __m128i Consecutive(const float *input) {
-                       __m128i g0 = QuantizerGrab(input, mult_reg_);
-                       __m128i g1 = QuantizerGrab(input + 4, mult_reg_);
-                       return _mm_packs_epi32(g0, g1);
-               }
+    // Quantize 8xfloat into 8xint16_t
+    inline __m128i Consecutive(const float *input) {
+      __m128i g0 = QuantizerGrab(input, mult_reg_);
+      __m128i g1 = QuantizerGrab(input + 4, mult_reg_);
+      return _mm_packs_epi32(g0, g1);
+    }
 
     inline __m128i ForReshape(const float *input, int) {
       return Consecutive(input);
@@ -61,12 +59,14 @@ void SSE2_16bit::PrepareB(const float *input, int16_t *output, float quant_mult,
   PrepareBFor16(input, output, QuantizeTile16(quant_mult), rows, cols);
 }
 
+void SSE2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, int rows, const int *cols_begin, const int *cols_end) {
+  SelectColumnsOfB((const __m128i*)input, (__m128i*)output, rows * 2, cols_begin, cols_end);
+}
+
 void SSE2_16bit::Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
   Multiply16<__m128i, __m128>(A, B, C, unquant_mult, A_rows, width, B_cols);
 }
 
 const char *const SSE2_16bit::kName = "16-bit SSE2";
-
-#endif // __SSE2__
 
 } // namespace intgemm

@@ -83,6 +83,9 @@ struct Int16 {
   // It will match the Multiply function on the same CPU though.
   static void (*PrepareB)(const float *input, int16_t *output, float quant_mult, int rows, int cols);
 
+  // Select columns from a prepared B matrix.  The number of selected columns must be a multiple of 8. 
+  static void (*SelectColumnsB)(const int16_t *input, int16_t *output, int rows, const int *cols_begin, const int *cols_end);
+
   // Multiply C = A * B, presuming A and B have been prepared.
   static void (*Multiply)(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
 
@@ -113,6 +116,9 @@ struct Int8 {
   // Warning: the output of PrepareB depends on the CPU.
   // It will match the Multiply function on the same CPU though.
   static void (*PrepareB)(const float *input, int8_t *output, float quant_mult, int rows, int cols);
+
+  // Select columns from a prepared B matrix.  The number of selected columns must be a multiple of 8. 
+  static void (*SelectColumnsB)(const int8_t *input, int8_t *output, int rows, const int *cols_begin, const int *cols_end);
 
   // Multiply C = A * B, presuming A and B have been prepared.
   static void (*Multiply)(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);

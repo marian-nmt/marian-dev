@@ -12,13 +12,13 @@ namespace intgemm {
 /* Define a bunch of intrinstics as overloaded functions so they work with
  * templates.
  */
-template <class Register> inline Register set1_epi16(int16_t to);
-template <class Register> inline Register set1_ps(float to);
+template <class Register> static inline Register set1_epi16(int16_t to);
+template <class Register> static inline Register set1_ps(float to);
 #ifdef __SSE2__
-inline __m128i add_epi32(__m128i first, __m128i second) {
+static inline __m128i add_epi32(__m128i first, __m128i second) {
   return _mm_add_epi32(first, second);
 }
-inline __m128i adds_epi16(__m128i first, __m128i second) {
+static inline __m128i adds_epi16(__m128i first, __m128i second) {
   return _mm_adds_epi16(first, second);
 }
 template <> inline __m128i set1_epi16<__m128i>(int16_t to) {
@@ -27,31 +27,31 @@ template <> inline __m128i set1_epi16<__m128i>(int16_t to) {
 template <> inline __m128 set1_ps<__m128>(float to) {
   return _mm_set1_ps(to);
 }
-inline __m128i madd_epi16(__m128i first, __m128i second) {
+static inline __m128i madd_epi16(__m128i first, __m128i second) {
   return _mm_madd_epi16(first, second);
 }
-inline __m128i maddubs_epi16(__m128i first, __m128i second) {
+static inline __m128i maddubs_epi16(__m128i first, __m128i second) {
   return _mm_maddubs_epi16(first, second);
 }
-inline __m128i sign_epi8(__m128i first, __m128i second) {
+static inline __m128i sign_epi8(__m128i first, __m128i second) {
   return _mm_sign_epi8(first, second);
 }
-inline __m128i abs_epi8(__m128i arg) {
+static inline __m128i abs_epi8(__m128i arg) {
   return _mm_abs_epi8(arg);
 }
 
 // Complete any reduction, multiply by scaling, and write to memory.
-inline void WriteC(float *to, __m128i pack0123, __m128i pack4567, __m128 unquant_reg) {
+static inline void WriteC(float *to, __m128i pack0123, __m128i pack4567, __m128 unquant_reg) {
   // Convert to float, multiply by unquant, and write.
   *reinterpret_cast<__m128*>(to) = _mm_mul_ps(_mm_cvtepi32_ps(pack0123), unquant_reg);
   *reinterpret_cast<__m128*>(to + 4) = _mm_mul_ps(_mm_cvtepi32_ps(pack4567), unquant_reg);
 }
 #endif
 #ifdef __AVX2__
-inline __m256i add_epi32(__m256i first, __m256i second) {
+static inline __m256i add_epi32(__m256i first, __m256i second) {
   return _mm256_add_epi32(first, second);
 }
-inline __m256i adds_epi16(__m256i first, __m256i second) {
+static inline __m256i adds_epi16(__m256i first, __m256i second) {
   return _mm256_adds_epi16(first, second);
 }
 template <> inline __m256i set1_epi16<__m256i>(int16_t to) {
@@ -60,20 +60,20 @@ template <> inline __m256i set1_epi16<__m256i>(int16_t to) {
 template <> inline __m256 set1_ps<__m256>(float to) {
   return _mm256_set1_ps(to);
 }
-inline __m256i madd_epi16(__m256i first, __m256i second) {
+static inline __m256i madd_epi16(__m256i first, __m256i second) {
   return _mm256_madd_epi16(first, second);
 }
-inline __m256i maddubs_epi16(__m256i first, __m256i second) {
+static inline __m256i maddubs_epi16(__m256i first, __m256i second) {
   return _mm256_maddubs_epi16(first, second);
 }
-inline __m256i sign_epi8(__m256i first, __m256i second) {
+static inline __m256i sign_epi8(__m256i first, __m256i second) {
   return _mm256_sign_epi8(first, second);
 }
-inline __m256i abs_epi8(__m256i arg) {
+static inline __m256i abs_epi8(__m256i arg) {
   return _mm256_abs_epi8(arg);
 }
 
-inline void WriteC(float *to, __m256i pack0123, __m256i pack4567, __m256 unquant_reg) {
+static inline void WriteC(float *to, __m256i pack0123, __m256i pack4567, __m256 unquant_reg) {
   // This instruction generates 1s 2s 3s 4s 5f 6f 7f 8f
   __m256i rev = _mm256_permute2f128_si256(pack0123, pack4567, 0x21);
   // This instruction generates 1f 2f 3f 4f 5s 6s 7s 8s
@@ -84,7 +84,7 @@ inline void WriteC(float *to, __m256i pack0123, __m256i pack4567, __m256 unquant
 }
 #endif
 #ifdef __AVX512BW__
-inline __m512i add_epi32(__m512i first, __m512i second) {
+static inline __m512i add_epi32(__m512i first, __m512i second) {
   return _mm512_add_epi32(first, second);
 }
 template <> inline __m512i set1_epi16<__m512i>(int16_t to) {
@@ -93,13 +93,13 @@ template <> inline __m512i set1_epi16<__m512i>(int16_t to) {
 template <> inline __m512 set1_ps<__m512>(float to) {
   return _mm512_set1_ps(to);
 }
-inline __m512i madd_epi16(__m512i first, __m512i second) {
+static inline __m512i madd_epi16(__m512i first, __m512i second) {
   return _mm512_madd_epi16(first, second);
 }
-inline __m512i maddubs_epi16(__m512i first, __m512i second) {
+static inline __m512i maddubs_epi16(__m512i first, __m512i second) {
   return _mm512_maddubs_epi16(first, second);
 }
-inline __m512i abs_epi8(__m512i arg) {
+static inline __m512i abs_epi8(__m512i arg) {
   return _mm512_abs_epi8(arg);
 }
 

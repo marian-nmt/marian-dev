@@ -23,29 +23,29 @@ namespace intgemm {
  *   INTGEMM_INTERLEAVE(__m512i, 512)
  */
 #define INTGEMM_INTERLEAVE(type, prefix) \
- inline void Interleave8(type &first, type &second) { \
+static inline void Interleave8(type &first, type &second) { \
   type temp = _mm##prefix##_unpacklo_epi8(first, second); \
   second = _mm##prefix##_unpackhi_epi8(first, second); \
   first = temp; \
 } \
-inline void Interleave16(type &first, type &second) { \
+static inline void Interleave16(type &first, type &second) { \
   type temp = _mm##prefix##_unpacklo_epi16(first, second); \
   second = _mm##prefix##_unpackhi_epi16(first, second); \
   first = temp; \
 } \
-inline void Interleave32(type &first, type &second) { \
+static inline void Interleave32(type &first, type &second) { \
   type temp = _mm##prefix##_unpacklo_epi32(first, second); \
   second = _mm##prefix##_unpackhi_epi32(first, second); \
   first = temp; \
 } \
-inline void Interleave64(type &first, type &second) { \
+static inline void Interleave64(type &first, type &second) { \
   type temp = _mm##prefix##_unpacklo_epi64(first, second); \
   second = _mm##prefix##_unpackhi_epi64(first, second); \
   first = temp; \
 }
 
 
-template <class Register> inline Register setzero_si();
+template <class Register> static inline Register setzero_si() __attribute__((always_inline));;
 #ifdef __SSE2__
 INTGEMM_INTERLEAVE(__m128i, )
 template <> inline __m128i setzero_si<__m128i>() {
@@ -65,7 +65,7 @@ template <> inline __m512i setzero_si<__m512i>() {
 }
 #endif
 
-template <class Register> inline void Swap(Register &a, Register &b) {
+template <class Register> static inline void Swap(Register &a, Register &b) {
   Register tmp = a;
   a = b;
   b = tmp;
@@ -74,7 +74,7 @@ template <class Register> inline void Swap(Register &a, Register &b) {
 /* Transpose registers containing 8 packed 16-bit integers.
  * Each 128-bit lane is handled independently.
  */
-template <class Register> inline void Transpose16InLane(Register &r0, Register &r1, Register &r2, Register &r3, Register &r4, Register &r5, Register &r6, Register &r7) {
+template <class Register> static inline void Transpose16InLane(Register &r0, Register &r1, Register &r2, Register &r3, Register &r4, Register &r5, Register &r6, Register &r7) {
   // r0: columns 0 1 2 3 4 5 6 7 from row 0
   // r1: columns 0 1 2 3 4 5 6 7 from row 1
 
@@ -123,7 +123,7 @@ template <class Register> inline void Transpose16InLane(Register &r0, Register &
 /* Tranpose registers containing 16 packed 8-bit integers.
  * Each 128-bit lane is handled independently.
  */
-template <class Register> inline void Transpose8InLane(
+template <class Register> static inline void Transpose8InLane(
     Register &r0, Register &r1, Register &r2, Register &r3, Register &r4, Register &r5, Register &r6, Register &r7,
     Register &r8, Register &r9, Register &r10, Register &r11, Register &r12, Register &r13, Register &r14, Register &r15) {
   // Get 8-bit values to 16-bit values so they can travel together.
@@ -196,7 +196,7 @@ template <class Register> inline void Transpose8InLane(
 // 256 272
 // 257 273
 // ... ...
-template <class Quantizer> inline void PrepareBFor8(const float *input, int8_t *output_shadow, Quantizer q, int rows, int cols) {
+template <class Quantizer> static inline void PrepareBFor8(const float *input, int8_t *output_shadow, Quantizer q, int rows, int cols) {
   typedef typename Quantizer::Integer Register;
   // Currently all multipliers have a stride of 8 columns.
   const int kColStride = 8;
@@ -229,7 +229,7 @@ template <class Quantizer> inline void PrepareBFor8(const float *input, int8_t *
   }
 }
 
-template <class Quantizer> inline void PrepareBFor16(const float *input, int16_t *output_shadow, Quantizer q, int rows, int cols) {
+template <class Quantizer> static inline void PrepareBFor16(const float *input, int16_t *output_shadow, Quantizer q, int rows, int cols) {
   typedef typename Quantizer::Integer Register;
   assert(cols % 8 == 0);
   assert(rows % (sizeof(Register) / sizeof(int16_t)) == 0);
@@ -250,7 +250,7 @@ template <class Quantizer> inline void PrepareBFor16(const float *input, int16_t
 
 /* Select columns of B from PrepareB format to PrepareB format.
  */
-template <class Register> inline void SelectColumnsOfB(const Register *input, Register *output, int rows_bytes /* number of bytes in a row */, const int *cols_begin, const int *cols_end) {
+template <class Register> static inline void SelectColumnsOfB(const Register *input, Register *output, int rows_bytes /* number of bytes in a row */, const int *cols_begin, const int *cols_end) {
   // Do columns for multiples of 8.
   int register_rows = rows_bytes / sizeof(Register);
   const int *cols_end8 = cols_begin + ((cols_end - cols_begin) & ~7);

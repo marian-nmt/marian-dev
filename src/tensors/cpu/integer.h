@@ -177,7 +177,7 @@ public:
 };
 } // namespace integer
 
-/*namespace int16 {
+namespace int16 {
 
 static inline Expr dot(Expr a, Expr b, float scalar) {
   return Expression<integer::DotNodeOp<intgemm::Int16> >(a, b, scalar);
@@ -196,7 +196,7 @@ static inline Expr prepareB(Expr b, float clipValue) {
   return Expression<integer::PrepareBNodeOp<intgemm::Int16> >(b, clipValue);
 }
 
-} // namespace int16*/
+} // namespace int16
 
 namespace int8 {
 

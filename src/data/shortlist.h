@@ -224,6 +224,12 @@ public:
         idxSet.insert(it.first);
     }
 
+    // Make shortlist size a multiple of 8 for integer products
+    Word w = firstNum_;
+    while(idxSet.size() % 8 != 0) {
+      idxSet.insert(w++);
+    }
+
     // turn into vector and sort (selected indices)
     std::vector<Word> idx(idxSet.begin(), idxSet.end());
     std::sort(idx.begin(), idx.end());

@@ -70,4 +70,6 @@ struct AVX512_8bit {
   static const CPUType kUses = CPU_AVX512BW;
 };
 
+float AVX512_MaxAbsolute(const float *begin_float, const float *end_float);
+
 } // namespace intgemm

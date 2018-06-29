@@ -31,4 +31,7 @@ struct SSE2_16bit {
   static const CPUType kUses = CPU_SSE2;
 };
 
+// Technically only requires SSE
+float SSE2_MaxAbsolute(const float *begin, const float *end);
+
 } // namespace intgemm

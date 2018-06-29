@@ -5,8 +5,9 @@
 #include "intgemm.h"
 #include "aligned.h"
 #include "interleave.h"
-#include "stop_watch.h"
+#include "multiply.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -120,6 +121,39 @@ template <class Routine> void TestPrepare(int rows = 32, int cols = 16) {
     PrintMatrix(reference.get(), rows, cols);
     std::cerr << "Routine" << '\n';
     PrintMatrix(test.get(), rows, cols);
+  }
+}
+
+template <class Register> void TestMax() {
+  Register r = set1_ps<Register>(-2.0);
+  for (int i = 0; i < sizeof(Register) / sizeof(float); ++i) {
+    Register c = r;
+    reinterpret_cast<float*>(&c)[i] = -1.0;
+    if (MaxFloat32(c) != -1.0) {
+      std::cerr << "MaxFloat32 produced " << MaxFloat32(c) << std::endl;
+    }
+  }
+}
+
+void CompareMaxAbs(const float *begin, const float *end, float test) {
+  float largest = fabs(*std::max_element(begin, end));
+  float smallest = fabs(*std::min_element(begin, end));
+  largest = std::max(largest, smallest);
+  if (largest != test) std::cerr << "TestMaxAbsolute error: " << largest << " versus " << test << "\n";
+}
+
+template <float (*Backend) (const float *, const float *)> void TestMaxAbsolute() {
+  const int kLength = 64;
+  AlignedVector<float> test(kLength);
+  // 64 tries.
+  for (int t = 0; t < 64; ++t) {
+    for (int i = 0; i < kLength; ++i)
+      test[i] = rand() / (float)RAND_MAX * 16.0 - 8.0;
+    CompareMaxAbs(test.get(), test.get() + kLength, Backend(test.get(), test.get() + kLength));
+    test[t] = -32.0;
+    CompareMaxAbs(test.get(), test.get() + kLength, Backend(test.get(), test.get() + kLength));
+    test[t] = 32.0;
+    CompareMaxAbs(test.get(), test.get() + kLength, Backend(test.get(), test.get() + kLength));
   }
 }
 
@@ -260,6 +294,11 @@ int main(int argc, char ** argv) {
     TestPrepare<SSSE3_8bit>(32, 32);
     TestPrepare<SSE2_16bit>(8, 8);
     TestPrepare<SSE2_16bit>(32, 32);
+    TestMax<__m128>();
+    TestMaxAbsolute<SSE2_MaxAbsolute>();
+/*    if (kCPU >= CPU_AVX2) {
+      TestMaxAbsolute<AVX2_MaxAbsolute>();
+    }*/
     // Top matrix sizes from Marian
     TestBoth(8, 256, 256);
     TestBoth(8, 2048, 256);

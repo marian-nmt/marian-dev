@@ -126,4 +126,7 @@ struct Int8 {
   static const char *const kName;
 };
 
+// Get the maximum absolute value of an array of floats.  The number of floats must be a multiple of 16 and 64-byte aligned.
+extern float (*MaxAbsolute)(const float *begin, const float *end);
+
 } // namespace intgemm

@@ -272,4 +272,8 @@ void AVX512_8bit::Multiply(const int8_t *A, const int8_t *B, float *C, float unq
 const char *const AVX512_16bit::kName = "16-bit AVX512";
 const char *const AVX512_8bit::kName = "8-bit AVX512";
 
+float AVX512_MaxAbsolute(const float *begin, const float *end) {
+  return MaxAbsoluteBackend<__m512>(begin, end);
+}
+
 } // namespace intgemm

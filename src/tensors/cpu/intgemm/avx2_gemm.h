@@ -54,4 +54,7 @@ struct AVX2_8bit {
   static const CPUType kUses = CPU_AVX2;
 };
 
+// Technically only requires AVX
+float AVX2_MaxAbsolute(const float *begin, const float *end);
+
 } // namespace intgemm

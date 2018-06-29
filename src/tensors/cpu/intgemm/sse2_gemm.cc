@@ -69,4 +69,8 @@ void SSE2_16bit::Multiply(const int16_t *A, const int16_t *B, float *C, float un
 
 const char *const SSE2_16bit::kName = "16-bit SSE2";
 
+float SSE2_MaxAbsolute(const float *begin, const float *end) {
+  return MaxAbsoluteBackend<__m128>(begin, end);
+}
+
 } // namespace intgemm

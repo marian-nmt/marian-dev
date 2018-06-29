@@ -15,22 +15,23 @@ template <class Backend> struct PrepareANodeOp : public UnaryNodeOp {
 
   PrepareANodeOp(Expr a, float clipValue)
     // TODO(emjotde): map from template argument to Type.
-  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8),
-    // TODO(emjotde): just directly expose the quantization multiplier.
-    quantMult_{sizeof(typename Backend::Integer) == 2 ? 1024.0f : (127.0f / clipValue)} {}
+  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
 
   NodeOps forwardOps() {
     return { [=] {
       auto c = child(0)->val();
-      std::pair<const float *, const float *> minmax = std::minmax_element(c->data(), c->data() + c->shape().elements());
-      quantMult_ = 63.0f / std::max<float>(fabs(*minmax.first), fabsf(*minmax.second));
+      if (sizeof(typename Backend::Integer) == 2) {
+        quantMult_ = 1024.0f;
+      } else {
+        quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
+      }
       Backend::PrepareA(
-            c->data(),
-            val_->data<typename Backend::Integer>(),
-            quantMult_,
-            // Number of rows
-            c->shape().elements() / child(0)->val()->shape()[-1],
-            c->shape()[-1]);
+          c->data(),
+          val_->data<typename Backend::Integer>(),
+          quantMult_,
+          // Number of rows
+          c->shape().elements() / child(0)->val()->shape()[-1],
+          c->shape()[-1]);
     }};
   }
 
@@ -49,23 +50,25 @@ template <class Backend> struct PrepareBNodeOp : public UnaryNodeOp {
 
   PrepareBNodeOp(Expr a, float clipValue)
     // TODO(emjotde): map from template argument to Type.
-  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8),
-    // TODO(emjotde): just directly expose the quantization multiplier.
-    quantMult_{sizeof(typename Backend::Integer) == 2 ? 1024.0f : (127.0f / clipValue)} {}
+  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
 
   NodeOps forwardOps() {
     return { [=] {
       auto c = child(0)->val();
-      std::pair<const float *, const float *> minmax = std::minmax_element(c->data(), c->data() + c->shape().elements());
-      quantMult_ = 63.0f / std::max<float>(fabs(*minmax.first), fabsf(*minmax.second));
-        Backend::PrepareB(
+      if (sizeof(typename Backend::Integer) == 2) {
+        quantMult_ = 1024.0f;
+      } else {
+        quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
+      }
+
+      Backend::PrepareB(
           c->data(),
           val_->data<typename Backend::Integer>(),
           quantMult_,
           // Number of rows
           c->shape().elements() / c->shape()[-1],
           c->shape()[-1]);
-      }};
+    }};
   }
 
   NodeOps backwardOps() {

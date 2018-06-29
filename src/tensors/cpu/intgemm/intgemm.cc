@@ -54,6 +54,10 @@ struct Unsupported_8bit {
 };
 const char *const Unsupported_8bit::kName = "8-bit Unsupported";
 
+float Unsupported_MaxAbsolute(const float *begin, const float *end) {
+  throw UnsupportedCPU();
+}
+
 /* Returns:
  * avx512 if the CPU supports AVX512F (though really it should be AVX512BW, but
  * cloud providers lie).  TODO: don't catch Knights processors with this.
@@ -88,6 +92,9 @@ template <class T> T ChooseCPU(T avx512, T avx2, T ssse3, T sse2, T unsupported)
 // These won't ever be called in this capacity, but it does let the code below compile.
 typedef Unsupported_16bit AVX512_16bit;
 typedef Unsupported_8bit AVX512_8bit;
+float AVX512_MaxAbsolute(const float *begin, const float *end) {
+  throw UnsupportedCPU();
+}
 #endif
 
 } // namespace
@@ -105,5 +112,7 @@ void (*Int8::Multiply)(const int8_t *A, const int8_t *B, float *C, float unquant
 const char *const Int8::kName = ChooseCPU(AVX512_8bit::kName, AVX2_8bit::kName, SSSE3_8bit::kName, Unsupported_8bit::kName, Unsupported_8bit::kName);
 
 const CPUType kCPU = ChooseCPU(CPU_AVX512BW, CPU_AVX2, CPU_SSSE3, CPU_SSE2, CPU_UNSUPPORTED);
+
+float (*MaxAbsolute)(const float *begin, const float *end) = ChooseCPU(AVX512_MaxAbsolute, AVX2_MaxAbsolute, SSE2_MaxAbsolute, SSE2_MaxAbsolute, Unsupported_MaxAbsolute);
 
 } // namespace intgemm

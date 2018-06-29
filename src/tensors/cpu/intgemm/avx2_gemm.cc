@@ -147,4 +147,8 @@ void AVX2_8bit::Multiply(const int8_t *A, const int8_t *B, float *C, float unqua
 const char *const AVX2_16bit::kName = "16-bit AVX2";
 const char *const AVX2_8bit::kName = "8-bit AVX2";
 
+float AVX2_MaxAbsolute(const float *begin, const float *end) {
+  return MaxAbsoluteBackend<__m256>(begin, end);
+}
+
 } // namespace intgemm

@@ -17,6 +17,33 @@
 #include <iomanip>
 
 namespace intgemm {
+namespace {
+
+float MaxAbsoluteBaseline(const float *begin, const float *end) {
+  std::pair<const float *, const float*> res = std::minmax_element(begin, end);
+  return std::max(fabsf(*res.first), fabsf(*res.second));
+}
+
+void BenchmarkMaxAbsolute() {
+  const int size = 4096 * 4096;
+  AlignedVector<float> v(size);
+  for (int i = 0; i < size; ++i) {
+    v[i] = (float)rand() / (float)RAND_MAX;
+  }
+  std::vector<uint64_t> stats;
+  // Hopefully these don't get optimized out...
+  float result = MaxAbsoluteBaseline(v.get(), v.get() + size);
+  {
+    StopWatch w(stats);
+    result = MaxAbsoluteBaseline(v.get(), v.get() + size);
+  }
+  {
+    StopWatch w(stats);
+    result = AVX2_MaxAbsolute(v.get(), v.get() + size);
+  }
+  std::cout << "MaxAbsolute baseline = " << stats[0] << " optimized = " << stats[1] << " speedup = " << ((float)stats[0] / (float)stats[1])<< '\n';
+
+}
 
 struct RandomMatrices {
   RandomMatrices(int A_rows_in, int width_in, int B_cols_in) :
@@ -102,12 +129,14 @@ template <class Backend> void Print(std::vector<std::vector<uint64_t> > &stats, 
 }
 
 } // namespace intgemm
+} // namespace
 
 // Program takes no input
 int main(int argc, char ** argv) {
   std::cerr << "Remember to run this on a specific core:\ntaskset --cpu-list 0 " << argv[0] << std::endl;
   std::srand(45678);
   using namespace intgemm;
+  BenchmarkMaxAbsolute();
   RandomMatrices matrices[] = {
     {1, 64, 8},
     {8, 256, 256},

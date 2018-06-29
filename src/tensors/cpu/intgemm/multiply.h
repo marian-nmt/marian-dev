@@ -39,6 +39,22 @@ static inline __m128i sign_epi8(__m128i first, __m128i second) {
 static inline __m128i abs_epi8(__m128i arg) {
   return _mm_abs_epi8(arg);
 }
+static inline __m128 max_ps(__m128 first, __m128 second) {
+  return _mm_max_ps(first, second);
+}
+static inline __m128 and_ps(__m128 first, __m128 second) {
+  return _mm_and_ps(first, second);
+}
+static inline float MaxFloat32(__m128 a) {
+  // Fold to just using the first 64 bits.
+  __m128 second_half = _mm_shuffle_ps(a, a, 3 * 4 + 2);
+  a = _mm_max_ps(a, second_half);
+  // Fold to just using the first 32 bits.
+  second_half = _mm_shuffle_ps(a, a, 1);
+  a = _mm_max_ps(a, second_half);
+  // This casting compiles to nothing.
+  return *reinterpret_cast<float*>(&a);
+}
 
 // Complete any reduction, multiply by scaling, and write to memory.
 static inline void WriteC(float *to, __m128i pack0123, __m128i pack4567, __m128 unquant_reg) {
@@ -72,6 +88,15 @@ static inline __m256i sign_epi8(__m256i first, __m256i second) {
 static inline __m256i abs_epi8(__m256i arg) {
   return _mm256_abs_epi8(arg);
 }
+static inline __m256 max_ps(__m256 first, __m256 second) {
+  return _mm256_max_ps(first, second);
+}
+static inline __m256 and_ps(__m256 first, __m256 second) {
+  return _mm256_and_ps(first, second);
+}
+static inline float MaxFloat32(__m256 a) {
+  return MaxFloat32(max_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1)));
+}
 
 static inline void WriteC(float *to, __m256i pack0123, __m256i pack4567, __m256 unquant_reg) {
   // This instruction generates 1s 2s 3s 4s 5f 6f 7f 8f
@@ -102,8 +127,14 @@ static inline __m512i maddubs_epi16(__m512i first, __m512i second) {
 static inline __m512i abs_epi8(__m512i arg) {
   return _mm512_abs_epi8(arg);
 }
-
-inline void WriteC(float *to, __m512i pack0123, __m512i pack4567, __m256 unquant_reg) {
+static inline __m512 max_ps(__m512 first, __m512 second) {
+  return _mm512_max_ps(first, second);
+}
+// Technically __AVX512DQ__
+static inline __m512 and_ps(__m512 first, __m512 second) {
+  return _mm512_and_ps(first, second);
+}
+static inline void WriteC(float *to, __m512i pack0123, __m512i pack4567, __m256 unquant_reg) {
   // Form [0th 128-bit register of pack0123, 0st 128-bit register of pack4567, 2nd 128-bit register of pack0123, 2nd 128-bit register of pack4567]
   __m512i mix0 = _mm512_mask_permutex_epi64(pack0123, 0xcc, pack4567, (0 << 4) | (1 << 6));
   // Form [1st 128-bit register of pack0123, 1st 128-bit register of pack4567, 3rd 128-bit register of pack0123, 3rd 128-bit register of pack4567]
@@ -114,6 +145,12 @@ inline void WriteC(float *to, __m512i pack0123, __m512i pack4567, __m256 unquant
   __m256i folded = _mm256_add_epi32(_mm512_castsi512_si256(added), _mm512_extracti64x4_epi64(added, 1));
   *reinterpret_cast<__m256*>(to) = _mm256_mul_ps(_mm256_cvtepi32_ps(folded), unquant_reg);
 }
+
+// Find the maximum float.
+static inline float MaxFloat32(__m512 a) {
+  return MaxFloat32(max_ps(_mm512_castps512_ps256(a), _mm512_extractf32x8_ps(a, 1)));
+}
+
 #endif
 
 /* Take 4 registers with 32-bit values to be horizontally added.  Reduce them
@@ -440,6 +477,25 @@ template <class Algo, class Integer, class Float> inline void Multiply8_SSE2OrAV
       WriteC(C + A_rowidx * B_cols + B0_colidx, pack0123, pack4567, unquant_reg);
     }
   }
+}
+
+// Find the maximum absolute value of packed float32s.
+template <class Register> inline static float MaxAbsoluteBackend(const float *begin_float, const float *end_float) {
+  assert(end_float > begin_float);
+  assert((end_float - begin_float) % (sizeof(Register) / sizeof(float)) == 0);
+  const Register *begin = reinterpret_cast<const Register*>(begin_float);
+  const Register *end = reinterpret_cast<const Register*>(end_float);
+  // Get the sign bit.
+  union {float f; int32_t i;} float_convert;
+  float_convert.i = 0x7fffffff;
+  Register and_me = set1_ps<Register>(float_convert.f);
+  Register highest = and_ps(and_me, *begin);
+  for (++begin; begin != end; ++begin) {
+    Register reg = and_ps(and_me, *begin);
+    highest = max_ps(highest, reg);
+  }
+
+  return MaxFloat32(highest);
 }
 
 } // namespace intgemm

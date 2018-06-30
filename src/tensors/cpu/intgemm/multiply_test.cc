@@ -111,6 +111,7 @@ template <class Routine> void TestPrepare(int rows = 32, int cols = 16) {
   AlignedVector<Integer> quantized(rows * cols);
   Routine::Quantize(input.get(), quantized.get(), 1, rows * cols);
   AlignedVector<Integer> reference(rows * cols);
+  // Note this won't work for Int8/Int16 generic routines because tile sizes vary.
   SlowRearrange<Integer>(quantized.get(), reference.get(), Routine::kBTileRow, Routine::kBTileCol, rows, cols);
 
   if (memcmp(reference.get(), test.get(), rows * cols * sizeof(Integer))) {
@@ -121,6 +122,44 @@ template <class Routine> void TestPrepare(int rows = 32, int cols = 16) {
     PrintMatrix(reference.get(), rows, cols);
     std::cerr << "Routine" << '\n';
     PrintMatrix(test.get(), rows, cols);
+  }
+}
+
+template <class Routine> void TestSelectColumnsB(int rows = 32, int cols = 16) {
+  if (intgemm::kCPU < Routine::kUses) return;
+  AlignedVector<float> input(rows * cols);
+  for (int i = 0; i < rows * cols; ++i) {
+    input.get()[i] = (float)rand() / (float)RAND_MAX * 256.0 - 127.0;
+  }
+  typedef typename Routine::Integer Integer;
+  AlignedVector<Integer> prepared(rows * cols);
+  Routine::PrepareB(input.get(), prepared.get(), 1, rows, cols);
+
+  int kSelectCols = 8;
+  std::size_t select_cols[kSelectCols];
+  for (int i = 0; i < kSelectCols; ++i) {
+    select_cols[i] = rand() % cols;
+  }
+
+  AlignedVector<Integer> test(rows * kSelectCols);
+  Routine::SelectColumnsB(prepared.get(), test.get(), rows, select_cols, select_cols + kSelectCols);
+
+  // Select columns manually in float space.
+  AlignedVector<float> selected(rows * kSelectCols);
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < kSelectCols; ++c) {
+      assert(c + r * kSelectCols < rows * kSelectCols);
+      selected[c + r * kSelectCols] = input[select_cols[c] + r * cols];
+    }
+  }
+  AlignedVector<Integer> ref(rows * kSelectCols);
+  Routine::PrepareB(selected.get(), ref.get(), 1, rows, kSelectCols);
+
+  if (memcmp(ref.get(), test.get(), sizeof(Integer) * rows * kSelectCols)) {
+    std::cout << "SelectColumnsB failed.\nReference:\n";
+    PrintMatrix(ref.get(), rows, kSelectCols);
+    std::cout << "Routine:\n";
+    PrintMatrix(test.get(), rows, kSelectCols);
   }
 }
 
@@ -286,14 +325,20 @@ int main(int argc, char ** argv) {
     TestPrepare<AVX512_8bit>(256, 32);
     TestPrepare<AVX512_16bit>(32, 8);
     TestPrepare<AVX512_16bit>(256, 32);
+    TestSelectColumnsB<AVX512_8bit>();
+    TestSelectColumnsB<AVX512_16bit>();
 #endif
     TestPrepare<AVX2_8bit>(64, 32);
     TestPrepare<AVX2_16bit>(64, 32);
+    TestSelectColumnsB<AVX2_8bit>();
+    TestSelectColumnsB<AVX2_16bit>();
     TestPrepare<SSSE3_8bit>(16, 8);
     TestPrepare<SSSE3_8bit>(32, 16);
     TestPrepare<SSSE3_8bit>(32, 32);
+    TestSelectColumnsB<SSSE3_8bit>();
     TestPrepare<SSE2_16bit>(8, 8);
     TestPrepare<SSE2_16bit>(32, 32);
+    TestSelectColumnsB<SSE2_16bit>();
     TestMax<__m128>();
     TestMaxAbsolute<SSE2_MaxAbsolute>();
 /*    if (kCPU >= CPU_AVX2) {

@@ -76,7 +76,7 @@ void SSSE3_8bit::PrepareB(const float *input, int8_t *output, float quant_mult, 
   PrepareBFor8(input, output, QuantizeTile8(quant_mult), rows, cols);
 }
 
-void SSSE3_8bit::SelectColumnsB(const int8_t *input, int8_t *output, int rows, const int *cols_begin, const int *cols_end) {
+void SSSE3_8bit::SelectColumnsB(const int8_t *input, int8_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end) {
   SelectColumnsOfB((const __m128i*)input, (__m128i*)output, rows, cols_begin, cols_end);
 }
 

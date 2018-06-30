@@ -250,10 +250,10 @@ template <class Quantizer> static inline void PrepareBFor16(const float *input, 
 
 /* Select columns of B from PrepareB format to PrepareB format.
  */
-template <class Register> static inline void SelectColumnsOfB(const Register *input, Register *output, int rows_bytes /* number of bytes in a row */, const int *cols_begin, const int *cols_end) {
+template <class Register> static inline void SelectColumnsOfB(const Register *input, Register *output, int rows_bytes /* number of bytes in a row */, const std::size_t *cols_begin, const std::size_t *cols_end) {
   // Do columns for multiples of 8.
   int register_rows = rows_bytes / sizeof(Register);
-  const int *cols_end8 = cols_begin + ((cols_end - cols_begin) & ~7);
+  const std::size_t *cols_end8 = cols_begin + ((cols_end - cols_begin) & ~7);
   const Register *starts[8];
   for (; cols_begin != cols_end8; cols_begin += 8) {
     for (int k = 0; k < 8; ++k) {

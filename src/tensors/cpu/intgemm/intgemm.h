@@ -40,6 +40,8 @@
  * passing unquant_mult = \lambda / (A_quant_mult * B_quant_mult).
  */
 
+// Yes, both headers due to the debacle about int32_t
+#include <cstdint>
 #include <stdint.h>
 #include <exception>
 
@@ -84,7 +86,7 @@ struct Int16 {
   static void (*PrepareB)(const float *input, int16_t *output, float quant_mult, int rows, int cols);
 
   // Select columns from a prepared B matrix.  The number of selected columns must be a multiple of 8. 
-  static void (*SelectColumnsB)(const int16_t *input, int16_t *output, int rows, const int *cols_begin, const int *cols_end);
+  static void (*SelectColumnsB)(const int16_t *input, int16_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end);
 
   // Multiply C = A * B, presuming A and B have been prepared.
   static void (*Multiply)(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
@@ -118,7 +120,7 @@ struct Int8 {
   static void (*PrepareB)(const float *input, int8_t *output, float quant_mult, int rows, int cols);
 
   // Select columns from a prepared B matrix.  The number of selected columns must be a multiple of 8. 
-  static void (*SelectColumnsB)(const int8_t *input, int8_t *output, int rows, const int *cols_begin, const int *cols_end);
+  static void (*SelectColumnsB)(const int8_t *input, int8_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end);
 
   // Multiply C = A * B, presuming A and B have been prepared.
   static void (*Multiply)(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);

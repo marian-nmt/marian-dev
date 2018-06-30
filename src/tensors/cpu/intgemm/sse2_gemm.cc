@@ -59,7 +59,7 @@ void SSE2_16bit::PrepareB(const float *input, int16_t *output, float quant_mult,
   PrepareBFor16(input, output, QuantizeTile16(quant_mult), rows, cols);
 }
 
-void SSE2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, int rows, const int *cols_begin, const int *cols_end) {
+void SSE2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end) {
   SelectColumnsOfB((const __m128i*)input, (__m128i*)output, rows * 2, cols_begin, cols_end);
 }
 

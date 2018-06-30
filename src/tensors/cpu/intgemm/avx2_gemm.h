@@ -1,5 +1,6 @@
 #pragma once
 #include "cpu_type.h"
+#include <cstdint>
 #include <stdint.h>
 
 namespace intgemm {
@@ -20,7 +21,7 @@ struct AVX2_16bit {
 
   static void PrepareB(const float *input, int16_t *output, float quant_mult, int rows, int cols);
 
-  static void SelectColumnsB(const int16_t *input, int16_t *output, int rows, const int *cols_begin, const int *cols_end);
+  static void SelectColumnsB(const int16_t *input, int16_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end);
 
   static void Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
 
@@ -45,7 +46,7 @@ struct AVX2_8bit {
 
   static void PrepareB(const float *input, int8_t *output, float quant_mult, int rows, int cols);
 
-  static void SelectColumnsB(const int8_t *input, int8_t *output, int rows, const int *cols_begin, const int *cols_end);
+  static void SelectColumnsB(const int8_t *input, int8_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end);
 
   static void Multiply(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
   

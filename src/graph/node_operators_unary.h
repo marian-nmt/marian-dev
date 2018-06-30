@@ -7,7 +7,8 @@
 #include "graph/node.h"
 #include "tensors/tensor_operators.h"
 
-//#include "tensors/gpu/cudnn_wrappers.h"
+// TODO(Marcin): Fix issue #262 regarding PoolingWrapper
+#include "tensors/gpu/cudnn_wrappers.h"
 
 namespace marian {
 

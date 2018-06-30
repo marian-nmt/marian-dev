@@ -334,6 +334,9 @@ void LogSoftmaxGrad(Tensor grad_, Tensor adj_, Tensor val_) {
 void CopyRows(Tensor out_,
               const Tensor in_,
               const std::vector<size_t>& indices) {
+  if (in_->type() != Type::float32) {
+    ABORT("CopyRows on non-float");
+  }
   size_t cols = in_->shape()[1];
   size_t rows = indices.size();
 
@@ -355,6 +358,9 @@ void CopyRows(Tensor out_,
 void PasteRows(Tensor out_,
                const Tensor in_,
                const std::vector<size_t>& indices) {
+  if (in_->type() != Type::float32) {
+    ABORT("CopyRows on non-float");
+  }
   size_t cols = in_->shape()[-1];
   size_t rows = indices.size();
 

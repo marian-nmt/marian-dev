@@ -209,15 +209,26 @@ Expr weighted_average(Expr in, Expr weights, keywords::axis_k ax) {
   return p / s;
 }
 
+namespace {
+Expr int8_setup_B(Expr b, bool transB, float clipValue) {
+  // TODO this is horrible.
+  if (b->type() == "intSelectColumnsB" || b->type() == "intPrepareB") {
+    if(transB) ABORT("Transposing prepared values isn't supported.");
+    return b;
+  } else {
+    return cpu::int8::prepareB(transB ? transpose(b) : b, clipValue);
+  }
+}
+} // namespace
+
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDevice().type;
   float clipValue = a->graph()->getBackend()->getClip();
-
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
     return cpu::int8::dot(cpu::int8::prepareA(transA ? transpose(a) : a, clipValue),
-                           cpu::int8::prepareB(transB ? transpose(b) : b, clipValue),
-                           scale);
+                          int8_setup_B(b, transB, clipValue),
+                          scale);
   }
   else {
     return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue),
@@ -236,7 +247,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
 
-    bool autotune = true;
+    bool autotune = false;
     if(autotune) {
 
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
@@ -268,7 +279,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       auto alg1 = [=]() {
         // TODO(emjotde) choice of 16 or 8 bit.
         return rec1(cpu::int8::affine(rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a, clipValue)),
-                                       cpu::int8::prepareB(transB ? transpose(b) : b, clipValue),
+                                       int8_setup_B(b, transB, clipValue),
                                        bias,
                                        scale),
                     true);
@@ -308,7 +319,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     else {
       // cpu int8 version
       return cpu::int8::affine(cpu::int8::prepareA(transA ? transpose(a) : a, clipValue),
-                                cpu::int8::prepareB(transB ? transpose(b) : b, clipValue),
+                                int8_setup_B(b, transB, clipValue),
                                 bias,
                                 scale);
     }

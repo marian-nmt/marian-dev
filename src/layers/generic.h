@@ -4,6 +4,7 @@
 
 #include "data/shortlist.h"
 #include "layers/factory.h"
+#include "tensors/cpu/integer.h"
 
 namespace marian {
 namespace mlp {
@@ -130,14 +131,27 @@ public:
     if(!W_) {
       auto name = options_->get<std::string>("prefix");
       auto dim = options_->get<int>("dim");
+      auto device = input->graph()->getDevice().type;
       std::string nameW = "W";
 
       if(tiedParams_.count(nameW)) {
         transposeW_ = true;
         W_ = tiedParams_[nameW];
-        if(shortlist_)
-          W_ = rows(W_, shortlist_->indices());
+        if(shortlist_) {
+          if (input->graph()->isOptimized() && device == DeviceType::cpu) {
+            transposeW_ = false;
+            W_ = transpose(W_);
+            // We want to comment this line and uncomment the selectColumnsB line.
+            W_ = cols(W_, shortlist_->indices());
+            W_ = cpu::int8::prepareB(W_, -1000.0 /* currently unused */);
+//            W_ = cpu::int8::selectColumnsB(W_, shortlist_->indices());
+          } else {
+            ABORT("Shouldn't be shortlisting with rows");
+            W_ = rows(W_, shortlist_->indices());
+          }
+        }
       } else {
+        // TODO optimize this path for integers.
         W_ = graph_->param(name + "_" + nameW,
                            {input->shape()[-1], dim},
                            inits::glorot_uniform);

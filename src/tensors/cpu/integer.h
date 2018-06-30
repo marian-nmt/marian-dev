@@ -2,42 +2,60 @@
 
 #include "tensors/cpu/bias.h"
 #include "graph/node.h"
+#include "graph/node_operators_unary.h"
 #include "tensors/cpu/intgemm/intgemm.h"
 
 namespace marian {
 namespace cpu {
 namespace integer {
 
-// Prepare A for multiplication.
-// Expected template argument: intgemm::Int16 or intgemm::Int8.
-template <class Backend> struct PrepareANodeOp : public UnaryNodeOp {
+struct ScaledNodeOp : public UnaryNodeOp {
   float quantMult_;
 
-  PrepareANodeOp(Expr a, float clipValue)
-    // TODO(emjotde): map from template argument to Type.
-  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
+  explicit ScaledNodeOp(Expr a, Type t) : UnaryNodeOp(a, t) {}
+  explicit ScaledNodeOp(Expr a, Shape s, Type t) : UnaryNodeOp(a, s, t) {}
 
-  NodeOps forwardOps() {
-    return { [=] {
-      auto c = child(0)->val();
-      if (sizeof(typename Backend::Integer) == 2) {
-        quantMult_ = 1024.0f;
-      } else {
-        quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
-      }
-      Backend::PrepareA(
-          c->data(),
-          val_->data<typename Backend::Integer>(),
-          quantMult_,
-          // Number of rows
-          c->shape().elements() / child(0)->val()->shape()[-1],
-          c->shape()[-1]);
-    }};
+  template <class Integer> void CalculateQuantMult() {
+    auto c = child(0)->val();
+    if (c->type() != Type::float32) {
+      ABORT("Trying to quantize non-float");
+    }
+    if (sizeof(Integer) == 2) {
+      quantMult_ = 1024.0f;
+    } else {
+      quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
+    }
+  }
+
+  // Get number of rows which should really be a method in shape
+  int rows() {
+    auto c = child(0)->val();
+    return c->shape().elements() / c->shape()[-1];
   }
 
   NodeOps backwardOps() {
     ABORT("Only used for inference");
     return {NodeOp()};
+  }
+};
+
+// Prepare A for multiplication.
+// Expected template argument: intgemm::Int16 or intgemm::Int8.
+template <class Backend> struct PrepareANodeOp : public ScaledNodeOp {
+  // TODO(emjotde): map from template argument to Type.
+  PrepareANodeOp(Expr a, float clipValue) : ScaledNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
+
+  NodeOps forwardOps() {
+    return { [=] {
+      CalculateQuantMult<typename Backend::Integer>();
+      auto c = child(0)->val();
+      Backend::PrepareA(
+          c->data(),
+          val_->data<typename Backend::Integer>(),
+          quantMult_,
+          rows(),
+          c->shape()[-1]);
+    }};
   }
 
   const std::string type() { return "intPrepareA"; }
@@ -45,38 +63,57 @@ template <class Backend> struct PrepareANodeOp : public UnaryNodeOp {
 
 // Seems exessive to have everything duplicated for PrepareB.
 // Expected template argument: intgemm::Int16 or intgemm::Int8.
-template <class Backend> struct PrepareBNodeOp : public UnaryNodeOp {
-  float quantMult_;
-
-  PrepareBNodeOp(Expr a, float clipValue)
-    // TODO(emjotde): map from template argument to Type.
-  : UnaryNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
+template <class Backend> struct PrepareBNodeOp : public ScaledNodeOp {
+  PrepareBNodeOp(Expr a, float clipValue) : ScaledNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
 
   NodeOps forwardOps() {
     return { [=] {
+      CalculateQuantMult<typename Backend::Integer>();
       auto c = child(0)->val();
-      if (sizeof(typename Backend::Integer) == 2) {
-        quantMult_ = 1024.0f;
-      } else {
-        quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
-      }
-
       Backend::PrepareB(
           c->data(),
           val_->data<typename Backend::Integer>(),
           quantMult_,
-          // Number of rows
-          c->shape().elements() / c->shape()[-1],
+          rows(),
           c->shape()[-1]);
     }};
   }
 
-  NodeOps backwardOps() {
-    ABORT("Only used for inference");
-    return {NodeOp()};
-  }
-
   const std::string type() { return "intPrepareB"; }
+};
+
+template <class Backend> class SelectColumnsBNodeOp : public ScaledNodeOp {
+  public:
+    SelectColumnsBNodeOp(Expr a, const std::vector<size_t> &indices)
+      : ScaledNodeOp(
+          a,
+          newShape(a, indices),
+          sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8),
+      indices_(indices) {}
+
+    NodeOps forwardOps() {
+      return { [=] {
+        quantMult_ = std::static_pointer_cast<ScaledNodeOp>(child(0))->quantMult_;
+        auto c = child(0)->val();
+        Backend::SelectColumnsB(
+            (const typename Backend::Integer*)c->data(),
+            val_->data<typename Backend::Integer>(),
+            rows(),
+            &*indices_.begin(),
+            &*indices_.end());
+      }};
+    }
+
+    const std::string type() { return "intSelectColumnsB"; }
+
+  private:
+    static Shape newShape(Expr a, const std::vector<size_t>& indices) {
+      Shape ret = a->shape();
+      ret.set(1, indices.size());
+      return ret;
+    }
+
+    std::vector<std::size_t> indices_;
 };
 
 template <class Backend> class DotNodeOp : public NaryNodeOp {
@@ -109,7 +146,7 @@ public:
             (const Integer*)child(1)->val()->data(),
             val_->data(),
             // TODO(emjotde): please can we just directly expose the quantization multiplier?
-            scalar_ / (std::static_pointer_cast<PrepareANodeOp<Integer> >(child(0))->quantMult_ * std::static_pointer_cast<PrepareBNodeOp<Integer> >(child(1))->quantMult_),
+            scalar_ / (std::static_pointer_cast<ScaledNodeOp>(child(0))->quantMult_ * std::static_pointer_cast<ScaledNodeOp>(child(1))->quantMult_),
             // Number of rows in A
             child(0)->val()->shape().elements() / child(0)->val()->shape()[-1],
             // Shared dimension.
@@ -199,6 +236,10 @@ static inline Expr prepareB(Expr b, float clipValue) {
   return Expression<integer::PrepareBNodeOp<intgemm::Int16> >(b, clipValue);
 }
 
+static inline Expr selectColumnsB(Expr b, const std::vector<size_t> &cols) {
+  return Expression<integer::SelectColumnsBNodeOp<intgemm::Int16> >(b, cols);
+}
+
 } // namespace int16
 
 namespace int8 {
@@ -218,6 +259,10 @@ static inline Expr prepareA(Expr a, float clipValue) {
 
 static inline Expr prepareB(Expr b, float clipValue) {
   return Expression<integer::PrepareBNodeOp<intgemm::Int8> >(b, clipValue);
+}
+
+static inline Expr selectColumnsB(Expr b, const std::vector<size_t> &cols) {
+  return Expression<integer::SelectColumnsBNodeOp<intgemm::Int8> >(b, cols);
 }
 
 } // namespace int8

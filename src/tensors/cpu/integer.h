@@ -12,31 +12,32 @@ namespace integer {
 struct ScaledNodeOp : public UnaryNodeOp {
   float quantMult_;
 
-  explicit ScaledNodeOp(Expr a, Type t) : UnaryNodeOp(a, t) {}
-  explicit ScaledNodeOp(Expr a, Shape s, Type t) : UnaryNodeOp(a, s, t) {}
-
-  template <class Integer> void CalculateQuantMult() {
-    auto c = child(0)->val();
-    if (c->type() != Type::float32) {
-      ABORT("Trying to quantize non-float");
-    }
-    if (sizeof(Integer) == 2) {
-      quantMult_ = 1024.0f;
-    } else {
-      quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
-    }
-  }
-
-  // Get number of rows which should really be a method in shape
-  int rows() {
-    auto c = child(0)->val();
-    return c->shape().elements() / c->shape()[-1];
-  }
-
   NodeOps backwardOps() {
     ABORT("Only used for inference");
     return {NodeOp()};
   }
+
+  protected:
+    ScaledNodeOp(Expr a, Type t) : UnaryNodeOp(a, t) {}
+    ScaledNodeOp(Expr a, Shape s, Type t) : UnaryNodeOp(a, s, t) {}
+
+    template <class Integer> void CalculateQuantMult() {
+      auto c = child(0)->val();
+      if (c->type() != Type::float32) {
+        ABORT("Trying to quantize non-float");
+      }
+      if (sizeof(Integer) == 2) {
+        quantMult_ = 1024.0f;
+      } else {
+        quantMult_ = 127.0f / intgemm::MaxAbsolute(c->data(), c->data() + c->shape().elements());
+      }
+    }
+
+    // Get number of rows which should really be a method in shape
+    int rows() {
+      auto c = child(0)->val();
+      return c->shape().elements() / c->shape()[-1];
+    }
 };
 
 // Prepare A for multiplication.
@@ -105,6 +106,23 @@ template <class Backend> class SelectColumnsBNodeOp : public ScaledNodeOp {
     }
 
     const std::string type() { return "intSelectColumnsB"; }
+
+    size_t hash() {
+      if (!hash_) {
+        hash_ = NaryNodeOp::hash();
+        for(auto i : indices_)
+          boost::hash_combine(hash_, i);
+      }
+      return hash_;
+    }
+
+    bool equal(Expr node) {
+      if(!NaryNodeOp::equal(node)) return false;
+      Ptr<SelectColumnsBNodeOp> cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
+      if (!cnode) return false;
+      return indices_ == cnode->indices_;
+    }
+
 
   private:
     static Shape newShape(Expr a, const std::vector<size_t>& indices) {

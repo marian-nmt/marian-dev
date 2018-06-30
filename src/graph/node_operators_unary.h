@@ -10,6 +10,8 @@
 // TODO(Marcin): Fix issue #262 regarding PoolingWrapper
 #include "tensors/gpu/cudnn_wrappers.h"
 
+#include <iostream>
+
 namespace marian {
 
 struct UnaryNodeOp : public NaryNodeOp {

@@ -141,12 +141,9 @@ public:
           if (input->graph()->isOptimized() && device == DeviceType::cpu) {
             transposeW_ = false;
             W_ = transpose(W_);
-            // We want to comment this line and uncomment the selectColumnsB line.
-            W_ = cols(W_, shortlist_->indices());
             W_ = cpu::int8::prepareB(W_, -1000.0 /* currently unused */);
-//            W_ = cpu::int8::selectColumnsB(W_, shortlist_->indices());
+            W_ = cpu::int8::selectColumnsB(W_, shortlist_->indices());
           } else {
-            ABORT("Shouldn't be shortlisting with rows");
             W_ = rows(W_, shortlist_->indices());
           }
         }
@@ -163,7 +160,7 @@ public:
       if(shortlist_)
         b_ = cols(b_, shortlist_->indices());
     }
-
+    // TODO(kpu): specialize the affine to tell it B has been prepared already.
     return affine(input, W_, b_, false, transposeW_);
   }
 

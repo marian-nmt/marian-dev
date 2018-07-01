@@ -511,7 +511,7 @@ public:
     float dropoutRnn = inference ? 0.f : options->get<float>("dropout-rnn");
 
     auto rnn = rnn::rnn(graph)                                              //
-        ("type", "sru")                                                     //
+        ("type", options->get<std::string>("dec-cell"))                                                     //
         ("prefix", prefix)                                                  //
         ("dimInput", options->get<int>("dim-emb"))                          //
         ("dimState", options->get<int>("dim-emb"))                          //
@@ -647,29 +647,29 @@ public:
                    Ptr<data::CorpusBatch> batch)
       : DecoderState(states, probs, encStates, batch) {}
 
-  // virtual Ptr<DecoderState> select(const std::vector<size_t> &selIdx,
-  //                                  int beamSize) {
-  //   rnn::States selectedStates;
+  virtual Ptr<DecoderState> select(const std::vector<size_t> &selIdx,
+                                   int beamSize) {
+    rnn::States selectedStates;
 
-  //   int dimDepth = states_[0].output->shape()[-1];
-  //   int dimTime = states_[0].output->shape()[-2];
-  //   int dimBatch = selIdx.size() / beamSize;
+    int dimDepth = states_[0].output->shape()[-1];
+    int dimTime = states_[0].output->shape()[-2];
+    int dimBatch = selIdx.size() / beamSize;
 
-  //   std::vector<size_t> selIdx2;
-  //   for(auto i : selIdx)
-  //     for(int j = 0; j < dimTime; ++j)
-  //       selIdx2.push_back(i * dimTime + j);
+    std::vector<size_t> selIdx2;
+    for(auto i : selIdx)
+      for(int j = 0; j < dimTime; ++j)
+        selIdx2.push_back(i * dimTime + j);
 
-  //   for(auto state : states_) {
-  //     auto sel = rows(flatten_2d(state.output), selIdx2);
-  //     sel = reshape(sel, {beamSize, dimBatch, dimTime, dimDepth});
-  //     selectedStates.push_back({sel, nullptr});
-  //   }
+    for(auto state : states_) {
+      auto sel = rows(flatten_2d(state.output), selIdx2);
+      sel = reshape(sel, {beamSize, dimBatch, dimTime, dimDepth});
+      selectedStates.push_back({sel, nullptr});
+    }
 
-  //   auto selectedState = New<TransformerState>(selectedStates, probs_, encStates_, batch_);
-  //   selectedState->setPosition(getPosition());
-  //   return selectedState;
-  // }
+    auto selectedState = New<TransformerState>(selectedStates, probs_, encStates_, batch_);
+    selectedState->setPosition(getPosition());
+    return selectedState;
+  }
 };
 
 class DecoderTransformer : public DecoderBase, public Transformer {
@@ -686,7 +686,7 @@ public:
 
     using namespace keywords;
     std::string layerType = opt<std::string>("transformer-decoder-autoreg");
-    if(layerType == "gru") {
+    if(layerType == "rnn") {
       std::vector<Expr> meanContexts;
       for(auto& encState : encStates) {
         // average the source context weighted by the batch mask
@@ -714,7 +714,9 @@ public:
       }
 
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
-      return New<TransformerState>(startStates, nullptr, encStates, batch);
+
+      // don't use TransformerState for RNN layers
+      return New<DecoderState>(startStates, nullptr, encStates, batch);
     }
     else {
       rnn::States startStates;
@@ -825,12 +827,12 @@ public:
                                 selfMask,
                                 startPos,
                                 inference_);
-      } else if(layerType == "gru") {
+      } else if(layerType == "rnn") {
         query = DecoderLayerRNN(decoderState,
                                 prevDecoderState,
                                 graph,
                                 options_,
-                                prefix_ + "_l" + std::to_string(i) + "_gru",
+                                prefix_ + "_l" + std::to_string(i) + "_rnn",
                                 query,
                                 selfMask,
                                 startPos,
@@ -900,10 +902,19 @@ public:
     Expr logits = output_->apply(decoderContext);
 
     // return unormalized(!) probabilities
-    auto nextState = New<TransformerState>(decoderStates,
-                                           logits,
-                                           state->getEncoderStates(),
-                                           state->getBatch());
+    Ptr<DecoderState> nextState;
+    if(opt<std::string>("transformer-decoder-autoreg") == "rnn") {
+      nextState = New<DecoderState>(decoderStates,
+                                    logits,
+                                    state->getEncoderStates(),
+                                    state->getBatch());
+    }
+    else {
+      nextState = New<TransformerState>(decoderStates,
+                                        logits,
+                                        state->getEncoderStates(),
+                                        state->getBatch());
+    }
     nextState->setPosition(state->getPosition() + 1);
     return nextState;
   }

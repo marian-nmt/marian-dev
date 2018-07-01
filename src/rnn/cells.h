@@ -858,5 +858,91 @@ public:
     return {nextRecState, nextCellState};
   }
 };
+
+class SlowSRU : public Cell {
+private:
+  Expr W_;
+  Expr Wr_, br_;
+  Expr Wf_, bf_;
+
+  bool layerNorm_;
+  float dropout_;
+
+  Expr gamma_, gammaf_, gammar_;
+  Expr dropMaskX_;
+
+public:
+  SlowSRU(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
+    int dimInput = options_->get<int>("dimInput");
+    int dimState = options_->get<int>("dimState");
+    std::string prefix = options->get<std::string>("prefix");
+
+    ABORT_IF(dimInput != dimState, "For SRU state and input dims have to be equal");
+
+    dropout_ = opt<float>("dropout", 0);
+
+    W_ = graph->param(prefix + "_W",
+                       {dimInput, dimInput},
+                       inits::glorot_uniform);
+
+    Wf_ = graph->param(prefix + "_Wf",
+                       {dimInput, dimInput},
+                       inits::glorot_uniform);
+    bf_ = graph->param(
+        prefix + "_bf", {1, dimInput}, inits::zeros);
+
+    Wr_ = graph->param(prefix + "_Wr",
+                       {dimInput, dimInput},
+                       inits::glorot_uniform);
+    br_ = graph->param(
+        prefix + "_br", {1, dimInput}, inits::zeros);
+
+    if(dropout_ > 0.0f) {
+      dropMaskX_ = graph->dropout(dropout_, {1, dimInput});
+    }
+  }
+
+  State apply(std::vector<Expr> inputs, State state, Expr mask = nullptr) {
+    return applyState(applyInput(inputs), state, mask);
+  }
+
+  std::vector<Expr> applyInput(std::vector<Expr> inputs) {
+    ABORT_IF(inputs.empty(), "Slow SRU expects input");
+
+    Expr input;
+    if(inputs.size() > 1)
+      input = concatenate(inputs, keywords::axis = -1);
+    else
+      input = inputs.front();
+
+    auto inputDropped = dropMaskX_ ? dropout(input, dropMaskX_) : input;
+
+    auto x = dot(inputDropped, W_);
+    auto f = logit(affine(inputDropped, Wf_, bf_));
+    auto r = logit(affine(inputDropped, Wr_, br_));
+
+    return {x, f, r, input};
+  }
+
+  State applyState(std::vector<Expr> xWs, State state, Expr mask = nullptr) {
+    auto recState = state.output;
+    auto cellState = state.cell;
+
+    auto x = xWs[0];
+    auto f = xWs[1];
+    auto r = xWs[2];
+    auto input = xWs[3];
+
+    auto nextCellState = highway(cellState, x, f); // rename to "interpolate"?
+    auto nextState = highway(nextCellState, input, r);
+
+    auto maskedCellState = mask ? mask * nextCellState : nextCellState;
+    auto maskedState = mask ? mask * nextState : nextState;
+
+    return {maskedState, maskedCellState};
+  }
+};
+
+
 }
 }

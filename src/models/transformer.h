@@ -496,27 +496,45 @@ public:
     return LayerAAN(graph, options, prefix, input, output, inference);
   }
 
-  Expr LayerOther(Ptr<ExpressionGraph> graph,
-                  Ptr<Options> options,
-                  std::string prefix,
-                  Expr input,
-                  Expr output,
-                  bool inference = false) {
+  Expr DecoderLayerRNN(rnn::State& decoderState,
+                       const rnn::State& prevDecoderState,
+                       Ptr<ExpressionGraph> graph,
+                       Ptr<Options> options,
+                       std::string prefix,
+                       Expr input,
+                       Expr selfMask,
+                       int startPos,
+                       bool inference = false) {
+
     using namespace keywords;
 
-    int dimModel = input->shape()[-1];
+    float dropoutRnn = inference ? 0.f : options->get<float>("dropout-rnn");
+
+    auto rnn = rnn::rnn(graph)                                              //
+        ("type", "sru")                                                     //
+        ("prefix", prefix)                                                  //
+        ("dimInput", options->get<int>("dim-emb"))                          //
+        ("dimState", options->get<int>("dim-emb"))                          //
+        ("dropout", dropoutRnn)                                             //
+        ("layer-normalization", options->get<bool>("layer-normalization"))  //
+        .push_back(rnn::cell(graph))
+        .construct();
 
     float dropProb = inference ? 0 : options->get<float>("transformer-dropout");
     auto opsPre = options->get<std::string>("transformer-preprocess");
+    auto output = PreProcess(graph, prefix, opsPre, input, dropProb);
 
-    output = PreProcess(graph, prefix + "_ffn", opsPre, output, dropProb);
+    output = TransposeTimeBatch(output);
+    output = rnn->transduce(output, prevDecoderState);
+    decoderState = rnn->lastCellStates()[0];
+    output = TransposeTimeBatch(output);
 
     auto opsPost = options->get<std::string>("transformer-postprocess");
-    output
-        = PostProcess(graph, prefix + "_ffn", opsPost, output, input, dropProb);
+    output = PostProcess(graph, prefix + "_ffn", opsPost, output, input, dropProb);
 
     return output;
   }
+
 };
 
 class EncoderTransformer : public EncoderBase, public Transformer {
@@ -629,29 +647,29 @@ public:
                    Ptr<data::CorpusBatch> batch)
       : DecoderState(states, probs, encStates, batch) {}
 
-  virtual Ptr<DecoderState> select(const std::vector<size_t> &selIdx,
-                                   int beamSize) {
-    rnn::States selectedStates;
+  // virtual Ptr<DecoderState> select(const std::vector<size_t> &selIdx,
+  //                                  int beamSize) {
+  //   rnn::States selectedStates;
 
-    int dimDepth = states_[0].output->shape()[-1];
-    int dimTime = states_[0].output->shape()[-2];
-    int dimBatch = selIdx.size() / beamSize;
+  //   int dimDepth = states_[0].output->shape()[-1];
+  //   int dimTime = states_[0].output->shape()[-2];
+  //   int dimBatch = selIdx.size() / beamSize;
 
-    std::vector<size_t> selIdx2;
-    for(auto i : selIdx)
-      for(int j = 0; j < dimTime; ++j)
-        selIdx2.push_back(i * dimTime + j);
+  //   std::vector<size_t> selIdx2;
+  //   for(auto i : selIdx)
+  //     for(int j = 0; j < dimTime; ++j)
+  //       selIdx2.push_back(i * dimTime + j);
 
-    for(auto state : states_) {
-      auto sel = rows(flatten_2d(state.output), selIdx2);
-      sel = reshape(sel, {beamSize, dimBatch, dimTime, dimDepth});
-      selectedStates.push_back({sel, nullptr});
-    }
+  //   for(auto state : states_) {
+  //     auto sel = rows(flatten_2d(state.output), selIdx2);
+  //     sel = reshape(sel, {beamSize, dimBatch, dimTime, dimDepth});
+  //     selectedStates.push_back({sel, nullptr});
+  //   }
 
-    auto selectedState = New<TransformerState>(selectedStates, probs_, encStates_, batch_);
-    selectedState->setPosition(getPosition());
-    return selectedState;
-  }
+  //   auto selectedState = New<TransformerState>(selectedStates, probs_, encStates_, batch_);
+  //   selectedState->setPosition(getPosition());
+  //   return selectedState;
+  // }
 };
 
 class DecoderTransformer : public DecoderBase, public Transformer {
@@ -665,8 +683,43 @@ public:
       Ptr<ExpressionGraph> graph,
       Ptr<data::CorpusBatch> batch,
       std::vector<Ptr<EncoderState>> &encStates) {
-    rnn::States startStates;
-    return New<TransformerState>(startStates, nullptr, encStates, batch);
+
+    using namespace keywords;
+    std::string layerType = opt<std::string>("transformer-decoder-autoreg");
+    if(layerType == "gru") {
+      std::vector<Expr> meanContexts;
+      for(auto& encState : encStates) {
+        // average the source context weighted by the batch mask
+        // this will remove padded zeros from the average
+        meanContexts.push_back(weighted_average(
+            encState->getContext(), encState->getMask(), axis = -3));
+      }
+
+      Expr start;
+      if(!meanContexts.empty()) {
+        // apply single layer network to mean to map into decoder space
+        auto mlp = mlp::mlp(graph).push_back(
+            mlp::dense(graph)                                          //
+            ("prefix", prefix_ + "_ff_state")                          //
+            ("dim", meanContexts.back()->shape()[-1])                  //
+            ("activation", (int)mlp::act::tanh)                        //
+            ("layer-normalization", opt<bool>("layer-normalization")));
+
+        start = mlp->apply(meanContexts);
+      } else {
+        int dimBatch = batch->size();
+        int dim = opt<int>("dim-emb");
+
+        start = graph->constant({dimBatch, dim}, inits::zeros);
+      }
+
+      rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
+      return New<TransformerState>(startStates, nullptr, encStates, batch);
+    }
+    else {
+      rnn::States startStates;
+      return New<TransformerState>(startStates, nullptr, encStates, batch);
+    }
   }
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
@@ -768,6 +821,16 @@ public:
                                 graph,
                                 options_,
                                 prefix_ + "_l" + std::to_string(i) + "_aan",
+                                query,
+                                selfMask,
+                                startPos,
+                                inference_);
+      } else if(layerType == "gru") {
+        query = DecoderLayerRNN(decoderState,
+                                prevDecoderState,
+                                graph,
+                                options_,
+                                prefix_ + "_l" + std::to_string(i) + "_gru",
                                 query,
                                 selfMask,
                                 startPos,

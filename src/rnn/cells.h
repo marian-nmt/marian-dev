@@ -934,7 +934,7 @@ public:
     auto input = xWs[3];
 
     auto nextCellState = highway(cellState, x, f); // rename to "interpolate"?
-    auto nextState = highway(nextCellState, input, r);
+    auto nextState = highway(tanh(nextCellState), input, r);
 
     auto maskedCellState = mask ? mask * nextCellState : nextCellState;
     auto maskedState = mask ? mask * nextState : nextState;

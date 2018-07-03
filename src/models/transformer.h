@@ -687,32 +687,10 @@ public:
     using namespace keywords;
     std::string layerType = opt<std::string>("transformer-decoder-autoreg");
     if(layerType == "rnn") {
-      std::vector<Expr> meanContexts;
-      for(auto& encState : encStates) {
-        // average the source context weighted by the batch mask
-        // this will remove padded zeros from the average
-        meanContexts.push_back(weighted_average(
-            encState->getContext(), encState->getMask(), axis = -3));
-      }
+      int dimBatch = batch->size();
+      int dim = opt<int>("dim-emb");
 
-      Expr start;
-      if(!meanContexts.empty()) {
-        // apply single layer network to mean to map into decoder space
-        auto mlp = mlp::mlp(graph).push_back(
-            mlp::dense(graph)                                          //
-            ("prefix", prefix_ + "_ff_state")                          //
-            ("dim", meanContexts.back()->shape()[-1])                  //
-            ("activation", (int)mlp::act::tanh)                        //
-            ("layer-normalization", opt<bool>("layer-normalization")));
-
-        start = mlp->apply(meanContexts);
-      } else {
-        int dimBatch = batch->size();
-        int dim = opt<int>("dim-emb");
-
-        start = graph->constant({dimBatch, dim}, inits::zeros);
-      }
-
+      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers

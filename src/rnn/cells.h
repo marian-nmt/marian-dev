@@ -918,8 +918,8 @@ public:
     auto inputDropped = dropMaskX_ ? dropout(input, dropMaskX_) : input;
 
     auto x = dot(inputDropped, W_);
-    auto f = logit(affine(inputDropped, Wf_, bf_));
-    auto r = logit(affine(inputDropped, Wr_, br_));
+    auto f = affine(inputDropped, Wf_, bf_);
+    auto r = affine(inputDropped, Wr_, br_);
 
     return {x, f, r, input};
   }
@@ -933,7 +933,7 @@ public:
     auto r = xWs[2];
     auto input = xWs[3];
 
-    auto nextCellState = highway(cellState, x, f); // rename to "interpolate"?
+    auto nextCellState = highway(cellState, x, f); // rename to "gate"?
     auto nextState = highway(tanh(nextCellState), input, r);
 
     auto maskedCellState = mask ? mask * nextCellState : nextCellState;

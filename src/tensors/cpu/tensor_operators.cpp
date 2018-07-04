@@ -1168,7 +1168,11 @@ void HighwayForward(Tensor out,
                     const Tensor in1,
                     const Tensor in2,
                     const Tensor t) {
-  ABORT("Not implemented!");
+  size_t length = out->shape().elements();
+  for(size_t i = 0; i < length; ++i) {
+    float sigma = stableLogit(t->data()[i]);
+    out->data()[i] = sigma * in1->data()[i] + (1.f - sigma) * in2->data()[i]; 
+  }
 }
 
 void HighwayBackward(Tensor out1,

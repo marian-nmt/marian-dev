@@ -496,27 +496,45 @@ public:
     return LayerAAN(graph, options, prefix, input, output, inference);
   }
 
-  Expr LayerOther(Ptr<ExpressionGraph> graph,
-                  Ptr<Options> options,
-                  std::string prefix,
-                  Expr input,
-                  Expr output,
-                  bool inference = false) {
+  Expr DecoderLayerRNN(rnn::State& decoderState,
+                       const rnn::State& prevDecoderState,
+                       Ptr<ExpressionGraph> graph,
+                       Ptr<Options> options,
+                       std::string prefix,
+                       Expr input,
+                       Expr selfMask,
+                       int startPos,
+                       bool inference = false) {
+
     using namespace keywords;
 
-    int dimModel = input->shape()[-1];
+    float dropoutRnn = inference ? 0.f : options->get<float>("dropout-rnn");
+
+    auto rnn = rnn::rnn(graph)                                              //
+        ("type", options->get<std::string>("dec-cell"))                                                     //
+        ("prefix", prefix)                                                  //
+        ("dimInput", options->get<int>("dim-emb"))                          //
+        ("dimState", options->get<int>("dim-emb"))                          //
+        ("dropout", dropoutRnn)                                             //
+        ("layer-normalization", options->get<bool>("layer-normalization"))  //
+        .push_back(rnn::cell(graph))
+        .construct();
 
     float dropProb = inference ? 0 : options->get<float>("transformer-dropout");
     auto opsPre = options->get<std::string>("transformer-preprocess");
+    auto output = PreProcess(graph, prefix, opsPre, input, dropProb);
 
-    output = PreProcess(graph, prefix + "_ffn", opsPre, output, dropProb);
+    output = TransposeTimeBatch(output);
+    output = rnn->transduce(output, prevDecoderState);
+    decoderState = rnn->lastCellStates()[0];
+    output = TransposeTimeBatch(output);
 
     auto opsPost = options->get<std::string>("transformer-postprocess");
-    output
-        = PostProcess(graph, prefix + "_ffn", opsPost, output, input, dropProb);
+    output = PostProcess(graph, prefix + "_ffn", opsPost, output, input, dropProb);
 
     return output;
   }
+
 };
 
 class EncoderTransformer : public EncoderBase, public Transformer {
@@ -665,8 +683,23 @@ public:
       Ptr<ExpressionGraph> graph,
       Ptr<data::CorpusBatch> batch,
       std::vector<Ptr<EncoderState>> &encStates) {
-    rnn::States startStates;
-    return New<TransformerState>(startStates, nullptr, encStates, batch);
+
+    using namespace keywords;
+    std::string layerType = opt<std::string>("transformer-decoder-autoreg");
+    if(layerType == "rnn") {
+      int dimBatch = batch->size();
+      int dim = opt<int>("dim-emb");
+
+      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
+      rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
+
+      // don't use TransformerState for RNN layers
+      return New<DecoderState>(startStates, nullptr, encStates, batch);
+    }
+    else {
+      rnn::States startStates;
+      return New<TransformerState>(startStates, nullptr, encStates, batch);
+    }
   }
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
@@ -772,6 +805,16 @@ public:
                                 selfMask,
                                 startPos,
                                 inference_);
+      } else if(layerType == "rnn") {
+        query = DecoderLayerRNN(decoderState,
+                                prevDecoderState,
+                                graph,
+                                options_,
+                                prefix_ + "_l" + std::to_string(i) + "_rnn",
+                                query,
+                                selfMask,
+                                startPos,
+                                inference_);
       } else {
         ABORT("Unknown auto-regressive layer type in transformer decoder {}", layerType);
       }
@@ -837,10 +880,19 @@ public:
     Expr logits = output_->apply(decoderContext);
 
     // return unormalized(!) probabilities
-    auto nextState = New<TransformerState>(decoderStates,
-                                           logits,
-                                           state->getEncoderStates(),
-                                           state->getBatch());
+    Ptr<DecoderState> nextState;
+    if(opt<std::string>("transformer-decoder-autoreg") == "rnn") {
+      nextState = New<DecoderState>(decoderStates,
+                                    logits,
+                                    state->getEncoderStates(),
+                                    state->getBatch());
+    }
+    else {
+      nextState = New<TransformerState>(decoderStates,
+                                        logits,
+                                        state->getEncoderStates(),
+                                        state->getBatch());
+    }
     nextState->setPosition(state->getPosition() + 1);
     return nextState;
   }

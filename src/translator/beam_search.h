@@ -10,6 +10,58 @@
 
 namespace marian {
 
+class BeamSearchMatrix {
+private:
+  size_t batchSize_;
+  size_t maxLength_;
+  size_t vocabSize_;
+
+  size_t curPos_{0};
+  size_t curBeamSize_;
+
+  struct Hypothesis {
+    size_t embIdx;
+    size_t selIdx;
+    float cost;
+  };
+
+  typedef std::vector<Hypothesis> Beam;
+  typedef std::vector<Beam> Batch;
+
+  std::vector<Batch> history_;
+
+public:
+  BeamSearchMatrix(size_t beamSize, size_t batchSize, size_t maxLength, size_t vocabSize)
+  : batchSize_(batchSize), maxLength_(maxLength), vocabSize_(vocabSize), curBeamSize_(beamSize),
+    history_(maxLength_, Batch(batchSize_, Beam(curBeamSize_))) {}
+
+  void extend(const std::vector<size_t> keys, const std::vector<float>& costs) {
+    for(size_t i = 0; i < keys.size(); ++i) {
+      // Keys is a list of indices into a score matrix that is of shape (batch * beam) x vocab.
+      // Hence getting the (index mod vocabSize) gives us the vocab (embedding) index for that index.
+      size_t embIdx = keys[i] % vocabSize_;
+
+      // The list of indices is of size (batch * beam), so by dividing by beam we get the current
+      // batch index for that item.
+      size_t batchIdx = i / curBeamSize_;
+
+      // Dividing the index by (vocabSize * batchSize) computes position in the beam for this hyp.
+      size_t hypIdx = keys[i] / (vocabSize_ * batchSize_);
+
+      float cost = costs[i];
+
+      size_t prevSelIdx = 0;
+
+      history_[curPos_][batchIdx][hypIdx] = {embIdx, prevSelIdx, cost};
+    }
+    curPos_++;
+  }
+
+  size_t getBeamSize() {
+    return curBeamSize_;
+  }
+};
+
 class BeamSearch {
 private:
   Ptr<Config> options_;

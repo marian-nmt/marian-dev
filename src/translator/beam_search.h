@@ -12,16 +12,16 @@ namespace marian {
 
 class BeamSearchMatrix {
 private:
-  size_t batchSize_;
-  size_t maxLength_;
-  size_t vocabSize_;
+  unsigned batchSize_;
+  unsigned maxLength_;
+  unsigned vocabSize_;
 
-  size_t curPos_{0};
-  size_t curBeamSize_;
+  unsigned curPos_{0};
+  unsigned curBeamSize_;
 
   struct Hypothesis {
-    size_t embIdx;
-    size_t selIdx;
+    unsigned embIdx;
+    unsigned selIdx;
     float cost;
   };
 
@@ -31,33 +31,47 @@ private:
   std::vector<Batch> history_;
 
 public:
-  BeamSearchMatrix(size_t beamSize, size_t batchSize, size_t maxLength, size_t vocabSize)
+  BeamSearchMatrix(unsigned beamSize, unsigned batchSize, unsigned maxLength, unsigned vocabSize)
   : batchSize_(batchSize), maxLength_(maxLength), vocabSize_(vocabSize), curBeamSize_(beamSize),
-    history_(maxLength_, Batch(batchSize_, Beam(curBeamSize_))) {}
+    history_(maxLength_, Batch(batchSize_, Beam(curBeamSize_))) {
 
-  void extend(const std::vector<size_t> keys, const std::vector<float>& costs) {
-    for(size_t i = 0; i < keys.size(); ++i) {
-      // Keys is a list of indices into a score matrix that is of shape (batch * beam) x vocab.
-      // Hence getting the (index mod vocabSize) gives us the vocab (embedding) index for that index.
-      size_t embIdx = keys[i] % vocabSize_;
+      std::cerr << "init: " << maxLength_ << " " << batchSize_ << " " << curBeamSize_ << " " << vocabSize << std::endl;
+
+    }
+
+  bool extend(const std::vector<unsigned> keys, const std::vector<float>& costs) {
+    std::cerr << curPos_ << std::endl;
+    for(unsigned i = 0; i < keys.size(); ++i) {
+      // Keys is a list of indices into a score matrix that is of shape ((batch * beam) x vocab).
+      // Hence (index mod vocabSize) gives us the corresponding vocab (embedding) index.
+      unsigned embIdx = keys[i] % vocabSize_;
 
       // The list of indices is of size (batch * beam), so by dividing by beam we get the current
       // batch index for that item.
-      size_t batchIdx = i / curBeamSize_;
+      unsigned batchIdx = i / curBeamSize_;
 
-      // Dividing the index by (vocabSize * batchSize) computes position in the beam for this hyp.
-      size_t hypIdx = keys[i] / (vocabSize_ * batchSize_);
+      // Position in the corresponding beam
+      unsigned hypIdx   = i % curBeamSize_;
 
-      float cost = costs[i];
+      float cost      = costs[i];
 
-      size_t prevSelIdx = 0;
+      std::cerr << i << "\t" << keys[i] << "\t:\t" << embIdx << "\t" << batchIdx << "\t" << hypIdx << "\t" << cost << std::endl;
+
+      unsigned prevSelIdx = 0;
+      //size_t beamHypIdx = hypIdx % curBeamSize_;
+      //if(beamHypIdx >= beam.size())
+      //  beamHypIdx = beamHypIdx % beam.size();
+
 
       history_[curPos_][batchIdx][hypIdx] = {embIdx, prevSelIdx, cost};
     }
+
     curPos_++;
+
+    return curPos_ < maxLength_;
   }
 
-  size_t getBeamSize() {
+  unsigned getBeamSize() {
     return curBeamSize_;
   }
 };
@@ -66,7 +80,7 @@ class BeamSearch {
 private:
   Ptr<Config> options_;
   std::vector<Ptr<Scorer>> scorers_;
-  size_t beamSize_;
+  unsigned beamSize_;
 
 public:
   template <class... Args>
@@ -245,6 +259,8 @@ public:
       states.push_back(scorer->startState(graph, batch));
     }
 
+    Ptr<BeamSearchMatrix> bsm;
+
     do {
       //**********************************************************************
       // create constant containing previous costs for current beam
@@ -298,6 +314,9 @@ public:
           totalCosts = totalCosts + states[i]->getProbs();
       }
 
+      if(!bsm)
+        bsm = New<BeamSearchMatrix>(beamSize_, dimBatch, 30, totalCosts->shape()[-1]);
+
       // make beams continuous
       if(dimBatch > 1 && localBeamSize > 1)
         totalCosts = transpose(totalCosts, {2, 1, 0, 3});
@@ -321,6 +340,8 @@ public:
 
       std::vector<size_t> beamSizes(dimBatch, localBeamSize);
       nth->getNBestList(beamSizes, totalCosts->val(), outCosts, outKeys, first);
+
+      bsm->extend(outKeys, outCosts);
 
       int dimTrgVoc = totalCosts->shape()[-1];
       beams = toHyps(outKeys,

@@ -64,8 +64,8 @@ public:
   int* indices() { return indices_; }
 
   // copy to cpu vector
-  void get(std::vector<float>& g, std::vector<int>& i) {
-    int s = std::min((int) g.size(), size());
+  void get(std::vector<float>& g, std::vector<int>& i, int vsize) {
+    int s = std::min(vsize, size());
     if(backend_->getDevice().type == DeviceType::cpu) {
       std::copy(data(), data() + s, g.data());
       std::copy(indices(), indices() + s, i.data());
@@ -79,8 +79,8 @@ public:
   }
 
   // copy from cpu vector
-  void set(const std::vector<float>& g, const std::vector<int>& i) {
-    int s = std::min((int) g.size(), capacity());
+  void set(const std::vector<float>& g, const std::vector<int>& i, int vsize) {
+    int s = std::min(vsize, capacity());
     size_ = s;
     if(backend_->getDevice().type == DeviceType::cpu) {
       std::copy(g.data(), g.data() + s, data());
@@ -125,6 +125,9 @@ public:
 #ifdef CUDA_FOUND
     else {
       int sparse_size = gpu::buildSparse(t, data(), indices());
+      if (sparse_size > capacity()){
+        LOG(info, "WARNING, SPARSE {} CAP {}", sparse_size, capacity());
+      } 
       setSize(sparse_size);
     }
 #endif

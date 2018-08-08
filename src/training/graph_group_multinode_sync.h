@@ -66,9 +66,6 @@ protected:
   ////////////////////////////////////////////////////////////////////////////
   // Client variables.
 
-  /** Thread pool to enable clients to run concurrently. */
-  ThreadPool* clientThreadPool_;
-
   /** Graph builders for clients (which run forward and backward passes). */
   std::vector<Ptr<models::ModelBase>> clientBuilders_;
 
@@ -203,7 +200,7 @@ protected:
    * Does the MPI Communication, parameter update and copying back parameters.
    * @TODO ALHAM. God function too godly?
    */
-  void sendReceiveUpdateSync();
+  void sendReceiveUpdateSync(Tensor grad);
   void sendReceiveUpdateSparse();
   void sendReceiveUpdateQuantized();
 
@@ -260,15 +257,6 @@ public:
       clientBuilders_.push_back(
           models::from_config(options_, models::usage::training));
     }
-  }
-
-  /**
-   * (Destructor) Shut down server shard thread and (if comm. overlap enabled)
-   * communication overlap threads.
-   */
-  virtual ~MultiNodeGraphGroupSync() {
-    //@TODO merge with finalize method
-    delete clientThreadPool_;
   }
 
   /**

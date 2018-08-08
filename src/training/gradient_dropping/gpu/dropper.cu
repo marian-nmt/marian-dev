@@ -56,6 +56,7 @@ float GradientDropBase::find_threshold(Tensor grads, float rate) {
 }
 
 void GradientDropBase::dropGraph(Tensor grads,
+                                 Tensor sparseGrads,
                                  SparseTensor destination,
                                  float rate,
                                  float momentum) {
@@ -79,26 +80,31 @@ void GradientDropBase::dropGraph(Tensor grads,
   {
     using namespace functional;
     if (momentum == 0.0) 
-      marian::gpu::Element(_1 = _1 + _2, grads, residual);
+      marian::gpu::Element(_1 = _2 + _3, sparseGrads, grads, residual);
     else
-      marian::gpu::Element(_1 = _1 + _2 + _3, grads, residual, velocity);
+      marian::gpu::Element(_1 = _2 + _3 + _4, sparseGrads, grads, residual, velocity);
   }
 
   // step 2: find threshold 
-  float t = find_threshold(grads, rate);
+  float t = find_threshold(sparseGrads, rate);
 
   // step 3: drop gradients lower than threshold
   //         store gradients lower than threshold into the residual
   {
     using namespace functional;
-    marian::gpu::Element(_1 = if_then_else(abs(_2) > t, 0, _2), residual, grads);
-    marian::gpu::Element(_1 = if_then_else(abs(_1) <= t, 0, _1), grads);
+    marian::gpu::Element(_1 = if_then_else(abs(_2) > t, 0, _2), residual, sparseGrads);
+    marian::gpu::Element(_1 = if_then_else(abs(_1) <= t, 0, _1), sparseGrads);
     // momentum factor masking
     if (velocity)
-      marian::gpu::Element(_1 = if_then_else(abs(_2) > t, 0, _1), velocity, grads);
+      marian::gpu::Element(_1 = if_then_else(abs(_2) > t, 0, _1), velocity, sparseGrads);
   }
 
-  destination->fromDense(grads);
+  if (grads->size() * (1.0 - rate) >= destination->capacity()) 
+  {
+    //LOG(info, "SKIPPING SPARSIFICATION");
+    return;
+  }
+  destination->fromDense(sparseGrads);
 
   step++;
 }

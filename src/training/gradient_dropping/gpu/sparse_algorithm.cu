@@ -42,8 +42,9 @@ namespace marian {
         return;
       if(sparseIndices[idx] >= -offset
          && sparseIndices[idx] + offset < denseSize)
-        denseData[sparseIndices[idx] + offset] += sparseData[idx];
-    }
+        // denseData[sparseIndices[idx] + offset] += sparseData[idx];
+        atomicAdd(&denseData[sparseIndices[idx] + offset],sparseData[idx]); 
+   }
 
     __global__ void gScatterUpdate(float* denseData,
                             float* sparseData,

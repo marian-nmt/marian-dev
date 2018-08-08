@@ -62,7 +62,8 @@ void MultiNodeGraphGroupSync::init(Ptr<data::Batch> batch) {
 
   // init for dropping
   if (droping_rate > 0.0) {
-    int sparse_size = network_size * (1.0 - droping_rate);
+    int sparse_size = std::max(network_size * 0.1 ,
+                               network_size * (1.0 - droping_rate));
     sparseGradient = SparseTensor(
           new SparseTensorBase(sparse_size * 1.2,
                                accGradientsSync->getBackend()));
@@ -99,7 +100,8 @@ void MultiNodeGraphGroupSync::initCPUArrays() {
 
   // inits for gradient dropping
   if (droping_rate > 0.0) {
-    int sparse_size = network_size * (1.0 - droping_rate);
+    int sparse_size = std::max(network_size * 0.1 ,
+                               network_size * (1.0 - droping_rate));
     sparseGrad_cpu = std::vector<float>(sparse_size);
     sparseIndices_cpu = std::vector<int>(sparse_size);
 
@@ -137,8 +139,6 @@ void MultiNodeGraphGroupSync::setupMPI() {
 void MultiNodeGraphGroupSync::setupClients(Ptr<data::Batch> batch) {
   runBatchThroughClientGraphs(batch);
   initCPUArrays();
-
-  clientThreadPool_ = new marian::ThreadPool(devices_.size(), devices_.size());
 }
 
 /**
@@ -257,43 +257,125 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateQuantized() {
 void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
   #if MPI_FOUND
   int network_size = accGradientsSync->size();
-  int sparse_size = sparseGrad_cpu.size();
+  int sparse_limit = sparseGrad_cpu.size();
+  float curr_droping_rate = droping_rate;
+
+
+  static bool ok = false;
+  if (!ok) {
+    std::vector<float> x{ 100, -200, 300, 400, -400, 400};
+    auto t = newTensor(6, accGradientsSync->getBackend());
+    t->set(x);
+    auto sparse = SparseTensor(
+          new SparseTensorBase(4,
+                               accGradientsSync->getBackend()));
+    GradientDrop dropper = PrepareGradientDrop(accGradientsSync->getDevice());
+    dropper->dropGraph(t, sparse, 0.5, 0);
+    
+    t->get(x);
+    for (int i=0;i<6;i++) std::cout<<x[i]<<" "; std::cout<<std::endl;
+
+    float *dt = (float *)malloc(10*sizeof(float));
+    int *idc = (int *)malloc(10*sizeof(int));
+
+    cudaMemcpy(dt, sparse->data(), sparse->size()*sizeof(float) , cudaMemcpyDeviceToHost);
+    cudaMemcpy(idc, sparse->indices(), sparse->size()*sizeof(int), cudaMemcpyDeviceToHost);
+
+    for (int i=0;i<sparse->size();i++) std::cout<<dt[i]<<" : "<<idc[i]<<std::endl;
+    std::vector<float> y{ 100, 100, 100, 100, 100, 100};
+    t->set(y);
+    dropper->dropGraph(t, sparse, 0.5, 0);
+    t->get(y);
+    for (int i=0;i<6;i++) std::cout<<y[i]<<" "; std::cout<<std::endl;
+
+    ok = true;
+  }
+
+  if (true && scheduler_->numberOfBatches() < 1000) {
+    curr_droping_rate = std::pow(droping_rate, 1000.0 / (1.0 + scheduler_->numberOfBatches()));
+    // LOG(info, "WARMUP DROPPING = {}", curr_droping_rate);
+  }
+
+  int sparse_size = network_size * (1.0 - curr_droping_rate) * 1.2;
+  static float resize_steps[4] = {0.95, 0.98, 0.99, 1.0};
+  static int step_cnt = 0;
+  if (sparse_size < sparseGrad_cpu.size() && curr_droping_rate >= resize_steps[step_cnt]) {
+    step_cnt++;
+    LOG(info, "resizing to {}", sparse_size);
+    sparseGrad_cpu.resize(sparse_size);
+    sparseIndices_cpu.resize(sparse_size * mpi_comm_world_size_);
+  }
   static int step = 0;
 
-  // drop the gradient
   dropper->dropGraph(accGradientsSync,
+                     clientGraphs_[0]->params()->grads(),
                      sparseGradient,
-                     droping_rate,
+                     curr_droping_rate,
                      dropping_momentum);
-
+  if (sparse_size > sparse_limit) {
+  //  LOG(info, "full sync");
+    sendReceiveUpdateSync(clientGraphs_[0]->params()->grads());
+    return;
+  }
   // Copy the gradient and indices to CPU
-  sparseGradient->get(sparseGrad_cpu, sparseIndices_cpu);
+  sparseGradient->get(sparseGrad_cpu, sparseIndices_cpu, sparse_size);
 
-  // Wait until all nodes are ready
-  MPI_Barrier(MPI_COMM_WORLD);
-
+  static MPI_Request r1, r2;
   // Gather gradient
-  MPI_Allgather(sparseGrad_cpu.data(), sparse_size, MPI_FLOAT,
+  MPI_Iallgather(sparseGrad_cpu.data(), sparse_size, MPI_FLOAT,
     gatherGrads_cpu.data(), sparse_size, MPI_FLOAT,
-    MPI_Comm MPI_COMM_WORLD);
+    MPI_Comm MPI_COMM_WORLD, &r1);
 
   // Gather indices
-  MPI_Allgather(sparseIndices_cpu.data(), sparse_size, MPI_INT,
+  MPI_Iallgather(sparseIndices_cpu.data(), sparse_size, MPI_INT,
     gatherIndices_cpu.data(), sparse_size, MPI_INT,
-    MPI_Comm MPI_COMM_WORLD);
+    MPI_Comm MPI_COMM_WORLD, &r2);
+
+  //parallel while data transfer is happening:
+  if (false) {
+    //replace
+    using namespace functional; //@TODO makes more sense to do that on the CPU i think
+    Element(_1 -= _2, accGradientsSync, clientGraphs_[0]->params()->grads());
+
+    //sum or replace
+    clientGraphs_.back()->params()->grads()->copyFrom(accGradientsSync);
+    // error-sum
+    // clientGraphs_.back()->params()->grads()->copyFrom(dropper->error());
+    // dropper->error()->set(0);
+  }
+  
+  MPI_Wait(&r1, MPI_STATUS_IGNORE);
+  MPI_Wait(&r2, MPI_STATUS_IGNORE);
 
   // Update params
   // Copy the data back to the GPU and do optimizer update
-  sparseGather->set(gatherGrads_cpu, gatherIndices_cpu);
+  sparseGather->set(gatherGrads_cpu, gatherIndices_cpu, sparse_size * mpi_comm_world_size_);
+  // clientGraphs_.back()->params()->grads()->set(0);
+  // sparseGather->scatterAdd(clientGraphs_.back()->params()->grads(), 0);
   sparseGather->toDense(clientGraphs_.back()->params()->grads(), 0);
 
   performUpdate();
-  nodeParamSync();
 
-  //set the accumulating buffers to zero;
+  if (true && step++ % 500 == 0) {
+    clientGraphs_.back()->params()->vals()->get(accGradientsSync_cpu);
+    MPI_Allreduce(accGradientsSync_cpu.data(), //CPU buffers
+              receiveBuffer_cpu.data(),
+              network_size,
+              MPI_FLOAT,
+              MPI_SUM,
+              MPI_COMM_WORLD);
+    LOG(info, "SYNC BRO");
+    clientGraphs_.back()->params()->vals()->set(receiveBuffer_cpu);
+    using namespace functional; //@TODO makes more sense to do that on the CPU i think
+    Element(_1 /= 4, clientGraphs_.back()->params()->vals());
+  }
+
+  nodeParamSync();
+  
   accGradientsSync->set(0);
   std::fill(sparseGrad_cpu.begin(), sparseGrad_cpu.end(), 0);
   std::fill(sparseIndices_cpu.begin(), sparseIndices_cpu.end(), 0);
+
   #endif
 }
 
@@ -301,7 +383,7 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSparse() {
  * If it's rank 0, it's a local update, if it's rank one it's remote
  * send and receive. Make sure you only call from device 0.
  */
-void MultiNodeGraphGroupSync::sendReceiveUpdateSync() {
+void MultiNodeGraphGroupSync::sendReceiveUpdateSync(Tensor grad) {
   #if MPI_FOUND
   int network_size = accGradientsSync_cpu.size();
 
@@ -342,11 +424,12 @@ void MultiNodeGraphGroupSync::sendReceiveUpdateSync() {
  * @param batch Batch on which to perform forward and backward passes.
  */
 void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
+ std::vector<Ptr<data::Batch>> batches = fullBatch->split(devices_.size());
+ 
   if(!initialized_) {
-    init(fullBatch);
+    init(batches[0]);
     initialized_ = true;
   }
-  std::vector<Ptr<data::Batch>> batches = fullBatch->split(devices_.size());
   
   static int t = 0;
 
@@ -386,13 +469,20 @@ void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
       pool.enqueue(task, idx);
   }
 
+  // float clipNorm = options_->get<double>("clip-norm");
+  // static Ptr<ClipperBase> clipper = Clipper<Norm>(clipNorm);
+  // if(clipNorm > 0) {
+  //   if (t < 10) LOG(info, "LOCAL CLIP");
+  //   clipper->clip(accGradientsSync);
+  // }
+
   if (t % tau_ == 0)
     if (quantize_bit < 32)
       sendReceiveUpdateQuantized();
     else if (droping_rate > 0.0)
       sendReceiveUpdateSparse();
     else
-      sendReceiveUpdateSync();
+      sendReceiveUpdateSync(accGradientsSync);
 
   t++;
 
@@ -440,7 +530,7 @@ void MultiNodeGraphGroupSync::execute(Ptr<data::Batch> fullBatch) {
           for(auto graph : clientGraphs_)
             graph->params()->vals()->copyFrom(accGradientsSync);
       }
-
+      accGradientsSync->set(0);
       // inform other nodes to continue
       MPI_Barrier(MPI_COMM_WORLD);
       #endif

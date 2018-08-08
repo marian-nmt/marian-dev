@@ -35,10 +35,19 @@ public:
     return residual;
   }
 
-  virtual void dropGraph(Tensor t,
+  virtual void dropGraph(Tensor grad,
+                 Tensor sparseGrad,
                  SparseTensor destination,
                  float rate = 0.99,
                  float momentum = 0.0) = 0;
+
+  virtual void dropGraph(Tensor grad,
+                 SparseTensor destination,
+                 float rate = 0.99,
+                 float momentum = 0.0) {
+        // inplace gradient dropping
+	dropGraph(grad, grad, destination, rate, momentum);
+  }
 };
 
 
@@ -47,7 +56,8 @@ namespace gpu {
   protected:
     float find_threshold(Tensor grads, float rate);
   public:
-    void dropGraph(Tensor t,
+    void dropGraph(Tensor grad,
+                 Tensor sparseGrad,
                  SparseTensor destination,
                  float rate = 0.99,
                  float momentum = 0.0);

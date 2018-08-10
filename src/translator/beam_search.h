@@ -34,8 +34,7 @@ public:
                std::vector<Ptr<ScorerState>>& states,
                size_t beamSize,
                bool first,
-               Ptr<data::CorpusBatch> batch,
-               const std::vector<size_t>& batchIndeces) {
+               Ptr<data::CorpusBatch> batch) {
     Beams newBeams(beams.size());
 
     std::vector<float> alignments;
@@ -66,7 +65,7 @@ public:
             = (hypIdx / beamSize) + (hypIdx % beamSize) * beams.size();
         if(first)
           hypIdxTrans = hypIdx;
-        std::cerr << "mapping state " << hypIdx << " (" << (hypIdx / beamSize) << "," << (hypIdx % beamSize) << ") -> " << hypIdxTrans << "\n";
+        //std::cerr << "mapping state " << hypIdx << " (" << (hypIdx / beamSize) << "," << (hypIdx % beamSize) << ") -> " << hypIdxTrans << "\n";
 
         int beamHypIdx = hypIdx % beamSize;
         if(beamHypIdx >= beam.size())
@@ -91,13 +90,8 @@ public:
 
         // Set alignments
         if(!alignments.empty()) {
-          // special handling if beam subdivided
-          int batchIdx = beamIdx;
-          if (batchIndeces.size() > 0 ) {
-            batchIdx = batchIndeces[ beamIdx ];
-          }
           auto align = getHardAlignmentsForHypothesis(
-              alignments, batch, beamSize, beamHypIdx, batchIdx);
+              alignments, batch, beamSize, beamHypIdx, beamIdx);
           hyp->SetAlignment(align);
         }
 
@@ -180,17 +174,14 @@ public:
 
     size_t localBeamSize = beamSize_;
 
-    // XML TODO: not dimBatch*2, but maximum number of subbeams
     // @TODO: unify this
     Ptr<NthElement> nth;
 #ifdef CUDA_FOUND
     if(graph->getDevice().type == DeviceType::gpu)
       nth = New<NthElementGPU>(localBeamSize, dimBatch, graph->getDevice());
-      //nth = New<NthElementGPU>(localBeamSize, dimBatch*2, graph->getDevice());
     else
 #endif
       nth = New<NthElementCPU>(localBeamSize, dimBatch);
-      //nth = New<NthElementCPU>(localBeamSize, dimBatch*2);
 
     // create a new beam (one for each input sentence = dimBatch)
     Beams beams(dimBatch);
@@ -221,8 +212,6 @@ public:
       // create constant containing previous costs for current beam
       std::vector<size_t> hypIndices;
       std::vector<size_t> embIndices;
-      std::vector<size_t> batchIndeces;
-      std::vector<size_t> subbeamSize;
       Expr prevCosts;
 
       if(first) {
@@ -231,89 +220,30 @@ public:
       } else {
         std::vector<float> beamCosts;
 
-        // XML TODO break up beam into subbeams, based on xml state
-        if (options_->get<bool>("xml-input")) {
-          std::cerr << "splitting up beams\n";
-          Beams subbeams(0);
-          for(int j = 0; j < beams.size(); ++j) {
-            auto& beam = beams[j];
-            Beams singleSubbeams(1);
-            subbeamSize.push_back(0);
-            //subbeamSize.push_back(0);
-            for(int i = 0; i < beam.size(); ++i) {
-              auto hyp = beam[i];
-              size_t word = hyp->GetWord();
-              // BELOW IS A DUMMY DIVISION - TODO: XML state
-              //singleSubbeams[ 1 - (word % 2) ].push_back( hyp );
-              singleSubbeams[ 0 ].push_back( hyp );
-              //singleSubbeams[ 1 ].push_back( hyp );
-              singleSubbeams[ 0 ].insert( singleSubbeams[ 0 ].begin(), hyp );
-              //singleSubbeams[ 1 ].insert( singleSubbeams[ 1 ].begin(), hyp );
-            }
-            // merge into consolidated list
-            for(int jj=0; jj<singleSubbeams.size(); jj++) {
-              auto& subbeam = singleSubbeams[jj];
-              subbeams.push_back( subbeam );
-              batchIndeces.push_back( j );
-            }
-          }
-          beams = subbeams;
-        }
-        // XML TODO -------------------/
-
-        std::cerr << "beam sizes ...";
+        std::cerr << "starting beam sizes";
         for(int j = 0; j < beams.size(); ++j) {
-          auto& beam = beams[j];
-          std::cerr << " " << beam.size();
+          std::cerr << " " << beams[j].size();
         }
         std::cerr << "\n";
-        for(int j = 0; j < beams.size(); j++) {
-         auto& beam = beams[j];
-         for(int i = 0; i < beam.size(); ++i) {
-          auto hyp = beam[i];
-          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetCost() << "\t";
-          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
-          while (hyp->GetWord() != 0) {
-            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
-            hyp = hyp->GetPrevHyp();
-          }
-          std::cerr << std::endl;
-         }
-        }
 
         for(int i = 0; i < localBeamSize; ++i) {
           for(int j = 0; j < beams.size(); ++j) {
             auto& beam = beams[j];
             if(i < beam.size()) {
               auto hyp = beam[i];
-              std::cerr << "i=" << i << " j=" << j << " pushback: " << hyp->GetPrevStateIndex() << "," << hyp->GetWord() << "," << hyp->GetCost() << "\n";
+              //std::cerr << "i=" << i << " j=" << j << " pushback: " << hyp->GetPrevStateIndex() << "," << hyp->GetWord() << "," << hyp->GetCost() << "\n";
               hypIndices.push_back(hyp->GetPrevStateIndex());
               embIndices.push_back(hyp->GetWord());
-              //if ( hyp->GetWord() % 2 == j ) { 
-              //  subbeamSize[j]++; 
               beamCosts.push_back( hyp->GetCost() );
-              //} else {
-              //  beamCosts.push_back(-9999);
-              //}
-              
             } else {
-              // WHY ALL THESE EMPTY ENTRIES???
               hypIndices.push_back(0);
               embIndices.push_back(0);
               beamCosts.push_back(-9999);
             }
           }
         }
-        //std::cerr << "subbeamSize " << subbeamSize[0] << " " << subbeamSize[1] << "\n";
-        for(int i=0; i<hypIndices.size(); ++i) {
-          std::cerr << hypIndices[i] << ":" << embIndices[i] << " (" << beamCosts[i] << ") ";
-          if (i % beams.size() == beams.size()-1) {
-            std::cerr << "\n";
-          }
-        }
-        std::cerr << "\n";
 
-        prevCosts = graph->constant({(int)localBeamSize, 1, (int)beams.size(), 1},
+        prevCosts = graph->constant({(int)localBeamSize, 1, dimBatch, 1},
                                     inits::from_vector(beamCosts));
       }
 
@@ -332,15 +262,9 @@ public:
       //  std::cerr << "\n";
       //}
 
-      int beamCount = beams.size();
-      std::cerr << "beamCount=" << beamCount << ", localBeamSize=" << localBeamSize << "\n";
       for(int i = 0; i < scorers_.size(); ++i) {
-        states[i] = scorers_[i]->step(graph,
-                                      states[i],
-                                      hypIndices,
-                                      embIndices,
-                                      beamCount,
-                                      localBeamSize);
+        states[i] = scorers_[i]->step(
+            graph, states[i], hypIndices, embIndices, dimBatch, localBeamSize);
 
         if(scorers_[i]->getWeight() != 1.f)
           totalCosts
@@ -350,7 +274,7 @@ public:
       }
 
       // make beams continuous
-      if(beamCount > 1 && localBeamSize > 1)
+      if(dimBatch > 1 && localBeamSize > 1)
         totalCosts = transpose(totalCosts, {2, 1, 0, 3});
 
       // forward step in computation graph - predict next word distribution
@@ -381,7 +305,7 @@ public:
       //std::cerr << "\n";
 
       // create maximum number of hypotheses for each beam
-      std::vector<size_t> beamSizes(beamCount, localBeamSize);
+      std::vector<size_t> beamSizes(dimBatch, localBeamSize);
 
       int dimTrgVoc = totalCosts->shape()[-1];
       if (first) {
@@ -394,26 +318,70 @@ public:
         
         for(int subbeam = 0; subbeam < 2; subbeam++) {
           std::vector<char> hypMask;
+          std::vector<int> subbeamSize(beams.size(),0);
           for(int j = 0; j < beams.size(); j++) {
             auto& beam = beams[j];
             for(int i = 0; i < beam.size(); ++i) {
               auto hyp = beam[i];
-              hypMask.push_back( subbeam % 2 );
-              //hypMask.push_back( 1 );
+              hypMask.push_back( i%2==subbeam ? 1 : 0 );
+              if (i%2==subbeam) subbeamSize[j]++;
+            }
+            // do not expand filler hyps
+            for(int i = beam.size(); i < localBeamSize; ++i) {
+              hypMask.push_back( 0 );
             }
           }
-          nth->setHypMask(hypMask, dimTrgVoc);
           std::vector<unsigned> subKeys;
           std::vector<float> subCosts;
+          nth->setHypMask(hypMask, dimTrgVoc);
           nth->getNBestList(beamSizes, totalCosts->val(), subCosts, subKeys, first);
           collectedKeys.push_back( subKeys );
           collectedCosts.push_back( subCosts );
+
+          std::cerr << "SUBBEAM " << subbeam << "\n";
+          for(size_t i=0; i<subCosts.size(); i++) {
+            int embIdx = subKeys[i] % dimTrgVoc;
+            int beamNo = i / localBeamSize;
+            int hypInBeam = i % localBeamSize;
+            int hypIdx = (subKeys[i] / dimTrgVoc) % localBeamSize;
+            auto& beam = beams[beamNo];
+            if (beam.size() == 0) continue;
+            if (subbeamSize[beamNo] == 0) continue;
+            if (subCosts[i] < -9999) continue; // junk hypothesis extension
+            std::cerr << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost " << subCosts[i] << "\t " << (*targetVocab)[embIdx] << " ...";
+            auto hyp = beam[hypIdx];
+            std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+            while (hyp->GetWord() != 0) {
+              std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+              hyp = hyp->GetPrevHyp();
+            }
+            std::cerr << std::endl;
+          }
         }
 
-        std::vector<int> index;
-        index.push_back(0);
-        index.push_back(0);
-        // TODO
+        // merge beams
+
+        for(int j = 0; j < beams.size(); j++) {
+          std::vector<int> index;
+          index.push_back( j*localBeamSize );
+          index.push_back( j*localBeamSize );
+          for(int i=0; i<localBeamSize; i++) {
+            float nextCost0 = collectedCosts[0][ index[0] ];
+            float nextCost1 = collectedCosts[1][ index[1] ];
+            if (nextCost0 > nextCost1) {
+              std::cerr << "merge beam " << j << " from subbeam 0: " << collectedKeys[0][ index[0] ] << "," << nextCost0 << "\n";
+              outCosts.push_back( nextCost0 );
+              outKeys.push_back( collectedKeys[0][ index[0] ] );
+              index[0]++;
+            }
+            else {
+              std::cerr << "merge beam " << j << " from subbeam 1: " << collectedKeys[1][ index[1] ] << "," << nextCost1 << "\n";
+              outCosts.push_back( nextCost1 );
+              outKeys.push_back( collectedKeys[1][ index[1] ] );
+              index[1]++;
+            }
+          }
+        }
       }
       
       std::cerr << "outCosts.size() = " << outCosts.size() << "\n";
@@ -425,6 +393,7 @@ public:
         int hypIdx = (outKeys[i] / dimTrgVoc) % localBeamSize;
         auto& beam = beams[beamNo];
         if (beam.size() == 0) continue;
+        if (outCosts[i] < -9999) continue; // junk hypothesis extension
         auto hyp = beam[hypIdx];
         std::cerr << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost " << outCosts[i] << "\t " << (*targetVocab)[embIdx] << " ...";
         std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
@@ -435,15 +404,8 @@ public:
         std::cerr << std::endl;
       }
 
-      beams = toHyps(outKeys,
-                     outCosts,
-                     dimTrgVoc,
-                     beams,
-                     states,
-                     localBeamSize,
-                     first,
-                     batch,
-                     batchIndeces);
+      beams = toHyps(
+          outKeys, outCosts, dimTrgVoc, beams, states, localBeamSize, first, batch);
 
       for(int j = 0; j < beams.size(); j++) {
         auto& beam = beams[j];
@@ -464,30 +426,8 @@ public:
       // XML TODO - that continue constraints
       // XML TODO ---------------------------/
 
-      // XML TODO merge subbeams
-      if (options_->get<bool>("xml-input") && beamCount > 1) {
-        Beams combinedBeams(batch->size()); 
-        for(int j = 0; j < beams.size(); j++) {
-          auto& beam = beams[j];
-          for(int i = 0; i < beam.size() && i<subbeamSize[j]; ++i) {
-            std::cerr << "merge " << j << " i<" << subbeamSize[j] << "\n";
-            auto hyp = beam[i];
-            combinedBeams[ batchIndeces[j] ].push_back( hyp );
-          }
-        }
-        beams = combinedBeams;
-      }
-      // XML TODO ---------------------------/
-      std::cerr << "merged beams ...";
-      for(int j = 0; j < beams.size(); ++j) {
-        auto& beam = beams[j];
-        std::cerr << " " << beam.size();
-      }
-      std::cerr << "\n";
-
       // remove hypothesis that hit end of sentence (</s>)
       auto prunedBeams = pruneBeam(beams);
-
       for(int i = 0; i < (int)beams.size(); ++i) {
         if(!beams[i].empty()) {
           final = final
@@ -498,6 +438,12 @@ public:
         }
       }
       beams = prunedBeams;
+      std::cerr << "remaining beam sizes";
+      for(int j = 0; j < beams.size(); ++j) {
+        std::cerr << " " << beams[j].size();
+      }
+      std::cerr << "\n";
+
 
       // reduce maximum beam size
       if(!first) {
@@ -508,26 +454,6 @@ public:
         localBeamSize = maxBeam;
       }
       first = false;
-      std::cerr << "pruned beams ...";
-      for(int j = 0; j < beams.size(); ++j) {
-        auto& beam = beams[j];
-        std::cerr << " " << beam.size();
-      }
-      std::cerr << "\n";
-
-      for(int j = 0; j < beams.size(); j++) {
-        auto& beam = beams[j];
-        for(int i = 0; i < beam.size(); ++i) {
-          auto hyp = beam[i];
-          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetCost() << "\t";
-          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
-          while (hyp->GetWord() != 0) {
-            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
-            hyp = hyp->GetPrevHyp();
-          }
-          std::cerr << std::endl;
-        }
-      }
 
     } while(localBeamSize != 0 && !final);
 

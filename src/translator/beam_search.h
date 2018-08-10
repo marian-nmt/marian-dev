@@ -455,6 +455,20 @@ public:
       }
       first = false;
 
+      for(int j = 0; j < beams.size(); j++) {
+        auto& beam = beams[j];
+        for(int i = 0; i < beam.size(); ++i) {
+          auto hyp = beam[i];
+          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetCost() << "\t";
+          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+          while (hyp->GetWord() != 0) {
+            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+            hyp = hyp->GetPrevHyp();
+          }
+          std::cerr << std::endl;
+        }
+      }
+
     } while(localBeamSize != 0 && !final);
 
     return histories;

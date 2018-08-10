@@ -17,6 +17,15 @@ NthElementCPU::NthElementCPU(size_t maxBeamSize, size_t maxBatchSize) {
   h_res_idx.resize(maxSize);
 }
 
+void NthElementCPU::setHypMask(const std::vector<char>& hypMask,
+                               int vocabSizeArg) {
+  // TODO
+}
+
+void NthElementCPU::clearHypMask() {
+  // TODO
+}
+
 void NthElementCPU::getNBestList(float* probs,
                                  const std::vector<int>& batchFirstElementIdxs,
                                  const std::vector<int>& cumulativeBeamSizes) {

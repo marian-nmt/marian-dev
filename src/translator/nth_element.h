@@ -33,6 +33,8 @@ struct NthElement {
       = 0;
 
   virtual void getValueByKey(std::vector<float>& out, float* d_in) = 0;
+  virtual void setHypMask(const std::vector<char>& hypMask, int vocabSizeArg) = 0;
+  virtual void clearHypMask() = 0;
 };
 
 class NthElementCPU : public NthElement {
@@ -60,6 +62,9 @@ public:
                 std::vector<float>& outValues);
 
   void getValueByKey(std::vector<float>& out, float* d_in);
+
+  void setHypMask(const std::vector<char>& hypMask, int vocabSizeArg);
+  void clearHypMask();
 };
 
 class NthElementGPU : public NthElement {
@@ -85,6 +90,9 @@ public:
 
   void getValueByKey(std::vector<float>& out, float* d_in);
 
+  void setHypMask(const std::vector<char>& hypMask, int vocabSizeArg);
+  void clearHypMask();
+
 private:
   DeviceId deviceId_;
 
@@ -106,6 +114,11 @@ private:
   float* d_breakdown;
   int* d_batchPosition;
   int* d_cumBeamSizes;
+
+  char* d_hypMask;
+  bool useHypMask;
+  int vocabSize;
+
   size_t lastN;
 };
 }

@@ -30,7 +30,7 @@ class XmlOption {
       return end_;
     }
 
-    const Words GetOutput() const {
+    const Words& GetOutput() const {
       return output_;
     }
     Words output_;
@@ -44,22 +44,26 @@ class XmlOptionCovered {
     bool covered_;
 
   public:
-    XmlOptionCovered(const XmlOption *option)
+    XmlOptionCovered(const XmlOption option)
       : started_(false),
         covered_(false),
-        option_(option) {
+        option_(&option) {
     }
 
-    bool GetStarted() {
+    bool GetStarted() const {
       return started_;
     }
 
-    bool GetCovered() {
+    bool GetCovered() const {
       return covered_;
     }
 
-    bool GetPosition() {
+    bool GetPosition() const {
       return position_;
+    }
+
+    const XmlOption* GetOption() const {
+      return option_;
     }
 
     void Start() {
@@ -78,6 +82,8 @@ class XmlOptionCovered {
     }
 };
 
+typedef std::vector< Ptr<XmlOption>  > XmlOptions;
+typedef std::vector< const XmlOptions* > XmlOptionsList;
 
 // end data / marian
 }

@@ -152,8 +152,8 @@ void CorpusBase::processXml(const std::string& line,
           std::cerr << "new option (" << startPos << "," << endPos << ") " << translation << ", size " << translationWords.size() << "\n";
           Words translation_words = (*target_vocab_)(translationWords);
           std::cerr << "word id = " << translation_words[0] << "\n";
-          auto xmlOption = new XmlOption(startPos, endPos, translation_words);
-          tup.addXmlOption( *xmlOption );
+          Ptr<XmlOption> xmlOption = New<XmlOption>(startPos, endPos, translation_words);
+          tup.addXmlOption( xmlOption );
         }
       }
     }

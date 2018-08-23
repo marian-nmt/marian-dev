@@ -8,6 +8,8 @@
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
 
+#include "data/xml.h"
+
 namespace marian {
 
 class BeamSearch {
@@ -184,9 +186,13 @@ public:
       nth = New<NthElementCPU>(localBeamSize, dimBatch);
 
     // create a new beam (one for each input sentence = dimBatch)
+    const Ptr<data::XmlOptionsList> xmlOptionsList = batch->getXmlOptionsList();
     Beams beams(dimBatch);
-    for(auto& beam : beams)
+    for(int i = 0; i < dimBatch; ++i) {
+      auto& beam = beams[i];
+      //beam.resize(localBeamSize, New<Hypothesis>( xmlOptions[i] ));
       beam.resize(localBeamSize, New<Hypothesis>());
+    }
 
     bool first = true;
     bool final = false;
@@ -316,6 +322,8 @@ public:
         std::vector< std::vector<unsigned> > collectedKeys;
         std::vector< std::vector<float> > collectedCosts;
         
+        // TODO: divide up subbeams by XML coverage
+        // TODO: do not assigned started XML hyp to any beam
         for(int subbeam = 0; subbeam < 2; subbeam++) {
           std::vector<char> hypMask;
           std::vector<int> subbeamSize(beams.size(),0);
@@ -333,8 +341,11 @@ public:
           }
           std::vector<unsigned> subKeys;
           std::vector<float> subCosts;
+
+          // find n-best predictions
           nth->setHypMask(hypMask, dimTrgVoc);
           nth->getNBestList(beamSizes, totalCosts->val(), subCosts, subKeys, first);
+          // merge them into the global list
           collectedKeys.push_back( subKeys );
           collectedCosts.push_back( subCosts );
 
@@ -356,6 +367,33 @@ public:
               hyp = hyp->GetPrevHyp();
             }
             std::cerr << std::endl;
+          }
+        }
+
+        // create additional keys from XML constraints
+        for(int j = 0; j < beams.size(); j++) {
+          auto& beam = beams[j];
+          // loop over all prior hypotheses
+          for(int i = 0; i < beam.size(); ++i) {
+            auto hyp = beam[i];
+            auto& xmlCoveredList = hyp->GetXmlOptionCovered();
+            // check on status of each XML constraints
+            for(int k=0; k < xmlCoveredList.size(); k++) {   
+              data::XmlOptionCovered &xmlCovered = xmlCoveredList[k];
+              // already handled, move on
+              if (xmlCovered.GetCovered()) {
+                continue;
+              }
+              // check what word needs to be generated
+              size_t wordPos = 0;
+              if (xmlCovered.GetStarted()) {
+                wordPos = xmlCovered.GetPosition();
+              }
+              const Words &output = xmlCovered.GetOption()->GetOutput();
+              std::cerr << "start a hypothesis with word " << output[0] << "\n";
+              // find out the score
+              // merge into appropriate collectedCosts[ sub ], collectedKeys
+            }
           }
         }
 

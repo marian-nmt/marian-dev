@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "common/definitions.h"
+#include "data/xml.h"
 
 namespace marian {
 namespace data {
@@ -24,11 +25,15 @@ public:
   const std::vector<size_t>& getSentenceIds() const { return sentenceIds_; }
   void setSentenceIds(const std::vector<size_t>& ids) { sentenceIds_ = ids; }
 
+  const Ptr<XmlOptionsList> getXmlOptionsList() const { return xmlOptionsList_; }
+  void setXmlOptionsList(Ptr<XmlOptionsList> xops) { xmlOptionsList_ = xops; }
+
   virtual void setGuidedAlignment(const std::vector<float>&) = 0;
   virtual void setDataWeights(const std::vector<float>&) = 0;
 
 protected:
   std::vector<size_t> sentenceIds_;
+  Ptr<XmlOptionsList> xmlOptionsList_;
 };
 }
 }

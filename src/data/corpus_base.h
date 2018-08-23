@@ -35,7 +35,7 @@ private:
   std::vector<Words> tuple_;
   std::vector<float> weights_;
   WordAlignment alignment_;
-  std::vector<XmlOption> xmlOptions_;
+  XmlOptions xmlOptions_;
 
 public:
   typedef Words value_type;
@@ -104,9 +104,9 @@ public:
   /**
    * @brief  Get XML Options for this sentence
    */
-  const std::vector<XmlOption>& GetXmlOptions() { return xmlOptions_; }
-  bool hasXmlOptions() { return xmlOptions_.size() > 0; }
-  void addXmlOption( XmlOption& option ) { xmlOptions_.push_back( option ); }
+  const XmlOptions& getXmlOptions() const { return xmlOptions_; }
+  bool hasXmlOptions() const { return xmlOptions_.size() > 0; }
+  void addXmlOption( Ptr<XmlOption> option ) { xmlOptions_.push_back( option ); }
 };
 
 /**

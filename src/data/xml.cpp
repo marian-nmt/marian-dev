@@ -14,6 +14,9 @@ void CorpusBase::processXml(const std::string& line,
     return;
   }
 
+  XmlOptions *xmlOptions = new XmlOptions();
+  tup.setXmlOptions( xmlOptions );
+
   // break up input into a vector of xml tags and text
   // example: (this), (<b>), (is a), (</b>), (test .)
   std::vector<std::string> xmlTokens = tokenizeXml(line);
@@ -151,9 +154,13 @@ void CorpusBase::processXml(const std::string& line,
           Split(translation, translationWords, " ");
           std::cerr << "new option (" << startPos << "," << endPos << ") " << translation << ", size " << translationWords.size() << "\n";
           Words translation_words = (*target_vocab_)(translationWords);
+          std::cerr << "encoded size " << translation_words.size() << "\n";
           std::cerr << "word id = " << translation_words[0] << "\n";
-          Ptr<XmlOption> xmlOption = New<XmlOption>(startPos, endPos, translation_words);
-          tup.addXmlOption( xmlOption );
+          XmlOption *xmlOption = new XmlOption(startPos, endPos, translation_words);
+          xmlOptions->push_back( xmlOption );
+          XmlOption *option = xmlOption;
+          const Words &output = option->GetOutput();
+          std::cerr << "created XmlOption " << option << ": " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
         }
       }
     }

@@ -44,10 +44,22 @@ class XmlOptionCovered {
     bool covered_;
 
   public:
-    XmlOptionCovered(const XmlOption option)
+    XmlOptionCovered(const XmlOption *option)
       : started_(false),
         covered_(false),
-        option_(&option) {
+        option_(option) {
+      const Words &output = option->GetOutput();
+      std::cerr << "created XmlOptionCovered from option " << option << ": " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
+    } 
+
+    XmlOptionCovered(const XmlOptionCovered &covered)
+      : started_(covered.GetStarted()),
+        covered_(covered.GetCovered()),
+        option_(covered.GetOption()),
+        position_(covered.GetPosition()) {
+      const XmlOption *option = covered.GetOption();
+      const Words &output = option->GetOutput();
+      std::cerr << "created XmlOptionCovered from covered " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
     }
 
     bool GetStarted() const {
@@ -82,8 +94,9 @@ class XmlOptionCovered {
     }
 };
 
-typedef std::vector< Ptr<XmlOption>  > XmlOptions;
+typedef std::vector< XmlOption* > XmlOptions;
 typedef std::vector< const XmlOptions* > XmlOptionsList;
+typedef std::vector< XmlOptionCovered > XmlOptionCoveredList;
 
 // end data / marian
 }

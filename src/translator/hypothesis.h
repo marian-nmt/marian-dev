@@ -14,15 +14,25 @@ public:
              size_t word,
              size_t prevIndex,
              float cost)
-      : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), cost_(cost) {}
+      : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), cost_(cost) {
+    const data::XmlOptionCoveredList &prevXmlOptionCovered = prevHyp->GetXmlOptionCovered();
+    // deep copy
+    for(size_t i=0; i<prevXmlOptionCovered.size(); i++) {
+      data::XmlOptionCovered covered(prevXmlOptionCovered[i]);
+      xmlOptionCovered_.push_back( covered );
+    }
+  }
 
-  //Hypothesis( const data::XmlOptions& xmlOptions )
-  //    : prevHyp_(nullptr), prevIndex_(0), word_(0), cost_(0.0) {
-  //  for(size_t i=0; i<xmlOptions.size(); i++) {
-  //    data::XmlOptionCovered covered(xmlOptions[i]);
-  //    xmlOptionCovered_.push_back( covered );
-  //  }
-  //}
+  Hypothesis( const data::XmlOptions *xmlOptions )
+      : prevHyp_(nullptr), prevIndex_(0), word_(0), cost_(0.0) {
+    // create XmlOptionCovered objects
+    std::cerr << "Hypothesis xmlOptions " << xmlOptions << "\n";
+    for(size_t i=0; i<xmlOptions->size(); i++) {
+      std::cerr << "Hypothesis xmlOption " << (*xmlOptions)[i] << "\n";
+      data::XmlOptionCovered covered((*xmlOptions)[i]);
+      xmlOptionCovered_.push_back( covered );
+    }
+  }
 
   const Ptr<Hypothesis> GetPrevHyp() const { return prevHyp_; }
 
@@ -36,6 +46,17 @@ public:
   std::vector<float>& GetAlignment() { return alignment_; }
   std::vector<data::XmlOptionCovered>& GetXmlOptionCovered() { return xmlOptionCovered_; }
 
+  // how many Xml constraints already satisfied or started
+  size_t GetXmlStatus() {
+    size_t status=0;
+    for(auto covered : xmlOptionCovered_) {
+      if (covered.GetCovered() || covered.GetStarted()) {
+        status++;
+      }
+    }
+    return status;
+  }
+
   void SetAlignment(const std::vector<float>& align) { alignment_ = align; };
 
 private:
@@ -43,7 +64,8 @@ private:
   const size_t prevIndex_;
   const size_t word_;
   const float cost_;
-  std::vector<data::XmlOptionCovered> xmlOptionCovered_;
+  data::XmlOptionCoveredList xmlOptionCovered_;
+  //std::vector<data::XmlOptionCovered> xmlOptionCovered_;
 
   std::vector<float> costBreakdown_;
   std::vector<float> alignment_;

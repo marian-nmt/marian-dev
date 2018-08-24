@@ -186,12 +186,16 @@ public:
       nth = New<NthElementCPU>(localBeamSize, dimBatch);
 
     // create a new beam (one for each input sentence = dimBatch)
-    const Ptr<data::XmlOptionsList> xmlOptionsList = batch->getXmlOptionsList();
+    const data::XmlOptionsList &xmlOptionsList = *(batch->getXmlOptionsList());
+    std::cerr << "pulling xmlOptionsList " << batch->getXmlOptionsList() << "\n";
+    std::cerr << "xmlOptions " << xmlOptionsList[0] << "\n";
     Beams beams(dimBatch);
     for(int i = 0; i < dimBatch; ++i) {
       auto& beam = beams[i];
-      //beam.resize(localBeamSize, New<Hypothesis>( xmlOptions[i] ));
-      beam.resize(localBeamSize, New<Hypothesis>());
+      if (options_->get<bool>("xml-input"))
+        beam.resize(localBeamSize, New<Hypothesis>( xmlOptionsList[i] ));
+      else
+        beam.resize(localBeamSize, New<Hypothesis>());
     }
 
     bool first = true;
@@ -220,6 +224,15 @@ public:
       std::vector<size_t> embIndices;
       Expr prevCosts;
 
+      for(int j = 0; j < beams.size(); ++j) {
+        auto& beam = beams[j];
+        for(int i = 0; i < localBeamSize; ++i) {
+          if(i < beam.size()) {
+            auto hyp = beam[i];
+            std::cerr << "beam=" << j << " i=" << i << " xml status=" << hyp->GetXmlStatus() << "/" << hyp->GetXmlOptionCovered().size() << "\n";
+          }
+        }
+      }
       if(first) {
         // initial hypothesis, no cost, no subbeams
         prevCosts = graph->constant({1, 1, 1, 1}, inits::from_value(0));
@@ -323,21 +336,41 @@ public:
         std::vector< std::vector<float> > collectedCosts;
         
         // TODO: divide up subbeams by XML coverage
-        // TODO: do not assigned started XML hyp to any beam
-        for(int subbeam = 0; subbeam < 2; subbeam++) {
+        size_t maxXmlCount = 0;
+        for(int j = 0; j < beams.size(); j++) {
+          auto& beam = beams[j];
+          auto hyp = beam[0];
+          if (hyp->GetXmlOptionCovered().size() > maxXmlCount) {
+            maxXmlCount = hyp->GetXmlOptionCovered().size();
+          }
+        }
+        std::cerr << "maxXmlCount = " << maxXmlCount << "\n";
+        for(int subbeam = 0; subbeam < maxXmlCount+1; subbeam++) {
           std::vector<char> hypMask;
           std::vector<int> subbeamSize(beams.size(),0);
           for(int j = 0; j < beams.size(); j++) {
             auto& beam = beams[j];
+            std::cerr << "beam " << j << ", subbeam " << subbeam << ": ";
             for(int i = 0; i < beam.size(); ++i) {
               auto hyp = beam[i];
-              hypMask.push_back( i%2==subbeam ? 1 : 0 );
-              if (i%2==subbeam) subbeamSize[j]++;
+              if (hyp->GetXmlStatus() == subbeam) {
+                hypMask.push_back( 1 );
+                subbeamSize[j]++;
+                std::cerr << "1";
+              }
+              else {
+                hypMask.push_back( 0 );
+                std::cerr << "0";
+              }
+              //hypMask.push_back( i%2==subbeam ? 1 : 0 );
+              //if (i%2==subbeam) subbeamSize[j]++;
             }
             // do not expand filler hyps
             for(int i = beam.size(); i < localBeamSize; ++i) {
               hypMask.push_back( 0 );
+                std::cerr << "-";
             }
+            std::cerr << "\n";
           }
           std::vector<unsigned> subKeys;
           std::vector<float> subCosts;
@@ -389,7 +422,9 @@ public:
               if (xmlCovered.GetStarted()) {
                 wordPos = xmlCovered.GetPosition();
               }
-              const Words &output = xmlCovered.GetOption()->GetOutput();
+              const data::XmlOption &option = *(xmlCovered.GetOption());
+              const Words &output = option.GetOutput();
+              std::cerr << "xmlCovered = " << option.GetStart() << "-" << option.GetEnd() << ", output length " << output.size() << "\n";
               std::cerr << "start a hypothesis with word " << output[0] << "\n";
               // find out the score
               // merge into appropriate collectedCosts[ sub ], collectedKeys

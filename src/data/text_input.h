@@ -58,7 +58,7 @@ public:
     int batchSize = batchVector.size();
 
     std::vector<size_t> sentenceIds;
-    Ptr<XmlOptionsList> xmlOptionsList = New<XmlOptionsList>();
+    XmlOptionsList *xmlOptionsList = new XmlOptionsList();
 
     std::vector<int> maxDims;
     for(auto& ex : batchVector) {
@@ -69,7 +69,7 @@ public:
           maxDims[i] = ex[i].size();
       }
       sentenceIds.push_back(ex.getId());
-      const XmlOptions *xops = &ex.getXmlOptions();
+      const XmlOptions *xops = ex.getXmlOptions();
       xmlOptionsList->push_back(xops);
     }
 
@@ -94,6 +94,7 @@ public:
 
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);
+    std::cerr << "batch->setXmlOptionsList(xmlOptionsList);\n";
     batch->setXmlOptionsList(xmlOptionsList);
 
     return batch;

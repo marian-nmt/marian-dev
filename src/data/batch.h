@@ -25,15 +25,21 @@ public:
   const std::vector<size_t>& getSentenceIds() const { return sentenceIds_; }
   void setSentenceIds(const std::vector<size_t>& ids) { sentenceIds_ = ids; }
 
-  const Ptr<XmlOptionsList> getXmlOptionsList() const { return xmlOptionsList_; }
-  void setXmlOptionsList(Ptr<XmlOptionsList> xops) { xmlOptionsList_ = xops; }
+  const XmlOptionsList* getXmlOptionsList() const { return xmlOptionsList_; }
+  void setXmlOptionsList(XmlOptionsList *xopsl) { 
+    xmlOptionsList_ = xopsl; 
+    std::cerr << "setXmlOptionsList " << xopsl << "\n"; 
+    std::cerr << "xopsl->size() = " << xopsl->size() << ", " << (*xopsl)[0] << "\n"; 
+    const XmlOptions *xops = (*xopsl)[0];
+    std::cerr << "xops->size() = " << xops->size() << ", " << (*xops)[0] << "\n"; 
+  }
 
   virtual void setGuidedAlignment(const std::vector<float>&) = 0;
   virtual void setDataWeights(const std::vector<float>&) = 0;
 
 protected:
   std::vector<size_t> sentenceIds_;
-  Ptr<XmlOptionsList> xmlOptionsList_;
+  XmlOptionsList *xmlOptionsList_;
 };
 }
 }

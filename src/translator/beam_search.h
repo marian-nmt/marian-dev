@@ -115,7 +115,9 @@ public:
           hyp->SetAlignment(align);
         }
 
-        // TODO: hyp->SetXml(xmls[i]);
+        if (options_->get<bool>("xml-input")) {
+          hyp->SetXml(xmls[i]);
+        }
 
         newBeam.push_back(hyp);
       }
@@ -249,7 +251,7 @@ public:
         for(int i = 0; i < localBeamSize; ++i) {
           if(i < beam.size()) {
             auto hyp = beam[i];
-            std::cerr << "beam=" << j << " i=" << i << " xml status=" << hyp->GetXmlStatus() << "/" << hyp->GetXmlOptionCovered().size() << "\n";
+            std::cerr << "beam=" << j << " i=" << i << " xml status=" << hyp->GetXmlStatus() << "/" << hyp->GetXmlOptionCovered()->size() << "\n";
           }
         }
       }
@@ -357,9 +359,9 @@ public:
       for(int j = 0; j < beams.size(); j++) {
         auto& beam = beams[j];
         auto hyp = beam[0];
-        std::cerr << "beam " << j << ": " << hyp->GetXmlOptionCovered().size() << "\n";
-        if (hyp->GetXmlOptionCovered().size() > maxXmlCount) {
-          maxXmlCount = hyp->GetXmlOptionCovered().size();
+        std::cerr << "beam " << j << ": " << hyp->GetXmlOptionCovered()->size() << "\n";
+        if (hyp->GetXmlOptionCovered()->size() > maxXmlCount) {
+          maxXmlCount = hyp->GetXmlOptionCovered()->size();
         }
       }
       size_t subbeamCount = maxXmlCount+1;
@@ -392,11 +394,11 @@ public:
             break; // not sure why, but first has additional fake hyps
           }
           auto hyp = beam[i];
-          auto& xmlCoveredList = hyp->GetXmlOptionCovered();
+          auto xmlCoveredList = hyp->GetXmlOptionCovered();
           // check on status of each XML constraints
-          for(int k=0; k < xmlCoveredList.size(); k++) {   
+          for(int k=0; k < xmlCoveredList->size(); k++) {   
             std::cerr << "checking xml option " << k << "\n";
-            const data::XmlOptionCovered &xmlCovered = xmlCoveredList[k];
+            const data::XmlOptionCovered &xmlCovered = xmlCoveredList->at(k);
             // already handled, move on
             if (xmlCovered.GetCovered()) {
               std::cerr << "already covered\n";
@@ -429,8 +431,8 @@ public:
             // update xmlCoveredList
             std::cerr << "build new XmlOptionCoveredList\n";
             auto newXmlCoveredList = new data::XmlOptionCoveredList;
-            for(int kk=0; kk < xmlCoveredList.size(); kk++) {
-              data::XmlOptionCovered newXmlCovered = xmlCoveredList[kk];//copy
+            for(int kk=0; kk < xmlCoveredList->size(); kk++) {
+              data::XmlOptionCovered newXmlCovered = xmlCoveredList->at(kk);//copy
               std::cerr << "option " << kk << "\n";
               if (kk == k) {
                 // the one we are currently processing
@@ -518,12 +520,12 @@ public:
             int beamNo = i / localBeamSize;
             auto& beam = beams[beamNo];
             auto hyp = beam[hypIdx];
-            auto& xmlCoveredList = hyp->GetXmlOptionCovered();
+            auto xmlCoveredList = hyp->GetXmlOptionCovered();
             int newSubbeam = subbeam;
             std::cerr << "build new XmlOptionCoveredList for beam " << beamNo << " hyp " << hypIdx << "\tcost " << subCosts[i] << "\t " << (*targetVocab)[embIdx] << ":" << embIdx << " ...";
             auto newXmlCoveredList = new data::XmlOptionCoveredList;
-            for(int k=0; k < xmlCoveredList.size(); k++) {
-              data::XmlOptionCovered newXmlCovered = xmlCoveredList[k];//copy
+            for(int k=0; k < xmlCoveredList->size(); k++) {
+              data::XmlOptionCovered newXmlCovered = xmlCoveredList->at(k);//copy
               std::cerr << "option " << k << "\n";
               if (newXmlCovered.GetStarted()) {
                 const data::XmlOption* xmlOption = newXmlCovered.GetOption();

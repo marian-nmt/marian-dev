@@ -70,7 +70,7 @@ class XmlOptionCovered {
       return covered_;
     }
 
-    bool GetPosition() const {
+    size_t GetPosition() const {
       return position_;
     }
 
@@ -90,7 +90,11 @@ class XmlOptionCovered {
       position_++;
       if (option_->GetOutput().size() == position_) {
         covered_ = true;
+        started_ = false;
       }
+    }
+    void Abandon() {
+      started_ = false;
     }
 };
 

@@ -31,22 +31,24 @@ public:
 
   void mergeIntoSortedKeysCosts(std::vector<uint> &keys,
                                 std::vector<float> &costs,
+                                std::vector<data::XmlOptionCoveredList *> &xmls,
                                 uint key, 
-                                float cost) {
+                                float cost,
+                                data::XmlOptionCoveredList *xml) {
     auto k=keys.begin();
     auto c=costs.begin();
-    while(1) {
-      if (c==costs.end() || cost > *c) {
-        keys.insert(k, key);
-        costs.insert(c, cost);
-        break;
-      }
-      k++; c++;
+    auto x=xmls.begin();
+    while(c != costs.end() && cost < *c) {
+      k++; c++; x++;
     }
+    keys.insert(k, key);
+    costs.insert(c, cost);
+    xmls.insert(x, xml);
   }
 
   Beams toHyps(const std::vector<uint> keys,
                const std::vector<float> costs,
+               const std::vector<data::XmlOptionCoveredList *> &xmls,
                size_t vocabSize,
                const Beams& beams,
                std::vector<Ptr<ScorerState>>& states,
@@ -112,6 +114,8 @@ public:
               alignments, batch, beamSize, beamHypIdx, beamIdx);
           hyp->SetAlignment(align);
         }
+
+        // TODO: hyp->SetXml(xmls[i]);
 
         newBeam.push_back(hyp);
       }
@@ -347,6 +351,7 @@ public:
       // special cases first: create additional keys from XML constraints
       std::vector< std::vector< std::vector<unsigned> > > collectedKeys;
       std::vector< std::vector< std::vector<float> > > collectedCosts;
+      std::vector< std::vector< std::vector<data::XmlOptionCoveredList*> > > collectedXmls;
       std::cerr << "checking GetXmlOptionCovered ... first? " << first << "\n";
       size_t maxXmlCount = 0;
       for(int j = 0; j < beams.size(); j++) {
@@ -362,13 +367,17 @@ public:
       for(int j = 0; j < beams.size(); j++) {
         std::vector< std::vector<unsigned> > keysVector;
         std::vector< std::vector<float> > costsVector;
+        std::vector< std::vector<data::XmlOptionCoveredList*> > xmlVector;
         collectedKeys.push_back( keysVector );
         collectedCosts.push_back( costsVector );
+        collectedXmls.push_back( xmlVector );
         for(int subbeam = 0; subbeam < subbeamCount; subbeam++) {
           std::vector<unsigned> keys;
           std::vector<float> costs;
+          std::vector<data::XmlOptionCoveredList*> xml;
           collectedKeys[j].push_back(keys);
           collectedCosts[j].push_back(costs);
+          collectedXmls[j].push_back(xml);
         }
       }
 
@@ -386,16 +395,20 @@ public:
           auto& xmlCoveredList = hyp->GetXmlOptionCovered();
           // check on status of each XML constraints
           for(int k=0; k < xmlCoveredList.size(); k++) {   
+            std::cerr << "checking xml option " << k << "\n";
             const data::XmlOptionCovered &xmlCovered = xmlCoveredList[k];
             // already handled, move on
             if (xmlCovered.GetCovered()) {
+              std::cerr << "already covered\n";
               continue;
             }
             // check what word needs to be generated
             size_t wordPos = 0;
             if (xmlCovered.GetStarted()) {
               wordPos = xmlCovered.GetPosition();
+              std::cerr << "already started\n";
             }
+            std::cerr << "proceeding at wordPos " << wordPos << "\n";
             const data::XmlOption *xmlOption = xmlCovered.GetOption();
             const Words &output = xmlOption->GetOutput();
             // TODO: output[0] -> output[wordPos]
@@ -408,20 +421,48 @@ public:
             //std::cerr << "it's in here somewhere... ";
             //std::cerr << totalCosts->val()->debug();
             //std::cerr << "\n";
-            uint index = ((j * localBeamSize) + i) * dimTrgVoc + output[0];
-            float cost = totalCosts->val()->get(index);
-            std::cerr << "beam j=" << j << " hyp i=" << i << ", word " << (*targetVocab)[output[0]] << ":" << output[0] << ", total cost is in " << index << ": " << cost << "\n";
-            // merge into appropriate collectedCosts[ sub ], collectedKeys
+            uint key = ((j * localBeamSize) + i) * dimTrgVoc + output[wordPos];
+            float cost = totalCosts->val()->get(key);
+            std::cerr << "beam j=" << j << " hyp i=" << i << ", word " << (*targetVocab)[output[wordPos]] << ":" << output[wordPos] << ", total cost is in " << key << ": " << cost << "\n";
+            // placed into the next subbeam
             int subbeam = hyp->GetXmlStatus() + 1;
-            // special case handling: abondon started XML opt
+            // update xmlCoveredList
+            std::cerr << "build new XmlOptionCoveredList\n";
+            auto newXmlCoveredList = new data::XmlOptionCoveredList;
             for(int kk=0; kk < xmlCoveredList.size(); kk++) {
-              if (xmlCoveredList[kk].GetStarted()) {
-                subbeam--; // resulting hyp will be in same beam
+              data::XmlOptionCovered newXmlCovered = xmlCoveredList[kk];//copy
+              std::cerr << "option " << kk << "\n";
+              if (kk == k) {
+                // the one we are currently processing
+                if (newXmlCovered.GetStarted()) {
+                  std::cerr << "newXmlCovered.Proceed();\n";
+                  newXmlCovered.Proceed();
+                }
+                else {
+                  std::cerr << "newXmlCovered.Start();\n";
+                  newXmlCovered.Start();
+                }
               }
-            } // but what if that word also continues the XML option?????
-            //mergeIntoSortedKeysCosts(collectedKeys[subbeam], 
-            //                         collectedCosts[subbeam],
-            //                         output[0], cost);
+              else {
+                // other xml options
+                if (newXmlCovered.GetStarted()) {
+                  std::cerr << "newXmlCovered.Abandon();\n";
+                  newXmlCovered.Abandon();
+                  subbeam--; // resulting hyp will be in same beam
+                }
+                else {
+                  std::cerr << "just copy\n";
+                }
+              }
+              newXmlCoveredList->push_back(newXmlCovered);
+            }
+            subbeam = 0;
+            std::cerr << "merge onto subbeam " << subbeam << "\n";
+            mergeIntoSortedKeysCosts(collectedKeys[j][subbeam], 
+                                     collectedCosts[j][subbeam],
+                                     collectedXmls[j][subbeam],
+                                     key, cost, newXmlCoveredList);
+            totalCosts->val()->set(key,-3.40282e+38f);
           }
         }
       }
@@ -471,11 +512,44 @@ public:
             std::cerr << "collectedKeys[j].size() = " << collectedKeys[j].size() << "\n";
             std::cerr << "collectedKeys[j][subbeam].size() = " << collectedKeys[j][subbeam].size() << "\n";
             std::cerr << "collectedCosts[" << j << "][" << subbeam << "].size() = " << collectedCosts[j][subbeam].size() << "\n";
-            // TODO: if it breaks a GetStarted hyp, demote to lower subbeam
+            // update xmlCoveredList
+            int embIdx = subKeys[i] % dimTrgVoc;
+            int hypIdx = (subKeys[i] / dimTrgVoc) % localBeamSize;
+            int beamNo = i / localBeamSize;
+            auto& beam = beams[beamNo];
+            auto hyp = beam[hypIdx];
+            auto& xmlCoveredList = hyp->GetXmlOptionCovered();
+            int newSubbeam = subbeam;
+            std::cerr << "build new XmlOptionCoveredList for beam " << beamNo << " hyp " << hypIdx << "\tcost " << subCosts[i] << "\t " << (*targetVocab)[embIdx] << ":" << embIdx << " ...";
+            auto newXmlCoveredList = new data::XmlOptionCoveredList;
+            for(int k=0; k < xmlCoveredList.size(); k++) {
+              data::XmlOptionCovered newXmlCovered = xmlCoveredList[k];//copy
+              std::cerr << "option " << k << "\n";
+              if (newXmlCovered.GetStarted()) {
+                const data::XmlOption* xmlOption = newXmlCovered.GetOption();
+                const Words& output = xmlOption->GetOutput();
+                size_t wordPos = newXmlCovered.GetPosition();
+                std::cerr << "next word at position " << wordPos << " is " << output[wordPos] << ", while we predict " << embIdx << "\n";
+                if (output[wordPos] == embIdx) {
+                  std::cerr << "newXmlCovered.Proceed();\n";
+                  newXmlCovered.Proceed();
+                }
+                else {
+                  std::cerr << "newXmlCovered.Abandon();\n";
+                  newXmlCovered.Abandon();
+                }
+              }
+              else {
+                std::cerr << "just copy\n";
+              }
+              newXmlCoveredList->push_back(newXmlCovered);
+            }
             mergeIntoSortedKeysCosts(collectedKeys[j][subbeam], 
                                      collectedCosts[j][subbeam],
+                                     collectedXmls[j][subbeam],
                                      subKeys[i], 
-                                     subCosts[i]);
+                                     subCosts[i],
+                                     newXmlCoveredList);
           }
         }
         //collectedKeys.push_back( subKeys );
@@ -505,6 +579,7 @@ public:
       // merge subbeams
       std::vector<unsigned> outKeys;
       std::vector<float> outCosts;
+      std::vector<data::XmlOptionCoveredList *> outXmls;
 
       for(int j = 0; j < beams.size(); j++) {
         std::vector<int> allotted;
@@ -570,9 +645,11 @@ public:
               bestSubbeam = subbeam;
             }
           }
-          std::cerr << "merge beam " << j << " from subbeam " << bestSubbeam << ", hyp " << bestIndex << ": " << (*targetVocab)[collectedKeys[j][bestSubbeam][bestIndex]] << ":" << collectedKeys[j][bestSubbeam][bestIndex] << "," << bestCost << "\n";
+          int word = collectedKeys[j][bestSubbeam][bestIndex] % dimTrgVoc;
+          std::cerr << "merge beam " << j << " from subbeam " << bestSubbeam << ", hyp " << bestIndex << ": " << (*targetVocab)[word] << ":" << word << "," << bestCost << "\n";
           outCosts.push_back( bestCost );
           outKeys.push_back( collectedKeys[j][bestSubbeam][bestIndex] );
+          outXmls.push_back( collectedXmls[j][bestSubbeam][bestIndex] );
           index[bestSubbeam]++;
         }
       }
@@ -597,7 +674,7 @@ public:
       }
 
       beams = toHyps(
-          outKeys, outCosts, dimTrgVoc, beams, states, localBeamSize, first, batch);
+          outKeys, outCosts, outXmls, dimTrgVoc, beams, states, localBeamSize, first, batch);
 
       for(int j = 0; j < beams.size(); j++) {
         auto& beam = beams[j];

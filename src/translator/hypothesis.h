@@ -49,7 +49,7 @@ public:
   // how many Xml constraints already satisfied or started
   size_t GetXmlStatus() {
     size_t status=0;
-    for(auto covered : xmlOptionCovered_) {
+    for(data::XmlOptionCovered &covered : xmlOptionCovered_) {
       if (covered.GetCovered() || covered.GetStarted()) {
         status++;
       }
@@ -59,6 +59,13 @@ public:
 
   void SetAlignment(const std::vector<float>& align) { alignment_ = align; };
 
+  void SetXml( data::XmlOptionCoveredList *xmlOptionCovered ) {
+    // deep copy
+    for(size_t i=0; i<xmlOptionCovered->size(); i++) {
+      data::XmlOptionCovered covered(xmlOptionCovered->at(i));
+      xmlOptionCovered_.push_back( covered );
+    }
+  }
 private:
   const Ptr<Hypothesis> prevHyp_;
   const size_t prevIndex_;

@@ -27,9 +27,13 @@ public:
       for(size_t j = 0; j < beam.size(); ++j)
         if(beam[j]->GetWord() == 0 || last) {
           float cost = (beam[j]->GetCost() - WordPenalty(history_.size())) / LengthPenalty(history_.size());
+          //if (options_->get<bool>("xml-input")) {
+            cost += 10 * beam[j]->GetXmlStatus();
+          //}
           topHyps_.push({history_.size(), j, cost});
-          // std::cerr << "Add " << history_.size() << " " << j << " " << cost
-          // << std::endl;
+          std::cerr << "Add " << history_.size() << " " << j << " " << cost
+                    << " XML Status: " << beam[j]->GetXmlStatus()
+                    << std::endl;
         }
     }
     history_.push_back(beam);

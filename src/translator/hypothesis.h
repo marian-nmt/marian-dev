@@ -8,7 +8,7 @@ namespace marian {
 
 class Hypothesis {
 public:
-  Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), cost_(0.0) {}
+  Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), cost_(0.0), xmlOptionCovered_(NULL) {}
 
   Hypothesis(const Ptr<Hypothesis> prevHyp,
              size_t word,
@@ -44,6 +44,9 @@ public:
 
   // how many Xml constraints already satisfied or started
   size_t GetXmlStatus() {
+    if (xmlOptionCovered_ == NULL) {
+      return 0;
+    }
     size_t status=0;
     for(data::XmlOptionCovered &covered : *xmlOptionCovered_) {
       if (covered.GetCovered() || covered.GetStarted()) {

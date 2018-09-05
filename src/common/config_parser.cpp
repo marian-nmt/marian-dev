@@ -341,7 +341,7 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
     ("dec-attention-independent-heads", po::value<bool>()->zero_tokens()->default_value(false),
      "Use completely independent heads in multi-head attention (automatically enabled by --dec-attention-bilinear-lookup)")
     ("dec-attention-bilinear-lookup", po::value<bool>()->zero_tokens()->default_value(false),
-     "Use log-bilinear softmax attention")
+     "Use log-bilinear softmax attention (currently disabled due to a bug)")
     ("dec-attention-projection-layernorm", po::value<bool>()->zero_tokens()->default_value(false),
      "Apply layer normalization after the context projection in the attention mechanism")
     ("dec-attention-projection-tanh", po::value<bool>()->zero_tokens()->default_value(false),

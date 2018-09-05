@@ -196,6 +196,9 @@ private:
              && opt<std::string>("original-type") == "nematus")  //
         ("skip", opt<bool>("skip"));
 
+    ABORT_IF(opt<bool>("dec-attention-bilinear-lookup"),
+             "--dec-attention-bilinear-lookup is disabled due to a bug");
+
     size_t decoderLayers = opt<size_t>("dec-depth");
     size_t decoderBaseDepth = opt<size_t>("dec-cell-base-depth");
     size_t decoderHighDepth = opt<size_t>("dec-cell-high-depth");

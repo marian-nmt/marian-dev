@@ -157,12 +157,12 @@ public:
         mappedContexts_.push_back(affine(contextDropped_, Uas_[headI], bas_[headI]));
       }
 
-//      if (attentionBilinearLookup_) {
-//        time_transposed_mapped_contexts_.push_back(transpose(reshape(mappedContexts_[headI], 
-//                                                    //{1, mappedContexts_[headI]->shape()[0], mappedContexts_[headI]->shape()[1], mappedContexts_[headI]->shape()[2]}),
-//                                                    {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
-//                                                    {0, 2, 1, 3}));
-//        }
+      if (attentionBilinearLookup_) {
+        time_transposed_mapped_contexts_.push_back(transpose(reshape(mappedContexts_[headI], 
+                                                    //{1, mappedContexts_[headI]->shape()[0], mappedContexts_[headI]->shape()[1], mappedContexts_[headI]->shape()[2]}),
+                                                    {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
+                                                    {0, 2, 1, 3}));
+        }
       }
     }
 
@@ -172,9 +172,9 @@ public:
       softmaxMask_ = transpose(reshape(softmaxMask, shape));
     }
 
-    //if (attentionBilinearLookup_) {
-    //  mappedContexts_.clear();
-    //}
+    if (attentionBilinearLookup_) {
+      mappedContexts_.clear();
+    }
     //LOG(info, "Attention constructor complete");
   }
 
@@ -228,10 +228,10 @@ public:
         //auto reshaped_state = mappedState->graph()->constant({1, dimBatch, attentionLookupDim_, dimBeam}, inits::zeros) + 0.0 * sum(sum(sum(mappedState)));
         //LOG(info, "reshaped_state shape: {}", reshaped_state->shape());
 
-        // auto time_transposed_mapped_context = time_transposed_mapped_contexts_[headI];
-        auto time_transposed_mapped_context = transpose(reshape(mappedContexts_[headI], 
-                                                        {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
-                                                        {0, 2, 1, 3});
+        auto time_transposed_mapped_context = time_transposed_mapped_contexts_[headI];
+//        auto time_transposed_mapped_context = transpose(reshape(mappedContexts_[headI], 
+//                                                        {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
+//                                                        {0, 2, 1, 3});
         auto bilinear_score = bdot(time_transposed_mapped_context, reshaped_state, false, false, (1.0 / std::sqrt(attentionLookupDim_)));
         e = reshape(transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_)),
                     {dimBeam, srcWords, dimBatch, 1});

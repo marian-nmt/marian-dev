@@ -63,7 +63,7 @@ NodeInitializer uniform(float scale) {
 }
 
 void glorot_uniform(Tensor t) {
-  float scale = sqrtf(6.0f / (t->shape()[0] + t->shape()[1]));
+  float scale = sqrtf(6.0f / (t->shape()[-2] + t->shape()[-1]));
   distribution<std::uniform_real_distribution<float>>(t, -scale, scale);
 }
 
@@ -75,7 +75,7 @@ void xorshift(Tensor t) {
 }
 
 void glorot_normal(Tensor t) {
-  float scale = sqrtf(2.0f / (t->shape()[0] + t->shape()[1]));
+  float scale = sqrtf(2.0f / (t->shape()[-2] + t->shape()[-1]));
   distribution<std::normal_distribution<float>>(t, 0, scale);
 }
 
@@ -125,14 +125,14 @@ NodeInitializer from_sparse_vector(
   };
 }
 
-NodeInitializer from_numpy(const cnpy::NpyArrayPtr& np) {
-  return [np](Tensor t) {
-    size_t size = 1;
-    for(size_t dim : np->shape)
-      size *= dim;
-    t->set((float*)np->data(), (float*)np->data() + size);
-  };
-}
+// NodeInitializer from_numpy(const cnpy::NpyArrayPtr& np) {
+//  return [np](Tensor t) {
+//    size_t size = 1;
+//    for(size_t dim : np->shape)
+//      size *= dim;
+//    t->set((float*)np->data(), (float*)np->data() + size);
+//  };
+//}
 
 // move this somewhere else
 NodeInitializer from_word2vec(const std::string& file,
@@ -154,6 +154,29 @@ NodeInitializer from_word2vec(const std::string& file,
     t->set(embs);
   };
 }
+
+NodeInitializer from_item(const io::Item& item) {
+  if(item.mapped) {
+    return [item](Tensor t) {
+      // @TODO: implement other types, for now croak loudly.
+      ABORT_IF(t->getBackend()->getDeviceId().type != DeviceType::cpu,
+               "Memory mapping only works for CPU tensors");
+      ABORT_IF(!matchType<float>(t->type()),
+               "Tensor type and type for mapping do not match");
+      auto mp = New<MemoryPiece>((uint8_t*)item.ptr, t->size() * sizeof(float));
+      t->reset(mp);
+    };
+  } else {
+    return [item](Tensor t) {
+      // @TODO: implement other types, for now croak loudly.
+      ABORT_IF(!matchType<float>(t->type()),
+               "Tensor type and type for mapping do not match");
+      t->set((const float*)item.bytes.data(),
+             (const float*)item.bytes.data() + t->size());
+    };
+  }
 }
+
+}  // namespace inits
 
 }  // namespace marian

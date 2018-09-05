@@ -2,7 +2,9 @@
 
 #include "common/config.h"
 #include "data/batch_generator.h"
+#ifndef _MSC_VER // @TODO: include SqLite in Visual Studio project
 #include "data/corpus_sqlite.h"
+#endif
 #include "models/model_task.h"
 #include "training/scheduler.h"
 #include "training/validator.h"
@@ -17,12 +19,16 @@ private:
 public:
   Train(Ptr<Config> options) : options_(options) {}
 
-  void run() {
+  void run() override {
     using namespace data;
 
     Ptr<CorpusBase> dataset;
     if(!options_->get<std::string>("sqlite").empty())
+#ifndef _MSC_VER // @TODO: include SqLite in Visual Studio project
       dataset = New<CorpusSQLite>(options_);
+#else
+      ABORT("SqLite presently not supported on Windows");
+#endif
     else
       dataset = New<Corpus>(options_);
 
@@ -78,8 +84,11 @@ public:
     scheduler->finished();
 
     model->finalize();
+
+    // Avoid saving the model twice if it has been loaded and training did not
+    // progress
     if(!trainState->loaded)
       model->save(true);
   }
 };
-}
+}  // namespace marian

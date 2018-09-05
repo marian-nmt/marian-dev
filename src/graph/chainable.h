@@ -7,9 +7,6 @@
 #include "3rd_party/exception.h"
 #include "common/definitions.h"
 
-/**
- * @brief Parent namespace for the Marian project
- */
 namespace marian {
 
 #define NodeOp(op) [=]() { op; }
@@ -19,8 +16,10 @@ class AutoTunerRecorder;
 
 template <class DataType>
 class Chainable;
-/** @brief Defines a convenience type to represent a shared pointer to a
- * Chainable<Tensor> object. */
+/**
+ * A convenience type to represent a shared pointer to a Chainable<Tensor>
+ * object.
+ */
 typedef Ptr<Chainable<Tensor>> Expr;
 typedef Weak<Chainable<Tensor>> WExpr;
 
@@ -106,4 +105,4 @@ struct Chainable {
 
   virtual void record(Ptr<AutoTunerRecorder>, size_t, bool) = 0;
 };
-}
+}  // namespace marian

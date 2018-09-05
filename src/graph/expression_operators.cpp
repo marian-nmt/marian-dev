@@ -15,8 +15,9 @@ Expr debug(Expr a, const std::string& message) {
   return a;
 }
 
-Expr logit(Expr a) {
-  return Expression<LogitNodeOp>(a);
+// logistic function. Note: scipy name is expit()
+Expr sigmoid(Expr a) {
+  return Expression<SigmoidNodeOp>(a);
 }
 
 Expr relu(Expr a) {
@@ -80,6 +81,18 @@ Expr operator/(Expr a, Expr b) {
   return Expression<DivNodeOp>(a, b);
 }
 
+Expr logaddexp(Expr a, Expr b) {
+  return Expression<LogAddExpNodeOp>(a, b);
+}
+
+Expr maximum(Expr a, Expr b) {
+  return Expression<MaximumNodeOp>(a, b);
+}
+
+Expr minimum(Expr a, Expr b) {
+  return Expression<MinimumNodeOp>(a, b);
+}
+
 /*********************************************************/
 
 Expr operator+(Expr a, float b) {
@@ -108,6 +121,12 @@ Expr operator*(Expr a, float b) {
 
 Expr operator/(Expr a, float b) {
   return Expression<ScalarMultNodeOp>(a, 1.f / b);
+}
+
+// TODO: efficient version of this without constant()
+Expr operator/(float a, Expr b) {
+  auto aExpr = b->graph()->constant({}, inits::from_value(a));
+  return aExpr / b;
 }
 
 // Expr pow(float a, Expr b) {
@@ -162,7 +181,7 @@ Expr atleast_nd(Expr a, size_t dims) {
 
   Shape nShape;
   nShape.resize(dims);
-  for(int i = 1; i <= a->shape().size(); ++i)
+  for(int i = 1; i <= (int)a->shape().size(); ++i)
     nShape.set(-i, a->shape()[-i]);
 
   return reshape(a, nShape);
@@ -210,20 +229,22 @@ Expr weighted_average(Expr in, Expr weights, keywords::axis_k ax) {
 }
 
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
-  auto device = a->graph()->getDevice().type;
+  auto device = a->graph()->getDeviceId().type;
   float clipValue = a->graph()->getBackend()->getClip();
 
+  // Currently only true when command line options
+  // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // dotInt16 computes A * B.T, hence the transpose for B to get A * B
     // if transA = false and transB = false.
 
-    return cpu::int16::dot(cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-                           cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-                           scale);
-  }
-  else {
-    return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue),
-                                 transA, transB, scale);
+    return cpu::int16::dot(
+        cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+        cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+        scale);
+  } else {
+    return Expression<DotNodeOp>(
+        clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
   }
 }
 
@@ -232,15 +253,13 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
 }
 
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
-  auto device = a->graph()->getDevice().type;
+  auto device = a->graph()->getDeviceId().type;
 
   float clipValue = a->graph()->getBackend()->getClip();
 
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
-
     bool autotune = true;
     if(autotune) {
-
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
 
       // start with new set of algorithms
@@ -248,7 +267,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
       // lower precicion for shapes, reduces data sparsity
       auto sh = [](Shape sh) {
-        for(int i = 0; i < sh.size(); ++i)
+        for(size_t i = 0; i < sh.size(); ++i)
           sh.set(i, sh[i] / 4);
         return sh;
       };
@@ -268,11 +287,14 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         return e;
       };
       auto alg1 = [=]() {
-        return rec1(cpu::int16::affine(rec1(cpu::int16::quantize(transA ? rec1(transpose(a)) : a, clipValue)),
-                                       cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-                                       bias,
-                                       scale),
-                    true);
+        return rec1(
+            cpu::int16::affine(
+                rec1(cpu::int16::quantize(transA ? rec1(transpose(a)) : a,
+                                          clipValue)),
+                cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+                bias,
+                scale),
+            true);
       };
       tuner->insert({hash1, alg1});
 
@@ -283,7 +305,6 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         e->record(tuner, hash2, stop);
         return e;
       };
-
 
       auto alg2 = [=]() {
         auto ac = clip(a, clipValue);
@@ -305,27 +326,34 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // execute algorithm with autotuning
       return tuner->run();
 
-    }
-    else {
+    } else {
       // cpu int16 version
-      return cpu::int16::affine(cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-                                cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-                                bias,
-                                scale);
+      return cpu::int16::affine(
+          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+          bias,
+          scale);
     }
-  }
-  else {
+  } else {
     // general version, MKL, CBlas or CUDA
+
+    // if clipValue > 0, the inputs will be clipped to range [-clipValue,
+    // clipValue] This is meant to keep values at the same range as used during
+    // training when optimizing for 8-bit integer products. Likely to be removed
+    // in the future when we explore better ways to handle this.
+
     int rows = a->shape().elements() / a->shape()[-1];
     Expr ones = a->graph()->ones({rows, 1});
-    std::vector<Expr> nodes = {clip(a, clipValue), clip(b, clipValue), bias, ones};
+    std::vector<Expr> nodes
+        = {clip(a, clipValue), clip(b, clipValue), bias, ones};
     return Expression<AffineNodeOp>(nodes, transA, transB, scale);
   }
 }
 
+// swap the last two axes
 Expr transpose(Expr a) {
   std::vector<int> axes(a->shape().size());
-  for(int i = 0; i < axes.size(); ++i) {
+  for(size_t i = 0; i < axes.size(); ++i) {
     axes[i] = i;
   }
   if(axes.size() > 1) {
@@ -365,7 +393,7 @@ Expr tanh(const std::vector<Expr>& nodes) {
   return Expression<TanhNodeOp>(nodes);
 }
 
-Expr logit(const std::vector<Expr>&) {
+Expr sigmoid(const std::vector<Expr>&) {
   ABORT("Not implemented");
 }
 
@@ -389,10 +417,10 @@ Expr square(Expr a) {
   return Expression<SquareNodeOp>(a);
 }
 
-Expr layer_norm(Expr x,
-                Expr gamma,
-                Expr beta /*= nullptr*/,
-                float eps /*= 1e-9*/) {
+Expr layerNorm(Expr x,
+               Expr gamma,
+               Expr beta /*= nullptr*/,
+               float eps /*= 1e-9*/) {
   std::vector<Expr> nodes = {x, gamma};
   if(beta)
     nodes.push_back(beta);
@@ -410,7 +438,7 @@ Expr highway(const std::string prefix, Expr x) {
   auto g = mlp::dense(x->graph())
       ("prefix", prefix + "_highway_d1")
       ("dim", outDim)
-      ("activation", mlp::act::logit)
+      ("activation", mlp::act::sigmoid)
       .construct()->apply(x);
   auto relued = mlp::dense(x->graph())
       ("prefix", prefix + "_highway_d2")
@@ -432,8 +460,8 @@ Expr highway(const std::string prefix, Expr x) {
 //    return gamma * (xmmju / std);
 //}
 
-Expr shift(Expr a, Shape shift) {
-  return Expression<ShiftNodeOp>(a, shift);
+Expr shift(Expr a, Shape shift, float padValue) {
+  return Expression<ShiftNodeOp>(a, shift, padValue);
 }
 
 // Expr lexical_bias(Expr logits, Expr att, float eps, Ptr<sparse::CSR> lf) {
@@ -441,6 +469,7 @@ Expr shift(Expr a, Shape shift) {
 //}
 
 #ifdef CUDA_FOUND
+#ifdef CUDNN
 
 Expr avg_pooling(Expr x,
                  int height,
@@ -505,4 +534,5 @@ Expr pooling_with_masking(Expr x, Expr mask, int width, bool isEven) {
 }
 
 #endif
-}
+#endif
+}  // namespace marian

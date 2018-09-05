@@ -1,29 +1,27 @@
 #include <algorithm>
-#include <boost/algorithm/string.hpp>
 #include <set>
 #include <stdexcept>
 #include <string>
 
+#include <boost/algorithm/string.hpp>
+
 #if MKL_FOUND
-//#include <omp.h>
 #include <mkl.h>
 #else
 #if BLAS_FOUND
-//#include <omp.h>
 #include <cblas.h>
 #endif
 #endif
 
-#include "3rd_party/cnpy/cnpy.h"
 #include "common/definitions.h"
 
+#include "common/cli_helper.h"
 #include "common/config.h"
 #include "common/config_parser.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
-#include "common/version.h"
-
 #include "common/regex.h"
+#include "common/version.h"
 
 #define SET_OPTION(key, type)                    \
   do {                                           \
@@ -56,36 +54,10 @@ uint16_t guess_terminal_width(uint16_t max_width) {
   if(ts.ws_col != 0)
     cols = ts.ws_col;
 #endif
-  if(cols == 0)  // couldn't determine terminal width
+  // couldn't determine terminal width
+  if(cols == 0)
     cols = po::options_description::m_default_line_length;
   return max_width ? std::min(cols, max_width) : cols;
-}
-
-void OutputYaml(const YAML::Node node, YAML::Emitter& out) {
-  std::set<std::string> sorter;
-  switch(node.Type()) {
-    case YAML::NodeType::Null: out << node; break;
-    case YAML::NodeType::Scalar: out << node; break;
-    case YAML::NodeType::Sequence:
-      out << YAML::BeginSeq;
-      for(auto&& n : node)
-        OutputYaml(n, out);
-      out << YAML::EndSeq;
-      break;
-    case YAML::NodeType::Map:
-      for(auto& n : node)
-        sorter.insert(n.first.as<std::string>());
-      out << YAML::BeginMap;
-      for(auto& key : sorter) {
-        out << YAML::Key;
-        out << key;
-        out << YAML::Value;
-        OutputYaml(node[key], out);
-      }
-      out << YAML::EndMap;
-      break;
-    case YAML::NodeType::Undefined: out << node; break;
-  }
 }
 
 const std::set<std::string> PATHS = {"model",
@@ -99,39 +71,6 @@ const std::set<std::string> PATHS = {"model",
                                      "valid-translation-output",
                                      "log"};
 
-// helper to implement interpolate-env-vars and relative-paths options
-static void ProcessPaths(YAML::Node& node,
-                         const std::function<std::string(std::string)>& TransformPath,
-                         bool isPath = false) {
-  if(isPath) {
-    if(node.Type() == YAML::NodeType::Scalar) {
-      std::string nodePath = node.as<std::string>();
-      if(!nodePath.empty()) {
-        node = TransformPath(nodePath); // transform the path
-      }
-    }
-
-    if(node.Type() == YAML::NodeType::Sequence) {
-      for(auto&& sub : node) {
-        ProcessPaths(sub, TransformPath, true);
-      }
-    }
-  } else {
-    switch(node.Type()) {
-      case YAML::NodeType::Sequence:
-        for(auto&& sub : node) {
-          ProcessPaths(sub, TransformPath, false);
-        }
-        break;
-      case YAML::NodeType::Map:
-        for(auto&& sub : node) {
-          std::string key = sub.first.as<std::string>();
-          ProcessPaths(sub.second, TransformPath, PATHS.count(key) > 0);
-        }
-        break;
-    }
-  }
-}
 
 bool ConfigParser::has(const std::string& key) const {
   return config_[key];
@@ -139,6 +78,10 @@ bool ConfigParser::has(const std::string& key) const {
 
 void ConfigParser::validateOptions() const {
   if(mode_ == ConfigMode::translating) {
+    UTIL_THROW_IF2(
+        !has("models") && !has("config"),
+        "You need to provide at least one model file or a config file");
+
     UTIL_THROW_IF2(
         !has("vocabs") || get<std::vector<std::string>>("vocabs").empty(),
         "Translating, but vocabularies are not given!");
@@ -218,8 +161,8 @@ void ConfigParser::validateOptions() const {
 }
 
 void ConfigParser::validateDevices() const {
-  std::string devices = Join(get<std::vector<std::string>>("devices"));
-  Trim(devices);
+  std::string devices = utils::Join(get<std::vector<std::string>>("devices"));
+  utils::Trim(devices);
 
   regex::regex pattern;
   std::string help;
@@ -235,8 +178,7 @@ void ConfigParser::validateDevices() const {
 
   UTIL_THROW_IF2(!regex::regex_match(devices, pattern),
                  "the argument '(" + devices
-                     + ")' for option '--devices' is invalid. "
-                     + help);
+                     + ")' for option '--devices' is invalid. " + help);
 }
 
 void ConfigParser::addOptionsCommon(po::options_description& desc) {
@@ -300,7 +242,7 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
     ("ignore-model-config", po::value<bool>()->zero_tokens()->default_value(false),
      "Ignore the model configuration saved in npz file")
     ("type", po::value<std::string>()->default_value("amun"),
-      "Model type (possible values: amun, nematus, s2s, multi-s2s, transformer)")
+      "Model type: amun, nematus, s2s, multi-s2s, transformer")
     ("dim-vocabs", po::value<std::vector<int>>()
       ->multitoken()
       ->default_value(std::vector<int>({0, 0}), "0 0"),
@@ -383,6 +325,11 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Omit gate in AAN (transformer)")
     ("transformer-decoder-autoreg", po::value<std::string>()->default_value("self-attention"),
      "Type of autoregressive layer in transformer decoder: self-attention, average-attention (transformer)")
+    ("transformer-tied-layers", po::value<std::vector<size_t>>()->multitoken()
+      ->default_value(std::vector<size_t>(), ""),
+     "List of tied decoder layers (transformer)")
+    ("transformer-guided-alignment-layer", po::value<std::string>()->default_value("last"),
+     "Last or number of layer to use for guided alignment training in transformer")
     ("transformer-preprocess", po::value<std::string>()->default_value(""),
      "Operation before each transformer layer: d = dropout, a = add, n = normalize")
     ("transformer-postprocess-emb", po::value<std::string>()->default_value("d"),
@@ -479,6 +426,10 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
       ->multitoken()
       ->default_value(std::vector<std::string>({"0"}), "0"),
       "GPU ID(s) to use for training")
+#ifdef USE_NCCL
+    ("no-nccl", po::value<bool>()->zero_tokens()->default_value(false),
+     "Disable inter-GPU communication via NCCL")
+#endif
 #ifdef CUDA_FOUND
     ("cpu-threads", po::value<size_t>()->default_value(0)->implicit_value(1),
       "Use CPU-based computation with this many independent threads, 0 means GPU-based computation")
@@ -500,7 +451,7 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
     ("maxi-batch", po::value<int>()->default_value(100),
       "Number of batches to preload for length-based sorting")
     ("maxi-batch-sort", po::value<std::string>()->default_value("trg"),
-      "Sorting strategy for maxi-batch: trg (default) src none")
+      "Sorting strategy for maxi-batch: trg, src, none")
     ("optimizer,o", po::value<std::string>()->default_value("adam"),
      "Optimization algorithm (possible values: sgd, adagrad, adam")
     ("optimizer-params",  po::value<std::vector<float>>()
@@ -513,8 +464,8 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
     ("lr-decay", po::value<double>()->default_value(0.0),
      "Decay factor for learning rate: lr = lr * arg (0 to disable)")
     ("lr-decay-strategy", po::value<std::string>()->default_value("epoch+stalled"),
-     "Strategy for learning rate decaying "
-     "(possible values: epoch, batches, stalled, epoch+batches, epoch+stalled)")
+     "Strategy for learning rate decaying: epoch, batches, stalled, "
+     "epoch+batches, epoch+stalled")
     ("lr-decay-start", po::value<std::vector<size_t>>()
        ->multitoken()
        ->default_value(std::vector<size_t>({10,1}), "10 1"),
@@ -562,14 +513,14 @@ void ConfigParser::addOptionsTraining(po::options_description& desc) {
     ("guided-alignment", po::value<std::string>(),
      "Use guided alignment to guide attention")
     ("guided-alignment-cost", po::value<std::string>()->default_value("ce"),
-     "Cost type for guided alignment. Possible values: ce (cross-entropy), "
-     "mse (mean square error), mult (multiplication)")
+     "Cost type for guided alignment: ce (cross-entropy), mse (mean square "
+     "error), mult (multiplication)")
     ("guided-alignment-weight", po::value<double>()->default_value(1),
      "Weight for guided alignment cost")
     ("data-weighting", po::value<std::string>(),
      "File with sentence or word weights")
     ("data-weighting-type", po::value<std::string>()->default_value("sentence"),
-     "Processing level for data weighting. Possible values: sentence, word")
+     "Processing level for data weighting: sentence, word")
 
     //("drop-rate", po::value<double>()->default_value(0),
     // "Gradient drop ratio (read: https://arxiv.org/abs/1704.05021)")
@@ -702,15 +653,15 @@ void ConfigParser::addOptionsTranslate(po::options_description& desc) {
     ("maxi-batch", po::value<int>()->default_value(1),
       "Number of batches to preload for length-based sorting")
     ("maxi-batch-sort", po::value<std::string>()->default_value("none"),
-      "Sorting strategy for maxi-batch: none (default) src")
+      "Sorting strategy for maxi-batch: none, src")
     ("n-best", po::value<bool>()->zero_tokens()->default_value(false),
       "Display n-best list")
     ("shortlist", po::value<std::vector<std::string>>()->multitoken(),
      "Use softmax shortlist: path first best prune")
     ("weights", po::value<std::vector<float>>()->multitoken(),
       "Scorer weights")
-    ("alignment", po::value<bool>()->zero_tokens()->default_value(false),
-     "Return word alignments")
+    ("alignment", po::value<std::string>()->implicit_value("1"),
+     "Return word alignment. Possible values: 0.0-1.0, hard, soft")
     // TODO: the options should be available only in server
     ("port,p", po::value<size_t>()->default_value(8080),
       "Port number for web socket server")
@@ -764,7 +715,9 @@ void ConfigParser::addOptionsRescore(po::options_description& desc) {
     ("maxi-batch", po::value<int>()->default_value(100),
       "Number of batches to preload for length-based sorting")
     ("maxi-batch-sort", po::value<std::string>()->default_value("trg"),
-      "Sorting strategy for maxi-batch: trg (default) src none")
+      "Sorting strategy for maxi-batch: trg (default), src, none")
+    ("alignment", po::value<std::string>()->implicit_value("1"),
+     "Return word alignments. Possible values: 0.0-1.0, hard, soft")
     ;
   // clang-format on
   desc.add(rescore);
@@ -808,44 +761,41 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     exit(0);
   }
 
-  // @TODO: move to validateOptions()
-  if(mode_ == ConfigMode::translating) {
-    if(vm_.count("models") == 0 && vm_.count("config") == 0) {
-      std::cerr << "Error: you need to provide at least one model file or a "
-                   "config file"
-                << std::endl
-                << std::endl;
-
-      std::cerr << "Usage: " + std::string(argv[0]) + " [options]" << std::endl;
-      std::cerr << cmdline_options_ << std::endl;
-      exit(0);
-    }
-  }
-
   if(vm_["version"].as<bool>()) {
     std::cerr << PROJECT_VERSION_FULL << std::endl;
     exit(0);
   }
 
+  const auto& InterpolateEnvVarsIfRequested
+      = [&](std::string str) -> std::string {
+    if(vm_["interpolate-env-vars"].as<bool>())
+      str = cli::InterpolateEnvVars(str);
+    return str;
+  };
+
   bool loadConfig = vm_.count("config");
   bool reloadConfig
       = (mode_ == ConfigMode::training)
-        && boost::filesystem::exists(vm_["model"].as<std::string>() + ".yml")
+        && boost::filesystem::exists(InterpolateEnvVarsIfRequested(
+               vm_["model"].as<std::string>() + ".yml"))
         && !vm_["no-reload"].as<bool>();
   std::vector<std::string> configPaths;
 
   if(loadConfig) {
     configPaths = vm_["config"].as<std::vector<std::string>>();
     config_ = YAML::Node();
-    for (const auto& configPath : configPaths)
-    {
-      for(const auto& it : YAML::Load(InputFileStream(configPath))) // later file overrides
+    for(auto& configPath : configPaths) {
+      configPath = InterpolateEnvVarsIfRequested(
+          configPath);  // (note: this updates the configPaths array)
+      for(const auto& it :
+          YAML::Load(InputFileStream(configPath)))  // later file overrides
         config_[it.first.as<std::string>()] = it.second;
     }
   } else if(reloadConfig) {
-    auto configPath = vm_["model"].as<std::string>() + ".yml";
+    auto configPath = InterpolateEnvVarsIfRequested(
+        vm_["model"].as<std::string>() + ".yml");
     config_ = YAML::Load(InputFileStream(configPath));
-    configPaths = { configPath };
+    configPaths = {configPath};
   }
 
   /** model **/
@@ -908,6 +858,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("transformer-aan-activation", std::string);
   SET_OPTION("transformer-aan-nogate", bool);
   SET_OPTION("transformer-decoder-autoreg", std::string);
+  SET_OPTION("transformer-tied-layers", std::vector<size_t>);
+  SET_OPTION("transformer-guided-alignment-layer", std::string);
 
 #ifdef CUDNN
   SET_OPTION("char-stride", int);
@@ -995,6 +947,10 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
 
     SET_OPTION("multi-node", bool);
     SET_OPTION("multi-node-overlap", bool);
+
+#ifdef USE_NCCL
+    SET_OPTION("no-nccl", bool);
+#endif
   }
 
   if(mode_ == ConfigMode::rescoring) {
@@ -1007,6 +963,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("n-best-feature", std::string);
     SET_OPTION_NONDEFAULT("summary", std::string);
     SET_OPTION("optimize", bool);
+    SET_OPTION_NONDEFAULT("alignment", std::string);
   }
 
   if(mode_ == ConfigMode::translating) {
@@ -1019,7 +976,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION("mini-batch-words", int);
     SET_OPTION_NONDEFAULT("weights", std::vector<float>);
     SET_OPTION_NONDEFAULT("shortlist", std::vector<std::string>);
-    SET_OPTION("alignment", bool);
+    SET_OPTION_NONDEFAULT("alignment", std::string);
     SET_OPTION("port", size_t);
     SET_OPTION("optimize", bool);
     SET_OPTION("max-length-factor", float);
@@ -1084,45 +1041,36 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   }
 
   if(get<bool>("interpolate-env-vars")) {
-    ProcessPaths(config_,
-      [&](const std::string& nodePath) -> std::string {
-        // replace environment-variable expressions of the form ${VARNAME} in pathnames
-        auto path = nodePath;
-        for(;;)
-        {
-          const auto pos = path.find("${");
-          if (pos == std::string::npos)
-              return path;
-          const auto epos = path.find("}", pos + 2);
-          ABORT_IF(epos == std::string::npos, "interpolate-env-vars option: ${{ without matching }} in '{}'", path.c_str());
-          const auto var = path.substr(pos + 2, epos - (pos + 2)); // isolate the variable name
-          const auto val = getenv(var.c_str());
-          ABORT_IF(!val, "interpolate-env-vars option: environment variable '{}' not defined in '{}'", var.c_str(), path.c_str());
-          path = path.substr(0,pos) + val + path.substr(epos + 1); // replace it; then try again for further replacements
-        }
-      });
+    cli::ProcessPaths(config_, cli::InterpolateEnvVars, PATHS);
   }
 
   if(get<bool>("relative-paths") && !vm_["dump-config"].as<bool>()) {
-    // change relative paths to absolute paths relative to the config file's directory
-    ABORT_IF(configPaths.empty(), "relative-paths option requires at least one config file (--config option)");
+    // change relative paths to absolute paths relative to the config file's
+    // directory
+    ABORT_IF(configPaths.empty(),
+             "relative-paths option requires at least one config file "
+             "(--config option)");
     auto configDir = boost::filesystem::path{configPaths.front()}.parent_path();
-    for (const auto& configPath : configPaths)
-      ABORT_IF(boost::filesystem::path{configPaths.front()}.parent_path() != configDir,
-               "relative-paths option requires all config files to be in the same directory");
-    ProcessPaths(config_,
-      [&](const std::string& nodePath) -> std::string {
-        // replace relative path w.r.t. configDir
-        using namespace boost::filesystem;
-        try {
-          return canonical(path{nodePath}, configDir).string();
-        } catch(boost::filesystem::filesystem_error& e) { // will fail if file does not exist; use parent in that case
-          std::cerr << e.what() << std::endl;
-          auto parentPath = path{nodePath}.parent_path();
-          return (canonical(parentPath, configDir) / path{nodePath}.filename())
-                     .string();
-        }
-      });
+    for(const auto& configPath : configPaths)
+      ABORT_IF(boost::filesystem::path{configPath}.parent_path() != configDir,
+               "relative-paths option requires all config files to be in the "
+               "same directory");
+
+    auto transformFunc = [&](const std::string& nodePath) -> std::string {
+      // replace relative path w.r.t. configDir
+      using namespace boost::filesystem;
+      try {
+        return canonical(path{nodePath}, configDir).string();
+      } catch(boost::filesystem::filesystem_error& e) {
+        // will fail if file does not exist; use parent in that case
+        std::cerr << e.what() << std::endl;
+        auto parentPath = path{nodePath}.parent_path();
+        return (canonical(parentPath, configDir) / path{nodePath}.filename())
+            .string();
+      }
+    };
+
+    cli::ProcessPaths(config_, transformFunc, PATHS);
   }
 
   if(doValidate) {
@@ -1140,19 +1088,10 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
 
   if(vm_["dump-config"].as<bool>()) {
     YAML::Emitter emit;
-    OutputYaml(config_, emit);
+    cli::OutputYaml(config_, emit);
     std::cout << emit.c_str() << std::endl;
     exit(0);
   }
-
-  // @TODO: this should probably be in processOptionDevices()
-  //#ifdef BLAS_FOUND
-  //  //omp_set_num_threads(vm_["omp-threads"].as<size_t>());
-  //#ifdef MKL_FOUND
-  //  mkl_set_num_threads(vm_["omp-threads"].as<size_t>());
-  //#endif
-  //#endif
-
 }
 
 std::vector<DeviceId> ConfigParser::getDevices() {
@@ -1160,25 +1099,25 @@ std::vector<DeviceId> ConfigParser::getDevices() {
 
   try {
     std::string devicesStr
-        = Join(config_["devices"].as<std::vector<std::string>>());
+        = utils::Join(config_["devices"].as<std::vector<std::string>>());
 
     if(mode_ == ConfigMode::training && get<bool>("multi-node")) {
-      auto parts = Split(devicesStr, ":");
+      auto parts = utils::Split(devicesStr, ":");
       for(size_t i = 1; i < parts.size(); ++i) {
         std::string part = parts[i];
-        Trim(part);
-        auto ds = Split(part, " ");
+        utils::Trim(part);
+        auto ds = utils::Split(part, " ");
         if(i < parts.size() - 1)
           ds.pop_back();
 
         // does this make sense?
         devices.push_back({ds.size(), DeviceType::gpu});
         for(auto d : ds)
-          devices.push_back({std::stoull(d), DeviceType::gpu});
+          devices.push_back({(size_t)std::stoull(d), DeviceType::gpu});
       }
     } else {
-      for(auto d : Split(devicesStr))
-        devices.push_back({std::stoull(d), DeviceType::gpu});
+      for(auto d : utils::Split(devicesStr))
+        devices.push_back({(size_t)std::stoull(d), DeviceType::gpu});
     }
 
     if(config_["cpu-threads"].as<size_t>() > 0) {
@@ -1197,4 +1136,4 @@ std::vector<DeviceId> ConfigParser::getDevices() {
 YAML::Node ConfigParser::getConfig() const {
   return config_;
 }
-}
+}  // namespace marian

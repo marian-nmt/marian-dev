@@ -10,11 +10,9 @@
 #include "common/config.h"
 #include "data/batch_stats.h"
 #include "data/rng_engine.h"
-#include "data/vocab.h"
 #include "training/training_state.h"
 
 namespace marian {
-
 namespace data {
 
 template <class DataSet>
@@ -36,6 +34,7 @@ private:
   int batchSize_{1};
 
   typename DataSet::iterator current_;
+  bool newlyPrepared_{true};
 
   size_t maxiBatchSize_;
   std::deque<BatchPtr> bufferedBatches_;
@@ -78,16 +77,27 @@ private:
       maxiBatch.reset(new sample_queue(cmpNone));
     }
 
-    int maxBatchSize = options_->get<int>("mini-batch");
-    int maxSize = maxBatchSize * options_->get<int>("maxi-batch");
+    size_t maxBatchSize = options_->get<int>("mini-batch");
+    size_t maxSize = maxBatchSize * options_->get<int>("maxi-batch");
 
     // consume data from corpus into maxi-batch (single sentences)
     // sorted into specified order (due to queue)
+    if(newlyPrepared_) {
+      current_ = data_->begin();
+      newlyPrepared_ = false;
+    } else {
+      if(current_ != data_->end())
+        ++current_;
+    }
     size_t sets = 0;
     while(current_ != data_->end() && maxiBatch->size() < maxSize) {
       maxiBatch->push(*current_);
       sets = current_->size();
-      current_++;
+      // do not consume more than required for the maxi batch as this causes
+      // that line-by-line translation is delayed by one sentence
+      bool last = maxiBatch->size() == maxSize;
+      if(!last)
+        ++current_;
     }
 
     samples batchVector;
@@ -186,7 +196,7 @@ public:
     currentBatch_ = bufferedBatches_.front();
 
     if(loadReady_
-       && bufferedBatches_.size()
+       && (int)bufferedBatches_.size()
               <= std::max(options_->get<int>("maxi-batch") / 5, 1)) {
       {
         std::unique_lock<std::mutex> lock(loadMutex_);
@@ -199,7 +209,8 @@ public:
         std::unique_lock<std::mutex> lock(loadMutex_);
         loadReady_ = true;
         loadCondition_.notify_all();
-      }).detach();
+      })
+          .detach();
     }
 
     std::unique_lock<std::mutex> lock(loadMutex_);
@@ -208,12 +219,19 @@ public:
     return currentBatch_;
   }
 
+  std::vector<BatchPtr> nextN(size_t num) {
+    std::vector<BatchPtr> batches;
+    for(int i = 0; i < num && *this; ++i)
+      batches.push_back(next());
+    return batches;
+  }
+
   void prepare(bool shuffle = true) {
     if(shuffle)
       data_->shuffle();
     else
       data_->reset();
-    current_ = data_->begin();
+    newlyPrepared_ = true;
     fillBatches(shuffle);
   }
 
@@ -232,7 +250,7 @@ public:
     }
 
     prepare(shuffle);
-    for(int i = 0; i < state->batchesEpoch; ++i)
+    for(size_t i = 0; i < state->batchesEpoch; ++i)
       next();
 
     return true;
@@ -247,10 +265,10 @@ public:
                        Ptr<BatchStats> stats = nullptr)
       : BatchGenerator(data, options, stats) {}
 
-  void actAfterEpoch(TrainingState& state) {
+  void actAfterEpoch(TrainingState& state) override {
     state.seedBatch = getRNGState();
     state.seedCorpus = data_->getRNGState();
   }
 };
-}
-}
+}  // namespace data
+}  // namespace marian

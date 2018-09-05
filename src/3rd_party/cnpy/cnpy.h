@@ -38,6 +38,10 @@ namespace cnpy {
         const char* data() const {
             return bytes.data();
         }
+
+        size_t size() {
+            return bytes.size();
+        }
     };
 
     typedef std::shared_ptr<NpyArray> NpyArrayPtr;
@@ -218,7 +222,8 @@ namespace cnpy {
     struct NpzItem : public NpyArray
     {
         std::string name; //name of item in .npz file (without .npy)
-        char type;        //type of item
+        char type;        // type of item
+
         template<typename T>
         NpzItem(const std::string& name, const std::vector<T>& data, const std::vector<unsigned int>& dataShape) :
             name(name), type(map_type(typeid(T)))
@@ -229,16 +234,37 @@ namespace cnpy {
             auto* p = (const char*)data.data();
             std::copy(p, p + bytes.size(), bytes.begin());
         }
+
+        NpzItem(const std::string& name, const std::string& data, const std::vector<unsigned int>& dataShape) :
+            name(name), type(map_type(typeid(char)))
+        {
+            shape = dataShape;
+            word_size = sizeof(char);
+            std::copy(data.data(), data.data() + data.size() + 1, bytes.begin());
+        }
+
+        NpzItem(const std::string& name,
+                const std::vector<char>& data,
+                const std::vector<unsigned int>& dataShape,
+                char type_, size_t word_size_) :
+            name(name), type(type_)
+        {
+            shape = dataShape;
+            word_size = word_size_;
+            bytes.resize(data.size());
+            std::copy(data.begin(), data.end(), bytes.begin());
+        }
     };
 
     //same as npz_save() except that it saves multiple items to .npz file in a single go, which is required when writing to HDFS
     static inline
     void npz_save(std::string zipname, const std::vector<NpzItem>& items)
     {
-        unlink(zipname.c_str()); //when saving to HDFS, we cannot overwrite an existing file
-        FILE* fp = fopen(zipname.c_str(),"wb");
+        auto tmpname = zipname + "$$"; // TODO: add thread id or something
+        unlink(tmpname.c_str()); // when saving to HDFS, we cannot overwrite an existing file
+        FILE* fp = fopen(tmpname.c_str(),"wb");
         if (!fp)
-            throw std::runtime_error("npz_save: error opening file for writing: " + zipname);
+            throw std::runtime_error("npz_save: error opening file for writing: " + tmpname);
 
         std::vector<char> global_header;
         std::vector<char> local_header;
@@ -247,22 +273,22 @@ namespace cnpy {
             auto fname = item.name;
             //first, form a "file name" by appending .npy to the item's name
             fname += ".npy";
-    
+
             const auto* data      = item.bytes.data();
             const auto* shape     = item.shape.data();
             const auto  type      = item.type;
             const auto  word_size = item.word_size;
             const unsigned int ndims = item.shape.size();
             std::vector<char> npy_header = create_npy_header(type,word_size,shape,ndims);
-    
+
             unsigned long nels = 1;
             for (int m=0; m<ndims; m++ ) nels *= shape[m];
             int nbytes = nels*word_size + npy_header.size();
-    
+
             //get the CRC of the data to be added
             unsigned int crc = crc32(0L,(unsigned char*)&npy_header[0],npy_header.size());
             crc = crc32(crc,(unsigned char*)data,nels*word_size);
-    
+
             //build the local header
             local_header.clear();
             local_header += "PK"; //first part of sig
@@ -278,13 +304,13 @@ namespace cnpy {
             local_header += (unsigned short) fname.size(); //fname length
             local_header += (unsigned short) 0; //extra field length
             local_header += fname;
-    
+
             //write everything
             unsigned int local_header_offset = ftell(fp); // this is where this local item will begin in the file. Tis gets stored in the corresponding global header.
             fwrite(&local_header[0],sizeof(char),local_header.size(),fp);
             fwrite(&npy_header[0],sizeof(char),npy_header.size(),fp);
             fwrite(data,word_size,nels,fp);
-    
+
             // append to global header
             // A concatenation of global headers for all objects gets written to the end of the file.
             global_header += "PK"; //first part of sig
@@ -323,8 +349,15 @@ namespace cnpy {
         fflush(fp);
         bool bad = ferror(fp);
         fclose(fp);
+
+        // move to final location (atomically)
+        bad =  bad || (rename(tmpname.c_str(), zipname.c_str()) == -1);
+
         if (bad)
-            throw std::runtime_error("npz_save: error writing file: " + zipname);
+        {
+            unlink(tmpname.c_str());
+            throw std::runtime_error("npz_save: error saving to file: " + zipname);
+        }
     }
 
     static inline

@@ -25,9 +25,9 @@ public:
     setHandles();
   }
 
-  void setDevice() { cudaSetDevice(deviceId_.no); }
+  void setDevice() override { cudaSetDevice(deviceId_.no); }
 
-  void synchronize() { cudaStreamSynchronize(0); }
+  void synchronize() override { cudaStreamSynchronize(0); }
 
   cublasHandle_t getCublasHandle() { return cublasHandle_; }
 
@@ -61,5 +61,5 @@ private:
     return cublasHandle;
   }
 };
-}
-}
+}  // namespace gpu
+}  // namespace marian

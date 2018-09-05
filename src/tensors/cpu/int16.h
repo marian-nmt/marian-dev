@@ -11,20 +11,18 @@ struct QuantizeNodeOp : public UnaryNodeOp {
   float clipValue_;
 
   QuantizeNodeOp(Expr a, float clipValue)
-  : UnaryNodeOp(a, Type::int16), clipValue_{clipValue} {}
+      : UnaryNodeOp(a, Type::int16), clipValue_{clipValue} {}
 
-  NodeOps forwardOps() {
-    return {
-      NodeOp(Quantize16(val_, child(0)->val(), clipValue_))
-    };
+  NodeOps forwardOps() override {
+    return {NodeOp(Quantize16(val_, child(0)->val(), clipValue_))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     ABORT("Only used for inference");
-    return {NodeOp()};
+    return {NodeOp(0)};
   }
 
-  const std::string type() { return "quantizeInt16"; }
+  const std::string type() override { return "quantizeInt16"; }
 };
 
 class DotNodeOp : public NaryNodeOp {
@@ -33,8 +31,7 @@ private:
 
 public:
   DotNodeOp(Expr a, Expr b, float scalar)
-      : NaryNodeOp({a, b}, newShape(a, b)),
-        scalar_(scalar) {}
+      : NaryNodeOp({a, b}, newShape(a, b)), scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b) {
     auto shapeA = a->shape();
@@ -51,33 +48,25 @@ public:
     return outShape;
   }
 
-  NodeOps forwardOps() {
-    return {
-      NodeOp(ProdInt16(val_,
-                     child(0)->val(),
-                     child(1)->val(),
-                     scalar_))
-    };
+  NodeOps forwardOps() override {
+    return {NodeOp(ProdInt16(val_, child(0)->val(), child(1)->val(), scalar_))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     ABORT("Only used for inference");
-    return {NodeOp()};
+    return {NodeOp(0)};
   }
 
-  const std::string type() { return "dotInt16"; }
+  const std::string type() override { return "dotInt16"; }
 };
-
 
 class AffineNodeOp : public NaryNodeOp {
 private:
   float scalar_;
 
 public:
-  AffineNodeOp(const std::vector<Expr>& nodes,
-               float scalar)
-      : NaryNodeOp(nodes, newShape(nodes[0], nodes[1])),
-        scalar_(scalar) {}
+  AffineNodeOp(const std::vector<Expr>& nodes, float scalar)
+      : NaryNodeOp(nodes, newShape(nodes[0], nodes[1])), scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b) {
     auto shapeA = a->shape();
@@ -94,22 +83,19 @@ public:
     return outShape;
   }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {
-      NodeOp(ProdInt16(val_,
-                     child(0)->val(),
-                     child(1)->val(),
-                     scalar_);
+      NodeOp(ProdInt16(val_, child(0)->val(), child(1)->val(), scalar_);
              AddBias(val_, child(2)->val()))
     };
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     ABORT("Only used for inference");
-    return {NodeOp()};
+    return {NodeOp(0)};
   }
 
-  const std::string type() { return "affineInt16"; }
+  const std::string type() override { return "affineInt16"; }
 };
 
 static inline Expr dot(Expr a, Expr b, float scalar) {
@@ -125,7 +111,6 @@ static inline Expr quantize(Expr a, float clipValue) {
   return Expression<cpu::int16::QuantizeNodeOp>(a, clipValue);
 }
 
-
-}
-}
-}
+}  // namespace int16
+}  // namespace cpu
+}  // namespace marian

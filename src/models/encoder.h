@@ -12,9 +12,11 @@ protected:
   bool inference_{false};
   size_t batchIndex_{0};
 
-  virtual std::tuple<Expr, Expr> lookup(Ptr<ExpressionGraph> graph,
-                                        Expr srcEmbeddings,
-                                        Ptr<data::CorpusBatch> batch) {
+  // @TODO: This used to be virtual, but is never overridden.
+  // virtual
+  std::tuple<Expr, Expr> lookup(Ptr<ExpressionGraph> graph,
+                                Expr srcEmbeddings,
+                                Ptr<data::CorpusBatch> batch) const {
     using namespace keywords;
 
     auto subBatch = (*batch)[batchIndex_];
@@ -44,11 +46,11 @@ public:
       = 0;
 
   template <typename T>
-  T opt(const std::string& key) {
+  T opt(const std::string& key) const {
     return options_->get<T>(key);
   }
 
   virtual void clear() = 0;
 };
 
-}
+}  // namespace marian

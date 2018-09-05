@@ -55,6 +55,11 @@ void OutputCollector::Write(long sourceId,
       }
     }
 
+    // for 1-best, flush stdout so that we can consume this immediately from an
+    // external process
+    if(!nbest)
+      ((std::ostream&)*outStrm_) << std::flush;
+
   } else {
     // save for later
     outputs_[sourceId] = std::make_pair(best1, bestn);
@@ -79,4 +84,4 @@ std::vector<std::string> StringCollector::collect(bool nbest) {
     outputs.emplace_back(nbest ? outputs_[id].second : outputs_[id].first);
   return outputs;
 }
-}
+}  // namespace marian

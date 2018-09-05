@@ -1,15 +1,21 @@
 #pragma once
 
-#include <sys/ioctl.h>
-#include <unistd.h>
 #include <boost/program_options.hpp>
 
 #include "3rd_party/yaml-cpp/yaml.h"
-#include "3rd_party/cnpy/cnpy.h"
+#include "common/cli_helper.h"
 #include "common/config_parser.h"
 #include "common/file_stream.h"
+#include "common/io.h"
 #include "common/logging.h"
 #include "common/utils.h"
+
+// TODO: why are these needed by a config parser? Can they be removed for Linux
+// as well?
+#ifndef _WIN32
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 namespace marian {
 
@@ -23,7 +29,7 @@ public:
          ConfigMode mode = ConfigMode::training,
          bool validate = false) {
     std::vector<std::string> sargv;
-    Split(options, sargv, " ");
+    utils::Split(options, sargv, " ");
     int argc = sargv.size();
 
     std::vector<char*> argv(argc);
@@ -112,6 +118,7 @@ public:
 
   YAML::Node getModelParameters();
   void loadModelParameters(const std::string& name);
+  void loadModelParameters(const void* ptr);
 
   const std::vector<DeviceId>& getDevices() { return devices_; }
 
@@ -122,28 +129,17 @@ public:
 
   friend std::ostream& operator<<(std::ostream& out, const Config& config) {
     YAML::Emitter outYaml;
-    OutputYaml(config.get(), outYaml);
+    cli::OutputYaml(config.get(), outYaml);
     out << outYaml.c_str();
     return out;
   }
-
-  static void AddYamlToNpz(const YAML::Node&,
-                           const std::string&,
-                           const std::string&);
-  static void AddYamlToNpzItems(const YAML::Node&,
-                                const std::string&,
-                                std::vector<cnpy::NpzItem>&);
 
 private:
   YAML::Node config_;
   std::vector<DeviceId> devices_;
 
-  static void GetYamlFromNpz(YAML::Node&,
-                             const std::string&,
-                             const std::string&);
-
   void override(const YAML::Node& params);
 
   void log();
 };
-}
+}  // namespace marian

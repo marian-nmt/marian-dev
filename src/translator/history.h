@@ -1,19 +1,20 @@
 #pragma once
 
-#include <queue>
-
+#include "data/types.h"
 #include "hypothesis.h"
+
+#include <queue>
 
 namespace marian {
 
 class History {
 private:
   struct HypothesisCoord {
-    bool operator<(const HypothesisCoord& hc) const { return cost < hc.cost; }
+    bool operator<(const HypothesisCoord& hc) const { return pathScore < hc.pathScore; }
 
     size_t i;
     size_t j;
-    float cost;
+    float pathScore;
   };
 
 public:
@@ -22,13 +23,14 @@ public:
   float LengthPenalty(size_t length) { return std::pow((float)length, alpha_); }
   float WordPenalty(size_t length) { return wp_ * (float)length; }
 
-  void Add(const Beam& beam, bool last = false) {
+  void Add(const Beam& beam, Word trgEosId, bool last = false) {
     if(beam.back()->GetPrevHyp() != nullptr) {
       for(size_t j = 0; j < beam.size(); ++j)
-        if(beam[j]->GetWord() == 0 || last) {
-          float cost = (beam[j]->GetCost() - WordPenalty(history_.size())) / LengthPenalty(history_.size());
-          topHyps_.push({history_.size(), j, cost});
-          // std::cerr << "Add " << history_.size() << " " << j << " " << cost
+        if(beam[j]->GetWord() == trgEosId || last) {
+          float pathScore = (beam[j]->GetPathScore() - WordPenalty(history_.size()))
+                       / LengthPenalty(history_.size());
+          topHyps_.push({history_.size(), j, pathScore});
+          // std::cerr << "Add " << history_.size() << " " << j << " " << pathScore
           // << std::endl;
         }
     }
@@ -46,7 +48,7 @@ public:
 
       size_t start = bestHypCoord.i;
       size_t j = bestHypCoord.j;
-      // float c = bestHypCoord.cost;
+      // float c = bestHypCoord.pathScore;
       // std::cerr << "h: " << start << " " << j << " " << c << std::endl;
 
       Words targetWords;
@@ -60,7 +62,7 @@ public:
       std::reverse(targetWords.begin(), targetWords.end());
       nbest.emplace_back(targetWords,
                          history_[bestHypCoord.i][bestHypCoord.j],
-                         bestHypCoord.cost);
+                         bestHypCoord.pathScore);
     }
     return nbest;
   }
@@ -78,4 +80,4 @@ private:
 };
 
 typedef std::vector<Ptr<History>> Histories;
-}
+}  // namespace marian

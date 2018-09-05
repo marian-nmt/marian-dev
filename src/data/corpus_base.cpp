@@ -197,7 +197,7 @@ void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,
 
 void CorpusBase::addWeightsToSentenceTuple(const std::string& line,
                                            SentenceTuple& tup) const {
-  auto elements = Split(line, " ");
+  auto elements = utils::Split(line, " ");
 
   if(!elements.empty()) {
     std::vector<float> weights;
@@ -219,14 +219,14 @@ void CorpusBase::addAlignmentsToBatch(Ptr<CorpusBatch> batch,
   int srcWords = batch->front()->batchWidth();
   int trgWords = batch->back()->batchWidth();
   int dimBatch = batch->getSentenceIds().size();
-  std::vector<float> aligns(dimBatch * srcWords * trgWords, 0.f);
+
+  std::vector<float> aligns(srcWords * dimBatch * trgWords, 0.f);
 
   for(int b = 0; b < dimBatch; ++b) {
     for(auto p : batchVector[b].getAlignment()) {
-      int sid, tid;
+      size_t sid, tid;
       std::tie(sid, tid) = p;
-
-      size_t idx = b + sid * dimBatch + tid * srcWords * dimBatch;
+      size_t idx = sid * dimBatch * trgWords + b * trgWords + tid;
       aligns[idx] = 1.f;
     }
   }
@@ -257,5 +257,5 @@ void CorpusBase::addWeightsToBatch(Ptr<CorpusBatch> batch,
 
   batch->setDataWeights(weights);
 }
-}
-}
+}  // namespace data
+}  // namespace marian

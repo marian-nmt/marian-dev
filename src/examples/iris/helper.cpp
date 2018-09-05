@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/config.h"
+#include "common/utils.h"
 
 // Constants for Iris example
 const int NUM_FEATURES = 4;
@@ -25,10 +26,10 @@ void readIrisData(const std::string fileName,
   }
   std::string line;
   std::string value;
-  while(std::getline(in, line)) {
+  while(marian::utils::GetLine(in, line)) {
     std::stringstream ss(line);
     int i = 0;
-    while(std::getline(ss, value, ',')) {
+    while(marian::utils::GetLine(ss, value, ',')) {
       if(++i == 5)
         labels.emplace_back(CLASSES[value]);
       else
@@ -38,15 +39,15 @@ void readIrisData(const std::string fileName,
 }
 
 void shuffleData(std::vector<float>& features, std::vector<float>& labels) {
-  // Create a list of indeces 0...K
-  std::vector<int> indeces;
-  indeces.reserve(labels.size());
-  for(int i = 0; i < labels.size(); ++i)
-    indeces.push_back(i);
+  // Create a list of indices 0...K
+  std::vector<int> indices;
+  indices.reserve(labels.size());
+  for(size_t i = 0; i < labels.size(); ++i)
+    indices.push_back(i);
 
-  // Shuffle indeces
+  // Shuffle indices
   static std::mt19937 urng(marian::Config::seed);
-  std::shuffle(indeces.begin(), indeces.end(), urng);
+  std::shuffle(indices.begin(), indices.end(), urng);
 
   std::vector<float> featuresTemp;
   featuresTemp.reserve(features.size());
@@ -54,8 +55,8 @@ void shuffleData(std::vector<float>& features, std::vector<float>& labels) {
   labelsTemp.reserve(labels.size());
 
   // Get shuffled features and labels
-  for(auto i = 0; i < indeces.size(); ++i) {
-    auto idx = indeces[i];
+  for(size_t i = 0; i < indices.size(); ++i) {
+    auto idx = indices[i];
     labelsTemp.push_back(labels[idx]);
     featuresTemp.insert(featuresTemp.end(),
                         features.begin() + (idx * NUM_FEATURES),

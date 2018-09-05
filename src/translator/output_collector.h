@@ -17,17 +17,17 @@ public:
 
 class DefaultPrinting : public PrintingStrategy {
 public:
-  bool shouldBePrinted(long) { return true; }
+  bool shouldBePrinted(long) override { return true; }
 };
 
 class QuietPrinting : public PrintingStrategy {
 public:
-  bool shouldBePrinted(long) { return false; }
+  bool shouldBePrinted(long) override { return false; }
 };
 
 class GeometricPrinting : public PrintingStrategy {
 public:
-  bool shouldBePrinted(long id) {
+  bool shouldBePrinted(long id) override {
     if(id == 0)
       next_ = start_;
     if(id <= 5)
@@ -63,14 +63,12 @@ public:
   }
 
 protected:
-  UPtr<OutputFileStream> outStrm_;
-  boost::mutex mutex_;
-  long nextId_;
-
   typedef std::map<long, std::pair<std::string, std::string>> Outputs;
   Outputs outputs_;
-
+  long nextId_;
+  UPtr<OutputFileStream> outStrm_;
   Ptr<PrintingStrategy> printing_;
+  boost::mutex mutex_;
 };
 
 class StringCollector {
@@ -88,4 +86,4 @@ protected:
   typedef std::map<long, std::pair<std::string, std::string>> Outputs;
   Outputs outputs_;
 };
-}
+}  // namespace marian

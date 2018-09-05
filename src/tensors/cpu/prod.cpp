@@ -21,15 +21,18 @@ namespace marian {
 namespace cpu {
 
 #if BLAS_FOUND
-inline void sgemm(bool transA, bool transB,
-                  int rows_a, int rows_b, int width,
+inline void sgemm(bool transA,
+                  bool transB,
+                  int rows_a,
+                  int rows_b,
+                  int width,
                   float alpha,
-                  float *a,
+                  float* a,
                   int lda,
-                  float *b,
+                  float* b,
                   int ldb,
                   float beta,
-                  float *c,
+                  float* c,
                   int ldc) {
   cblas_sgemm(CblasRowMajor,
               transA ? CblasTrans : CblasNoTrans,
@@ -49,13 +52,12 @@ inline void sgemm(bool transA, bool transB,
 #endif
 
 void Prod(marian::Tensor C,
-          const marian::Tensor A,
-          const marian::Tensor B,
+          const marian::Tensor& A,
+          const marian::Tensor& B,
           bool transA,
           bool transB,
           float beta,
           float scalar) {
-
 #if BLAS_FOUND
   float alpha = scalar;
 
@@ -151,9 +153,9 @@ void ProdBatched(marian::Tensor C,
 }
 
 void ProdWithBias(marian::Tensor C,
-                  const marian::Tensor A,
-                  const marian::Tensor B,
-                  const marian::Tensor bias,
+                  const marian::Tensor& A,
+                  const marian::Tensor& B,
+                  const marian::Tensor& bias,
                   bool transA,
                   bool transB,
                   float beta,
@@ -162,5 +164,5 @@ void ProdWithBias(marian::Tensor C,
   cpu::int16::AddBias(C, bias);
 }
 
-}
-}
+}  // namespace cpu
+}  // namespace marian

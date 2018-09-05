@@ -52,17 +52,17 @@ public:
 
   bool keepGoing() {
     // stop if it reached the maximum number of epochs
-    int stopAfterEpochs = options_->get<size_t>("after-epochs");
+    size_t stopAfterEpochs = options_->get<size_t>("after-epochs");
     if(stopAfterEpochs > 0 && state_->epochs > stopAfterEpochs)
       return false;
 
     // stop if it reached the maximum number of batch updates
-    int stopAfterBatches = options_->get<size_t>("after-batches");
+    size_t stopAfterBatches = options_->get<size_t>("after-batches");
     if(stopAfterBatches > 0 && state_->batches >= stopAfterBatches)
       return false;
 
     // stop if the first validator did not improve for a given number of checks
-    int stopAfterStalled = options_->get<size_t>("early-stopping");
+    size_t stopAfterStalled = options_->get<size_t>("early-stopping");
     if(stopAfterStalled > 0 && !validators_.empty()
        && stalled() >= stopAfterStalled)
       return false;
@@ -84,7 +84,8 @@ public:
 
     registerTrainingObserver(validators_.back());
     if(!state_->loaded) {
-      state_->validators[validator->type()]["last-best"] = validator->initScore();
+      state_->validators[validator->type()]["last-best"]
+          = validator->initScore();
       state_->validators[validator->type()]["stalled"] = 0;
     }
     if(validators_.size() == 1)
@@ -102,6 +103,8 @@ public:
 
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                 bool final = false) {
+    // Do not validate if already validated (for instance, after the model is
+    // loaded) or if validation is scheduled for another update
     if(state_->validated
        || (state_->batches % options_->get<size_t>("valid-freq") != 0
            && !final))
@@ -134,7 +137,8 @@ public:
           state_->validBest = value;
       }
 
-      state_->validators[validator->type()]["last-best"] = validator->lastBest();
+      state_->validators[validator->type()]["last-best"]
+          = validator->lastBest();
       state_->validators[validator->type()]["stalled"] = validator->stalled();
 
       // notify training observers if the first validator did not improve
@@ -154,55 +158,78 @@ public:
   }
 
   void update(float cost, Ptr<data::Batch> batch) {
+    update(cost, std::vector<Ptr<data::Batch>>({batch}));
+  }
+
+  void update(float cost, const std::vector<Ptr<data::Batch>>& batches) {
     state_->validated = false;
 
-    auto batchSize   = batch->size();    // number of sentences in batch
-    auto batchLabels = batch->words(-1); // number of target words in batch
-    // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
+    auto batchSize = 0;    // number of sentences in batch
+    auto batchLabels = 0;  // number of target words in batch
+
+    for(const auto& batch : batches) {
+      batchSize += batch->size();
+      batchLabels += batch->words(-1);
+    }
+
+    // reconstruct sum cost, for displaying epoch-level averages instead of
+    // minibatch-level
     auto costType = options_->get<std::string>("cost-type");
-    auto dispLabelCounts = options_->get<bool>("disp-label-counts"); // if true then show as "cost per label * number of labels"
-    if (dispLabelCounts) {
-      auto count = // what was cost normalized with originally?
-        /*if*/ (costType == "ce-sum") ?
-          1
-        /*else if*/ : ((costType == "ce-mean-words") ?
-          batchLabels
-        /*else*/ :  // all others: treat like ce-mean (not correct for some)
-          batchSize);
-      state_->costSum   += cost * count; // aggregate sum cost since last display
-      state_->costCount += batchLabels;  // cost gets normalized w.r.t. this in display
-    } else { // (back compat)
-      state_->costSum   += cost * batchSize;
+    auto dispLabelCounts = options_->get<bool>(
+        "disp-label-counts");  // if true then show as "cost per label * number
+                               // of labels"
+    if(dispLabelCounts) {
+      auto count =  // what was cost normalized with originally?
+          /*if*/ (costType == "ce-sum")
+              ? 1
+              /*else if*/
+              : ((costType == "ce-mean-words")
+                     ? batchLabels
+                     /*else*/
+                     :  // all others: treat like ce-mean (not correct for some)
+                     batchSize);
+      state_->costSum += cost * count;  // aggregate sum cost since last display
+      state_->costCount
+          += batchLabels;  // cost gets normalized w.r.t. this in display
+    } else {               // (back compat)
+      state_->costSum += cost * batchSize;
       state_->costCount += batchSize;
     }
-    state_->wordsDisp    += batchLabels; // target words processed since last display, for speed display
+    state_->wordsDisp += batchLabels;    // target words processed since last
+                                         // display, for speed display
     state_->samplesEpoch += batchSize;   // sentences processed in this epoch
-    state_->labelsTotal  += batchLabels; // total labels processed
+    state_->labelsTotal += batchLabels;  // total labels processed
+
     state_->newBatch();
 
     if(state_->batches % options_->get<size_t>("disp-freq") == 0) {
       if(dispLabelCounts) {
-        if(options_->get<bool>("lr-report")) { // if true then show the learning rate
+        if(options_->get<bool>(
+               "lr-report")) {  // if true then show the learning rate
           LOG(info,
               // TODO: change Cost back to {:.2f}
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {} : {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {} "
+              ": {:.2f} "
               "words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
               state_->samplesEpoch,
-              state_->costSum / state_->costCount, state_->costCount, // show cost as "av * count"
+              state_->costSum / state_->costCount,
+              state_->costCount,  // show cost as "av * count"
               state_->labelsTotal,
               timer.format(2, "%ws"),
               state_->wordsDisp / std::stof(timer.format(5, "%w")),
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {} : {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {} "
+              ": {:.2f} "
               "words/s",
               state_->epochs,
               state_->batches,
               state_->samplesEpoch,
-              state_->costSum / state_->costCount, state_->costCount,
+              state_->costSum / state_->costCount,
+              state_->costCount,
               state_->labelsTotal,
               timer.format(2, "%ws"),
               state_->wordsDisp / std::stof(timer.format(5, "%w")));
@@ -232,8 +259,12 @@ public:
         }
       }
       // progress heartbeat for MS-internal Philly compute cluster
-      if (getenv("PHILLY_JOB_ID")) // this environment variable exists when running on the cluster
-        printf("PROGRESS: %.2f%%\nerror: %.7f\n", (double)state_->epochs, state_->costSum / state_->costCount), fflush(stdout);
+      if(getenv("PHILLY_JOB_ID"))  // this environment variable exists when
+                                   // running on the cluster
+        printf("PROGRESS: %.2f%%\nEVALERR: %.7f\n",
+               (double)state_->epochs,
+               state_->costSum / state_->costCount),
+            fflush(stdout);
       timer.start();
       state_->costSum = 0;
       state_->costCount = 0;
@@ -271,7 +302,7 @@ public:
     state_->registerObserver(observer);
   }
 
-  void actAfterEpoch(TrainingState& state) {
+  void actAfterEpoch(TrainingState& state) override {
     float factor = options_->get<double>("lr-decay");
 
     float baselr = getLearningRate(state);
@@ -284,20 +315,20 @@ public:
 
       if(strategy == "epoch" || strategy == "epoch+batches"
          || strategy == "epoch+stalled") {
-        int startEpoch
+        size_t startEpoch
             = options_->get<std::vector<size_t>>("lr-decay-start").front();
         if(startEpoch && state.epochs >= startEpoch)
           decay = true;
       }
 
       if(strategy == "epoch+batches") {
-        int startBatches
+        size_t startBatches
             = options_->get<std::vector<size_t>>("lr-decay-start")[1];
         if(startBatches && state.batches >= startBatches)
           decay = true;
       }
       if(strategy == "epoch+stalled") {
-        int startStalled
+        size_t startStalled
             = options_->get<std::vector<size_t>>("lr-decay-start")[1];
         if(startStalled && state.maxStalled >= startStalled)
           decay = true;
@@ -323,7 +354,7 @@ public:
     }
   }
 
-  void actAfterBatches(TrainingState& state) {
+  void actAfterBatches(TrainingState& state) override {
     float factor = options_->get<double>("lr-decay");
     state.reset = false;
 
@@ -332,7 +363,7 @@ public:
 
     if(factor > 0.0) {
       if("batches" == options_->get<std::string>("lr-decay-strategy")) {
-        int start
+        size_t start
             = options_->get<std::vector<size_t>>("lr-decay-start").front();
         int freq = options_->get<size_t>("lr-decay-freq");
 
@@ -371,7 +402,7 @@ public:
     first_ = false;
   }
 
-  void actAfterStalled(TrainingState& state) {
+  void actAfterStalled(TrainingState& state) override {
     float factor = options_->get<double>("lr-decay");
     state.reset = false;
 
@@ -403,4 +434,4 @@ public:
     }
   }
 };
-}
+}  // namespace marian

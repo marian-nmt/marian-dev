@@ -1,19 +1,19 @@
 #pragma once
 
 #include <algorithm>
+#include <boost/functional/hash.hpp>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <boost/functional/hash.hpp>
 
 #include "common/logging.h"
 
 namespace marian {
 
 struct Shape {
-public:
+private:
   std::vector<int> shape_;
 
 public:
@@ -24,22 +24,25 @@ public:
     std::copy(il.begin(), il.end(), begin());
   }
 
-  void resize(size_t n) { shape_.resize(n, 1); }
-
-  const int* data() const { return shape_.data(); }
-
-  int* data() { return shape_.data(); }
+  Shape(std::vector<int>&& shape) : shape_(std::move(shape)) {}
 
   Shape(const Shape& shape) : Shape() {
     shape_.resize(shape.size());
     std::copy(shape.begin(), shape.end(), begin());
   }
 
+  inline size_t size() const { return shape_.size(); }
+
+  void resize(size_t n) { shape_.resize(n, 1); }
+
+  const int* data() const { return shape_.data(); }
+  int* data() { return shape_.data(); }
+
   inline void set(int i, int val) { dim(i) = val; }
 
   inline int& dim(int i) {
     if(i >= 0) {
-      ABORT_IF(i >= size(),
+      ABORT_IF(i >= (int)size(),
                "Index {} is out of bounds, shape has {} dimension",
                i,
                size());
@@ -57,10 +60,10 @@ public:
     return const_cast<Shape&>(*this).dim(i);
   }
 
+  inline int operator[](int i) const { return dim(i); }
   inline int operator[](int i) { return dim(i); }
 
-  inline int operator[](int i) const { return dim(i); }
-
+  inline int back() const { return shape_.back(); }
   inline int& back() { return shape_.back(); }
 
   inline int stride(int i) const {
@@ -73,8 +76,6 @@ public:
     else
       return stride[size() + i];
   }
-
-  inline size_t size() const { return shape_.size(); }
 
   inline int elements() const {
     int el = 1;
@@ -90,7 +91,7 @@ public:
     for(int j = shape_.size() - 2; j >= 0; --j)
       stride[j] = stride[j + 1] * shape_[j + 1];
 
-    for(int j = 0; j < d.size(); ++j)
+    for(size_t j = 0; j < d.size(); ++j)
       d[j] = (i / stride[j]) % shape_[j];
   }
 
@@ -115,7 +116,7 @@ public:
   std::string toString() const {
     std::stringstream strm;
     strm << "shape=" << (*this)[0];
-    for(int i = 1; i < size(); ++i)
+    for(size_t i = 1; i < size(); ++i)
       strm << "x" << (*this)[i];
     strm << " size=" << elements();
     return strm.str();
@@ -132,7 +133,7 @@ public:
     return ss.str();
   }
 
-  int axis(int ax) {
+  int axis(int ax) const {
     if(ax < 0)
       return size() + ax;
     else
@@ -140,7 +141,7 @@ public:
   }
 
   static Shape broadcast(const std::vector<Shape>& shapes) {
-    int maxDims = 0;
+    size_t maxDims = 0;
     for(auto& s : shapes)
       if(s.size() > maxDims)
         maxDims = s.size();
@@ -149,7 +150,7 @@ public:
     shape.resize(maxDims);
 
     for(auto& s : shapes) {
-      for(int i = 0; i < s.size(); ++i) {
+      for(int i = 0; i < (int)s.size(); ++i) {
         ABORT_IF(shape[-i] != s[-i] && shape[-i] != 1 && s[-i] != 1,
                  "Shapes {} and {} cannot be broadcasted",
                  (std::string)shape,
@@ -167,7 +168,7 @@ public:
 
   template <typename T>
   static Shape broadcast(const std::vector<T>& nodes) {
-    int maxDims = 0;
+    size_t maxDims = 0;
     for(auto& n : nodes)
       if(n->shape().size() > maxDims)
         maxDims = n->shape().size();
@@ -177,7 +178,7 @@ public:
 
     for(auto& node : nodes) {
       const Shape& shapen = node->shape();
-      for(int i = 1; i <= shapen.size(); ++i) {
+      for(int i = 1; i <= (int)shapen.size(); ++i) {
         ABORT_IF(shape[-i] != shapen[-i] && shape[-i] != 1 && shapen[-i] != 1,
                  "Shapes {} and {} cannot be broadcasted",
                  (std::string)shape,
@@ -190,9 +191,9 @@ public:
 
   size_t hash() const {
     size_t seed = boost::hash<int>()(shape_[0]);
-    for(int i = 1; i < shape_.size(); ++i)
+    for(size_t i = 1; i < shape_.size(); ++i)
       boost::hash_combine(seed, shape_[i]);
     return seed;
   }
 };
-}
+}  // namespace marian

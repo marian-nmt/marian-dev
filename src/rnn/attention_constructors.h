@@ -17,7 +17,7 @@ protected:
 public:
   AttentionFactory(Ptr<ExpressionGraph> graph) : InputFactory(graph) {}
 
-  Ptr<CellInput> construct() {
+  Ptr<CellInput> construct() override {
     ABORT_IF(!state_, "EncoderState not set");
     return New<Attention>(graph_, options_, state_);
   }
@@ -34,5 +34,5 @@ public:
 };
 
 typedef Accumulator<AttentionFactory> attention;
-}
-}
+}  // namespace rnn
+}  // namespace marian

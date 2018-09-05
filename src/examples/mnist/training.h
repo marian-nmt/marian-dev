@@ -17,7 +17,7 @@ private:
 public:
   TrainMNIST(Ptr<Config> options) : options_(options) {}
 
-  void run() {
+  void run() override {
     using namespace data;
 
     // Prepare data set
@@ -49,4 +49,4 @@ public:
     scheduler->finished();
   }
 };
-}
+}  // namespace marian

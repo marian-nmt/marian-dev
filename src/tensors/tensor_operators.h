@@ -12,6 +12,7 @@
 
 #ifdef CUDA_FOUND
 #include "tensors/gpu/add.h"
+#include "tensors/gpu/algorithm.h"
 #include "tensors/gpu/element.h"
 #include "tensors/gpu/prod.h"
 #endif
@@ -19,12 +20,24 @@
 #include "tensors/cpu/add.h"
 #include "tensors/cpu/element.h"
 
+#include <algorithm>
+
 namespace marian {
+
+template <typename InIt, typename OutIt>
+void copy(Ptr<Backend> backend, const InIt beg, const InIt end, OutIt it) {
+#ifdef CUDA_FOUND
+  if(backend->getDeviceId().type == DeviceType::gpu)
+    gpu::copy(backend, beg, end, it);
+  else
+#endif
+    std::copy(beg, end, it);
+}
 
 template <class Functor, class... Tensors>
 void Element(Functor functor, marian::Tensor out, Tensors... tensors) {
 #ifdef CUDA_FOUND
-  if(out->getBackend()->getDevice().type == DeviceType::gpu)
+  if(out->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::Element(functor, out, tensors...);
   else
 #endif
@@ -34,7 +47,7 @@ void Element(Functor functor, marian::Tensor out, Tensors... tensors) {
 template <class Functor, class... Tensors>
 void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
 #ifdef CUDA_FOUND
-  if(out->getBackend()->getDevice().type == DeviceType::gpu)
+  if(out->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::Add(functor, scale, out, tensors...);
   else
 #endif
@@ -62,8 +75,8 @@ void Reduce(Functor functor, marian::Tensor out, Tensors... tensors) {
 }
 
 // clang-format off
-  DISPATCH7(Prod, marian::Tensor, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
-  DISPATCH8(ProdWithBias, marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
+  DISPATCH7(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float)
+  DISPATCH8(ProdWithBias, marian::Tensor, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float)
 
   DISPATCH8(ProdBatched, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
 
@@ -79,7 +92,10 @@ void Reduce(Functor functor, marian::Tensor out, Tensors... tensors) {
   DISPATCH4(CrossEntropyPickBackward, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor)
 
   DISPATCH3(TransposeND, marian::Tensor, marian::Tensor, const std::vector<int>&)
-  DISPATCH4(Shift, marian::Tensor, marian::Tensor, marian::Shape, bool)
+  DISPATCH3(TransposeNDGrad, marian::Tensor, marian::Tensor, const std::vector<int>&)
+
+  DISPATCH5(Shift, marian::Tensor, marian::Tensor, marian::Shape, float, bool)
+  DISPATCH4(ShiftGrad, marian::Tensor, marian::Tensor, marian::Shape, bool)
 
   DISPATCH3(Concatenate, marian::Tensor, const std::vector<marian::Tensor>&, int)
 // clang-format on
@@ -102,7 +118,7 @@ static inline void Deconcatenate(std::vector<marian::Tensor>& outputs,
                                  const marian::Tensor in,
                                  int ax) {
 #ifdef CUDA_FOUND
-  if(in->getBackend()->getDevice().type == DeviceType::gpu)
+  if(in->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::Deconcatenate(outputs, in, ax);
   else
 #endif
@@ -116,7 +132,7 @@ static inline void Deconcatenate(std::vector<marian::Tensor>& outputs,
   DISPATCH4(HighwayForward, marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor)
   DISPATCH7(HighwayBackward, marian::Tensor, marian::Tensor, marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor)
 
-  DISPATCH3(CopyRows, marian::Tensor, const marian::Tensor, const std::vector<size_t>&)
+  DISPATCH4(CopyRows, marian::Tensor, const marian::Tensor, const std::vector<size_t>&, Ptr<Allocator>)
   DISPATCH3(PasteRows, marian::Tensor, const marian::Tensor, const std::vector<size_t>&)
   DISPATCH3(CopyCols, marian::Tensor, const marian::Tensor, const std::vector<size_t>&)
   DISPATCH3(PasteCols, marian::Tensor, const marian::Tensor, const std::vector<size_t>&)
@@ -146,7 +162,7 @@ static inline void LSTMCellBackward(std::vector<marian::Tensor> outputs,
                                     std::vector<marian::Tensor> inputs,
                                     marian::Tensor adj) {
 #ifdef CUDA_FOUND
-  if(adj->getBackend()->getDevice().type == DeviceType::gpu)
+  if(adj->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::LSTMCellBackward(outputs, inputs, adj);
   else
 #endif
@@ -171,7 +187,7 @@ static inline void LSTMOutputBackward(std::vector<marian::Tensor> outputs,
                                       std::vector<marian::Tensor> inputs,
                                       marian::Tensor adj) {
 #ifdef CUDA_FOUND
-  if(adj->getBackend()->getDevice().type == DeviceType::gpu)
+  if(adj->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::LSTMOutputBackward(outputs, inputs, adj);
   else
 #endif
@@ -201,7 +217,7 @@ static inline void GRUFastBackward(std::vector<marian::Tensor> outputs,
                                    marian::Tensor adj,
                                    bool final = false) {
 #ifdef CUDA_FOUND
-  if(adj->getBackend()->getDevice().type == DeviceType::gpu)
+  if(adj->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::GRUFastBackward(outputs, inputs, adj, final);
   else
 #endif
@@ -225,7 +241,7 @@ float L2Norm(marian::Tensor in);
 
 static inline float L2Norm(marian::Tensor in) {
 #ifdef CUDA_FOUND
-  if(in->getBackend()->getDevice().type == DeviceType::gpu)
+  if(in->getBackend()->getDeviceId().type == DeviceType::gpu)
     return gpu::L2Norm(in);
   else
 #endif
@@ -236,4 +252,4 @@ static inline float L2Norm(marian::Tensor in) {
   DISPATCH5(PoolingWithMaskingForward, marian::Tensor, marian::Tensor, marian::Tensor, int, bool)
   DISPATCH6(PoolingWithMaskingBackward, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, int, bool)
 // clang-format on
-}
+}  // namespace marian

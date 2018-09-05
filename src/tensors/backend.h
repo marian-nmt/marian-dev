@@ -8,23 +8,23 @@ class Backend {
 protected:
   DeviceId deviceId_;
   size_t seed_;
-  float clip_{0.f};
+
+  // global clipping value for matrix-multiplies, should soon be removed.
+  float clipValue_{0.f};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : deviceId_(deviceId), seed_(seed) {}
 
-  virtual DeviceId getDevice() { return deviceId_; };
+  virtual DeviceId getDeviceId() { return deviceId_; };
+
+  // for GPU only, calls cudaSetDevice, does nothing on CPU. Maybe change name.
   virtual void setDevice() = 0;
   virtual void synchronize() = 0;
 
-  virtual void setClip(float clip) {
-    clip_ = clip;
-  }
+  virtual void setClip(float clipValue) { clipValue_ = clipValue; }
 
-  float getClip() {
-    return clip_;
-  }
+  float getClip() { return clipValue_; }
 };
 
-Ptr<Backend> BackendByDevice(DeviceId deviceId, size_t seed);
-}
+Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);
+}  // namespace marian

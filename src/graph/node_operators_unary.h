@@ -7,18 +7,20 @@
 #include "graph/node.h"
 #include "tensors/tensor_operators.h"
 
-//#include "tensors/gpu/cudnn_wrappers.h"
+#ifdef CUDNN
+#include "tensors/gpu/cudnn_wrappers.h"
+#endif
 
 namespace marian {
 
 struct UnaryNodeOp : public NaryNodeOp {
   UnaryNodeOp(Expr a, Shape shape, Type value_type = Type::float32)
-  : NaryNodeOp({a}, shape, value_type) {}
+      : NaryNodeOp({a}, shape, value_type) {}
 
   UnaryNodeOp(Expr a, Type value_type = Type::float32)
-  : NaryNodeOp({a}, a->shape(), value_type) {}
+      : NaryNodeOp({a}, a->shape(), value_type) {}
 
-  const std::string color() { return "yellow"; }
+  const std::string color() override { return "yellow"; }
 };
 
 struct ScalarAddNodeOp : public UnaryNodeOp {
@@ -28,19 +30,19 @@ private:
 public:
   ScalarAddNodeOp(Expr a, float scalar) : UnaryNodeOp(a), scalar_{scalar} {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = _2 + scalar_, val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(_1, child(0)->grad(), adj_))};
   }
 
-  const std::string type() { return "scalar_add"; }
+  const std::string type() override { return "scalar_add"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, scalar_);
@@ -48,7 +50,7 @@ public:
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     auto cnode = std::dynamic_pointer_cast<ScalarAddNodeOp>(node);
@@ -67,19 +69,19 @@ private:
 public:
   ScalarMultNodeOp(Expr a, float scalar) : UnaryNodeOp(a), scalar_{scalar} {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = scalar_ * _2, val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(scalar_ * _1, child(0)->grad(), adj_))};
   }
 
-  const std::string type() { return "scalar_mult"; }
+  const std::string type() override { return "scalar_mult"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, scalar_);
@@ -87,7 +89,7 @@ public:
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     auto cnode = std::dynamic_pointer_cast<ScalarMultNodeOp>(node);
@@ -106,19 +108,20 @@ private:
 public:
   ClipNodeOp(Expr a, float clip) : UnaryNodeOp(a), clip_{clip} {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = clip(_2, clip_), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
-    return {NodeOp(Add(bump(_1, clip_) * _2, child(0)->grad(), child(0)->val(), adj_))};
+    return {NodeOp(
+        Add(bump(_1, clip_) * _2, child(0)->grad(), child(0)->val(), adj_))};
   }
 
-  const std::string type() { return "clip"; }
+  const std::string type() override { return "clip"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, clip_);
@@ -126,7 +129,7 @@ public:
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     auto cnode = std::dynamic_pointer_cast<ClipNodeOp>(node);
@@ -138,20 +141,20 @@ public:
   }
 };
 
-struct LogitNodeOp : public UnaryNodeOp {
-  LogitNodeOp(Expr a) : UnaryNodeOp(a) {}
+struct SigmoidNodeOp : public UnaryNodeOp {
+  SigmoidNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
-    return {NodeOp(Element(_1 = logit(_2), val_, child(0)->val()))};
+    return {NodeOp(Element(_1 = sigmoid(_2), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(_1 * _2 * (1.0f - _2), child(0)->grad(), adj_, val_))};
   }
 
-  const std::string type() { return "logit"; }
+  const std::string type() override { return "sigmoid"; }
 };
 
 // struct Scalar2PowNodeOp : public UnaryNodeOp {
@@ -204,7 +207,7 @@ struct TanhNodeOp : public NaryNodeOp {
     return Shape::broadcast(nodes);
   }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     switch(children_.size()) {
       case 1: return {NodeOp(Element(_1 = tanh(_2), val_, child(0)->val()))};
@@ -224,32 +227,32 @@ struct TanhNodeOp : public NaryNodeOp {
                          child(0)->val(),
                          child(1)->val(),
                          child(2)->val());
-                 for(int i = 3; i < children_.size(); ++i)
+                 for(size_t i = 3; i < children_.size(); ++i)
                      Element(_1 = _1 + _2, val_, child(i)->val());
                  Element(_1 = tanh(_1), val_);)
         };
     }
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     NodeOps ops;
-    for(int i = 0; i < children_.size(); i++) {
+    for(size_t i = 0; i < children_.size(); i++) {
       ops.push_back(
           NodeOp(Add(_1 * (1.0f - (_2 * _2)), child(i)->grad(), adj_, val_)));
     }
     return ops;
   }
 
-  const std::string color() { return "yellow"; }
+  const std::string color() override { return "yellow"; }
 
-  const std::string type() { return "tanh"; }
+  const std::string type() override { return "tanh"; }
 };
 
 struct ReLUNodeOp : public UnaryNodeOp {
   ReLUNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     // f(x) = max(0, x)
     using namespace functional;
     return {NodeOp(Element(_1 = ReLU(_2),
@@ -258,7 +261,7 @@ struct ReLUNodeOp : public UnaryNodeOp {
                            ))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     // dJ/dx += dJ/df * binarystep(x)
     return {NodeOp(Add(_1 * ReLUback(_2),
@@ -268,7 +271,7 @@ struct ReLUNodeOp : public UnaryNodeOp {
                        ))};
   }
 
-  const std::string type() { return "ReLU"; }
+  const std::string type() override { return "ReLU"; }
 };
 
 /**
@@ -299,20 +302,20 @@ struct ReLUNodeOp : public UnaryNodeOp {
 struct PReLUNodeOp : public UnaryNodeOp {
   PReLUNodeOp(float alpha, Expr a) : UnaryNodeOp(a), alpha_(alpha) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = PReLU(_2, alpha_), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(
         _1 * PReLUback(_2, alpha_), child(0)->grad(), adj_, child(0)->val()))};
   }
 
-  const std::string type() { return "PReLU"; }
+  const std::string type() override { return "PReLU"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, alpha_);
@@ -320,7 +323,7 @@ struct PReLUNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     auto cnode = std::dynamic_pointer_cast<PReLUNodeOp>(node);
@@ -332,7 +335,7 @@ struct PReLUNodeOp : public UnaryNodeOp {
   }
 
 private:
-  float alpha_{0.01};
+  float alpha_{0.01f};
 };
 
 /**
@@ -348,15 +351,15 @@ private:
 struct SwishNodeOp : public UnaryNodeOp {
   SwishNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
-    return {NodeOp(Element(_1 = _2 * logit(_2), val_, child(0)->val()))};
+    return {NodeOp(Element(_1 = _2 * sigmoid(_2), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     // dJ/dx += dJ/df * ( f(x) + sigma(x) * (1 - f(x)) )
-    return {NodeOp(Add(_1 * (_3 + logit(_2) * (1.f - _3)),
+    return {NodeOp(Add(_1 * (_3 + sigmoid(_2) * (1.f - _3)),
                        child(0)->grad(),  // dJ/dx
                        adj_,              // _1 := dJ/df
                        child(0)->val(),   // _2 := x
@@ -364,7 +367,7 @@ struct SwishNodeOp : public UnaryNodeOp {
                        ))};
   }
 
-  const std::string type() { return "swish"; }
+  const std::string type() override { return "swish"; }
 };
 
 struct SoftmaxNodeOp : public UnaryNodeOp {
@@ -374,12 +377,12 @@ struct SoftmaxNodeOp : public UnaryNodeOp {
 
   Expr mask_;
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {
         NodeOp(Softmax(val_, child(0)->val(), mask_ ? mask_->val() : nullptr))};
   }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       if(mask_)
@@ -388,7 +391,7 @@ struct SoftmaxNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<SoftmaxNodeOp> cnode = std::dynamic_pointer_cast<SoftmaxNodeOp>(node);
@@ -401,7 +404,7 @@ struct SoftmaxNodeOp : public UnaryNodeOp {
     return true;
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     // For each row, the Jacobian times vector is given by:
     // J * dy = p .* (dy - avg*1)
     // where avg = p'*dy and p is the softmax output (probabilities).
@@ -417,22 +420,22 @@ struct SoftmaxNodeOp : public UnaryNodeOp {
     return {NodeOp(SoftmaxGrad(child(0)->grad(), adj_, val_))};
   }
 
-  const std::string type() { return "softmax"; }
+  const std::string type() override { return "softmax"; }
 };
 
 struct LogSoftmaxNodeOp : public UnaryNodeOp {
   LogSoftmaxNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() { return {NodeOp(LogSoftmax(val_, child(0)->val()))}; }
+  NodeOps forwardOps() override { return {NodeOp(LogSoftmax(val_, child(0)->val()))}; }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     // Based on the description for softmax, we have logsoftmax:
     // J * dy = dy - avg*1
     // where avg = exp(p)'*dy and p is the softmax output (probabilities).
     return {NodeOp(LogSoftmaxGrad(child(0)->grad(), adj_, val_))};
   }
 
-  const std::string type() { return "logsoftmax"; }
+  const std::string type() override { return "logsoftmax"; }
 };
 
 struct SumNodeOp : public UnaryNodeOp {
@@ -441,13 +444,13 @@ struct SumNodeOp : public UnaryNodeOp {
   template <typename... Args>
   SumNodeOp(Expr a, Args... args) : UnaryNodeOp(a, newShape(a, args...)) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
 
     return {NodeOp(Reduce(_1, val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(_1, child(0)->grad(), adj_))};
   }
@@ -461,11 +464,11 @@ struct SumNodeOp : public UnaryNodeOp {
     return shape;
   }
 
-  const std::string type() { return "sum"; }
+  const std::string type() override { return "sum"; }
 
-  const std::string color() { return "orange"; }
+  const std::string color() override { return "orange"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, ax_);
@@ -473,7 +476,7 @@ struct SumNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<SumNodeOp> cnode = std::dynamic_pointer_cast<SumNodeOp>(node);
@@ -491,7 +494,7 @@ struct MeanNodeOp : public UnaryNodeOp {
   template <typename... Args>
   MeanNodeOp(Expr a, Args... args) : UnaryNodeOp(a, newShape(a, args...)) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     int left = child(0)->shape().elements() / val_->shape().elements();
     float scale = 1.f / left;
@@ -499,7 +502,7 @@ struct MeanNodeOp : public UnaryNodeOp {
     return {NodeOp(Reduce(_1, scale, val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     int left = child(0)->shape().elements() / val_->shape().elements();
     float scale = 1.f / left;
@@ -515,11 +518,11 @@ struct MeanNodeOp : public UnaryNodeOp {
     return shape;
   }
 
-  const std::string type() { return "mean"; }
+  const std::string type() override { return "mean"; }
 
-  const std::string color() { return "orange"; }
+  const std::string color() override { return "orange"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, ax_);
@@ -527,7 +530,7 @@ struct MeanNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<MeanNodeOp> cnode = std::dynamic_pointer_cast<MeanNodeOp>(node);
@@ -542,34 +545,35 @@ struct MeanNodeOp : public UnaryNodeOp {
 struct LogNodeOp : public UnaryNodeOp {
   LogNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = log(_2), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
-    return {
-        NodeOp(Add(_1 * (1.f / _2), child(0)->grad(), adj_, child(0)->val()))};
+    return {// NodeOp(Add(_1 * (1.f / _2), child(0)->grad(), adj_,
+            // child(0)->val()))};
+            NodeOp(Add(_1 / _2, child(0)->grad(), adj_, child(0)->val()))};
   }
 
-  const std::string type() { return "log"; }
+  const std::string type() override { return "log"; }
 };
 
 struct ExpNodeOp : public UnaryNodeOp {
   ExpNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = exp(_2), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(_1 * exp(_2), child(0)->grad(), adj_, child(0)->val()))};
   }
 
-  const std::string type() { return "exp"; }
+  const std::string type() override { return "exp"; }
 };
 
 struct SqrtNodeOp : public UnaryNodeOp {
@@ -577,19 +581,19 @@ struct SqrtNodeOp : public UnaryNodeOp {
 
   SqrtNodeOp(Expr a, float epsilon) : UnaryNodeOp(a), epsilon_(epsilon) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = sqrt(_2 + epsilon_), val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(0.5f * (1.f / _1) * _2, child(0)->grad(), val_, adj_))};
   }
 
-  const std::string type() { return "sqrt"; }
+  const std::string type() override { return "sqrt"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       boost::hash_combine(seed, epsilon_);
@@ -598,7 +602,7 @@ struct SqrtNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<SqrtNodeOp> cnode = std::dynamic_pointer_cast<SqrtNodeOp>(node);
@@ -613,34 +617,34 @@ struct SqrtNodeOp : public UnaryNodeOp {
 struct SquareNodeOp : public UnaryNodeOp {
   SquareNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = _2 * _2, val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {
         NodeOp(Add(2.f * _1 * _2, child(0)->grad(), child(0)->val(), adj_))};
   }
 
-  const std::string type() { return "square"; }
+  const std::string type() override { return "square"; }
 };
 
 struct NegNodeOp : public UnaryNodeOp {
   NegNodeOp(Expr a) : UnaryNodeOp(a) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     using namespace functional;
     return {NodeOp(Element(_1 = -_2, val_, child(0)->val()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     using namespace functional;
     return {NodeOp(Add(-_1, child(0)->grad(), adj_))};
   }
 
-  const std::string type() { return "-"; }
+  const std::string type() override { return "-"; }
 };
 
 struct RowsNodeOp : public UnaryNodeOp {
@@ -650,30 +654,31 @@ struct RowsNodeOp : public UnaryNodeOp {
     setMemoize(false);
   }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     // @TODO: solve this with a tensor!
 
-    return {NodeOp(CopyRows(val_, child(0)->val(), indices_))};
+    return {NodeOp(
+        CopyRows(val_, child(0)->val(), indices_, graph()->allocator()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     return {NodeOp(PasteRows(child(0)->grad(), adj_, indices_))};
   }
 
   template <class... Args>
-  Shape newShape(Expr a, const std::vector<size_t>& indeces) {
+  Shape newShape(Expr a, const std::vector<size_t>& indices) {
     Shape shape = a->shape();
     ABORT_IF(shape.size() != 2,
              "rows operator can only be used with 2-dimensional tensors");
-    shape.set(0, indeces.size());
+    shape.set(0, indices.size());
     return shape;
   }
 
-  const std::string type() { return "rows"; }
+  const std::string type() override { return "rows"; }
 
-  const std::string color() { return "orange"; }
+  const std::string color() override { return "orange"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       for(auto i : indices_)
@@ -683,7 +688,7 @@ struct RowsNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<RowsNodeOp> cnode = std::dynamic_pointer_cast<RowsNodeOp>(node);
@@ -698,31 +703,33 @@ struct RowsNodeOp : public UnaryNodeOp {
 };
 
 struct ColsNodeOp : public UnaryNodeOp {
-  ColsNodeOp(Expr a, const std::vector<size_t>& indeces)
-      : UnaryNodeOp(a, newShape(a, indeces)), indices_(indeces) {}
+  ColsNodeOp(Expr a, const std::vector<size_t>& indices)
+      : UnaryNodeOp(a, newShape(a, indices)), indices_(indices) {
+    setMemoize(false);
+  }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     // @TODO: solve this with a tensor!
 
     return {NodeOp(CopyCols(val_, child(0)->val(), indices_))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     return {NodeOp(PasteCols(child(0)->grad(), adj_, indices_))};
   }
 
   template <class... Args>
-  Shape newShape(Expr a, const std::vector<size_t>& indeces) {
+  Shape newShape(Expr a, const std::vector<size_t>& indices) {
     Shape shape = a->shape();
-    shape.set(1, indeces.size());
+    shape.set(1, indices.size());
     return shape;
   }
 
-  const std::string type() { return "cols"; }
+  const std::string type() override { return "cols"; }
 
-  const std::string color() { return "orange"; }
+  const std::string color() override { return "orange"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       for(auto i : indices_)
@@ -732,7 +739,7 @@ struct ColsNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<ColsNodeOp> cnode = std::dynamic_pointer_cast<ColsNodeOp>(node);
@@ -747,31 +754,35 @@ struct ColsNodeOp : public UnaryNodeOp {
 };
 
 struct SelectNodeOp : public UnaryNodeOp {
-  SelectNodeOp(Expr a, int axis, const std::vector<size_t>& indeces)
-      : UnaryNodeOp(a, newShape(a, axis, indeces)), indices_(indeces) {}
+  SelectNodeOp(Expr a, int axis, const std::vector<size_t>& indices)
+      : UnaryNodeOp(a, newShape(a, axis, indices)), 
+        indices_(indices), 
+        axis_{a->shape().axis(axis)} {
+    setMemoize(false);
+  }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {NodeOp(
         Select(val_, child(0)->val(), axis_, indices_, graph()->allocator()))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     return {NodeOp(
         Insert(child(0)->grad(), adj_, axis_, indices_, graph()->allocator()))};
   }
 
-  Shape newShape(Expr a, int axis, const std::vector<size_t>& indeces) {
+  Shape newShape(Expr a, int axis, const std::vector<size_t>& indices) {
     Shape shape = a->shape();
-    axis_ = shape.axis(axis);
-    shape.set(axis_, indeces.size());
+    axis = shape.axis(axis);
+    shape.set(axis, indices.size());
     return shape;
   }
 
-  const std::string type() { return "select"; }
+  const std::string type() override { return "select"; }
 
-  const std::string color() { return "orange"; }
+  const std::string color() override { return "orange"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       boost::hash_combine(seed, axis_);
@@ -782,7 +793,7 @@ struct SelectNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<SelectNodeOp> cnode = std::dynamic_pointer_cast<SelectNodeOp>(node);
@@ -796,21 +807,25 @@ struct SelectNodeOp : public UnaryNodeOp {
   }
 
   std::vector<size_t> indices_;
-  int axis_{0};
+  int axis_;
 };
 
 struct TransposeNodeOp : public UnaryNodeOp {
   std::vector<int> axes_;
+  std::vector<int> axesBw_;
 
   TransposeNodeOp(Expr a, const std::vector<int>& axes)
-      : UnaryNodeOp(a, newShape(a, axes)), axes_{axes} {}
+      : UnaryNodeOp(a, newShape(a, axes)), axes_{axes}, axesBw_(axes.size()) {
+    for(int i = 0; i < axes_.size(); ++i)
+       axesBw_[axes_[i]] = i;
+  }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {NodeOp(TransposeND(val_, child(0)->val(), axes_))};
   }
 
-  NodeOps backwardOps() {
-    return {NodeOp(TransposeND(child(0)->grad(), adj_, axes_))};
+  NodeOps backwardOps() override {
+    return {NodeOp(TransposeNDGrad(child(0)->grad(), adj_, axesBw_))};
   }
 
   template <class... Args>
@@ -820,13 +835,13 @@ struct TransposeNodeOp : public UnaryNodeOp {
     ABORT_IF(shape.size() != axes.size(),
              "Shape and transpose axes have different number of dimensions");
 
-    for(int i = 0; i < shape.size(); ++i)
+    for(size_t i = 0; i < shape.size(); ++i)
       shape.set(i, a->shape()[axes[i]]);
 
     return shape;
   }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       for(auto ax : axes_)
@@ -836,7 +851,7 @@ struct TransposeNodeOp : public UnaryNodeOp {
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<TransposeNodeOp> cnode
@@ -848,9 +863,9 @@ struct TransposeNodeOp : public UnaryNodeOp {
     return true;
   }
 
-  const std::string type() { return "transpose"; }
+  const std::string type() override { return "transpose"; }
 
-  const std::string color() { return "orange"; }
+  const std::string color() override { return "orange"; }
 };
 
 class ReshapeNodeOp : public UnaryNodeOp {
@@ -865,35 +880,35 @@ public:
 
   ~ReshapeNodeOp() {}
 
-  size_t allocate() { return 0; }
-  void free() {}
+  size_t allocate() override { return 0; }
+  void free() override {}
 
-  void forward() {}
-  void backward() {}
+  void forward() override {}
+  void backward() override {}
 
-  void init_dependent() { reshapee_->init_dependent(); }
+  void init_dependent() override { reshapee_->init_dependent(); }
 
-  void set_zero_adjoint() { reshapee_->set_zero_adjoint(); }
+  void set_zero_adjoint() override { reshapee_->set_zero_adjoint(); }
 
-  Tensor& val() {
+  Tensor& val() override {
     auto childVal = reshapee_->val();
     val_.reset(
         new TensorBase(childVal->memory(), shape(), childVal->getBackend()));
     return val_;
   };
 
-  Tensor& grad() {
+  Tensor& grad() override {
     auto childGrad = reshapee_->grad();
     adj_.reset(
         new TensorBase(childGrad->memory(), shape(), childGrad->getBackend()));
     return adj_;
   };
 
-  const std::string type() { return "reshape"; }
+  const std::string type() override { return "reshape"; }
 
-  const std::string color() { return "grey"; }
+  const std::string color() override { return "grey"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       for(auto s : shape())
@@ -903,7 +918,7 @@ public:
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<ReshapeNodeOp> cnode = std::dynamic_pointer_cast<ReshapeNodeOp>(node);
@@ -931,23 +946,27 @@ public:
     Shape outShape = a->shape();
 
     axis_ = outShape.axis(axis);
-    for(int i = 0; i <= axis_; ++i)
-      outShape.set(i, 1);
+#if 0  // this check currently fails in translation; I think should not fail for
+       // step==0
+    for(int i = 0; i < axis_; ++i)
+      ABORT_IF(outShape[i] != 1, "non-consecutive slices are presently not supported by step()");
+#endif
+    outShape.set(axis_, 1);
 
     return outShape;
   }
 
-  size_t allocate() { return 0; }
-  void free() {}
+  size_t allocate() override { return 0; }
+  void free() override {}
 
-  void forward() {}
-  void backward() {}
+  void forward() override {}
+  void backward() override {}
 
-  void init_dependent() { stepNode_->init_dependent(); }
+  void init_dependent() override { stepNode_->init_dependent(); }
 
-  void set_zero_adjoint() { stepNode_->set_zero_adjoint(); }
+  void set_zero_adjoint() override { stepNode_->set_zero_adjoint(); }
 
-  Tensor& val() {
+  Tensor& val() override {
     auto childVal = stepNode_->val();
     size_t offset = step_ * shape().elements() * sizeof(float);
     auto mem = New<MemoryPiece>(childVal->memory()->data() + offset,
@@ -956,7 +975,7 @@ public:
     return val_;
   };
 
-  Tensor& grad() {
+  Tensor& grad() override {
     auto childGrad = stepNode_->grad();
     size_t offset = step_ * shape().elements() * sizeof(float);
     auto mem = New<MemoryPiece>(childGrad->memory()->data() + offset,
@@ -965,11 +984,11 @@ public:
     return adj_;
   };
 
-  const std::string type() { return "step"; }
+  const std::string type() override { return "step"; }
 
-  const std::string color() { return "grey"; }
+  const std::string color() override { return "grey"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       hash_ = NaryNodeOp::hash();
       boost::hash_combine(hash_, step_);
@@ -978,7 +997,7 @@ public:
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<StepNodeOp> cnode = std::dynamic_pointer_cast<StepNodeOp>(node);
@@ -993,30 +1012,34 @@ public:
 };
 
 struct ShiftNodeOp : public UnaryNodeOp {
-  ShiftNodeOp(Expr a, Shape shift)
-      : UnaryNodeOp(a, a->shape()), shift_(shift) {}
+  ShiftNodeOp(Expr a, Shape shift, float padValue)
+      : UnaryNodeOp(a, a->shape()), shift_(shift), padValue_(padValue) {}
 
-  NodeOps forwardOps() {
-    return {NodeOp(Shift(val_, child(0)->val(), shift_, false))};
+  NodeOps forwardOps() override {
+    return {NodeOp(
+        Shift(val_, child(0)->val(), shift_, padValue_, /*invert=*/false))};
   }
 
-  NodeOps backwardOps() {
-    return {NodeOp(Shift(child(0)->grad(), adj_, shift_, true))};
+  NodeOps backwardOps() override {
+    // last parameter beta=1 says to use += (out = in + beta * out)
+    // @TODO: check need for padValue_
+    return {NodeOp(ShiftGrad(child(0)->grad(), adj_, shift_, true))};
   }
 
-  const std::string type() { return "shift"; }
+  const std::string type() override { return "shift"; }
 
-  virtual size_t hash() {
+  virtual size_t hash() override {
     if(!hash_) {
       size_t seed = NaryNodeOp::hash();
       for(auto i : shift_)
         boost::hash_combine(seed, i);
+      boost::hash_combine(seed, padValue_);
       hash_ = seed;
     }
     return hash_;
   }
 
-  virtual bool equal(Expr node) {
+  virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
     Ptr<ShiftNodeOp> cnode = std::dynamic_pointer_cast<ShiftNodeOp>(node);
@@ -1027,7 +1050,8 @@ struct ShiftNodeOp : public UnaryNodeOp {
     return true;
   }
 
-  Shape shift_;
+  Shape shift_;     // shift offsets in each dimension
+  float padValue_;  // what value to shift in
 };
 
 // struct LexicalProbNodeOp : public NaryNodeOp {
@@ -1066,6 +1090,7 @@ struct ShiftNodeOp : public UnaryNodeOp {
 //  Ptr<sparse::CSR> lf_;
 //};
 
+#ifdef CUDNN
 class PoolingOp : public UnaryNodeOp {
 public:
   PoolingOp(Expr x,
@@ -1099,6 +1124,7 @@ public:
 protected:
   PoolingWrapper pooling_;
 };
+#endif
 
 class PoolingWithMaskingOp : public UnaryNodeOp {
 public:
@@ -1112,12 +1138,12 @@ public:
     shape_ = {dimBatch, dimWord, dimSentence};
   }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {NodeOp(PoolingWithMaskingForward(
         val_, child(0)->val(), mask_->val(), width_, isEven_))};
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     return {NodeOp(PoolingWithMaskingBackward(adj_,
                                               child(0)->grad(),
                                               child(0)->val(),
@@ -1126,11 +1152,11 @@ public:
                                               isEven_))};
   }
 
-  const std::string type() { return "layer_pooling"; }
+  const std::string type() override { return "layer_pooling"; }
 
 protected:
   Expr mask_;
   int width_;
   bool isEven_;
 };
-}
+}  // namespace marian

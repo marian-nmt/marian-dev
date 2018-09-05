@@ -9,17 +9,28 @@
 #include <vector>
 
 #include "common/definitions.h"
+#include "common/types.h"
 #include "tensors/device.h"
 #include "tensors/memory_piece.h"
-#include "tensors/types.h"
 
 namespace marian {
 
 class AllocationException : public std::exception {
+private:
+  char* message_;
+
 public:
-  virtual const char* what() const throw() {
-    return "Memory re-allocation attempted";
+  AllocationException(size_t available, size_t asked) {
+    std::string mstr = "Attempted allocation of " + std::to_string(asked)
+                       + ", but only " + std::to_string(available) + " free";
+
+    message_ = new char[mstr.size() + 1];
+    std::copy(mstr.begin(), mstr.end(), message_);
   }
+
+  ~AllocationException() { delete[] message_; }
+
+  virtual const char* what() const noexcept override { return message_; }
 };
 
 class Gap {
@@ -73,6 +84,7 @@ private:
   size_t available_{0};
   size_t step_{128 * 1024 * 1024};
   size_t alignment_{256};
+
   bool throw_{false};
 
   std::set<Gap> gaps_;
@@ -111,7 +123,7 @@ private:
     auto it = std::lower_bound(gaps_.begin(), gaps_.end(), Gap(nullptr, size));
 
     if(throw_ && it == gaps_.end()) {
-      throw AllocationException();
+      throw AllocationException(available_, size);
     }
 
     while(it == gaps_.end()) {
@@ -119,8 +131,11 @@ private:
       it = std::lower_bound(gaps_.begin(), gaps_.end(), Gap(nullptr, size));
     }
 
-    available_ -= it->size();
-    return *it;
+    Gap gap = *it;
+    gaps_.erase(it);
+
+    available_ -= gap.size();
+    return gap;
   }
 
   void insertGap(Gap gap, bool consolidate = true) {
@@ -147,9 +162,18 @@ public:
             size_t step,
             size_t alignment = 256)
       : device_(DispatchDevice(deviceId, alignment)),
-        step_(step),
         available_(0),
+        step_(step),
         alignment_(alignment) {
+    reserve(bytes);
+  }
+
+  Allocator(DeviceId deviceId,
+            Ptr<Device> device,
+            size_t bytes,
+            size_t step,
+            size_t alignment = 256)
+      : device_(device), available_(0), step_(step), alignment_(alignment) {
     reserve(bytes);
   }
 
@@ -167,15 +191,11 @@ public:
     return align(num * sizeof(T));
   }
 
-  size_t capacity(size_t num, Type type) {
-    return align(num * sizeOf(type));
-  }
-
+  size_t capacity(size_t num, Type type) { return align(num * sizeOf(type)); }
 
   Ptr<MemoryPiece> alloc(size_t num, Type type) {
     return alloc(num * sizeOf(type));
   }
-
 
   template <typename T>
   Ptr<MemoryPiece> alloc(size_t num) {
@@ -186,7 +206,6 @@ public:
     bytes = align(bytes);
     Gap gap = getGap(bytes);
 
-    gaps_.erase(gap);
     if(gap.size() > bytes) {
       insertGap(gap.rest(bytes), false);
     }
@@ -237,6 +256,6 @@ public:
 
   size_t available() { return available_; }
 
-  DeviceId getDevice() { return device_->getDevice(); }
+  DeviceId getDeviceId() { return device_->getDeviceId(); }
 };
-}
+}  // namespace marian

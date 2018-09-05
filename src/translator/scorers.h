@@ -9,9 +9,9 @@ namespace marian {
 
 class ScorerState {
 public:
-  virtual Expr getProbs() = 0;
+  virtual Expr getLogProbs() = 0;
 
-  virtual float breakDown(size_t i) { return getProbs()->val()->get(i); }
+  virtual float breakDown(size_t i) { return getLogProbs()->val()->get(i); }
 
   virtual void blacklist(Expr totalCosts, Ptr<data::CorpusBatch> batch){};
 };
@@ -57,17 +57,19 @@ public:
 
   virtual Ptr<DecoderState> getState() { return state_; }
 
-  virtual Expr getProbs() { return state_->getProbs(); };
+  virtual Expr getLogProbs() override { return state_->getLogProbs(); };
 
-  virtual void blacklist(Expr totalCosts, Ptr<data::CorpusBatch> batch) {
+  virtual void blacklist(Expr totalCosts, Ptr<data::CorpusBatch> batch) override {
     state_->blacklist(totalCosts, batch);
   }
 };
 
+// class to wrap EncoderDecoderBase in a Scorer interface
 class ScorerWrapper : public Scorer {
 private:
   Ptr<EncoderDecoderBase> encdec_;
   std::string fname_;
+  const void* ptr_;
 
 public:
   ScorerWrapper(Ptr<models::ModelBase> encdec,
@@ -76,20 +78,32 @@ public:
                 const std::string& fname)
       : Scorer(name, weight),
         encdec_(std::static_pointer_cast<EncoderDecoderBase>(encdec)),
-        fname_(fname) {}
+        fname_(fname),
+        ptr_{0} {}
 
-  virtual void init(Ptr<ExpressionGraph> graph) {
+  ScorerWrapper(Ptr<models::ModelBase> encdec,
+                const std::string& name,
+                float weight,
+                const void* ptr)
+      : Scorer(name, weight),
+        encdec_(std::static_pointer_cast<EncoderDecoderBase>(encdec)),
+        ptr_{ptr} {}
+
+  virtual void init(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());
-    encdec_->load(graph, fname_);
+    if(ptr_)
+      encdec_->mmap(graph, ptr_);
+    else
+      encdec_->load(graph, fname_);
   }
 
-  virtual void clear(Ptr<ExpressionGraph> graph) {
+  virtual void clear(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());
     encdec_->clear(graph);
   }
 
   virtual Ptr<ScorerState> startState(Ptr<ExpressionGraph> graph,
-                                      Ptr<data::CorpusBatch> batch) {
+                                      Ptr<data::CorpusBatch> batch) override {
     graph->switchParams(getName());
     return New<ScorerWrapperState>(encdec_->startState(graph, batch));
   }
@@ -99,32 +113,39 @@ public:
                                 const std::vector<size_t>& hypIndices,
                                 const std::vector<size_t>& embIndices,
                                 int dimBatch,
-                                int beamSize) {
+                                int beamSize) override {
     graph->switchParams(getName());
-    auto wrappedState
-        = std::dynamic_pointer_cast<ScorerWrapperState>(state)->getState();
-    return New<ScorerWrapperState>(encdec_->step(
-        graph, wrappedState, hypIndices, embIndices, dimBatch, beamSize));
+    auto wrapperState = std::dynamic_pointer_cast<ScorerWrapperState>(state);
+    auto newState = encdec_->step(graph, wrapperState->getState(), hypIndices, embIndices, dimBatch, beamSize);
+    return New<ScorerWrapperState>(newState);
   }
 
   virtual void setShortlistGenerator(
-      Ptr<data::ShortlistGenerator> shortlistGenerator) {
+      Ptr<data::ShortlistGenerator> shortlistGenerator) override {
     encdec_->setShortlistGenerator(shortlistGenerator);
   };
 
-  virtual Ptr<data::Shortlist> getShortlist() {
+  virtual Ptr<data::Shortlist> getShortlist() override {
     return encdec_->getShortlist();
   };
 
-  virtual std::vector<float> getAlignment() {
-    return encdec_->getAlignment();
+  virtual std::vector<float> getAlignment() override {
+    return encdec_->getAlignment().front();
   }
 };
 
-Ptr<Scorer> scorerByType(std::string fname,
+Ptr<Scorer> scorerByType(const std::string& fname,
                          float weight,
-                         std::string model,
+                         const std::string& model,
                          Ptr<Config> config);
 
 std::vector<Ptr<Scorer>> createScorers(Ptr<Config> options);
-}
+
+Ptr<Scorer> scorerByType(const std::string& fname,
+                         float weight,
+                         const void* ptr,
+                         Ptr<Config> config);
+
+std::vector<Ptr<Scorer>> createScorers(Ptr<Config> options,
+                                       const std::vector<const void*>& ptrs);
+}  // namespace marian

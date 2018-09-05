@@ -63,6 +63,18 @@ public:
       auto cell = New<Tanh>(graph_, options_);
       cell->setLazyInputs(inputs_);
       return cell;
+    } else if(type == "relu") {
+      auto cell = New<ReLU>(graph_, options_);
+      cell->setLazyInputs(inputs_);
+      return cell;
+    } else if(type == "sru") {
+      auto cell = New<SRU>(graph_, options_);
+      cell->setLazyInputs(inputs_);
+      return cell;
+    } else if(type == "ssru") {
+      auto cell = New<SSRU>(graph_, options_);
+      cell->setLazyInputs(inputs_);
+      return cell;
     } else {
       ABORT("Unknown RNN cell type");
     }
@@ -93,12 +105,12 @@ protected:
 public:
   StackedCellFactory(Ptr<ExpressionGraph> graph) : CellFactory(graph) {}
 
-  Ptr<Cell> construct() {
+  Ptr<Cell> construct() override {
     auto stacked = New<StackedCell>(graph_, options_);
 
     int lastDimInput = options_->get<int>("dimInput");
 
-    for(int i = 0; i < stackableFactories_.size(); ++i) {
+    for(size_t i = 0; i < stackableFactories_.size(); ++i) {
       auto sf = stackableFactories_[i];
 
       if(sf->is<CellFactory>()) {
@@ -142,7 +154,7 @@ public:
 
   Ptr<RNN> construct() {
     auto rnn = New<RNN>(graph_, options_);
-    for(int i = 0; i < layerFactories_.size(); ++i) {
+    for(size_t i = 0; i < layerFactories_.size(); ++i) {
       auto lf = layerFactories_[i];
 
       lf->getOptions()->merge(options_);
@@ -193,5 +205,5 @@ public:
 };
 
 typedef Accumulator<RNNFactory> rnn;
-}
-}
+}  // namespace rnn
+}  // namespace marian

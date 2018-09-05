@@ -34,7 +34,7 @@ template <class T>
 Ptr<T> New(Ptr<T> p) {
   return Ptr<T>(p);
 }
-}
+}  // namespace marian
 
 #include "keywords.h"
 
@@ -57,7 +57,27 @@ struct DeviceId {
   friend bool operator==(DeviceId id1, DeviceId id2) {
     return id1.no == id2.no && id1.type == id2.type;
   }
+  friend bool operator!=(DeviceId id1, DeviceId id2) { return !(id1 == id2); }
 };
+
+// predefine a couple of devices for easier manual use
+const DeviceId CPU0{0, DeviceType::cpu};
+const DeviceId CPU1{1, DeviceType::cpu};
+const DeviceId CPU2{2, DeviceType::cpu};
+const DeviceId CPU3{3, DeviceType::cpu};
+const DeviceId CPU4{4, DeviceType::cpu};
+const DeviceId CPU5{5, DeviceType::cpu};
+const DeviceId CPU6{6, DeviceType::cpu};
+const DeviceId CPU7{7, DeviceType::cpu};
+
+const DeviceId GPU0{0, DeviceType::gpu};
+const DeviceId GPU1{1, DeviceType::gpu};
+const DeviceId GPU2{2, DeviceType::gpu};
+const DeviceId GPU3{3, DeviceType::gpu};
+const DeviceId GPU4{4, DeviceType::gpu};
+const DeviceId GPU5{5, DeviceType::gpu};
+const DeviceId GPU6{6, DeviceType::gpu};
+const DeviceId GPU7{7, DeviceType::gpu};
 
 class TensorBase;
 typedef Ptr<TensorBase> Tensor;
@@ -110,7 +130,7 @@ KEY(coverage, Expr);
 KEY(max_epochs, int);
 KEY(valid, Ptr<RunBase>);
 KEY(lex_probs, Ptr<LexProbs>);
-}
+}  // namespace keywords
 
 const float NEMATUS_LN_EPS = 1e-5;
-}
+}  // namespace marian

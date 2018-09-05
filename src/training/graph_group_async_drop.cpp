@@ -1,5 +1,5 @@
-#include "training/graph_group_async.h"
 #include "training/graph_group_async_drop.h"
+#include "training/graph_group_async.h"
 
 #include "functional/functional.h"
 #include "tensors/tensor_operators.h"
@@ -38,8 +38,8 @@ void AsyncGraphGroupDrop::fetchParams(Tensor oldParams,
 
     pos += shardSize_;
   }
-  for(auto&& t : threads)
-    t.join();
+  for(size_t i = 0; i < threads.size(); i++)
+    threads[i].join();
 }
 
 void AsyncGraphGroupDrop::pushGradients(Tensor newGrads,
@@ -83,8 +83,8 @@ void AsyncGraphGroupDrop::pushGradients(Tensor newGrads,
             shardOpt_[idx]->update(params_[idx], grads_[idx]);
           }
 
-          if(movingAvg_)
-            updateMovingAverage(
+          if(mvAvg_)
+            updateAvgParams(
                 paramsAvg_[idx], params_[idx], scheduler_->numberOfBatches());
         },
         idx,
@@ -113,7 +113,7 @@ void AsyncGraphGroupDrop::init(Ptr<data::Batch> batch) {
       // prepare droppers
       std::vector<GradientDrop> tmpDropper;
       for(auto device : devices_)
-        tmpDropper.push_back(PrepareGradientDrop(graphs_[i]->getDevice()));
+        tmpDropper.push_back(PrepareGradientDrop(graphs_[i]->getDeviceId()));
       droppers_.push_back(tmpDropper);
 
       // sparsetensor to store sparsified gradients per-device per-shard
@@ -132,4 +132,4 @@ void AsyncGraphGroupDrop::init(Ptr<data::Batch> batch) {
     drop_first = false;
   }
 }
-}
+}  // namespace marian

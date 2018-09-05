@@ -5,10 +5,13 @@ namespace marian {
 
 Expr debug(Expr a, const std::string& message = "");
 
+typedef Expr(ActivationFunction)(Expr);
+
 Expr plus(const std::vector<Expr>&);
 
-Expr logit(Expr a);
-Expr logit(const std::vector<Expr>&);
+// TODO: should be logistic(), not sigmoid()
+Expr sigmoid(Expr a);
+Expr sigmoid(const std::vector<Expr>&);
 
 Expr swish(Expr a);
 Expr swish(const std::vector<Expr>&);
@@ -60,6 +63,12 @@ Expr operator/(Expr a, float b);
 // Expr pow(float a, Expr b);
 // Expr pow(Expr a, float b);
 
+Expr logaddexp(Expr a, Expr b);
+
+Expr max(Expr a, Expr b);  // TODO: haggle over the name (max vs. elementMax)
+
+Expr min(Expr a, Expr b);  // TODO: haggle over the name
+
 Expr dot(Expr a,
          Expr b,
          bool transA = false,
@@ -98,7 +107,6 @@ Expr flatten_2d(Expr a);
 
 Expr rows(Expr a, const std::vector<size_t>& indices);
 Expr cols(Expr a, const std::vector<size_t>& indices);
-
 Expr select(Expr a, int axis, const std::vector<size_t>& indices);
 
 /*********************************************************/
@@ -122,7 +130,7 @@ Expr step(Expr a, int step, int axis);
 Expr sqrt(Expr a, float eps = 0.f);
 Expr square(Expr a);
 
-Expr layer_norm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
+Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
 Expr highway(Expr y, Expr x, Expr t);
 Expr highway(const std::string prefix, Expr x);
@@ -131,17 +139,21 @@ static inline Expr dropout(Expr x, Expr mask) {
   return x * mask;
 }
 
-static inline Expr dropout(Expr x, float prob, Shape shape) {
+static inline Expr dropout(Expr x, float dropProb, Shape shape) {
+  if(dropProb == 0)
+    return x;
   auto graph = x->graph();
-  auto mask = graph->dropout(prob, shape);
+  auto mask = graph->dropout(dropProb, shape);
   return dropout(x, mask);
 }
 
-static inline Expr dropout(Expr x, float prob) {
-  return dropout(x, prob, x->shape());
+static inline Expr dropout(Expr x, float dropProb) {
+  if(dropProb == 0)
+    return x;
+  return dropout(x, dropProb, x->shape());
 }
 
-Expr shift(Expr, Shape);
+Expr shift(Expr, Shape, float padValue = 0);
 
 Expr convert2cudnnFormat(Expr x);
 
@@ -164,4 +176,4 @@ Expr max_pooling(Expr x,
                  int strideWidth = 1);
 
 Expr pooling_with_masking(Expr x, Expr mask, int width, bool isEven = false);
-}
+}  // namespace marian

@@ -2,13 +2,13 @@
 
 #include "data/batch_generator.h"
 #include "data/corpus.h"
-#include "data/text_input.h"
 #include "data/shortlist.h"
+#include "data/text_input.h"
 
 #include "3rd_party/threadpool.h"
 #include "translator/history.h"
 #include "translator/output_collector.h"
-#include "translator/printer.h"
+#include "translator/output_printer.h"
 
 #include "models/model_task.h"
 #include "translator/scorers.h"
@@ -16,7 +16,7 @@
 namespace marian {
 
 template <class Search>
-class TranslateMultiGPU : public ModelTask {
+class Translate : public ModelTask {
 private:
   Ptr<Config> options_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
@@ -27,7 +27,7 @@ private:
   Ptr<data::ShortlistGenerator> shortlistGenerator_;
 
 public:
-  TranslateMultiGPU(Ptr<Config> options)
+  Translate(Ptr<Config> options)
       : options_(options),
         corpus_(New<data::Corpus>(options_, true)),
         trgVocab_(New<Vocab>()) {
@@ -37,12 +37,8 @@ public:
     auto srcVocab = corpus_->getVocabs()[0];
 
     if(options_->has("shortlist"))
-      shortlistGenerator_ =
-        New<data::LexicalShortlistGenerator>(options_,
-                                             srcVocab,
-                                             trgVocab_,
-                                             0, 1,
-                                             vocabs.front() == vocabs.back());
+      shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
+          options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
 
     auto devices = options_->getDevices();
 
@@ -53,7 +49,8 @@ public:
     size_t id = 0;
     for(auto device : devices) {
       auto task = [&](DeviceId device, size_t id) {
-        auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
+        auto graph
+            = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
         graph->setDevice(device);
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
@@ -74,7 +71,7 @@ public:
     }
   }
 
-  void run() {
+  void run() override {
     data::BatchGenerator<data::Corpus> bg(corpus_, options_);
 
     auto devices = options_->getDevices();
@@ -83,10 +80,15 @@ public:
 
     size_t batchId = 0;
     auto collector = New<OutputCollector>();
+    auto printer = New<OutputPrinter>(options_, trgVocab_);
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
 
     bg.prepare(false);
+
+    // @TODO: unify this and get rid of Config object.
+    auto tOptions = New<Options>();
+    tOptions->merge(options_);
 
     while(bg) {
       auto batch = bg.next();
@@ -100,14 +102,15 @@ public:
           scorers = scorers_[id % devices.size()];
         }
 
-        auto search = New<Search>(options_, scorers);
+        auto search = New<Search>(
+            tOptions, scorers, trgVocab_->GetEosId(), trgVocab_->GetUnkId());
 
         auto histories = search->search(graph, batch);
 
         for(auto history : histories) {
           std::stringstream best1;
           std::stringstream bestn;
-          Printer(options_, trgVocab_, history, best1, bestn);
+          printer->print(history, best1, bestn);
           collector->Write(history->GetLineNum(),
                            best1.str(),
                            bestn.str(),
@@ -121,7 +124,7 @@ public:
 };
 
 template <class Search>
-class TranslateServiceMultiGPU : public ModelServiceTask {
+class TranslateService : public ModelServiceTask {
 private:
   Ptr<Config> options_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
@@ -132,16 +135,16 @@ private:
   Ptr<Vocab> trgVocab_;
 
 public:
-  virtual ~TranslateServiceMultiGPU() {}
+  virtual ~TranslateService() {}
 
-  TranslateServiceMultiGPU(Ptr<Config> options)
+  TranslateService(Ptr<Config> options)
       : options_(options),
         devices_(options_->getDevices()),
         trgVocab_(New<Vocab>()) {
     init();
   }
 
-  void init() {
+  void init() override {
     // initialize vocabs
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
@@ -167,12 +170,17 @@ public:
     }
   }
 
-  std::vector<std::string> run(const std::vector<std::string>& inputs) {
+  std::vector<std::string> run(const std::vector<std::string>& inputs) override {
     auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
     data::BatchGenerator<data::TextInput> bg(corpus_, options_);
 
     auto collector = New<StringCollector>();
+    auto printer = New<OutputPrinter>(options_, trgVocab_);
     size_t batchId = 0;
+
+    // @TODO: unify this and get rid of Config object.
+    auto tOptions = New<Options>();
+    tOptions->merge(options_);
 
     bg.prepare(false);
 
@@ -191,13 +199,14 @@ public:
             scorers = scorers_[id % devices_.size()];
           }
 
-          auto search = New<Search>(options_, scorers);
+          auto search = New<Search>(
+              tOptions, scorers, trgVocab_->GetEosId(), trgVocab_->GetUnkId());
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
             std::stringstream best1;
             std::stringstream bestn;
-            Printer(options_, trgVocab_, history, best1, bestn);
+            printer->print(history, best1, bestn);
             collector->add(history->GetLineNum(), best1.str(), bestn.str());
           }
         };
@@ -210,4 +219,4 @@ public:
     return collector->collect(options_->get<bool>("n-best"));
   }
 };
-}
+}  // namespace marian

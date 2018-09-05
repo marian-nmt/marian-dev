@@ -5,7 +5,6 @@
 #include "rnn/types.h"
 
 namespace marian {
-
 namespace rnn {
 
 Expr attOps(Expr va, Expr context, Expr state);
@@ -178,7 +177,7 @@ public:
     //LOG(info, "Attention constructor complete");
   }
 
-  Expr apply(State state) {
+  Expr apply(State state) override {
     using namespace keywords;
     auto recState = state.output;
 
@@ -286,17 +285,17 @@ public:
 
   std::vector<Expr>& getAlignments() { return alignments_; }
 
-  virtual void clear() {
+  virtual void clear() override {
     contexts_.clear();
     alignments_.clear();
   }
 
-  int dimOutput() {
+  int dimOutput() override {
     int alignedSourcesDimPerHead = (attentionProjectionDim_ == -1)? (encState_->getContext()->shape()[-1]): attentionProjectionDim_;
     return alignedSourcesDimPerHead * numAttentionHeads_;
   }
 };
 
 using Attention = GlobalAttention;
-}
-}
+}  // namespace rnn
+}  // namespace marian

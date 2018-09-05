@@ -9,11 +9,10 @@
 #include "common/definitions.h"
 #include "common/keywords.h"
 #include "graph/expression_graph.h"
-#include "models/model_base.h"
 #include "models/costs.h"
+#include "models/model_base.h"
 
 #include "examples/mnist/dataset.h"
-
 
 namespace marian {
 namespace models {
@@ -25,13 +24,12 @@ public:
   Expr apply(Ptr<ModelBase> model,
              Ptr<ExpressionGraph> graph,
              Ptr<data::Batch> batch,
-             bool clearGraph = true) {
-
+             bool clearGraph = true) override {
     auto top = model->build(graph, batch, clearGraph);
 
     auto vLabels = std::static_pointer_cast<data::DataBatch>(batch)->labels();
-    auto labels = graph->constant({(int)batch->size(), 1},
-                                  inits::from_vector(vLabels));
+    auto labels
+        = graph->constant({(int)batch->size(), 1}, inits::from_vector(vLabels));
 
     // Define a top-level node for training
     return mean(cross_entropy(top, labels), keywords::axis = 0);
@@ -45,13 +43,11 @@ public:
   Expr apply(Ptr<ModelBase> model,
              Ptr<ExpressionGraph> graph,
              Ptr<data::Batch> batch,
-             bool clearGraph = true) {
-
+             bool clearGraph = true) override {
     auto top = model->build(graph, batch, clearGraph);
     return logsoftmax(top);
   }
 };
-
 
 class MnistFeedForwardNet : public ModelBase {
 public:
@@ -63,15 +59,15 @@ public:
 
   virtual Expr build(Ptr<ExpressionGraph> graph,
                      Ptr<data::Batch> batch,
-                     bool clean = false) {
+                     bool clean = false) override {
     return construct(graph, batch, inference_);
   }
 
-  void load(Ptr<ExpressionGraph> graph, const std::string& name, bool) {
+  void load(Ptr<ExpressionGraph> graph, const std::string& name, bool) override {
     LOG(critical, "Loading MNIST model is not supported");
   }
 
-  void save(Ptr<ExpressionGraph> graph, const std::string& name, bool) {
+  void save(Ptr<ExpressionGraph> graph, const std::string& name, bool) override {
     LOG(critical, "Saving MNIST model is not supported");
   }
 
@@ -85,7 +81,7 @@ public:
     return nullptr;
   }
 
-  virtual void clear(Ptr<ExpressionGraph> graph) { graph->clear(); };
+  virtual void clear(Ptr<ExpressionGraph> graph) override { graph->clear(); };
 
 protected:
   Ptr<Options> options_;
@@ -151,5 +147,5 @@ protected:
     return last;
   }
 };
-}
-}
+}  // namespace models
+}  // namespace marian

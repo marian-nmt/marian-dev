@@ -11,10 +11,17 @@ namespace marian {
 typedef size_t Word;
 typedef std::vector<Word> Words;
 
-const Word EOS_ID = 0;
-const Word UNK_ID = 1;
-const std::string EOS_STR = "</s>";
-const std::string UNK_STR = "<unk>";
+// EOS and UNK are placed in these positions in Marian-generated vocabs
+const Word DEFAULT_EOS_ID = 0;
+const Word DEFAULT_UNK_ID = 1;
+
+// names of EOS and UNK symbols
+const std::string DEFAULT_EOS_STR = "</s>";
+const std::string DEFAULT_UNK_STR = "<unk>";
+
+// alternatively accepted names in Yaml dictionaries for ids 0 and 1, resp.
+const std::string NEMATUS_EOS_STR = "eos";
+const std::string NEMATUS_UNK_STR = "UNK";
 
 const Word STP_ID = 2;
 const Word CPY_ID = 3;
@@ -39,4 +46,4 @@ const std::unordered_map<Word, std::string> SYM2SPEC = {
     {DEL_ID, DEL_STR},
     {RPL_ID, RPL_STR},
 };
-}
+}  // namespace marian

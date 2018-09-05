@@ -1,7 +1,5 @@
 #pragma once
 
-#include "3rd_party/cnpy/cnpy.h"
-#include "3rd_party/threadpool.h"
 #include "common/config.h"
 #include "common/definitions.h"
 
@@ -13,9 +11,6 @@
 #include "graph/node_operators.h"
 #include "graph/parameters.h"
 
-#include "3rd_party/cnpy/cnpy.h"
-
-#include <fstream>
 #include <map>
 #include <unordered_set>
 
@@ -37,14 +32,18 @@ private:
 
 public:
   Tensors(Ptr<Backend> backend)
-  : tensors_(New<TensorAllocator>(backend)),
-    cache_(New<TensorAllocator>(backend)),
-    shortterm_(New<WeakMemory>()),
-    longterm_(New<Memory>()) {}
+      : tensors_(New<TensorAllocator>(backend)),
+        cache_(New<TensorAllocator>(backend)),
+        shortterm_(New<WeakMemory>()),
+        longterm_(New<Memory>()) {}
 
-  void reserve(size_t bytes) {
-    tensors_->reserve(bytes);
-  }
+  Tensors(Ptr<Backend> backend, Ptr<Device> device)
+      : tensors_(New<TensorAllocator>(backend, device)),
+        cache_(New<TensorAllocator>(backend)),
+        shortterm_(New<WeakMemory>()),
+        longterm_(New<Memory>()) {}
+
+  void reserve(size_t bytes) { tensors_->reserve(bytes); }
 
   void throwAtReallocation(bool throwAtRealloc) {
     tensors_->throwAtReallocation(throwAtRealloc);
@@ -64,14 +63,10 @@ public:
       tensors_->allocate(node->grad(), node->shape(), node->value_type());
   }
 
-  void free(Tensor& tensor) {
-    tensors_->free(tensor);
-  }
+  void free(Tensor& tensor) { tensors_->free(tensor); }
 
   // @TODO: get rid of this, not really used or can be done better
-  Ptr<Allocator> allocator() {
-    return tensors_->allocator();
-  }
+  Ptr<Allocator> allocator() { return tensors_->allocator(); }
 
   Expr findOrRemember(Expr node) {
     size_t hash = node->hash();
@@ -80,10 +75,11 @@ public:
       if(it != longterm_->end()) {
         for(auto found : it->second) {
           return found;
-          // @TODO: check why below code does not work for certain nodes and autotuning.
-          //if(node->equal(found)) {
-            //std::cerr << "found memoized" << std::endl;
-            //return found;
+          // @TODO: check why below code does not work for certain nodes and
+          // autotuning.
+          // if(node->equal(found)) {
+          // std::cerr << "found memoized" << std::endl;
+          // return found;
           //}
         }
       }
@@ -108,14 +104,9 @@ public:
     shortterm_->clear();
   }
 
-  void clearShorttermMemory() {
-    shortterm_->clear();
-  }
+  void clearShorttermMemory() { shortterm_->clear(); }
 
-  void clearLongtermMemory() {
-    longterm_->clear();
-  }
-
+  void clearLongtermMemory() { longterm_->clear(); }
 };
 
 class ExpressionGraph : public std::enable_shared_from_this<ExpressionGraph> {
@@ -126,15 +117,19 @@ private:
   std::list<Expr> nodesBackward_;
 
   std::unordered_set<Expr> topNodes_;
-  Ptr<Parameters> params_;
-  Ptr<Tensors> tensors_;
 
-  Ptr<Backend> backend_;
+  // Holds memory and expressions that correspond to graph parameters
+  Ptr<Parameters> params_;
+
+  // Holds memory and expressions that correspond to temporary expressions.
+  // This gets cleared before a new graph is built.
+  Ptr<Tensors> tensors_;
 
   std::unordered_map<size_t, std::vector<Expr>> memoized_;
 
   bool inferenceOnly_{false};
   bool optimized_{false};
+  Ptr<Backend> backend_;
 
   bool reloaded_{false};
   std::string namespace_;
@@ -161,9 +156,10 @@ public:
     params_->clear();
   }
 
-  void setDevice(DeviceId deviceId = {0, DeviceType::gpu});
+  void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
+                 Ptr<Device> device = nullptr);
 
-  DeviceId getDevice() { return backend_->getDevice(); }
+  DeviceId getDeviceId() { return backend_->getDeviceId(); }
 
   Ptr<Backend> getBackend() { return backend_; }
 
@@ -174,16 +170,16 @@ public:
     namespace_ = newNamespace;
   }
 
-  void reserveWorkspaceMB(size_t num) {
-    size_t bytes = num * 1024 * 1024 - 1;
-    tensors_->reserve(bytes);
-  }
-
   void copyParams(Ptr<ExpressionGraph> graph) {
     for(auto p : *graph->params())
       param(p->name(), p->shape(), inits::dummy);
     params()->allocateForward();
     params()->vals()->copyFrom(graph->params()->vals());
+  }
+
+  void reserveWorkspaceMB(size_t num) {
+    size_t bytes = num * 1024 * 1024 - 1;
+    tensors_->reserve(bytes);
   }
 
   void reuseWorkspace(Ptr<ExpressionGraph> graph) {
@@ -234,7 +230,8 @@ public:
       checkNan(v->val());
 
       if(v->marked_for_debug()) {
-        std::cerr << "Debug: " << v->debug_message() << " op=" << v->type() << std::endl;
+        std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
+                  << std::endl;
         std::cerr << v->val()->debug() << std::endl;
       }
 
@@ -244,12 +241,13 @@ public:
     }
   }
 
-  void backward() {
+  void backward(bool zero = true) {
     ABORT_IF(topNodes_.size() > 1,
              "There are more than one top most node for backward step");
 
     params_->allocateBackward();
-    params_->set_zero_adjoint();
+    if(zero)
+      params_->set_zero_adjoint();
 
     for(auto&& v : topNodes_)
       v->init_dependent();
@@ -264,7 +262,7 @@ public:
       nodesBackward_.pop_back();
 
       for(auto&& child : v->children()) {
-        if(child->trainable())
+        if(child->trainable() && child->type() != "param")
           child->set_zero_adjoint();
       }
 
@@ -370,12 +368,9 @@ public:
     return Expr();
   }
 
-  Ptr<Parameters>& params() {
-    return params_;
-  }
+  Ptr<Parameters>& params() { return params_; }
 
   Expr add(Expr node) {
-
     auto found = tensors_->findOrRemember(node);
     if(found) {
       return found;
@@ -392,9 +387,7 @@ public:
     }
   }
 
-  void remove_top_node(Expr node) {
-    topNodes_.erase(node);
-  }
+  void remove_top_node(Expr node) { topNodes_.erase(node); }
 
   void allocateForward(Expr node) {
     if(tensors_)
@@ -412,9 +405,7 @@ public:
   }
 
   // @TODO: get rid of this, not really used or can be done better
-  Ptr<Allocator> allocator() {
-    return tensors_->allocator();
-  }
+  Ptr<Allocator> allocator() { return tensors_->allocator(); }
 
   void clear() {
     // clear everything apart from parameters and memoized nodes
@@ -433,65 +424,105 @@ public:
 
   void setThrowNaN(bool throwNaN) { throwNaN_ = throwNaN; }
 
-  void load(const std::string& name, bool markReloaded) {
-    using namespace keywords;
-
-    LOG(info, "Loading model from {}", name);
+private:
+  // convert all parameters into an array of IoItem elements, for saving
+  void itemsToParameters(const std::vector<io::Item>& ioItems,
+                         const std::map<std::string, std::string>& nameMap,
+                         bool markReloaded = true) {
     setReloaded(false);
+    for(auto& item : ioItems) {
+      std::string pName = item.name;
 
-    auto numpy = cnpy::npz_load(name);
-
-    for(auto it : numpy) {
-      auto name = it.first;
-      // skip over special parameters starting with _
-      if(name.substr(0, 8) == "special:")
+      // skip over special parameters starting with "special:"
+      if(pName.substr(0, 8) == "special:")
         continue;
 
-      Shape shape;
-      if(it.second->shape.size() == 1) {
-        shape.resize(2);
-        shape.set(0, 1);
-        shape.set(1, it.second->shape[0]);
-      } else {
-        shape.resize(it.second->shape.size());
-        for(int i = 0; i < it.second->shape.size(); ++i)
-          shape.set(i, it.second->shape[i]);
-      }
+      auto it = nameMap.find(pName);
+      if(it != nameMap.end())
+        pName = it->second;
 
-      param(name, shape, inits::from_numpy(it.second));
+      param(pName, item.shape, inits::from_item(item));
     }
-
     if(markReloaded)
       setReloaded(true);
   }
 
-  // convert all parameters into an array pf cnpy::NpzItem elements, for saving
-  void save(std::vector<cnpy::NpzItem>& npzItems)
-  {
-    for(auto p : params()->getMap()) {
-      std::string pName = p.first;
+public:
+  void load(const std::string& name,
+            const std::map<std::string, std::string>& nameMap,
+            bool markReloaded = true) {
+    LOG(info, "Loading model from {}", name);
+    itemsToParameters(io::loadItems(name), nameMap, markReloaded);
+  }
 
-      if(!namespace_.empty()) {
-        if(pName.substr(0, namespace_.size() + 2) == namespace_ + "::")
-          pName = pName.substr(namespace_.size() + 2);
-      }
+  void load(const std::string& name, bool markReloaded = true) {
+    std::map<std::string, std::string> emptyNameMap;
+    load(name, emptyNameMap, markReloaded);
+  }
 
-      std::vector<float> v;
-      p.second->val()->get(v);
+  void load(const void* ptr,
+            const std::map<std::string, std::string>& nameMap,
+            bool markReloaded = true) {
+    LOG(info, "Loading model from buffer at {}", ptr);
+    itemsToParameters(io::loadItems(ptr), nameMap, markReloaded);
+  }
 
-      auto& pShape = p.second->shape();
-      std::vector<unsigned int> shape(pShape.begin(), pShape.end());
+  void load(const void* ptr, bool markReloaded = true) {
+    std::map<std::string, std::string> emptyNameMap;
+    load(ptr, emptyNameMap, markReloaded);
+  }
 
-      npzItems.emplace_back(pName, v, shape);
-    }
+  void mmap(const void* ptr,
+            const std::map<std::string, std::string>& nameMap,
+            bool markReloaded = true) {
+    ABORT_IF(backend_->getDeviceId().type != DeviceType::cpu || !inferenceOnly_,
+             "Memory mapping only supported for CPU inference mode");
+
+    params_ = New<MappedParameters>();
+    params_->init(backend_);
+
+    LOG(info, "Memory mapping model at {}", ptr);
+    itemsToParameters(io::mmapItems(ptr), nameMap, markReloaded);
+  }
+
+  void mmap(const void* ptr, bool markReloaded = true) {
+    std::map<std::string, std::string> emptyNameMap;
+    mmap(ptr, emptyNameMap, markReloaded);
+  }
+
+private:
+  // convert all parameters into an array of io::Item elements, for saving
+  void parametersToItems(std::vector<io::Item>& ioItems,
+                         const std::map<std::string, std::string>& nameMap);
+
+public:
+  void save(const std::string& name,
+            const std::string& meta,
+            const std::map<std::string, std::string>& nameMap) {
+    // LOG(info, "Saving model to {}", name);
+
+    std::vector<io::Item> ioItems;
+    parametersToItems(ioItems, nameMap);
+    if(!meta.empty())
+      io::addMetaToItems(meta, "special:model.yml", ioItems);
+    io::saveItems(name, ioItems);
+
+    // LOG(info, "Saved {} items.", ioItems.size());
   }
 
   void save(const std::string& name) {
-    LOG(info, "Saving model to {}", name);
-    std::vector<cnpy::NpzItem> npzItems;
-    save(npzItems);
-    cnpy::npz_save(name, npzItems);
-    LOG(info, "Saved {} items.", npzItems.size());
+    std::map<std::string, std::string> emptyNameMap;
+    save(name, "", emptyNameMap);
+  }
+
+  void save(const std::string& name, const std::string& meta) {
+    std::map<std::string, std::string> emptyNameMap;
+    save(name, meta, emptyNameMap);
+  }
+
+  void save(const std::string& name,
+            const std::map<std::string, std::string>& nameMap) {
+    save(name, "", nameMap);
   }
 };
 
@@ -500,4 +531,4 @@ Expr Expression(Args&&... args) {
   auto e = Expr(new T(std::forward<Args>(args)...));
   return e->graph()->add(e);
 }
-}
+}  // namespace marian

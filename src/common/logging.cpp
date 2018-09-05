@@ -37,7 +37,7 @@ bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
     logger.set_level(spdlog::level::info);
   else if(level == "warn")
     logger.set_level(spdlog::level::warn);
-  else if(level == "err" or level == "error")
+  else if(level == "err" || level == "error")
     logger.set_level(spdlog::level::err);
   else if(level == "critical")
     logger.set_level(spdlog::level::critical);
@@ -58,7 +58,9 @@ void createLoggers(const marian::Config* options) {
 
   if(options && options->has("log")) {
     generalLogs.push_back(options->get<std::string>("log"));
+#ifndef _WIN32  // can't open the same file twice in Windows for some reason
     validLogs.push_back(options->get<std::string>("log"));
+#endif
   }
 
   if(options && options->has("valid-log")) {

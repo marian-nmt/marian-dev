@@ -27,7 +27,7 @@ namespace marian {
  */
 class MultiNodeGraphGroupSync : public GraphGroup {
 public:
-  virtual void setScheduler(Ptr<Scheduler> scheduler);
+  virtual void setScheduler(Ptr<Scheduler> scheduler) override;
 
 protected:
   ////////////////////////////////////////////////////////////////////////////
@@ -98,7 +98,7 @@ protected:
   std::vector<Tensor> accGradients, accGradientBuffer;
 
   bool movingAvg_{false};
-  float mvDecay_{1e-4};
+  float mvDecay_{1e-4f};
 
   /**
    * Allocate new tensor on given GPU and store allocator.
@@ -108,7 +108,7 @@ protected:
   /*
    * exponential smoothing
    */
-  void updateMovingAverage(Tensor paramsAvg, Tensor params, size_t batches);
+  void updateAvgParams(Tensor paramsAvg, Tensor params, size_t batches);
 
   /**
    * Setup training environment and launch server thread and (if enabled) client
@@ -211,7 +211,7 @@ public:
   /**
    * Update any client model with given batch if batch is assigned to this node.
    */
-  void update(Ptr<data::Batch> batch) {
+  void update(Ptr<data::Batch> batch) override {
     ABORT_IF(finalized_, "Training has already finished.");
     if(batchIter_ % mpi_comm_world_size_
        == mpi_my_rank_) {  // Only take batch assigned to this node
@@ -223,7 +223,7 @@ public:
   /**
    * Load models from disk if file exists and setting is not disabled
    */
-  void load() {
+  void load() override {
     if(!options_->get<bool>("no-reload")) {
       std::string name = options_->get<std::string>("model");
 
@@ -248,7 +248,7 @@ public:
   /**
    * Save model of first client's graph to disk
    */
-  void save(bool final = false) { save(clientGraphs_[0], final); }
+  void save(bool final = false) override { save(clientGraphs_[0], final); }
 
   /**
    * Save model of given graph to disk.
@@ -295,11 +295,11 @@ public:
         clientGraphs_[0], clientBuilders_[0], devices_.size());
   }
 
-  virtual void finalize() {
+  virtual void finalize() override {
     finalized_ = true;
 #if MPI_FOUND
     MPI_Finalize();
 #endif
   }
 };
-}
+}  // namespace marian

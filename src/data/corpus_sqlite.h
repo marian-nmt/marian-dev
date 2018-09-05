@@ -52,22 +52,22 @@ public:
                std::vector<Ptr<Vocab>> vocabs,
                Ptr<Config> options);
 
-  sample next();
+  sample next() override;
 
-  void shuffle();
+  void shuffle() override;
 
-  void reset();
+  void reset() override;
 
-  void restore(Ptr<TrainingState>);
+  void restore(Ptr<TrainingState>) override;
 
-  iterator begin() { return iterator(this); }
+  iterator begin() override { return iterator(this); }
 
-  iterator end() { return iterator(); }
+  iterator end() override { return iterator(); }
 
-  std::vector<Ptr<Vocab>>& getVocabs() { return vocabs_; }
+  std::vector<Ptr<Vocab>>& getVocabs() override { return vocabs_; }
 
-  batch_ptr toBatch(const std::vector<sample>& batchVector) {
-    int batchSize = batchVector.size();
+  batch_ptr toBatch(const std::vector<sample>& batchVector) override {
+    size_t batchSize = batchVector.size();
 
     std::vector<size_t> sentenceIds;
 
@@ -83,14 +83,14 @@ public:
     }
 
     std::vector<Ptr<SubBatch>> subBatches;
-    for(auto m : maxDims) {
-      subBatches.emplace_back(New<SubBatch>(batchSize, m));
+    for(size_t j = 0; j < maxDims.size(); ++j) {
+      subBatches.emplace_back(New<SubBatch>(batchSize, maxDims[j], vocabs_[j]));
     }
 
     std::vector<size_t> words(maxDims.size(), 0);
-    for(int i = 0; i < batchSize; ++i) {
-      for(int j = 0; j < maxDims.size(); ++j) {
-        for(int k = 0; k < batchVector[i][j].size(); ++k) {
+    for(size_t i = 0; i < batchSize; ++i) {
+      for(size_t j = 0; j < maxDims.size(); ++j) {
+        for(size_t k = 0; k < batchVector[i][j].size(); ++k) {
           subBatches[j]->data()[k * batchSize + i] = batchVector[i][j][k];
           subBatches[j]->mask()[k * batchSize + i] = 1.f;
           words[j]++;
@@ -124,5 +124,5 @@ private:
                             NULL);
   }
 };
-}
-}
+}  // namespace data
+}  // namespace marian

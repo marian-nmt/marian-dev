@@ -1,11 +1,11 @@
 #pragma once
 
+#include "common/file_stream.h"
+#include "data/types.h"
+
 #include <map>
 #include <string>
 #include <vector>
-
-#include "common/file_stream.h"
-#include "data/types.h"
 
 namespace marian {
 
@@ -36,6 +36,14 @@ public:
               OutputFileStream& vocabStrm,
               size_t maxSize = 0);
 
+  Word GetEosId() const { return eosId_; }
+  Word GetUnkId() const { return unkId_; }
+
+  void createFake();  // for fakeBatch()
+
+private:
+  Word insertWord(Word id, const std::string& str);
+
 private:
   typedef std::map<std::string, size_t> Str2Id;
   Str2Id str2id_;
@@ -43,6 +51,9 @@ private:
   typedef std::vector<std::string> Id2Str;
   Id2Str id2str_;
 
+  Word eosId_ = -1;
+  Word unkId_ = -1;
+
   class VocabFreqOrderer;
 };
-}
+}  // namespace marian

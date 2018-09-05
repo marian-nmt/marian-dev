@@ -2,12 +2,17 @@
 
 #include <boost/program_options.hpp>
 
-#include <sys/ioctl.h>
-#include <unistd.h>
 #include "3rd_party/yaml-cpp/yaml.h"
 #include "common/definitions.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
+
+// TODO: why are these needed by a config parser? Can they be removed for Linux
+// as well?
+#ifndef _WIN32
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 namespace marian {
 
@@ -19,8 +24,6 @@ enum struct ConfigMode {
 
 // try to determine the width of the terminal
 uint16_t guess_terminal_width(uint16_t max_width = 180);
-
-void OutputYaml(const YAML::Node node, YAML::Emitter& out);
 
 class ConfigParser {
 public:
@@ -57,4 +60,4 @@ private:
   void validateOptions() const;
   void validateDevices() const;
 };
-}
+}  // namespace marian

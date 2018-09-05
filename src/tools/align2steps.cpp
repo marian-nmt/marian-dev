@@ -88,8 +88,8 @@ int main(int argc, char** argv) {
 
   int i = 0;
   std::string source, target, alignment;
-  while(std::getline(srcStrm, source) && std::getline(trgStrm, target)
-        && std::getline(alnStrm, alignment)) {
+  while(utils::GetLine(srcStrm, source) && utils::GetLine(trgStrm, target)
+        && utils::GetLine(alnStrm, alignment)) {
     auto srcToks = split(source, R"(\s)");
     auto trgToks = split(target, R"(\s)");
     auto alnToks = split(alignment, R"(\s|-)");

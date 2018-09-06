@@ -30,6 +30,8 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
       validateOptionsParallelData();
       validateOptionsTraining();
       break;
+    case cli::mode::selfadaptive:
+      break;
   }
 }
 

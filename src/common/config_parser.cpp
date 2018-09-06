@@ -370,6 +370,10 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+
+  if(mode_ == cli::mode::selfadaptive)
+    cli.add<size_t>("--train-samples",
+        "<TO_BE_REMOVED> Use  arg  training samples per each input sentence");
   // clang-format on
 }
 
@@ -438,8 +442,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper &cli) {
   cli.add<std::vector<std::string>>("--input,-i",
       "Paths to input file(s), stdin by default",
       std::vector<std::string>({"stdin"}));
-  cli.add<std::vector<std::string>>("--vocabs,-v",
-      "Paths to vocabulary files have to correspond to --input");
+
+  if(mode_ != cli::mode::selfadaptive)
+    cli.add<std::vector<std::string>>("--vocabs,-v",
+        "Paths to vocabulary files have to correspond to --input");
 
   // decoding options
   cli.add<size_t>("--beam-size,-b",
@@ -461,9 +467,12 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper &cli) {
      "Return word alignment. Possible values: 0.0-1.0, hard, soft")
     ->implicit_val("1");
 
-  addSuboptionsDevices(cli);
-  addSupoptionsInputLength(cli);
-  addSuboptionsBatching(cli);
+
+  if(mode_ != cli::mode::selfadaptive) {
+    addSuboptionsDevices(cli);
+    addSupoptionsInputLength(cli);
+    addSuboptionsBatching(cli);
+  }
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
@@ -617,6 +626,10 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
       break;
     case cli::mode::scoring:
       addOptionsScoring(cli);
+      break;
+    case cli::mode::selfadaptive:
+      addOptionsTraining(cli);
+      addOptionsTranslation(cli);
       break;
   }
   // clang-format on

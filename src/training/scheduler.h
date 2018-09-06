@@ -62,7 +62,7 @@ public:
       return false;
 
     // stop if the first validator did not improve for a given number of checks
-    size_t stopAfterStalled = options_->get<size_t>("early-stopping");
+    size_t stopAfterStalled = options_->get<size_t>("early-stopping", 0);
     if(stopAfterStalled > 0 && !validators_.empty()
        && stalled() >= stopAfterStalled)
       return false;

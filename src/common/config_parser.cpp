@@ -201,7 +201,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8}));
 #endif
 
-  if(mode_ == cli::mode::training) {
+  if(mode_ == cli::mode::training || mode_ == cli::mode::selfadaptive) {
     // TODO: add ->range(0,1);
     cli.add<float>("--dropout-rnn",
         "Scaling dropout along rnn layers and time (0 = no dropout)");
@@ -244,13 +244,17 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
       "If these files do not exist they are created");
 
   // scheduling options
+  size_t defaultAfterEpochs = (mode_ == cli::mode::selfadaptive) ? 2 : 0;
+  size_t defaultDispFreq = (mode_ == cli::mode::selfadaptive) ? 1 : 1000;
+
   cli.add<size_t>("--after-epochs,-e",
-      "Finish after this many epochs, 0 is infinity");
+      "Finish after this many epochs, 0 is infinity",
+      defaultAfterEpochs);
   cli.add<size_t>("--after-batches",
       "Finish after this many batch updates, 0 is infinity");
   cli.add<size_t>("--disp-freq",
       "Display information every  arg  updates",
-      1000);
+      defaultDispFreq);
   cli.add<bool>("--disp-label-counts",
       "Display label counts when logging loss progress");
   cli.add<size_t>("--save-freq",
@@ -278,9 +282,11 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
   addSuboptionsBatching(cli);
 
   // optimizer options
+  auto defaultOptimizer = (mode_ == cli::mode::selfadaptive) ? "sgd" : "adam";
+
   cli.add<std::string>("--optimizer,-o",
      "Optimization algorithm: sgd, adagrad, adam",
-     "adam");
+     defaultOptimizer);
   cli.add_nondefault<std::vector<float>>("--optimizer-params",
      "Parameters for optimization algorithm, e.g. betas for adam");
   cli.add<size_t>("--optimizer-delay",
@@ -291,9 +297,11 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
      "Use synchronous SGD instead of asynchronous for multi-gpu training");
 
   // learning rate options
+  double defaultLearnRate = (mode_ == cli::mode::selfadaptive) ? 0.5 : 0.0001;
+
   cli.add<double>("--learn-rate,-l",
      "Learning rate",
-     0.0001);
+     defaultLearnRate);
   cli.add<bool>("--lr-report",
      "Report learning rate for each update");
 
@@ -373,7 +381,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
 
   if(mode_ == cli::mode::selfadaptive)
     cli.add<size_t>("--train-samples",
-        "<TO_BE_REMOVED> Use  arg  training samples per each input sentence");
+        "<TO_BE_REMOVED> Use  arg  training samples per each input sentence",
+        0);
   // clang-format on
 }
 
@@ -547,8 +556,9 @@ void ConfigParser::addSuboptionsDevices(cli::CLIWrapper &cli) {
 }
 
 void ConfigParser::addSuboptionsBatching(cli::CLIWrapper &cli) {
-  int defaultMiniBatch = (mode_ == cli::mode::translation) ? 1 : 64;
-  int defaultMaxiBatch = (mode_ == cli::mode::translation) ? 1 : 100;
+  bool transMode = mode_ == cli::mode::translation || mode_ == cli::mode::selfadaptive;
+  int defaultMiniBatch = transMode ? 1 : 64;
+  int defaultMaxiBatch = transMode ? 1 : 100;
   std::string defaultMaxiBatchSort
       = (mode_ == cli::mode::translation) ? "none" : "trg";
 

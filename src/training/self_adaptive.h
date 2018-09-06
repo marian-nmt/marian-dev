@@ -108,6 +108,12 @@ public:
     auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
     auto trainSet = New<TrainSetReader>(trainPaths);
 
+    // Initialize output printing
+    auto collector = New<OutputCollector>();
+    if(options_->get<bool>("quiet-translation"))
+      collector->setPrintingStrategy(New<QuietPrinting>());
+    auto printer = New<OutputPrinter>(options_, vocabs_.back());
+
     LOG(info, "Running...");
 
     while(*testBatches) {
@@ -117,9 +123,9 @@ public:
 
       if(!trainSents.empty()) {
         train(trainSents);
-        translate(testBatch);
+        translate(testBatch, collector, printer);
       } else {
-        translate(testBatch, true);
+        translate(testBatch, collector, printer, true);
       }
     }
   }
@@ -128,10 +134,10 @@ private:
   Ptr<Config> options_;
   Ptr<Options> tOptions_;
 
-  Ptr<models::ModelBase> builder_;       // Training model
-  Ptr<models::ModelBase> builderTrans_;  // Translation model
-  Ptr<ExpressionGraph> graph_;           // A graph with original parameters
-  Ptr<ExpressionGraph> graphTemp_;  // A graph on which training is performed
+  Ptr<models::ModelBase> builder_;      // Training model
+  Ptr<models::ModelBase> builderTrans_; // Translation model
+  Ptr<ExpressionGraph> graph_;          // A graph with original parameters
+  Ptr<ExpressionGraph> graphTemp_;      // A graph on which training is performed
 
   std::vector<Ptr<Vocab>> vocabs_;
   std::vector<Ptr<Scorer>> scorers_;
@@ -185,7 +191,10 @@ private:
     scheduler->finished();
   }
 
-  void translate(Ptr<data::CorpusBatch> batch, bool originalModel = false) {
+  void translate(Ptr<data::CorpusBatch> batch,
+                 Ptr<OutputCollector> collector,
+                 Ptr<OutputPrinter> printer,
+                 bool originalModel = false) {
     if(originalModel) {
       graph_->setInference(true);
       graph_->clear();
@@ -195,12 +204,6 @@ private:
     }
 
     {
-      auto collector = New<OutputCollector>();
-      size_t batchId = 0;
-
-      auto printer = New<OutputPrinter>(options_, vocabs_.back());
-      if(options_->get<bool>("quiet-translation"))
-        collector->setPrintingStrategy(New<QuietPrinting>());
 
       auto search = New<BeamSearch>(tOptions_, scorers_,
           vocabs_.back()->GetEosId(), vocabs_.back()->GetUnkId());
@@ -215,7 +218,6 @@ private:
                          bestn.str(),
                          options_->get<bool>("n-best"));
       }
-      ++batchId;
     }
 
     if(originalModel)

@@ -382,7 +382,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
   if(mode_ == cli::mode::selfadaptive)
     cli.add<size_t>("--train-samples",
         "<TO_BE_REMOVED> Use  arg  training samples per each input sentence",
-        0);
+        1);
   // clang-format on
 }
 

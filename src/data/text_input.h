@@ -48,7 +48,7 @@ public:
   sample next() override;
 
   void shuffle() override {}
-  void reset() override {}
+  void reset() override;
 
   iterator begin() override { return iterator(*this); }
   iterator end() override { return iterator(); }

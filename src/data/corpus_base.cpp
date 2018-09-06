@@ -41,7 +41,12 @@ CorpusBase::CorpusBase(std::vector<std::string> paths,
            "Number of corpus files and vocab files does not agree");
 
   for(auto path : paths_) {
-    files_.emplace_back(new InputFileStream(path));
+    if(path == "stdin")
+      files_.emplace_back(new InputFileStream(std::cin));
+    else {
+      files_.emplace_back(new InputFileStream(path));
+      ABORT_IF(files_.back()->empty(), "File '{}' is empty", path);
+    }
   }
 }
 

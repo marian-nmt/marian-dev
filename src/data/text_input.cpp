@@ -55,5 +55,12 @@ SentenceTuple TextInput::next() {
   }
   return SentenceTuple(0);
 }
+
+void TextInput::reset() {
+  files_.clear();
+  for(auto path : paths_)
+    files_.emplace_back(new std::istringstream(path));
+  pos_ = 0;
+}
 }  // namespace data
 }  // namespace marian

@@ -467,10 +467,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper &cli) {
       "Allow unknown words to appear in output");
   cli.add<bool>("--n-best",
       "Generate n-best list");
-  cli.add<std::string>("--alignment",
+  cli.add_nondefault<std::string>("--alignment",
      "Return word alignment. Possible values: 0.0-1.0, hard, soft")
     ->implicit_val("1");
-
 
   if(mode_ != cli::mode::selfadaptive) {
     addSuboptionsDevices(cli);

@@ -378,11 +378,6 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper &cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
-
-  if(mode_ == cli::mode::selfadaptive)
-    cli.add<size_t>("--train-samples",
-        "<TO_BE_REMOVED> Use  arg  training samples per each input sentence",
-        1);
   // clang-format on
 }
 

@@ -20,26 +20,36 @@ public:
       files_.emplace_back(new InputFileStream(path));
   }
 
-  // @TODO: make it prone to data sets with missing target/source sentences or
-  // replace with a proper data::Corpus object
-  std::vector<std::string> getSamples(size_t n = 1) {
+  std::vector<std::string> getSamples() {
+    // extracted lines for source and target corpora
     std::vector<std::string> samples;
-    if(n < 1)
-      return samples;
+    // counters of number of lines extracted for source and target
+    std::vector<size_t> counts;
 
     for(auto const& file : files_) {
+      size_t currCount = 0;
       std::string lines;
-      if(!std::getline((std::istream&)*file, lines))
-        return {};
+      std::string line;
+      while(std::getline((std::istream&)*file, line)) {
+        if(line.empty())
+          break;
 
-      for(size_t i = 1; i < n; ++i) {
-        std::string line("\n");
-        if(!std::getline((std::istream&)*file, line))
-          return {};
+        if(currCount)
+          lines += "\n";
         lines += line;
+        currCount += 1;
       }
 
       samples.emplace_back(lines);
+      counts.push_back(currCount);
+
+      // check if the same number of lines is extracted for source and target
+      size_t prevCount = counts[0];
+      for(size_t i = 1; i < counts.size(); ++i) {
+        ABORT_IF(prevCount != counts[i],
+                 "An empty source or target sentence has been encountered!");
+        prevCount = counts[i];
+      }
     }
 
     return samples;
@@ -118,8 +128,7 @@ public:
 
     while(*testBatches) {
       auto testBatch = testBatches->next();
-      auto trainSents
-          = trainSet->getSamples(options_->get<size_t>("train-samples"));
+      auto trainSents = trainSet->getSamples();
 
       if(!trainSents.empty()) {
         train(trainSents);

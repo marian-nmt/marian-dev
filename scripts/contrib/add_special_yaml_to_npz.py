@@ -1,5 +1,10 @@
 #! /usr/bin/python
 
+"""
+Adds or updates Marian configuration options embedded in a .npz model.
+Useful for debugging
+"""
+
 import sys
 import numpy as np
 import yaml

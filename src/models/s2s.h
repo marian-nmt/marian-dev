@@ -245,8 +245,8 @@ private:
                                    .set_state(encState));
           lastAttentionCellIds_[k] = numBaseCells_;
           //LOG(info, "attention head for encoder state {} created at numBaseCells_: {}", k, numBaseCells_);
-          ++numBaseCells_;
         }
+        ++numBaseCells_;
       }
     }
     // Add cell to RNN (first layer)

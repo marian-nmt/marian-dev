@@ -72,7 +72,6 @@ public:
     attentionProjectionLayerNorm_ = options->get<bool>("attentionProjectionLayerNorm", false);
     attentionProjectionTanH_ = options->get<bool>("attentionProjectionTanH", false);
     std::string prefix = options_->get<std::string>("prefix");
-    //LOG(info, "Attention heads: {}", numAttentionHeads_);
 
     int dimEncState = encState_->getContext()->shape()[-1];
 
@@ -162,7 +161,6 @@ public:
 
       if (attentionBilinearLookup_) {
         time_transposed_mapped_contexts_.push_back(transpose(reshape(mappedContexts_[headI], 
-                                                    //{1, mappedContexts_[headI]->shape()[0], mappedContexts_[headI]->shape()[1], mappedContexts_[headI]->shape()[2]}),
                                                     {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
                                                     {0, 2, 1, 3}));
         }
@@ -178,7 +176,6 @@ public:
     if (attentionBilinearLookup_) {
       mappedContexts_.clear();
     }
-    //LOG(info, "Attention constructor complete");
   }
 
   Expr apply(State state) override {
@@ -211,10 +208,6 @@ public:
             mappedState = layerNorm(mappedState, gammaStates_[headI]);
       }
 
-      //LOG(info, "headI: {}", headI);
-      //LOG(info, "mappedContext_ shape: {}", mappedContexts_[filteredHeadI(headI)]->shape());
-      //LOG(info, "mappedState shape: {}", mappedState->shape());
-
       Expr e;
       if (!attentionBilinearLookup_) {
         auto attReduce = attOps(vas_[headI], mappedContexts_[filteredHeadI(headI)], mappedState);
@@ -222,38 +215,21 @@ public:
         e = reshape(transpose(softmax(transpose(attReduce), softmaxMask_)),
                     {dimBeam, srcWords, dimBatch, 1});
         // <- horrible
-        //LOG(info, "attReduce shape: {}", attReduce->shape());
-        //LOG(info, "transpose(attReduce) shape: {}", transpose(attReduce)->shape());
       }
       else {
         auto reshaped_state = reshape(mappedState, {1, dimBatch, attentionLookupDim_, dimBeam});
-        //auto reshaped_state = mappedState->graph()->constant({1, dimBatch, attentionLookupDim_, dimBeam}, inits::zeros) + 0.0 * sum(sum(sum(mappedState)));
-        //LOG(info, "reshaped_state shape: {}", reshaped_state->shape());
 
         auto time_transposed_mapped_context = time_transposed_mapped_contexts_[headI];
-//        auto time_transposed_mapped_context = transpose(reshape(mappedContexts_[headI], 
-//                                                        {1, mappedContexts_[headI]->shape()[-3], mappedContexts_[headI]->shape()[-2], mappedContexts_[headI]->shape()[-1]}),  
-//                                                        {0, 2, 1, 3});
         auto bilinear_score = bdot(time_transposed_mapped_context, reshaped_state, false, false, (1.0 / std::sqrt(attentionLookupDim_)));
         e = reshape(transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_)),
                     {dimBeam, srcWords, dimBatch, 1});
-//        e = e * 0.0 + e2;
-        //LOG(info, "time_transposed_mapped_context shape: {}", time_transposed_mapped_context->shape());
-        //LOG(info, "bilinear_score shape: {}", bilinear_score->shape());
-        //LOG(info, "transpose(bilinear_score, ...) shape: {}", transpose(bilinear_score, {3, 0, 1, 2})->shape());
-        //auto dummy = transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_));
-        //LOG(info, "transpose(softmax ...) shape: {}", dummy->shape());
-        //LOG(info, "softmaxMask_ shape: {}", softmaxMask_->shape());
       }
 
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
 
       // Attended context projection
-      //LOG(info, "e shape: {}", e->shape());
-      //LOG(info, "alignedSource shape (before proj): {}", alignedSource->shape());
       if (attentionProjectionDim_ != -1) {
         alignedSource = dot(alignedSource, attentionProjectionMatrices_[headI]);
-        //LOG(info, "alignedSource shape (after proj): {}", alignedSource->shape());
         if (attentionProjectionLayerNorm_) {
           alignedSource = layerNorm(alignedSource, attentionProjectionMatrixGammas_[headI], attentionProjectionMatrixBs_[headI]);
         }
@@ -266,7 +242,6 @@ public:
           }
         }
       }
-      //LOG(info, "--------------------------------------");
       alignedSources.push_back(alignedSource);
       if (headI == 0) {
         // Note: we return the first set of attention weights
@@ -276,7 +251,6 @@ public:
     }
 
     auto concatenatedAlignedSources = concatenate(alignedSources, axis=-1);
-    //LOG(info, "concatenatedAlignedSources shape: {}", concatenatedAlignedSources->shape());
     contexts_.push_back(concatenatedAlignedSources);
     alignments_.push_back(first_e);
     return concatenatedAlignedSources;

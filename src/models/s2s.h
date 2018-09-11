@@ -224,7 +224,6 @@ private:
                          ("transition", transition));
 
       ++numBaseCells_;
-      //LOG(info, "Decoder, create cell: i:{} paramPrefix:{} transition:{} final:{}", i, paramPrefix, transition, i > 1);
       if(i <= decoderAttentionHops) {
         for(int k = 0; k < state->getEncoderStates().size(); ++k) {
           auto attPrefix = prefix_;
@@ -233,10 +232,8 @@ private:
           if (i > 1) {
             attPrefix += "_hop" + std::to_string(i);
           }
-          //LOG(info, "Decoder, create attention: {}", attPrefix);
 
           auto encState = state->getEncoderStates()[k];
-
          
           baseCell.push_back(rnn::attention(graph)("prefix", attPrefix)
                                    ("attentionHeads", opt<int>("dec-attention-heads"))
@@ -248,7 +245,6 @@ private:
                                    ("attentionProjectionTanH", opt<bool>("dec-attention-projection-tanh"))
                                    .set_state(encState));
           lastAttentionCellIds_[k] = numBaseCells_;
-          //LOG(info, "attention head for encoder state {} created at numBaseCells_: {}", k, numBaseCells_);
           ++numBaseCells_;
         }
       }
@@ -345,7 +341,6 @@ public:
     for(size_t k = 0; k < state->getEncoderStates().size(); ++k) {
       // retrieve all the aligned contexts computed by the attention mechanism
       size_t headId = lastAttentionCellIds_[k];  // index of the last attention head for the k-th encoder state
-      //LOG(info, "attention for encoder state {} headId: {}", k, headId);
       auto att = rnn_->at(0)
                      ->as<rnn::StackedCell>()
                      ->at(headId)

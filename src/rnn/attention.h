@@ -139,7 +139,7 @@ public:
             W_comb_att_lnbs_.push_back(graph->param(
                 prefix + "_W_comb_att_lnb" + suffix, {1, attentionLookupDim_}, inits::zeros));
 
-            mappedContexts_.push_back(layer_norm(affine(contextDropped_, Uas_[headI], bas_[headI]),
+            mappedContexts_.push_back(layerNorm(affine(contextDropped_, Uas_[headI], bas_[headI]),
                                                  Wc_att_lnss_[headI],
                                                  Wc_att_lnbs_[headI],
                                                  NEMATUS_LN_EPS));
@@ -149,7 +149,7 @@ public:
             gammaStates_.push_back(graph->param(
                                    prefix + "_att_gamma2" + suffix, {1, attentionLookupDim_}, inits::from_value(1.0)));
 
-            mappedContexts_.push_back(layer_norm(dot(contextDropped_, Uas_[headI]), gammaContexts_[headI], bas_[headI]));
+            mappedContexts_.push_back(layerNorm(dot(contextDropped_, Uas_[headI]), gammaContexts_[headI], bas_[headI]));
           }
 
       } else {
@@ -203,9 +203,9 @@ public:
         mappedState = dot(recState, Was_[headI]);
         if(layerNorm_)
           if(nematusNorm_)
-            mappedState = layer_norm(mappedState, W_comb_att_lnss_[headI], W_comb_att_lnbs_[headI], NEMATUS_LN_EPS);
+            mappedState = layerNorm(mappedState, W_comb_att_lnss_[headI], W_comb_att_lnbs_[headI], NEMATUS_LN_EPS);
           else
-            mappedState = layer_norm(mappedState, gammaStates_[headI]);
+            mappedState = layerNorm(mappedState, gammaStates_[headI]);
       }
 
       //LOG(info, "headI: {}", headI);
@@ -252,7 +252,7 @@ public:
         alignedSource = dot(alignedSource, attentionProjectionMatrices_[headI]);
         //LOG(info, "alignedSource shape (after proj): {}", alignedSource->shape());
         if (attentionProjectionLayerNorm_) {
-          alignedSource = layer_norm(alignedSource, attentionProjectionMatrixGammas_[headI], attentionProjectionMatrixBs_[headI]);
+          alignedSource = layerNorm(alignedSource, attentionProjectionMatrixGammas_[headI], attentionProjectionMatrixBs_[headI]);
         }
         if (attentionProjectionTanH_) {
           if (attentionProjectionLayerNorm_) {

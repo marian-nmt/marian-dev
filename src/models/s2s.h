@@ -197,7 +197,7 @@ private:
         ("skip", opt<bool>("skip"));
 
     ABORT_IF(opt<bool>("dec-attention-bilinear-lookup"),
-             "--dec-attention-bilinear-lookup is disabled due to a bug");
+             "--dec-attention-bilinear-lookup is disabled due to a bug");  	// See: https://github.com/marian-nmt/marian-dev/issues/250
 
     size_t decoderLayers = opt<size_t>("dec-depth");
     size_t decoderBaseDepth = opt<size_t>("dec-cell-base-depth");
@@ -209,8 +209,12 @@ private:
     // setting up conditional (transitional) cell
     auto baseCell = rnn::stacked_cell(graph);
 
+    // For each encoder state, store the id of the last RNN cell that computes an attended context. This is the final attended context used in the output layer.
     lastAttentionCellIds_ = std::vector<size_t>(state->getEncoderStates().size(), -1);
+    
+    // Counts the number of cells in the base layer of the decoder stack
     numBaseCells_ = 0;
+
     for(int i = 1; i <= decoderBaseDepth; ++i) {
       bool transition = (i > 1+decoderAttentionHops);
       auto paramPrefix = prefix_ + "_cell" + std::to_string(i);
@@ -245,8 +249,8 @@ private:
                                    .set_state(encState));
           lastAttentionCellIds_[k] = numBaseCells_;
           //LOG(info, "attention head for encoder state {} created at numBaseCells_: {}", k, numBaseCells_);
+          ++numBaseCells_;
         }
-        ++numBaseCells_;
       }
     }
     // Add cell to RNN (first layer)
@@ -340,7 +344,7 @@ public:
     std::vector<Expr> alignedContexts;
     for(size_t k = 0; k < state->getEncoderStates().size(); ++k) {
       // retrieve all the aligned contexts computed by the attention mechanism
-      size_t headId = lastAttentionCellIds_[k];
+      size_t headId = lastAttentionCellIds_[k];  // index of the last attention head for the k-th encoder state
       //LOG(info, "attention for encoder state {} headId: {}", k, headId);
       auto att = rnn_->at(0)
                      ->as<rnn::StackedCell>()

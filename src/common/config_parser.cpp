@@ -271,23 +271,23 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
     //("dec-high-context", po::value<std::string>()->default_value("none"),
     // "Repeat attended context: none, repeat, conditional, conditional-repeat (s2s)")
 
-    // Multi-head attention
+    // S2S multi-head and multi-hop attention
     ("dec-attention-heads", po::value<int>()->default_value(1),
      "Number of parallel attention heads in s2s decoder")
     ("dec-attention-hops", po::value<int>()->default_value(1),
      "Number of sequential attention hops in s2s decoder")
     ("dec-attention-lookup-dim", po::value<int>()->default_value(-1),
-     "Vector size of the attention lookup mechanism, per head per hop (-1 same the encoder state dimension)")
+     "Vector size of the s2s attention lookup mechanism, per head per hop (-1 same the encoder state dimension)")
     ("dec-attention-projection-dim", po::value<int>()->default_value(-1),
      "Project the context state to this size, per hop (-1 disables projection)")
     ("dec-attention-independent-heads", po::value<bool>()->zero_tokens()->default_value(false),
-     "Use completely independent heads in multi-head attention (automatically enabled by --dec-attention-bilinear-lookup)")
+     "Use completely independent heads in s2s multi-head attention (automatically enabled by --dec-attention-bilinear-lookup)")
     ("dec-attention-bilinear-lookup", po::value<bool>()->zero_tokens()->default_value(false),
-     "Use log-bilinear softmax attention (currently disabled due to a bug)")
+     "Use log-bilinear softmax attention in s2s decoder (currently disabled due to a bug)")
     ("dec-attention-projection-layernorm", po::value<bool>()->zero_tokens()->default_value(false),
-     "Apply layer normalization after the context projection in the attention mechanism")
+     "Apply layer normalization after the context projection in the s2s attention mechanism")
     ("dec-attention-projection-tanh", po::value<bool>()->zero_tokens()->default_value(false),
-     "Apply a bias and tanh non-linearity after the context projection in the attention mechanism")
+     "Apply a bias and tanh non-linearity after the context projection in the s2s attention mechanism")
 
     ("skip", po::value<bool>()->zero_tokens()->default_value(false),
      "Use skip connections (s2s)")

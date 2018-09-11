@@ -11,6 +11,8 @@ Expr attOps(Expr va, Expr context, Expr state);
 
 class GlobalAttention : public CellInput {
 private:
+  // Expr vectors are indexed by head id
+
   std::vector<Expr> Was_, bas_, Uas_;
   std::vector<Expr>vas_;
 
@@ -19,10 +21,12 @@ private:
 
   Ptr<EncoderState> encState_;
   Expr softmaxMask_;
+
   std::vector<Expr> mappedContexts_;
   std::vector<Expr> time_transposed_mapped_contexts_;
   std::vector<Expr> contexts_;
   std::vector<Expr> alignments_;
+
   bool layerNorm_;
   float dropout_;
 
@@ -35,13 +39,13 @@ private:
   std::vector<Expr> W_comb_att_lnss_, W_comb_att_lnbs_;
   bool nematusNorm_;
 
-  int numAttentionHeads_;
-  int attentionLookupDim_;
-  int attentionProjectionDim_;
-  bool attentionIndependentHeads_;
-  bool attentionBilinearLookup_;
-  bool attentionProjectionLayerNorm_;
-  bool attentionProjectionTanH_;
+  int numAttentionHeads_;  		// number of heads for multi-head attention
+  int attentionLookupDim_; 		// dimension of attention hidden state for MLP attention or attention key and query for dot-product attention
+  int attentionProjectionDim_;		// per-head dimension of the projected attended state, if projection is enabled
+  bool attentionIndependentHeads_;	// whether MLP attention heads have separate hidden states
+  bool attentionBilinearLookup_; 	// whether to use dot-product (bi-linear) attention
+  bool attentionProjectionLayerNorm_;   // apply layer normalization on attended context after projection
+  bool attentionProjectionTanH_; 	// apply tanh (with bias) on attended context after projection
 
   std::vector<Expr> attentionProjectionMatrices_;
   std::vector<Expr> attentionProjectionMatrixGammas_;
@@ -72,8 +76,8 @@ public:
 
     int dimEncState = encState_->getContext()->shape()[-1];
 
-    attentionLookupDim_ = (attentionLookupDim_ == -1)? dimEncState: attentionLookupDim_;
-    attentionIndependentHeads_ = (attentionBilinearLookup_)? true: attentionIndependentHeads_;
+    attentionLookupDim_ = (attentionLookupDim_ == -1)? dimEncState: attentionLookupDim_; 		// defaults attention hidden state dimension to dimEncState
+    attentionIndependentHeads_ = (attentionBilinearLookup_)? true: attentionIndependentHeads_;		// dot-product attention implies independent heads
     for (int headI = 0; headI < numAttentionHeads_; ++headI) {
       std::string suffix;
       if (headI > 0) {
@@ -198,7 +202,6 @@ public:
     Expr first_e;
     std::vector<Expr> alignedSources;
     for (int headI = 0; headI < numAttentionHeads_; ++headI) { 	// TODO: Compute all attention heads in a single CUDA kernel
-
       if (headI == 0 || attentionIndependentHeads_) {
         mappedState = dot(recState, Was_[headI]);
         if(layerNorm_)

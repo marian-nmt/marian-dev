@@ -39,19 +39,21 @@ private:
   std::vector<Expr> W_comb_att_lnss_, W_comb_att_lnbs_;
   bool nematusNorm_;
 
-  int numAttentionHeads_;  		// number of heads for multi-head attention
-  int attentionLookupDim_; 		// dimension of attention hidden state for MLP attention or attention key and query for dot-product attention
-  int attentionProjectionDim_;		// per-head dimension of the projected attended state, if projection is enabled
-  bool attentionIndependentHeads_;	// whether MLP attention heads have separate hidden states
-  bool attentionBilinearLookup_; 	// whether to use dot-product (bi-linear) attention
-  bool attentionProjectionLayerNorm_;   // apply layer normalization on attended context after projection
-  bool attentionProjectionTanH_; 	// apply tanh (with bias) on attended context after projection
+  int numAttentionHeads_;  			// number of heads for multi-head attention
+  int attentionLookupDim_; 			// dimension of attention hidden state for MLP attention or attention key and query for dot-product attention
+  int attentionProjectionDim_;			// per-head dimension of the projected attended state, if projection is enabled
+  bool attentionIndependentHeads_;		// whether MLP attention heads have separate hidden states
+  bool attentionBilinearLookup_; 		// whether to use dot-product (bi-linear) attention
+  bool attentionProjectionLayerNorm_;   	// apply layer normalization on attended context after projection
+  std::string attentionProjectionActivation_;	// activation function (with bias) on attended context after projection, or "identity"
 
   std::vector<Expr> attentionProjectionMatrices_;
   std::vector<Expr> attentionProjectionMatrixGammas_;
   std::vector<Expr> attentionProjectionMatrixBs_;
 
   int filteredHeadI(int headI) {return (attentionIndependentHeads_)? headI: 0;}
+
+  std::function<Expr(Expr)> attentionProjectionActivationFcn_;
 
 public:
   GlobalAttention(Ptr<ExpressionGraph> graph,
@@ -70,13 +72,15 @@ public:
     attentionIndependentHeads_ = options->get<bool>("attentionIndependentHeads", false);
     attentionBilinearLookup_ = options->get<bool>("attentionBilinearLookup", false);
     attentionProjectionLayerNorm_ = options->get<bool>("attentionProjectionLayerNorm", false);
-    attentionProjectionTanH_ = options->get<bool>("attentionProjectionTanH", false);
+    attentionProjectionActivation_ = options->get<std::string>("attentionProjectionActivation");
     std::string prefix = options_->get<std::string>("prefix");
 
     int dimEncState = encState_->getContext()->shape()[-1];
 
     attentionLookupDim_ = (attentionLookupDim_ == -1)? dimEncState: attentionLookupDim_; 		// defaults attention hidden state dimension to dimEncState
     attentionIndependentHeads_ = (attentionBilinearLookup_)? true: attentionIndependentHeads_;		// dot-product attention implies independent heads
+    attentionProjectionActivationFcn_ = (attentionProjectionActivation_ != "identity")? activationByName(attentionProjectionActivation_): 0; // pointer to the projection activation function, if applicable
+
     for (int headI = 0; headI < numAttentionHeads_; ++headI) {
       std::string suffix;
       if (headI > 0) {
@@ -106,7 +110,7 @@ public:
             prefix + "_projectionMatrix_gamma" + suffix, {1, attentionProjectionDim_}, inits::from_value(1.0));
           attentionProjectionMatrixGammas_.push_back(gamma);
         }
-        Expr beta = (attentionProjectionTanH_)? graph->param(
+        Expr beta = (attentionProjectionActivation_ != "identity")? graph->param(
           prefix + "_projectionMatrix_b" + suffix, {1, attentionProjectionDim_}, inits::zeros):
           nullptr;
         attentionProjectionMatrixBs_.push_back(beta);
@@ -233,12 +237,13 @@ public:
         if (attentionProjectionLayerNorm_) {
           alignedSource = layerNorm(alignedSource, attentionProjectionMatrixGammas_[headI], attentionProjectionMatrixBs_[headI]);
         }
-        if (attentionProjectionTanH_) {
+        if (attentionProjectionActivation_ != "identity") {
+          
           if (attentionProjectionLayerNorm_) {
-            alignedSource = tanh(alignedSource);
+            alignedSource = attentionProjectionActivationFcn_(alignedSource);
           }
           else {
-            alignedSource = tanh(alignedSource + attentionProjectionMatrixBs_[headI]);
+            alignedSource = attentionProjectionActivationFcn_(alignedSource + attentionProjectionMatrixBs_[headI]);
           }
         }
       }

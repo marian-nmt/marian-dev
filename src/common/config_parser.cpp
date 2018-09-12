@@ -288,6 +288,8 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
      "Apply layer normalization after the context projection in the s2s attention mechanism")
     ("dec-attention-projection-tanh", po::value<bool>()->zero_tokens()->default_value(false),
      "Apply a bias and tanh non-linearity after the context projection in the s2s attention mechanism")
+    ("dec-attention-projection-activation", po::value<std::string>()->default_value("identity"),
+     "If other than \"idenitity\", apply a bias and a non-linearity after the context projection in the s2s attention mechanism. Values: identity, swish, relu, sigmoid, tanh, leakyrelu or prelu")
 
     ("skip", po::value<bool>()->zero_tokens()->default_value(false),
      "Use skip connections (s2s)")
@@ -314,7 +316,7 @@ void ConfigParser::addOptionsModel(po::options_description& desc) {
     ("transformer-ffn-depth", po::value<int>()->default_value(2),
      "Depth of filters (transformer)")
     ("transformer-ffn-activation", po::value<std::string>()->default_value("swish"),
-     "Activation between filters: swish or relu (transformer)")
+     "Activation between filters: swish, relu, sigmoid, tanh, leakyrelu or prelu (transformer)")
     ("transformer-dim-aan", po::value<int>()->default_value(2048),
      "Size of position-wise feed-forward network in AAN (transformer)")
     ("transformer-aan-depth", po::value<int>()->default_value(2),
@@ -837,7 +839,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   SET_OPTION("dec-attention-independent-heads", bool);
   SET_OPTION("dec-attention-bilinear-lookup", bool);
   SET_OPTION("dec-attention-projection-layernorm", bool);
-  SET_OPTION("dec-attention-projection-tanh", bool);
+  SET_OPTION("dec-attention-projection-activation", std::string);
 
   SET_OPTION("skip", bool);
   SET_OPTION("tied-embeddings", bool);

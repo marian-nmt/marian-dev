@@ -337,16 +337,6 @@ public:
                           /*cache=*/false);
   }
 
-  static inline
-  std::function<Expr(Expr)> activationByName(const std::string& actName)
-  {
-    if (actName == "relu")
-      return (ActivationFunction*)relu;
-    else if (actName == "swish")
-      return (ActivationFunction*)swish;
-    ABORT("Invalid activation name '{}'", actName);
-  }
-
   Expr LayerFFN(std::string prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 

@@ -242,7 +242,7 @@ private:
                                    ("attentionIndependentHeads", opt<bool>("dec-attention-independent-heads"))
                                    ("attentionBilinearLookup", opt<bool>("dec-attention-bilinear-lookup"))
                                    ("attentionProjectionLayerNorm", opt<bool>("dec-attention-projection-layernorm"))
-                                   ("attentionProjectionTanH", opt<bool>("dec-attention-projection-tanh"))
+                                   ("attentionProjectionActivation", opt<std::string>("dec-attention-projection-activation"))
                                    .set_state(encState));
           lastAttentionCellIds_[k] = numBaseCells_;
           ++numBaseCells_;

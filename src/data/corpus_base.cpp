@@ -152,7 +152,7 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
   if(training && options_->has("guided-alignment")) {
     auto path = options_->get<std::string>("guided-alignment");
 
-    ABORT_IF(!boost::filesystem::exists(path), "Alignment file does not exist");
+    ABORT_IF(!filesystem::exists(path), "Alignment file does not exist");
     LOG(info, "[data] Using word alignments from file {}", path);
 
     alignFileIdx_ = paths_.size();
@@ -163,7 +163,7 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
   if(training && options_->has("data-weighting")) {
     auto path = options_->get<std::string>("data-weighting");
 
-    ABORT_IF(!boost::filesystem::exists(path), "Weight file does not exist");
+    ABORT_IF(!filesystem::exists(path), "Weight file does not exist");
     LOG(info, "[data] Using weights from file {}", path);
 
     weightFileIdx_ = paths_.size();
@@ -222,17 +222,15 @@ void CorpusBase::addWeightsToSentenceTuple(const std::string& line,
 
 void CorpusBase::addAlignmentsToBatch(Ptr<CorpusBatch> batch,
                                       const std::vector<sample>& batchVector) {
-  int srcWords = batch->front()->batchWidth();
-  int trgWords = batch->back()->batchWidth();
-  int dimBatch = batch->getSentenceIds().size();
+  int srcWords = (int)batch->front()->batchWidth();
+  int trgWords = (int)batch->back()->batchWidth();
+  int dimBatch = (int)batch->getSentenceIds().size();
 
   std::vector<float> aligns(srcWords * dimBatch * trgWords, 0.f);
 
   for(int b = 0; b < dimBatch; ++b) {
     for(auto p : batchVector[b].getAlignment()) {
-      size_t sid, tid;
-      std::tie(sid, tid) = p;
-      size_t idx = sid * dimBatch * trgWords + b * trgWords + tid;
+      size_t idx = p.srcPos * dimBatch * trgWords + b * trgWords + p.tgtPos;
       aligns[idx] = 1.f;
     }
   }
@@ -241,8 +239,8 @@ void CorpusBase::addAlignmentsToBatch(Ptr<CorpusBatch> batch,
 
 void CorpusBase::addWeightsToBatch(Ptr<CorpusBatch> batch,
                                    const std::vector<sample>& batchVector) {
-  int dimBatch = batch->size();
-  int trgWords = batch->back()->batchWidth();
+  int dimBatch = (int)batch->size();
+  int trgWords = (int)batch->back()->batchWidth();
 
   auto sentenceLevel
       = options_->get<std::string>("data-weighting-type") == "sentence";

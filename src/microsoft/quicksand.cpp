@@ -8,6 +8,7 @@
 #include "data/shortlist.h"
 #include "translator/beam_search.h"
 #include "translator/scorers.h"
+#include "data/alignment.h"
 
 namespace marian {
 
@@ -20,13 +21,11 @@ void set(Ptr<Options> options, const std::string& key, const T& value) {
 
 template void set(Ptr<Options> options, const std::string& key, const size_t&);
 template void set(Ptr<Options> options, const std::string& key, const int&);
-template void set(Ptr<Options> options,
-                  const std::string& key,
-                  const std::string&);
+template void set(Ptr<Options> options, const std::string& key, const std::string&);
 template void set(Ptr<Options> options, const std::string& key, const bool&);
-template void set(Ptr<Options> options,
-                  const std::string& key,
-                  const std::vector<std::string>&);
+template void set(Ptr<Options> options, const std::string& key, const std::vector<std::string>&);
+template void set(Ptr<Options> options, const std::string& key, const float&);
+template void set(Ptr<Options> options, const std::string& key, const double&);
 
 Ptr<Options> newOptions() {
   return New<Options>();
@@ -56,14 +55,6 @@ public:
     mkl_set_num_threads(options->get<size_t>("mkl-threads", 1));
 #endif
 
-    options_->set("inference", true);
-    options_->set("word-penalty", 0);
-    options_->set("normalize", 0);
-    options_->set("n-best", false);
-
-    // No unk in QS
-    options_->set("allow-unk", false);
-
     std::vector<std::string> models
         = options_->get<std::vector<std::string>>("model");
 
@@ -78,6 +69,8 @@ public:
 
       modelOpts->merge(options_);
       modelOpts->merge(config);
+
+      std::cerr << modelOpts->str() << std::flush;
 
       auto encdec = models::from_options(modelOpts, models::usage::translation);
 
@@ -108,6 +101,7 @@ public:
         scorer->setShortlistGenerator(shortListGen);
     }
 
+    // form source batch, by interleaving the words over sentences in the batch, and setting the mask
     size_t batchSize = qsBatch.size();
     auto subBatch = New<data::SubBatch>(batchSize, maxLength, nullptr);
     for(size_t i = 0; i < maxLength; ++i) {
@@ -127,18 +121,44 @@ public:
     auto batch = New<data::CorpusBatch>(subBatches);
     batch->setSentenceIds(sentIds);
 
+    // decode
     auto search = New<BeamSearch>(options_, scorers_, eos_);
-    auto histories = search->search(graph_, batch);
+    Histories histories = search->search(graph_, batch);
 
-    QSNBest nbest;
-    for(const auto& history : histories) {
-      Result bestTranslation = history->Top();
-      nbest.push_back(std::make_tuple(std::get<0>(bestTranslation),
-                                      std::get<2>(bestTranslation)));
+    // convert to QuickSAND format
+    QSNBestBatch qsNbestBatch;
+    for(const auto& history : histories) { // loop over batch entries
+      QSNBest qsNbest;
+      NBestList nbestHyps = history->NBest(SIZE_MAX); // request as many N as we have
+      for (const Result& result : nbestHyps) { // loop over N-best entries
+        // get hypothesis word sequence and normalized sentence score
+        auto words = std::get<0>(result);
+        auto score = std::get<2>(result);
+        // determine alignment if present
+        AlignmentSets alignmentSets;
+        if (options_->has("alignment"))
+        {
+          float alignmentThreshold;
+          auto alignment = options_->get<std::string>("alignment"); // @TODO: this logic now exists three times in Marian
+          if (alignment == "soft")
+            alignmentThreshold = 0.0f;
+          else if (alignment == "hard")
+            alignmentThreshold = 1.0f;
+          else
+            alignmentThreshold = std::max(std::stof(alignment), 0.f);
+          auto hyp = std::get<1>(result);
+          data::WordAlignment align = data::ConvertSoftAlignToHardAlign(hyp->TracebackAlignment(), alignmentThreshold);
+          // convert to QuickSAND format
+          alignmentSets.resize(words.size());
+          for (const auto& p : align) // @TODO: Does the feature_model param max_alignment_links apply here?
+              alignmentSets[p.tgtPos].insert({p.srcPos, p.prob});
+        }
+        // form hypothesis to return
+        qsNbest.emplace_back(words, std::move(alignmentSets), score);
+      }
+      qsNbestBatch.push_back(qsNbest);
     }
 
-    QSNBestBatch qsNbestBatch;
-    qsNbestBatch.push_back(nbest);
     return qsNbestBatch;
   }
 };

@@ -12,12 +12,12 @@
 #include <future>
 #include <thread>
 
-#include <boost/filesystem.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/shared_mutex.hpp>
 
 #include "3rd_party/threadpool.h"
 #include "training/graph_group.h"
+#include "common/filesystem.h"
 
 namespace marian {
 
@@ -166,7 +166,7 @@ protected:
     numberClientsOfNodes_ = std::vector<int>(mpi_comm_world_size_, 0);
     while(index < deviceConfig.size()) {
       if(numberClientsOfNodes_[node] == 0) {
-        numberClientsOfNodes_[node] = deviceConfig[index];
+        numberClientsOfNodes_[node] = (int)deviceConfig[index];
         nClientsSeen = 0;
       } else if(nClientsSeen < numberClientsOfNodes_[node]) {
         if(node == mpi_my_rank_) {
@@ -227,7 +227,7 @@ public:
     if(!options_->get<bool>("no-reload")) {
       std::string name = options_->get<std::string>("model");
 
-      if(boost::filesystem::exists(name)) {
+      if(filesystem::exists(name)) {
         if(scheduler_)
           scheduler_->load(name);
         size_t i = 0;

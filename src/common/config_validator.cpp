@@ -3,8 +3,7 @@
 #include "common/logging.h"
 #include "common/regex.h"
 #include "common/utils.h"
-
-#include <boost/filesystem.hpp>
+#include "common/filesystem.h"
 
 namespace marian {
 
@@ -33,6 +32,8 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
     case cli::mode::selfadaptive:
       break;
   }
+
+  validateDevices(mode);
 }
 
 void ConfigValidator::validateOptionsTranslation() const {
@@ -47,8 +48,8 @@ void ConfigValidator::validateOptionsTranslation() const {
                  "Translating, but vocabularies are not given!");
 
   for(const auto& modelFile : models) {
-    boost::filesystem::path modelPath(modelFile);
-    UTIL_THROW_IF2(!boost::filesystem::exists(modelPath),
+    filesystem::Path modelPath(modelFile);
+    UTIL_THROW_IF2(!filesystem::exists(modelPath),
                    "Model file does not exist: " + modelFile);
   }
 }
@@ -64,9 +65,9 @@ void ConfigValidator::validateOptionsParallelData() const {
 }
 
 void ConfigValidator::validateOptionsScoring() const {
-  boost::filesystem::path modelPath(get<std::string>("model"));
+  filesystem::Path modelPath(get<std::string>("model"));
 
-  UTIL_THROW_IF2(!boost::filesystem::exists(modelPath),
+  UTIL_THROW_IF2(!filesystem::exists(modelPath),
                  "Model file does not exist: " + modelPath.string());
   UTIL_THROW_IF2(get<std::vector<std::string>>("vocabs").empty(),
                  "Scoring, but vocabularies are not given!");
@@ -81,19 +82,17 @@ void ConfigValidator::validateOptionsTraining() const {
                  != trainSets.size(),
       "There should be as many embedding vector files as training sets");
 
-  boost::filesystem::path modelPath(get<std::string>("model"));
+  filesystem::Path modelPath(get<std::string>("model"));
 
-  auto modelDir = modelPath.parent_path();
+  auto modelDir = modelPath.parentPath();
   if(modelDir.empty())
-    modelDir = boost::filesystem::current_path();
+    modelDir = filesystem::currentPath();
 
   UTIL_THROW_IF2(
-      !modelDir.empty() && !boost::filesystem::is_directory(modelDir),
+      !modelDir.empty() && !filesystem::isDirectory(modelDir),
       "Model directory does not exist");
 
-  UTIL_THROW_IF2(!modelDir.empty()
-                     && !(boost::filesystem::status(modelDir).permissions()
-                          & boost::filesystem::owner_write),
+  UTIL_THROW_IF2(!modelDir.empty() && !filesystem::canWrite(modelDir),
                  "No write permission in model directory");
 
   UTIL_THROW_IF2(has("valid-sets")

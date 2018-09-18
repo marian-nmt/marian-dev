@@ -1,9 +1,10 @@
 #pragma once
 
+#include "common/definitions.h"
+#include "common/filesystem.h"
+
 #include <fstream>
 #include <vector>
-
-#include "common/definitions.h"
 
 namespace marian {
 
@@ -11,11 +12,11 @@ class TrainingState;
 
 class TrainingObserver {
 public:
-  virtual void init(TrainingState& state) {}
-  virtual void actAfterEpoch(TrainingState& state) {}
-  virtual void actAfterBatches(TrainingState& state) {}
-  virtual void actAfterStalled(TrainingState& state) {}
-  virtual void actAfterLoaded(TrainingState& state) {}
+  virtual void init(TrainingState&) {}
+  virtual void actAfterEpoch(TrainingState&) {}
+  virtual void actAfterBatches(TrainingState&) {}
+  virtual void actAfterStalled(TrainingState&) {}
+  virtual void actAfterLoaded(TrainingState&) {}
 };
 
 class TrainingState {
@@ -107,7 +108,7 @@ public:
   }
 
   void load(const std::string& name) {
-    if(!boost::filesystem::exists(name))
+    if(!filesystem::exists(name))
       return;
 
     YAML::Node config = YAML::LoadFile(name);

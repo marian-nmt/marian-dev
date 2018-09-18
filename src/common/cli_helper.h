@@ -10,7 +10,7 @@ namespace cli {
 
 // helper to replace environment-variable expressions of the form ${VARNAME} in
 // a string
-static std::string InterpolateEnvVars(std::string str) {
+static inline std::string InterpolateEnvVars(std::string str) {
 // temporary workaround for MS-internal PhillyOnAzure cluster: warm storage
 // presently has the form /hdfs/VC instead of /{gfs,hdfs}/CLUSTER/VC
 #if 1
@@ -91,7 +91,12 @@ static void ProcessPaths(
   }
 }
 
-// helper to convert a Yaml node recursively into a string
+// helper to convert a YAML node recursively into a string
+//
+// TODO: create a helper function that converts a YAML node into a string
+// without an emitter; consider extracting YAML-related helper functions to a
+// separate file
+// TODO: Look for Frank's function that does that.
 static void OutputYaml(const YAML::Node node, YAML::Emitter& out) {
   std::set<std::string> sorter;
   switch(node.Type()) {

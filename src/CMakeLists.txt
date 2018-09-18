@@ -7,8 +7,10 @@ include_directories(3rd_party/SQLiteCpp/include)
 add_library(marian STATIC
   common/utils.cpp
   common/logging.cpp
+  common/cli_wrapper.cpp
   common/config.cpp
   common/config_parser.cpp
+  common/config_validator.cpp
   common/binary.cpp
   common/io.cpp
 
@@ -126,7 +128,7 @@ if(USE_STATIC_LIBS)
                 "${CMAKE_BINARY_DIR}/marian-scorer"
                 "${CMAKE_BINARY_DIR}/marian-vocab"
                 "${CMAKE_BINARY_DIR}/marian-conv"
-    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_mmap)
+    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_zip DEPENDS "${CMAKE_BINARY_DIR}/marian.zip")
 
   add_custom_command(
@@ -137,7 +139,7 @@ if(USE_STATIC_LIBS)
                 "marian-scorer"
                 "marian-vocab"
                 "marian-conv"
-    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_mmap)
+    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
 
   add_custom_target(philly DEPENDS marian_tgz marian_zip)

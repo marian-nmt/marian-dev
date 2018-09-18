@@ -274,14 +274,14 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
       // create context for current call as hash
       std::size_t hash = sh(a->shape()).hash();
-      boost::hash_combine(hash, sh(b->shape()).hash());
-      boost::hash_combine(hash, sh(bias->shape()).hash());
-      boost::hash_combine(hash, transA);
-      boost::hash_combine(hash, transB);
+      util::hash_combine(hash, sh(b->shape()).hash());
+      util::hash_combine(hash, sh(bias->shape()).hash());
+      util::hash_combine(hash, transA);
+      util::hash_combine(hash, transB);
 
       // add first algorithm variant (Int16)
       size_t hash1 = hash;
-      boost::hash_combine(hash1, 1);
+      util::hash_combine(hash1, 1);
       auto rec1 = [=](Expr e, bool stop = false) {
         e->record(tuner, hash1, stop);
         return e;
@@ -300,7 +300,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
       // add second algorithm variant (CBlas)
       size_t hash2 = hash;
-      boost::hash_combine(hash2, 2);
+      util::hash_combine(hash2, 2);
       auto rec2 = [=](Expr e, bool stop = false) {
         e->record(tuner, hash2, stop);
         return e;
@@ -353,12 +353,12 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 // swap the last two axes
 Expr transpose(Expr a) {
   std::vector<int> axes(a->shape().size());
-  for(size_t i = 0; i < axes.size(); ++i) {
+  for(int i = 0; i < axes.size(); ++i) {
     axes[i] = i;
   }
   if(axes.size() > 1) {
-    axes[axes.size() - 1] = axes.size() - 2;
-    axes[axes.size() - 2] = axes.size() - 1;
+    axes[axes.size() - 1] = (int)axes.size() - 2;
+    axes[axes.size() - 2] = (int)axes.size() - 1;
   }
   return Expression<TransposeNodeOp>(a, axes);
 }
@@ -405,7 +405,7 @@ Expr leakyrelu(const std::vector<Expr>&) {
   ABORT("Not implemented");
 }
 
-Expr prelu(const std::vector<Expr>&, float alpha) {
+Expr prelu(const std::vector<Expr>&, float /*alpha*/) {
   ABORT("Not implemented");
 }
 

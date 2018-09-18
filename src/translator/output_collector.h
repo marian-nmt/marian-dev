@@ -1,12 +1,11 @@
 #pragma once
 
-#include <boost/thread/mutex.hpp>
-#include <boost/unordered_map.hpp>
-#include <iostream>
-#include <map>
-
 #include "common/definitions.h"
 #include "common/file_stream.h"
+
+#include <mutex>
+#include <iostream>
+#include <map>
 
 namespace marian {
 
@@ -29,7 +28,7 @@ class GeometricPrinting : public PrintingStrategy {
 public:
   bool shouldBePrinted(long id) override {
     if(id == 0)
-      next_ = start_;
+      next_ = (long)start_;
     if(id <= 5)
       return true;
     if(next_ == id) {
@@ -68,7 +67,7 @@ protected:
   long nextId_;
   UPtr<OutputFileStream> outStrm_;
   Ptr<PrintingStrategy> printing_;
-  boost::mutex mutex_;
+  std::mutex mutex_;
 };
 
 class StringCollector {
@@ -81,7 +80,7 @@ public:
 
 protected:
   long maxId_;
-  boost::mutex mutex_;
+  std::mutex mutex_;
 
   typedef std::map<long, std::pair<std::string, std::string>> Outputs;
   Outputs outputs_;

@@ -1,11 +1,10 @@
 #pragma once
 
-#include <boost/functional/hash.hpp>
-#include <memory>
-#include <vector>
-
 #include "3rd_party/exception.h"
 #include "common/definitions.h"
+
+#include <memory>
+#include <vector>
 
 namespace marian {
 
@@ -51,7 +50,8 @@ class ExpressionGraph;
  *   or formally \f$\bar{w}_i = \frac{\partial y}{\partial w_i}\f$
  */
 template <class DataType>
-struct Chainable {
+class Chainable {
+public:
   Chainable() {}
   virtual ~Chainable(){};
 

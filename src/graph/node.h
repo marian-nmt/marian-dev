@@ -4,6 +4,7 @@
 #include <memory>
 #include <thread>
 
+#include "common/hash.h"
 #include "common/keywords.h"
 #include "tensors/backend.h"
 #include "tensors/tensor.h"
@@ -172,8 +173,6 @@ struct NaryNodeOp : public Node {
     // Node is to be memoized if all children are to be memoized.
     setMemoize(std::all_of(
         nodes.begin(), nodes.end(), [](Expr a) { return a->memoize(); }));
-
-    remove_children_from_top_nodes();
   }
 
   NaryNodeOp(const std::vector<Expr>& nodes)
@@ -185,10 +184,10 @@ struct NaryNodeOp : public Node {
 
   virtual size_t hash() override {
     if(!hash_) {
-      std::size_t seed = boost::hash<std::string>()(name());
-      boost::hash_combine(seed, type());
+      std::size_t seed = util::hash<std::string>()(name());
+      util::hash_combine(seed, type());
       for(size_t i = 0; i < children_.size(); ++i)
-        boost::hash_combine(seed, child(i)->hash());
+        util::hash_combine(seed, child(i)->hash());
       hash_ = seed;
     }
     return hash_;
@@ -206,7 +205,5 @@ struct NaryNodeOp : public Node {
         return false;
     return true;
   }
-
-  void remove_children_from_top_nodes();
 };
 }  // namespace marian

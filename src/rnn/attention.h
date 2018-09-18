@@ -29,10 +29,12 @@ private:
 
   bool layerNorm_;
   float dropout_;
+  float attentionDropout_;
 
   Expr contextDropped_;
   Expr dropMaskContext_;
   Expr dropMaskState_;
+  Expr dropMaskAttention_;
 
   // for Nematus-style layer normalization
   std::vector<Expr> Wc_att_lnss_, Wc_att_lnbs_;
@@ -73,6 +75,7 @@ public:
     attentionBilinearLookup_ = options->get<bool>("attentionBilinearLookup", false);
     attentionProjectionLayerNorm_ = options->get<bool>("attentionProjectionLayerNorm", false);
     attentionProjectionActivation_ = options->get<std::string>("attentionProjectionActivation");
+    attentionDropout_ = options_->get<float>("attentionDropout", 0);
     std::string prefix = options_->get<std::string>("prefix");
 
     int dimEncState = encState_->getContext()->shape()[-1];
@@ -227,6 +230,10 @@ public:
         auto bilinear_score = bdot(time_transposed_mapped_context, reshaped_state, false, false, (1.0 / std::sqrt(attentionLookupDim_)));
         e = reshape(transpose(softmax(transpose(bilinear_score, {3, 0, 1, 2}), softmaxMask_)),
                     {dimBeam, srcWords, dimBatch, 1});
+      }
+
+      if (attentionDropout_ > 0.0f) {
+        e = dropout(e, attentionDropout_); // Transformer-style, non-Bayesian dropout on the attention weights
       }
 
       auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);

@@ -250,6 +250,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         "Dropout for transformer attention (0 = no dropout)");
     cli.add<float>("--transformer-dropout-ffn",
         "Dropout for transformer filter (0 = no dropout)");
+    cli.add<float>("--dec-attention-dropout",
+        "Attention dropout for S2S decoder (0 = no dropout)");
   }
   // clang-format on
 }

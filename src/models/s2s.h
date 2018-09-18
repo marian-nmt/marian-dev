@@ -243,6 +243,7 @@ private:
                                    ("attentionBilinearLookup", opt<bool>("dec-attention-bilinear-lookup"))
                                    ("attentionProjectionLayerNorm", opt<bool>("dec-attention-projection-layernorm"))
                                    ("attentionProjectionActivation", opt<std::string>("dec-attention-projection-activation"))
+                                   ("attentionDropout", opt<float>("dec-attention-dropout"))
                                    .set_state(encState));
           lastAttentionCellIds_[k] = numBaseCells_;
           ++numBaseCells_;

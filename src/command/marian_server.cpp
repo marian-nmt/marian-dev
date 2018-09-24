@@ -12,10 +12,11 @@ int main(int argc, char **argv) {
   // initialize translation model task
   auto options = New<Config>(argc, argv, cli::mode::translation, true);
   auto task = New<TranslateService<BeamSearch>>(options);
+  auto port = options->get<size_t>("port", 8080);
 
   // create web service server
   WsServer server;
-  server.config.port = options->get<size_t>("port");
+  server.config.port = port;
   auto &translate = server.endpoint["^/translate/?$"];
 
   translate.on_message = [&task](Ptr<WsServer::Connection> connection,

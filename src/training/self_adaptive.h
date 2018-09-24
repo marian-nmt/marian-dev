@@ -56,7 +56,7 @@ public:
   }
 };
 
-class TrainSelfAdaptive : public ModelTask {
+class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
   TrainSelfAdaptive(Ptr<Config> options) : options_(options) {
     options_->set("max-length", 1000);
@@ -97,6 +97,14 @@ public:
 
     // Load model
     builder_->load(graph_, model);
+  }
+
+  void init() {
+    LOG(warn, "Not implemented");
+  }
+
+  std::vector<std::string> run(const std::vector<std::string>& inputs) {
+    LOG(warn, "Not implemented");
   }
 
   void run() {

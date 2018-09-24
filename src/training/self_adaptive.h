@@ -132,9 +132,9 @@ public:
 
       if(!trainSents.empty()) {
         train(trainSents);
-        translate(testBatch, collector, printer);
+        translate(testBatch, collector, printer, graphAdapt_);
       } else {
-        translate(testBatch, collector, printer, true);
+        translate(testBatch, collector, printer, graph_);
       }
     }
   }
@@ -146,7 +146,7 @@ private:
   Ptr<models::ModelBase> builder_;      // Training model
   Ptr<models::ModelBase> builderTrans_; // Translation model
   Ptr<ExpressionGraph> graph_;          // A graph with original parameters
-  Ptr<ExpressionGraph> graphTemp_;      // A graph on which training is performed
+  Ptr<ExpressionGraph> graphAdapt_;     // A graph on which training is performed
 
   std::vector<Ptr<Vocab>> vocabs_;
   std::vector<Ptr<Scorer>> scorers_;
@@ -176,22 +176,22 @@ private:
           builder_->build(graph_, batch);
           graph_->forward();
 
-          graphTemp_ = New<ExpressionGraph>();
-          graphTemp_->setDevice(graph_->getDeviceId());
-          graphTemp_->reuseWorkspace(graph_);
+          graphAdapt_ = New<ExpressionGraph>();
+          graphAdapt_->setDevice(graph_->getDeviceId());
+          graphAdapt_->reuseWorkspace(graph_);
 
-          graphTemp_->copyParams(graph_);
+          graphAdapt_->copyParams(graph_);
           first = false;
         }
 
         // Make an update step on the copy of the model
-        auto costNode = builder_->build(graphTemp_, batch);
-        graphTemp_->forward();
+        auto costNode = builder_->build(graphAdapt_, batch);
+        graphAdapt_->forward();
         float cost = costNode->scalar();
-        graphTemp_->backward();
+        graphAdapt_->backward();
 
         // Notify optimizer and scheduler
-        optimizer_->update(graphTemp_);
+        optimizer_->update(graphAdapt_);
         scheduler->update(cost, batch);
       }
       if(scheduler->keepGoing())
@@ -203,20 +203,14 @@ private:
   void translate(Ptr<data::CorpusBatch> batch,
                  Ptr<OutputCollector> collector,
                  Ptr<OutputPrinter> printer,
-                 bool originalModel = false) {
-    if(originalModel) {
-      graph_->setInference(true);
-      graph_->clear();
-    } else {
-      graphTemp_->setInference(true);
-      graphTemp_->clear();
-    }
+                 Ptr<ExpressionGraph> graph) {
+    graph->setInference(true);
+    graph->clear();
 
     {
-
       auto search = New<BeamSearch>(tOptions_, scorers_,
           vocabs_.back()->GetEosId(), vocabs_.back()->GetUnkId());
-      auto histories = search->search(originalModel ? graph_ : graphTemp_, batch);
+      auto histories = search->search(graph, batch);
 
       for(auto history : histories) {
         std::stringstream best1;
@@ -229,10 +223,7 @@ private:
       }
     }
 
-    if(originalModel)
-      graph_->setInference(false);
-    else
-      graphTemp_->setInference(false);
+    graph->setInference(false);
   }
 };
 }

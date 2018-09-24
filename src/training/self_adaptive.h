@@ -56,9 +56,9 @@ public:
   }
 };
 
-class TrainMultiDomain : public ModelTask {
+class TrainSelfAdaptive : public ModelTask {
 public:
-  TrainMultiDomain(Ptr<Config> options) : options_(options) {
+  TrainSelfAdaptive(Ptr<Config> options) : options_(options) {
     options_->set("max-length", 1000);
 
     // TODO: get rid of options_ or toptions_

@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
   using namespace marian;
 
   auto options = New<Config>(argc, argv, cli::mode::selfadaptive);
-  auto task = New<TrainMultiDomain>(options);
+  auto task = New<TrainSelfAdaptive>(options);
 
   boost::timer::cpu_timer timer;
   task->run();

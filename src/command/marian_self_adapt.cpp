@@ -3,8 +3,8 @@
 #include "3rd_party/simple-websocket-server/server_ws.hpp"
 #include "common/file_stream.h"
 #include "common/utils.h"
-#include "training/self_adaptive.h"
 #include "training/training.h"
+#include "translator/self_adaptive.h"
 
 using namespace marian;
 

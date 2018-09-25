@@ -10,8 +10,6 @@ using namespace marian;
 
 typedef SimpleWeb::SocketServer<SimpleWeb::WS> WSServer;
 
-static void InitializeServer(WSServer &, Ptr<ModelServiceTask>, size_t);
-
 int main(int argc, char **argv) {
   auto options = New<Config>(argc, argv, cli::mode::selfadaptive);
   auto task = New<TrainSelfAdaptive>(options);
@@ -21,55 +19,51 @@ int main(int argc, char **argv) {
     task->run();
     LOG(info, "Total time: {}", timer.format());
   } else {
+    // Initialize web server
     WSServer server;
-    InitializeServer(server, task, options->get<size_t>("port"));
+    server.config.port = options->get<size_t>("port", 8080);
 
-    // start server
-    std::thread server_thread([&server]() {
+    auto &translate = server.endpoint["^/translate/?$"];
+
+    translate.on_message = [&task](Ptr<WSServer::Connection> connection,
+                                   Ptr<WSServer::Message> message) {
+      // Get input text
+      auto inputText = message->string();
+      auto sendStream = std::make_shared<WSServer::SendStream>();
+
+      // Translate
+      boost::timer::cpu_timer timer;
+      auto outputText = task->run(inputText);
+      LOG(info, "Best translation: {}", outputText);
+      *sendStream << outputText << std::endl;
+      LOG(info, "Translation took: {}", timer.format(5, "%ws"));
+
+      // Send translation back
+      connection->send(sendStream, [](const SimpleWeb::error_code &ec) {
+        if(ec) {
+          LOG(error,
+              "Error sending message: ({}) {}",
+              ec.value(),
+              ec.message());
+        }
+      });
+    };
+
+    // Error Codes for error code meanings
+    // http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html
+    translate.on_error = [](Ptr<WSServer::Connection> connection,
+                            const SimpleWeb::error_code &ec) {
+      LOG(error, "Connection error: ({}) {}", ec.value(), ec.message());
+    };
+
+    // Start server thread
+    std::thread serverThread([&server]() {
       LOG(info, "Server is listening on port {}", server.config.port);
       server.start();
     });
-    server_thread.join();
+
+    serverThread.join();
   }
 
   return 0;
-}
-
-void InitializeServer(WSServer &server,
-                      Ptr<ModelServiceTask> task,
-                      size_t port) {
-  server.config.port = port;
-  auto &translate = server.endpoint["^/translate/?$"];
-
-  translate.on_message = [&task](Ptr<WSServer::Connection> connection,
-                                 Ptr<WSServer::Message> message) {
-    auto message_str = message->string();
-
-    auto message_short = message_str;
-    boost::algorithm::trim_right(message_short);
-    LOG(error, "Message received: {}", message_short);
-
-    auto send_stream = std::make_shared<WSServer::SendStream>();
-    boost::timer::cpu_timer timer;
-    for(auto &transl : task->run({message_str})) {
-      LOG(info, "Best translation: {}", transl);
-      *send_stream << transl << std::endl;
-    }
-    LOG(info, "Translation took: {}", timer.format(5, "%ws"));
-
-    connection->send(send_stream, [](const SimpleWeb::error_code &ec) {
-      if(ec) {
-        auto ec_str = std::to_string(ec.value());
-        LOG(error, "Error sending message: ({}) {}", ec_str, ec.message());
-      }
-    });
-  };
-
-  // Error Codes for error code meanings
-  // http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html
-  translate.on_error = [](Ptr<WSServer::Connection> connection,
-                          const SimpleWeb::error_code &ec) {
-    auto ec_str = std::to_string(ec.value());
-    LOG(error, "Connection error: ({}) {}", ec_str, ec.message());
-  };
 }

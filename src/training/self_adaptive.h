@@ -103,7 +103,7 @@ public:
     LOG(warn, "Not implemented");
   }
 
-  std::vector<std::string> run(const std::vector<std::string>& inputs) {
+  std::string run(const std::string&) {
     LOG(warn, "Not implemented");
   }
 

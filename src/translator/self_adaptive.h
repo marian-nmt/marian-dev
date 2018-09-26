@@ -61,6 +61,11 @@ public:
   TrainSelfAdaptive(Ptr<Config> options) : options_(options) {
     options_->set("max-length", 1000);
 
+    // Set up translator options
+    optionsTrans_ = New<Config>(*options_);
+    optionsTrans_->set<size_t>("mini-batch", 1);
+    optionsTrans_->set<size_t>("maxi-batch", 1);
+
     // TODO: get rid of options_ or toptions_
     tOptions_ = New<Options>();
     tOptions_->merge(options_);
@@ -99,32 +104,29 @@ public:
     builder_->load(graph_, model);
   }
 
-  void init() {
+  void init() override {
     LOG(warn, "Not implemented");
   }
 
-  std::string run(const std::string&) {
-    LOG(warn, "Not implemented");
-  }
+  std::string run(const std::string& json) override {
+    //LOG(warn, "REMOVEME Received Json:\n{}", json);
 
-  void run() {
-    auto opts = New<Config>(*options_);
-    opts->set<size_t>("mini-batch", 1);
-    opts->set<size_t>("maxi-batch", 1);
+    // Check if input is in JSON
+    YAML::Node yaml = YAML::Load(json);
+    if(!yaml["input"]) {
+      LOG(warn, "No 'input' node found in the request");
+      return "";
+    }
 
-    // Initialize input data
-    auto srcPaths = options_->get<std::vector<std::string>>("input");
+    // Get input sentences
+    auto input = yaml["input"].as<std::string>();
     std::vector<Ptr<Vocab>> srcVocabs(vocabs_.begin(), vocabs_.end() - 1);
-    auto testset = New<Corpus>(srcPaths, srcVocabs, opts);
+    auto testSet = New<TextInput>(
+        std::vector<std::string>({input}), srcVocabs, optionsTrans_);
 
     // Prepare batches
-    auto testBatches = New<BatchGenerator<Corpus>>(testset, opts);
+    auto testBatches = New<BatchGenerator<TextInput>>(testSet, optionsTrans_);
     testBatches->prepare(false);
-    size_t id = 0;
-
-    // Initialize train data
-    auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
-    auto trainSet = New<TrainSetReader>(trainPaths);
 
     // Initialize output printing
     auto collector = New<OutputCollector>();
@@ -132,14 +134,59 @@ public:
       collector->setPrintingStrategy(New<QuietPrinting>());
     auto printer = New<OutputPrinter>(options_, vocabs_.back());
 
+    // Get training sentences
+    std::vector<std::vector<std::string>> contexts;
+    if(yaml["context"])
+      contexts = yaml["context"].as<std::vector<std::vector<std::string>>>();
+
+    LOG(info, "Running...");
+
+    size_t id = 0;
+    while(*testBatches) {
+      auto testBatch = testBatches->next();
+      testBatch->debug();
+
+      if(contexts.size() > id && !contexts[id].empty()) {
+        train(contexts[id]);
+        translate(testBatch, collector, printer, graphAdapt_);
+      } else {
+        translate(testBatch, collector, printer, graph_);
+      }
+
+      // iterating by 1 is safe because the mini-batch size for translation is
+      // always 1
+      ++id;
+    }
+  }
+
+  void run() override {
+    // Initialize input data
+    auto srcPaths = options_->get<std::vector<std::string>>("input");
+    std::vector<Ptr<Vocab>> srcVocabs(vocabs_.begin(), vocabs_.end() - 1);
+    auto testSet = New<Corpus>(srcPaths, srcVocabs, optionsTrans_);
+
+    // Prepare batches
+    auto testBatches = New<BatchGenerator<Corpus>>(testSet, optionsTrans_);
+    testBatches->prepare(false);
+
+    // Initialize output printing
+    auto collector = New<OutputCollector>();
+    if(options_->get<bool>("quiet-translation"))
+      collector->setPrintingStrategy(New<QuietPrinting>());
+    auto printer = New<OutputPrinter>(options_, vocabs_.back());
+
+    // Initialize train data
+    auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
+    auto trainSets = New<TrainSetReader>(trainPaths);
+
     LOG(info, "Running...");
 
     while(*testBatches) {
       auto testBatch = testBatches->next();
-      auto trainSents = trainSet->getSamples();
+      auto trainSet = trainSets->getSamples();
 
-      if(!trainSents.empty()) {
-        train(trainSents);
+      if(!trainSet.empty()) {
+        train(trainSet);
         translate(testBatch, collector, printer, graphAdapt_);
       } else {
         translate(testBatch, collector, printer, graph_);
@@ -148,8 +195,9 @@ public:
   }
 
 private:
-  Ptr<Config> options_;
-  Ptr<Options> tOptions_;
+  Ptr<Config> options_;       // Options for training
+  Ptr<Config> optionsTrans_;  // Options for translator
+  Ptr<Options> tOptions_;     // Options for beam search
 
   Ptr<models::ModelBase> builder_;      // Training model
   Ptr<models::ModelBase> builderTrans_; // Translation model
@@ -166,9 +214,8 @@ private:
     scheduler->registerTrainingObserver(scheduler);
     scheduler->registerTrainingObserver(optimizer_);
 
-    auto trainSet = New<data::TextInput>(trainSents, vocabs_, options_);
-    auto trainBatches
-        = New<BatchGenerator<data::TextInput>>(trainSet, options_);
+    auto trainSet = New<TextInput>(trainSents, vocabs_, options_);
+    auto trainBatches = New<BatchGenerator<TextInput>>(trainSet, options_);
 
     bool first = true;
 
@@ -216,8 +263,10 @@ private:
     graph->clear();
 
     {
-      auto search = New<BeamSearch>(tOptions_, scorers_,
-          vocabs_.back()->GetEosId(), vocabs_.back()->GetUnkId());
+      auto search = New<BeamSearch>(tOptions_,
+                                    scorers_,
+                                    vocabs_.back()->GetEosId(),
+                                    vocabs_.back()->GetUnkId());
       auto histories = search->search(graph, batch);
 
       for(auto history : histories) {

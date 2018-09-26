@@ -27,9 +27,10 @@ int main(int argc, char **argv) {
 
     translate.on_message = [&task](Ptr<WSServer::Connection> connection,
                                    Ptr<WSServer::Message> message) {
+      auto sendStream = std::make_shared<WSServer::SendStream>();
+
       // Get input text
       auto inputText = message->string();
-      auto sendStream = std::make_shared<WSServer::SendStream>();
 
       // Translate
       boost::timer::cpu_timer timer;

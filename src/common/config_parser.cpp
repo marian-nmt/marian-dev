@@ -184,6 +184,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<std::string>("--transformer-postprocess",
       "Operation after each transformer layer: d = dropout, a = add, n = normalize",
       "dan");
+  cli.add<std::string>("--vmap",
+      "Vocabulary pointer map",
+      "");
 
 #ifdef CUDNN
   cli.add<int>("--char-stride",

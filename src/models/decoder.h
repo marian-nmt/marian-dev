@@ -32,7 +32,7 @@ public:
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph>, Ptr<DecoderState>) = 0;
 
   Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
-    thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
+    static thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
     if(!options_->get<std::string>("vmap", "").empty()) {
       if(!vmap) {
         vmap = New<std::unordered_map<size_t, size_t>>();

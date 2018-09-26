@@ -16,14 +16,16 @@ protected:
   // virtual
 
   Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
-    thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
+    static thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
     if(!options_->get<std::string>("vmap", "").empty()) {
       if(!vmap) {
         vmap = New<std::unordered_map<size_t, size_t>>();
         InputFileStream vmapFile(options_->get<std::string>("vmap"));
         size_t from, to;
-        while(vmapFile >> from >> to)
+        while(vmapFile >> from >> to) {
           (*vmap)[from] = to;
+          std::cerr << from << " -> " << to << std::endl;
+        }
       }
       else {
         std::vector<size_t> vmapped(indices.size());

@@ -11,38 +11,23 @@ protected:
   std::string prefix_{"encoder"};
   bool inference_{false};
   size_t batchIndex_{0};
-
-  // @TODO: This used to be virtual, but is never overridden.
-  // virtual
+  std::vector<size_t> vmap_;
 
   Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
-    static thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
-    if(!options_->get<std::string>("vmap", "").empty()) {
-      if(!vmap) {
-        vmap = New<std::unordered_map<size_t, size_t>>();
-        InputFileStream vmapFile(options_->get<std::string>("vmap"));
-        size_t from, to;
-        while(vmapFile >> from >> to) {
-          (*vmap)[from] = to;
-          std::cerr << from << " -> " << to << std::endl;
-        }
-      }
-      else {
-        std::vector<size_t> vmapped(indices.size());
-        for(size_t i = 0; i < vmapped.size(); ++i) {
-          if(vmap->count(i) > 0)
-            vmapped[i] = (*vmap)[indices[i]];
-          else
-            vmapped[i] = i;
-        }
+    if(!vmap_.empty()) {
+      std::vector<size_t> vmapped(indices.size());
+      for(size_t i = 0; i < vmapped.size(); ++i)
+        vmapped[i] = vmap_[indices[i]];
 
-        auto vmapEmbeddings = rows(srcEmbeddings, vmapped);
-        chosenEmbeddings = (chosenEmbeddings + vmapEmbeddings) / 2.f;
-      }
+      auto vmapEmbeddings = rows(srcEmbeddings, vmapped);
+      chosenEmbeddings = (chosenEmbeddings + vmapEmbeddings) / 2.f;
     }
     return chosenEmbeddings;
   }
 
+
+  // @TODO: This used to be virtual, but is never overridden.
+  // virtual
   std::tuple<Expr, Expr> lookup(Ptr<ExpressionGraph> graph,
                                 Expr srcEmbeddings,
                                 Ptr<data::CorpusBatch> batch) const {
@@ -70,7 +55,22 @@ public:
       : options_(options),
         prefix_(options->get<std::string>("prefix", "encoder")),
         inference_(options->get<bool>("inference", false)),
-        batchIndex_(options->get<size_t>("index", 0)) {}
+        batchIndex_(options->get<size_t>("index", 0)) {
+
+    if(!options_->get<std::string>("vmap", "").empty()) {
+      int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+      vmap_.resize(dimVoc);
+      for(size_t i = 0; i < vmap_.size(); ++i)
+        vmap_[i] = i;
+
+      InputFileStream vmapFile(options_->get<std::string>("vmap"));
+      size_t from, to;
+      while(vmapFile >> from >> to) {
+        vmap_[from] = to;
+        std::cerr << from << " -> " << to << std::endl;
+      }
+    }
+  }
 
   virtual Ptr<EncoderState> build(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>)
       = 0;

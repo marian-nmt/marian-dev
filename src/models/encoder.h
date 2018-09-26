@@ -14,6 +14,33 @@ protected:
 
   // @TODO: This used to be virtual, but is never overridden.
   // virtual
+
+  Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
+    thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
+    if(!options_->get<std::string>("vmap", "").empty()) {
+      if(!vmap) {
+        vmap = New<std::unordered_map<size_t, size_t>>();
+        InputFileStream vmapFile(options_->get<std::string>("vmap"));
+        size_t from, to;
+        while(vmapFile >> from >> to)
+          (*vmap)[from] = to;
+      }
+      else {
+        std::vector<size_t> vmapped(indices.size());
+        for(size_t i = 0; i < vmapped.size(); ++i) {
+          if(vmap->count(i) > 0)
+            vmapped[i] = (*vmap)[indices[i]];
+          else
+            vmapped[i] = i;
+        }
+
+        auto vmapEmbeddings = rows(srcEmbeddings, vmapped);
+        chosenEmbeddings = (chosenEmbeddings + vmapEmbeddings) / 2.f;
+      }
+    }
+    return chosenEmbeddings;
+  }
+
   std::tuple<Expr, Expr> lookup(Ptr<ExpressionGraph> graph,
                                 Expr srcEmbeddings,
                                 Ptr<data::CorpusBatch> batch) const {
@@ -26,29 +53,7 @@ protected:
     int dimWords = (int)subBatch->batchWidth();
 
     auto chosenEmbeddings = rows(srcEmbeddings, subBatch->data());
-
-    thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
-    if(!options_->get<std::string>("vmap", "").empty()) {
-      if(!vmap) {
-        vmap = New<std::unordered_map<size_t, size_t>>();
-        InputFileStream vmapFile(options_->get<std::string>("vmap"));
-        size_t from, to;
-        while(vmapFile >> from >> to)
-          (*vmap)[from] = to;
-      }
-      else {
-        std::vector<size_t> vmapped(subBatch->data().size());
-        for(size_t i = 0; i < vmapped.size(); ++i) {
-          if(vmap->count(i) > 0)
-            vmapped[i] = (*vmap)[subBatch->data()[i]];
-          else
-            vmapped[i] = i;
-        }
-
-        auto vmapEmbeddings = rows(srcEmbeddings, vmapped);
-        chosenEmbeddings = (chosenEmbeddings + vmapEmbeddings) / 2.f;
-      }
-    }
+    chosenEmbeddings = vmap(chosenEmbeddings, srcEmbeddings, subBatch->data());
 
     auto batchEmbeddings
         = reshape(chosenEmbeddings, {dimWords, dimBatch, dimEmb});

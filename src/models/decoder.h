@@ -31,6 +31,32 @@ public:
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph>, Ptr<DecoderState>) = 0;
 
+  Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
+    thread_local Ptr<std::unordered_map<size_t, size_t>> vmap;
+    if(!options_->get<std::string>("vmap", "").empty()) {
+      if(!vmap) {
+        vmap = New<std::unordered_map<size_t, size_t>>();
+        InputFileStream vmapFile(options_->get<std::string>("vmap"));
+        size_t from, to;
+        while(vmapFile >> from >> to)
+          (*vmap)[from] = to;
+      }
+      else {
+        std::vector<size_t> vmapped(indices.size());
+        for(size_t i = 0; i < vmapped.size(); ++i) {
+          if(vmap->count(i) > 0)
+            vmapped[i] = (*vmap)[indices[i]];
+          else
+            vmapped[i] = i;
+        }
+
+        auto vmapEmbeddings = rows(srcEmbeddings, vmapped);
+        chosenEmbeddings = (chosenEmbeddings + vmapEmbeddings) / 2.f;
+      }
+    }
+    return chosenEmbeddings;
+  }
+
   virtual void embeddingsFromBatch(Ptr<ExpressionGraph> graph,
                                    Ptr<DecoderState> state,
                                    Ptr<data::CorpusBatch> batch) {
@@ -64,6 +90,7 @@ public:
     int dimWords = (int)subBatch->batchWidth();
 
     auto chosenEmbeddings = rows(yEmb, subBatch->data());
+    chosenEmbeddings = vmap(chosenEmbeddings, yEmb, subBatch->data());
 
     auto y
         = reshape(chosenEmbeddings, {dimWords, dimBatch, opt<int>("dim-emb")});
@@ -114,6 +141,7 @@ public:
       selectedEmbs = graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros);
     } else {
       selectedEmbs = rows(yEmb, embIdx);
+      selectedEmbs = vmap(selectedEmbs, yEmb, embIdx);
       selectedEmbs = reshape(selectedEmbs, {dimBeam, 1, dimBatch, dimTrgEmb});
     }
     state->setTargetEmbeddings(selectedEmbs);

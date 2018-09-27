@@ -43,7 +43,15 @@ private:
   long next_{10};
 };
 
-class OutputCollector {
+struct CollectorBase {
+  virtual void Write(long sourceId,
+                     const std::string& best1,
+                     const std::string& bestn,
+                     bool nbest)
+      = 0;
+};
+
+class OutputCollector : public CollectorBase {
 public:
   OutputCollector();
 
@@ -55,7 +63,7 @@ public:
   void Write(long sourceId,
              const std::string& best1,
              const std::string& bestn,
-             bool nbest);
+             bool nbest) override;
 
   void setPrintingStrategy(Ptr<PrintingStrategy> strategy) {
     printing_ = strategy;
@@ -70,12 +78,16 @@ protected:
   std::mutex mutex_;
 };
 
-class StringCollector {
+class StringCollector : public CollectorBase {
 public:
   StringCollector();
   StringCollector(const StringCollector&) = delete;
 
-  void add(long sourceId, const std::string& best1, const std::string& bestn);
+  void Write(long sourceId,
+             const std::string& best1,
+             const std::string& bestn,
+             bool nbest) override;
+
   std::vector<std::string> collect(bool nbest);
 
 protected:

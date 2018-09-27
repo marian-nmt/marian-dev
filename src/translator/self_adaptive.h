@@ -129,9 +129,7 @@ public:
     testBatches->prepare(false);
 
     // Initialize output printing
-    auto collector = New<OutputCollector>();
-    if(options_->get<bool>("quiet-translation"))
-      collector->setPrintingStrategy(New<QuietPrinting>());
+    auto collector = New<StringCollector>();
     auto printer = New<OutputPrinter>(options_, vocabs_.back());
 
     // Get training sentences
@@ -144,7 +142,6 @@ public:
     size_t id = 0;
     while(*testBatches) {
       auto testBatch = testBatches->next();
-      testBatch->debug();
 
       if(contexts.size() > id && !contexts[id].empty()) {
         train(contexts[id]);
@@ -153,10 +150,13 @@ public:
         translate(testBatch, collector, printer, graph_);
       }
 
-      // iterating by 1 is safe because the mini-batch size for translation is
-      // always 1
+      // iterating by 1 is quite safe because the mini-batch size for
+      // translation is always 1
       ++id;
     }
+
+    auto translations = collector->collect(options_->get<bool>("n-best"));
+    return "{\"output:\"" + utils::Join(translations, "\n") + "}";
   }
 
   void run() override {
@@ -256,7 +256,7 @@ private:
   }
 
   void translate(Ptr<data::CorpusBatch> batch,
-                 Ptr<OutputCollector> collector,
+                 Ptr<CollectorBase> collector,
                  Ptr<OutputPrinter> printer,
                  Ptr<ExpressionGraph> graph) {
     graph->setInference(true);

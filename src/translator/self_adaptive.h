@@ -147,6 +147,7 @@ public:
         train(contexts[id]);
         translate(testBatch, collector, printer, graphAdapt_);
       } else {
+        LOG(info, "No context provided for sentence {}", id);
         translate(testBatch, collector, printer, graph_);
       }
 
@@ -156,7 +157,7 @@ public:
     }
 
     auto translations = collector->collect(options_->get<bool>("n-best"));
-    return "{\"output\":\"" + utils::Join(translations, "\n") + "\"}";
+    return "{\"output\":\"" + utils::Join(translations, "\\n") + "\"}";
   }
 
   void run() override {

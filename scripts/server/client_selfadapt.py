@@ -11,13 +11,11 @@ from websocket import create_connection
 
 
 def translate(batch, port=8080):
-    print(port)
-    print(batch.rstrip())
     ws = create_connection("ws://localhost:{}/translate".format(port))
     ws.send(batch)
     result = ws.recv()
-    print(result.rstrip())
     ws.close()
+    return result.rstrip()
 
 
 def parse_args():
@@ -29,24 +27,25 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    inputs = "this is an example"
+    # List of input sentences separated by a new line character
+    inputs = "this is an example\nthe second sentence\nno context provided"
+    # For each input sentence a list of parallel sentences can be provided as a
+    # list of source and target sentences.
     contexts = [
+        # Source-side context for the first input sentence
         ["this is a test\nthese are examples",
-            "das ist ein test\ndies sind Beispiele"]
+        # Target-side context for the first input sentence
+            "das ist ein test\ndies sind Beispiele"],
+        # Only one example is given as a context for the second input sentence
+        ["the next sentence",
+            "der nächste Satz"],
+        # No context for the third input sentence
+        []
     ]
 
-    json_data = {'input': inputs, 'context': contexts}
-    json_text = json.dumps(json_data)
-    translate(json_text, port=args.port)
+    input_data = {'input': inputs, 'context': contexts}
+    input_json = json.dumps(input_data)
 
-    # count = 0
-    # batch = ""
-    # for line in sys.stdin:
-    # count += 1
-    # if count == args.batch_size:
-    # translate(batch, port=args.port)
-    # count = 0
-    # batch = ""
-
-    # if count:
-    # translate(batch, port=args.port)
+    output_json = translate(input_json, port=args.port)
+    output_data = json.loads(output_json)
+    print(output_data['output'])

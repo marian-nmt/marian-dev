@@ -209,7 +209,7 @@ public:
             std::stringstream bestn;
             printer->print(history, best1, bestn);
             collector->Write(
-                history->GetLineNum(), best1.str(), bestn.str(), false);
+                (long)history->GetLineNum(), best1.str(), bestn.str(), false);
           }
         };
 

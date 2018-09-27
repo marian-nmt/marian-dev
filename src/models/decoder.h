@@ -33,10 +33,8 @@ public:
 
       InputFileStream vmapFile(options_->get<std::string>("vmap"));
       size_t from, to;
-      while(vmapFile >> from >> to) {
+      while(vmapFile >> from >> to)
         vmap_[from] = to;
-        std::cerr << from << " -> " << to << std::endl;
-      }
     }
 
   }

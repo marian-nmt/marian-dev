@@ -156,7 +156,7 @@ public:
     }
 
     auto translations = collector->collect(options_->get<bool>("n-best"));
-    return "{\"output:\"" + utils::Join(translations, "\n") + "}";
+    return "{\"output\":\"" + utils::Join(translations, "\n") + "\"}";
   }
 
   void run() override {

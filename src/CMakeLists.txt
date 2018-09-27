@@ -112,10 +112,10 @@ set_target_properties(marian_vocab PROPERTIES OUTPUT_NAME marian-vocab)
 add_executable(marian_conv command/marian_conv.cpp)
 set_target_properties(marian_conv PROPERTIES OUTPUT_NAME marian-conv)
 
-add_executable(marian_self_adapt command/marian_self_adapt.cpp)
-set_target_properties(marian_self_adapt PROPERTIES OUTPUT_NAME marian-self-adapt)
+add_executable(marian_adaptive command/marian_adaptive.cpp)
+set_target_properties(marian_adaptive PROPERTIES OUTPUT_NAME marian-adaptive)
 
-set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab marian_conv marian_self_adapt)
+set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab marian_conv marian_adaptive)
 
 # marian.zip and marian.tgz
 # This combines marian, marian_decoder in a single ZIP or TAR file for
@@ -131,7 +131,7 @@ if(USE_STATIC_LIBS)
                 "${CMAKE_BINARY_DIR}/marian-scorer"
                 "${CMAKE_BINARY_DIR}/marian-vocab"
                 "${CMAKE_BINARY_DIR}/marian-conv"
-                "${CMAKE_BINARY_DIR}/marian-self-adapt"
+                "${CMAKE_BINARY_DIR}/marian-adaptive"
     DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_zip DEPENDS "${CMAKE_BINARY_DIR}/marian.zip")
 
@@ -143,7 +143,7 @@ if(USE_STATIC_LIBS)
                 "marian-scorer"
                 "marian-vocab"
                 "marian-conv"
-                "marian-self-adapt"
+                "marian-adaptive"
     DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
 

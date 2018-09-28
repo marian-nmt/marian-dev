@@ -205,12 +205,16 @@ public:
   template <typename T>
   friend OutputFileStream& operator<<(OutputFileStream& stream, const T& t) {
     stream.ostream_ << t;
+    ABORT_IF(!stream.ostream_,
+             "Exception writing to file '{}'",
+             stream.file_.string());
     return stream;
   }
 
   template <typename T>
   size_t write(const T* ptr, size_t num = 1) {
     ostream_.write((char*)ptr, num * sizeof(T));
+    ABORT_IF(!ostream_, "Exception writing to file '{}'", file_.string());
     return num * sizeof(T);
   }
 

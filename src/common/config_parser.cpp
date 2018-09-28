@@ -6,14 +6,12 @@
 #include "common/file_stream.h"
 #include "common/logging.h"
 #include "common/utils.h"
-#include "common/version.h"
 #include "3rd_party/exception.h"
 
 #include <algorithm>
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <boost/algorithm/string.hpp>
 
 #if MKL_FOUND
 #include <mkl.h>
@@ -43,9 +41,6 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.switchGroup("General options");
 
   // clang-format off
-  cli.add<bool>("--version",
-     "Print version number and exit",
-     false);
   cli.add<std::vector<std::string>>("--config,-c",
      "Configuration file(s). If multiple, later overrides earlier");
   cli.add<size_t>("--workspace,-w",
@@ -506,9 +501,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Scorer weights");
 
   // TODO: the options should be available only in server
-  cli.add<size_t>("--port,-p",
-      "Port number for web socket server",
-      8080);
+  cli.add_nondefault<size_t>("--port,-p",
+      "Port number for web socket server");
   // clang-format on
 }
 
@@ -631,7 +625,11 @@ void ConfigParser::expandAliases(cli::CLIWrapper& cli) {
 }
 
 void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
-  cli::CLIWrapper cli(config_, "General options", 40);
+  cli::CLIWrapper cli(config_,
+                      "Marian: Fast Neural Machine Translation in C++",
+                      "General options",
+                      "",
+                      40);
 
   addOptionsGeneral(cli);
   addOptionsModel(cli);
@@ -653,12 +651,6 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
 
   // parse command-line options and fill wrapped YAML config
   cli.parse(argc, argv);
-
-  // handle version printing
-  if(get<bool>("version")) {
-    std::cerr << PROJECT_VERSION_FULL << std::endl;
-    exit(0);
-  }
 
   // get paths to extra config files
   auto configPaths = loadConfigPaths();
@@ -780,14 +772,14 @@ std::vector<DeviceId> ConfigParser::getDevices() {
 
   try {
     std::string devicesStr
-        = utils::Join(config_["devices"].as<std::vector<std::string>>());
+        = utils::join(config_["devices"].as<std::vector<std::string>>());
 
     if(mode_ == cli::mode::training && get<bool>("multi-node")) {
-      auto parts = utils::Split(devicesStr, ":");
+      auto parts = utils::split(devicesStr, ":");
       for(size_t i = 1; i < parts.size(); ++i) {
         std::string part = parts[i];
-        utils::Trim(part);
-        auto ds = utils::Split(part, " ");
+        utils::trim(part);
+        auto ds = utils::split(part, " ");
         if(i < parts.size() - 1)
           ds.pop_back();
 
@@ -797,7 +789,7 @@ std::vector<DeviceId> ConfigParser::getDevices() {
           devices.push_back({(size_t)std::stoull(d), DeviceType::gpu});
       }
     } else {
-      for(auto d : utils::Split(devicesStr))
+      for(auto d : utils::split(devicesStr))
         devices.push_back({(size_t)std::stoull(d), DeviceType::gpu});
     }
 

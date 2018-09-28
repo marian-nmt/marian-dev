@@ -42,6 +42,7 @@ CorpusBase::CorpusBase(std::vector<std::string> paths,
 
   for(auto path : paths_) {
     files_.emplace_back(new InputFileStream(path));
+    ABORT_IF(files_.back()->empty(), "File '{}' is empty", path);
   }
 }
 
@@ -153,6 +154,7 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
     alignFileIdx_ = paths_.size();
     paths_.emplace_back(path);
     files_.emplace_back(new InputFileStream(path));
+    ABORT_IF(files_.back()->empty(), "File with alignments '{}' is empty", path);
   }
 
   if(training && options_->has("data-weighting")) {
@@ -164,6 +166,7 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
     weightFileIdx_ = paths_.size();
     paths_.emplace_back(path);
     files_.emplace_back(new InputFileStream(path));
+    ABORT_IF(files_.back()->empty(), "File with weights '{}' is empty", path);
   }
 }
 
@@ -198,7 +201,7 @@ void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,
 
 void CorpusBase::addWeightsToSentenceTuple(const std::string& line,
                                            SentenceTuple& tup) const {
-  auto elements = utils::Split(line, " ");
+  auto elements = utils::split(line, " ");
 
   if(!elements.empty()) {
     std::vector<float> weights;

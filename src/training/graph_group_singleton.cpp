@@ -1,5 +1,4 @@
 #include "training/graph_group_singleton.h"
-#include "tensors/tensor_operators.h"
 
 namespace marian {
 
@@ -43,9 +42,6 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
   if(scheduler_) {
     scheduler_->update(cost, batch);
 
-    if(scheduler_->saving())
-      this->save();
-
     if(scheduler_->validating()) {
       if(mvAvg_) {
         graphAvg_->reuseWorkspace(graph_);
@@ -54,6 +50,9 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
         scheduler_->validate({graph_});
       }
     }
+
+    if(scheduler_->saving())
+      this->save();
   }
 }
 }  // namespace marian

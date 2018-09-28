@@ -1,5 +1,4 @@
 #include "training/graph_group_sync.h"
-#include "tensors/tensor_operators.h"
 
 namespace marian {
 
@@ -196,10 +195,6 @@ void SyncGraphGroup::execute(Ptr<data::Batch> batch) {
   if(scheduler_) {
     scheduler_->update(cost, batches);
 
-    if(scheduler_->saving()) {
-      this->save();
-    }
-
     if(scheduler_->validating()) {
       if(mvAvg_) {
         comm_->swapParams(paramsAvg_);
@@ -211,6 +206,10 @@ void SyncGraphGroup::execute(Ptr<data::Batch> batch) {
       if(mvAvg_) {
         comm_->swapParams(paramsAvg_);
       }
+    }
+
+    if(scheduler_->saving()) {
+      this->save();
     }
   }
 }

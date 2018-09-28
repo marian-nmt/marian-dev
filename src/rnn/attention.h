@@ -186,7 +186,6 @@ public:
   }
 
   Expr apply(State state) override {
-    using namespace keywords;
     auto recState = state.output;
 
     int dimBatch = contextDropped_->shape()[-2];
@@ -235,8 +234,7 @@ public:
       if (attentionDropout_ > 0.0f) {
         e = dropout(e, attentionDropout_); // Transformer-style, non-Bayesian dropout on the attention weights
       }
-
-      auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
+      auto alignedSource = scalar_product(encState_->getAttended(), e, /*axis =*/ -3);
 
       // Attended context projection
       if (attentionProjectionDim_ != -1) {
@@ -270,7 +268,7 @@ public:
 
   std::vector<Expr>& getContexts() { return contexts_; }
 
-  Expr getContext() { return concatenate(contexts_, keywords::axis = -3); }
+  Expr getContext() { return concatenate(contexts_, /*axis =*/ -3); }
 
   std::vector<Expr>& getAlignments() { return alignments_; }
 

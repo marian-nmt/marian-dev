@@ -260,7 +260,7 @@ public:
       }
     }
 
-    auto concatenatedAlignedSources = concatenate(alignedSources, axis=-1);
+    auto concatenatedAlignedSources = concatenate(alignedSources, /*axis=*/ -1);
     contexts_.push_back(concatenatedAlignedSources);
     alignments_.push_back(first_e);
     return concatenatedAlignedSources;

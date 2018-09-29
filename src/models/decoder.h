@@ -26,7 +26,7 @@ public:
         batchIndex_(options->get<size_t>("index", 1)) {
           
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
-    if(!options_->get<std::string>("vmap", "").empty()) {
+    if(!opt<std::string>("vmap", "").empty()) {
       vmap_.resize(dimVoc);
       for(size_t i = 0; i < vmap_.size(); ++i)
         vmap_[i] = i;
@@ -151,6 +151,7 @@ public:
   virtual const std::vector<Expr> getAlignments(int /*i*/ = 0) { return {}; };
 
   virtual Ptr<data::Shortlist> getShortlist() { return shortlist_; }
+
   virtual void setShortlist(Ptr<data::Shortlist> shortlist) {
     shortlist_ = shortlist;
   }

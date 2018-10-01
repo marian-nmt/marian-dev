@@ -31,9 +31,9 @@ struct BinaryFunctor {
   template <class Arg1, class Arg2>
   BinaryFunctor(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
 
-  template <typename... Args>
-  __HDI__ float operator()(Args&&... args) {
-    return Function::apply(x(args...), y(args...));
+  template <typename T, typename... Args>
+  __HDI__ T operator()(T arg, Args&&... args) {
+    return Function::apply(x(arg, args...), y(arg, args...));
   }
 
   std::string to_string() {
@@ -59,7 +59,8 @@ struct BinaryFunctor {
 #define BINARY(name, name2, func)                                 \
   namespace elem {                                                \
   struct name {                                                   \
-    __HDI__ static float apply(float x, float y) { return func; } \
+    template <typename ElementType>                               \
+    __HDI__ static ElementType apply(ElementType x, ElementType y) { return func; } \
     static std::string n() { return #name; }                      \
   };                                                              \
   }                                                               \
@@ -195,9 +196,9 @@ struct Assign {
   template <class Arg1, class Arg2>
   Assign(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
 
-  template <typename... Args>
-  __HDI__ float operator()(Args&&... args) {
-    return x(args...) = y(args...);
+  template <typename T, typename... Args>
+  __HDI__ T operator()(T&& arg, Args&&... args) {
+    return x(arg, args...) = y(arg, args...);
   }
 };
 
@@ -208,9 +209,9 @@ struct Assignee {
   Assignee() {}
   Assignee(Var<N> v) : var(v) {}
 
-  template <typename... Args>
-  __HDI__ float& operator()(Args&&... args) {
-    return var(args...);
+  template <typename T, typename... Args>
+  __HDI__ T& operator()(T&& arg, Args&&... args) {
+    return var(arg, args...);
   }
 
   template <class X>

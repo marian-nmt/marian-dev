@@ -17,17 +17,18 @@ struct Tensor {
   __HD__ Tensor(T* ptr, const functional::Shape& shape)
       : data_(ptr), shape_(shape) {}
 
-  __H__ Tensor(marian::Tensor t) : data_(t->data()), shape_(t->shape()) {}
+  // @TODO: take into account the change in shape when using float4 or float8
+  __H__ Tensor(marian::Tensor t) : data_(t->data<T>()), shape_(t->shape()) {}
 
-  __HDI__ float& operator[](size_t i) { return data_[i]; }
-  __HDI__ const float& operator[](size_t i) const { return data_[i]; }
+  __HDI__ T& operator[](size_t i) { return data_[i]; }
+  __HDI__ const T& operator[](size_t i) const { return data_[i]; }
 
-  __HDI__ float& operator[](
+  __HDI__ T& operator[](
       const functional::Array<int, functional::Shape::size()>& indices) {
     return data_[shape_.index(indices)];
   }
 
-  __HDI__ const float& operator[](
+  __HDI__ const T& operator[](
       const functional::Array<int, functional::Shape::size()>& indices) const {
     return data_[shape_.index(indices)];
   }

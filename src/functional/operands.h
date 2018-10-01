@@ -62,9 +62,9 @@ template <int N>
 struct Var {
   static constexpr auto index = N;
 
-  template <typename... Args>
-  __HDI__ float& operator()(Args&&... args) {
-    return Select<N - 1>::apply(args...);
+  template <typename T, typename... Args>
+  __HDI__ T& operator()(T&& arg, Args&&... args) {
+    return Select<N - 1>::apply(arg, args...);
   }
 
   std::string to_string() { return "Var<" + std::to_string(N) + ">"; }

@@ -41,7 +41,8 @@ public:
         currCount += 1;
       }
 
-      samples.emplace_back(lines);
+      if(!lines.empty())
+        samples.emplace_back(lines);
       counts.push_back(currCount);
 
       // check if the same number of lines is extracted for source and target

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/config.h"
+#include "common/file_stream.h"
 #include "data/batch_generator.h"
 #include "data/text_input.h"
 #include "models/model_task.h"
@@ -12,12 +13,12 @@ namespace marian {
 using namespace data;
 
 class TrainSetReader {
-  std::vector<UPtr<InputFileStream>> files_;
+  std::vector<UPtr<io::InputFileStream>> files_;
 
 public:
   TrainSetReader(std::vector<std::string> paths) {
     for(auto& path : paths)
-      files_.emplace_back(new InputFileStream(path));
+      files_.emplace_back(new io::InputFileStream(path));
   }
 
   std::vector<std::string> getSamples() {
@@ -30,7 +31,7 @@ public:
       size_t currCount = 0;
       std::string lines;
       std::string line;
-      while(std::getline((std::istream&)*file, line)) {
+      while(io::getline(*file, line)) {
         if(line.empty())
           break;
 

@@ -33,9 +33,9 @@ template <int V>
 struct C {
   static constexpr auto value = V;
 
-  template <typename... Args>
-  __HDI__ float operator()(Args&&... args) {
-    return V;
+  template <typename T, typename... Args>
+  __HDI__ T operator()(T&& /*arg*/, Args&&... /*args*/) {
+    return (T)V;
   }
 
   std::string to_string() { return "C<" + std::to_string(V) + ">"; }
@@ -48,9 +48,9 @@ struct Capture {
 
   Capture(float val) : value(val){};
 
-  template <typename... Args>
-  __HDI__ float operator()(Args&&... /*args*/) {
-    return value;
+  template <typename T, typename... Args>
+  __HDI__ T operator()(T&& /*arg*/, Args&&... /*args*/) {
+    return T(value);
   }
 
   std::string to_string() { return "Cap(" + std::to_string(value) + ")"; }

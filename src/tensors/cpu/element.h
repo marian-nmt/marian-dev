@@ -67,11 +67,19 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
   E<0>::element(functor, gTensors, indices);
 }
 
+template <class Functor, class... Tensors>
+void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors) {
+  // if(out->shape()[-1] % 4 == 0)
+  //   element<floatX4>(functor, out, tensors...);
+  // else
+    element<float>(functor, out, tensors...);
+}
+
 // main call to function executing element-wise operation
 template <class Functor, class... Tensors>
 void Element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
   switch(out->type()) {
-    case Type::float32: element<float>(functor, out, tensors...); break;
+    case Type::float32: elementFloat(functor, out, tensors...); break;
     //case Type::uint32:  element<uint32_t>(functor, out, tensors...); break;
     default: ABORT("Unsupported type for element-wise operation"); break;
   }

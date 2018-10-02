@@ -211,7 +211,6 @@ public:
                       scalar_)),
           NodeOp(Prod(
               child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
-          // NodeOp(Add(_1, child(2)->grad(), adj_))
       };
 
     if(transA_ && !transB_)
@@ -232,7 +231,6 @@ public:
                       scalar_)),
           NodeOp(Prod(
               child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
-          // NodeOp(Add(_1, child(2)->grad(), adj_))
       };
 
     if(transA_ && transB_)
@@ -253,7 +251,6 @@ public:
                       scalar_)),
           NodeOp(Prod(
               child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
-          // NodeOp(Add(_1, child(2)->grad(), adj_))
       };
 
     return {
@@ -273,7 +270,6 @@ public:
                     scalar_)),
         NodeOp(Prod(
             child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
-        // NodeOp(Add(_1, child(2)->grad(), adj_))
     };
   }
 

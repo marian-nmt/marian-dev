@@ -60,22 +60,24 @@ struct BinaryFunctor {
   namespace elem {                                                \
   struct name {                                                   \
     template <typename ElementType>                               \
-    __HDI__ static ElementType apply(ElementType x, ElementType y) { return func; } \
+    __HDI__ static ElementType apply(const ElementType& x,        \
+                                     const ElementType& y)        \
+      { return func; }                                            \
     static std::string n() { return #name; }                      \
   };                                                              \
   }                                                               \
   template <class X, class Y>                                     \
   using name = BinaryFunctor<elem::name, X, Y>;                   \
   template <class X, class Y>                                     \
-  name<IsClass<X>, IsClass<Y>> name2(X x, Y y) {                  \
+  name<IsClass<X>, IsClass<Y>> name2(const X& x, const Y& y) {    \
     return name<X, Y>(x, y);                                      \
   }                                                               \
   template <class Y>                                              \
-  name<Capture, IsClass<Y>> name2(Capture x, Y y) {               \
+  name<Capture, IsClass<Y>> name2(const Capture& x, const Y& y) {               \
     return name<Capture, Y>(x, y);                                \
   }                                                               \
   template <class X>                                              \
-  name<IsClass<X>, Capture> name2(X x, Capture y) {               \
+  name<IsClass<X>, Capture> name2(const X& x, const Capture& y) { \
     return name<X, Capture>(x, y);                                \
   }
 
@@ -87,14 +89,14 @@ UNARY(Log, log, logf(x));
 UNARY(Exp, exp, expf(x));
 UNARY(Abs, abs, fabs(x));
 UNARY(Sqrt, sqrt, sqrtf(x));
-UNARY(Neg, operator-, - x);
+UNARY(Neg, operator-, -x);
 UNARY(Sigmoid,
       sigmoid,
       x > 0 ? (1.f / (1.f + expf(-x))) : (expf(x) / (1.f + expf(x))));
 
 BINARY(Plus, operator+, x + y);
 BINARY(Minus, operator-, x - y);
-BINARY(Mult, operator*, x* y);
+BINARY(Mult, operator*, x * y);
 BINARY(Div, operator/, x / y);
 
 BINARY(LogAddExp,
@@ -112,11 +114,11 @@ BINARY(Minimum, min, (x < y) ? y : x);
 UNARY(Negate, operator!, !x);
 BINARY(Eq, operator==, x == y);
 BINARY(NEq, operator!=, x != y);
-BINARY(Gt, operator>, x> y);
-BINARY(Lt, operator<, x<y);
+BINARY(Gt, operator>, x > y);
+BINARY(Lt, operator<, x < y);
 BINARY(Geq, operator>=, x >= y);
 BINARY(Leq, operator<=, x <= y);
-BINARY(And, operator&&, x&& y);
+BINARY(And, operator&&, x && y);
 BINARY(Or, operator||, x || y);
 
 template <typename T>

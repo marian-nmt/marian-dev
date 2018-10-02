@@ -5,6 +5,24 @@
 
 namespace marian {
 
+struct FloatM128 {
+private:
+  __m128 f_;
+
+public:
+  FloatM128() {}
+  FloatM128(const __m128& f) : f_(f) {}
+  operator __m128() const { return f_; }
+};
+
+static inline FloatM128 operator+(const FloatM128& x, const FloatM128& y) {
+   return _mm_add_ps(x, y);
+}
+
+static inline FloatM128 operator*(const FloatM128& x, const FloatM128& y) {
+  return _mm_mul_ps(x, y);
+}
+
 enum class TypeClass : size_t {
   signed_type = 0x100,
   unsigned_type = 0x200,

@@ -225,11 +225,8 @@ public:
   }
 
   template <typename T>
-  std::string debug() {
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
+  std::string debug(int precision = 8, int dispCols = 5) {
+    matchOrAbort<T>(type_);
 
     std::stringstream strm;
     assert(shape_.size());
@@ -245,9 +242,10 @@ public:
     std::vector<T> values(totSize);
     get(values);
 
-    int dispCols = 5;
+    int colWidth  = precision + 4;
+    
     if(isFloat(type_))
-      strm << std::fixed << std::setprecision(8) << std::setfill(' ');
+      strm << std::fixed << std::setprecision(precision) << std::setfill(' ');
     else
       strm << std::fixed << std::setprecision(0) << std::setfill(' ');
 
@@ -274,7 +272,7 @@ public:
           strm << " ";
         }
 
-        strm << std::setw(12);
+        strm << std::setw(colWidth);
         if(isFloat(type_)) {
           strm << (double)values[i];
         } else if(isSignedInt(type_)) {
@@ -313,20 +311,20 @@ public:
     return strm.str();
   }
 
-  std::string debug() {
+  std::string debug(int precision = 8, int dispCols = 5) {
     switch(type_) {
-      case Type::int8: return debug<int8_t>();
-      case Type::int16: return debug<int16_t>();
-      case Type::int32: return debug<int32_t>();
-      case Type::int64: return debug<int64_t>();
+      case Type::int8:    return debug<int8_t  >(precision, dispCols);
+      case Type::int16:   return debug<int16_t >(precision, dispCols);
+      case Type::int32:   return debug<int32_t >(precision, dispCols);
+      case Type::int64:   return debug<int64_t >(precision, dispCols);
 
-      case Type::uint8: return debug<uint8_t>();
-      case Type::uint16: return debug<uint16_t>();
-      case Type::uint32: return debug<uint32_t>();
-      case Type::uint64: return debug<uint64_t>();
+      case Type::uint8:   return debug<uint8_t >(precision, dispCols);
+      case Type::uint16:  return debug<uint16_t>(precision, dispCols);
+      case Type::uint32:  return debug<uint32_t>(precision, dispCols);
+      case Type::uint64:  return debug<uint64_t>(precision, dispCols);
 
-      case Type::float32: return debug<float>();
-      case Type::float64: return debug<double>();
+      case Type::float32: return debug<float   >(precision, dispCols);
+      case Type::float64: return debug<double  >(precision, dispCols);
 
       default: ABORT("Unknown type {}", type_);
     }

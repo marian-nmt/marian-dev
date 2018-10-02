@@ -61,12 +61,12 @@ public:
 class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
   TrainSelfAdaptive(Ptr<Config> options) : options_(options) {
-    options_->set("max-length", 1000);
 
     // Set up translator options
     optionsTrans_ = New<Config>(*options_);
     optionsTrans_->set<size_t>("mini-batch", 1);
     optionsTrans_->set<size_t>("maxi-batch", 1);
+    optionsTrans_->set<size_t>("max-length", 1000);
 
     // TODO: get rid of options_ or toptions_
     tOptions_ = New<Options>();

@@ -57,21 +57,14 @@ public:
   virtual size_t size() { return shape_.elements(); }
 
   virtual float scalar() {
-    ABORT_IF(!matchType<float>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<float>(),
-             type_);
+    matchOrAbort<float>(type_);
     ABORT_IF(size() != 1, "Tensor is not a scalar");
     return get(0);
   }
 
   template <typename T>
   T scalar() {
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
-
+    matchOrAbort<T>(type_);
     ABORT_IF(size() != 1, "Tensor is not a scalar");
     return get<T>(0);
   }
@@ -82,15 +75,11 @@ public:
   Tensor subtensor(int offset, int size) {
     auto mem = New<MemoryPiece>(memory_->data() + sizeOf(type_) * offset,
                                 sizeOf(type_) * size);
-    return New<TensorBase>(mem, Shape{1, size}, backend_);
+    return New<TensorBase>(mem, Shape{1, size}, type_, backend_);
   }
 
   float get(size_t i) {
-    ABORT_IF(!matchType<float>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<float>(),
-             type_);
-
+    matchOrAbort<float>(type_);
     float temp = 0; // (initialize to keep compiler happy)
     if(backend_->getDeviceId().type == DeviceType::cpu) {
       std::copy(data() + i, data() + i + 1, &temp);
@@ -105,10 +94,7 @@ public:
 
   template <typename T>
   T get(size_t i) {
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
+    matchOrAbort<T>(type_);
 
     T temp;
     if(backend_->getDeviceId().type == DeviceType::cpu) {
@@ -124,10 +110,7 @@ public:
 
   template <typename T>
   void set(size_t i, T value) {
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
+    matchOrAbort<T>(type_);
 
     if(backend_->getDeviceId().type == DeviceType::cpu) {
       std::copy(&value, &value + 1, data<T>() + i);
@@ -141,10 +124,7 @@ public:
 
   template <typename T>
   void get(std::vector<T>& v) {
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
+    matchOrAbort<T>(type_);
 
     v.resize(size());
     if(backend_->getDeviceId().type == DeviceType::cpu) {
@@ -159,10 +139,7 @@ public:
 
   template <typename T>
   void set(const T* begin, const T* end) {
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
+    matchOrAbort<T>(type_);
 
     if(backend_->getDeviceId().type == DeviceType::cpu) {
       std::copy(begin, end, data<T>());
@@ -179,6 +156,7 @@ public:
     set(v.data(), v.data() + v.size());
   }
 
+  // For single values enable conversion to other numeric formats if possible
   template <typename T>
   void set(T value) {
     if(!matchType<T>(type_)) {
@@ -199,16 +177,16 @@ public:
               request<float>(),
               type_);
       }
+    } else {
+      if(backend_->getDeviceId().type == DeviceType::cpu) {
+        std::fill(data<T>(), data<T>() + size(), value);
+      }
+  #ifdef CUDA_FOUND
+      else {
+        gpu::fill(backend_, data<T>(), data<T>() + size(), value);
+      }
+  #endif
     }
-
-    if(backend_->getDeviceId().type == DeviceType::cpu) {
-      std::fill(data<T>(), data<T>() + size(), value);
-    }
-#ifdef CUDA_FOUND
-    else {
-      gpu::fill(backend_, data<T>(), data<T>() + size(), value);
-    }
-#endif
   }
 
   void setSparse(const std::vector<size_t>& k, const std::vector<float>& v) {

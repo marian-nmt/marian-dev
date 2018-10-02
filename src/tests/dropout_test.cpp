@@ -36,7 +36,7 @@ template <class Functor, class... Tensors>
 void Element2(const Functor& functor, marian::Tensor out, Tensors... tensors) {
 
   switch(out->type()) {
-    case Type::float32: element<float4>(functor, out, tensors...); break;
+    case Type::float32: element<float>(functor, out, tensors...); break;
     case Type::uint32:  element<uint32_t>(functor, out, tensors...); break;
     case Type::uint16:  element<uint16_t>(functor, out, tensors...); break;
     default: ABORT("Unsupported type for element-wise operation"); break;
@@ -55,8 +55,8 @@ int main(int argc, char** argv) {
   alloc->allocate(in1, {4}, Type::float32);
   alloc->allocate(in2, {4}, Type::float32);
 
-  in1->set<float>(2);
-  in2->set<float>(3);
+  in1->set(2);
+  in2->set(3);
 
   std::cerr << in1->debug() << std::endl;
   std::cerr << in2->debug() << std::endl;

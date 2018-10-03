@@ -172,14 +172,6 @@ public:
           newBeam.push_back(hyp);
           validCount++;
         }
-        else if (0 && options_->get<bool>("xml-input") && 
-                 hyp->GetXmlStatus() < hyp->GetXmlOptionCovered()->size()) {
-          auto fillerHyp = New<Hypothesis>(hyp, 0, 0, -9999);
-          newBeam.push_back( fillerHyp );  
-        }
-      }
-      if (validCount == 0 && newBeam.size() > 0) {
-        newBeam.clear();
       }
       newBeams.push_back(newBeam);
     }
@@ -750,7 +742,8 @@ public:
 
       // merge the hypotheses (sorted by probability)
       std::vector<int> index(thisSubbeamCount,0);
-      for(int i=0; i<beams[j].size(); i++) {
+      size_t hypCount = beams[j].size();
+      for(int i=0; i<hypCount; i++) {
         float bestCost = -9e9;
         int bestSubbeam = -1;
         int bestIndex = -1;
@@ -761,6 +754,18 @@ public:
             bestCost = collectedCosts[j][subbeam][ index[subbeam] ];
             bestIndex = index[subbeam];
             bestSubbeam = subbeam;
+            // if sentence complete, but not highest subbeam
+            // make space for one additional hypothesis
+            //int word = collectedKeys[j][bestSubbeam][bestIndex] % dimTrgVoc;
+            //if (word == 0 && subbeam < thisSubbeamCount-1) {
+            //  for(int s=thisSubbeamCount-1;s>=0;s--) {
+            //    if(allotted[s] < collectedCosts[j][s].size()) {
+            //      allotted[s]++;
+            //      hypCount++;
+            //      break;
+            //    }
+            //  }
+            //}
           }
         }
         int word = collectedKeys[j][bestSubbeam][bestIndex] % dimTrgVoc;

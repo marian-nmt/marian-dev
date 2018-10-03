@@ -166,10 +166,20 @@ public:
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
+      size_t validCount = 0;
       for(auto hyp : beam) {
         if(hyp->GetWord() > 0) {
           newBeam.push_back(hyp);
+          validCount++;
         }
+        else if (0 && options_->get<bool>("xml-input") && 
+                 hyp->GetXmlStatus() < hyp->GetXmlOptionCovered()->size()) {
+          auto fillerHyp = New<Hypothesis>(hyp, 0, 0, -9999);
+          newBeam.push_back( fillerHyp );  
+        }
+      }
+      if (validCount == 0 && newBeam.size() > 0) {
+        newBeam.clear();
       }
       newBeams.push_back(newBeam);
     }
@@ -450,15 +460,27 @@ public:
     std::vector< std::vector< std::vector<unsigned> > > collectedKeys;
     std::vector< std::vector< std::vector<float> > > collectedCosts;
     std::vector< std::vector< std::vector<data::XmlOptionCoveredList*> > > collectedXmls;
+    // get maximum number of xml options per sentence
+    // (-> plus 1 = number of subbeams)
+    std::vector< size_t > xmlCount;
     size_t maxXmlCount = 0;
     for(int j = 0; j < beams.size(); j++) {
       auto& beam = beams[j];
-      auto hyp = beam[0];
-      std::cerr << "beam " << j << ": " << hyp->GetXmlOptionCovered()->size() << "\n";
-      if (hyp->GetXmlOptionCovered()->size() > maxXmlCount) {
-        maxXmlCount = hyp->GetXmlOptionCovered()->size();
+      if (beam.size() == 0) {
+        xmlCount.push_back( 0 );
+      }
+      else {
+        auto hyp = beam[0];
+        size_t thisXmlCount = hyp->GetXmlOptionCovered()->size();
+        xmlCount.push_back( thisXmlCount );
+        std::cerr << "beam " << j << ": " << thisXmlCount << "\n";
+        if (thisXmlCount > maxXmlCount) {
+          maxXmlCount = thisXmlCount;
+        }
       }
     }
+
+    // create (empty) lists for keys, costs, and xml states
     size_t subbeamCount = maxXmlCount+1;
     std::cerr << "subbeamCount = " << subbeamCount << "\n";
     for(int j = 0; j < beams.size(); j++) {
@@ -518,10 +540,13 @@ public:
           //std::cerr << totalCosts->val()->debug();
           //std::cerr << "\n";
           uint key = ((j * localBeamSize) + i) * dimTrgVoc + output[wordPos];
+          if (first) { // only one hyp per beam
+            key = j * dimTrgVoc + output[wordPos];
+          }
           float cost = totalCosts->val()->get(key);
           std::cerr << "beam j=" << j << " hyp i=" << i << ", word " << (*targetVocab)[output[wordPos]] << ":" << output[wordPos] << ", total cost is in " << key << ": " << cost << "\n";
-          // placed into the next subbeam
-          int subbeam = hyp->GetXmlStatus() + 1;
+          // subbeam to be placed into 
+          int subbeam = hyp->GetXmlStatus();
           // update xmlCoveredList
           std::cerr << "build new XmlOptionCoveredList\n";
           auto newXmlCoveredList = new data::XmlOptionCoveredList;
@@ -531,12 +556,14 @@ public:
             if (kk == k) {
               // the one we are currently processing
               if (newXmlCovered.GetStarted()) {
+                // already started
                 std::cerr << "newXmlCovered.Proceed();\n";
                 newXmlCovered.Proceed();
               }
               else {
                 std::cerr << "newXmlCovered.Start();\n";
                 newXmlCovered.Start();
+                subbeam++; // resulting hyp will be in next subbeam
               }
             }
             else {
@@ -544,7 +571,7 @@ public:
               if (newXmlCovered.GetStarted()) {
                 std::cerr << "newXmlCovered.Abandon();\n";
                 newXmlCovered.Abandon();
-                subbeam--; // resulting hyp will be in same beam
+                subbeam--; // resulting hyp will be one subbeam lower
               }
               else {
                 std::cerr << "just copy\n";
@@ -552,7 +579,7 @@ public:
             }
             newXmlCoveredList->push_back(newXmlCovered);
           }
-          subbeam = 0;
+          //subbeam = 0;
           std::cerr << "merge onto subbeam " << subbeam << "\n";
           mergeIntoSortedKeysCosts(collectedKeys[j][subbeam], 
                                    collectedCosts[j][subbeam],
@@ -565,6 +592,7 @@ public:
 
         
     // divide up subbeams by XML coverage
+    std::cerr << "REGULAR BEAM EXPANSION\n";
     for(int subbeam = 0; subbeam < subbeamCount; subbeam++) {
       std::vector<char> hypMask;
       std::vector<int> subbeamSize(beams.size(),0);
@@ -603,11 +631,6 @@ public:
       // merge them into the subbeam list
       for(size_t i=0; i<subCosts.size(); i++) {
         if (subCosts[i] > -9999) {
-          int j=0; // TODO
-          std::cerr << "collectedKeys.size() = " << collectedKeys.size() << "\n";
-          std::cerr << "collectedKeys[j].size() = " << collectedKeys[j].size() << "\n";
-          std::cerr << "collectedKeys[j][subbeam].size() = " << collectedKeys[j][subbeam].size() << "\n";
-          std::cerr << "collectedCosts[" << j << "][" << subbeam << "].size() = " << collectedCosts[j][subbeam].size() << "\n";
           // update xmlCoveredList
           int embIdx = subKeys[i] % dimTrgVoc;
           int hypIdx = (subKeys[i] / dimTrgVoc) % localBeamSize;
@@ -616,6 +639,10 @@ public:
           auto hyp = beam[hypIdx];
           auto xmlCoveredList = hyp->GetXmlOptionCovered();
           int newSubbeam = subbeam;
+          std::cerr << "collectedKeys.size() = " << collectedKeys.size() << "\n";
+          std::cerr << "collectedKeys[beamNo].size() = " << collectedKeys[beamNo].size() << "\n";
+          std::cerr << "collectedKeys[beamNo][subbeam].size() = " << collectedKeys[beamNo][subbeam].size() << "\n";
+          std::cerr << "collectedCosts[" << beamNo << "][" << subbeam << "].size() = " << collectedCosts[beamNo][subbeam].size() << "\n";
           std::cerr << "build new XmlOptionCoveredList for beam " << beamNo << " hyp " << hypIdx << "\tcost " << subCosts[i] << "\t " << (*targetVocab)[embIdx] << ":" << embIdx << " ...";
           auto newXmlCoveredList = new data::XmlOptionCoveredList;
           for(int k=0; k < xmlCoveredList->size(); k++) {
@@ -633,6 +660,7 @@ public:
               else {
                 std::cerr << "newXmlCovered.Abandon();\n";
                 newXmlCovered.Abandon();
+                newSubbeam--;
               }
             }
             else {
@@ -640,9 +668,9 @@ public:
             }
             newXmlCoveredList->push_back(newXmlCovered);
           }
-          mergeIntoSortedKeysCosts(collectedKeys[j][subbeam], 
-                                   collectedCosts[j][subbeam],
-                                   collectedXmls[j][subbeam],
+          mergeIntoSortedKeysCosts(collectedKeys[beamNo][newSubbeam], 
+                                   collectedCosts[beamNo][newSubbeam],
+                                   collectedXmls[beamNo][newSubbeam],
                                    subKeys[i], 
                                    subCosts[i],
                                    newXmlCoveredList);
@@ -673,31 +701,30 @@ public:
     // merge subbeams
     for(int j = 0; j < beams.size(); j++) {
       std::vector<int> allotted;
-
+      size_t thisSubbeamCount = xmlCount[j]+1;
       // by default each subbeam gets same number of hypothesis
       int totalAllotted = 0;
       std::cerr << "allotted:";
-      for(int subbeam=0;subbeam<subbeamCount;subbeam++) {
-        int thisAllotted=(subbeam+1)*beams[j].size()/subbeamCount-totalAllotted;
+      for(int subbeam=0;subbeam<thisSubbeamCount;subbeam++) {
+        int thisAllotted=(subbeam+1)*beams[j].size()/thisSubbeamCount-totalAllotted;
         allotted.push_back( thisAllotted );
         totalAllotted += thisAllotted;
         std::cerr << " " << thisAllotted << "/" << collectedCosts[j][subbeam].size();
-        // TODO: subtract finished here?
       }
       std::cerr << "\n";
 
       // if there are not enough hypotheses in the subbeam,
       // redistribute its alottment to neighboring subbeams
-      for(int subbeam=0;subbeam<subbeamCount;subbeam++) {
+      for(int subbeam=0;subbeam<thisSubbeamCount;subbeam++) {
         int toBeRedistributed = 
               allotted[subbeam] - collectedCosts[j][subbeam].size();
         std::cerr << " toBeRedistributed=" << toBeRedistributed;
-        for(int n=1; n<subbeamCount && toBeRedistributed>=0; n++) {
+        for(int n=1; n<thisSubbeamCount && toBeRedistributed>=0; n++) {
           for(int sign = 1; sign >= -1 && toBeRedistributed>=0; sign -= 2) {
             int neighbor = subbeam + n*sign;
             std::cerr << " neighbor=" << neighbor;
             if (neighbor >= 0 &&
-                neighbor < subbeamCount) {
+                neighbor < thisSubbeamCount) {
               int space=collectedCosts[j][neighbor].size()-allotted[neighbor];
               std::cerr << " space=" << space;
               if (space > 0) {
@@ -716,18 +743,19 @@ public:
         std::cerr << " " << allotted[subbeam] << "/" << collectedCosts[j][subbeam].size();
       }
       std::cerr << "redistributed:";
-      for(int subbeam=0;subbeam<subbeamCount;subbeam++) {
+      for(int subbeam=0;subbeam<thisSubbeamCount;subbeam++) {
         std::cerr << " " << allotted[subbeam] << "/" << collectedCosts[j][subbeam].size();
       }
       std::cerr << "\n";
 
       // merge the hypotheses (sorted by probability)
-      std::vector<int> index(subbeamCount,0);
-      for(int i=0; i<localBeamSize; i++) {
+      std::vector<int> index(thisSubbeamCount,0);
+      for(int i=0; i<beams[j].size(); i++) {
         float bestCost = -9e9;
         int bestSubbeam = -1;
         int bestIndex = -1;
-        for(int subbeam=0;subbeam<subbeamCount;subbeam++) {
+        // find the best hypothesis across all subbeams
+        for(int subbeam=0;subbeam<thisSubbeamCount;subbeam++) {
           if (index[subbeam] < allotted[subbeam] &&
               collectedCosts[j][subbeam][ index[subbeam] ] > bestCost) {
             bestCost = collectedCosts[j][subbeam][ index[subbeam] ];

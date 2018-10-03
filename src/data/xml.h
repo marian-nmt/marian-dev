@@ -79,10 +79,14 @@ class XmlOptionCovered {
     }
 
     void Start() {
-      started_ = true;
       position_ = 1;
-      if (option_->GetOutput().size() == 1) {
+      if (option_->GetOutput().size() == 1) { 
+        // single word, already done
         covered_ = true;
+        started_ = false;
+      }
+      else {
+        started_ = true;
       }
       // std::cerr << "option" << option_->GetOutput().size();
     }

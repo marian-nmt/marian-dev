@@ -288,14 +288,8 @@ void MultiNodeGraphGroup::launchServerThread() {
               cudaStreamSynchronize(0);
 
               // Run optimizer on GPU
-              if(scaleLearningRate_ && batchWords > 0) {
-                shardOptimizers_[gpu]->update(shardParams_[gpu],
-                                              shardGrads_[gpu],
-                                              batchWords / avgBatchWords_);
-              } else {
-                shardOptimizers_[gpu]->update(shardParams_[gpu],
-                                              shardGrads_[gpu]);
-              }
+              shardOptimizers_[gpu]->update(shardParams_[gpu],
+                                            shardGrads_[gpu]);
               cudaStreamSynchronize(0);
               // Copy params from GPU
               cudaMemcpy(&serverShardBufferCPU_.at(offset),
@@ -362,7 +356,7 @@ void MultiNodeGraphGroup::launchCommOverlapThreads() {
                 clientCommOverlapBuffersGPU_[gpu],
                 clientCommOverlapBuffersGPU_[gpu],
                 gpu,
-                scaleLearningRate_ ? clientCommittedWordCounts_[gpu] : 0);
+                0);
 
             // Indicate that buffers can be read from and filled again
             clientCommOverlapBuffersFilled_[gpu] = false;
@@ -494,14 +488,8 @@ void MultiNodeGraphGroup::synchronizeWithServerShards(Tensor newGrads,
               // Copy grads to appropriate GPU
               shardGrads_[gpu]->copyFrom(newGrads->subtensor(offset, size));
               // Run optimizer on GPU
-              if(scaleLearningRate_ && batchWords > 0) {
-                shardOptimizers_[gpu]->update(shardParams_[gpu],
-                                              shardGrads_[gpu],
-                                              batchWords / avgBatchWords_);
-              } else {
-                shardOptimizers_[gpu]->update(shardParams_[gpu],
-                                              shardGrads_[gpu]);
-              }
+              shardOptimizers_[gpu]->update(shardParams_[gpu],
+                                            shardGrads_[gpu]);
               cudaStreamSynchronize(0);
               // Copy params back to current GPU
               oldParams->subtensor(offset, size)->copyFrom(shardParams_[gpu]);

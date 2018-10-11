@@ -57,6 +57,7 @@ public:
     ABORT_IF(options_->has("summary") && options_->has("alignment"),
              "Alignments can not be produced with summarized score");
 
+    corpus_->setInference(true);
     corpus_->prepare();
 
     auto devices = options_->getDevices();
@@ -79,7 +80,7 @@ public:
     ThreadPool pool(graphs_.size(), graphs_.size());
     for(size_t i = 0; i < graphs_.size(); ++i) {
       pool.enqueue(
-          [=](int j) {
+          [=](size_t j) {
             models_[j] = New<Model>(temp);
             models_[j]->load(graphs_[j], modelFile);
           },
@@ -114,10 +115,8 @@ public:
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
-
-        auto task = [=, &sumCost, &sumWords, &sumSamples, &smutex](int id) {
+      for(auto batch : *batchGenerator) {
+        auto task = [=, &sumCost, &sumWords, &sumSamples, &smutex](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local Ptr<Model> builder;
 
@@ -146,7 +145,7 @@ public:
 
           if(!summarize) {
             for(size_t i = 0; i < batch->size(); ++i) {
-              output->Write(batch->getSentenceIds()[i], scores[i], aligns[i]);
+              output->Write((long)batch->getSentenceIds()[i], scores[i], aligns[i]);
             }
           }
         };

@@ -5,7 +5,6 @@
 #include "common/version.h"
 
 #include <algorithm>
-#include <boost/algorithm/string.hpp>
 #include <set>
 #include <string>
 
@@ -53,7 +52,7 @@ void Config::initialize(int argc, char** argv, cli::mode mode, bool validate) {
     try {
       if(!get<bool>("ignore-model-config"))
         loadModelParameters(model);
-    } catch(std::runtime_error& e) {
+    } catch(std::runtime_error& ) {
       LOG(info, "[config] No model configuration found in model file");
     }
   }
@@ -111,8 +110,8 @@ const std::vector<DeviceId>& Config::getDevices() {
 }
 
 void Config::save(const std::string& name) {
-  OutputFileStream out(name);
-  (std::ostream&)out << *this;
+  io::OutputFileStream out(name);
+  out << *this;
 }
 
 void Config::loadModelParameters(const std::string& name) {
@@ -140,7 +139,7 @@ void Config::log() {
 
   // print YAML prepending each line with [config]
   std::vector<std::string> results;
-  boost::algorithm::split(results, configString, boost::is_any_of("\n"));
+  utils::split(configString, results, "\n");
   for(auto& r : results)
     LOG(info, "[config] {}", r);
 }

@@ -12,7 +12,6 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <boost/algorithm/string.hpp>
 
 #if MKL_FOUND
 #include <mkl.h>
@@ -34,7 +33,7 @@ const std::set<std::string> PATHS = {"model",
                                      "valid-script-path",
                                      "valid-log",
                                      "valid-translation-output",
-                                     "log"};
+                                     "log" };
 
 void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   int defaultWorkspace = (mode_ == cli::mode::translation) ? 512 : 2048;
@@ -244,7 +243,6 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "If this parameter is not supplied we look for vocabulary files "
       "source.{yml,json} and target.{yml,json}. "
       "If these files do not exist they are created");
-
   // scheduling options
   cli.add<size_t>("--after-epochs,-e",
       "Finish after this many epochs, 0 is infinity");
@@ -325,13 +323,6 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Apply cyclic warmup");
   cli.add<bool>("--lr-warmup-at-reload",
      "Repeat warmup after interrupted training");
-
-  cli.add<bool>("--batch-flexible-lr",
-      "Scales the learning rate based on the number of words in a mini-batch");
-  cli.add<double>("--batch-normal-words",
-      "Set number of words per batch that the learning rate corresponds to. "
-      "The option is only active when batch-flexible-lr is on",
-      1920.0);
 
   cli.add<double>("--label-smoothing",
      "Epsilon for label smoothing (0 to disable)");
@@ -440,9 +431,11 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--input,-i",
       "Paths to input file(s), stdin by default",
       std::vector<std::string>({"stdin"}));
+  cli.add<std::string>("--output,-o",
+      "Paths to output file(s), stdout by default",
+      "stdout");
   cli.add<std::vector<std::string>>("--vocabs,-v",
       "Paths to vocabulary files have to correspond to --input");
-
   // decoding options
   cli.add<size_t>("--beam-size,-b",
       "Beam size used during search with validating translator",
@@ -478,9 +471,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Scorer weights");
 
   // TODO: the options should be available only in server
-  cli.add<size_t>("--port,-p",
-      "Port number for web socket server",
-      8080);
+  cli.add_nondefault<size_t>("--port,-p",
+      "Port number for web socket server");
   // clang-format on
 }
 
@@ -686,6 +678,10 @@ void ConfigParser::makeAbsolutePaths(
              "same directory");
 
   auto transformFunc = [&](const std::string& nodePath) -> std::string {
+    // Catch stdin/stdout and do not process
+    if(nodePath == "stdin" || nodePath == "stdout")
+      return nodePath;
+    
     // replace relative path w.r.t. configDir
     try {
       return canonical(filesystem::Path{nodePath}, configDir).string();
@@ -707,11 +703,10 @@ YAML::Node ConfigParser::loadConfigFiles(
 
   for(auto& path : paths) {
     // later file overrides earlier
-    for(const auto& it : YAML::Load(InputFileStream(path))) {
+    for(const auto& it : YAML::Load(io::InputFileStream(path))) {
       config[it.first.as<std::string>()] = YAML::Clone(it.second);
     }
   }
-
   return config;
 }
 
@@ -750,14 +745,14 @@ std::vector<DeviceId> ConfigParser::getDevices() {
 
   try {
     std::string devicesStr
-        = utils::Join(config_["devices"].as<std::vector<std::string>>());
+        = utils::join(config_["devices"].as<std::vector<std::string>>());
 
     if(mode_ == cli::mode::training && get<bool>("multi-node")) {
-      auto parts = utils::Split(devicesStr, ":");
+      auto parts = utils::split(devicesStr, ":");
       for(size_t i = 1; i < parts.size(); ++i) {
         std::string part = parts[i];
-        utils::Trim(part);
-        auto ds = utils::Split(part, " ");
+        utils::trim(part);
+        auto ds = utils::split(part, " ");
         if(i < parts.size() - 1)
           ds.pop_back();
 
@@ -767,7 +762,7 @@ std::vector<DeviceId> ConfigParser::getDevices() {
           devices.push_back({(size_t)std::stoull(d), DeviceType::gpu});
       }
     } else {
-      for(auto d : utils::Split(devicesStr))
+      for(auto d : utils::split(devicesStr))
         devices.push_back({(size_t)std::stoull(d), DeviceType::gpu});
     }
 

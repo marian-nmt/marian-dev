@@ -22,12 +22,16 @@ const SentenceTuple& TextIterator::dereference() const {
   return tup_;
 }
 
-TextInput::TextInput(std::vector<std::string> paths,
+TextInput::TextInput(std::vector<std::string> inputs,
                      std::vector<Ptr<Vocab>> vocabs,
                      Ptr<Config> options)
-    : DatasetBase(paths), vocabs_(vocabs), options_(options) {
-  for(auto path : paths_)
-    files_.emplace_back(new std::istringstream(path));
+    // TODO: fix this: input text is stored in an inherited variable named
+    // paths_ that is very confusing
+    : DatasetBase(inputs),
+      vocabs_(vocabs),
+      options_(options) {
+  for(const auto& text : paths_)
+    files_.emplace_back(new std::istringstream(text));
 }
 
 SentenceTuple TextInput::next() {
@@ -40,8 +44,9 @@ SentenceTuple TextInput::next() {
     SentenceTuple tup(curId);
     for(size_t i = 0; i < files_.size(); ++i) {
       std::string line;
-      if(utils::GetLine(*files_[i], line)) {
-        Words words = (*vocabs_[i])(line);
+      io::InputFileStream dummyStream(*files_[i]);
+      if(io::getline(dummyStream, line)) {
+        Words words = vocabs_[i]->encode(line, /*addEOS =*/ true, /*inference =*/ inference_);
         if(words.empty())
           words.push_back(0);
         tup.push_back(words);

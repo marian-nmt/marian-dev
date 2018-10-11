@@ -57,3 +57,9 @@ examples/mnist/*ubyte
 /vs/MarianDll.sln
 /vs/MarianDll.VC.db
 /vs/MarianDll.VC.VC.opendb
+
+.vs
+.vscode
+
+# SentencePiece is automatically downloaded when requested
+src/3rd_party/sentencepiece/

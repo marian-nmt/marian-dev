@@ -1,11 +1,8 @@
 #pragma once
 
-#include <cstdio>
-#include <cstdlib>
-#include <limits>
-
 #include "3rd_party/threadpool.h"
 #include "common/config.h"
+#include "common/timer.h"
 #include "common/utils.h"
 #include "data/batch_generator.h"
 #include "data/corpus.h"
@@ -16,6 +13,10 @@
 #include "translator/output_collector.h"
 #include "translator/output_printer.h"
 #include "translator/scorers.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
 
 namespace marian {
 
@@ -151,9 +152,7 @@ protected:
       opts->set("inference", true);
       opts->set("cost-type", "ce-sum");
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
-
+      for(auto batch : *batchGenerator) {
         auto task = [=, &cost, &samples, &words](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local auto builder
@@ -208,7 +207,7 @@ public:
     builder_->save(graphs[0], model + ".dev.npz", true);
 
     auto command = options_->get<std::string>("valid-script-path");
-    auto valStr = utils::Exec(command);
+    auto valStr = utils::exec(command);
     float val = (float)std::atof(valStr.c_str());
     updateStalled(graphs, val);
 
@@ -274,13 +273,13 @@ public:
 
     // Set up output file
     std::string fileName;
-    Ptr<TemporaryFile> tempFile;
+    Ptr<io::TemporaryFile> tempFile;
 
     if(options_->has("valid-translation-output")) {
       fileName = options_->get<std::string>("valid-translation-output");
     } else {
       tempFile.reset(
-          new TemporaryFile(options_->get<std::string>("tempdir"), false));
+          new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
       fileName = tempFile->getFileName();
     }
 
@@ -290,7 +289,7 @@ public:
     if(!quiet_)
       LOG(info, "Translating validation set...");
 
-    boost::timer::cpu_timer timer;
+    timer::Timer timer;
     {
       auto printer = New<OutputPrinter>(options_, vocabs_.back());
       auto collector = options_->has("valid-translation-output")
@@ -310,8 +309,7 @@ public:
       auto tOptions = New<Options>();
       tOptions->merge(options_);
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
+      for(auto batch : *batchGenerator) {
 
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -324,8 +322,8 @@ public:
 
           auto search = New<BeamSearch>(tOptions,
                                         std::vector<Ptr<Scorer>>{scorer},
-                                        vocabs_.back()->GetEosId(),
-                                        vocabs_.back()->GetUnkId());
+                                        vocabs_.back()->getEosId(),
+                                        vocabs_.back()->getUnkId());
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
@@ -356,7 +354,7 @@ public:
     if(options_->has("valid-script-path")) {
       auto command
           = options_->get<std::string>("valid-script-path") + " " + fileName;
-      auto valStr = utils::Exec(command);
+      auto valStr = utils::exec(command);
       val = (float)std::atof(valStr.c_str());
       updateStalled(graphs, val);
     }
@@ -436,7 +434,7 @@ public:
     // 8: reference length
     std::vector<float> stats(9, 0.f);
 
-    boost::timer::cpu_timer timer;
+    timer::Timer timer;
     {
       size_t sentenceId = 0;
 
@@ -446,8 +444,7 @@ public:
       auto tOptions = New<Options>();
       tOptions->merge(options_);
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
+      for(auto batch : *batchGenerator) {
 
         auto task = [=, &stats](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -460,8 +457,8 @@ public:
 
           auto search = New<BeamSearch>(tOptions,
                                         std::vector<Ptr<Scorer>>{scorer},
-                                        vocabs_.back()->GetEosId(),
-                                        vocabs_.back()->GetUnkId());
+                                        vocabs_.back()->getEosId(),
+                                        vocabs_.back()->getUnkId());
           auto histories = search->search(graph, batch);
 
           size_t no = 0;
@@ -469,7 +466,7 @@ public:
           for(auto history : histories) {
             auto result = history->Top();
             const auto& words = std::get<0>(result);
-            updateStats(stats, words, batch, no, vocabs_.back()->GetEosId());
+            updateStats(stats, words, batch, no, vocabs_.back()->getEosId());
             no++;
           }
         };
@@ -496,40 +493,26 @@ public:
 protected:
   bool quiet_{false};
 
+  template <typename T>
   void updateStats(std::vector<float>& stats,
-                   const Words& cand,
-                   const Ptr<data::Batch> batch,
-                   size_t no,
-                   Word eos) {
-    auto corpusBatch = std::static_pointer_cast<data::CorpusBatch>(batch);
-    auto subBatch = corpusBatch->back();
+                   const std::vector<T>& cand,
+                   const std::vector<T>& ref) {
 
-    size_t size = subBatch->batchSize();
-    size_t width = subBatch->batchWidth();
-
-    Words ref;  // fill ref
-    for(size_t i = 0; i < width; ++i) {
-      Word w = subBatch->data()[i * size + no];
-      if(w == eos)
-        break;
-      ref.push_back(w);
-    }
-
-    std::map<std::vector<Word>, size_t> rgrams;
+    std::map<std::vector<T>, size_t> rgrams;
     for(size_t i = 0; i < ref.size(); ++i) {
       // template deduction for std::min<T> seems to be weird under VS due to
       // macros in windows.h hence explicit type to avoid macro parsing.
       for(size_t l = 1; l <= std::min<size_t>(4ul, ref.size() - i); ++l) {
-        std::vector<Word> ngram(l);
+        std::vector<T> ngram(l);
         std::copy(ref.begin() + i, ref.begin() + i + l, ngram.begin());
         rgrams[ngram]++;
       }
     }
 
-    std::map<std::vector<Word>, size_t> tgrams;
+    std::map<std::vector<T>, size_t> tgrams;
     for(size_t i = 0; i < cand.size() - 1; ++i) {
       for(size_t l = 1; l <= std::min<size_t>(4ul, cand.size() - 1 - i); ++l) {
-        std::vector<Word> ngram(l);
+        std::vector<T> ngram(l);
         std::copy(cand.begin() + i, cand.begin() + i + l, ngram.begin());
         tgrams[ngram]++;
       }
@@ -545,6 +528,29 @@ protected:
     }
 
     stats[8] += ref.size();
+  }
+
+  void updateStats(std::vector<float>& stats,
+                   const Words& cand,
+                   const Ptr<data::Batch> batch,
+                   size_t no,
+                   Word eos) {
+
+    auto corpusBatch = std::static_pointer_cast<data::CorpusBatch>(batch);
+    auto subBatch = corpusBatch->back();
+
+    size_t size = subBatch->batchSize();
+    size_t width = subBatch->batchWidth();
+
+    Words ref;  // fill ref
+    for(size_t i = 0; i < width; ++i) {
+      Word w = subBatch->data()[i * size + no];
+      if(w == eos)
+        break;
+      ref.push_back(w);
+    }
+
+    updateStats(stats, cand, ref);
   }
 
   float calcBLEU(const std::vector<float>& stats) {

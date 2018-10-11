@@ -24,14 +24,14 @@ public:
         prefix_(options->get<std::string>("prefix", "decoder")),
         inference_(options->get<bool>("inference", false)),
         batchIndex_(options->get<size_t>("index", 1)) {
-          
+
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
     if(!opt<std::string>("vmap", "").empty()) {
       vmap_.resize(dimVoc);
       for(size_t i = 0; i < vmap_.size(); ++i)
         vmap_[i] = i;
 
-      InputFileStream vmapFile(options_->get<std::string>("vmap"));
+      io::InputFileStream vmapFile(options_->get<std::string>("vmap"));
       size_t from, to;
       while(vmapFile >> from >> to)
         vmap_[from] = to;
@@ -46,9 +46,9 @@ public:
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph>, Ptr<DecoderState>) = 0;
   
-  Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
+  Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<IndexType>& indices) const {
     if(!vmap_.empty()) {
-      std::vector<size_t> vmapped(indices.size());
+      std::vector<IndexType> vmapped(indices.size());
       for(size_t i = 0; i < vmapped.size(); ++i)
         vmapped[i] = vmap_[indices[i]];
 

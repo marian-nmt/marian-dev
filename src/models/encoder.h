@@ -13,9 +13,9 @@ protected:
   size_t batchIndex_{0};
   std::vector<size_t> vmap_;
 
-  Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<size_t>& indices) const {
+  Expr vmap(Expr chosenEmbeddings, Expr srcEmbeddings, const std::vector<IndexType>& indices) const {
     if(!vmap_.empty()) {
-      std::vector<size_t> vmapped(indices.size());
+      std::vector<IndexType> vmapped(indices.size());
       for(size_t i = 0; i < vmapped.size(); ++i)
         vmapped[i] = vmap_[indices[i]];
 
@@ -61,7 +61,7 @@ public:
       for(size_t i = 0; i < vmap_.size(); ++i)
         vmap_[i] = i;
 
-      InputFileStream vmapFile(options_->get<std::string>("vmap"));
+      io::InputFileStream vmapFile(options_->get<std::string>("vmap"));
       size_t from, to;
       while(vmapFile >> from >> to)
         vmap_[from] = to;

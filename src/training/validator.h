@@ -4,6 +4,8 @@
 #include "common/config.h"
 #include "common/timer.h"
 #include "common/utils.h"
+#include "common/regex.h"
+#include "common/utils.h"
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "graph/expression_graph.h"
@@ -69,6 +71,7 @@ public:
 
     // Update validation options
     auto opts = New<Config>(*options_);
+    opts->set("inference", true);
     opts->set("max-length", options_->get<size_t>("valid-max-length"));
     if(options_->has("valid-mini-batch"))
       opts->set("mini-batch", options_->get<size_t>("valid-mini-batch"));
@@ -152,9 +155,7 @@ protected:
       opts->set("inference", true);
       opts->set("cost-type", "ce-sum");
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
-
+      for(auto batch : *batchGenerator) {
         auto task = [=, &cost, &samples, &words](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local auto builder
@@ -246,6 +247,7 @@ public:
 
     // Temporary options for translation
     auto opts = New<Config>(*options_);
+    opts->set("inference", true);
     opts->set("mini-batch", options_->get<int>("valid-mini-batch"));
     opts->set("maxi-batch", 10);
     opts->set("max-length", 1000);
@@ -311,8 +313,7 @@ public:
       auto tOptions = New<Options>();
       tOptions->merge(options_);
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
+      for(auto batch : *batchGenerator) {
 
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -325,8 +326,8 @@ public:
 
           auto search = New<BeamSearch>(tOptions,
                                         std::vector<Ptr<Scorer>>{scorer},
-                                        vocabs_.back()->GetEosId(),
-                                        vocabs_.back()->GetUnkId());
+                                        vocabs_.back()->getEosId(),
+                                        vocabs_.back()->getUnkId());
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
@@ -379,18 +380,29 @@ protected:
 
 // @TODO: combine with TranslationValidator (above) to avoid code duplication
 class BleuValidator : public Validator<data::Corpus> {
+private:
+  bool detok_{false};
+
 public:
-  BleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Config> options)
+  BleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Config> options, bool detok = false)
       : Validator(vocabs, options, false),
-        quiet_(options_->get<bool>("quiet-translation")) {
+        quiet_(options_->get<bool>("quiet-translation")),
+        detok_(detok) {
     Ptr<Options> opts = New<Options>();
     opts->merge(options);
     opts->set("inference", true);
     builder_ = models::from_options(opts, models::usage::translation);
 
-    if(!options_->has("valid-script-path"))
-      LOG_VALID(warn,
-                "No post-processing script given for validating translator");
+#ifdef USE_SENTENCEPIECE
+    auto vocab = vocabs_.back();
+    ABORT_IF(detok_ && vocab->type() != "SentencePieceVocab",
+             "Detokenizing BLEU validator expects the target vocabulary to be SentencePieceVocab. "
+             "Current vocabulary type is {}", vocab->type());
+#else
+    ABORT_IF(detok_,
+             "Detokenizing BLEU validator expects the target vocabulary to be SentencePieceVocab. "
+             "Marian has not been compiled with SentencePieceVocab support.");
+#endif
   }
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
@@ -398,6 +410,7 @@ public:
 
     // Temporary options for translation
     auto opts = New<Config>(*options_);
+    opts->set("inference", true);
     opts->set("mini-batch", options_->get<int>("valid-mini-batch"));
     opts->set("maxi-batch", 10);
     opts->set("max-length", 1000);
@@ -439,6 +452,22 @@ public:
 
     timer::Timer timer;
     {
+      auto printer = New<OutputPrinter>(options_, vocabs_.back());
+
+      Ptr<OutputCollector> collector;
+      if(options_->has("valid-translation-output")) {
+        auto fileName = options_->get<std::string>("valid-translation-output");
+        collector = New<OutputCollector>(fileName); // for debugging
+      }
+      else {
+        collector = New<OutputCollector>(/* null */); // don't print, but log
+      }
+
+      if(quiet_)
+        collector->setPrintingStrategy(New<QuietPrinting>());
+      else
+        collector->setPrintingStrategy(New<GeometricPrinting>());
+
       size_t sentenceId = 0;
 
       ThreadPool threadPool(graphs.size(), graphs.size());
@@ -447,8 +476,7 @@ public:
       auto tOptions = New<Options>();
       tOptions->merge(options_);
 
-      while(*batchGenerator) {
-        auto batch = batchGenerator->next();
+      for(auto batch : *batchGenerator) {
 
         auto task = [=, &stats](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -461,8 +489,8 @@ public:
 
           auto search = New<BeamSearch>(tOptions,
                                         std::vector<Ptr<Scorer>>{scorer},
-                                        vocabs_.back()->GetEosId(),
-                                        vocabs_.back()->GetUnkId());
+                                        vocabs_.back()->getEosId(),
+                                        vocabs_.back()->getUnkId());
           auto histories = search->search(graph, batch);
 
           size_t no = 0;
@@ -470,7 +498,15 @@ public:
           for(auto history : histories) {
             auto result = history->Top();
             const auto& words = std::get<0>(result);
-            updateStats(stats, words, batch, no, vocabs_.back()->GetEosId());
+            updateStats(stats, words, batch, no, vocabs_.back()->getEosId());
+
+            std::stringstream best1;
+            std::stringstream bestn;
+            printer->print(history, best1, bestn);
+            collector->Write((long)history->GetLineNum(),
+                             best1.str(),
+                             bestn.str(),
+                             /*nbest=*/ false);
             no++;
           }
         };
@@ -492,45 +528,85 @@ public:
     return val;
   };
 
-  std::string type() override { return "bleu"; }
+  std::string type() override { return detok_ ? "bleu-detok" : "bleu"; }
 
 protected:
   bool quiet_{false};
 
+/*
+Tokenizer function from multi-bleu-detok.pl, corresponds to sacreBLEU.py
+
+# language-independent part:
+        $norm_text =~ s/<skipped>//g; # strip "skipped" tags
+        $norm_text =~ s/-\n//g; # strip end-of-line hyphenation and join lines
+        $norm_text =~ s/\n/ /g; # join lines
+        $norm_text =~ s/&quot;/"/g;  # convert SGML tag for quote to "
+        $norm_text =~ s/&amp;/&/g;   # convert SGML tag for ampersand to &
+        $norm_text =~ s/&lt;/</g;    # convert SGML tag for less-than to >
+        $norm_text =~ s/&gt;/>/g;    # convert SGML tag for greater-than to <
+
+# language-dependent part (assuming Western languages):
+        $norm_text = " $norm_text ";
+        $norm_text =~ s/([\{-\~\[-\` -\&\(-\+\:-\@\/])/ $1 /g;   # tokenize punctuation
+        $norm_text =~ s/([^0-9])([\.,])/$1 $2 /g; # tokenize period and comma unless preceded by a digit
+        $norm_text =~ s/([\.,])([^0-9])/ $1 $2/g; # tokenize period and comma unless followed by a digit
+        $norm_text =~ s/([0-9])(-)/$1 $2 /g; # tokenize dash when preceded by a digit
+        $norm_text =~ s/\s+/ /g; # one space only between words
+        $norm_text =~ s/^\s+//;  # no leading space
+        $norm_text =~ s/\s+$//;  # no trailing space
+*/
+
+  std::string tokenize(const std::string& text) {
+    std::string normText = text;
+
+    normText = regex::regex_replace(normText, regex::regex("<skipped>"), "");
+    normText = regex::regex_replace(normText, regex::regex("-\\n"), "");
+    normText = regex::regex_replace(normText, regex::regex("\\n"), " ");
+    normText = regex::regex_replace(normText, regex::regex("&quot;"), "\"");
+    normText = regex::regex_replace(normText, regex::regex("&amp;"), "&");
+    normText = regex::regex_replace(normText, regex::regex("&lt;"), "<");
+    normText = regex::regex_replace(normText, regex::regex("&gt;"), ">");
+
+    normText = " " + normText + " ";
+    normText = regex::regex_replace(normText, regex::regex("([\\{-\\~\\[-\\` -\\&\(-\\+\\:-\\@\\/])"), " $1 ");
+    normText = regex::regex_replace(normText, regex::regex("([^0-9])([\\.,])"), "$1 $2 ");
+    normText = regex::regex_replace(normText, regex::regex("([\\.,])([^0-9])"), " $1 $2");
+    normText = regex::regex_replace(normText, regex::regex("([0-9])(-)"), "$1 $2 ");
+    normText = regex::regex_replace(normText, regex::regex("\\s+"), " ");
+    normText = regex::regex_replace(normText, regex::regex("^\\s+"), "");
+    normText = regex::regex_replace(normText, regex::regex("\\s+$"), "");
+
+    return normText;
+  }
+
+  std::vector<std::string> decode(const Words& words, bool addEOS = false) {
+    auto vocab = vocabs_.back();
+    auto tokens = utils::splitAny(tokenize(vocab->decode(words)), " ");
+    if(addEOS)
+      tokens.push_back("</s>");
+    return tokens;
+  }
+
+  template <typename T>
   void updateStats(std::vector<float>& stats,
-                   const Words& cand,
-                   const Ptr<data::Batch> batch,
-                   size_t no,
-                   Word eos) {
-    auto corpusBatch = std::static_pointer_cast<data::CorpusBatch>(batch);
-    auto subBatch = corpusBatch->back();
+                   const std::vector<T>& cand,
+                   const std::vector<T>& ref) {
 
-    size_t size = subBatch->batchSize();
-    size_t width = subBatch->batchWidth();
-
-    Words ref;  // fill ref
-    for(size_t i = 0; i < width; ++i) {
-      Word w = subBatch->data()[i * size + no];
-      if(w == eos)
-        break;
-      ref.push_back(w);
-    }
-
-    std::map<std::vector<Word>, size_t> rgrams;
+    std::map<std::vector<T>, size_t> rgrams;
     for(size_t i = 0; i < ref.size(); ++i) {
       // template deduction for std::min<T> seems to be weird under VS due to
       // macros in windows.h hence explicit type to avoid macro parsing.
       for(size_t l = 1; l <= std::min<size_t>(4ul, ref.size() - i); ++l) {
-        std::vector<Word> ngram(l);
+        std::vector<T> ngram(l);
         std::copy(ref.begin() + i, ref.begin() + i + l, ngram.begin());
         rgrams[ngram]++;
       }
     }
 
-    std::map<std::vector<Word>, size_t> tgrams;
+    std::map<std::vector<T>, size_t> tgrams;
     for(size_t i = 0; i < cand.size() - 1; ++i) {
       for(size_t l = 1; l <= std::min<size_t>(4ul, cand.size() - 1 - i); ++l) {
-        std::vector<Word> ngram(l);
+        std::vector<T> ngram(l);
         std::copy(cand.begin() + i, cand.begin() + i + l, ngram.begin());
         tgrams[ngram]++;
       }
@@ -546,6 +622,32 @@ protected:
     }
 
     stats[8] += ref.size();
+  }
+
+  void updateStats(std::vector<float>& stats,
+                   const Words& cand,
+                   const Ptr<data::Batch> batch,
+                   size_t no,
+                   Word eos) {
+
+    auto corpusBatch = std::static_pointer_cast<data::CorpusBatch>(batch);
+    auto subBatch = corpusBatch->back();
+
+    size_t size = subBatch->batchSize();
+    size_t width = subBatch->batchWidth();
+
+    Words ref;  // fill ref
+    for(size_t i = 0; i < width; ++i) {
+      Word w = subBatch->data()[i * size + no];
+      if(w == eos)
+        break;
+      ref.push_back(w);
+    }
+
+    if(detok_)
+      updateStats(stats, decode(cand, /*addEOS=*/ true), decode(ref));
+    else
+      updateStats(stats, cand, ref);
   }
 
   float calcBLEU(const std::vector<float>& stats) {

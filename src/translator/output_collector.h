@@ -45,10 +45,12 @@ private:
 
 class OutputCollector {
 public:
-  OutputCollector();
+  OutputCollector(std::string outFile);
 
   template <class T>
   OutputCollector(T&& arg) : nextId_(0), outStrm_(new io::OutputFileStream(arg)) {}
+
+  OutputCollector() : nextId_(0), outStrm_(nullptr) {}
 
   OutputCollector(const OutputCollector&) = delete;
 

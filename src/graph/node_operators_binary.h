@@ -486,7 +486,7 @@ struct RowsNodeOp : public NaryNodeOp {
 struct SelectNodeOp : public NaryNodeOp {
   SelectNodeOp(Expr a, Expr indices, int axis)
       : NaryNodeOp({a, indices}, newShape(a, axis, indices->shape().elements())),
-        axis_{a->shape().axis(axis)} {
+        axis_(a->shape().axis(axis)) {
     matchOrAbort<IndexType>(indices->value_type());
   }
 
@@ -762,7 +762,10 @@ struct MinimumNodeOp : public ElementBinaryNodeOp {
   const std::string type() override { return "min"; }
 };
 
-// Cross-entropy node. It computes -b*log(softmax(a)), summing rowwise.
+// In each j-th row, take the corresponding j-th label index i from indices and compute:
+// For each vocabulary item v, the only non-zero element in a row in the sum is the item
+// that matches the label indexed by i (the picked element).
+// C = sum_{v in V}(-logsoftmax(A) * delta(v, i) = -logsoftmax(A)[i]
 struct CrossEntropyNodeOp : public NaryNodeOp {
   CrossEntropyNodeOp(Expr a, Expr indices) : NaryNodeOp({a, indices}, newShape(a)) {
     matchOrAbort<IndexType>(indices->value_type());
@@ -775,7 +778,6 @@ struct CrossEntropyNodeOp : public NaryNodeOp {
   }
 
   NodeOps forwardOps() override {
-    // C = sum(-logsoftmax(A) * delta(y', y))
     return {NodeOp(CrossEntropyPick(val_, child(0)->val(), child(1)->val()))};
   }
 

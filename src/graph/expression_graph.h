@@ -244,8 +244,19 @@ public:
   }
 
   void backward(bool zero = true) {
-    ABORT_IF(topNodes_.size() > 1,
-             "There are more than one top most node for backward step");
+    if(topNodes_.size() > 1) {
+      LOG(critical, "There are more ({}) than one top most node for backward step:", topNodes_.size());
+      for(auto node : topNodes_) {
+        LOG(critical,
+            "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
+            node->type(),
+            node->shape(),
+            node->name(),
+            node->getId(),
+            node->hash());
+      }
+      ABORT("Aborting");
+    }
 
     params_->allocateBackward();
     if(zero)
@@ -351,11 +362,12 @@ public:
     return Expression<ConstantNode>(shared_from_this(), shape, init, value_type);
   }
 
+  // @TODO: add version with iterators
   // shortcut to turn vector of indices to integer tensor, to be used with operators
   // like rows or select
-  Expr indices(const std::vector<IndexType>& indices) {
-    return constant({(int)indices.size()},
-                    inits::from_vector(indices),
+  Expr indices(const std::vector<IndexType>& indicesVector) {
+    return constant({(int)indicesVector.size()},
+                    inits::from_vector(indicesVector),
                     Type::uint32);
   }
 

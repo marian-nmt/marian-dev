@@ -12,7 +12,12 @@ namespace data {
 template <class Sample, class Iterator, class Batch>
 class DatasetBase {
 protected:
+  // Data processing may differ in training/inference settings
   std::vector<std::string> paths_;
+
+  Ptr<Config> options_;
+  bool inference_{false};
+
 
 public:
   typedef Batch batch_type;
@@ -20,8 +25,12 @@ public:
   typedef Iterator iterator;
   typedef Sample sample;
 
-  DatasetBase() {}
-  DatasetBase(std::vector<std::string> paths) : paths_(paths) {}
+  // @TODO: get rid of Config in favor of Options!
+  DatasetBase(std::vector<std::string> paths, Ptr<Config> options)
+    : paths_(paths), options_(options), inference_(options->get<bool>("inference", false)) {}
+
+  DatasetBase(Ptr<Config> options) : DatasetBase({}, options) {}
+
 
   virtual Iterator begin() = 0;
   virtual Iterator end() = 0;

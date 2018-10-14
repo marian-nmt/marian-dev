@@ -1,5 +1,6 @@
 #pragma once
 #include "graph/expression_graph.h"
+#include "graph/node_initializers.h"
 
 namespace marian {
 
@@ -102,6 +103,9 @@ Expr atleast_3d(Expr a);
 Expr atleast_4d(Expr a);
 Expr atleast_nd(Expr a, size_t dims);
 
+// create a constant of shape a->shape() and initialize with init
+Expr constant_like(Expr a, const NodeInitializer& init);
+
 Expr flatten(Expr a);
 Expr flatten_2d(Expr a);
 
@@ -119,7 +123,10 @@ Expr select(Expr a, const std::vector<IndexType>& indices, int axis);
 Expr sum(Expr a, int ax = 0);
 
 Expr softmax(Expr a);
-Expr softmax(Expr a, Expr mask);
+
+// @TODO: maybe get rid of this entirely to not obfuscate, what's going on inside.
+// @TODO: switch to log-masking everywhere?
+Expr softmax(Expr a, Expr zeroOneMask);
 
 Expr logsoftmax(Expr a);
 

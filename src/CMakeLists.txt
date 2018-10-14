@@ -3,6 +3,7 @@ add_subdirectory(3rd_party)
 include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
+include_directories(3rd_party/sentencepiece)
 
 add_library(marian STATIC
   common/utils.cpp
@@ -25,10 +26,11 @@ add_library(marian STATIC
   3rd_party/cnpy/cnpy.cpp
   3rd_party/exception.cpp
   3rd_party/svd/svd.cpp
+  3rd_party/ExceptionWithCallStack.cpp
 
   tensors/backend.cpp
+  tensors/rand.cpp
   tensors/cpu/device.cpp
-  tensors/cpu/dropout.cpp
   tensors/cpu/prod.cpp
   tensors/cpu/tensor_operators.cpp
 
@@ -80,7 +82,6 @@ if(CUDA_FOUND)
 cuda_add_library(marian_cuda
   tensors/gpu/device.cu
   tensors/gpu/algorithm.cu
-  tensors/gpu/dropout.cu
   tensors/gpu/prod.cu
   tensors/gpu/element.cu
   tensors/gpu/add.cu
@@ -90,7 +91,6 @@ cuda_add_library(marian_cuda
   translator/helpers.cu
   training/gradient_dropping/gpu/dropper.cu
   training/gradient_dropping/gpu/sparse_algorithm.cu
-  training/communicator.cu
   STATIC)
 endif(CUDA_FOUND)
 

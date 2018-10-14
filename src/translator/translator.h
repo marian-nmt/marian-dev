@@ -29,9 +29,15 @@ private:
 public:
   Translate(Ptr<Config> options)
       : options_(options),
-        corpus_(New<data::Corpus>(options_, true)),
-        trgVocab_(New<Vocab>()) {
+        corpus_(New<data::Corpus>(options_, true)) {
+
+    options_->set("inference", true);
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
+
+    auto topt = New<Options>();
+    topt->merge(options_);
+    trgVocab_ = New<Vocab>(topt, vocabs.size() - 1);
+
     trgVocab_->load(vocabs.back());
 
     auto srcVocab = corpus_->getVocabs()[0];
@@ -74,12 +80,12 @@ public:
   void run() override {
     data::BatchGenerator<data::Corpus> bg(corpus_, options_);
 
-    auto devices = options_->getDevices();
+    auto numDevices = options_->getDevices().size(); // @TODO: make this a class member. We only need the size actually.
 
-    ThreadPool threadPool(devices.size(), devices.size());
+    ThreadPool threadPool(numDevices, numDevices);
 
     size_t batchId = 0;
-    auto collector = New<OutputCollector>();
+    auto collector = New<OutputCollector>(options_->get<std::string>("output"));
     auto printer = New<OutputPrinter>(options_, trgVocab_);
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
@@ -90,20 +96,19 @@ public:
     auto tOptions = New<Options>();
     tOptions->merge(options_);
 
-    while(bg) {
-      auto batch = bg.next();
+    for(auto batch : bg) {
 
       auto task = [=](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
         thread_local std::vector<Ptr<Scorer>> scorers;
 
         if(!graph) {
-          graph = graphs_[id % devices.size()];
-          scorers = scorers_[id % devices.size()];
+          graph = graphs_[id % numDevices];
+          scorers = scorers_[id % numDevices];
         }
 
         auto search = New<Search>(
-            tOptions, scorers, trgVocab_->GetEosId(), trgVocab_->GetUnkId());
+            tOptions, scorers, trgVocab_->getEosId(), trgVocab_->getUnkId());
 
         auto histories = search->search(graph, batch);
 
@@ -119,6 +124,16 @@ public:
       };
 
       threadPool.enqueue(task, batchId++);
+
+      // progress heartbeat for MS-internal Philly compute cluster
+      //otherwise this job may be killed prematurely if no log for 4 hrs
+      if (getenv("PHILLY_JOB_ID"))  // this environment variable exists when running on the cluster
+      {
+        auto progress = 0.f; //fake progress for now
+        fprintf(stdout, "PROGRESS: %.2f%%\n", progress);
+        fflush(stdout);
+      }
+
     }
   }
 };
@@ -139,20 +154,27 @@ public:
 
   TranslateService(Ptr<Config> options)
       : options_(options),
-        devices_(options_->getDevices()),
-        trgVocab_(New<Vocab>()) {
+        devices_(options_->getDevices()) {
     init();
   }
 
   void init() override {
     // initialize vocabs
+    options_->set("inference", true);
+
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
+
+    auto topt = New<Options>();
+    topt->merge(options_);
+
     for(size_t i = 0; i < vocabPaths.size() - 1; ++i) {
-      Ptr<Vocab> vocab = New<Vocab>();
+      Ptr<Vocab> vocab = New<Vocab>(topt, i);
       vocab->load(vocabPaths[i], maxVocabs[i]);
       srcVocabs_.emplace_back(vocab);
     }
+
+    trgVocab_ = New<Vocab>(topt, vocabPaths.size() - 1);
     trgVocab_->load(vocabPaths.back());
 
     // initialize scorers
@@ -173,7 +195,8 @@ public:
   std::string run(const std::string& input) override {
     auto corpus_ = New<data::TextInput>(
         std::vector<std::string>({input}), srcVocabs_, options_);
-    data::BatchGenerator<data::TextInput> bg(corpus_, options_);
+
+    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_);
 
     auto collector = New<StringCollector>();
     auto printer = New<OutputPrinter>(options_, trgVocab_);
@@ -183,13 +206,12 @@ public:
     auto tOptions = New<Options>();
     tOptions->merge(options_);
 
-    bg.prepare(false);
+    batchGenerator.prepare(false);
 
     {
       ThreadPool threadPool_(devices_.size(), devices_.size());
 
-      while(bg) {
-        auto batch = bg.next();
+      for(auto batch : batchGenerator) {
 
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -201,7 +223,7 @@ public:
           }
 
           auto search = New<Search>(
-              tOptions, scorers, trgVocab_->GetEosId(), trgVocab_->GetUnkId());
+              tOptions, scorers, trgVocab_->getEosId(), trgVocab_->getUnkId());
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {

@@ -142,9 +142,7 @@ public:
     LOG(info, "Running...");
 
     size_t id = 0;
-    while(*testBatches) {
-      auto testBatch = testBatches->next();
-
+    for(auto testBatch : *testBatches) {
       if(contexts.size() > id && !contexts[id].empty()) {
         train(contexts[id]);
         translate(testBatch, collector, printer, graphAdapt_);
@@ -173,7 +171,7 @@ public:
     testBatches->prepare(false);
 
     // Initialize output printing
-    auto collector = New<OutputCollector>();
+    auto collector = New<OutputCollector>(options_->get<std::string>("output"));
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
     auto printer = New<OutputPrinter>(options_, vocabs_.back());
@@ -184,8 +182,7 @@ public:
 
     LOG(info, "Running...");
 
-    while(*testBatches) {
-      auto testBatch = testBatches->next();
+    for(auto testBatch : *testBatches) {
       auto trainSet = trainSets->getSamples();
 
       if(!trainSet.empty()) {
@@ -226,8 +223,9 @@ private:
     while(scheduler->keepGoing()) {
       trainBatches->prepare(false);
 
-      while(*trainBatches && scheduler->keepGoing()) {
-        auto batch = trainBatches->next();
+      for(auto batch : *trainBatches) {
+        if(!scheduler->keepGoing())
+          break;
 
         // Copy params from the original model
         if(first) {
@@ -268,8 +266,8 @@ private:
     {
       auto search = New<BeamSearch>(tOptions_,
                                     scorers_,
-                                    vocabs_.back()->GetEosId(),
-                                    vocabs_.back()->GetUnkId());
+                                    vocabs_.back()->getEosId(),
+                                    vocabs_.back()->getUnkId());
       auto histories = search->search(graph, batch);
 
       for(auto history : histories) {

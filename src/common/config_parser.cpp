@@ -295,7 +295,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // optimizer options
   auto defaultOptimizer = (mode_ == cli::mode::selfadaptive) ? "sgd" : "adam";
 
-  cli.add<std::string>("--optimizer,-o",
+  cli.add<std::string>("--optimizer",
      "Optimization algorithm: sgd, adagrad, adam",
      defaultOptimizer);
   cli.add_nondefault<std::vector<float>>("--optimizer-params",
@@ -450,11 +450,11 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--input,-i",
       "Paths to input file(s), stdin by default",
       std::vector<std::string>({"stdin"}));
+  cli.add<std::string>("--output,-o",
+      "Paths to output file(s), stdout by default",
+      "stdout");
 
   if(mode_ != cli::mode::selfadaptive) {
-    cli.add<std::string>("--output,-o",
-        "Paths to output file(s), stdout by default",
-        "stdout");
     cli.add<std::vector<std::string>>("--vocabs,-v",
         "Paths to vocabulary files have to correspond to --input");
   }

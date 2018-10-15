@@ -71,12 +71,7 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
           grads_[idx]->copyFrom(newGrads->subtensor(pos, (int)grads_[idx]->size()));
 
-          if(scaleLearningRate_) {
-            shardOpt_[idx]->update(
-                params_[idx], grads_[idx], batch_words / avgBatchWords_);
-          } else {
-            shardOpt_[idx]->update(params_[idx], grads_[idx]);
-          }
+          shardOpt_[idx]->update(params_[idx], grads_[idx]);
 
           if(mvAvg_)
             updateAvgParams(
@@ -157,6 +152,7 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
     int totalSize = (int)graphs_[0]->params()->vals()->size();
 
     int i = 0;
+    int pos = 0;
     for(auto graph : graphs_) {
       int __size__ = std::min(shardSize_, totalSize);
       totalSize -= __size__;
@@ -168,12 +164,14 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
       allocator->allocate(paramAvg, {1, __size__});
 
       if(graphAvg)
-        paramAvg->copyFrom(graphAvg->params()->vals());
+        paramAvg->copyFrom(graphAvg->params()->vals()->subtensor(pos, __size__));
       else
         paramAvg->copyFrom(params_[i++]);
 
       paramsAllocAvg_.push_back(allocator);
       paramsAvg_.push_back(paramAvg);
+
+      pos += __size__;
     }
 
     if(graphAvg)

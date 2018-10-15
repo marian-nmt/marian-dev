@@ -92,6 +92,7 @@ struct Ops<float> {
   static __HDI__ float sigmoid(const float& x) {
     return x > 0 ? (1.f / (1.f + exp(-x))) : (exp(x) / (1.f + exp(x)));
   }
+  
 
   static __HDI__ float logaddexp(const float& x, const float& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
@@ -119,6 +120,16 @@ struct Ops<float32x4> {
   static inline float32x4 mul(const float32x4& x, const float32x4& y) { return _mm_mul_ps(x, y); }
   static inline float32x4 div(const float32x4& x, const float32x4& y) { return _mm_div_ps(x, y); }
 
+
+  static inline float32x4 log(const float32x4& x) {
+    float32x4 ret;
+    float* pRet = (float*)&ret;
+    const float* ptr = (float*)&x;
+    for(int i = 0; i < 4; i++)
+    pRet[i] = ::logf(ptr[i]);
+    return ret;
+  }
+
   static inline float32x4 exp(const float32x4& x) {
     float32x4 ret;
     float* pRet = (float*)&ret;
@@ -127,6 +138,10 @@ struct Ops<float32x4> {
     pRet[i] = ::expf(ptr[i]);
     return ret;
   }
+
+  static inline float32x4 neg(const float32x4& x) { return sub(0.f, x); }
+
+  static inline float32x4 pow(const float32x4& x, const float32x4& y) { return exp(mul(y, log(x))); }
 };
 
 //*******************************************************************************************
@@ -168,6 +183,7 @@ TERNARY(IfThenElse, if_then_else, Ops<ElementType>::if_then_else(x, y, z));
 BINARY(Clip,       clip,      Ops<ElementType>::clip(x, y));
 // derivative of Clip, cut-off function
 BINARY(Bump,       bump,      Ops<ElementType>::bump(x, y));
+
 UNARY(Sigmoid,     sigmoid,   Ops<ElementType>::sigmoid(x));
 BINARY(LogAddExp,  logaddexp, Ops<ElementType>::logaddexp(x, y));
 UNARY(sReLU,       ReLU,      Ops<ElementType>::relu(x));

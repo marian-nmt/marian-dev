@@ -1,10 +1,7 @@
 #pragma once
 
-#include <cmath>
-
 #include "functional/defs.h"
 #include "functional/operands.h"
-#include "functional/operators.h"
 
 namespace marian {
 namespace functional {
@@ -83,65 +80,6 @@ struct BinaryFunctor {
     return name<X, Capture>(x, y);                                \
   }
 
-UNARY(Tanh, tanh, tanhf(x));
-UNARY(Sin, sin, sinf(x));
-UNARY(Cos, cos, cosf(x));
-UNARY(Tan, tan, tanf(x));
-UNARY(Log, log, logf(x));
-UNARY(Exp, exp, Ops<ElementType>::exp(x));
-UNARY(Abs, abs, fabs(x));
-UNARY(Sqrt, sqrt, sqrtf(x));
-UNARY(Neg, operator-, -x);
-UNARY(Sigmoid,
-      sigmoid,
-      x > 0 ? (1.f / (1.f + expf(-x))) : (expf(x) / (1.f + expf(x))));
-
-BINARY(Plus,  operator+, Ops<ElementType>::add(x, y));
-BINARY(Minus, operator-, Ops<ElementType>::sub(x, y));
-BINARY(Mult,  operator*, Ops<ElementType>::mul(x, y));
-BINARY(Div,   operator/, Ops<ElementType>::div(x, y));
-
-BINARY(LogAddExp,
-       logaddexp,
-       (/*if*/ (x < y)
-            ?  // Note: This may not be ideal for CUDA; cf. CNTK implementation
-            (y + log1pf(expf(x - y)))
-            /*else*/
-            : (x + log1pf(expf(y - x)))));
-BINARY(Maximum,
-       max,
-       (x > y) ? y : x);  // note: std::max not available on CUDA it seems
-BINARY(Minimum, min, (x < y) ? y : x);
-
-UNARY(Negate, operator!, !x);
-BINARY(Eq, operator==, x == y);
-BINARY(NEq, operator!=, x != y);
-BINARY(Gt, operator>, x > y);
-BINARY(Lt, operator<, x < y);
-BINARY(Geq, operator>=, x >= y);
-BINARY(Leq, operator<=, x <= y);
-BINARY(And, operator&&, x && y);
-BINARY(Or, operator||, x || y);
-
-template <typename T>
-__HDI__ T sgn(T val) {
-  return T((0 < val) - (val < 0));
-}
-
-UNARY(Sgn, sgn, sgn(x));
-
-BINARY(Pow, pow, pow(x, y));
-
-BINARY(Clip, clip, fabs(x) >= y ? sgn(x) * y : x);
-
-// derivative of Clip, cut-off function
-BINARY(Bump, bump, fabs(x) >= y ? 0.f : 1.f);
-
-UNARY(sReLU, ReLU, x > 0.f ? x : 0.f);
-UNARY(sReLUBack, ReLUback, x > 0.f ? 1.f : 0.f);
-BINARY(sPReLU, PReLU, x > 0.f ? x : x * y);
-BINARY(sPReLUBack, PReLUback, x > 0.f ? 1.f : y);
-
 template <class Function, class X, class Y, class Z>
 struct TernaryFunctor {
   X x;
@@ -160,7 +98,11 @@ struct TernaryFunctor {
 #define TERNARY(name, name2, func)                                         \
   namespace elem {                                                         \
   struct name {                                                            \
-    __HDI__ static float apply(float x, float y, float z) { return func; } \
+    template <typename ElementType>                                        \
+    __HDI__ static ElementType apply(ElementType x,                        \
+                                     ElementType y,                        \
+                                     ElementType z)                        \
+    { return func; }                                                       \
   };                                                                       \
   }                                                                        \
   template <class X, class Y, class Z>                                     \
@@ -189,8 +131,6 @@ struct TernaryFunctor {
   name<Capture, Capture, IsClass<Z>> name2(Capture x, Capture y, Z z) {    \
     return name<Capture, Capture, Z>(x, y, z);                             \
   }
-
-TERNARY(IfThenElse, if_then_else, x ? y : z);
 
 template <class X, class Y>
 struct Assign {

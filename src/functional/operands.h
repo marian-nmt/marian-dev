@@ -38,7 +38,7 @@ struct C {
     return (T)V;
   }
 
-  std::string to_string() { return "C<" + std::to_string(V) + ">"; }
+  std::string to_string() const { return "C<" + std::to_string(V) + ">"; }
 };
 
 /******************************************************************************/
@@ -53,7 +53,7 @@ struct Capture {
     return T(value);
   }
 
-  std::string to_string() { return "Cap(" + std::to_string(value) + ")"; }
+  std::string to_string() const { return "Cap(" + std::to_string(value) + ")"; }
 };
 
 /******************************************************************************/
@@ -67,7 +67,7 @@ struct Var {
     return Select<N - 1>::apply(arg, args...);
   }
 
-  std::string to_string() { return "Var<" + std::to_string(N) + ">"; }
+  std::string to_string() const { return "Var<" + std::to_string(N) + ">"; }
 };
 }  // namespace functional
 }  // namespace marian

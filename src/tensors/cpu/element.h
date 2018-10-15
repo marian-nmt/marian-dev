@@ -69,16 +69,30 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
 
 template <class Functor, class... Tensors>
 void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors) {
-  // std::vector<marian::Tensor> ts({tensors...});
-  // bool div4 = true;
-  // for(auto t : ts)
-  //   if(t->shape()[-1] % 4 != 0)
-  //     div4 = false;
+  std::vector<marian::Tensor> ts({tensors...});
+  bool div4 = true;
+  for(auto t : ts)
+    if(t->shape()[-1] % 4 != 0)
+      div4 = false;
 
-  // if(div4)
-  //   element<float32x4>(functor, out, tensors...);
-  // else
-    element<float>(functor, out, tensors...);
+  bool div8 = true;
+  for(auto t : ts)
+    if(t->shape()[-1] % 8 != 0)
+      div8 = false;
+
+  if(div8) {
+    //std::cerr << functor.to_string() << std::endl;
+    element<float32x8>(functor, out, tensors...);
+    return;
+  }
+
+  if(div4) {
+    //std::cerr << functor.to_string() << std::endl;
+    element<float32x4>(functor, out, tensors...);
+    return;
+  }
+
+  element<float>(functor, out, tensors...);
 }
 
 // main call to function executing element-wise operation

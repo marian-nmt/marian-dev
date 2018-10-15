@@ -30,6 +30,17 @@ inline marian::Shape adapt<float32x4>(const marian::Shape& shape) {
   return x4Shape;
 }
 
+template <>
+inline marian::Shape adapt<float32x8>(const marian::Shape& shape) {
+  ABORT_IF(shape[-1] % 8 != 0,
+           "Last dim ({}) is not a multiple of 8 while converting to Tensor<float32x4>",
+           shape[-1]);
+
+  marian::Shape x8Shape = shape;
+  x8Shape.set(-1, shape[-1] / 8);
+  return x8Shape;
+}
+
 template <typename T>
 struct Tensor {
   T* data_;

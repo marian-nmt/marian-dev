@@ -18,7 +18,7 @@ struct UnaryFunctor {
     return Function::apply(x(arg, args...));
   }
 
-  std::string to_string() { return Function::n() + "<" + x.to_string() + ">"; }
+  std::string to_string() const { return Function::n() + "<" + x.to_string() + ">"; }
 };
 
 template <class Function, class X, class Y>
@@ -34,7 +34,7 @@ struct BinaryFunctor {
     return Function::apply(x(arg, args...), y(arg, args...));
   }
 
-  std::string to_string() {
+  std::string to_string() const {
     return Function::n() + "<" + x.to_string() + "," + y.to_string() + ">";
   }
 };
@@ -145,7 +145,7 @@ struct Assign {
     return x(arg, args...) = y(arg, args...);
   }
 
-  std::string to_string() {
+  std::string to_string() const {
     return "Assign<" + x.to_string() + "," + y.to_string() + ">";
   }
 };
@@ -191,7 +191,7 @@ struct Assignee {
     return *this = *this / x;
   }
 
-  std::string to_string() { return var.to_string(); }
+  std::string to_string() const { return var.to_string(); }
 };
 
 /******************************************************************************/

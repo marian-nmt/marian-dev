@@ -19,7 +19,32 @@ public:
 
   friend std::ostream& operator<<(std::ostream& out, float32x4 f4) {
     float* a = (float*)&f4;
-    out << "[" << a[0] << " " << a[1] << " " << a[2] << " " << a[3] << "]";
+    out << "[" << a[0];
+    for(int i = 1; i < 8; i++)
+      out << " " << a[i]; 
+    out << "]";
+    return out;
+  }
+};
+
+struct float32x8 {
+private:
+  __m256 f_;
+
+public:
+  float32x8() {}
+  float32x8(const __m256& f) : f_(f) {}
+  float32x8(const float& f) : f_(_mm256_set1_ps(f)) {}
+
+  operator __m256() const { return f_; }
+  operator __m256&() { return f_; }
+
+  friend std::ostream& operator<<(std::ostream& out, float32x8 f8) {
+    float* a = (float*)&f8;
+    out << "[" << a[0];
+    for(int i = 1; i < 8; i++)
+      out << " " << a[i]; 
+    out << "]";
     return out;
   }
 };

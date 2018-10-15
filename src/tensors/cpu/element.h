@@ -69,8 +69,14 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
 
 template <class Functor, class... Tensors>
 void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors) {
-  // if(out->shape()[-1] % 4 == 0)
-  //   element<floatX4>(functor, out, tensors...);
+  // std::vector<marian::Tensor> ts({tensors...});
+  // bool div4 = true;
+  // for(auto t : ts)
+  //   if(t->shape()[-1] % 4 != 0)
+  //     div4 = false;
+
+  // if(div4)
+  //   element<float32x4>(functor, out, tensors...);
   // else
     element<float>(functor, out, tensors...);
 }

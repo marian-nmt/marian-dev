@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
 
   {
     boost::timer::auto_cpu_timer timer;
-    auto f = _1 = exp(_2) * 2.f;
+    auto f = _1 = (exp(_2) * 2.f) > 10.f;
     std::cerr << f.to_string() << std::endl;
     for(int i = 0; i < 1; i++) {
       element<float32x4>(f, out, in2);

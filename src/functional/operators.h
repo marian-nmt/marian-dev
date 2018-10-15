@@ -92,7 +92,7 @@ struct Ops<float> {
   static __HDI__ float sigmoid(const float& x) {
     return x > 0 ? (1.f / (1.f + exp(-x))) : (exp(x) / (1.f + exp(x)));
   }
-  
+
 
   static __HDI__ float logaddexp(const float& x, const float& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
@@ -112,36 +112,87 @@ struct Ops<float> {
   static __HDI__ float if_then_else(const float& x, const float& y, const float& z) { return x ? y : z; }
 };
 
+#include "3rd_party/sse_mathfun.h"
+
 // Specialization for float32x4 (=__m128, CPU SSE intrisics)
 template <>
 struct Ops<float32x4> {
+  static inline float32x4 tanh(const float32x4& x) { // ( e^x - e^-x )/( e^x + e^-x )
+    auto ex = exp(x);
+    auto emx = exp(neg(x));
+    auto num = sub(ex, emx);
+    auto den = add(ex, emx);
+    return div(num, den);
+  }
+
+  static inline float32x4 loop4(const std::function<float(const float&)>& f, const float32x4& x) {
+    float32x4 out;
+    for(int i = 0; i < 4; i++)
+      ((float*)&out)[i] = f(((const float*)&x)[i]);
+    return out;
+  }
+
+  static inline float32x4 loop4(const std::function<float(const float&, const float&)>& f, const float32x4& x, const float32x4& y) {
+    float32x4 out;
+    for(int i = 0; i < 4; i++)
+      ((float*)&out)[i] = f(((const float*)&x)[i], ((const float*)&y)[i]);
+    return out;
+  }
+
+  static inline float32x4 loop4(const std::function<float(const float&, const float&, const float&)>& f, const float32x4& x, const float32x4& y, const float32x4& z) {
+    float32x4 out;
+    for(int i = 0; i < 4; i++)
+      ((float*)&out)[i] = f(((const float*)&x)[i], ((const float*)&y)[i], ((const float*)&z)[i]);
+    return out;
+  }
+
+  static inline float32x4 sin(const float32x4& x) { return sin_ps(x); }
+  static inline float32x4 cos(const float32x4& x) { return cos_ps(x); }
+  static inline float32x4 tan(const float32x4& x) { return div(sin(x), cos(x)); }
+  static inline float32x4 log(const float32x4& x) { return log_ps(x); }
+  static inline float32x4 exp(const float32x4& x) { return exp_ps(x); }
+  
+  // @TODO: get rid of loop4 with proper intrisics
+  static inline float32x4 abs(const float32x4& x)  { return loop4(Ops<float>::abs, x); }
+  static inline float32x4 sqrt(const float32x4& x) { return _mm_sqrt_ps(x); }
+  static inline float32x4 neg(const float32x4& x)  { return sub(0.f, x); }
+  
+  // @TODO: get rid of loop4 with proper intrisics
+  static inline float32x4 sgn(const float32x4& x)  { return loop4(Ops<float>::sgn, x); }
+  
   static inline float32x4 add(const float32x4& x, const float32x4& y) { return _mm_add_ps(x, y); }
   static inline float32x4 sub(const float32x4& x, const float32x4& y) { return _mm_sub_ps(x, y); }
   static inline float32x4 mul(const float32x4& x, const float32x4& y) { return _mm_mul_ps(x, y); }
   static inline float32x4 div(const float32x4& x, const float32x4& y) { return _mm_div_ps(x, y); }
 
-
-  static inline float32x4 log(const float32x4& x) {
-    float32x4 ret;
-    float* pRet = (float*)&ret;
-    const float* ptr = (float*)&x;
-    for(int i = 0; i < 4; i++)
-    pRet[i] = ::logf(ptr[i]);
-    return ret;
-  }
-
-  static inline float32x4 exp(const float32x4& x) {
-    float32x4 ret;
-    float* pRet = (float*)&ret;
-    const float* ptr = (float*)&x;
-    for(int i = 0; i < 4; i++)
-    pRet[i] = ::expf(ptr[i]);
-    return ret;
-  }
-
-  static inline float32x4 neg(const float32x4& x) { return sub(0.f, x); }
-
+  static inline float32x4 max(const float32x4& x, const float32x4& y) { return _mm_max_ps(x, y); }
+  static inline float32x4 min(const float32x4& x, const float32x4& y) { return _mm_min_ps(x, y); }
   static inline float32x4 pow(const float32x4& x, const float32x4& y) { return exp(mul(y, log(x))); }
+
+  // @TODO: get rid of loop4 with proper intrisics
+  static inline float32x4 negate(float32x4& x)  { return loop4(Ops<float>::negate, x); }
+  
+  static inline float32x4 eq(const float32x4& x, const float32x4& y)   { return loop4(Ops<float>::eq, x, y); }
+  static inline float32x4 neq(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::neq, x, y); }
+  static inline float32x4 gt(const float32x4& x, const float32x4& y)   { return loop4(Ops<float>::gt, x, y); }
+  static inline float32x4 lt(const float32x4& x, const float32x4& y)   { return loop4(Ops<float>::lt, x, y); }
+  static inline float32x4 geq(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::geq, x, y); }
+  static inline float32x4 leq(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::leq, x, y); }
+  static inline float32x4 and_(const float32x4& x, const float32x4& y) { return loop4(Ops<float>::and_, x, y); } // 'and' is used by gcc
+  static inline float32x4 or_(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::or_, x, y); } // 'or' is used by gcc
+
+  static inline float32x4 sigmoid(const float32x4& x)  { return loop4(Ops<float>::sigmoid, x); }
+  static inline float32x4 logaddexp(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::logaddexp, x, y); }
+  
+  
+  static inline float32x4 clip(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::clip, x, y); }  
+  static inline float32x4 bump(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::bump, x, y); }
+  static inline float32x4 relu(const float32x4& x)  { return loop4(Ops<float>::relu, x); }
+  static inline float32x4 reluBack(const float32x4& x)  { return loop4(Ops<float>::reluBack, x); }
+  static inline float32x4 prelu(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::prelu, x, y); }  
+  static inline float32x4 preluBack(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::preluBack, x, y); }
+
+  static inline float32x4 if_then_else(const float32x4& x, const float32x4& y, const float32x4& z) { return loop4(Ops<float>::if_then_else, x, y, z);  }
 };
 
 //*******************************************************************************************

@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
   alloc->reserveExact(100000000);
 
   marian::Tensor out, in2;
-  alloc->allocate(out, {4, 4}, Type::float32);
+  alloc->allocate(out, {6, 4}, Type::float32);
   alloc->allocate(in2, {1, 4}, Type::float32);
 
 
@@ -48,17 +48,19 @@ int main(int argc, char** argv) {
   //   auto f = _1 = _1 + _2;
   //   for(int i = 0; i < 100000; i++) {
   //     element<float>(f, out, in2);
-  //   }
+  //  ./ }
   // }
 
   {
     boost::timer::auto_cpu_timer timer;
-    auto f = _1 = 2 * _2;
+    auto f = _1 = exp(_2) * 2.f;
+    std::cerr << f.to_string() << std::endl;
     for(int i = 0; i < 1; i++) {
-      element<floatX4>(f, out, in2);
+      element<float32x4>(f, out, in2);
     }
   }
 
+  std::cerr << in2->debug() << std::endl;
   std::cerr << out->debug() << std::endl;
 
   return 0;

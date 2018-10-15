@@ -49,7 +49,7 @@ struct Capture {
   Capture(float val) : value(val){};
 
   template <typename T, typename... Args>
-  __HDI__ T operator()(T&& /*arg*/, Args&&... /*args*/) {
+  __HDI__ T operator()(const T& /*arg*/, const Args&... /*args*/) {
     return T(value);
   }
 

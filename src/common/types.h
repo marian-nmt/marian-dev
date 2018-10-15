@@ -5,28 +5,24 @@
 
 namespace marian {
 
-struct floatX4 {
+struct float32x4 {
 private:
   __m128 f_;
 
 public:
-  floatX4() {}
-  floatX4(const __m128& f) : f_(f) {}
-  floatX4(const float& f) : f_(_mm_set1_ps(f)) {
-    std::cerr << "lulu: " << f << std::endl;
-  }
+  float32x4() {}
+  float32x4(const __m128& f) : f_(f) {}
+  float32x4(const float& f) : f_(_mm_set1_ps(f)) {}
 
   operator __m128() const { return f_; }
   operator __m128&() { return f_; }
+
+  friend std::ostream& operator<<(std::ostream& out, float32x4 f4) {
+    float* a = (float*)&f4;
+    out << "[" << a[0] << " " << a[1] << " " << a[2] << " " << a[3] << "]";
+    return out;
+  }
 };
-
-static inline floatX4 operator+(const floatX4& x, const floatX4& y) {
-   return _mm_add_ps(x, y);
-}
-
-static inline floatX4 operator*(const floatX4& x, const floatX4& y) {
-  return _mm_mul_ps(x, y);
-}
 
 enum class TypeClass : size_t {
   signed_type = 0x100,

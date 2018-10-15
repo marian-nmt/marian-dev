@@ -4,6 +4,7 @@
 
 #include "functional/defs.h"
 #include "functional/operands.h"
+#include "functional/operators.h"
 
 namespace marian {
 namespace functional {
@@ -15,9 +16,9 @@ struct UnaryFunctor {
   template <class Arg>
   UnaryFunctor(Arg a) : x(a) {}
 
-  template <typename... Args>
-  __HDI__ float operator()(Args&&... args) {
-    return Function::apply(x(args...));
+  template <typename T, typename... Args>
+  __HDI__ T operator()(T arg, Args&&... args) {
+    return Function::apply(x(arg, args...));
   }
 
   std::string to_string() { return Function::n() + "<" + x.to_string() + ">"; }
@@ -41,19 +42,20 @@ struct BinaryFunctor {
   }
 };
 
-#define UNARY(name, name2, func)                         \
-  namespace elem {                                       \
-  struct name {                                          \
-    __HDI__ static float apply(float x) { return func; } \
-    static std::string n() { return #name; }             \
-  };                                                     \
-  }                                                      \
-  template <class X>                                     \
-  using name = UnaryFunctor<elem::name, X>;              \
-  template <typename X>                                  \
-  static inline name<IsClass<X>> name2(X x) {            \
-    return name<X>(x);                                   \
-  }                                                      \
+#define UNARY(name, name2, func)                                      \
+  namespace elem {                                                    \
+  struct name {                                                       \
+    template <typename ElementType>                                   \
+    __HDI__ static ElementType apply(const ElementType& x) { return func; } \
+    static std::string n() { return #name; }                          \
+  };                                                                  \
+  }                                                                   \
+  template <class X>                                                  \
+  using name = UnaryFunctor<elem::name, X>;                           \
+  template <typename X>                                               \
+  static inline name<IsClass<X>> name2(X x) {                         \
+    return name<X>(x);                                                \
+  }                                                                   \
   static inline name<Capture> name2(Capture x) { return name<Capture>(x); }
 
 #define BINARY(name, name2, func)                                 \
@@ -73,7 +75,7 @@ struct BinaryFunctor {
     return name<X, Y>(x, y);                                      \
   }                                                               \
   template <class Y>                                              \
-  name<Capture, IsClass<Y>> name2(const Capture& x, const Y& y) {               \
+  name<Capture, IsClass<Y>> name2(const Capture& x, const Y& y) { \
     return name<Capture, Y>(x, y);                                \
   }                                                               \
   template <class X>                                              \
@@ -86,7 +88,7 @@ UNARY(Sin, sin, sinf(x));
 UNARY(Cos, cos, cosf(x));
 UNARY(Tan, tan, tanf(x));
 UNARY(Log, log, logf(x));
-UNARY(Exp, exp, expf(x));
+UNARY(Exp, exp, Ops<ElementType>::exp(x));
 UNARY(Abs, abs, fabs(x));
 UNARY(Sqrt, sqrt, sqrtf(x));
 UNARY(Neg, operator-, -x);
@@ -94,10 +96,10 @@ UNARY(Sigmoid,
       sigmoid,
       x > 0 ? (1.f / (1.f + expf(-x))) : (expf(x) / (1.f + expf(x))));
 
-BINARY(Plus, operator+, x + y);
-BINARY(Minus, operator-, x - y);
-BINARY(Mult, operator*, x * y);
-BINARY(Div, operator/, x / y);
+BINARY(Plus,  operator+, Ops<ElementType>::add(x, y));
+BINARY(Minus, operator-, Ops<ElementType>::sub(x, y));
+BINARY(Mult,  operator*, Ops<ElementType>::mul(x, y));
+BINARY(Div,   operator/, Ops<ElementType>::div(x, y));
 
 BINARY(LogAddExp,
        logaddexp,
@@ -201,6 +203,10 @@ struct Assign {
   template <typename T, typename... Args>
   __HDI__ T operator()(T&& arg, Args&&... args) {
     return x(arg, args...) = y(arg, args...);
+  }
+
+  std::string to_string() {
+    return "Assign<" + x.to_string() + "," + y.to_string() + ">";
   }
 };
 

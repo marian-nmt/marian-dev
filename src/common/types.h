@@ -20,8 +20,8 @@ public:
   friend std::ostream& operator<<(std::ostream& out, float32x4 f4) {
     float* a = (float*)&f4;
     out << "[" << a[0];
-    for(int i = 1; i < 8; i++)
-      out << " " << a[i]; 
+    for(int i = 1; i < 4; i++)
+      out << " " << a[i];
     out << "]";
     return out;
   }
@@ -43,7 +43,7 @@ public:
     float* a = (float*)&f8;
     out << "[" << a[0];
     for(int i = 1; i < 8; i++)
-      out << " " << a[i]; 
+      out << " " << a[i];
     out << "]";
     return out;
   }

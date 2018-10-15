@@ -30,38 +30,22 @@ int main(int argc, char** argv) {
   auto alloc = New<TensorAllocator>(backend);
   alloc->reserveExact(100000000);
 
-  marian::Tensor out, in2;
-  alloc->allocate(out, {6, 4}, Type::float32);
-  alloc->allocate(in2, {1, 4}, Type::float32);
-
-
-  std::vector<float> vo(out->size());
-  std::vector<float> vi(in2->size());
-  std::iota(vo.begin(), vo.end(), 1.f);
-  std::iota(vi.begin(), vi.end(), 1.f);
-
-  out->set(vo);
-  in2->set(vi);
-
-  // {
-  //   boost::timer::auto_cpu_timer timer;
-  //   auto f = _1 = _1 + _2;
-  //   for(int i = 0; i < 100000; i++) {
-  //     element<float>(f, out, in2);
-  //  ./ }
-  // }
+  marian::Tensor params, grads;
+  alloc->allocate(params, {256 * 512 * 512}, Type::float32);
+  alloc->allocate(grads,  {256 * 512 * 512}, Type::float32);
+  
+  auto adam = New<Adam>(0.0003);
+  adam->update(params, grads);
 
   {
     boost::timer::auto_cpu_timer timer;
-    auto f = _1 = (exp(_2) * 2.f) > 10.f;
-    std::cerr << f.to_string() << std::endl;
-    for(int i = 0; i < 1; i++) {
-      element<float32x4>(f, out, in2);
+    for(int i = 0; i < 100; i++) {
+      adam->update(params, grads);
     }
   }
 
-  std::cerr << in2->debug() << std::endl;
-  std::cerr << out->debug() << std::endl;
+  //std::cerr << in2->debug() << std::endl;
+  //std::cerr << out->debug() << std::endl;
 
   return 0;
 }

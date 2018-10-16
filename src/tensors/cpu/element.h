@@ -69,28 +69,32 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
 
 template <class Functor, class... Tensors>
 void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors) {
-  std::vector<marian::Tensor> ts({tensors...});
-  bool div8 = true;
-  bool div4 = true;
-  for(auto t : ts) {
-    if(t->shape()[-1] % 8 != 0)
-      div8 = false;
-    if(t->shape()[-1] % 4 != 0)
-      div4 = false;
-  }
+  // std::vector<marian::Tensor> ts({tensors...});
+  // bool div8 = true;
+  // bool div4 = true;
+  // for(auto t : ts) {
+  //   if(t->shape()[-1] % 8 != 0)
+  //     div8 = false;
+  //   if(t->shape()[-1] % 4 != 0)
+  //     div4 = false;
 
-  if(div8) {
-    //std::cerr << functor.to_string() << std::endl;
-    element<float32x8>(functor, out, tensors...);
-    return;
-  }
+  //   //std::cerr << t->shape() << " ";
+  // }
+  // //std::cerr << std::endl;
 
-  if(div4) {
-    //std::cerr << functor.to_string() << std::endl;
-    element<float32x4>(functor, out, tensors...);
-    return;
-  }
+  // if(div8) {
+  //   //std::cerr << "8: " << functor.to_string() << std::endl;
+  //   element<float32x8>(functor, out, tensors...);
+  //   return;
+  // }
 
+  // if(div4) {
+  //   //std::cerr << "4: " << functor.to_string() << std::endl;
+  //   element<float32x4>(functor, out, tensors...);
+  //   return;
+  // }
+
+  // //std::cerr << "1: " << functor.to_string() << std::endl;
   element<float>(functor, out, tensors...);
 }
 

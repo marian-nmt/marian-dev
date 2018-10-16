@@ -17,6 +17,10 @@ public:
   operator __m128() const { return f_; }
   operator __m128&() { return f_; }
 
+  float operator[] (size_t i) const {
+    return *(((float*)&f_) + i);
+  }
+
   friend std::ostream& operator<<(std::ostream& out, float32x4 f4) {
     float* a = (float*)&f4;
     out << "[" << a[0];
@@ -38,6 +42,10 @@ public:
 
   operator __m256() const { return f_; }
   operator __m256&() { return f_; }
+
+  float operator[] (size_t i) const {
+    return *(((float*)&f_) + i);
+  }
 
   friend std::ostream& operator<<(std::ostream& out, float32x8 f8) {
     float* a = (float*)&f8;

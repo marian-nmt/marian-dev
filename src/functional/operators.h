@@ -52,11 +52,17 @@ struct Ops {
   static __HDI__ T preluBack(const T& x, const T& y) { ABORT("Unknown type"); }
 
   static __HDI__ T if_then_else(const T& x, const T& y, const T& z) { ABORT("Unknown type"); }
+
+  static __HDI__ T sumReduce(const T& x) { ABORT("Unknown type"); }
+  static __HDI__ T maxReduce(const T& x) { ABORT("Unknown type"); }
+  static __HDI__ T minReduce(const T& x) { ABORT("Unknown type"); }
 };
 
 // Specialization for float
 template <>
 struct Ops<float> {
+  typedef float Single;
+
   static __HDI__ float tanh(const float& x) { return tanhf(x); }
   static __HDI__ float sin(const float& x)  { return sinf(x); }
   static __HDI__ float cos(const float& x)  { return cosf(x); }
@@ -109,6 +115,11 @@ struct Ops<float> {
   static __HDI__ float preluBack(const float& x, const float& y) { return x > 0.f ? 1.f : y; }
 
   static __HDI__ float if_then_else(const float& x, const float& y, const float& z) { return x ? y : z; }
+
+  static __HDI__ float sumReduce(const float& x) { return x; }
+  static __HDI__ float maxReduce(const float& x) { return x; }
+  static __HDI__ float minReduce(const float& x) { return x; }
+
 };
 
 #include "3rd_party/sse_mathfun.h"
@@ -116,6 +127,7 @@ struct Ops<float> {
 // Specialization for float32x8 (=__m128, CPU SSE intrisics)
 template <>
 struct Ops<float32x4> {
+  typedef float Single;
 
   static inline float32x4 loop4(const std::function<float(const float&)>& f, const float32x4& x) {
     float32x4 out;
@@ -142,22 +154,22 @@ struct Ops<float32x4> {
   static inline float32x4 tanh(const float32x4& x) { // ( e^x - e^-x )/( e^x + e^-x ) = (e^2x - 1) / (e^2x + 1)
     float32x4 e2x = exp(mul(2.f, x));
     return div(sub(e2x, 1.f), add(e2x, 1.f));
-  }  
-  
+  }
+
   static inline float32x4 sin(const float32x4& x) { return sin_ps(x); }
   static inline float32x4 cos(const float32x4& x) { return cos_ps(x); }
   static inline float32x4 tan(const float32x4& x) { return div(sin(x), cos(x)); }
   static inline float32x4 log(const float32x4& x) { return log_ps(x); }
   static inline float32x4 exp(const float32x4& x) { return exp_ps(x); }
-  
+
   // @TODO: get rid of loop4 with proper intrisics
   static inline float32x4 abs(const float32x4& x)  { return loop4(Ops<float>::abs, x); }
   static inline float32x4 sqrt(const float32x4& x) { return _mm_sqrt_ps(x); }
   static inline float32x4 neg(const float32x4& x)  { return sub(0.f, x); }
-  
+
   // @TODO: get rid of loop4 with proper intrisics
   static inline float32x4 sgn(const float32x4& x)  { return loop4(Ops<float>::sgn, x); }
-  
+
   static inline float32x4 add(const float32x4& x, const float32x4& y) { return _mm_add_ps(x, y); }
   static inline float32x4 sub(const float32x4& x, const float32x4& y) { return _mm_sub_ps(x, y); }
   static inline float32x4 mul(const float32x4& x, const float32x4& y) { return _mm_mul_ps(x, y); }
@@ -169,7 +181,7 @@ struct Ops<float32x4> {
 
   // @TODO: get rid of loop4 with proper intrisics
   static inline float32x4 negate(float32x4& x)  { return loop4(Ops<float>::negate, x); }
-  
+
   static inline float32x4 eq(const float32x4& x, const float32x4& y)   { return loop4(Ops<float>::eq, x, y); }
   static inline float32x4 neq(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::neq, x, y); }
   static inline float32x4 gt(const float32x4& x, const float32x4& y)   { return loop4(Ops<float>::gt, x, y); }
@@ -192,17 +204,40 @@ struct Ops<float32x4> {
   // }
 
   static inline float32x4 logaddexp(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::logaddexp, x, y); }
-  
-  static inline float32x4 clip(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::clip, x, y); }  
+
+  static inline float32x4 clip(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::clip, x, y); }
   static inline float32x4 bump(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::bump, x, y); }
-  
+
   static inline float32x4 relu(const float32x4& x)  { return max(0.f, x); }
 
   static inline float32x4 reluBack(const float32x4& x)  { return loop4(Ops<float>::reluBack, x); }
-  static inline float32x4 prelu(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::prelu, x, y); }  
+  static inline float32x4 prelu(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::prelu, x, y); }
   static inline float32x4 preluBack(const float32x4& x, const float32x4& y)  { return loop4(Ops<float>::preluBack, x, y); }
 
   static inline float32x4 if_then_else(const float32x4& x, const float32x4& y, const float32x4& z) { return loop4(Ops<float>::if_then_else, x, y, z);  }
+
+  static inline Single sumReduce(const float32x4& x) { 
+    Single sum = 0;
+    for(int i = 0; i < 4; ++i)
+      sum = Ops<Single>::add(sum, x[i]);
+    return sum;
+  }
+  
+  static inline Single maxReduce(const float32x4& x) { 
+    Single maxs = x[0];
+    for(int i = 1; i < 4; ++i)
+      maxs = Ops<Single>::max(maxs, x[i]);
+    return maxs;
+  }
+  
+  static inline Single minReduce(const float32x4& x) { 
+    Single mins = x[0];
+    for(int i = 1; i < 4; ++i)
+      mins = Ops<Single>::min(mins, x[i]);
+    return mins;
+  }
+  
+  
 };
 
 #include "3rd_party/avx_mathfun.h"
@@ -211,6 +246,8 @@ struct Ops<float32x4> {
 // Specialization for float32x8 (=__m256, CPU AVX intrisics)
 template <>
 struct Ops<float32x8> {
+  typedef float Single;
+
 
   static inline float32x8 loop8(const std::function<float(const float&)>& f, const float32x8& x) {
     float32x8 out;
@@ -243,15 +280,15 @@ struct Ops<float32x8> {
   static inline float32x8 tan(const float32x8& x) { return div(sin(x), cos(x)); } // @TODO: use sincos256_ps
   static inline float32x8 log(const float32x8& x) { return log256_ps(x); }
   static inline float32x8 exp(const float32x8& x) { return exp256_ps(x); }
-  
+
   // @TODO: get rid of loop8 with proper intrisics
   static inline float32x8 abs(const float32x8& x)  { return loop8(Ops<float>::abs, x); }
   static inline float32x8 sqrt(const float32x8& x) { return _mm256_sqrt_ps(x); }
   static inline float32x8 neg(const float32x8& x)  { return sub(0.f, x); }
-  
+
   // @TODO: get rid of loop8 with proper intrisics
   static inline float32x8 sgn(const float32x8& x)  { return loop8(Ops<float>::sgn, x); }
-  
+
   static inline float32x8 add(const float32x8& x, const float32x8& y) { return _mm256_add_ps(x, y); }
   static inline float32x8 sub(const float32x8& x, const float32x8& y) { return _mm256_sub_ps(x, y); }
   static inline float32x8 mul(const float32x8& x, const float32x8& y) { return _mm256_mul_ps(x, y); }
@@ -263,7 +300,7 @@ struct Ops<float32x8> {
 
   // @TODO: get rid of loop8 with proper intrisics
   static inline float32x8 negate(float32x8& x)  { return loop8(Ops<float>::negate, x); }
-  
+
   static inline float32x8 eq(const float32x8& x, const float32x8& y)   { return loop8(Ops<float>::eq, x, y); }
   static inline float32x8 neq(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::neq, x, y); }
   static inline float32x8 gt(const float32x8& x, const float32x8& y)   { return loop8(Ops<float>::gt, x, y); }
@@ -280,19 +317,42 @@ struct Ops<float32x8> {
     float32x8 e = exp(x);
     return div(e, add(1.f, e));
   }
-  
+
   static inline float32x8 logaddexp(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::logaddexp, x, y); }
-  
-  static inline float32x8 clip(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::clip, x, y); }  
+
+  static inline float32x8 clip(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::clip, x, y); }
   static inline float32x8 bump(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::bump, x, y); }
-  
+
   static inline float32x8 relu(const float32x8& x)  { return max(0.f, x); }
 
   static inline float32x8 reluBack(const float32x8& x)  { return loop8(Ops<float>::reluBack, x); }
-  static inline float32x8 prelu(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::prelu, x, y); }  
+  static inline float32x8 prelu(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::prelu, x, y); }
   static inline float32x8 preluBack(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::preluBack, x, y); }
 
   static inline float32x8 if_then_else(const float32x8& x, const float32x8& y, const float32x8& z) { return loop8(Ops<float>::if_then_else, x, y, z);  }
+
+  static inline Single sumReduce(const float32x8& x) { 
+    Single sum = 0;
+    for(int i = 0; i < 8; ++i)
+      sum = Ops<Single>::add(sum, x[i]);
+    return sum;
+  }
+  
+  static inline Single maxReduce(const float32x8& x) { 
+    Single maxs = x[0];
+    for(int i = 1; i < 8; ++i)
+      maxs = Ops<Single>::max(maxs, x[i]);
+    return maxs;
+  }
+  
+  static inline Single minReduce(const float32x8& x) { 
+    Single mins = x[0];
+    for(int i = 1; i < 8; ++i)
+      mins = Ops<Single>::min(mins, x[i]);
+    return mins;
+  }
+  
+  
 };
 
 //*******************************************************************************************

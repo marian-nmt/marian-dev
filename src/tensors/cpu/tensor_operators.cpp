@@ -9,6 +9,7 @@
 #include "functional/approx.h"
 #include "functional/functional.h"
 #include "functional/tensor.h"
+#include "functional/operators.h"
 
 namespace marian {
 
@@ -299,7 +300,53 @@ void Softmax(Tensor out, Tensor in) {
   }
 }
 
+
+template <typename ElementType>
+void LogSoftmax(functional::Tensor<ElementType>& out,
+                const functional::Tensor<ElementType>& in) {
+
+  using namespace functional;
+
+  ElementType* pOut = out.data();
+  const ElementType* pIn = in.data();
+
+  int rows = out.shape().elements() / out.shape().back();
+  int cols = out.shape().back();
+
+  for(int j = 0; j < rows; ++j) {
+    ElementType* so = pOut + j * cols;
+    const ElementType* sp = pIn + j * cols;
+
+    ElementType max = sp[0];
+    for(int i = 1; i < cols; ++i) {
+      max = Ops<ElementType>::max(max, sp[i]);
+    }
+    typename Ops<ElementType>::Single maxs = Ops<ElementType>::maxReduce(max); // global maximum
+
+    ElementType sum = 0.f;
+    for(int i = 0; i < cols; ++i) {
+      ElementType sm = Ops<ElementType>::sub(sp[i], maxs);
+      ElementType ex = Ops<ElementType>::exp(sm);
+      so[i] = sm;
+      sum = Ops<ElementType>::add(sum, ex);
+    }
+    typename Ops<ElementType>::Single sums = Ops<ElementType>::sumReduce(sum); // global sum
+
+    for(int i = 0; i < cols; ++i) {
+      so[i] = Ops<ElementType>::sub(so[i], Ops<ElementType>::log(sums));
+    }
+  }
+}
+
 void LogSoftmax(Tensor out, Tensor in) {
+
+  if(out->shape()[-1] % 8 == 0) {
+    functional::Tensor<float32x8> fOut = out;
+    functional::Tensor<float32x8> fIn = in;
+    LogSoftmax<float32x8>(fOut, fIn);
+    return;
+  }
+
   float* pOut = out->data();
   const float* pIn = in->data();
 
@@ -394,7 +441,7 @@ void CopyRows(Tensor out_,
   for(size_t j = 0; j < rows; ++j) {
     size_t dst = j;
 
-    // @TODO: consider moving type checking to this function 
+    // @TODO: consider moving type checking to this function
     // instead of matchOrAbort above
     size_t src = (size_t)indices->data<IndexType>()[j];
 
@@ -494,7 +541,7 @@ void Select(Tensor out,
 
   functional::Array<int, functional::Shape::size()> dims;
   int axisCPU = (int)(axis + functional::Shape::size() - out->shape().size());
-  
+
   for(int index = 0; index < length; ++index) {
     outShape.dims(index, dims);
     dims[axisCPU] = (int)indices->data<IndexType>()[dims[axisCPU]];

@@ -12,10 +12,10 @@
 
 #include "tensors/cpu/sharp/int_gemm.h"
 
-#include <emmintrin.h>
-#include <immintrin.h>
-#include <tmmintrin.h>
-#include <xmmintrin.h>
+// #include <emmintrin.h>
+// #include <immintrin.h>
+// #include <tmmintrin.h>
+// #include <xmmintrin.h>
 #include <cassert>
 #include <cstddef>
 #include <boost/timer/timer.hpp>
@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
   marian::Tensor params, grads;
   alloc->allocate(params, {256 * 512 * 512}, Type::float32);
   alloc->allocate(grads,  {256 * 512 * 512}, Type::float32);
-  
+
   auto adam = New<Adam>(0.0003);
   adam->update(params, grads);
 

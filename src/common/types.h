@@ -3,6 +3,8 @@
 #include <iostream>
 #include <string>
 
+#include <immintrin.h>
+
 namespace marian {
 
 struct float32x4 {

@@ -105,7 +105,8 @@ void createLoggers(const marian::Config* options) {
     }
   }
 
-#ifdef __unix__
+#if 0
+/*#ifdef __unix__*/
   // catch segfaults
   static struct sigaction prev_segfault_sigaction;
   static struct sigaction prev_fperror_sigaction;

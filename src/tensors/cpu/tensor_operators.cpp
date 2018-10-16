@@ -332,8 +332,9 @@ void LogSoftmax(functional::Tensor<ElementType>& out,
     }
     typename Ops<ElementType>::Single sums = Ops<ElementType>::sumReduce(sum); // global sum
 
+    ElementType logSum = Ops<ElementType>::log(sums); // broadcasts Single to ElementType
     for(int i = 0; i < cols; ++i) {
-      so[i] = Ops<ElementType>::sub(so[i], Ops<ElementType>::log(sums));
+      so[i] = Ops<ElementType>::sub(so[i], logSum);
     }
   }
 }

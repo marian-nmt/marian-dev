@@ -272,46 +272,73 @@ void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     TransposeGeneric<true>(out, in, vAxis);
 }
 
+template <typename ElementType>
 void Softmax(Tensor out, Tensor in) {
-  float* pOut = out->data();
-  const float* pIn = in->data();
+  using namespace functional;
+  functional::Tensor<ElementType> fout = out;
+  const functional::Tensor<ElementType> fin = in;
 
-  int rows = out->shape().elements() / out->shape().back();
-  int cols = out->shape().back();
+  ElementType* pOut = fout.data();
+  const ElementType* pIn = fin.data();
+
+  int rows = fout.shape().elements() / fout.shape().back();
+  int cols = fout.shape().back();
 
   for(int j = 0; j < rows; ++j) {
-    float* so = pOut + j * cols;
-    const float* sp = pIn + j * cols;
+    ElementType* so = pOut + j * cols;
+    const ElementType* sp = pIn + j * cols;
 
-    float max = sp[0];
-    for(int i = 1; i < cols; ++i)
-      max = std::max(max, sp[i]);
-
-    float sum = 0.f;
-    for(int i = 0; i < cols; ++i) {
-      float ex = expf(sp[i] - max);
-      so[i] = ex;
-      sum += ex;
+    ElementType max = sp[0];
+    for(int i = 1; i < cols; ++i) {
+      max = Ops<ElementType>::max(max, sp[i]);
     }
 
+    // if ElementType is a complex type, e.g. float32x8, find the max of these 8 values
+    typename Ops<ElementType>::Single maxs = Ops<ElementType>::maxReduce(max);
+
+    ElementType sum = 0.f;
     for(int i = 0; i < cols; ++i) {
-      so[i] /= sum;
+      ElementType ex = Ops<ElementType>::exp(Ops<ElementType>::sub(sp[i], maxs));
+      sum = Ops<ElementType>::add(sum, ex);
+      so[i] = ex;
+    }
+
+    // if ElementType is a complex type, e.g. float32x8, sum these 8 values
+    typename Ops<ElementType>::Single sums = Ops<ElementType>::sumReduce(sum);
+
+    for(int i = 0; i < cols; ++i) {
+      so[i] = Ops<ElementType>::div(so[i], sums);
     }
   }
 }
 
 
+void Softmax(Tensor out, Tensor in) {
+  matchOrAbort<float>(out->type());
+  matchOrAbort<float>(in->type());
+
+  if(out->shape()[-1] % 8 == 0) {
+    Softmax<float32x8>(out, in);
+  } else if(out->shape()[-1] % 4 == 0) {
+    Softmax<float32x4>(out, in);
+  } else {
+    Softmax<float>(out, in);
+  }
+}
+
+
 template <typename ElementType>
-void LogSoftmax(functional::Tensor<ElementType>& out,
-                const functional::Tensor<ElementType>& in) {
+void LogSoftmax(Tensor out, Tensor in) {
 
   using namespace functional;
+  functional::Tensor<ElementType> fout = out;
+  const functional::Tensor<ElementType> fin = in;
 
-  ElementType* pOut = out.data();
-  const ElementType* pIn = in.data();
+  ElementType* pOut = fout.data();
+  const ElementType* pIn = fin.data();
 
-  int rows = out.shape().elements() / out.shape().back();
-  int cols = out.shape().back();
+  int rows = fout.shape().elements() / fout.shape().back();
+  int cols = fout.shape().back();
 
   for(int j = 0; j < rows; ++j) {
     ElementType* so = pOut + j * cols;
@@ -326,9 +353,8 @@ void LogSoftmax(functional::Tensor<ElementType>& out,
     ElementType sum = 0.f;
     for(int i = 0; i < cols; ++i) {
       ElementType sm = Ops<ElementType>::sub(sp[i], maxs);
-      ElementType ex = Ops<ElementType>::exp(sm);
+      sum = Ops<ElementType>::add(sum, Ops<ElementType>::exp(sm));
       so[i] = sm;
-      sum = Ops<ElementType>::add(sum, ex);
     }
     typename Ops<ElementType>::Single sums = Ops<ElementType>::sumReduce(sum); // global sum
 
@@ -340,40 +366,15 @@ void LogSoftmax(functional::Tensor<ElementType>& out,
 }
 
 void LogSoftmax(Tensor out, Tensor in) {
+  matchOrAbort<float>(out->type());
+  matchOrAbort<float>(in->type());
 
   if(out->shape()[-1] % 8 == 0) {
-    functional::Tensor<float32x8> fOut = out;
-    functional::Tensor<float32x8> fIn = in;
-    LogSoftmax<float32x8>(fOut, fIn);
-    return;
-  }
-
-  float* pOut = out->data();
-  const float* pIn = in->data();
-
-  int rows = out->shape().elements() / out->shape().back();
-  int cols = out->shape().back();
-
-  for(int j = 0; j < rows; ++j) {
-    float* so = pOut + j * cols;
-    const float* sp = pIn + j * cols;
-
-    float max = sp[0];
-    for(int i = 1; i < cols; ++i) {
-      max = std::max(max, sp[i]);
-    }
-
-    float sum = 0.f;
-    for(int i = 0; i < cols; ++i) {
-      float sm = sp[i] - max;
-      float ex = expf(sm);
-      so[i] = sm;
-      sum += ex;
-    }
-
-    for(int i = 0; i < cols; ++i) {
-      so[i] -= logf(sum);
-    }
+    LogSoftmax<float32x8>(out, in);
+  } else if(out->shape()[-1] % 4 == 0) {
+    LogSoftmax<float32x4>(out, in);
+  } else {
+    LogSoftmax<float>(out, in);
   }
 }
 
@@ -1281,30 +1282,28 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
   }
 }
 
-// void HighwayForward(Tensor out,
-//                    const Tensor in1,
-//                    const Tensor in2,
-//                    const Tensor t) {
-//  size_t length = out->shape().elements();
-//  for(size_t i = 0; i < length; ++i) {
-//    float sigma = stableSigmoid(t->data()[i]);
-//    out->data()[i] = sigma * in1->data()[i] + (1.f - sigma) * in2->data()[i];
-//  }
-//}
-
 void HighwayForward(Tensor out,
-                    const Tensor in1,
-                    const Tensor in2,
-                    const Tensor t) {
-  size_t length = out->shape().elements();
-
-  static functional::Approx<10, 0, 100> approxSigmoid(stableSigmoid);
-
-  for(size_t i = 0; i < length; ++i) {
-    float sigma = approxSigmoid(t->data()[i]);
-    out->data()[i] = sigma * in1->data()[i] + (1.f - sigma) * in2->data()[i];
-  }
+                   const Tensor in1,
+                   const Tensor in2,
+                   const Tensor t) {
+  using namespace functional;
+  cpu::Element(_1 = sigmoid(_2), out, t);
+  cpu::Element(_1 = _1 * _2 + (1.f - _1) * _3, out, in1, in2);
 }
+
+// void HighwayForward(Tensor out,
+//                     const Tensor in1,
+//                     const Tensor in2,
+//                     const Tensor t) {
+//   size_t length = out->shape().elements();
+
+//   static functional::Approx<10, 0, 100> approxSigmoid(stableSigmoid);
+
+//   for(size_t i = 0; i < length; ++i) {
+//     float sigma = approxSigmoid(t->data()[i]);
+//     out->data()[i] = sigma * in1->data()[i] + (1.f - sigma) * in2->data()[i];
+//   }
+// }
 
 void HighwayBackward(Tensor /*out1*/,
                      Tensor /*out2*/,

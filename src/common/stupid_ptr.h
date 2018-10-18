@@ -176,37 +176,47 @@ void swap(StupidPtr<T> & a, StupidPtr<T> & b) {
   a.swap(b);
 }
 
-template<class T> 
-T* get_pointer(const StupidPtr<T>& p) {
-  return p.get();
-}
-
-template<class T, class U>
-StupidPtr<T> static_pointer_cast(const StupidPtr<U>& p) {
-  return static_cast<T*>(p.get());
-}
-
-template<class T, class U>
-StupidPtr<T> const_pointer_cast(const StupidPtr<U>& p) {
-  return const_cast<T*>(p.get());
-}
-
-template<class T, class U>
-StupidPtr<T> dynamic_pointer_cast(const StupidPtr<U>& p) {
-   return dynamic_cast<T*>(p.get());
-}
-
 template<class E, class T, class Y>
 std::basic_ostream<E, T>& operator<<(std::basic_ostream<E, T>& os, const StupidPtr<Y>& p) {
   os << p.get();
   return os;
 }
 
+namespace std {
+  template<class T> 
+  T* get_pointer(const StupidPtr<T>& p) {
+    return p.get();
+  }
+
+  template<class T, class U>
+  StupidPtr<T> static_pointer_cast(const StupidPtr<U>& p) {
+    return static_cast<T*>(p.get());
+  }
+
+  template<class T, class U>
+  StupidPtr<T> const_pointer_cast(const StupidPtr<U>& p) {
+    return const_cast<T*>(p.get());
+  }
+
+  template<class T, class U>
+  StupidPtr<T> dynamic_pointer_cast(const StupidPtr<U>& p) {
+    return dynamic_cast<T*>(p.get());
+  }
+
+  template <class T> struct hash<StupidPtr<T>> {
+    size_t operator()(const StupidPtr<T>& x) const {
+      std::hash<size_t> hasher;
+      return hasher((size_t)x.get());
+    }
+  };
+}
+
 template <class T>
 class EnableStupidPtr {
-private:
-  size_t references_{0};
   friend StupidPtr<T>;
+
+public:
+  size_t references_{0};
 
   StupidPtr<T> stupidFromThis() {
     return (T*)this;

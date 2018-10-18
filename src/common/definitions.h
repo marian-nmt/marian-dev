@@ -33,6 +33,9 @@ using UPtr = std::unique_ptr<T>;
 template <class T>
 using Weak = std::weak_ptr<T>;
 
+template <class T>
+using SWeak = T*;
+
 /** @brief Creates shared_ptr of any type, passes all arguments to any available
  * constructor */
 template <class T, typename... Args>
@@ -101,7 +104,7 @@ typedef SPtr<TensorBase> Tensor;
 
 template <class DataType>
 class Chainable;
-typedef Ptr<Chainable<Tensor>> Expr;
+typedef SPtr<Chainable<Tensor>> Expr;
 
 class OptimizerBase;
 typedef Ptr<OptimizerBase> OptimizerBasePtr;

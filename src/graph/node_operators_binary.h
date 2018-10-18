@@ -527,7 +527,7 @@ struct SelectNodeOp : public NaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SelectNodeOp> cnode = std::dynamic_pointer_cast<SelectNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SelectNodeOp>(node);
     if(!cnode)
       return false;
     if(axis_ != cnode->axis_)

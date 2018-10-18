@@ -8,14 +8,14 @@ void CorpusBase::processXml(const std::string& line,
                             SentenceTuple& tup) const {
   std::cerr << "called CorpusBase::processXml\n";
 
+  XmlOptions *xmlOptions = new XmlOptions();
+  tup.setXmlOptions( xmlOptions );
+
   // no xml tag? we're done.
   if (line.find("<") == std::string::npos) {
     stripped_line = line;
     return;
   }
-
-  XmlOptions *xmlOptions = new XmlOptions();
-  tup.setXmlOptions( xmlOptions );
 
   // break up input into a vector of xml tags and text
   // example: (this), (<b>), (is a), (</b>), (test .)

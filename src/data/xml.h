@@ -39,6 +39,7 @@ class XmlOption {
 class XmlOptionCovered {
   private:
     const XmlOption *option_;
+    float alignmentCost_;
     size_t position_;
     bool started_;
     bool covered_;
@@ -47,6 +48,7 @@ class XmlOptionCovered {
     XmlOptionCovered(const XmlOption *option)
       : started_(false),
         covered_(false),
+        alignmentCost_(0.0),
         option_(option) {
       const Words &output = option->GetOutput();
       std::cerr << "created XmlOptionCovered from option " << option << ": " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
@@ -55,6 +57,7 @@ class XmlOptionCovered {
     XmlOptionCovered(const XmlOptionCovered &covered)
       : started_(covered.GetStarted()),
         covered_(covered.GetCovered()),
+        alignmentCost_(covered.GetAlignmentCost()),
         option_(covered.GetOption()),
         position_(covered.GetPosition()) {
       const XmlOption *option = covered.GetOption();
@@ -68,6 +71,10 @@ class XmlOptionCovered {
 
     bool GetCovered() const {
       return covered_;
+    }
+
+    float GetAlignmentCost() const {
+      return alignmentCost_;
     }
 
     size_t GetPosition() const {
@@ -88,8 +95,10 @@ class XmlOptionCovered {
       else {
         started_ = true;
       }
+      alignmentCost_ = 0.0;
       // std::cerr << "option" << option_->GetOutput().size();
     }
+
     void Proceed() {
       position_++;
       if (option_->GetOutput().size() == position_) {
@@ -97,8 +106,22 @@ class XmlOptionCovered {
         started_ = false;
       }
     }
+
     void Abandon() {
       started_ = false;
+      alignmentCost_ = 0.0;
+    }
+
+    void AddAlignmentCost(const std::vector<float> &alignments) {
+      float sum = 0;
+      std::cerr << "alignment cost for span " << option_->GetStart() << "-" << option_->GetEnd() << ":";
+      for(size_t i=option_->GetStart(); i<option_->GetEnd(); i++) {
+        std::cerr << " " << alignments[i];
+        sum += alignments[i];
+      }
+      if (sum < 0.001) sum = 0.001; // floor
+      alignmentCost_ += std::log(sum);
+      std::cerr << " --log--> " << std::log(sum) << ", alignmentCost_ " << alignmentCost_ << "\n";
     }
 };
 

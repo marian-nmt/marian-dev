@@ -74,7 +74,9 @@ public:
       sentenceIds.push_back(ex.getId());
       if (options_->get<bool>("xml-input")) {
         const XmlOptions *xops = ex.getXmlOptions();
-        std::cerr << "xml options from tuple ... size " << xops->size() << " first value " << (*xops)[0] << ": " << (*xops)[0]->GetStart() << "\n";
+        if ((*xops).size()>0) {
+          std::cerr << "xml options from tuple ... size " << xops->size() << " first value " << (*xops)[0] << ": " << (*xops)[0]->GetStart() << "\n";
+        }
         xmlOptionsList->push_back(xops);
       }
     }
@@ -100,9 +102,11 @@ public:
 
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);
+    std::cerr << "batch->setXmlOptionsList(xmlOptionsList);\n";
     if (options_->get<bool>("xml-input")) {
       batch->setXmlOptionsList(xmlOptionsList);
     }
+    std::cerr << "batch->setXmlOptionsList(xmlOptionsList); OK\n";
 
     if(options_->has("guided-alignment") && alignFileIdx_)
       addAlignmentsToBatch(batch, batchVector);

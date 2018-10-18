@@ -344,7 +344,7 @@ public:
       std::vector<float> outCosts;
       std::vector<data::XmlOptionCoveredList *> outXmls;
       if (options_->get<bool>("xml-input")) {
-        xmlSearch(nth, beams, localBeamSize, totalCosts, outCosts, outKeys, outXmls, first, targetVocab);
+        xmlSearch(nth, beams, localBeamSize, totalCosts, outCosts, outKeys, outXmls, first, targetVocab, batch);
       }
       else {
         std::vector<size_t> beamSizes(dimBatch, localBeamSize);
@@ -357,8 +357,12 @@ public:
         int embIdx = outKeys[i] % dimTrgVoc;
         int hypIdx = (outKeys[i] / dimTrgVoc) % localBeamSize;
         auto& beam = beams[beamNo];
+        if (hypIdx >= beam.size()) {
+          std::cerr << "ERR " << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost " << outCosts[i] << "\t " << (*targetVocab)[embIdx] << " ... OUT OF RANGE " << beam.size() << "\n";
+        }
         if (beam.size() == 0) continue;
         if (outCosts[i] < -9999) continue; // junk hypothesis extension
+        if (hypIdx >= beam.size()) continue;
         auto hyp = beam[hypIdx];
         std::cerr << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost " << outCosts[i] << "\t " << (*targetVocab)[embIdx] << " ...";
         std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
@@ -367,6 +371,7 @@ public:
            hyp = hyp->GetPrevHyp();
         }
         std::cerr << std::endl;
+        std::cerr << "NEXT\n";
       }
 
       beams = toHyps(
@@ -430,6 +435,7 @@ public:
           std::cerr << std::endl;
         }
       }
+      std::cerr << "DONE WITH LOOP, localBeamSize now " << localBeamSize << "\n";
 
     } while(localBeamSize != 0 && !final);
 
@@ -444,7 +450,8 @@ public:
                  std::vector<unsigned> &outKeys, 
                  std::vector<data::XmlOptionCoveredList *> &outXmls,
                  bool first,
-                 Ptr<Vocab> targetVocab) {
+                 Ptr<Vocab> targetVocab,
+                 Ptr<data::CorpusBatch> batch) {
 
     int dimBatch = beams.size();
     int dimTrgVoc = totalCosts->shape()[-1];
@@ -521,7 +528,6 @@ public:
           std::cerr << "proceeding at wordPos " << wordPos << "\n";
           const data::XmlOption *xmlOption = xmlCovered.GetOption();
           const Words &output = xmlOption->GetOutput();
-          // TODO: output[0] -> output[wordPos]
           std::cerr << "xmlCovered = " << xmlOption->GetStart() << "-" << xmlOption->GetEnd() << ", output length " << output.size();
           for(size_t o=0;o<output.size();o++) {
             std::cerr << " " << (*targetVocab)[output[o]];
@@ -557,11 +563,23 @@ public:
                 newXmlCovered.Start();
                 subbeam++; // resulting hyp will be in next subbeam
               }
+              auto alignments = scorers_[0]->getAlignment();
+              float weight = options_->get<float>("xml-alignment-weight");
+              std::cerr << "ALIGN: alignments.size() = " << alignments.size() << "\n";
+              if (!alignments.empty() && weight != 0.0) {
+                auto align = getHardAlignmentsForHypothesis(alignments, batch, localBeamSize, i, j);
+                std::cerr << "ALIGN: align.size() = " << align.size() << "\n";
+                cost -= weight * newXmlCovered.GetAlignmentCost();
+                newXmlCovered.AddAlignmentCost( align );
+                cost += weight * newXmlCovered.GetAlignmentCost();
+              }
             }
             else {
               // other xml options
               if (newXmlCovered.GetStarted()) {
                 std::cerr << "newXmlCovered.Abandon();\n";
+                float weight = options_->get<float>("xml-alignment-weight");
+                cost -= weight * newXmlCovered.GetAlignmentCost();
                 newXmlCovered.Abandon();
                 subbeam--; // resulting hyp will be one subbeam lower
               }
@@ -648,9 +666,20 @@ public:
               if (output[wordPos] == embIdx) {
                 std::cerr << "newXmlCovered.Proceed();\n";
                 newXmlCovered.Proceed();
+                auto alignments = scorers_[0]->getAlignment();
+                float weight = options_->get<float>("xml-alignment-weight");
+                if (!alignments.empty() && weight != 0.0) {
+                  auto align = getHardAlignmentsForHypothesis(alignments, batch, localBeamSize, hypIdx, beamNo);
+                  std::cerr << "ALIGN2: align.size() = " << align.size() << "\n";
+                  subCosts[i] -= weight * newXmlCovered.GetAlignmentCost();
+                  newXmlCovered.AddAlignmentCost( align );
+                  subCosts[i] += weight * newXmlCovered.GetAlignmentCost();
+                }
               }
               else {
                 std::cerr << "newXmlCovered.Abandon();\n";
+                float weight = options_->get<float>("xml-alignment-weight");
+                subCosts[i] -= weight * newXmlCovered.GetAlignmentCost();
                 newXmlCovered.Abandon();
                 newSubbeam--;
               }
@@ -768,12 +797,14 @@ public:
             //}
           }
         }
-        int word = collectedKeys[j][bestSubbeam][bestIndex] % dimTrgVoc;
-        std::cerr << "merge beam " << j << " from subbeam " << bestSubbeam << ", hyp " << bestIndex << ": " << (*targetVocab)[word] << ":" << word << "," << bestCost << "\n";
-        outCosts.push_back( bestCost );
-        outKeys.push_back( collectedKeys[j][bestSubbeam][bestIndex] );
-        outXmls.push_back( collectedXmls[j][bestSubbeam][bestIndex] );
-        index[bestSubbeam]++;
+        if (bestIndex >= 0) {
+          int word = collectedKeys[j][bestSubbeam][bestIndex] % dimTrgVoc;
+          std::cerr << "merge beam " << j << " from subbeam " << bestSubbeam << ", hyp " << bestIndex << ": " << (*targetVocab)[word] << ":" << word << "," << bestCost << "\n";
+          outCosts.push_back( bestCost );
+          outKeys.push_back( collectedKeys[j][bestSubbeam][bestIndex] );
+          outXmls.push_back( collectedXmls[j][bestSubbeam][bestIndex] );
+          index[bestSubbeam]++;
+        }
       }
     }
     std::cerr << "outCosts.size() = " << outCosts.size() << "\n";

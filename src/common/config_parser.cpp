@@ -691,9 +691,13 @@ void ConfigParser::addOptionsTranslate(po::options_description& desc) {
     ("weights", po::value<std::vector<float>>()->multitoken(),
       "Scorer weights")
     ("xml-input", po::value<bool>()->zero_tokens()->default_value(false),
-     "Process XML tags in input to direct decoder")
+      "Process XML tags in input to direct decoder")
+    ("xml-alignment-weight", po::value<float>()->default_value(1.0),
+      "Weight given to alignment mismatch cost when applying xml constraint")
+    ("xml-violation-penalty", po::value<float>()->default_value(10.0),
+      "Penalty cost given to constraint violation")
     ("alignment", po::value<bool>()->zero_tokens()->default_value(false),
-     "Return word alignments")
+      "Return word alignments")
     // TODO: the options should be available only in server
     ("port,p", po::value<size_t>()->default_value(8080),
       "Port number for web socket server")
@@ -993,6 +997,8 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     SET_OPTION_NONDEFAULT("weights", std::vector<float>);
     SET_OPTION_NONDEFAULT("shortlist", std::vector<std::string>);
     SET_OPTION("xml-input", bool);
+    SET_OPTION("xml-alignment-weight", float);
+    SET_OPTION("xml-violation-penalty", float);
     SET_OPTION("alignment", bool);
     SET_OPTION("port", size_t);
     SET_OPTION("optimize", bool);

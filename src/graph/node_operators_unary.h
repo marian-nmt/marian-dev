@@ -776,8 +776,8 @@ public:
   Tensor& val() override {
     auto childVal = stepNode_->val();
     size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = New<MemoryPiece>(childVal->memory()->data() + offset,
-                                childVal->memory()->size());
+    auto mem = SNew<MemoryPiece>(childVal->memory()->data() + offset,
+                                 childVal->memory()->size());
     val_.reset(new TensorBase(mem, shape(), childVal->getBackend()));
     return val_;
   };
@@ -785,8 +785,8 @@ public:
   Tensor& grad() override {
     auto childGrad = stepNode_->grad();
     size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = New<MemoryPiece>(childGrad->memory()->data() + offset,
-                                childGrad->memory()->size());
+    auto mem = SNew<MemoryPiece>(childGrad->memory()->data() + offset,
+                                 childGrad->memory()->size());
     adj_.reset(new TensorBase(mem, shape(), childGrad->getBackend()));
     return adj_;
   };

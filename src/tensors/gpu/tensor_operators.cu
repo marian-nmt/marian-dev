@@ -1292,7 +1292,7 @@ float L2Norm(Tensor in) {
 
   uint8_t* data;
   cudaMalloc(&data, blocks * sizeof(float));
-  Tensor out(new TensorBase(New<MemoryPiece>(data, blocks * sizeof(float)),
+  Tensor out(new TensorBase(SNew<MemoryPiece>(data, blocks * sizeof(float)),
                             {1, blocks},
                             in->getBackend()));
 

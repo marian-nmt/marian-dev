@@ -17,21 +17,21 @@
 
 namespace marian {
 
-class TensorBase : public std::enable_shared_from_this<TensorBase> {
+class TensorBase : public EnableStupidPtr<TensorBase> {
 private:
-  Ptr<MemoryPiece> memory_;
+  SPtr<MemoryPiece> memory_;
   Shape shape_;
   Type type_{Type::float32};
   Ptr<Backend> backend_;
 
 public:
-  TensorBase(Ptr<MemoryPiece> memory,
+  TensorBase(SPtr<MemoryPiece> memory,
              Shape shape,
              Type type,
              Ptr<Backend> backend)
       : memory_(memory), shape_(shape), type_(type), backend_(backend) {}
 
-  TensorBase(Ptr<MemoryPiece> memory, Shape shape, Ptr<Backend> backend)
+  TensorBase(SPtr<MemoryPiece> memory, Shape shape, Ptr<Backend> backend)
       : memory_(memory),
         shape_(shape),
         type_(Type::float32),
@@ -39,9 +39,9 @@ public:
 
   ~TensorBase() {}
 
-  virtual void reset(Ptr<MemoryPiece> memory) { memory_ = memory; }
+  virtual void reset(SPtr<MemoryPiece> memory) { memory_ = memory; }
 
-  virtual Ptr<MemoryPiece> memory() { return memory_; }
+  virtual SPtr<MemoryPiece> memory() { return memory_; }
 
   virtual Type type() { return type_; }
 
@@ -80,9 +80,9 @@ public:
   DeviceId getDeviceId() { return backend_->getDeviceId(); }
 
   Tensor subtensor(size_t offset, size_t size) {
-    auto mem = New<MemoryPiece>(memory_->data() + sizeOf(type_) * offset,
+    auto mem = SNew<MemoryPiece>(memory_->data() + sizeOf(type_) * offset,
                                 sizeOf(type_) * size);
-    return New<TensorBase>(mem, Shape{1, (int)size}, backend_);
+    return SNew<TensorBase>(mem, Shape{1, (int)size}, backend_);
   }
 
   float get(size_t i) {
@@ -355,5 +355,5 @@ public:
   }
 };
 
-typedef std::shared_ptr<TensorBase> Tensor;
+typedef SPtr<TensorBase> Tensor;
 }  // namespace marian

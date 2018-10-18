@@ -1,10 +1,12 @@
 #pragma once
 
+#include "common/stupid_ptr.h"
+
 #include <iostream>
 
 namespace marian {
 
-class MemoryPiece {
+class MemoryPiece : public EnableStupidPtr<MemoryPiece> {
 private:
   uint8_t* data_;
   size_t size_;

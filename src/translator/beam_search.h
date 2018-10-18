@@ -78,7 +78,7 @@ public:
         if(first)
           beamHypIdx = 0;
 
-        auto hyp = New<Hypothesis>(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
+        auto hyp = SNew<Hypothesis>(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
 
         // Set score breakdown for n-best lists
         if(options_->get<bool>("n-best")) {
@@ -173,7 +173,7 @@ public:
 
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(auto& beam : beams)
-      beam.resize(localBeamSize, New<Hypothesis>());
+      beam.resize(localBeamSize, SNew<Hypothesis>());
 
     bool first = true;
     bool final = false;

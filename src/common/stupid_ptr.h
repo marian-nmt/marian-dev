@@ -1,16 +1,38 @@
 #pragma once
 
+#include <cassert>
+#include <iostream>
+
+// Smart pointer class for small objects with reference counting but no thread-safety.
+// Inspired by boost::intrusive_ptr<T>.
+
+// Compared to std::shared_ptr this is small and cheap to construct and destroy. 
+// Does not hold the counter, the pointed to class `T` needs to do that:
+// Either by implementing `size_t references_` and befriending `StupidPtr<T>` or by inheriting from
+// `EnableStupidPtr<T>` for class of type `T`.
+// @TODO check cost for inheriting from `EnableStupidPtr<T>`
+
 template<class T> 
 class StupidPtr {
 private:
     typedef StupidPtr this_type;
+
+    inline void stupidPtrAddRef(T* x){
+      ++x->references_;
+    }
+
+    inline void stupidPtrRelease(T* x) {
+      if(--x->references_ == 0) 
+        delete x;
+    }
 
 public:
     typedef T element_type;
 
     StupidPtr() : ptr_(0) {};
 
-    StupidPtr(T* p, bool add_ref = true) {
+    StupidPtr(T* p, bool add_ref = true) 
+    : ptr_(p) {
        if(ptr_ != 0 && add_ref) 
          stupidPtrAddRef(ptr_);
     }
@@ -33,15 +55,6 @@ public:
         stupidPtrRelease(ptr_);
     }
 
-    inline void stupidPtrAddRef(T* x){
-      ++x->references_;
-    }
-
-    inline void stupidPtrRelease(T* x) {
-      if(--x->references_ == 0) 
-        delete x;
-    }
-
     StupidPtr(StupidPtr&& rhs) 
     : ptr_(rhs.ptr_) {
       rhs.ptr_ = 0;
@@ -62,8 +75,6 @@ public:
       this_type(rhs).swap(*this);
       return *this;
     }
-
-    operator bool() const;
 
     void reset() {
       this_type().swap(*this);
@@ -97,12 +108,12 @@ public:
       return ptr_;
     }
 
-    explicit operator bool() {
-        return px != 0;
+    explicit operator bool() const {
+      return ptr_ != 0;
     }
 
     bool operator!() const {
-      return px == 0;
+      return ptr_ == 0;
     }
 
     void swap(StupidPtr& rhs) {
@@ -126,21 +137,33 @@ bool operator!=(const StupidPtr<T>& a, const StupidPtr<U>& b) {
 }
 
 template<class T>
-bool operator==(const  a, T* b) {rn a.get() == b;
+bool operator==(const StupidPtr<T>& a, T* b) {
+  return a.get() == b;
 }
 
 template<class T>
-bool operator!=(const  a, T* b) {rn a.get() != b;
+bool operator!=(const StupidPtr<T>& a, T* b) {
+  return a.get() != b;
 }
 
 template<class T>
-bool operator==(T* a, const  b) {
-  retu b.get()
+bool operator==(const StupidPtr<T>& a, std::nullptr_t) {
+  return a.get() == 0;
 }
 
 template<class T>
-bool operator!=(T* a, const  b) {
-  retu b.get()
+bool operator!=(const StupidPtr<T>& a, std::nullptr_t) {
+  return a.get() != 0;
+}
+
+template<class T>
+bool operator==(T* a, const StupidPtr<T>& b) {
+  return b.get();
+}
+
+template<class T>
+bool operator!=(T* a, const StupidPtr<T>& b) {
+  return b.get();
 }
 
 template<class T, class U>
@@ -154,8 +177,8 @@ void swap(StupidPtr<T> & a, StupidPtr<T> & b) {
 }
 
 template<class T> 
-T* get_pointer(const  p) {
-  retut();
+T* get_pointer(const StupidPtr<T>& p) {
+  return p.get();
 }
 
 template<class T, class U>
@@ -183,10 +206,9 @@ template <class T>
 class EnableStupidPtr {
 private:
   size_t references_{0};
-
   friend StupidPtr<T>;
 
-  virtual StupidPtr<T> stupidPtrFromThis() {
-    return StupidPtr<T>(this);
+  StupidPtr<T> stupidFromThis() {
+    return (T*)this;
   }
 };

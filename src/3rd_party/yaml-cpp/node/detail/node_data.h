@@ -120,6 +120,8 @@ class YAML_CPP_API node_data {
   typedef std::pair<node*, node*> kv_pair;
   typedef std::list<kv_pair> kv_pairs;
   mutable kv_pairs m_undefinedPairs;
+
+  ENABLE_INTRUSIVE_PTR(node_data)
 };
 }
 }

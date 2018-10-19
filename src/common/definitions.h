@@ -1,16 +1,16 @@
 #pragma once
 
+#include "common/logging.h"
+#include "common/shape.h"
+#include "common/counting_ptr.h"
+#include "common/intrusive_ptr.h"
+
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "common/counting_ptr.h"
-#include "common/intrusive_ptr.h"
-
-#include "common/logging.h"
-#include "shape.h"
 
 #define THREAD_GUARD(body) std::thread([&]() { body; }).join()
 #define NodeOp(op) [=]() { op; }

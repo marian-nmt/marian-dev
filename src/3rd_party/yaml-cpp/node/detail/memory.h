@@ -28,6 +28,8 @@ class YAML_CPP_API memory {
  private:
   typedef std::set<shared_node> Nodes;
   Nodes m_nodes;
+
+  ENABLE_STICKY_PTR(memory)
 };
 
 class YAML_CPP_API memory_holder {
@@ -39,6 +41,8 @@ class YAML_CPP_API memory_holder {
 
  private:
   shared_memory m_pMemory;
+
+  ENABLE_STICKY_PTR(memory_holder)
 };
 }
 }

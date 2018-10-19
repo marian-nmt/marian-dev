@@ -451,7 +451,7 @@ struct SumNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SumNodeOp> cnode = std::dynamic_pointer_cast<SumNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SumNodeOp>(node);
     if(!cnode)
       return false;
     if(axis_ != cnode->axis_)
@@ -503,7 +503,7 @@ struct MeanNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<MeanNodeOp> cnode = std::dynamic_pointer_cast<MeanNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<MeanNodeOp>(node);
     if(!cnode)
       return false;
     if(axis_ != cnode->axis_)
@@ -575,7 +575,7 @@ struct SqrtNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SqrtNodeOp> cnode = std::dynamic_pointer_cast<SqrtNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SqrtNodeOp>(node);
     if(!cnode)
       return false;
     if(epsilon_ != cnode->epsilon_)
@@ -661,7 +661,7 @@ struct TransposeNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<TransposeNodeOp> cnode
+    auto cnode
         = std::dynamic_pointer_cast<TransposeNodeOp>(node);
     if(!cnode)
       return false;
@@ -728,7 +728,7 @@ public:
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ReshapeNodeOp> cnode = std::dynamic_pointer_cast<ReshapeNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ReshapeNodeOp>(node);
     if(!cnode)
       return false;
     if(shape() != cnode->shape())
@@ -776,8 +776,8 @@ public:
   Tensor& val() override {
     auto childVal = stepNode_->val();
     size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = New<MemoryPiece>(childVal->memory()->data() + offset,
-                                childVal->memory()->size());
+    auto mem = SNew<MemoryPiece>(childVal->memory()->data() + offset,
+                                 childVal->memory()->size());
     val_.reset(new TensorBase(mem, shape(), childVal->getBackend()));
     return val_;
   };
@@ -785,8 +785,8 @@ public:
   Tensor& grad() override {
     auto childGrad = stepNode_->grad();
     size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = New<MemoryPiece>(childGrad->memory()->data() + offset,
-                                childGrad->memory()->size());
+    auto mem = SNew<MemoryPiece>(childGrad->memory()->data() + offset,
+                                 childGrad->memory()->size());
     adj_.reset(new TensorBase(mem, shape(), childGrad->getBackend()));
     return adj_;
   };
@@ -807,7 +807,7 @@ public:
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<StepNodeOp> cnode = std::dynamic_pointer_cast<StepNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<StepNodeOp>(node);
     if(!cnode)
       return false;
     if(step_ != cnode->step_)
@@ -849,7 +849,7 @@ struct ShiftNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ShiftNodeOp> cnode = std::dynamic_pointer_cast<ShiftNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ShiftNodeOp>(node);
     if(!cnode)
       return false;
     if(shift_ != cnode->shift_)

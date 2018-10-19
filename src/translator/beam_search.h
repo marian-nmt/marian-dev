@@ -78,7 +78,7 @@ public:
         if(first)
           beamHypIdx = 0;
 
-        auto hyp = New<Hypothesis>(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
+        auto hyp = SNew<Hypothesis>(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
 
         // Set score breakdown for n-best lists
         if(options_->get<bool>("n-best")) {
@@ -171,9 +171,12 @@ public:
 
     auto getNBestList = createGetNBestListFn(localBeamSize, dimBatch, graph->getDeviceId());
 
+    bool allowUnk = options_->get<bool>("allow-unk", false);
+    float maxLengthFactor = options_->get<float>("max-length-factor");
+
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(auto& beam : beams)
-      beam.resize(localBeamSize, New<Hypothesis>());
+      beam.resize(localBeamSize, SNew<Hypothesis>());
 
     bool first = true;
     bool final = false;
@@ -252,8 +255,7 @@ public:
 
       //**********************************************************************
       // suppress specific symbols if not at right positions
-      if(trgUnkId_ != -1 && options_->has("allow-unk")
-         && !options_->get<bool>("allow-unk"))
+      if(trgUnkId_ != -1 && !allowUnk)
         suppressWord(pathScores, trgUnkId_);
       for(auto state : states)
         state->blacklist(pathScores, batch);
@@ -281,8 +283,7 @@ public:
         if(!beams[i].empty()) {
           final = final
                   || histories[i]->size()
-                         >= options_->get<float>("max-length-factor")
-                                * batch->front()->batchWidth();
+                         >= maxLengthFactor * batch->front()->batchWidth();
           histories[i]->Add(
               beams[i], trgEosId_, prunedBeams[i].empty() || final);
         }

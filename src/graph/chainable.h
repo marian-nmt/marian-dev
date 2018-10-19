@@ -19,8 +19,8 @@ class Chainable;
  * A convenience type to represent a shared pointer to a Chainable<Tensor>
  * object.
  */
-typedef Ptr<Chainable<Tensor>> Expr;
-typedef Weak<Chainable<Tensor>> WExpr;
+typedef SPtr<Chainable<Tensor>> Expr;
+typedef SWeak<Chainable<Tensor>> WExpr;
 
 class ExpressionGraph;
 
@@ -51,6 +51,9 @@ class ExpressionGraph;
  */
 template <class DataType>
 class Chainable {
+private:
+ ENABLE_STICKY_PTR(Chainable<DataType>)
+
 public:
   Chainable() {}
   virtual ~Chainable(){};

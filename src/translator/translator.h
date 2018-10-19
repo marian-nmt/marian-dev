@@ -101,6 +101,8 @@ public:
     auto tOptions = New<Options>();
     tOptions->merge(options_);
 
+    bool doNbest = options_->get<bool>("n-best");
+
     for(auto batch : bg) {
       auto task = [=](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
@@ -123,14 +125,14 @@ public:
           collector->Write((long)history->GetLineNum(),
                            best1.str(),
                            bestn.str(),
-                           options_->get<bool>("n-best"));
+                           doNbest);
         }
       };
 
       threadPool.enqueue(task, batchId++);
 
       // progress heartbeat for MS-internal Philly compute cluster
-      //otherwise this job may be killed prematurely if no log for 4 hrs
+      // otherwise this job may be killed prematurely if no log for 4 hrs
       if (getenv("PHILLY_JOB_ID"))  // this environment variable exists when running on the cluster
       {
         auto progress = 0.f; //fake progress for now

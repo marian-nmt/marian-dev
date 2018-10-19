@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "common/sticky_ptr.h"
 #include "common/logging.h"
 #include "shape.h"
 
@@ -24,10 +25,16 @@ template <class T>
 using Ptr = std::shared_ptr<T>;
 
 template <class T>
+using SPtr = StickyPtr<T>;
+
+template <class T>
 using UPtr = std::unique_ptr<T>;
 
 template <class T>
 using Weak = std::weak_ptr<T>;
+
+template <class T>
+using SWeak = T*;
 
 /** @brief Creates shared_ptr of any type, passes all arguments to any available
  * constructor */
@@ -39,6 +46,18 @@ Ptr<T> New(Args&&... args) {
 template <class T>
 Ptr<T> New(Ptr<T> p) {
   return Ptr<T>(p);
+}
+
+/** @brief Creates shared_ptr of any type, passes all arguments to any available
+ * constructor */
+template <class T, typename... Args>
+SPtr<T> SNew(Args&&... args) {
+  return SPtr<T>(new T(std::forward<Args>(args)...));
+}
+
+template <class T>
+SPtr<T> SNew(Ptr<T> p) {
+  return SPtr<T>(p);
 }
 
 enum class DeviceType : size_t { gpu = 0, cpu = 1 };
@@ -81,11 +100,11 @@ const DeviceId GPU6{6, DeviceType::gpu};
 const DeviceId GPU7{7, DeviceType::gpu};
 
 class TensorBase;
-typedef Ptr<TensorBase> Tensor;
+typedef SPtr<TensorBase> Tensor;
 
 template <class DataType>
 class Chainable;
-typedef Ptr<Chainable<Tensor>> Expr;
+typedef SPtr<Chainable<Tensor>> Expr;
 
 class OptimizerBase;
 typedef Ptr<OptimizerBase> OptimizerBasePtr;

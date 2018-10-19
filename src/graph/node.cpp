@@ -8,7 +8,7 @@ namespace marian {
 size_t Node::allocate() {
   size_t elements = 0;
   if(!val_) {
-    graph()->allocateForward(shared_from_this());
+    graph()->allocateForward(this);
     elements = val_->shape().elements();
   }
   return elements;
@@ -30,7 +30,7 @@ void Node::free() {
  */
 void Node::init_dependent() {
   if(!adj_) {
-    graph()->allocateBackward(shared_from_this());
+    graph()->allocateBackward(this);
     adj_->set(1.f);
   }
 }
@@ -43,7 +43,7 @@ void Node::init_dependent() {
  */
 void Node::set_zero_adjoint() {
   if(!adj_) {
-    graph()->allocateBackward(shared_from_this());
+    graph()->allocateBackward(this);
     adj_->set(0.f);
   }
 }

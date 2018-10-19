@@ -3,6 +3,7 @@
 #include "yaml-cpp/mark.h"
 #include "yaml-cpp/node/detail/node.h"
 #include "yaml-cpp/node/detail/node_iterator.h"
+#include "yaml-cpp/node/detail/memory.h"
 #include "yaml-cpp/node/node.h"
 #include "yaml-cpp/node/type.h"
 

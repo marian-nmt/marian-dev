@@ -184,6 +184,7 @@ std::basic_ostream<E, T>& operator<<(std::basic_ostream<E, T>& os, const Intrusi
   return os;
 }
 
+// compatibility functions to make std::*_pointer_cast<T> work, also for automatic hashing
 namespace std {
   template<class T>
   T* get_pointer(const IntrusivePtr<T>& p) {
@@ -205,6 +206,7 @@ namespace std {
     return dynamic_cast<T*>(p.get());
   }
 
+  // IntrusivePtr<T> can be used as hash map key
   template <class T> struct hash<IntrusivePtr<T>> {
     size_t operator()(const IntrusivePtr<T>& x) const {
       std::hash<size_t> hasher;

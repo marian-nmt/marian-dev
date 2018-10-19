@@ -102,8 +102,7 @@ public:
     if(!params_.empty()) {
       for(auto p : params_) {
         if(!p->val()) {
-          p->val() = Tensor(
-              new TensorBase(nullptr, p->shape(), Type::float32, backend_));
+          p->val() = TensorBase::New(nullptr, p->shape(), Type::float32, backend_);
         }
       }
     }

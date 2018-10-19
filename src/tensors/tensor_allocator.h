@@ -70,7 +70,7 @@ public:
     if(!t || t->shape() != shape) {
       int size = shape.elements();
       auto mem = allocator_->alloc(size, type);
-      t = Tensor(new TensorBase(mem, shape, type, backend_));
+      t = TensorBase::New(mem, shape, type, backend_);
     }
   }
 
@@ -79,7 +79,7 @@ public:
   Tensor asTensor() {
     auto mem = allocator_->memory();
     auto size = mem->size() / sizeof(float);
-    return Tensor(new TensorBase(mem, {1, (int)size}, backend_));
+    return TensorBase::New(mem, Shape({1, (int)size}), backend_);
   }
 
   size_t size() { return allocator_->size() / sizeof(float); }

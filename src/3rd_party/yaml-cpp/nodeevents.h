@@ -13,6 +13,9 @@
 #include "yaml-cpp/anchor.h"
 #include "yaml-cpp/node/ptr.h"
 
+#include "yaml-cpp/node/detail/memory.h"
+#include "yaml-cpp/node/detail/node.h"
+
 namespace YAML {
 namespace detail {
 class node;

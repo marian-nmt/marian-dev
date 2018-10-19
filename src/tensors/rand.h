@@ -7,7 +7,8 @@
 namespace marian {
 
 class TensorBase;
-typedef SPtr<TensorBase> Tensor;
+// this is not ideal
+typedef IPtr<TensorBase> Tensor;
 
 class RandomGenerator {
 protected:

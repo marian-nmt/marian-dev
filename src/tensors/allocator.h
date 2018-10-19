@@ -88,7 +88,7 @@ private:
   bool throw_{false};
 
   std::set<Gap> gaps_;
-  std::unordered_map<uint8_t*, SPtr<MemoryPiece>> allocated_;
+  std::unordered_map<uint8_t*, MemoryPiece::PtrType> allocated_;
 
   size_t align(size_t size) {
     return (size_t)(ceil(size / (float)alignment_) * alignment_);
@@ -109,7 +109,7 @@ private:
                        gap.size()));
     insertGap(Gap(device_->data() + oldSize, add));
 
-    std::unordered_map<uint8_t*, SPtr<MemoryPiece>> oldAllocated;
+    std::unordered_map<uint8_t*, MemoryPiece::PtrType> oldAllocated;
     allocated_.swap(oldAllocated);
     for(auto it : oldAllocated) {
       uint8_t* newPtr = device_->data() + std::distance(oldData, it.first);
@@ -193,16 +193,16 @@ public:
 
   size_t capacity(size_t num, Type type) { return align(num * sizeOf(type)); }
 
-  SPtr<MemoryPiece> alloc(size_t num, Type type) {
+  MemoryPiece::PtrType alloc(size_t num, Type type) {
     return alloc(num * sizeOf(type));
   }
 
   template <typename T>
-  SPtr<MemoryPiece> alloc(size_t num) {
+  MemoryPiece::PtrType alloc(size_t num) {
     return alloc(capacity<T>(num));
   }
 
-  SPtr<MemoryPiece> alloc(size_t bytes) {
+  MemoryPiece::PtrType alloc(size_t bytes) {
     bytes = align(bytes);
     Gap gap = getGap(bytes);
 
@@ -211,7 +211,7 @@ public:
     }
 
     auto ptr = gap.data();
-    auto mp = SNew<MemoryPiece>(ptr, bytes);
+    auto mp = MemoryPiece::New(ptr, bytes);
     allocated_[ptr] = mp;
     return mp;
   }
@@ -233,7 +233,7 @@ public:
     return false;
   }
 
-  bool free(SPtr<MemoryPiece> mp) {
+  bool free(MemoryPiece::PtrType mp) {
     if(free(mp->data(), mp->size())) {
       mp->set(nullptr, 0);
       return true;
@@ -248,8 +248,8 @@ public:
     insertGap({device_->data(), device_->size()}, false);
   }
 
-  SPtr<MemoryPiece> memory() {
-    return SNew<MemoryPiece>(device_->data(), device_->size());
+  MemoryPiece::PtrType memory() {
+    return MemoryPiece::New(device_->data(), device_->size());
   }
 
   size_t size() { return device_->size(); }

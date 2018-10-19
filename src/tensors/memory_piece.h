@@ -1,15 +1,17 @@
 #pragma once
 
-#include "common/stupid_ptr.h"
+#include "common/definitions.h"
 
 #include <iostream>
 
 namespace marian {
 
-class MemoryPiece : public EnableStupidPtr<MemoryPiece> {
+class MemoryPiece {
 private:
   uint8_t* data_;
   size_t size_;
+
+  ENABLE_STICKY_PTR(MemoryPiece)
 
 public:
   MemoryPiece(uint8_t* data, size_t size) : data_(data), size_(size) {}

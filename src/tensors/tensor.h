@@ -17,12 +17,14 @@
 
 namespace marian {
 
-class TensorBase : public EnableStupidPtr<TensorBase> {
+class TensorBase {
 private:
   SPtr<MemoryPiece> memory_;
   Shape shape_;
   Type type_{Type::float32};
   Ptr<Backend> backend_;
+
+  ENABLE_STICKY_PTR(TensorBase)
 
 public:
   TensorBase(SPtr<MemoryPiece> memory,

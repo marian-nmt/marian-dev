@@ -91,6 +91,8 @@ class node_ref {
 
  private:
   shared_node_data m_pData;
+
+  ENABLE_STICKY_PTR(node_ref)
 };
 }
 }

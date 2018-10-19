@@ -1,7 +1,6 @@
 #pragma once
 
 #include "3rd_party/yaml-cpp/yaml.h"
-#include "common/stupid_ptr.h"
 #include "common/cli_helper.h"
 #include "common/config_parser.h"
 #include "common/io.h"

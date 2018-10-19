@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "common/stupid_ptr.h"
+#include "common/sticky_ptr.h"
 #include "common/logging.h"
 #include "shape.h"
 
@@ -25,7 +25,7 @@ template <class T>
 using Ptr = std::shared_ptr<T>;
 
 template <class T>
-using SPtr = StupidPtr<T>;
+using SPtr = StickyPtr<T>;
 
 template <class T>
 using UPtr = std::unique_ptr<T>;

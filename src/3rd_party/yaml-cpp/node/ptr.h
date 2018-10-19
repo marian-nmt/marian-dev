@@ -8,6 +8,10 @@
 #endif
 
 #include "yaml-cpp/dll.h"
+
+#include "common/icky_ptr.h"
+#include "common/sticky_ptr.h"
+
 #include <memory>
 
 namespace YAML {
@@ -18,11 +22,26 @@ class node_data;
 class memory;
 class memory_holder;
 
-typedef std::shared_ptr<node> shared_node;
-typedef std::shared_ptr<node_ref> shared_node_ref;
-typedef std::shared_ptr<node_data> shared_node_data;
-typedef std::shared_ptr<memory_holder> shared_memory_holder;
-typedef std::shared_ptr<memory> shared_memory;
+typedef StickyPtr<node> shared_node;
+void stickyPtrAddRef(node*);
+void stickyPtrRelease(node*);
+
+typedef StickyPtr<node_ref> shared_node_ref;
+void stickyPtrAddRef(node_ref*);
+void stickyPtrRelease(node_ref*);
+
+typedef StickyPtr<node_data> shared_node_data;
+void stickyPtrAddRef(node_data*);
+void stickyPtrRelease(node_data*);
+
+typedef StickyPtr<memory_holder> shared_memory_holder;
+void stickyPtrAddRef(memory_holder*);
+void stickyPtrRelease(memory_holder*);
+
+typedef StickyPtr<memory> shared_memory;
+void stickyPtrAddRef(memory*);
+void stickyPtrRelease(memory*);
+
 }
 }
 

@@ -50,7 +50,10 @@ class ExpressionGraph;
  *   or formally \f$\bar{w}_i = \frac{\partial y}{\partial w_i}\f$
  */
 template <class DataType>
-class Chainable : public EnableStupidPtr<Chainable<DataType>> {
+class Chainable {
+private:
+ ENABLE_STICKY_PTR(Chainable<DataType>)
+
 public:
   Chainable() {}
   virtual ~Chainable(){};

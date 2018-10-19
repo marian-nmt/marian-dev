@@ -6,7 +6,7 @@
 
 namespace marian {
 
-class Hypothesis : public EnableStupidPtr<Hypothesis> {
+class Hypothesis {
 public:
   Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {}
 
@@ -61,6 +61,8 @@ private:
 
   std::vector<float> scoreBreakdown_;
   std::vector<float> alignment_;
+
+  ENABLE_STICKY_PTR(Hypothesis)
 };
 
 typedef std::vector<SPtr<Hypothesis>> Beam;                // Beam = vector of hypotheses

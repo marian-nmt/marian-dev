@@ -101,6 +101,8 @@ public:
     auto tOptions = New<Options>();
     tOptions->merge(options_);
 
+    bool doNbest = options_->get<bool>("n-best");
+
     for(auto batch : bg) {
       auto task = [=](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
@@ -123,7 +125,7 @@ public:
           collector->Write((long)history->GetLineNum(),
                            best1.str(),
                            bestn.str(),
-                           options_->get<bool>("n-best"));
+                           doNbest);
         }
       };
 

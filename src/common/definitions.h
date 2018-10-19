@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "common/sticky_ptr.h"
+#include "common/counting_ptr.h"
+#include "common/intrusive_ptr.h"
+
 #include "common/logging.h"
 #include "shape.h"
 
@@ -22,19 +24,22 @@ namespace marian {
 typedef uint32_t IndexType;
 
 template <class T>
-using Ptr = std::shared_ptr<T>;
+using IPtr = IntrusivePtr<T>;
 
 template <class T>
-using SPtr = StickyPtr<T>;
+using CPtr = CountingPtr<T>;
 
 template <class T>
 using UPtr = std::unique_ptr<T>;
 
 template <class T>
-using Weak = std::weak_ptr<T>;
+using IWeak = T*;
 
 template <class T>
-using SWeak = T*;
+using Ptr = std::shared_ptr<T>;
+
+template <class T>
+using Weak = std::weak_ptr<T>;
 
 /** @brief Creates shared_ptr of any type, passes all arguments to any available
  * constructor */
@@ -48,16 +53,16 @@ Ptr<T> New(Ptr<T> p) {
   return Ptr<T>(p);
 }
 
-/** @brief Creates shared_ptr of any type, passes all arguments to any available
+/** @brief Creates InstrusivePtr of any type, passes all arguments to any available
  * constructor */
 template <class T, typename... Args>
-SPtr<T> SNew(Args&&... args) {
-  return SPtr<T>(new T(std::forward<Args>(args)...));
+IPtr<T> INew(Args&&... args) {
+  return IPtr<T>(new T(std::forward<Args>(args)...));
 }
 
 template <class T>
-SPtr<T> SNew(Ptr<T> p) {
-  return SPtr<T>(p);
+IPtr<T> INew(Ptr<T> p) {
+  return IPtr<T>(p);
 }
 
 enum class DeviceType : size_t { gpu = 0, cpu = 1 };
@@ -99,12 +104,14 @@ const DeviceId GPU5{5, DeviceType::gpu};
 const DeviceId GPU6{6, DeviceType::gpu};
 const DeviceId GPU7{7, DeviceType::gpu};
 
+// These are many small objects, hence use IntrusivePtr
 class TensorBase;
-typedef SPtr<TensorBase> Tensor;
+typedef IPtr<TensorBase> Tensor;
 
+// These are many small objects, hence use IntrusivePtr
 template <class DataType>
 class Chainable;
-typedef SPtr<Chainable<Tensor>> Expr;
+typedef IPtr<Chainable<Tensor>> Expr;
 
 class OptimizerBase;
 typedef Ptr<OptimizerBase> OptimizerBasePtr;

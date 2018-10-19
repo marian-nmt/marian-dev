@@ -7,16 +7,25 @@
 namespace marian {
 
 class Hypothesis {
-public:
   Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {}
 
-  Hypothesis(const SPtr<Hypothesis> prevHyp,
+  Hypothesis(const IPtr<Hypothesis> prevHyp,
              Word word,
              IndexType prevIndex,
              float pathScore)
       : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore) {}
 
-  const SPtr<Hypothesis> GetPrevHyp() const { return prevHyp_; }
+public:
+  // Use this whenever pointing to MemoryPiece
+  typedef IPtr<Hypothesis> PtrType;
+
+  // Use this whenever creating a pointer to MemoryPiece
+  template <class ...Args>
+  static PtrType New(Args&& ...args) {
+    return PtrType(new Hypothesis(std::forward<Args>(args)...));
+  }
+
+  const PtrType GetPrevHyp() const { return prevHyp_; }
 
   Word GetWord() const { return word_; }
 
@@ -54,7 +63,7 @@ public:
   }
 
 private:
-  const SPtr<Hypothesis> prevHyp_;
+  const PtrType prevHyp_;
   const IndexType prevIndex_;
   const Word word_;
   const float pathScore_;
@@ -62,11 +71,11 @@ private:
   std::vector<float> scoreBreakdown_;
   std::vector<float> alignment_;
 
-  ENABLE_STICKY_PTR(Hypothesis)
+  ENABLE_INTRUSIVE_PTR(Hypothesis)
 };
 
-typedef std::vector<SPtr<Hypothesis>> Beam;                // Beam = vector of hypotheses
+typedef std::vector<IPtr<Hypothesis>> Beam;                // Beam = vector of hypotheses
 typedef std::vector<Beam> Beams;                          // Beams = vector of vector of hypotheses
-typedef std::tuple<Words, SPtr<Hypothesis>, float> Result; // (word ids for hyp, hyp, normalized sentence score for hyp)
+typedef std::tuple<Words, IPtr<Hypothesis>, float> Result; // (word ids for hyp, hyp, normalized sentence score for hyp)
 typedef std::vector<Result> NBestList;                    // sorted vector of (word ids, hyp, sent score) tuples
 }  // namespace marian

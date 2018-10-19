@@ -162,8 +162,6 @@ class node {
   shared_node_ref m_pRef;
   typedef std::set<node*> nodes;
   nodes m_dependencies;
-
-  ENABLE_STICKY_PTR(node)
 };
 }
 }

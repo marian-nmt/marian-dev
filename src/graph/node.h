@@ -45,7 +45,7 @@ protected:
 
 public:
   Node(Ptr<ExpressionGraph> graph, Shape shape, Type value_type = Type::float32)
-      : graph_(graph), shape_(shape), value_type_(value_type) {}
+    : graph_(graph), shape_(shape), value_type_(value_type) {}
 
   virtual ~Node() {
     if(destroy_) {

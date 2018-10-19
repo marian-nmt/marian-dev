@@ -19,31 +19,40 @@ namespace marian {
 
 class TensorBase {
 private:
-  SPtr<MemoryPiece> memory_;
+  MemoryPiece::PtrType memory_;
   Shape shape_;
   Type type_{Type::float32};
   Ptr<Backend> backend_;
 
-  ENABLE_STICKY_PTR(TensorBase)
+  ENABLE_INTRUSIVE_PTR(TensorBase)
 
-public:
-  TensorBase(SPtr<MemoryPiece> memory,
+  TensorBase(MemoryPiece::PtrType memory,
              Shape shape,
              Type type,
              Ptr<Backend> backend)
       : memory_(memory), shape_(shape), type_(type), backend_(backend) {}
 
-  TensorBase(SPtr<MemoryPiece> memory, Shape shape, Ptr<Backend> backend)
+  TensorBase(MemoryPiece::PtrType memory, Shape shape, Ptr<Backend> backend)
       : memory_(memory),
         shape_(shape),
         type_(Type::float32),
         backend_(backend) {}
 
+public:
+  // Use this whenever pointing to MemoryPiece
+  typedef IPtr<TensorBase> PtrType;
+
+  // Use this whenever creating a pointer to MemoryPiece
+  template <class ...Args>
+  static PtrType New(Args&& ...args) {
+    return PtrType(new TensorBase(std::forward<Args>(args)...));
+  }
+
   ~TensorBase() {}
 
-  virtual void reset(SPtr<MemoryPiece> memory) { memory_ = memory; }
+  virtual void reset(MemoryPiece::PtrType memory) { memory_ = memory; }
 
-  virtual SPtr<MemoryPiece> memory() { return memory_; }
+  virtual MemoryPiece::PtrType memory() { return memory_; }
 
   virtual Type type() { return type_; }
 
@@ -75,9 +84,8 @@ public:
   DeviceId getDeviceId() { return backend_->getDeviceId(); }
 
   Tensor subtensor(size_t offset, size_t size) {
-    auto mem = SNew<MemoryPiece>(memory_->data() + sizeOf(type_) * offset,
-                                sizeOf(type_) * size);
-    return SNew<TensorBase>(mem, Shape{1, (int)size}, backend_);
+    auto mem = MemoryPiece::New(memory_->data() + sizeOf(type_) * offset, sizeOf(type_) * size);
+    return TensorBase::New(mem, Shape{1, (int)size}, backend_);
   }
 
   float get(size_t i) {
@@ -333,5 +341,5 @@ public:
   }
 };
 
-typedef SPtr<TensorBase> Tensor;
+typedef TensorBase::PtrType Tensor;
 }  // namespace marian

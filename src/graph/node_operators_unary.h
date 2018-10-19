@@ -699,15 +699,15 @@ public:
 
   Tensor& val() override {
     auto childVal = reshapee_->val();
-    val_.reset(
-        new TensorBase(childVal->memory(), shape(), childVal->getBackend()));
+    auto temp = TensorBase::New(childVal->memory(), shape(), childVal->getBackend());
+    val_.swap(temp);
     return val_;
   };
 
   Tensor& grad() override {
     auto childGrad = reshapee_->grad();
-    adj_.reset(
-        new TensorBase(childGrad->memory(), shape(), childGrad->getBackend()));
+    auto temp = TensorBase::New(childGrad->memory(), shape(), childGrad->getBackend());
+    adj_.swap(temp);
     return adj_;
   };
 
@@ -776,18 +776,20 @@ public:
   Tensor& val() override {
     auto childVal = stepNode_->val();
     size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = SNew<MemoryPiece>(childVal->memory()->data() + offset,
-                                 childVal->memory()->size());
-    val_.reset(new TensorBase(mem, shape(), childVal->getBackend()));
+    auto mem = MemoryPiece::New(childVal->memory()->data() + offset,
+                                childVal->memory()->size());
+    auto temp = TensorBase::New(mem, shape(), childVal->getBackend());
+    val_.swap(temp);
     return val_;
   };
 
   Tensor& grad() override {
     auto childGrad = stepNode_->grad();
     size_t offset = step_ * shape().elements() * sizeof(float);
-    auto mem = SNew<MemoryPiece>(childGrad->memory()->data() + offset,
-                                 childGrad->memory()->size());
-    adj_.reset(new TensorBase(mem, shape(), childGrad->getBackend()));
+    auto mem = MemoryPiece::New(childGrad->memory()->data() + offset,
+                                childGrad->memory()->size());
+    auto temp = TensorBase::New(mem, shape(), childGrad->getBackend());
+    adj_.swap(temp);
     return adj_;
   };
 

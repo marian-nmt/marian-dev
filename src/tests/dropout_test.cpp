@@ -1,75 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+#include <fstream>
 
 #include <map>
 
 #include "common/logging.h"
-#include "common/const_map.h"
+#include "common/fast_opt.h"
 
 
 int main(int argc, char** argv) {
 
-  std::map<std::string, std::map<std::string, float>> test;
-  test["key1"] = {{"sub1", 1.2f}};
-  test["key2"] = {{"sub1", -2.f}, {"sub2", 3.14f}};
+  const FastOpt& opt1 = YAML::LoadFile("test.yml");
 
-  FastOpt opt(test);
+  std::cerr << opt1[1]["powers"][1]["name"].as<std::string>() << std::endl;
 
-  // FastOpt opt("test : [3, 5], test2: { test3 : lala }");
-
-  // opt["test"][0].as<int>() // 3
-  // opt["test"][1].as<int>() // 5
-
-  // opt["test"].as<std::vector<int>>()
-
-  // opt["test"]["test2"]["test3"].as<std::string>() // lala
-
-  const auto& kNode = opt["key1"];
-  if(kNode) {
-    float test = kNode["sub1"].as<float>();
-  }
-
-  std::cerr << opt["key1"]["sub1"].as<float>() << std::endl;
-  std::cerr << opt["key2"]["sub1"].as<float>() << std::endl;
-  std::cerr << opt["key2"]["sub2"].as<float>() << std::endl;
-
-  // for(let set : opt["valid-sets"]) {
-  //   let srcPath = set[0].as<std::string>();
-  //   let tgtPath = set[1].as<std::string>();
-  // }
-
-  // isLeaf(), isString() isInt() isFloat()
-
-  // template <class K, class V>
-  // Node(const std::map<K, V>& m) {
-  //   std::vector<K> keys;
-  //   std::vector<Node> values;
-  //   for(const auto& it : m) {
-  //     keys.push_back(it.first);
-  //     values.push_back(Node(it.second));
-  //   }
-  //   return Node(keys, values);
-  // }
-
-  // std::map<std::string, std::vector<std::vector<float>>> test;
-  // test["test"] = {{ 0.2, 0.3 }, { 0.4 }};
-
-  // auto stdmap = FastOpt::fromYaml("{test : [0.5, 0.33], test2 : [6.6, -10]}").convert<std::map<std::string, std::vector<float>>>();
-  // auto fopt = FastOpt::fromStd(stdmap);
-
-  // stdmap["test2"][0] // 6.6
-  // fopt["test2"][0] // 6.6
-
-  // for(let it : opt.map()) {
-  //   std::cerr << it.first.as<std::string>() << " " << it.second.isString() ? it.second.as<std::string()> : "-";
-  // }
-
-  // Expr x = graph->const({256, 256}, inits::zeros);
-  // if(opt.has("encoder"))
-  //   if(opt["encoder"].isMap())
-  //     for(let layer : opt["encoder"])
-  //       x = Dense(x, layer);
+  // YAML::Node yaml = opt1;
 
   // auto c = New<Config>(argc, argv);
 
@@ -95,3 +41,27 @@ int main(int argc, char** argv) {
 
   return 0;
 }
+
+/*
+- name: Ogre
+  position: [0, 5, 0]
+  powers:
+    - name: Club
+      damage: 10
+    - name: Fist
+      damage: 8
+- name: Dragon
+  position: [1, 0, 10]
+  powers:
+    - name: Fire Breath
+      damage: 25
+    - name: Claws
+      damage: 15
+- name: Wizard
+  position: [5, -3, 0]
+  powers:
+    - name: Acid Rain
+      damage: 50
+    - name: Staff
+      damage: 3
+*/

@@ -30,6 +30,7 @@ add_library(marian STATIC
   3rd_party/exception.cpp
   3rd_party/svd/svd.cpp
   3rd_party/ExceptionWithCallStack.cpp
+  3rd_party/phf/phf.cc
 
   tensors/backend.cpp
   tensors/rand.cpp

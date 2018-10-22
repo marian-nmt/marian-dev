@@ -91,8 +91,6 @@ class node_ref {
 
  private:
   shared_node_data m_pData;
-
-  ENABLE_INTRUSIVE_PTR(node_ref)
 };
 }
 }

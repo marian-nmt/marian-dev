@@ -17,7 +17,7 @@ public:
   float32x4(const __m128& f) : f_(f) {}
   float32x4(const float& f) : f_(_mm_set1_ps(f)) {}
 
-  operator __m128() const { return f_; }
+  operator const __m128&() const { return f_; }
   operator __m128&() { return f_; }
 
   float operator[] (size_t i) const {
@@ -43,7 +43,7 @@ public:
   float32x8(const __m256& f) : f_(f) {}
   float32x8(const float& f) : f_(_mm256_set1_ps(f)) {}
 
-  operator __m256() const { return f_; }
+  operator const __m256&() const { return f_; }
   operator __m256&() { return f_; }
 
   float operator[] (size_t i) const {

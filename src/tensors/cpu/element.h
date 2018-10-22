@@ -69,6 +69,7 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
 
 template <class Functor, class... Tensors>
 void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors) {
+#ifndef __CUDA_ARCH__
   std::vector<marian::Tensor> ts({tensors...});
   bool div8 = true;
   bool div4 = true;
@@ -93,7 +94,7 @@ void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors
     element<float32x4>(functor, out, tensors...);
     return;
   }
-
+#endif
   // //std::cerr << "1: " << functor.to_string() << std::endl;
   element<float>(functor, out, tensors...);
 }

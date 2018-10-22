@@ -122,6 +122,8 @@ struct Ops<float> {
 
 };
 
+#ifndef __CUDA_ARCH__
+
 #include "3rd_party/sse_mathfun.h"
 
 // Specialization for float32x8 (=__m128, CPU SSE intrisics)
@@ -350,10 +352,10 @@ struct Ops<float32x8> {
     for(int i = 1; i < 8; ++i)
       mins = Ops<Single>::min(mins, x[i]);
     return mins;
-  }
-  
-  
+  }  
 };
+
+#endif
 
 //*******************************************************************************************
 

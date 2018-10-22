@@ -7,6 +7,7 @@
 
 namespace marian {
 
+#ifndef __CUDA_ARCH__
 struct float32x4 {
 private:
   __m128 f_;
@@ -58,6 +59,7 @@ public:
     return out;
   }
 };
+#endif
 
 enum class TypeClass : size_t {
   signed_type = 0x100,

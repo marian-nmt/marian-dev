@@ -56,6 +56,7 @@ struct ConstantShape {
   size_t elements_{1};
   size_t offset_{0};
 
+  // @TODO: review all these constructors
   __HD__ ConstantShape() {
     shape_.fill(1);
     stride_.fill(1);
@@ -102,6 +103,7 @@ struct ConstantShape {
     updateElements();
   }
 
+  // @TODO: do we need bstrides at all?
   __HDI__ void updateStrides() {
     stride_[N - 1] = 1;
     bstride_[N - 1] = shape_[N - 1] == 1 ? 0 : stride_[N - 1];
@@ -139,55 +141,68 @@ struct ConstantShape {
   __HDI__ int elements() const { return (int)elements_; }
 
   template <const int K, const int D> struct I {
-    __HDI__ static int index(const Array<int, D>& d,
+    __HDI__ static int index(const Array<int, D>& dims,
                              const Array<int, D>& stride) {
-      return d[K] * stride[K] + I<K-1, D>::index(d, stride);
+      return dims[K] * stride[K] + I<K-1, D>::index(dims, stride);
     }
 
     __HDI__ static int index(int si,
                              const Array<int, D>& shape,
                              const Array<int, D>& stride) {
-        return (si % shape[K]) * stride[K] + I<K-1, D>::index(si / shape[K], shape, stride);
-      }
+      return (si % shape[K]) * stride[K] + I<K-1, D>::index(si / shape[K], shape, stride);
+    }
+
+    __HDI__ static void dims(int si,
+                             Array<int, D>& dims,
+                             const Array<int, D>& shape) {
+      dims[K] = si % shape[K];
+      I<K-1, D>::dims(si / shape[K], dims, shape);
+    }
+
   };
 
   template <const int D> struct I<0, D> {
-    __HDI__ static int index(const Array<int, D>& d,
+    __HDI__ static int index(const Array<int, D>& dims,
                              const Array<int, D>& stride) {
-      return d[0] * stride[0];
+      return dims[0] * stride[0];
     }
 
     __HDI__ static int index(int si,
                              const Array<int, D>& shape,
                              const Array<int, D>& stride) {
-        return (si % shape[0]) * stride[0];
-      }
+      return (si % shape[0]) * stride[0];
+    }
+
+   __HDI__ static void dims(int si,
+                            Array<int, D>& dims,
+                            const Array<int, D>& shape) {
+      dims[0] = si % shape[0];
+    }
   };
 
-  __HDI__ int index(const Array<int, N>& d) const {
-    return offset_ + I<N-1, N>::index(d, stride_);
+  __HDI__ int index(const Array<int, N>& dims) const {
+    return offset_ + I<N-1, N>::index(dims, stride_);
   }
 
   __HDI__ int index(int si) const {
     return offset_ + I<N-1, N>::index(si, shape_, stride_);
   }
 
+  __HDI__ void dims(int si, Array<int, N>& dims) const {
+    I<N-1, N>::dims(si, dims, shape_);
+  }
 
-  __HDI__ int bindex(const Array<int, N>& d) const {
+  __HDI__ int bindex(const Array<int, N>& dims) const {
     int i = 0;
+    // ?? : return offset_ + I<N-1, N>::index(d, bstride_);
     for(int j = 0; j < N; ++j)
-      i += d[j] * bstride_[j];
+      i += dims[j] * bstride_[j];
     return i;
   }
 
-  __HDI__ void dims(int si, Array<int, N>& d) const {
-    for(int j = N - 1; j >= 0; --j) {
-      d[j] = si % shape_[j];
-      si = si / shape_[j];
-    }
-  }
 
-  // should this check stride
+
+  // @TODO: should this check all the members?
   __HDI__ bool operator==(const ConstantShape& other) const {
     for(int i = 0; i < N; ++i)
       if(shape_[i] != other[i])
@@ -201,6 +216,7 @@ struct ConstantShape {
 
   std::string toString() const {
     std::stringstream strm;
+    // @TODO: add more information
     strm << "shape=" << (*this)[0];
     for(int i = 1; i < size(); ++i)
       strm << "x" << (*this)[i];
@@ -208,13 +224,14 @@ struct ConstantShape {
     return strm.str();
   }
 
-  ConstantShape<N> slice(const Array<Slice, N> slices) {
+  __HDI__ ConstantShape<N> slice(const Array<Slice, N> slices) {
+    // @TODO: add various checks
     Array<int, N> offsets;
     Array<int, N> shape;
     Array<int, N> stride;
     for(int i = 0; i < N; ++i) {
       int beg = slices[i].begin;
-      int end = std::min(slices[i].end, shape_[i]);
+      int end = slices[i].end < shape_[i] ? slices[i].end : shape_[i];
       int str = slices[i].stride;
 
       offsets[i] = beg;

@@ -82,7 +82,6 @@ struct View {
   __HDI__ size_t size() const { return shape_.elements(); }
 
   std::string debug(int precision = 8, int dispCols = 5) {
-
     std::stringstream strm;
     assert(shape_.size());
 
@@ -156,10 +155,9 @@ struct View {
   }
 };
 
-
 template <typename T, const int D>
 View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
-  auto slicedShape = view.shape().slice(slices);
+  const auto& slicedShape = view.shape().slice(slices);
   return View<T, D>(view.data(), slicedShape);
 }
 
@@ -197,6 +195,12 @@ View<T, 4> slice(View<T, 4> view,
                  const Slice& slice2,
                  const Slice& slice3) {
   return slice(view, {slice0, slice1, slice2, slice3});
+}
+
+template <typename T, const int D1, const int D2>
+View<T, D2> reshape(View<T, D1> view, const ConstantShape<D2>& shape) {
+  auto reshaped = view.shape().reshape(shape);
+  return View<T, D2>(view.data(), reshaped);
 }
 
 template <typename T>

@@ -13,12 +13,10 @@ namespace functional {
 
 #define CONST_SHAPE_DIMS 4
 
-/**
- * @brief Represents the size of each dimension in a tensor.
- */
+const int MAX_INT = std::numeric_limits<int>::max();
 
 struct Slice {
-  static const int END{99999}; // fix
+  static const int END{MAX_INT}; // fix
 
   int begin{0};
   int end{END};
@@ -47,6 +45,10 @@ struct Slice {
 };
 
 const Slice All;
+
+/**
+ * @brief Represents the size of each dimension in a tensor.
+ */
 
 template <const int N>
 struct ConstantShape {
@@ -140,6 +142,11 @@ struct ConstantShape {
 
   __HDI__ int elements() const { return (int)elements_; }
 
+  // The following functions iterate over shape dimensions and use resursive 
+  // templates. They unroll over a compile-time defined number of dimensions.
+
+  // Struct for recurrent template calls over shape dimensions, 
+  // version for K > 0
   template <const int K, const int D> struct I {
     __HDI__ static int index(const Array<int, D>& dims,
                              const Array<int, D>& stride) {
@@ -161,6 +168,8 @@ struct ConstantShape {
 
   };
 
+  // Struct for recurrent template calls over shape dimensions, 
+  // specialization for K == 0
   template <const int D> struct I<0, D> {
     __HDI__ static int index(const Array<int, D>& dims,
                              const Array<int, D>& stride) {
@@ -224,23 +233,45 @@ struct ConstantShape {
     return strm.str();
   }
 
-  __HDI__ ConstantShape<N> slice(const Array<Slice, N> slices) {
+  // Performs numpy-like slicing on a given shape object. The number
+  // of slices corresponds to the number of dimensions. 
+  __HDI__ ConstantShape<N> slice(const Array<Slice, N>& slices) {
     // @TODO: add various checks
     Array<int, N> offsets;
     Array<int, N> shape;
     Array<int, N> stride;
     for(int i = 0; i < N; ++i) {
       int beg = slices[i].begin;
+      // restrict maximum value to actual shape size if larger than shape size
       int end = slices[i].end < shape_[i] ? slices[i].end : shape_[i];
       int str = slices[i].stride;
 
+      // collect starting points for all coordinates
       offsets[i] = beg;
+
+      // when calculating the new shape, take into account stride
+      // TODO: std::ceil does not work on the GPU
       shape[i]   = std::ceil((end - beg) / (float) str);
+
+      // new stride is just old stride multiplied by slice stride
       stride[i]  = str * stride_[i];
     }
 
+    // map offset coordinates into single offset index
     int offset = index(offsets);
+    
     return ConstantShape<N>(shape, stride, offset);
+  }
+
+  template <const int D>
+  __HDI__ ConstantShape<D> reshape(const Array<T, D>& shape) {
+    // @TODO: add various checks
+
+    Array<int, D> stride;
+    for(int i = 0; i < D; ++i) {
+
+    }
+    return ConstantShape<D>(shape, stride, offset_);
   }
 
   friend std::ostream& operator<<(std::ostream& strm, const ConstantShape<N>& shape) {

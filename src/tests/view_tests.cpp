@@ -71,14 +71,14 @@ TEST_CASE("View tests (cpu)", "[operator]") {
     auto outs3 = slice(outs2, {0}, {1}, {1});
     std::cerr << outs3.debug() << std::endl;
 
-    // std::vector<float> v2(out2.size());
-    // std::copy(out2.begin(), out2.end(), v2.begin());
-    // std::vector<float> vtest = { 16.f, 18.f };
-    // CHECK( v2 == vtest );
+    CHECK( outs3.shape().size() == 3 );
 
-    // std::cerr << out2[{0,0,0}] << std::endl;
-    // std::cerr << out2[{0,0,1}] << std::endl;
-    // std::cerr << out2[{0,0,2}] << std::endl;
+    // auto outv1 = reshape(outs3, {1});
+    // CHECK( outv1.size() == 1 );
+    // CHECK( outv1.shape().size() == 1 );
+
+    // std::cerr << outv1.shape() << std::endl;
+    // std::cerr << outv1.debug() << std::endl;
 
   }
 }

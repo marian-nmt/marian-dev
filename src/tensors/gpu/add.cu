@@ -37,10 +37,10 @@ __global__ void gAddGeneric(Functor functor,
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < outLength) {
       if(same) {
-        out[index] += functional::apply(functor, ins, index) * scale;
+        out.data()[index] += functional::apply(functor, ins, index) * scale;
       } else {
         out.shape().dims(index, dims);
-        out[index] += functional::loops(functor, ins, len, dims) * scale;
+        out.data()[index] += functional::loops(functor, ins, len, dims) * scale;
       }
     }
   }
@@ -67,7 +67,7 @@ __global__ void gAddEqual(Functor functor,
           indices[i] = ins[i].shape().bindex(dims);
       }
 
-      out[index] += functional::apply(functor, ins, indices) * scale;
+      out.data()[index] += functional::apply(functor, ins, indices) * scale;
     }
   }
 }
@@ -124,7 +124,7 @@ __global__ void gAddReduce(Functor functor,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      out[j] += _sum[0] * scale;
+      out.data()[j] += _sum[0] * scale;
     }
   }
 }

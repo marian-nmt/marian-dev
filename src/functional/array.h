@@ -9,7 +9,6 @@ namespace functional {
 template <typename T, size_t N>
 struct Array {
   typedef T value_type;
-
   T data_[N];
 
   __HDI__ const T* data() const { return data_; }
@@ -31,6 +30,9 @@ struct Array {
     for(int i = 0; i < N; ++i)
       data_[i] = val;
   }
+
+  __HDI__ T& back() { return data_[N - 1]; }
+  __HDI__ const T& back() const { return data_[N - 1]; }
 };
 }  // namespace functional
 }  // namespace marian

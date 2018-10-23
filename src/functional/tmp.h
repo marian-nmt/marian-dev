@@ -17,7 +17,7 @@ struct FApply<1, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 1>& in,
       const functional::Array<int, 1>& indices) {
-    return functor(in[0][indices[0]]);
+    return functor(in[0].data()[indices[0]]);
   }
 
   template <typename ElementType>
@@ -25,7 +25,7 @@ struct FApply<1, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 1>& in,
       int index) {
-    return functor(in[0][index]);
+    return functor(in[0].data()[index]);
   }
 };
 
@@ -36,7 +36,8 @@ struct FApply<2, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 2>& in,
       const functional::Array<int, 2>& indices) {
-    return functor(in[0][indices[0]], in[1][indices[1]]);
+    return functor(in[0].data()[indices[0]], 
+                   in[1].data()[indices[1]]);
   }
 
   template <typename ElementType>
@@ -44,7 +45,8 @@ struct FApply<2, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 2>& in,
       int index) {
-    return functor(in[0][index], in[1][index]);
+    return functor(in[0].data()[index], 
+                   in[1].data()[index]);
   }
 };
 
@@ -55,7 +57,9 @@ struct FApply<3, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 3>& in,
       const functional::Array<int, 3>& indices) {
-    return functor(in[0][indices[0]], in[1][indices[1]], in[2][indices[2]]);
+    return functor(in[0].data()[indices[0]], 
+                   in[1].data()[indices[1]], 
+                   in[2].data()[indices[2]]);
   }
 
   template <typename ElementType>
@@ -63,7 +67,9 @@ struct FApply<3, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 3>& in,
       int index) {
-    return functor(in[0][index], in[1][index], in[2][index]);
+    return functor(in[0].data()[index], 
+                   in[1].data()[index], 
+                   in[2].data()[index]);
   }
 };
 
@@ -74,10 +80,10 @@ struct FApply<4, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 4>& in,
       const functional::Array<int, 4>& indices) {
-    return functor(in[0][indices[0]],
-                   in[1][indices[1]],
-                   in[2][indices[2]],
-                   in[3][indices[3]]);
+    return functor(in[0].data()[indices[0]],
+                   in[1].data()[indices[1]],
+                   in[2].data()[indices[2]],
+                   in[3].data()[indices[3]]);
   }
 
   template <typename ElementType>
@@ -85,7 +91,10 @@ struct FApply<4, Functor> {
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 4>& in,
       int index) {
-    return functor(in[0][index], in[1][index], in[2][index], in[3][index]);
+    return functor(in[0].data()[index], 
+                   in[1].data()[index], 
+                   in[2].data()[index], 
+                   in[3].data()[index]);
   }
 };
 

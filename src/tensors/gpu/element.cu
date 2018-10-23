@@ -28,7 +28,7 @@ __global__ void gElement(
           indices[i] = tensors[i].shape().bindex(dims);
       }
 
-      tensors[0][index] = functional::apply(functor, tensors, indices);
+      tensors[0].data()[index] = functional::apply(functor, tensors, indices);
     }
   }
 }

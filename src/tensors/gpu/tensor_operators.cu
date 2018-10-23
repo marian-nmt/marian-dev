@@ -267,10 +267,15 @@ __global__ void gTransposeND(
       out.shape().dims(index, oDims);
       for(int i = 0; i < N; ++i)
         pDims[permute[i]] = oDims[i];
+
+      int inIndex = in.shape().index(pDims);
+
+      // TODO: operates on raw indices, change to
+      // converting Tensor::operator[]
       if(add)
-        out[index] += in[pDims];
+        out.data()[index] += in.data()[inIndex];
       else
-        out[index] = in[pDims];
+        out.data()[index] = in.data()[inIndex];
     }
   }
 }

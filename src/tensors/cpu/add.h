@@ -34,10 +34,12 @@ void gAddGeneric(Functor functor,
   functional::Array<int, N> dims;
   for(int index = 0; index < outLength; ++index) {
     if(same) {
-      out[index] += functional::apply(functor, ins, index) * scale;
+      // raw index, no conversion
+      out.data()[index] += functional::apply(functor, ins, index) * scale;
     } else {
       out.shape().dims(index, dims);
-      out[index] += functional::loops(functor, ins, len, dims) * scale;
+      // raw index, no conversion
+      out.data()[index] += functional::loops(functor, ins, len, dims) * scale;
     }
   }
 }
@@ -61,7 +63,8 @@ void gAddEqual(Functor functor,
         indices[i] = ins[i].shape().bindex(dims);
     }
 
-    out[index] += functional::apply(functor, ins, indices) * scale;
+    // raw index, no conversion
+    out.data()[index] += functional::apply(functor, ins, indices) * scale;
   }
 }
 
@@ -93,7 +96,9 @@ void gAddReduce(Functor functor,
         sum += functional::apply(functor, ins, indices);
       }
     }
-    out[j] += sum * scale;
+    
+    // raw index, no conversion
+    out.data()[j] += sum * scale;
   }
 }
 

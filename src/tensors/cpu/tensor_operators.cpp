@@ -248,10 +248,14 @@ void TransposeGeneric(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     gOut.shape().dims(index, oDims);
     for(size_t i = 0; i < N; ++i)
       pDims[permute[i]] = oDims[i];
+    
+    int inIndex = gIn.shape().index(pDims);
+
+    // @TODO: use internal conversion instead of raw indices
     if(add)
-      gOut[index] += gIn[pDims];
+      gOut.data()[index] += gIn.data()[inIndex];
     else
-      gOut[index] = gIn[pDims];
+      gOut.data()[index] = gIn.data()[inIndex];
   }
 }
 

@@ -33,6 +33,13 @@ struct Array {
 
   __HDI__ T& back() { return data_[N - 1]; }
   __HDI__ const T& back() const { return data_[N - 1]; }
+
+  __HDI__ bool operator==(const Array<T, N>& other) {
+    for(int i = 0; i < N; ++i)
+      if(data_[i] != other[i])
+        return false;
+    return true;
+  }
 };
 }  // namespace functional
 }  // namespace marian

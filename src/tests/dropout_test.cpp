@@ -22,12 +22,17 @@ int main(int argc, char** argv) {
 
   std::cerr << out[{0,1,3}] << " == " << out[ind] << " ind: " << ind << std::endl;
 
-  auto out2 = f::slice(out, {1}, {1}, {2,f::Slice::END});
+  auto out2 = f::slice(out, {1}, {1}, {2,5});
 
   std::cerr << out2.shape() << std::endl;
 
   std::cerr << out2[{0,0,0}] << std::endl;
   std::cerr << out2[{0,0,1}] << std::endl;
+  std::cerr << out2[{0,0,2}] << std::endl;
+
+  // auto out4 = f::reshape(out3, {5});
+  // auto out5 = f::broadcast(out4, {5,5,5});
+
   // std::cerr << out2[{1,0}] << std::endl;
   // std::cerr << out2[{1,1}] << std::endl;
   // std::cerr << out2[{1,2}] << std::endl;

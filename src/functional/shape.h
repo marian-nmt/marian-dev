@@ -24,7 +24,6 @@ struct Slice {
   int end{END};
   int stride{1};
 
-
   Slice(int b, int e, int s = 1)
   : begin(b), end(e), stride(s) {}
 
@@ -36,10 +35,14 @@ struct Slice {
 
   Slice(const std::initializer_list<int>& l) {
     std::vector<int> v(l);
-    if(v.size() > 0) begin  = v[0];
-    if(v.size() > 1) end    = v[1];
-    if(v.size() > 2) stride = v[2];
-    ABORT_IF(v.size() > 3, "Too many elements in slice: {}", v.size());
+    switch(v.size()) {
+      case 0: begin = 0;    end = END;      stride = 1;    break;
+      case 1: begin = v[0]; end = v[0] + 1; stride = 1;    break;
+      case 2: begin = v[0]; end = v[1];     stride = 1;    break;
+      case 3: begin = v[0]; end = v[1];     stride = v[2]; break;
+      default:
+        ABORT("Too many elements in slice: {}", v.size());
+    }
   }
 };
 
@@ -135,20 +138,38 @@ struct ConstantShape {
 
   __HDI__ int elements() const { return (int)elements_; }
 
+  template <const int K, const int D> struct I {
+    __HDI__ static int index(const Array<int, D>& d,
+                             const Array<int, D>& stride) {
+      return d[K] * stride[K] + I<K-1, D>::index(d, stride);
+    }
+
+    __HDI__ static int index(int si,
+                             const Array<int, D>& shape,
+                             const Array<int, D>& stride) {
+        return (si % shape[K]) * stride[K] + I<K-1, D>::index(si / shape[K], shape, stride);
+      }
+  };
+
+  template <const int D> struct I<0, D> {
+    __HDI__ static int index(const Array<int, D>& d,
+                             const Array<int, D>& stride) {
+      return d[0] * stride[0];
+    }
+
+    __HDI__ static int index(int si,
+                             const Array<int, D>& shape,
+                             const Array<int, D>& stride) {
+        return (si % shape[0]) * stride[0];
+      }
+  };
+
   __HDI__ int index(const Array<int, N>& d) const {
-    int i = offset_;
-    for(int j = 0; j < N; ++j)
-      i += d[j] * stride_[j];
-    return i;
+    return offset_ + I<N-1, N>::index(d, stride_);
   }
 
-  __HDI__ int index(size_t slicedIndex) const {
-    int i = offset_;
-    for(int j = 0; j < N; ++j) {
-      int d = (slicedIndex / stride_[j]) % shape_[j];
-      i += d * stride_[j];
-    }
-    return i + offset_;
+  __HDI__ int index(int si) const {
+    return offset_ + I<N-1, N>::index(si, shape_, stride_);
   }
 
 
@@ -159,11 +180,14 @@ struct ConstantShape {
     return i;
   }
 
-  __HDI__ void dims(int i, Array<int, N>& d) const {
-    for(int j = 0; j < N; ++j)
-      d[j] = (i / stride_[j]) % shape_[j];
+  __HDI__ void dims(int si, Array<int, N>& d) const {
+    for(int j = N - 1; j >= 0; --j) {
+      d[j] = si % shape_[j];
+      si = si / shape_[j];
+    }
   }
 
+  // should this check stride
   __HDI__ bool operator==(const ConstantShape& other) const {
     for(int i = 0; i < N; ++i)
       if(shape_[i] != other[i])

@@ -79,6 +79,7 @@ struct View {
   __HDI__ ConstantShape<D>& shape() { return shape_; }
   __HDI__ const ConstantShape<D>& shape() const { return shape_; }
 
+  __HDI__ size_t size() const { return shape_.elements(); }
 
   std::string debug(int precision = 8, int dispCols = 5) {
 
@@ -92,7 +93,8 @@ struct View {
 
     size_t totSize = shape_.elements();
     std::vector<T> values(totSize);
-    std::copy(data_, data_ + totSize, values.begin());
+    for(int i = 0; i < size(); ++i)
+      values[i] = operator[](i);
 
     int colWidth  = precision + 4;
     strm << std::fixed << std::setprecision(precision) << std::setfill(' ');

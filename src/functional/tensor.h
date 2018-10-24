@@ -168,20 +168,20 @@ View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
 // }
 
 template <typename T>
-View<T, 1> slice(View<T, 1> view,
+View<T, 1> slice(View<T, 1>& view,
                  const Slice& slice0) {
   return slice(view, {slice0});
 }
 
 template <typename T>
-View<T, 2> slice(View<T, 2> view,
+View<T, 2> slice(View<T, 2>& view,
                  const Slice& slice0,
                  const Slice& slice1) {
   return slice(view, {slice0, slice1});
 }
 
 template <typename T>
-View<T, 3> slice(View<T, 3> view,
+View<T, 3> slice(View<T, 3>& view,
                  const Slice& slice0,
                  const Slice& slice1,
                  const Slice& slice2) {
@@ -189,7 +189,7 @@ View<T, 3> slice(View<T, 3> view,
 }
 
 template <typename T>
-View<T, 4> slice(View<T, 4> view,
+View<T, 4> slice(View<T, 4>& view,
                  const Slice& slice0,
                  const Slice& slice1,
                  const Slice& slice2,
@@ -198,7 +198,7 @@ View<T, 4> slice(View<T, 4> view,
 }
 
 template <typename T, const int D1, const int D2>
-View<T, D2> reshape(View<T, D1> view, const ConstantShape<D2>& shape) {
+View<T, D2> reshape(View<T, D1>& view, const ConstantShape<D2>& shape) {
   auto reshaped = view.shape().reshape(shape);
   return View<T, D2>(view.data(), reshaped);
 }

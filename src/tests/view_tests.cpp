@@ -73,12 +73,13 @@ TEST_CASE("View tests (cpu)", "[operator]") {
 
     CHECK( outs3.shape().size() == 3 );
 
-    // auto outv1 = reshape(outs3, {1});
-    // CHECK( outv1.size() == 1 );
-    // CHECK( outv1.shape().size() == 1 );
+    auto outv1 = reshape<float, 3, 2>(outs2, {{3, 2}});
+    
+    CHECK( outv1.size() == 6 );
+    CHECK( outv1.shape().size() == 2 );
 
-    // std::cerr << outv1.shape() << std::endl;
-    // std::cerr << outv1.debug() << std::endl;
+    std::cerr << outv1.shape() << std::endl;
+    std::cerr << outv1.debug() << std::endl;
 
   }
 }

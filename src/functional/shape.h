@@ -264,14 +264,23 @@ struct ConstantShape {
   }
 
   template <const int D>
-  __HDI__ ConstantShape<D> reshape(const Array<T, D>& shape) {
+  __HDI__ ConstantShape<D> reshape(const ConstantShape<D>& other) const {
     // @TODO: add various checks
+#ifndef __CUDA__ARCH__
+    ABORT_IF(elements() != other.elements(),
+             "Reshaping operation requires matching number of elements");
+#endif
 
     Array<int, D> stride;
     for(int i = 0; i < D; ++i) {
-
+      stride[i] = /*other.stride_[i] **/ stride_[i];
     }
-    return ConstantShape<D>(shape, stride, offset_);
+
+    stride[D - 1] = stride_[N - 1];
+    for(int i = 2; i < D + 1; ++i) {
+      stride[D - i] = stride[D - i + 1] * stride_[N - i + 1] * shape_[D - i + 1];
+
+    return ConstantShape<D>(other.shape_, stride, offset_);
   }
 
   friend std::ostream& operator<<(std::ostream& strm, const ConstantShape<N>& shape) {

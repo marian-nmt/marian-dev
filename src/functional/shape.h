@@ -55,6 +55,7 @@ struct ConstantShape {
   Array<int, N> shape_;
   Array<int, N> stride_;
   Array<int, N> bstride_;
+
   size_t elements_{1};
   size_t offset_{0};
 
@@ -142,10 +143,10 @@ struct ConstantShape {
 
   __HDI__ int elements() const { return (int)elements_; }
 
-  // The following functions iterate over shape dimensions and use resursive 
+  // The following functions iterate over shape dimensions and use resursive
   // templates. They unroll over a compile-time defined number of dimensions.
 
-  // Struct for recurrent template calls over shape dimensions, 
+  // Struct for recurrent template calls over shape dimensions,
   // version for K > 0
   template <const int K, const int D> struct I {
     __HDI__ static int index(const Array<int, D>& dims,
@@ -168,7 +169,7 @@ struct ConstantShape {
 
   };
 
-  // Struct for recurrent template calls over shape dimensions, 
+  // Struct for recurrent template calls over shape dimensions,
   // specialization for K == 0
   template <const int D> struct I<0, D> {
     __HDI__ static int index(const Array<int, D>& dims,
@@ -209,8 +210,6 @@ struct ConstantShape {
     return i;
   }
 
-
-
   // @TODO: should this check all the members?
   __HDI__ bool operator==(const ConstantShape& other) const {
     for(int i = 0; i < N; ++i)
@@ -234,7 +233,7 @@ struct ConstantShape {
   }
 
   // Performs numpy-like slicing on a given shape object. The number
-  // of slices corresponds to the number of dimensions. 
+  // of slices corresponds to the number of dimensions.
   __HDI__ ConstantShape<N> slice(const Array<Slice, N>& slices) {
     // @TODO: add various checks
     Array<int, N> offsets;
@@ -259,29 +258,31 @@ struct ConstantShape {
 
     // map offset coordinates into single offset index
     int offset = index(offsets);
-    
+
     return ConstantShape<N>(shape, stride, offset);
   }
 
-  template <const int D>
-  __HDI__ ConstantShape<D> reshape(const ConstantShape<D>& other) const {
-    // @TODO: add various checks
-#ifndef __CUDA__ARCH__
-    ABORT_IF(elements() != other.elements(),
-             "Reshaping operation requires matching number of elements");
-#endif
+// non-continguous slices cannot be reshaped! need to be copied
+//   template <const int D>
+//   __HDI__ ConstantShape<D> reshape(const ConstantShape<D>& other) const {
+//     // @TODO: add various checks
+// #ifndef __CUDA__ARCH__
+//     ABORT_IF(elements() != other.elements(),
+//              "Reshaping operation requires matching number of elements");
+// #endif
 
-    Array<int, D> stride;
-    for(int i = 0; i < D; ++i) {
-      stride[i] = /*other.stride_[i] **/ stride_[i];
-    }
+//     Array<int, D> stride;
+//     for(int i = 0; i < D; ++i) {
+//       stride[i] = /*other.stride_[i] **/ stride_[i];
+//     }
 
-    stride[D - 1] = stride_[N - 1];
-    for(int i = 2; i < D + 1; ++i) {
-      stride[D - i] = stride[D - i + 1] * stride_[N - i + 1] * shape_[D - i + 1];
+//     stride[D - 1] = stride_[N - 1];
+//     for(int i = 2; i < D + 1; ++i) {
+//       stride[D - i] = stride[D - i + 1] * stride_[N - i + 1] * shape_[D - i + 1];
+//     }
 
-    return ConstantShape<D>(other.shape_, stride, offset_);
-  }
+//     return ConstantShape<D>(other.shape_, stride, offset_);
+//   }
 
   friend std::ostream& operator<<(std::ostream& strm, const ConstantShape<N>& shape) {
     strm << shape.toString();

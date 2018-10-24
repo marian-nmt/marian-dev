@@ -156,7 +156,7 @@ struct View {
 };
 
 template <typename T, const int D>
-View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
+__HDI__ View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
   const auto& slicedShape = view.shape().slice(slices);
   return View<T, D>(view.data(), slicedShape);
 }
@@ -168,40 +168,40 @@ View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
 // }
 
 template <typename T>
-View<T, 1> slice(View<T, 1>& view,
-                 const Slice& slice0) {
+__HDI__ View<T, 1> slice(View<T, 1>& view,
+                         const Slice& slice0) {
   return slice(view, {slice0});
 }
 
 template <typename T>
-View<T, 2> slice(View<T, 2>& view,
-                 const Slice& slice0,
-                 const Slice& slice1) {
+__HDI__ View<T, 2> slice(View<T, 2>& view,
+                         const Slice& slice0,
+                         const Slice& slice1) {
   return slice(view, {slice0, slice1});
 }
 
 template <typename T>
-View<T, 3> slice(View<T, 3>& view,
-                 const Slice& slice0,
-                 const Slice& slice1,
-                 const Slice& slice2) {
+__HDI__ View<T, 3> slice(View<T, 3>& view,
+                        const Slice& slice0,
+                        const Slice& slice1,
+                        const Slice& slice2) {
   return slice(view, {slice0, slice1, slice2});
 }
 
 template <typename T>
-View<T, 4> slice(View<T, 4>& view,
-                 const Slice& slice0,
-                 const Slice& slice1,
-                 const Slice& slice2,
-                 const Slice& slice3) {
+__HDI__ View<T, 4> slice(View<T, 4>& view,
+                         const Slice& slice0,
+                         const Slice& slice1,
+                         const Slice& slice2,
+                         const Slice& slice3) {
   return slice(view, {slice0, slice1, slice2, slice3});
 }
 
-template <typename T, const int D1, const int D2>
-View<T, D2> reshape(View<T, D1>& view, const ConstantShape<D2>& shape) {
-  auto reshaped = view.shape().reshape(shape);
-  return View<T, D2>(view.data(), reshaped);
-}
+// template <typename T, const int D1, const int D2>
+// View<T, D2> reshape(View<T, D1>& view, const ConstantShape<D2>& shape) {
+//   auto reshaped = view.shape().reshape(shape);
+//   return View<T, D2>(view.data(), reshaped);
+// }
 
 template <typename T>
 using Tensor = View<T, CONST_SHAPE_DIMS>;

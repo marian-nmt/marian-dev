@@ -37,8 +37,10 @@ struct E {
       // increase index for current dimension by stride or 0 if broadcasting.
       // bstride(i) is look-up value, either equal to stride if the
       // corresponding dim is larger 1 or 0 if the dim is 1.
-      for(size_t k = 0; k < numArg; ++k)
-        indices[k] += tensors[k].shape().bstride(I);
+      for(size_t k = 0; k < numArg; ++k) {
+        int stride = tensors[k].shape().stride(I);
+        indices[k] += stride == 1 ? 0 : stride;
+      }
     }
   }
 };

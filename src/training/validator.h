@@ -31,6 +31,7 @@ protected:
   float lastBest_;
   size_t stalled_{0};
   std::mutex mutex_;
+  ThreadPool threadPool_;
 
 public:
   ValidatorBase(bool lowerIsBetter)
@@ -149,12 +150,13 @@ protected:
     size_t batchId = 0;
 
     {
-      ThreadPool threadPool(graphs.size(), graphs.size());
+      threadPool_.reserve(graphs.size());
       Ptr<Options> opts = New<Options>();
       opts->merge(options_);
       opts->set("inference", true);
       opts->set("cost-type", "ce-sum");
 
+      TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator) {
         auto task = [=, &cost, &samples, &words](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -175,9 +177,10 @@ protected:
           words += batch->back()->batchWords();
         };
 
-        threadPool.enqueue(task, batchId);
+        taskBarrier.push_back(threadPool_.enqueue(task, batchId));
         batchId++;
       }
+      // ~TaskBarrier waits until all are done
     }
 
     if(ctype == "perplexity")
@@ -307,12 +310,13 @@ public:
 
       size_t sentenceId = 0;
 
-      ThreadPool threadPool(graphs.size(), graphs.size());
+      threadPool_.reserve(graphs.size());
 
       // @TODO: unify this and get rid of Config object.
       auto tOptions = New<Options>();
       tOptions->merge(options_);
 
+      TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator) {
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -340,9 +344,10 @@ public:
           }
         };
 
-        threadPool.enqueue(task, sentenceId);
+        taskBarrier.push_back(threadPool_.enqueue(task, sentenceId));
         sentenceId++;
       }
+      // ~TaskBarrier waits until all are done
     }
 
     if(!quiet_)
@@ -385,8 +390,8 @@ private:
 public:
   BleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Config> options, bool detok = false)
       : Validator(vocabs, options, false),
-        quiet_(options_->get<bool>("quiet-translation")),
-        detok_(detok) {
+        detok_(detok),
+        quiet_(options_->get<bool>("quiet-translation")) {
     Ptr<Options> opts = New<Options>();
     opts->merge(options);
     opts->set("inference", true);
@@ -469,12 +474,13 @@ public:
 
       size_t sentenceId = 0;
 
-      ThreadPool threadPool(graphs.size(), graphs.size());
+      threadPool_.reserve(graphs.size());
 
       // @TODO: unify this and get rid of Config object.
       auto tOptions = New<Options>();
       tOptions->merge(options_);
 
+      TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator) {
         auto task = [=, &stats](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -509,9 +515,10 @@ public:
           }
         };
 
-        threadPool.enqueue(task, sentenceId);
+        taskBarrier.push_back(threadPool_.enqueue(task, sentenceId));
         sentenceId++;
       }
+      // ~TaskBarrier waits until all are done
     }
 
     if(!quiet_)

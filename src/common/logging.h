@@ -52,7 +52,7 @@ namespace marian {
     ::marian::logCallStack(/*skipLevels=*/0);                           \
     std::cerr << "Aborted from " << FUNCTION_NAME << " in " << __FILE__ \
               << ": " << __LINE__ << std::endl;                         \
-    std::abort();                                                       \
+    abort();                                                            \
   } while(0)
 
 /**

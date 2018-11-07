@@ -176,6 +176,8 @@ public:
 class DecoderS2S : public DecoderBase {
 private:
   Ptr<rnn::RNN> rnn_;
+  size_t numBaseCells_;
+  std::vector<size_t> lastAttentionCellIds_;
   Ptr<mlp::MLP> output_;
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
@@ -192,29 +194,60 @@ private:
              && opt<std::string>("original-type") == "nematus")  //
         ("skip", opt<bool>("skip"));
 
+    ABORT_IF(opt<bool>("dec-attention-bilinear-lookup"),
+             "--dec-attention-bilinear-lookup is disabled due to a bug");  	// See: https://github.com/marian-nmt/marian-dev/issues/250
+
     size_t decoderLayers = opt<size_t>("dec-depth");
     size_t decoderBaseDepth = opt<size_t>("dec-cell-base-depth");
     size_t decoderHighDepth = opt<size_t>("dec-cell-high-depth");
+    int decoderAttentionHops = opt<int>("dec-attention-hops");
+    ABORT_IF(decoderAttentionHops >= decoderBaseDepth,
+             "--dec-attention-hops must be lower than dec-cell-base-depth");
 
     // setting up conditional (transitional) cell
     auto baseCell = rnn::stacked_cell(graph);
-    for(size_t i = 1; i <= decoderBaseDepth; ++i) {
-      bool transition = (i > 2);
+
+    // For each encoder state, store the id of the last RNN cell that computes an attended context.
+    // This is the final attended context used in the output layer.
+    lastAttentionCellIds_ = std::vector<size_t>(state->getEncoderStates().size(), -1);
+
+    // Counts the number of cells in the base layer of the decoder stack
+    numBaseCells_ = 0;
+
+    for(int i = 1; i <= decoderBaseDepth; ++i) {
+      bool transition = (i > 1+decoderAttentionHops);
       auto paramPrefix = prefix_ + "_cell" + std::to_string(i);
       baseCell.push_back(rnn::cell(graph)         //
                          ("prefix", paramPrefix)  //
                          ("final", i > 1)         //
                          ("transition", transition));
-      if(i == 1) {
-        for(size_t k = 0; k < state->getEncoderStates().size(); ++k) {
+
+      ++numBaseCells_;
+      if(i <= decoderAttentionHops) {
+        for(int k = 0; k < state->getEncoderStates().size(); ++k) {
           auto attPrefix = prefix_;
           if(state->getEncoderStates().size() > 1)
             attPrefix += "_att" + std::to_string(k + 1);
+          if (i > 1) {
+            attPrefix += "_hop" + std::to_string(i);
+          }
 
           auto encState = state->getEncoderStates()[k];
 
           baseCell.push_back(
-              rnn::attention(graph)("prefix", attPrefix).set_state(encState));
+              rnn::attention(graph)                                                              //
+              ("prefix", attPrefix)                                                              //
+              ("attentionHeads", opt<int>("dec-attention-heads"))                                //
+              ("attentionLookupDim", opt<int>("dec-attention-lookup-dim"))                       //
+              ("attentionProjectionDim", opt<int>("dec-attention-projection-dim"))               //
+              ("attentionIndependentHeads", opt<bool>("dec-attention-independent-heads"))        //
+              ("attentionBilinearLookup", opt<bool>("dec-attention-bilinear-lookup"))            //
+              ("attentionProjectionLayerNorm", opt<bool>("dec-attention-projection-layernorm"))  //
+              ("attentionProjectionActivation", opt<std::string>("dec-attention-projection-activation"))  //
+              ("attentionDropout", opt<float>("dec-attention-dropout", 0))
+                  .set_state(encState));
+          lastAttentionCellIds_[k] = numBaseCells_;
+          ++numBaseCells_;
         }
       }
     }
@@ -307,9 +340,11 @@ public:
     std::vector<Expr> alignedContexts;
     for(int k = 0; k < state->getEncoderStates().size(); ++k) {
       // retrieve all the aligned contexts computed by the attention mechanism
+      size_t headId = lastAttentionCellIds_[k];  // index of the last attention head for the k-th
+                                                 // encoder state
       auto att = rnn_->at(0)
                      ->as<rnn::StackedCell>()
-                     ->at(k + 1)
+                     ->at(headId)
                      ->as<rnn::Attention>();
       alignedContexts.push_back(att->getContext());
     }

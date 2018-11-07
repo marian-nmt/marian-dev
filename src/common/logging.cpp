@@ -27,13 +27,11 @@ std::shared_ptr<spdlog::logger> stderrLogger(
     sinks.push_back(stderr_sink);
 
   for(auto&& file : files) {
-    auto file_sink
-        = std::make_shared<spdlog::sinks::simple_file_sink_st>(file, true);
+    auto file_sink = std::make_shared<spdlog::sinks::simple_file_sink_st>(file, true);
     sinks.push_back(file_sink);
   }
 
-  auto logger
-      = std::make_shared<spdlog::logger>(name, begin(sinks), end(sinks));
+  auto logger = std::make_shared<spdlog::logger>(name, begin(sinks), end(sinks));
 
   spdlog::register_logger(logger);
   logger->set_pattern(pattern);
@@ -56,9 +54,7 @@ bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
   else if(level == "off")
     logger.set_level(spdlog::level::off);
   else {
-    logger.warn("Unknown log level '{}' for logger '{}'",
-                level.c_str(),
-                logger.name().c_str());
+    logger.warn("Unknown log level '{}' for logger '{}'", level.c_str(), logger.name().c_str());
     return false;
   }
   return true;
@@ -83,10 +79,8 @@ void createLoggers(const marian::Config* options) {
   }
 
   bool quiet = options && options->get<bool>("quiet");
-  Logger general{
-      stderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
-  Logger valid{
-      stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
+  Logger general{stderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
+  Logger valid{stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
 
   if(options && options->has("log-level")) {
     std::string loglevel = options->get<std::string>("log-level");

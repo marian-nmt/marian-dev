@@ -342,16 +342,6 @@ public:
                           /*cache=*/false);
   }
 
-  static inline
-  std::function<Expr(Expr)> activationByName(const std::string& actName)
-  {
-    if (actName == "relu")
-      return (ActivationFunction*)relu;
-    else if (actName == "swish")
-      return (ActivationFunction*)swish;
-    ABORT("Invalid activation name '{}'", actName);
-  }
-
   Expr LayerFFN(std::string prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 
@@ -480,7 +470,7 @@ public:
 
   // returns the embedding matrix based on options
   // and based on batchIndex_.
-  
+
   std::vector<Expr> ULREmbeddings() const {
     // standard encoder word embeddings
     int dimSrcVoc = opt<std::vector<int>>("dim-vocabs")[0];  //ULR multi-lingual src
@@ -494,7 +484,7 @@ public:
                                            ("ulrKeysFile", opt<std::string>("ulr-keys-vectors"));
     return embFactory.construct();
   }
-  
+
   Expr wordEmbeddings(size_t subBatchIndex) const {
     // standard encoder word embeddings
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[subBatchIndex];

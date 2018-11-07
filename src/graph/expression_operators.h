@@ -34,6 +34,27 @@ Expr leakyrelu(const std::vector<Expr>&);
 Expr prelu(Expr a, float alpha = 0.01);
 Expr prelu(const std::vector<Expr>&, float alpha = 0.01);
 
+// Wrapper used to provide a signature consistent with the other activation functions
+static inline Expr defaultPrelu(Expr a) { return prelu(a); }
+static inline Expr defaultPrelu(const std::vector<Expr>& a) { return prelu(a); }
+
+static inline std::function<Expr(Expr)> activationByName(const std::string& actName) {
+  if (actName == "relu")
+    return (ActivationFunction*)relu;
+  else if (actName == "swish")
+    return (ActivationFunction*)swish;
+  else if (actName == "sigmoid")
+     return (ActivationFunction*)sigmoid;
+  else if (actName == "tanh")
+     return (ActivationFunction*)tanh;
+  else if (actName == "leakyrelu")
+     return (ActivationFunction*)leakyrelu;
+  else if (actName == "prelu")
+     return (ActivationFunction*)defaultPrelu;
+
+  ABORT("Invalid activation name '{}'", actName);
+}
+
 Expr log(Expr a);
 
 Expr exp(Expr a);
@@ -191,4 +212,6 @@ Expr max_pooling(Expr x,
                  int strideWidth = 1);
 
 Expr pooling_with_masking(Expr x, Expr mask, int width, bool isEven = false);
+
+
 }  // namespace marian

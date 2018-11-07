@@ -154,6 +154,34 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--tied-embeddings-all",
       "Tie all embedding layers and output layer");
 
+  // S2S multi-head and multi-hop attention
+  cli.add<int> ("--dec-attention-heads",
+      "Number of parallel attention heads in s2s decoder",
+      1);
+  cli.add<int>("--dec-attention-hops",
+      "Number of sequential attention hops in s2s decoder",
+      1);
+  cli.add<int>("--dec-attention-lookup-dim",
+      "Vector size of the s2s attention lookup mechanism, per head per hop (-1 same the encoder state dimension)",
+      -1);
+  cli.add<int>("--dec-attention-projection-dim",
+      "Project the context state to this size, per hop (-1 disables projection)",
+      -1);
+  cli.add<bool>("--dec-attention-independent-heads",
+      "Use completely independent heads in s2s multi-head attention. "
+        "Automatically enabled by --dec-attention-bilinear-lookup)");
+  cli.add<bool>("--dec-attention-bilinear-lookup",
+      "Use log-bilinear softmax attention in s2s decoder (currently disabled due to a bug)");
+  cli.add<bool>("--dec-attention-projection-layernorm",
+      "Apply layer normalization after the context projection in the attention mechanism");
+  cli.add<bool>("--dec-attention-projection-tanh",
+      "Apply a bias and tanh non-linearity after the context projection in the attention mechanism");
+  cli.add<std::string>("--dec-attention-projection-activation",
+      "If other than \"idenitity\", apply a bias and a non-linearity after the context projection "
+        "in the s2s attention mechanism. "
+        "Values: identity, swish, relu, sigmoid, tanh, leakyrelu or prelu",
+      "identity");
+
   // Transformer options
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
@@ -233,6 +261,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         "Dropout for transformer attention (0 = no dropout)");
     cli.add<float>("--transformer-dropout-ffn",
         "Dropout for transformer filter (0 = no dropout)");
+    cli.add<float>("--dec-attention-dropout",
+        "Attention dropout for s2s decoder (0 = no dropout)");
   }
   // clang-format on
 }
@@ -350,7 +380,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable",
      0)->implicit_val("1e-4");
   cli.add<std::string>("--guided-alignment",
-     "Path to a file with word alignments. Use guided alignment to guide attention or 'none'", 
+     "Path to a file with word alignments. Use guided alignment to guide attention or 'none'",
      "none");
   cli.add<std::string>("--guided-alignment-cost",
      "Cost type for guided alignment: ce (cross-entropy), mse (mean square error), mult (multiplication)",
@@ -754,13 +784,14 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
       "Is ULR (Universal Language Representation) enabled?",
       false);
   // reading pre-trained universal embedings for multi-sources
-  // note that source and target here is relative to ULR not the translation  langs
-  //queries: EQ in Fig2 :  is the unified embbedins projected to one space.
-  //"Path to file with universal sources embeddings from projection into universal space")
+  // note that source and target here is relative to ULR not the translation langs
+  // queries: EQ in Fig2 : is the unified embeddings projected to one space.
+  // "Path to file with universal sources embeddings from projection into universal space")
   cli.add<std::string>("--ulr-query-vectors",
       "Path to file with universal sources embeddings from projection into universal space",
       "");
-  //keys: EK in Fig2 :  is the keys of the target  embbedins projected to unified  space (i.e. ENU in multi-lingual case)
+  // keys: EK in Fig2 :  is the keys of the target  embbedins projected to unified  space (i.e. ENU
+  // in multi-lingual case)
   cli.add<std::string>("--ulr-keys-vectors",
       "Path to file with universal sources embeddings of traget keys from projection into universal space",
       "");

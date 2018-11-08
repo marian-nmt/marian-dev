@@ -14,7 +14,7 @@
 #define noinline __attribute__((noinline))
 #endif
 
-std::shared_ptr<spdlog::logger> stderrLogger(
+std::shared_ptr<spdlog::logger> createStderrLogger(
     const std::string& name,
     const std::string& pattern,
     const std::vector<std::string>& files,
@@ -79,8 +79,8 @@ void createLoggers(const marian::Config* options) {
   }
 
   bool quiet = options && options->get<bool>("quiet");
-  Logger general{stderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
-  Logger valid{stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
+  Logger general{createStderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
+  Logger valid{createStderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
 
   if(options && options->has("log-level")) {
     std::string loglevel = options->get<std::string>("log-level");

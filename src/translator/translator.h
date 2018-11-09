@@ -89,6 +89,8 @@ public:
 
     bg.prepare(false);
 
+    bool doNbest = options_->get<bool>("n-best");
+
     for(auto batch : bg) {
       auto task = [=](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;

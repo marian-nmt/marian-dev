@@ -86,7 +86,8 @@ Expr DualCrossEntropyMeanWordsLoss::getCost(Expr logits,
   auto sentenceCE = sum(ce, /*axis =*/ -3);
   auto wordCount  = sum(mask, /*axis =*/ -3);
 
-  auto dualPenalty = abs(-sentenceCE - weights);
+  // ce is -log P(y|x) while weights is log P(y|x)
+  auto dualPenalty = abs(sentenceCE + weights);
 
   // if(weights) {
   //   return (sum(sum(ce, /*axis =*/ -3), /*axis =*/ -2)

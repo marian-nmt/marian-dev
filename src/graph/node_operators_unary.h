@@ -512,6 +512,24 @@ struct MeanNodeOp : public UnaryNodeOp {
   }
 };
 
+struct AbsNodeOp : public UnaryNodeOp {
+  AbsNodeOp(Expr a) : UnaryNodeOp(a) {}
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+    return {NodeOp(Element(_1 = abs(_2), val_, child(0)->val()))};
+  }
+
+  NodeOps backwardOps() override {
+    using namespace functional;
+    return {// NodeOp(Add(_1 * (1.f / _2), child(0)->grad(), adj_,
+            // child(0)->val()))};
+            NodeOp(Add(if_then_else(_1 < 0.f, -1.f, 1.f) * _2, child(0)->grad(), child(0)->val(), adj_))};
+  }
+
+  const std::string type() override { return "log"; }
+};
+
 struct LogNodeOp : public UnaryNodeOp {
   LogNodeOp(Expr a) : UnaryNodeOp(a) {}
 

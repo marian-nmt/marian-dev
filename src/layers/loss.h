@@ -39,6 +39,13 @@ public:
   Expr getCost(Expr logits, Expr indices, Expr mask, Expr weights) override;
 };
 
+class DualCrossEntropyMeanWordsLoss : public LossBase {
+public:
+  explicit DualCrossEntropyMeanWordsLoss(float smoothing = 0)
+      : LossBase(smoothing){};
+  Expr getCost(Expr logits, Expr indices, Expr mask, Expr weights) override;
+};
+
 /*
  * @brief The cross entropy loss function as a sum over target tokens
  */

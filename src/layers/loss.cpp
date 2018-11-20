@@ -15,6 +15,8 @@ Ptr<LossBase> LossFactory(Ptr<Options> options, bool inference) {
     return New<PerplexityLoss>(smoothing);
   } else if(costType == "ce-rescore") {
     return New<CrossEntropyRescoreLoss>(smoothing);
+  } else if(costType == "dual-ce-mean-words") {
+    return New<DualCrossEntropyMeanWordsLoss>(smoothing);
   } else {  // same as ce-mean
     return New<CrossEntropyMeanLoss>(smoothing);
   }
@@ -69,6 +71,30 @@ Expr CrossEntropyMeanWordsLoss::getCost(Expr logits,
   // else {
     return sum(sum(ce, /*axis =*/ -3), /*axis =*/ -2) // sum CE over all words in the batch
            / sum(sum(mask, /*axis =*/ -3), /*axis =*/ -2); // divide by number of words (sum over mask)
+  // }
+}
+
+Expr DualCrossEntropyMeanWordsLoss::getCost(Expr logits,
+                                        Expr indices,
+                                        Expr mask,
+                                        Expr weights) {
+
+  ABORT_IF(!weights, "Dual learning training criterion expects sentence-level logprobs");
+
+  auto ce = getCrossEntropy(logits, indices, mask, nullptr);
+
+  auto sentenceCE = sum(ce, /*axis =*/ -3);
+  auto wordCount  = sum(mask, /*axis =*/ -3);
+
+  auto dualPenalty = abs(-sentenceCE - weights);
+
+  // if(weights) {
+  //   return (sum(sum(ce, /*axis =*/ -3), /*axis =*/ -2)
+  //          / sum(sum(mask * weights, /*axis =*/ -3), /*axis =*/ -2));
+  // }
+  // else {
+    return sum(sentenceCE + dualPenalty, /*axis =*/ -2) // sum CE over all words in the batch
+           / sum(wordCount, /*axis =*/ -2); // divide by number of words (sum over mask)
   // }
 }
 

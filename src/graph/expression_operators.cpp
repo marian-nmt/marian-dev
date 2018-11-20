@@ -15,6 +15,10 @@ Expr debug(Expr a, const std::string& message) {
   return a;
 }
 
+Expr abs(Expr a) {
+  return Expression<AbsNodeOp>(a);
+}
+
 // logistic function. Note: scipy name is expit()
 Expr sigmoid(Expr a) {
   return Expression<SigmoidNodeOp>(a);

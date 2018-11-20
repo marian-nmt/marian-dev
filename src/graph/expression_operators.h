@@ -19,6 +19,8 @@ Expr swish(const std::vector<Expr>&);
 
 Expr tanh(const std::vector<Expr>&);
 
+Expr abs(Expr a);
+
 template <typename... Args>
 Expr tanh(Args... args) {
   std::vector<Expr> nodes{args...};

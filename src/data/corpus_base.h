@@ -345,6 +345,9 @@ public:
       batch->setDataWeights(weights);
     }
 
+    std::vector<size_t> ids(batchSize, 0);
+    batch->setSentenceIds(ids);
+
     return batch;
   }
 

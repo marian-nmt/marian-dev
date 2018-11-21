@@ -38,7 +38,8 @@ const std::set<std::string> PATHS = {
   "output",           // except: stdout
   "pretrained-model",
   "data-weighting",
-  "log"
+  "log",
+  "multi-agent-learning"
   // TODO: Handle the special value in helper functions
   //"sqlite",         // except: temporary
   // TODO: This is a vector with a path and some numbers, handle this in helper
@@ -384,6 +385,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // add ULR settings
   addSuboptionsULR(cli);
   // clang-format on
+
+  cli.add_nondefault<std::vector<std::string>>("--multi-agent-learning",
+     "Paths to multi-agent scores, need to correspond line-by-line to training data");
 }
 
 void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {

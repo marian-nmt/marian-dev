@@ -59,17 +59,96 @@ public:
                           state->getTargetMask(),
                           weights);
 
-    if(options_->get("guided-alignment", std::string("none")) != "none" && !inference_) {
+    if(options_->get<std::string>("guided-alignment", "none") != "none" && !inference_) {
       auto alignments = encdec->getDecoders()[0]->getAlignments();
       ABORT_IF(alignments.empty(), "Model does not seem to support alignments");
 
       auto att = concatenate(alignments, /*axis =*/ -1);
 
-      return cost + guidedAlignmentCost(graph, corpusBatch, options_, att);
-    } else {
-      return cost;
+      cost = cost + guidedAlignmentCost(graph, corpusBatch, options_, att);
     }
+    
+    return cost;
   }
+};
+
+class MultiAgentEncoderDecoderCE : public EncoderDecoderCE {
+private:
+  std::vector<std::vector<float>> scores_;
+
+public:
+  MultiAgentEncoderDecoderCE(Ptr<Options> options) 
+  : EncoderDecoderCE(options) {
+
+    auto paths = options_->get<std::vector<std::string>>("multi-agent-learning");
+    ABORT_IF(paths.empty(), "Multi-agent cost with empty multi-agent scores list");
+
+    for(const auto& path : paths) {
+      LOG(info, "Loading multi-agent scores from {}", path);
+      ABORT_IF(!filesystem::exists(path), "Multi-agent scores list {} does not exist", path);
+      io::InputFileStream in(path);
+      std::vector<float> maScores;
+      float score;
+      while(in >> score)
+        maScores.push_back(score);
+      
+      if(!scores_.empty()) {
+        ABORT_IF(maScores.size() != scores_.back().size(), 
+                 "Sets of scores have different lengths {} != {}", 
+                 maScores.size(), scores_.back().size());
+      }
+      LOG(info, "Loaded {} scores", maScores.size());
+      scores_.push_back(maScores);
+    }
+
+  }
+
+  Expr apply(Ptr<ModelBase> model,
+             Ptr<ExpressionGraph> graph,
+             Ptr<data::Batch> batch,
+             bool clearGraph = true) override {
+
+    auto encdec = std::static_pointer_cast<EncoderDecoder>(model);
+    auto corpusBatch = std::static_pointer_cast<data::CorpusBatch>(batch);
+
+    auto state = encdec->stepAll(graph, corpusBatch, clearGraph);
+
+    Expr weights;
+    if(toBeWeighted_)
+      weights = weighter_->getWeights(graph, corpusBatch);
+
+    Expr ce = loss_->getCrossEntropy(state->getLogProbs(),
+                                     state->getTargetIndices(),
+                                     state->getTargetMask(),
+                                     weights);
+
+    Expr sentenceCE = sum(ce, /*axis = */-3);
+
+    const auto& sentenceIds = batch->getSentenceIds();
+    for(const auto& agent : scores_)  {
+      std::vector<float> batchAgent;
+      batchAgent.reserve(sentenceIds.size());
+      for(size_t i : sentenceIds)
+        batchAgent.push_back(agent[i]);
+      
+      int dim = (int)sentenceIds.size();
+      Expr agentProbs = graph->constant({dim, 1}, inits::from_vector(batchAgent));
+
+      float denominator = (float)scores_.size();
+
+      // sentenceCE (a) is negative \sum log(P) and agentProbs (b) is just \sum log(P),
+      // hence abs(a + b) to compute absolute difference.
+      // Averaged over number of agents (denominator). 
+      sentenceCE = sentenceCE + abs(sentenceCE + agentProbs) / denominator;
+    }
+
+    // ce-mean-words for now
+    auto cost = sum(sentenceCE, /*axis =*/ -2) 
+                / sum(sum(state->getTargetMask(), /*axis =*/ -3), /*axis =*/ -2); 
+
+    return cost;
+  }
+
 };
 
 class Trainer : public ModelBase {
@@ -219,7 +298,10 @@ inline Ptr<ModelBase> add_cost(Ptr<EncoderDecoder> encdec,
                                Ptr<Options> options) {
   switch(options->get<usage>("usage", usage::raw)) {
     case usage::training:
-      return New<Trainer>(encdec, New<EncoderDecoderCE>(options));
+      if(options->has("multi-agent-learning"))
+        return New<Trainer>(encdec, New<MultiAgentEncoderDecoderCE>(options));
+      else
+        return New<Trainer>(encdec, New<EncoderDecoderCE>(options));
     case usage::scoring:
       return New<Scorer>(encdec, New<EncoderDecoderCE>(options));
     case usage::translation:

@@ -125,7 +125,6 @@ public:
     Expr sentenceCE = sum(ce, /*axis = */-3);
 
     const auto& sentenceIds = batch->getSentenceIds();
-    std::cerr << sentenceIds.size() << std::endl;
     for(const auto& agent : scores_)  {
       std::vector<float> batchAgent;
       batchAgent.reserve(sentenceIds.size());

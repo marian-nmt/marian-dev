@@ -74,6 +74,7 @@ public:
       if(shortlist)
         embIdx = shortlist->reverseMap(embIdx);
 
+      // Condition: do not add filler items in the keys/costs matrix
       if(newBeams[beamIdx].size() < beams[beamIdx].size()) {
         auto& beam = beams[beamIdx];
         auto& newBeam = newBeams[beamIdx];
@@ -351,12 +352,16 @@ public:
         nth->getNBestList(beamSizes, totalCosts->val(), outCosts, outKeys, first);
       }
 
+      std::cerr << "outCosts.size() = " << outCosts.size() << ", localBeamSize = " << localBeamSize << "\n";
       for(size_t i=0; i<outCosts.size(); i++) {
         int beamNo = i / localBeamSize;
         int hypInBeam = i % localBeamSize;
         int embIdx = outKeys[i] % dimTrgVoc;
         int hypIdx = (outKeys[i] / dimTrgVoc) % localBeamSize;
         auto& beam = beams[beamNo];
+        if (hypInBeam >= beam.size()) { // do not report on filler hyps
+          continue;
+        }
         if (hypIdx >= beam.size()) {
           std::cerr << "ERR " << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost " << outCosts[i] << "\t " << (*targetVocab)[embIdx] << " ... OUT OF RANGE " << beam.size() << "\n";
         }
@@ -371,7 +376,6 @@ public:
            hyp = hyp->GetPrevHyp();
         }
         std::cerr << std::endl;
-        std::cerr << "NEXT\n";
       }
 
       beams = toHyps(
@@ -805,6 +809,17 @@ public:
           outXmls.push_back( collectedXmls[j][bestSubbeam][bestIndex] );
           index[bestSubbeam]++;
         }
+        else { // not sure if this ever happens
+          outCosts.push_back( -9e9 );
+          outKeys.push_back( 0 );
+          outXmls.push_back( NULL );
+        }
+      }
+      // add filler keys/costs values if needed
+      for(int i=beams[j].size(); i<localBeamSize; i++) {
+        outCosts.push_back( -9e9 );
+        outKeys.push_back( 0 );
+        outXmls.push_back( NULL );
       }
     }
     std::cerr << "outCosts.size() = " << outCosts.size() << "\n";

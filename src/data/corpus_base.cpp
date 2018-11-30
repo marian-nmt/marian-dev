@@ -35,6 +35,7 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       vocabs_(vocabs),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
+      maxLengthRatio_(options_->get<bool>("max-length-ratio")),
       rightLeft_(options_->get<bool>("right-left")) {
   ABORT_IF(paths_.size() != vocabs_.size(),
            "Number of corpus files and vocab files does not agree");
@@ -49,6 +50,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     : DatasetBase(options),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
+      maxLengthRatio_(options_->get<bool>("max-length-ratio")),
       rightLeft_(options_->get<bool>("right-left")) {
   bool training = !translate;
 
@@ -101,7 +103,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         std::set<std::string> paths; // contains all paths that are used for training the vocabulary
         size_t size;                 // contains the maximum vocabulary size
       };
-      
+
       // Group training files based on vocabulary path. If the same
       // vocab path corresponds to different training files, this means
       // that a single vocab should combine tokens from all files.
@@ -120,7 +122,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         auto pathsAndSize = groupVocab[vocabPaths[i]];
         std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
         int vocSize = vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
-        
+
         // TODO: this is not nice as it modifies the option object and needs to expose the changes
         // outside the corpus as models need to know about the vocabulary size; extract the vocab
         // creation functionality from the class.

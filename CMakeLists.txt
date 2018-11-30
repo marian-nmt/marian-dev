@@ -21,7 +21,7 @@ option(USE_STATIC_LIBS "Compile GPU version" OFF)
 option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_MPI "Use MPI library" OFF)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
+option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
 
 # Project versioning
 find_package(Git QUIET)
@@ -63,15 +63,6 @@ else()
   set(CMAKE_CXX_FLAGS_PROFGEN         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
   endif()
-
-# Downloading SentencePiece if requested and set to compile with it.
-# Requires all the dependencies imposed by SentencePiece
-if(USE_SENTENCEPIECE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
-  LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
-  set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
-endif()
-
 
 # Find packages
 set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
@@ -139,6 +130,19 @@ if(USE_STATIC_LIBS)
     set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
   endif()
 endif()
+
+# Downloading SentencePiece if requested and set to compile with it.
+# Requires all the dependencies imposed by SentencePiece
+if(USE_SENTENCEPIECE)
+  find_package(Protobuf)
+  if(Protobuf_FOUND)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
+    LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
+    set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+  else(Protobuf_FOUND)
+    message(WARNING "Could not find Google's Protobuf continuing without SentencePiece compilation")  
+  endif(Protobuf_FOUND)
+endif(USE_SENTENCEPIECE)
 
 if(NOT WIN32)
   find_package(Tcmalloc)

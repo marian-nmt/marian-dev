@@ -64,9 +64,22 @@ SentenceTuple Corpus::next() {
     ABORT_IF(eofsHit != 0, "not all input files have the same number of lines");
 
     // check if all streams are valid, that is, non-empty and no longer than maximum allowed length
-    if(std::all_of(tup.begin(), tup.end(), [=](const Words& words) {
-         return words.size() > 0 && words.size() <= maxLength_;
-       }))
+    bool good = true;
+    for(int i = 0; i < tup.size(); ++i) {
+      good = good && (tup[i].size() > 0 && tup[i].size() <= maxLength_);
+    }
+
+    if(maxLengthRatio_ > 0.f) {
+      for(int i = 0; i < tup.size() && good; ++i) {
+        float ni = (float)tup[i].size();
+        for(int j = i + 1; j < tup.size() && good; ++j) {
+          float nj = (float)tup[j].size();
+          good = good && (ni / nj <= maxLengthRatio_ && nj / ni <= maxLengthRatio_);
+        }
+      }
+    }
+
+    if(good)
       return tup;
 
     // otherwise skip this sentence and try the next one

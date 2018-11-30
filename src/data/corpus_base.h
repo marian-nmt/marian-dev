@@ -517,6 +517,7 @@ protected:
 
   size_t maxLength_{0};
   bool maxLengthCrop_{false};
+  float maxLengthRatio_{0.f};
   bool rightLeft_{false};
 
   /**

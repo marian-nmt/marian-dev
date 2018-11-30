@@ -35,7 +35,7 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       vocabs_(vocabs),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
-      maxLengthRatio_(options_->get<bool>("max-length-ratio")),
+      maxLengthRatio_(options_->get<float>("max-length-ratio")),
       rightLeft_(options_->get<bool>("right-left")) {
   ABORT_IF(paths_.size() != vocabs_.size(),
            "Number of corpus files and vocab files does not agree");
@@ -50,7 +50,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     : DatasetBase(options),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
-      maxLengthRatio_(options_->get<bool>("max-length-ratio")),
+      maxLengthRatio_(options_->get<float>("max-length-ratio")),
       rightLeft_(options_->get<bool>("right-left")) {
   bool training = !translate;
 

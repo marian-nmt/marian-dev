@@ -177,6 +177,7 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
 void CorpusBase::addWordsToSentenceTuple(const std::string& line,
                                          size_t i,
                                          SentenceTuple& tup) const {
+  std::cerr << "CorpusBase::addWordsToSentenceTuple\n";
   Words words = (*vocabs_[i])(line);
 
   if(words.empty())

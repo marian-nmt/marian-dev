@@ -38,12 +38,18 @@ private:
 
   std::vector<UPtr<std::istringstream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
+  Ptr<Vocab> target_vocab_;
 
   size_t pos_{0};
 
 public:
   TextInput(std::vector<std::string> inputs,
             std::vector<Ptr<Vocab>> vocabs,
+            Ptr<Config> options);
+
+  TextInput(std::vector<std::string> inputs,
+            std::vector<Ptr<Vocab>> vocabs,
+            Ptr<Vocab> target_vocab,
             Ptr<Config> options);
 
   sample next();
@@ -58,7 +64,10 @@ public:
     int batchSize = batchVector.size();
 
     std::vector<size_t> sentenceIds;
-    XmlOptionsList *xmlOptionsList = new XmlOptionsList();
+    XmlOptionsList *xmlOptionsList;
+    if (options_->get<bool>("xml-input")) {
+      xmlOptionsList = new XmlOptionsList();
+    }
 
     std::vector<int> maxDims;
     for(auto& ex : batchVector) {
@@ -69,8 +78,12 @@ public:
           maxDims[i] = ex[i].size();
       }
       sentenceIds.push_back(ex.getId());
-      const XmlOptions *xops = ex.getXmlOptions();
-      xmlOptionsList->push_back(xops);
+      if (options_->get<bool>("xml-input")) {
+        const XmlOptions *xops = ex.getXmlOptions();
+        std::cerr << "*xops = " << xops << "\n";
+        std::cerr << "number of options: " << xops->size() << "\n";
+        xmlOptionsList->push_back(xops);
+      }
     }
 
     std::vector<Ptr<SubBatch>> subBatches;
@@ -94,8 +107,11 @@ public:
 
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);
-    std::cerr << "batch->setXmlOptionsList(xmlOptionsList);\n";
-    batch->setXmlOptionsList(xmlOptionsList);
+    if (options_->get<bool>("xml-input")) {
+      std::cerr << "batch->setXmlOptionsList(xmlOptionsList);;\n";
+      batch->setXmlOptionsList(xmlOptionsList);
+      std::cerr << "batch->setXmlOptionsList(xmlOptionsList);; OK\n";
+    }
 
     return batch;
   }

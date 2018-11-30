@@ -3,10 +3,11 @@
 namespace marian {
 namespace data {
 
-void CorpusBase::processXml(const std::string& line,
-                            std::string& stripped_line,
-                            SentenceTuple& tup) const {
-  std::cerr << "called CorpusBase::processXml\n";
+void processXml(const std::string& line,
+                      std::string& stripped_line,
+                      const Ptr<Vocab> target_vocab,
+                      SentenceTuple& tup) {
+  std::cerr << "called processXml\n";
 
   XmlOptions *xmlOptions = new XmlOptions();
   tup.setXmlOptions( xmlOptions );
@@ -153,7 +154,7 @@ void CorpusBase::processXml(const std::string& line,
           Trim(translation);
           Split(translation, translationWords, " ");
           std::cerr << "new option (" << startPos << "," << endPos << ") " << translation << ", size " << translationWords.size() << "\n";
-          Words translation_words = (*target_vocab_)(translationWords, false);
+          Words translation_words = (*target_vocab)(translationWords, false);
           std::cerr << "encoded size " << translation_words.size() << "\n";
           std::cerr << "word id = " << translation_words[0] << "\n";
           XmlOption *xmlOption = new XmlOption(startPos, endPos, translation_words);
@@ -170,7 +171,7 @@ void CorpusBase::processXml(const std::string& line,
 /**
  * Remove "<" and ">" from XML tag
  */
-std::string CorpusBase::TrimXml(const std::string& str) const {
+std::string TrimXml(const std::string& str) {
   // too short to be xml token -> do nothing
   if (str.size() < 2) return str;
 
@@ -191,7 +192,7 @@ std::string CorpusBase::TrimXml(const std::string& str) const {
  * \param lbrackStr xml tag's left bracket string, typically "<"
  * \param rbrackStr xml tag's right bracket string, typically ">"
  */
-bool CorpusBase::isXmlTag(const std::string& tag) const {
+bool isXmlTag(const std::string& tag) {
   return tag[0] == '<' &&
          tag[tag.size()-1] == '>' &&
          ( tag[1] == '/'
@@ -202,7 +203,7 @@ bool CorpusBase::isXmlTag(const std::string& tag) const {
 /**
  * @brief Get value for XML attribute, if it exists
  */
-std::string CorpusBase::parseXmlTagAttribute(const std::string& tag, const std::string& attributeName) const {
+std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName) {
   std::string tagOpen = attributeName + "=\"";
   size_t contentsStart = tag.find(tagOpen);
   if (contentsStart == std::string::npos) return "";
@@ -223,7 +224,7 @@ std::string CorpusBase::parseXmlTagAttribute(const std::string& tag, const std::
  * @brief Code to break up a xml-tagged input sentence into tokens 
    and tags. Adapted from Moses.
  */
-std::vector<std::string> CorpusBase::tokenizeXml(const std::string& line) const {
+std::vector<std::string> tokenizeXml(const std::string& line) {
 
   std::vector<std::string> tokens; // vector of tokens to be returned
   std::string::size_type cpos = 0; // current position in string

@@ -497,7 +497,6 @@ protected:
   /**
    * @brief Helper function parsing a line with XML tags, stripping them out
    * and adding XML Options to the sentence tuple
-   */
   void processXml(const std::string& line,
                   std::string& stripped_line,
                   SentenceTuple& tup) const;
@@ -506,6 +505,7 @@ protected:
   std::string TrimXml(const std::string& str) const;
   bool isXmlTag(const std::string& tag) const;
   std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName) const;
+   */
 
   void addAlignmentsToBatch(Ptr<CorpusBatch> batch,
                             const std::vector<sample>& batchVector);

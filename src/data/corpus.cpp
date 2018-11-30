@@ -38,7 +38,7 @@ SentenceTuple Corpus::next() {
             std::cerr << "process xml for " << line << std::endl;
             std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
             std::string stripped_line;
-            processXml(line, stripped_line, tup);
+            processXml(line, stripped_line, target_vocab_, tup);
             addWordsToSentenceTuple(stripped_line, i, tup);
           } else {
             std::cerr << "no xml today\n";

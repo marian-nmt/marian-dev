@@ -168,7 +168,7 @@ public:
   }
 
   std::vector<std::string> run(const std::vector<std::string>& inputs) {
-    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
+    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, trgVocab_, options_);
     data::BatchGenerator<data::TextInput> bg(corpus_, options_);
 
     auto collector = New<StringCollector>();

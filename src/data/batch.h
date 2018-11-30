@@ -31,7 +31,9 @@ public:
     std::cerr << "setXmlOptionsList " << xopsl << "\n"; 
     std::cerr << "xopsl->size() = " << xopsl->size() << ", " << (*xopsl)[0] << "\n"; 
     const XmlOptions *xops = (*xopsl)[0];
-    std::cerr << "xops->size() = " << xops->size() << ", " << (*xops)[0] << "\n"; 
+    std::cerr << "xops->size() = " << xops->size();
+    if (xops->size() > 0) std::cerr << ", " << (*xops)[0];
+    std::cerr << "\n"; 
   }
 
   virtual void setGuidedAlignment(const std::vector<float>&) = 0;

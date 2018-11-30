@@ -29,6 +29,15 @@ TextInput::TextInput(std::vector<std::string> paths,
     files_.emplace_back(new std::istringstream(path));
 }
 
+TextInput::TextInput(std::vector<std::string> paths,
+                     std::vector<Ptr<Vocab>> vocabs,
+                     Ptr<Vocab> target_vocab,
+                     Ptr<Config> options)
+    : DatasetBase(paths), vocabs_(vocabs), target_vocab_(target_vocab), options_(options) {
+  for(auto path : paths_)
+    files_.emplace_back(new std::istringstream(path));
+}
+
 SentenceTuple TextInput::next() {
   bool cont = true;
   while(cont) {
@@ -40,10 +49,21 @@ SentenceTuple TextInput::next() {
     for(size_t i = 0; i < files_.size(); ++i) {
       std::string line;
       if(std::getline(*files_[i], line)) {
-        Words words = (*vocabs_[i])(line);
-        if(words.empty())
-          words.push_back(0);
-        tup.push_back(words);
+        if(options_->get<bool>("xml-input")) {
+          std::cerr << "process xml for " << line << std::endl;
+          std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
+          std::string stripped_line;
+          processXml(line, stripped_line, target_vocab_, tup);
+          Words words = (*vocabs_[i])(stripped_line);
+          if(words.empty())
+            words.push_back(0);
+          tup.push_back(words);
+        } else {
+          Words words = (*vocabs_[i])(line);
+          if(words.empty())
+            words.push_back(0);
+          tup.push_back(words);
+        }
       }
     }
 

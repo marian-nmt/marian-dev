@@ -5,10 +5,22 @@
 namespace marian {
 namespace data {
 
+class SentenceTuple;
+
 /**
  * @brief data structure to support specification of translation
  * constraints for decoding
  */
+
+void processXml(const std::string& line,
+                std::string& stripped_line,
+                const Ptr<Vocab> target_vocab,
+                SentenceTuple& tup);
+
+std::vector<std::string> tokenizeXml(const std::string& line);
+std::string TrimXml(const std::string& str);
+bool isXmlTag(const std::string& tag);
+std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName);
 
 class XmlOption {
   private:

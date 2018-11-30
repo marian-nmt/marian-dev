@@ -69,6 +69,7 @@ SentenceTuple Corpus::next() {
       good = good && (tup[i].size() > 0 && tup[i].size() <= maxLength_);
     }
 
+    // skip over tuple if the length ratio of any two sentences in tuple is above maxLengthRatio
     if(maxLengthRatio_ > 0.f) {
       for(int i = 0; i < tup.size() && good; ++i) {
         float ni = (float)tup[i].size();

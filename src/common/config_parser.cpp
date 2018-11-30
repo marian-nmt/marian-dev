@@ -610,7 +610,7 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
       "Crop a sentence to max-length instead of ommitting it if longer than max-length");
-  cli.add<bool>("--max-length-ratio",
+  cli.add<float>("--max-length-ratio",
       "Drop a sentence tuple if the length ratio of any two sentences in the tuple is larger than max-length-ratio");
   // clang-format on
 }

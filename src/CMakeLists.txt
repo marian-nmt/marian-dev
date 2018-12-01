@@ -119,7 +119,7 @@ endif(CUDA_FOUND)
 set_target_properties(marian PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 set_target_properties(marian PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-add_executable(marian_train command/marian.cpp)
+add_executable(marian_train command/marian_main.cpp)
 set_target_properties(marian_train PROPERTIES OUTPUT_NAME marian)
 target_compile_options(marian_train PUBLIC ${ALL_WARNINGS})
 

@@ -120,9 +120,12 @@ void Corpus::shuffleData(const std::vector<std::string>& paths) {
 
   size_t numStreams = paths.size();
 
+  size_t numSentences;
   std::vector<std::vector<std::string>> corpus(numStreams); // [stream][id]
-  if (!corpusInRAM_.empty()) // when caching, we use what we have instead
+  if (!corpusInRAM_.empty()) { // when caching, we use what we have instead
     corpus = std::move(corpusInRAM_); // temporarily move ownership here, will be moved back
+    numSentences = corpus[0].size();
+  }
   else {
     files_.resize(numStreams);
     for(size_t i = 0; i < numStreams; ++i) {
@@ -146,9 +149,9 @@ void Corpus::shuffleData(const std::vector<std::string>& paths) {
       ABORT_IF(eofsHit != 0, "Not all input files have the same number of lines");
     }
     files_.clear();
+    numSentences = corpus[0].size();
+    LOG(info, "[data] Done reading {} sentences", numSentences);
   }
-  size_t numSentences = corpus[0].size();
-  LOG(info, "[data] Done reading {} sentences", numSentences);
 
   // randomize sequence ids, and remember them
   ids_.resize(numSentences);

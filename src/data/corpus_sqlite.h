@@ -64,6 +64,7 @@ public:
 
   std::vector<Ptr<Vocab>>& getVocabs() override { return vocabs_; }
 
+  // @TODO: code duplication with corpus.h
   batch_ptr toBatch(const std::vector<Sample>& batchVector) override {
     size_t batchSize = batchVector.size();
 
@@ -98,6 +99,11 @@ public:
 
     for(size_t j = 0; j < maxDims.size(); ++j)
       subBatches[j]->setWords(words[j]);
+
+    if(options_->get<bool>("inverse", false)) {
+      ABORT_IF(subBatches.size() != 2, "Inversion only works for two input sources");
+      std::swap(subBatches[0], subBatches[1]);
+    }
 
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);

@@ -530,6 +530,8 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
       "Feature name to be inserted into n-best list", "Score");
   cli.add<bool>("--normalize,-n",
       "Divide translation score by translation length");
+  cli.add<bool>("--inverse",
+      "Invert source and target language for scoring");
   cli.add_nondefault<std::string>("--summary",
       "Only print total cost, possible values: cross-entropy (ce-mean), ce-mean-words, ce-sum, perplexity")
       ->implicit_val("cross-entropy");

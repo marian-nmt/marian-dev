@@ -768,7 +768,7 @@ public:
       rnn::State decoderState;
       if(layerType == "self-attention")
         query = DecoderLayerSelfAttention(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_self", query, selfMask, startPos);
-      else if(layerType == "average-attention")
+      else if(layerType == "average-attention" || layerType == "aan")
         query = DecoderLayerAAN(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_aan", query, selfMask, startPos);
       else if(layerType == "rnn")
         query = DecoderLayerRNN(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_rnn", query, selfMask, startPos);

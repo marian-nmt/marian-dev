@@ -516,8 +516,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   // TODO: the options should be available only in server
   cli.add_nondefault<size_t>("--port,-p",
       "Port number for web socket server");
+
   // add ULR settings
-  addSuboptionsULR(cli);
+  if(mode_ != cli::mode::selfadaptive)
+    addSuboptionsULR(cli);
 
   // clang-format on
 }

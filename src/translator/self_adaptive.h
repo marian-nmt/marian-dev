@@ -60,25 +60,21 @@ public:
 
 class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
-  TrainSelfAdaptive(Ptr<Config> options) : options_(options) {
+  TrainSelfAdaptive(Ptr<Options> options) : options_(options) {
 
     // Set up translator options
-    optionsTrans_ = New<Config>(*options_);
+    optionsTrans_ = New<Options>(options_->clone());
     optionsTrans_->set<size_t>("mini-batch", 1);
     optionsTrans_->set<size_t>("maxi-batch", 1);
     optionsTrans_->set<size_t>("max-length", 1000);
 
-    // TODO: get rid of options_ or toptions_
-    tOptions_ = New<Options>();
-    tOptions_->merge(options_);
-
-    auto deviceId = options_->getDevices()[0];
+    auto deviceId = Config::getDevices(options_)[0];
 
     // Initialize model for training
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-    builder_ = models::from_config(options_, models::usage::training);
+    builder_ = models::from_options(options_, models::usage::training);
 
     optimizer_ = Optimizer(options_);
 
@@ -97,7 +93,7 @@ public:
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
     for(size_t i = 0; i < vocabPaths.size(); ++i) {
-      Ptr<Vocab> vocab = New<Vocab>();
+      Ptr<Vocab> vocab = New<Vocab>(options_, i);
       vocab->load(vocabPaths[i], maxVocabs[i]);
       vocabs_.emplace_back(vocab);
     }
@@ -123,8 +119,7 @@ public:
     // Get input sentences
     auto input = yaml["input"].as<std::string>();
     std::vector<Ptr<Vocab>> srcVocabs(vocabs_.begin(), vocabs_.end() - 1);
-    auto testSet = New<TextInput>(
-        std::vector<std::string>({input}), srcVocabs, optionsTrans_);
+    auto testSet = New<TextInput>(std::vector<std::string>({input}), srcVocabs, optionsTrans_);
 
     // Prepare batches
     auto testBatches = New<BatchGenerator<TextInput>>(testSet, optionsTrans_);
@@ -195,9 +190,8 @@ public:
   }
 
 private:
-  Ptr<Config> options_;       // Options for training
-  Ptr<Config> optionsTrans_;  // Options for translator
-  Ptr<Options> tOptions_;     // Options for beam search
+  Ptr<Options> options_;       // Options for training
+  Ptr<Options> optionsTrans_;  // Options for translator
 
   Ptr<models::ModelBase> builder_;      // Training model
   Ptr<models::ModelBase> builderTrans_; // Translation model
@@ -264,7 +258,7 @@ private:
     graph->clear();
 
     {
-      auto search = New<BeamSearch>(tOptions_,
+      auto search = New<BeamSearch>(options_,
                                     scorers_,
                                     vocabs_.back()->getEosId(),
                                     vocabs_.back()->getUnkId());

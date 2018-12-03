@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.5.1)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} /usr/local/cuda-8.0/lib64)
+
+if (POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW) # CMake 3.12
+endif ()
+
 
 project(marian CXX C)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
 # Custom CMake options
 option(COMPILE_EXAMPLES "Compile examples" OFF)
@@ -14,6 +21,7 @@ option(USE_STATIC_LIBS "Compile GPU version" OFF)
 option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_MPI "Use MPI library" OFF)
+option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
 
 # Project versioning
 find_package(Git QUIET)
@@ -21,6 +29,9 @@ include(GetVersionFromFile)
 
 message(STATUS "Project name: ${PROJECT_NAME}")
 message(STATUS "Project version: ${PROJECT_VERSION_STRING_FULL}")
+
+execute_process(COMMAND git submodule update --init --recursive --no-fetch
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Set compilation flags
 if(MSVC)
@@ -32,18 +43,37 @@ if(MSVC)
 
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")
 else()
-  set(CMAKE_CXX_FLAGS_RELEASE " -std=c++11 -O3 -Ofast -m64 -pthread -march=native -Wl,--no-as-needed -funroll-loops -ffinite-math-only -fPIC -Wno-unused-result -Wno-deprecated -Wno-deprecated-gpu-targets")
-  set(CMAKE_CXX_FLAGS_NONATIVE " -std=c++11 -O3 -Ofast -m64 -pthread -march=x86-64 -mavx -Wl,--no-as-needed -funroll-loops -ffinite-math-only -fPIC -Wno-unused-result -Wno-deprecated -Wno-deprecated-gpu-targets")
-  set(CMAKE_CXX_FLAGS_DEBUG " -std=c++11 -g -O0 -pthread -fPIC -Wno-unused-result -Wno-deprecated -Wno-deprecated-gpu-targets")
-  set(CMAKE_CXX_FLAGS_ST "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG")
-  set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE} -pg -g")
-  set(CMAKE_CXX_FLAGS_PROFGEN "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
-  set(CMAKE_CXX_FLAGS_PROFUSE "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
-  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_RELEASE})
+  set(DISABLE_GLOBALLY "-Wno-unused-result")
+
+  # These are used in src/CMakeLists.txt on a per-target basis
+  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated; -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
+                           -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare; -Wno-missing-field-initializers)
+
+  # This warning does not exist prior to gcc 5.0
+  if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
+    list(APPEND ALL_WARNINGS -Wsuggest-override)
+  endif()
+
+  set(CMAKE_CXX_FLAGS                 "-std=c++11 -O3 -Ofast -m64 -pthread -march=${BUILD_ARCH} -msse4.1 -Wl,--no-as-needed -funroll-loops -ffinite-math-only -fPIC ${DISABLE_GLOBALLY}")
+  set(CMAKE_CXX_FLAGS_RELEASE         "${CMAKE_CXX_FLAGS} -g -rdynamic")
+  set(CMAKE_CXX_FLAGS_DEBUG           "-std=c++11 -g -rdynamic -O0 -pthread -Wl,--no-as-needed -fPIC -Wno-unused-result -Wno-deprecated -Werror -Wno-pragmas")
+  set(CMAKE_CXX_FLAGS_SLIM            "${CMAKE_CXX_FLAGS} -DNDEBUG")
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS} -g -rdynamic")
+  set(CMAKE_CXX_FLAGS_PROFILE         "${CMAKE_CXX_FLAGS_RELEASE} -pg -g -rdynamic")
+  set(CMAKE_CXX_FLAGS_PROFGEN         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
+  set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
+  endif()
+
+# Downloading SentencePiece if requested and set to compile with it.
+# Requires all the dependencies imposed by SentencePiece
+if(USE_SENTENCEPIECE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
+  LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
+  set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
 endif()
 
-# Find packages
 
+# Find packages
 set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
 
 if(COMPILE_CUDA)
@@ -92,7 +122,8 @@ else(CMAKE_BUILD_TYPE STREQUAL "Debug")
   list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; -arch=sm_30; -gencode=arch=compute_30,code=sm_30; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_61,code=compute_61 ;)
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
-  list(APPEND CUDA_NVCC_FLAGS -std=c++11; -Xcompiler\ -fPIC; )
+  # @TODO: add warnings here too
+  list(APPEND CUDA_NVCC_FLAGS -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
 else()
   list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; )
 endif()
@@ -145,7 +176,7 @@ if(COMPILE_CPU)
   endif(MKL_FOUND)
 endif(COMPILE_CPU)
 
-set(BOOST_COMPONENTS timer iostreams filesystem)
+set(BOOST_COMPONENTS timer iostreams filesystem system chrono)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
   add_definitions(-DUSE_BOOST_REGEX=1)
   set(BOOST_COMPONENTS ${BOOST_COMPONENTS} regex)
@@ -186,6 +217,7 @@ find_package(Boost COMPONENTS ${BOOST_COMPONENTS})
 if(Boost_FOUND)
   include_directories(${Boost_INCLUDE_DIRS})
   set(EXT_LIBS ${EXT_LIBS} ${Boost_LIBRARIES})
+  set(EXT_LIBS ${EXT_LIBS} ${ZLIB_LIBRARIES}) # hack for static compilation
 else(Boost_FOUND)
   message(SEND_ERROR "Cannot find Boost libraries. Terminating.")
 endif(Boost_FOUND)
@@ -198,10 +230,11 @@ if(COMPILE_EXAMPLES)
   add_definitions(-DCOMPILE_EXAMPLES=1)
 endif(COMPILE_EXAMPLES)
 
-# Compile source files
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/version.h.in
-               ${CMAKE_CURRENT_SOURCE_DIR}/src/common/version.h @ONLY)
+# Generate project_version.h to reflect our version number
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
+               ${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h @ONLY)
 
+# Compile source files
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
 
@@ -218,5 +251,3 @@ if(DOXYGEN_FOUND)
   )
 endif(DOXYGEN_FOUND)
 
-execute_process(COMMAND git submodule update --init --recursive --no-fetch
-                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

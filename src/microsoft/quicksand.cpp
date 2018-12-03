@@ -52,7 +52,7 @@ public:
     graph_->setDevice(deviceId, device_);
 
 #ifdef MKL_FOUND
-    mkl_set_num_threads(options->get<size_t>("mkl-threads", 1));
+    mkl_set_num_threads(options->get<int>("mkl-threads", 1));
 #endif
 
     std::vector<std::string> models
@@ -77,11 +77,11 @@ public:
       if(io::isBin(models[i]) && ptrs_[i] != nullptr) {
         // if file ends in *.bin and has been mapped by QuickSAND
         scorers_.push_back(New<ScorerWrapper>(
-            encdec, "F" + std::to_string(scorers_.size()), 1, ptrs[i]));
+          encdec, "F" + std::to_string(scorers_.size()), /*weight=*/1.0f, ptrs[i]));
       } else {
         // it's a *.npz file or has not been mapped by QuickSAND
         scorers_.push_back(New<ScorerWrapper>(
-            encdec, "F" + std::to_string(scorers_.size()), 1, models[i]));
+          encdec, "F" + std::to_string(scorers_.size()), /*weight=*/1.0f, models[i]));
       }
     }
 
@@ -90,11 +90,11 @@ public:
     }
   }
 
-  void setWorkspace(uint8_t* data, size_t size) { device_->set(data, size); }
+  void setWorkspace(uint8_t* data, size_t size) override { device_->set(data, size); }
 
   QSNBestBatch decode(const QSBatch& qsBatch,
                       size_t maxLength,
-                      const std::unordered_set<Word>& shortlist) {
+                      const std::unordered_set<Word>& shortlist) override {
     if(shortlist.size() > 0) {
       auto shortListGen = New<data::FakeShortlistGenerator>(shortlist);
       for(auto scorer : scorers_)
@@ -109,7 +109,7 @@ public:
         const auto& sent = qsBatch[j];
         if(i < sent.size()) {
           size_t idx = i * batchSize + j;
-          subBatch->data()[idx] = sent[i];
+          subBatch->data()[idx] = (unsigned int)sent[i];
           subBatch->mask()[idx] = 1;
         }
       }

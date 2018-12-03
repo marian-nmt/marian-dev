@@ -30,16 +30,17 @@ class TextInput : public DatasetBase<SentenceTuple, TextIterator, CorpusBatch> {
 private:
   std::vector<UPtr<std::istringstream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
-  Ptr<Config> options_;
 
   size_t pos_{0};
 
 public:
+  typedef SentenceTuple Sample;
+
   TextInput(std::vector<std::string> inputs,
             std::vector<Ptr<Vocab>> vocabs,
-            Ptr<Config> options);
+            Ptr<Options> options);
 
-  sample next() override;
+  Sample next() override;
 
   void shuffle() override {}
   void reset() override;
@@ -49,7 +50,7 @@ public:
 
   // TODO: There are half dozen functions called toBatch(), which are very
   // similar. Factor them.
-  batch_ptr toBatch(const std::vector<sample>& batchVector) override {
+  batch_ptr toBatch(const std::vector<Sample>& batchVector) override {
     size_t batchSize = batchVector.size();
 
     std::vector<size_t> sentenceIds;

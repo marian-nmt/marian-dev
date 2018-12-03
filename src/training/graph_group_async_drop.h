@@ -24,16 +24,16 @@ class AsyncGraphGroupDrop : public AsyncGraphGroup {
 
 protected:
   void init(Ptr<data::Batch> batch) override;
-  void pushGradients(Tensor newGrads, size_t batch_words, int device_id) override;
+  void pushGradients(Tensor newGrads, int device_id) override;
   void fetchParams(Tensor oldParams,
                    const std::vector<Tensor>& params,
                    int device_id) override;
 
 public:
-  AsyncGraphGroupDrop(Ptr<Config> options)
+  AsyncGraphGroupDrop(Ptr<Options> options)
       : AsyncGraphGroup(options),
+        dropping_warmup{options->get<size_t>("grad-dropping-warmup")},
         droping_rate{options->get<float>("grad-dropping-rate")},
-        dropping_momentum{options->get<float>("grad-dropping-momentum")},
-        dropping_warmup{options->get<size_t>("grad-dropping-warmup")} {}
+        dropping_momentum{options->get<float>("grad-dropping-momentum")} {}
 };
 }  // namespace marian

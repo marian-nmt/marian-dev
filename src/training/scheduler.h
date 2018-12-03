@@ -1,38 +1,38 @@
 #pragma once
 
-#include "common/config.h"
+#include "common/options.h"
 #include "training/training_state.h"
 #include "training/validator.h"
+#include "training/communicator.h"
 
 namespace marian {
 
 class Scheduler : public TrainingObserver {
 private:
-  Ptr<Config> options_;
+  Ptr<Options> options_;
   std::vector<Ptr<ValidatorBase>> validators_;
 
   bool first_{true};
 
   Ptr<TrainingState> state_;
 
-  timer::Timer timer;
+  timer::Timer timer_, heartBeatTimer_;
 
   float getLearningRate(TrainingState& state) {
     float baselr = options_->get<float>("learn-rate");
 
-    auto bno = state.batches - state.warmupStart;
-
-    size_t warmup = options_->get<size_t>("lr-warmup");
     float mult1 = 1.f;
-    if(warmup > 0) {
-      mult1 = std::min(1.f, (float)bno / (float)warmup);
+    auto warmup = SchedulingParameter::parse(options_->get<std::string>("lr-warmup"));
+    if(warmup) {
+      ABORT_IF(state.warmupStart && state.warmupStart.unit != warmup.unit, "lr-warmup and warmup-start must have the same unit");
+      auto bno = state.getProgressIn(warmup.unit) - state.warmupStart.n;
+      mult1 = std::min(1.f, (float)bno / (float)warmup.n);
     }
 
-    size_t decayGoogle = options_->get<size_t>("lr-decay-inv-sqrt");
     float mult2 = 1.f;
-    if(decayGoogle > 0) {
-      mult2 = std::min(
-          1.f, (float)(std::sqrt(decayGoogle) / std::sqrt(state.batches)));
+    auto decayGoogle = SchedulingParameter::parse(options_->get<std::string>("lr-decay-inv-sqrt"));
+    if(decayGoogle) {
+      mult2 = std::min(1.f, (float)(std::sqrt(decayGoogle.n) / std::sqrt(state.getProgressIn(decayGoogle.unit))));
     }
 
     baselr = baselr * mult1 * mult2;
@@ -45,7 +45,7 @@ private:
   }
 
 public:
-  Scheduler(Ptr<Config> options, Ptr<TrainingState> state)
+  Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
       : options_(options), state_(state) {
     state_->eta = getLearningRate(*state);
   }
@@ -94,12 +94,12 @@ public:
 
   bool validating() {
     return (!validators_.empty()
-            && state_->batches % options_->get<size_t>("valid-freq") == 0
+            && state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq"))
             && keepGoing());
   }
 
   bool saving() {
-    return (state_->batches % options_->get<size_t>("save-freq") == 0);
+    return state_->enteredNewPeriodOf(options_->get<std::string>("save-freq"));
   }
 
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
@@ -107,7 +107,7 @@ public:
     // Do not validate if already validated (for instance, after the model is
     // loaded) or if validation is scheduled for another update
     if(state_->validated
-       || (state_->batches % options_->get<size_t>("valid-freq") != 0
+       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq"))
            && !final))
       return;
 
@@ -162,114 +162,123 @@ public:
     update(cost, std::vector<Ptr<data::Batch>>({batch}));
   }
 
-  void update(float cost, const std::vector<Ptr<data::Batch>>& batches) {
+  void update(float cost, const std::vector<Ptr<data::Batch>>& batches, Ptr<IMPIWrapper> mpi = nullptr) {
+    state_->rememberPreviousProgress(); // note: epoch increases happen at the wrong place, hence -freq parameters do not support epoch units
     state_->validated = false;
 
     size_t batchSize = 0;    // number of sentences in batch
     size_t batchLabels = 0;  // number of target words in batch
 
     for(const auto& batch : batches) {
-      batchSize += batch->size();
-      batchLabels += batch->words(-1);
+      if (batch) { // (nullptr is allowed as result of split)
+        batchSize += batch->size();
+        batchLabels += batch->words(-1);
+      }
     }
 
-    // reconstruct sum cost, for displaying epoch-level averages instead of
-    // minibatch-level
+    // extrapolate cost across MPI processes, so that we have numbers in the right range
+    // When doing the actual log, we then aggregate across MPI processes to get the accurate number.
+    if (mpi)
+      cost *= mpi->numMPIProcesses(); // @BUGBUG: this is presently correct for ce-sum, but possibly not the av-based losses
+
+    // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
     auto costType = options_->get<std::string>("cost-type");
     auto dispLabelCounts = options_->get<bool>(
-        "disp-label-counts");  // if true then show as "cost per label * number
-                               // of labels"
+        "disp-label-counts");  // if true then show as "cost per label * number of labels"
     if(dispLabelCounts) {
       auto count =  // what was cost normalized with originally?
-          /*if*/ (costType == "ce-sum")
-              ? 1
-              /*else if*/
-              : ((costType == "ce-mean-words")
-                     ? batchLabels
-                     /*else*/
-                     :  // all others: treat like ce-mean (not correct for some)
-                     batchSize);
-      state_->costSum += cost * count;  // aggregate sum cost since last display
-      state_->costCount
-          += batchLabels;  // cost gets normalized w.r.t. this in display
+          /*if*/ (costType == "ce-sum") ?
+            1
+          /*else if*/ : ((costType == "ce-mean-words") ?
+            batchLabels
+          /*else*/ :  // all others: treat like ce-mean (not correct for some)
+            batchSize);
+      state_->costSum   += cost * count; // aggregate sum cost since last display
+      state_->costCount += batchLabels;  // cost gets normalized w.r.t. this in display
     } else {               // (back compat)
-      state_->costSum += cost * batchSize;
+      state_->costSum   += cost * batchSize;
       state_->costCount += batchSize;
     }
-    state_->wordsDisp += batchLabels;    // target words processed since last
-                                         // display, for speed display
+    state_->wordsDisp    += batchLabels; // target words processed since last display, for speed display
     state_->samplesEpoch += batchSize;   // sentences processed in this epoch
-    state_->labelsTotal += batchLabels;  // total labels processed
+    state_->labelsTotal  += batchLabels; // total labels processed
 
     state_->newBatch();
 
-    if(state_->batches % options_->get<size_t>("disp-freq") == 0) {
-      if(dispLabelCounts) {
-        if(options_->get<bool>(
-               "lr-report")) {  // if true then show the learning rate
+    if(state_->enteredNewPeriodOf(options_->get<std::string>("disp-freq")) ||
+       state_->batches <= options_->get<size_t>("disp-first")) {
+      // if MPI then aggregate precise cost across workers
+      if (mpi) {
+        //LOG(info, "all-reducing cost from {}", state_->costSum);
+        state_->costSum /= mpi->numMPIProcesses(); // undo the extra scaling
+        mpi->allReduce(&state_->costSum, &state_->costSum, 1, MPI_FLOAT, MPI_SUM);
+        //LOG(info, "all-reduced cost to {}", state_->costSum);
+      }
+      if (mpi && mpi->myMPIRank() != 0)
+        ; // skip the report on alternate worker processes
+      else if(dispLabelCounts) {
+        if(options_->get<bool>("lr-report")) {  // if true then show the learning rate
           LOG(info,
-              // TODO: change Cost back to {:.2f}
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {} "
-              ": {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {:.2f}s : {:.2f} "
               "words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
-              state_->samplesEpoch,
+              utils::withCommas(state_->samplesEpoch),
               state_->costSum / state_->costCount,
-              state_->costCount,  // show cost as "av * count"
-              state_->labelsTotal,
-              timer.format(2, "%ws"),
-              state_->wordsDisp / std::stof(timer.format(5, "%w")),
+              utils::withCommas(state_->costCount),  // show cost as "av * count"
+              utils::withCommas(state_->labelsTotal),
+              timer_.elapsed(),
+              state_->wordsDisp / timer_.elapsed(),
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {} "
-              ": {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} after {} : Time {:.2f}s : {:.2f} "
               "words/s",
               state_->epochs,
               state_->batches,
-              state_->samplesEpoch,
+              utils::withCommas(state_->samplesEpoch),
               state_->costSum / state_->costCount,
-              state_->costCount,
-              state_->labelsTotal,
-              timer.format(2, "%ws"),
-              state_->wordsDisp / std::stof(timer.format(5, "%w")));
+              utils::withCommas(state_->costCount),
+              utils::withCommas(state_->labelsTotal),
+              timer_.elapsed(),
+              state_->wordsDisp / timer_.elapsed());
         }
       } else {
         if(options_->get<bool>("lr-report")) {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.2f} : Time {} : {:.2f} "
-              "words/s : L.r. {:.4e}",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
-              state_->samplesEpoch,
+              utils::withCommas(state_->samplesEpoch),
               state_->costSum / state_->costCount,
-              timer.format(2, "%ws"),
-              state_->wordsDisp / std::stof(timer.format(5, "%w")),
+              timer_.elapsed(),
+              state_->wordsDisp / timer_.elapsed(),
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.2f} : Time {} : {:.2f} "
-              "words/s",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Time {:.2f}s : {:.2f} words/s",
               state_->epochs,
               state_->batches,
-              state_->samplesEpoch,
+              utils::withCommas(state_->samplesEpoch),
               state_->costSum / state_->costCount,
-              timer.format(2, "%ws"),
-              state_->wordsDisp / std::stof(timer.format(5, "%w")));
+              timer_.elapsed(),
+              state_->wordsDisp / timer_.elapsed());
         }
       }
-      // progress heartbeat for MS-internal Philly compute cluster
-      if(getenv("PHILLY_JOB_ID"))  // this environment variable exists when
-                                   // running on the cluster
-        printf("PROGRESS: %.2f%%\nEVALERR: %.7f\n",
-               (double)state_->epochs,
-               state_->costSum / state_->costCount),
-            fflush(stdout);
-      timer.start();
+      timer_.start();
       state_->costSum = 0;
       state_->costCount = 0;
       state_->wordsDisp = 0;
+    }
+    // progress heartbeat for MS-internal Philly compute cluster
+    // This environment variable exists when running on the cluster.
+    if((!mpi || mpi->myMPIRank() == 0) && getenv("PHILLY_JOB_ID")
+       && heartBeatTimer_.elapsed<std::chrono::minutes>() >= 10) {
+      printf("PROGRESS: %.2f%%\nEVALERR: %.7f\n", (double)state_->epochs, state_->costSum / state_->costCount), fflush(stdout);
+#if 0
+      LOG(info, "heart beat after {} updates", state_->batches);
+#endif
+      heartBeatTimer_.start();
     }
   }
 
@@ -290,9 +299,9 @@ public:
 
   void save(const std::string& name) {
     // Save config options
-    YAML::Node config = options_->get();
+    YAML::Node yaml = options_->getYaml();
     std::ofstream fout(name + ".yml");
-    fout << config;
+    fout << yaml;
     // Save training progress
     state_->save(name + ".progress.yml");
   }
@@ -349,7 +358,7 @@ public:
 
         if(options_->get<bool>("lr-decay-repeat-warmup")) {
           LOG(info, "Restarting learning rate warmup");
-          state.warmupStart = state.batches;
+          state.warmupStart.n = state.getProgressIn(SchedulingParameter::parse(options_->get<std::string>("lr-warmup")).unit);
         }
       }
     }
@@ -363,10 +372,9 @@ public:
     state.eta = baselr * state.factor;
 
     if(factor > 0.0) {
-      if("batches" == options_->get<std::string>("lr-decay-strategy")) {
-        size_t start
-            = options_->get<std::vector<size_t>>("lr-decay-start").front();
-        size_t freq = options_->get<size_t>("lr-decay-freq");
+      if(options_->get<std::string>("lr-decay-strategy") == "batches") {
+        size_t start = options_->get<std::vector<size_t>>("lr-decay-start").front();
+        size_t freq  = options_->get<size_t>("lr-decay-freq"); // note: unlike e.g. disp-freq, this is always in batches
 
         if(start > 0 && freq > 0 && state.batches >= start
            && ((state.batches - start) % freq == 0)) {
@@ -383,7 +391,7 @@ public:
 
           if(options_->get<bool>("lr-decay-repeat-warmup")) {
             LOG(info, "Restarting learning rate warmup");
-            state.warmupStart = state.batches;
+            state.warmupStart.n = state.getProgressIn(SchedulingParameter::parse(options_->get<std::string>("lr-warmup")).unit);
           }
         }
       }
@@ -391,13 +399,12 @@ public:
 
     if(first_ && options_->get<bool>("lr-warmup-at-reload")) {
       LOG(info, "Restarting learning rate warmup");
-      state.warmupStart = state.batches;
+      state.warmupStart.n = state.getProgressIn(SchedulingParameter::parse(options_->get<std::string>("lr-warmup")).unit);
     }
 
     if(options_->get<bool>("lr-warmup-cycle")) {
-      size_t warmup = options_->get<size_t>("lr-warmup");
-      if(warmup > 0 && state.batches % warmup == 0)
-        state.warmupStart = state.batches;
+      if(state_->enteredNewPeriodOf(options_->get<std::string>("lr-warmup")))
+        state.warmupStart.n = state.getProgressIn(SchedulingParameter::parse(options_->get<std::string>("lr-warmup")).unit);
     }
 
     first_ = false;
@@ -428,7 +435,7 @@ public:
 
           if(options_->get<bool>("lr-decay-repeat-warmup")) {
             LOG(info, "Restarting learning rate warmup");
-            state.warmupStart = state.batches;
+            state.warmupStart.n = state.getProgressIn(SchedulingParameter::parse(options_->get<std::string>("lr-warmup")).unit);
           }
         }
       }

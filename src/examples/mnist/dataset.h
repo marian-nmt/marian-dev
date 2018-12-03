@@ -34,8 +34,7 @@ public:
   typedef Data::const_iterator const_iterator;
 
   /** @brief Constructs a new Input object with the specified Shape */
-  Input(const Shape& shape)
-      : shape_(shape), data_(new Data(shape_.elements(), 0.0f)) {}
+  Input(const Shape& shape) : shape_(shape), data_(new Data(shape_.elements(), 0.0f)) {}
 
   Data::iterator begin() { return data_->begin(); }
   Data::iterator end() { return data_->end(); }
@@ -72,7 +71,7 @@ public:
 
   size_t size() const override { return inputs_.front().shape()[0]; }
 
-  void setGuidedAlignment(const std::vector<float>&) override {
+  void setGuidedAlignment(std::vector<float>&&) override {
     ABORT("Guided alignment in DataBatch is not implemented");
   }
   void setDataWeights(const std::vector<float>&) override {
@@ -80,13 +79,13 @@ public:
   }
 };
 
-class Dataset : public DatasetBase<Example, ExampleIterator, DataBatch>,
-                public RNGEngine {
+class Dataset : public DatasetBase<Example, ExampleIterator, DataBatch>, public RNGEngine {
 protected:
   Examples examples_;
 
 public:
-  Dataset(std::vector<std::string> paths) : DatasetBase(paths) {}
+  Dataset(const std::vector<std::string>& paths, Ptr<Options> options)
+      : DatasetBase(paths, options) {}
 
   virtual void loadData() = 0;
 
@@ -134,9 +133,9 @@ private:
 
 public:
   MNISTData(std::vector<std::string> paths,
-            std::vector<Ptr<Vocab>> vocabs = {},
-            Ptr<Config> options = nullptr)
-      : Dataset(paths), IMAGE_MAGIC_NUMBER(2051), LABEL_MAGIC_NUMBER(2049) {
+            std::vector<Ptr<Vocab>> /*vocabs*/ = {},
+            Ptr<Options> options = nullptr)
+      : Dataset(paths, options), IMAGE_MAGIC_NUMBER(2051), LABEL_MAGIC_NUMBER(2049) {
     loadData();
   }
 
@@ -153,7 +152,7 @@ public:
     }
   }
 
-  Example next() override {}
+  Example next() override { return{ }; } //@TODO: this return was added to fix a warning. Is it correct?
 
 private:
   typedef unsigned char uchar;

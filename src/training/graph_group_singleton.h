@@ -23,20 +23,24 @@ private:
   void execute(Ptr<data::Batch> batch);
 
 public:
-  SingletonGraph(Ptr<Config> config)
+  SingletonGraph(Ptr<Options> config)
       : GraphGroup(config),
         ExponentialSmoothing(options_->get<float>("exponential-smoothing")) {
-    auto deviceId = options_->getDevices()[0];
+    // Get device ID
+    auto devices = Config::getDevices(options_);
+    ABORT_IF(devices.size() != 1, "Only one device ID should be provided for singleton training");
+    auto deviceId = devices[0];
+    // Initialize graph
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
     graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     opt_ = Optimizer(options_);
-    builder_ = models::from_config(options_, models::usage::training);
+    builder_ = models::from_options(options_, models::usage::training);
   }
 
   void update(Ptr<data::Batch> batch) override {
-    ABORT_IF(finalized_, "Training has already finished.");
+    ABORT_IF(finalized_, "Training has already finished");
     execute(batch);
   }
 
@@ -61,7 +65,10 @@ public:
           builder_->load(graph_, name);
         }
 
-        opt_->load(name + ".optimizer.npz", {opt_}, {graph_->getBackend()});
+        opt_->load(name + ".optimizer.npz", {opt_}, {graph_->getBackend()},
+          /*scatterStateFn=*/[&](const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
+            setFn(/*localDeviceIndex=*/0, data.begin(), data.end());
+          });
       } else if(options_->has("pretrained-model")) {
         std::string init = options_->get<std::string>("pretrained-model");
         LOG(info,
@@ -112,8 +119,10 @@ public:
         scheduler_->save(name);
     }
 
-    size_t totalSize = graph_->params()->vals()->size();
-    opt_->save(name + ".optimizer.npz", {opt_}, totalSize);
+    opt_->save(name + ".optimizer.npz", {opt_},
+      /*gatherStateFn=*/[&](const OptimizerBase::GatherStateGetFunc& getFn) {
+        return getFn(/*localDeviceIndex=*/0);
+      });
   }
 
   Ptr<data::BatchStats> collectStats() {

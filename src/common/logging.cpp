@@ -1,10 +1,20 @@
 #include "logging.h"
 #include "common/config.h"
 #include "spdlog/sinks/null_sink.h"
+#include "3rd_party/ExceptionWithCallStack.h"
 #include <time.h>
 #include <stdlib.h>
+#ifdef __unix__
+#include <signal.h>
+#endif
 
-std::shared_ptr<spdlog::logger> stderrLogger(
+#ifdef _MSC_VER
+#define noinline __declspec(noinline)
+#else
+#define noinline __attribute__((noinline))
+#endif
+
+std::shared_ptr<spdlog::logger> createStderrLogger(
     const std::string& name,
     const std::string& pattern,
     const std::vector<std::string>& files,
@@ -54,6 +64,7 @@ bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
   return true;
 }
 
+static void setErrorHandlers();
 void createLoggers(const marian::Config* options) {
   std::vector<std::string> generalLogs;
   std::vector<std::string> validLogs;
@@ -73,9 +84,9 @@ void createLoggers(const marian::Config* options) {
 
   bool quiet = options && options->get<bool>("quiet");
   Logger general{
-      stderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
+      createStderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
   Logger valid{
-      stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
+      createStderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
 
   if(options && options->has("log-level")) {
     std::string loglevel = options->get<std::string>("log-level");
@@ -85,13 +96,65 @@ void createLoggers(const marian::Config* options) {
   }
 
   if (options && options->has("log-time-zone")) {
-      std::string timezone = options->get<std::string>("log-time-zone");
-      if (timezone != "") {
+    std::string timezone = options->get<std::string>("log-time-zone");
+    if (timezone != "") {
 #ifdef _WIN32
 #define setenv(var, val, over) SetEnvironmentVariableA(var, val) // ignoring over flag
 #endif
-        setenv("TZ", timezone.c_str(), true);
-        tzset();
-      }
+      setenv("TZ", timezone.c_str(), true);
+      tzset();
+    }
+  }
+
+  setErrorHandlers();
+}
+
+static void unhandledException() {
+  if (std::current_exception()) {
+    try {
+      throw; // rethrow so that we can get access to what()
+    }
+    catch (const std::exception& e) {
+      ABORT("Unhandled {}: {}", typeid(e).name(), e.what());
+    }
+    catch (...) {
+      ABORT("Unhandled exception");
+    }
+  }
+  else
+    std::abort();
+}
+
+static void setErrorHandlers() {
+  // call stack for unhandled exceptions
+  std::set_terminate(unhandledException);
+#ifdef __unix__
+  // catch segfaults
+  struct sigaction sa = { 0 };
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO;
+  sa.sa_sigaction = [](int /*signal*/, siginfo_t*, void*) { ABORT("Segmentation fault"); };
+  sigaction(SIGSEGV, &sa, NULL);
+  sa.sa_sigaction = [](int /*signal*/, siginfo_t*, void*) { ABORT("Floating-point exception"); };
+  sigaction(SIGFPE, &sa, NULL);
+#endif
+}
+
+// modify the log pattern for the "general" logger to include the MPI rank
+// This is called upon initializing MPI. It is needed to associated error messages to ranks.
+void switchtoMultinodeLogging(std::string nodeIdStr) {
+  Logger log = spdlog::get("general");
+  if (log)
+    log->set_pattern("[%Y-%m-%d %T " + nodeIdStr + "] %v");
+}
+
+
+namespace marian {
+  std::string noinline getCallStack(size_t skipLevels) {
+    return ::Microsoft::MSR::CNTK::DebugUtil::GetCallStack(skipLevels + 2, /*makeFunctionNamesStandOut=*/true);
+  }
+
+  void noinline logCallStack(size_t skipLevels) {
+    checkedLog("general", "critical", getCallStack(skipLevels));
   }
 }

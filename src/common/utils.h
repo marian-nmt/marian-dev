@@ -29,10 +29,14 @@ std::vector<std::string> splitAny(const std::string& line,
                                   bool keepEmpty = false);
 
 std::string join(const std::vector<std::string>& words,
-                 const std::string& del = " ",
-                 bool reverse = false);
+                 const std::string& del = " ");
 
 std::string exec(const std::string& cmd);
+
+std::pair<std::string, int> hostnameAndProcessId();
+
+std::string withCommas(size_t n);
+bool endsWith(const std::string& text, const std::string& suffix);
 
 }  // namespace utils
 }  // namespace marian

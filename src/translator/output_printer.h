@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "common/config.h"
+#include "common/options.h"
 #include "common/utils.h"
 #include "data/alignment.h"
 #include "data/vocab.h"
@@ -13,7 +13,7 @@ namespace marian {
 
 class OutputPrinter {
 public:
-  OutputPrinter(Ptr<Config> options, Ptr<Vocab> vocab)
+  OutputPrinter(Ptr<Options> options, Ptr<Vocab> vocab)
       : vocab_(vocab),
         reverse_(options->get<bool>("right-left")),
         nbest_(options->get<bool>("n-best", false)
@@ -28,10 +28,13 @@ public:
 
     for(size_t i = 0; i < nbl.size(); ++i) {
       const auto& result = nbl[i];
-      const auto& words = std::get<0>(result);
       const auto& hypo = std::get<1>(result);
+      auto words = std::get<0>(result);
 
-      std::string translation = utils::join((*vocab_)(words), " ", reverse_);
+      if(reverse_)
+        std::reverse(words.begin(), words.end());
+
+      std::string translation = vocab_->decode(words);
       bestn << history->GetLineNum() << " ||| " << translation;
 
       if(!alignment_.empty())
@@ -56,9 +59,12 @@ public:
     }
 
     auto result = history->Top();
-    const auto& words = std::get<0>(result);
+    auto words = std::get<0>(result);
 
-    std::string translation = utils::join((*vocab_)(words), " ", reverse_);
+    if(reverse_)
+      std::reverse(words.begin(), words.end());
+
+    std::string translation = vocab_->decode(words);
 
     best1 << translation;
     if(!alignment_.empty()) {

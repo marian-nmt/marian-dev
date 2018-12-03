@@ -200,7 +200,7 @@ public:
 
   // determine the multiplicative-attention probability and performs the associative lookup as well
   // q, k, and v have already been split into multiple heads, undergone any desired linear transform.
-  Expr Attention(std::string prefix,
+  Expr Attention(std::string /*prefix*/,
                  Expr q,              // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
                  Expr k,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
                  Expr v,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
@@ -444,7 +444,7 @@ public:
                        const rnn::State& prevDecoderState,
                        std::string prefix,
                        Expr input,
-                       Expr selfMask,
+                       Expr /*selfMask*/,
                        int /*startPos*/) const {
     float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
 
@@ -480,29 +480,37 @@ public:
 
   // returns the embedding matrix based on options
   // and based on batchIndex_.
+
+  std::vector<Expr> ULREmbeddings() const {
+    // standard encoder word embeddings
+    int dimSrcVoc = opt<std::vector<int>>("dim-vocabs")[0];  //ULR multi-lingual src
+    int dimTgtVoc = opt<std::vector<int>>("dim-vocabs")[1];  //ULR monon tgt
+    int dimEmb = opt<int>("dim-emb");
+    int dimUlrEmb = opt<int>("ulr-dim-emb");
+    auto embFactory = ulr_embedding(graph_)("dimSrcVoc", dimSrcVoc)("dimTgtVoc", dimTgtVoc)
+                                           ("dimUlrEmb", dimUlrEmb)("dimEmb", dimEmb)
+                                           ("ulrTrainTransform", opt<bool>("ulr-trainable-transformation"))
+                                           ("ulrQueryFile", opt<std::string>("ulr-query-vectors"))
+                                           ("ulrKeysFile", opt<std::string>("ulr-keys-vectors"));
+    return embFactory.construct();
+  }
+
   Expr wordEmbeddings(size_t subBatchIndex) const {
     // standard encoder word embeddings
-
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[subBatchIndex];
     int dimEmb = opt<int>("dim-emb");
-
     auto embFactory = embedding(graph_)("dimVocab", dimVoc)("dimEmb", dimEmb);
-
-    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+    if (opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
       embFactory("prefix", "Wemb");
     else
       embFactory("prefix", prefix_ + "_Wemb");
-
-    if(options_->has("embedding-fix-src"))
+    if (options_->has("embedding-fix-src"))
       embFactory("fixed", opt<bool>("embedding-fix-src"));
-
-    if(options_->has("embedding-vectors")) {
+    if (options_->has("embedding-vectors")) {
       auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
-      embFactory                              //
-          ("embFile", embFiles[subBatchIndex])  //
-          ("normalization", opt<bool>("embedding-normalization"));
+      embFactory("embFile", embFiles[subBatchIndex])
+                ("normalization", opt<bool>("embedding-normalization"));
     }
-
     return embFactory.construct();
   }
 
@@ -516,26 +524,29 @@ public:
     int dimEmb = opt<int>("dim-emb");
     int dimBatch = (int)batch->size();
     int dimSrcWords = (int)(*batch)[batchIndex_]->batchWidth();
-
-    auto embeddings = wordEmbeddings(batchIndex_); // embedding matrix, considering tying and some other options
-
+    // create the embedding matrix, considering tying and some other options
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
-    std::tie(batchEmbeddings, batchMask)
+    if (options_->has("ulr") && options_->get<bool>("ulr") == true) {
+      auto embeddings = ULREmbeddings(); // embedding uses ULR
+      std::tie(batchEmbeddings, batchMask)
+        = EncoderBase::ulrLookup(graph_, embeddings, batch);
+    }
+    else
+    {
+      auto embeddings = wordEmbeddings(batchIndex_);
+      std::tie(batchEmbeddings, batchMask)
         = EncoderBase::lookup(graph_, embeddings, batch);
-
+    }
     // apply dropout over source words
     float dropoutSrc = inference_ ? 0 : opt<float>("dropout-src");
     if(dropoutSrc) {
       int srcWords = batchEmbeddings->shape()[-3];
       batchEmbeddings = dropout(batchEmbeddings, dropoutSrc, {srcWords, 1, 1});
     }
-
     // according to paper embeddings are scaled up by \sqrt(d_m)
     auto scaledEmbeddings = std::sqrt((float)dimEmb) * batchEmbeddings;
-
     scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings);
-
     // reorganize batch and timestep
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
     batchMask = atleast_nd(batchMask, 4);
@@ -598,7 +609,7 @@ private:
   Ptr<mlp::MLP> output_;
 
 private:
-  void LazyCreateOutputLayer(std::string prefix)
+  void LazyCreateOutputLayer()
   {
     if(output_) // create it lazily
       return;
@@ -655,8 +666,8 @@ public:
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
                                  Ptr<DecoderState> state) override {
-    ABORT_IF(graph != graph_, "An inconsistent graph parameter was passed to step().");
-    LazyCreateOutputLayer(prefix_ + "_ff_logit_out");
+    ABORT_IF(graph != graph_, "An inconsistent graph parameter was passed to step()");
+    LazyCreateOutputLayer();
     return step(state);
   }
 
@@ -778,7 +789,7 @@ public:
           // decoding or scoring return the attention weights of one head of the last layer.
           // @TODO: maybe allow to return average or max over all heads?
           bool saveAttentionWeights = false;
-          if(j == 0 && (options_->has("guided-alignment") || options_->has("alignment"))) {
+          if(j == 0 && (options_->get("guided-alignment", std::string("none")) != "none" || options_->has("alignment"))) {
             size_t attLayer = decDepth - 1;
             std::string gaStr = options_->get<std::string>("transformer-guided-alignment-layer", "last");
             if(gaStr != "last")

@@ -5,6 +5,7 @@
 
 #include "tensors/cpu/backend.h"
 #include "tensors/tensor.h"
+#include "tensors/tensor_allocator.h"
 
 #if MKL_FOUND
 #include <mkl.h>
@@ -92,12 +93,13 @@ void Prod(marian::Tensor C,
         C->data(),
         ldc);
 #else
+  C; A; B; transA; transB; beta; scalar;
   ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
 }
 
 void ProdBatched(marian::Tensor C,
-                 Ptr<Allocator> allocator,
+                 Ptr<Allocator> /*allocator*/,
                  const marian::Tensor A,
                  const marian::Tensor B,
                  bool transA,
@@ -148,6 +150,7 @@ void ProdBatched(marian::Tensor C,
           (int)ldc);
   }
 #else
+  C; A; B; transA; transB; beta; scalar;
   ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
 }

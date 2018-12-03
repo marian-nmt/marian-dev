@@ -3,6 +3,7 @@
 #include "marian.h"
 
 #include "common/config.h"
+#include "common/options.h"
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/corpus_nbest.h"
@@ -41,25 +42,30 @@ public:
 template <class Model>
 class Rescore : public ModelTask {
 private:
-  Ptr<Config> options_;
+  Ptr<Options> options_;
   Ptr<CorpusBase> corpus_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
 
 public:
-  Rescore(Ptr<Config> options)
-      : options_(options),
-        corpus_(
-            options_->get<bool>("n-best")
-                ? std::static_pointer_cast<CorpusBase>(
-                      New<CorpusNBest>(options_))
-                : std::static_pointer_cast<CorpusBase>(New<Corpus>(options_))) {
+  Rescore(Ptr<Options> options) : options_(options) {
     ABORT_IF(options_->has("summary") && options_->has("alignment"),
              "Alignments can not be produced with summarized score");
 
+    ABORT_IF(options_->has("summary") && options_->get<bool>("normalize"),
+             "Normalization by length cannot be used with summary scores");
+
+    options_->set("inference", true);
+    // @TODO: make normalize here a float and pass into loss to compute the same way as in decoding
+    options_->set("cost-type", options_->get<bool>("normalize") ? "ce-rescore-mean" : "ce-rescore");
+
+    if(options_->get<bool>("n-best"))
+      corpus_ = New<CorpusNBest>(options_);
+    else
+      corpus_ = New<Corpus>(options_);
     corpus_->prepare();
 
-    auto devices = options_->getDevices();
+    auto devices = Config::getDevices(options_);
 
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
@@ -70,17 +76,12 @@ public:
 
     auto modelFile = options_->get<std::string>("model");
 
-    Ptr<Options> temp = New<Options>();
-    temp->merge(options);
-    temp->set("inference", true);
-    temp->set("cost-type", "ce-rescore");
-
     models_.resize(graphs_.size());
     ThreadPool pool(graphs_.size(), graphs_.size());
     for(size_t i = 0; i < graphs_.size(); ++i) {
       pool.enqueue(
           [=](size_t j) {
-            models_[j] = New<Model>(temp);
+            models_[j] = New<Model>(options_);
             models_[j]->load(graphs_[j], modelFile);
           },
           i);
@@ -100,17 +101,16 @@ public:
 
     std::string alignment = options_->get<std::string>("alignment", "");
     bool summarize = options_->has("summary");
-    std::string summary
-        = summarize ? options_->get<std::string>("summary") : "cross-entropy";
+    bool normalize = options_->get<bool>("normalize");
+
+    std::string summary = summarize ? options_->get<std::string>("summary") : "cross-entropy";
 
     float sumCost = 0;
     size_t sumWords = 0;
     size_t sumSamples = 0;
-
     size_t batchId = 0;
 
     std::mutex smutex;
-
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
 
@@ -124,7 +124,11 @@ public:
             builder = models_[id % graphs_.size()];
           }
 
+          // @TODO: normalize by length as in normalize
+          // Once we have Frank's concept of ce-sum with sample size by words we will return a pair
+          // here which will make it trivial to report all variants. 
           auto costNode = builder->build(graph, batch);
+
           graph->forward();
 
           std::vector<float> scores;
@@ -147,11 +151,27 @@ public:
               output->Write((long)batch->getSentenceIds()[i], scores[i], aligns[i]);
             }
           }
+
+          // progress heartbeat for MS-internal Philly compute cluster
+          // otherwise this job may be killed prematurely if no log for 4 hrs
+          if (getenv("PHILLY_JOB_ID")   // this environment variable exists when running on the cluster
+              && id % 1000 == 0)  // hard beat once every 1000 batches
+          {
+            auto progress = id / 10000.f; //fake progress for now, becomes >100 after 1M batches
+            fprintf(stdout, "PROGRESS: %.2f%%\n", progress);
+            fflush(stdout);
+          }
         };
 
-        pool.enqueue(task, batchId % graphs_.size());
-        batchId++;
+        pool.enqueue(task, batchId++);
       }
+    }
+
+    if(normalize) {
+      LOG(info, "Total normalized log probs {} : Total sentences {} : Total words {}", sumCost, sumSamples, sumWords);
+      LOG(warn, "Sum of normalized log probs is a sum of averages");
+    } else {
+      LOG(info, "Total log probs {} : Total sentences {} : Total words {}", sumCost, sumSamples, sumWords);
     }
 
     if(summarize) {

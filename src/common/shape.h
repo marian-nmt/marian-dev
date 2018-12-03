@@ -17,7 +17,7 @@ private:
   std::vector<int> shape_;
 
 public:
-  Shape() : shape_{1} {}
+  Shape() : shape_({1}) {}
 
   Shape(std::initializer_list<int> il) : Shape() {
     shape_.resize(il.size());
@@ -157,9 +157,9 @@ public:
     shape.resize(maxDims);
 
     for(auto& s : shapes) {
-      for(int i = 0; i < (int)s.size(); ++i) {
+      for(int i = 1; i <= (int)s.size(); ++i) {
         ABORT_IF(shape[-i] != s[-i] && shape[-i] != 1 && s[-i] != 1,
-                 "Shapes {} and {} cannot be broadcasted",
+                 "Shapes {} and {} cannot be broadcast",
                  (std::string)shape,
                  (std::string)s);
         shape.set(-i, std::max(shape[-i], s[-i]));

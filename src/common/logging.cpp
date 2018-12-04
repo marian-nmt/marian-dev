@@ -14,7 +14,7 @@
 #define noinline __attribute__((noinline))
 #endif
 
-std::shared_ptr<spdlog::logger> stderrLogger(
+std::shared_ptr<spdlog::logger> createStderrLogger(
     const std::string& name,
     const std::string& pattern,
     const std::vector<std::string>& files,
@@ -64,6 +64,7 @@ bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
   return true;
 }
 
+static void setErrorHandlers();
 void createLoggers(const marian::Config* options) {
   std::vector<std::string> generalLogs;
   std::vector<std::string> validLogs;
@@ -83,9 +84,9 @@ void createLoggers(const marian::Config* options) {
 
   bool quiet = options && options->get<bool>("quiet");
   Logger general{
-      stderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
+      createStderrLogger("general", "[%Y-%m-%d %T] %v", generalLogs, quiet)};
   Logger valid{
-      stderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
+      createStderrLogger("valid", "[%Y-%m-%d %T] [valid] %v", validLogs, quiet)};
 
   if(options && options->has("log-level")) {
     std::string loglevel = options->get<std::string>("log-level");
@@ -105,29 +106,37 @@ void createLoggers(const marian::Config* options) {
     }
   }
 
+  setErrorHandlers();
+}
+
+static void unhandledException() {
+  if (std::current_exception()) {
+    try {
+      throw; // rethrow so that we can get access to what()
+    }
+    catch (const std::exception& e) {
+      ABORT("Unhandled {}: {}", typeid(e).name(), e.what());
+    }
+    catch (...) {
+      ABORT("Unhandled exception");
+    }
+  }
+  else
+    std::abort();
+}
+
+static void setErrorHandlers() {
+  // call stack for unhandled exceptions
+  std::set_terminate(unhandledException);
 #ifdef __unix__
   // catch segfaults
-  static struct sigaction prev_segfault_sigaction;
-  static struct sigaction prev_fperror_sigaction;
   struct sigaction sa = { 0 };
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_SIGINFO;
-  sa.sa_sigaction = [](int signal, siginfo_t *si, void *arg)
-  {
-    checkedLog("general", "critical", "Segmentation fault");
-    sigaction(signal, &prev_segfault_sigaction, NULL); // revert signal handler
-    marian::logCallStack(/*skipLevels=*/0/*2*/); // skip segfault_sigaction() and one level up in the kernel
-    raise(signal); // re-raise so we terminate mostly as usual
-  };
-  sigaction(SIGSEGV, &sa, &prev_segfault_sigaction);
-  sa.sa_sigaction = [](int signal, siginfo_t *si, void *arg)
-  {
-      checkedLog("general", "critical", "Floating-point exception");
-      sigaction(signal, &prev_fperror_sigaction, NULL); // revert signal handler
-      marian::logCallStack(/*skipLevels=*/0/*2*/); // skip segfault_sigaction() and one level up in the kernel
-      raise(signal); // re-raise so we terminate mostly as usual
-  };
-  sigaction(SIGFPE, &sa, &prev_fperror_sigaction);
+  sa.sa_sigaction = [](int /*signal*/, siginfo_t*, void*) { ABORT("Segmentation fault"); };
+  sigaction(SIGSEGV, &sa, NULL);
+  sa.sa_sigaction = [](int /*signal*/, siginfo_t*, void*) { ABORT("Floating-point exception"); };
+  sigaction(SIGFPE, &sa, NULL);
 #endif
 }
 
@@ -141,9 +150,11 @@ void switchtoMultinodeLogging(std::string nodeIdStr) {
 
 
 namespace marian {
-  void noinline logCallStack(size_t skipLevels)
-  {
-    auto callStack = ::Microsoft::MSR::CNTK::DebugUtil::GetCallStack(skipLevels + 2, /*makeFunctionNamesStandOut=*/true);
-    checkedLog("general", "critical", "Call stack:{}", callStack);
+  std::string noinline getCallStack(size_t skipLevels) {
+    return ::Microsoft::MSR::CNTK::DebugUtil::GetCallStack(skipLevels + 2, /*makeFunctionNamesStandOut=*/true);
+  }
+
+  void noinline logCallStack(size_t skipLevels) {
+    checkedLog("general", "critical", getCallStack(skipLevels));
   }
 }

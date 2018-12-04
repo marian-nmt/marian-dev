@@ -246,7 +246,7 @@ public:
     return type_;
   }
 
-  const size_t size() const {
+  size_t size() const {
     return elements_;
   }
 };

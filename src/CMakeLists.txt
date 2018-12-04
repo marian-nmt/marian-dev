@@ -6,6 +6,7 @@ include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 
 add_library(marian STATIC
+  common/version.cpp
   common/utils.cpp
   common/logging.cpp
   common/cli_helper.cpp
@@ -27,7 +28,6 @@ add_library(marian STATIC
   data/text_input.cpp
 
   3rd_party/cnpy/cnpy.cpp
-  3rd_party/exception.cpp
   3rd_party/svd/svd.cpp
   3rd_party/ExceptionWithCallStack.cpp
   3rd_party/phf/phf.cc
@@ -38,6 +38,7 @@ add_library(marian STATIC
   tensors/cpu/prod.cpp
   tensors/cpu/tensor_operators.cpp
 
+  tensors/cpu/sharp/int_gemm.cpp
   tensors/cpu/sharp/avx_gemm.cpp
   tensors/cpu/sharp/sse_gemm.cpp
 
@@ -78,9 +79,25 @@ add_library(marian STATIC
   training/validator.cpp
   training/communicator.cpp
 
+  # this is only compiled to catch build errors, but not linked
+  microsoft/quicksand.cpp
+
   $<TARGET_OBJECTS:libyaml-cpp>
   $<TARGET_OBJECTS:SQLiteCpp>
+  $<TARGET_OBJECTS:pathie-cpp>
 )
+target_compile_options(marian PUBLIC ${ALL_WARNINGS})
+
+# Generate git_revision.h to reflect current git revision information
+# [https://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake]
+# Git updates .git/logs/HEAD file whenever you pull or commit something.
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/common/git_revision.h
+  COMMAND git log -1 --pretty=format:\#define\ GIT_REVISION\ \"\%h\ \%ai\" > ${CMAKE_CURRENT_SOURCE_DIR}/common/git_revision.h
+  DEPENDS ${CMAKE_SOURCE_DIR}/.git/logs/HEAD
+  VERBATIM
+)
+add_custom_target(marian_version DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/common/git_revision.h)
+add_dependencies(marian marian_version) # marian must depend on it so that it gets created first
 
 if(CUDA_FOUND)
 cuda_add_library(marian_cuda
@@ -96,25 +113,32 @@ cuda_add_library(marian_cuda
   training/gradient_dropping/gpu/dropper.cu
   training/gradient_dropping/gpu/sparse_algorithm.cu
   STATIC)
+  
+  target_compile_options(marian_cuda PUBLIC ${ALL_WARNINGS})
 endif(CUDA_FOUND)
 
 set_target_properties(marian PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 set_target_properties(marian PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-add_executable(marian_train command/marian.cpp)
+add_executable(marian_train command/marian_main.cpp)
 set_target_properties(marian_train PROPERTIES OUTPUT_NAME marian)
+target_compile_options(marian_train PUBLIC ${ALL_WARNINGS})
 
 add_executable(marian_decoder command/marian_decoder.cpp)
 set_target_properties(marian_decoder PROPERTIES OUTPUT_NAME marian-decoder)
+target_compile_options(marian_decoder PUBLIC ${ALL_WARNINGS})
 
 add_executable(marian_scorer command/marian_scorer.cpp)
 set_target_properties(marian_scorer PROPERTIES OUTPUT_NAME marian-scorer)
+target_compile_options(marian_scorer PUBLIC ${ALL_WARNINGS})
 
 add_executable(marian_vocab command/marian_vocab.cpp)
 set_target_properties(marian_vocab PROPERTIES OUTPUT_NAME marian-vocab)
+target_compile_options(marian_vocab PUBLIC ${ALL_WARNINGS})
 
 add_executable(marian_conv command/marian_conv.cpp)
 set_target_properties(marian_conv PROPERTIES OUTPUT_NAME marian-conv)
+target_compile_options(marian_conv PUBLIC ${ALL_WARNINGS})
 
 set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab marian_conv)
 
@@ -152,6 +176,7 @@ endif()
 if(COMPILE_SERVER)
   add_executable(marian_server command/marian_server.cpp)
   set_target_properties(marian_server PROPERTIES OUTPUT_NAME marian-server)
+  target_compile_options(marian_server PUBLIC ${ALL_WARNINGS})
   set(EXECUTABLES ${EXECUTABLES} marian_server)
 endif(COMPILE_SERVER)
 

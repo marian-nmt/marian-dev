@@ -48,7 +48,7 @@ public:
     return PtrType(new TensorBase(std::forward<Args>(args)...));
   }
 
-  ~TensorBase() {}
+  virtual ~TensorBase() {}
 
   virtual void reset(MemoryPiece::PtrType memory) { memory_ = memory; }
 

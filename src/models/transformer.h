@@ -200,7 +200,7 @@ public:
 
   // determine the multiplicative-attention probability and performs the associative lookup as well
   // q, k, and v have already been split into multiple heads, undergone any desired linear transform.
-  Expr Attention(std::string prefix,
+  Expr Attention(std::string /*prefix*/,
                  Expr q,              // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
                  Expr k,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
                  Expr v,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
@@ -444,7 +444,7 @@ public:
                        const rnn::State& prevDecoderState,
                        std::string prefix,
                        Expr input,
-                       Expr selfMask,
+                       Expr /*selfMask*/,
                        int /*startPos*/) const {
     float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
 
@@ -480,7 +480,7 @@ public:
 
   // returns the embedding matrix based on options
   // and based on batchIndex_.
-  
+
   std::vector<Expr> ULREmbeddings() const {
     // standard encoder word embeddings
     int dimSrcVoc = opt<std::vector<int>>("dim-vocabs")[0];  //ULR multi-lingual src
@@ -494,7 +494,7 @@ public:
                                            ("ulrKeysFile", opt<std::string>("ulr-keys-vectors"));
     return embFactory.construct();
   }
-  
+
   Expr wordEmbeddings(size_t subBatchIndex) const {
     // standard encoder word embeddings
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[subBatchIndex];
@@ -527,7 +527,7 @@ public:
     // create the embedding matrix, considering tying and some other options
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
-    if (options_->has("ulr-enabled") && options_->get<bool>("ulr-enabled") == true) {
+    if (options_->has("ulr") && options_->get<bool>("ulr") == true) {
       auto embeddings = ULREmbeddings(); // embedding uses ULR
       std::tie(batchEmbeddings, batchMask)
         = EncoderBase::ulrLookup(graph_, embeddings, batch);
@@ -609,7 +609,7 @@ private:
   Ptr<mlp::MLP> output_;
 
 private:
-  void LazyCreateOutputLayer(std::string prefix)
+  void LazyCreateOutputLayer()
   {
     if(output_) // create it lazily
       return;
@@ -666,8 +666,8 @@ public:
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
                                  Ptr<DecoderState> state) override {
-    ABORT_IF(graph != graph_, "An inconsistent graph parameter was passed to step().");
-    LazyCreateOutputLayer(prefix_ + "_ff_logit_out");
+    ABORT_IF(graph != graph_, "An inconsistent graph parameter was passed to step()");
+    LazyCreateOutputLayer();
     return step(state);
   }
 

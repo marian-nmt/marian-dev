@@ -33,5 +33,10 @@ std::string join(const std::vector<std::string>& words,
 
 std::string exec(const std::string& cmd);
 
+std::pair<std::string, int> hostnameAndProcessId();
+
+std::string withCommas(size_t n);
+bool endsWith(const std::string& text, const std::string& suffix);
+
 }  // namespace utils
 }  // namespace marian

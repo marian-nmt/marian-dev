@@ -10,7 +10,6 @@
 
 
 int main(int argc, char** argv) {
-
   const FastOpt& opt1 = YAML::LoadFile("test.yml");
 
   std::cerr << opt1[1]["powers"][1]["name"].as<std::string>() << std::endl;
@@ -38,7 +37,6 @@ int main(int argc, char** argv) {
   //   debug(mask, "mask");
   //   g->forward();
   // }
-
   return 0;
 }
 

@@ -8,8 +8,6 @@
 #endif
 
 #include "yaml-cpp/dll.h"
-#include "common/intrusive_ptr.h"
-
 #include <memory>
 
 namespace YAML {
@@ -20,26 +18,11 @@ class node_data;
 class memory;
 class memory_holder;
 
-typedef IntrusivePtr<node> shared_node;
-void intrusivePtrAddRef(node*);
-void intrusivePtrRelease(node*);
-
-typedef IntrusivePtr<node_ref> shared_node_ref;
-void intrusivePtrAddRef(node_ref*);
-void intrusivePtrRelease(node_ref*);
-
-typedef IntrusivePtr<node_data> shared_node_data;
-void intrusivePtrAddRef(node_data*);
-void intrusivePtrRelease(node_data*);
-
-typedef IntrusivePtr<memory_holder> shared_memory_holder;
-void intrusivePtrAddRef(memory_holder*);
-void intrusivePtrRelease(memory_holder*);
-
-typedef IntrusivePtr<memory> shared_memory;
-void intrusivePtrAddRef(memory*);
-void intrusivePtrRelease(memory*);
-
+typedef std::shared_ptr<node> shared_node;
+typedef std::shared_ptr<node_ref> shared_node_ref;
+typedef std::shared_ptr<node_data> shared_node_data;
+typedef std::shared_ptr<memory_holder> shared_memory_holder;
+typedef std::shared_ptr<memory> shared_memory;
 }
 }
 

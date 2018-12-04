@@ -95,13 +95,14 @@ private:
   uint64_t fingerprint{0};
   size_t elements_{0};
 
-  inline const IntrusivePtr<FastOpt>& arrayLookup(size_t keyId) const {
+  inline const IntrusivePtr<FastOpt>& arrayLookup(size_t keyId, bool check = false) const {
+    ABORT_IF(check && keyId >= array_.size(), "Unseen key {}" , keyId);
     return array_[keyId];
   }
 
-  inline const IntrusivePtr<FastOpt>& phLookup(size_t keyId) const {
+  inline const IntrusivePtr<FastOpt>& phLookup(size_t keyId, bool check = false) const {
     const auto& node = array_[(*ph_)[keyId]];
-    ABORT_IF(node->fingerprint != keyId, "Unseen key {}" , keyId);
+    ABORT_IF(check && node->fingerprint != keyId, "Unseen key {}" , keyId);
     return node;
   }
 
@@ -184,13 +185,18 @@ private:
   }
 
   bool has(size_t keyId) const {
-    return phLookup(keyId)->fingerprint == keyId;
+    switch(type()) {
+      case NodeType::List : return keyId <= array_.size();
+      case NodeType::Map  : return phLookup(keyId, false)->fingerprint == keyId;
+      default:
+        ABORT("Not a map or list node");
+    }
   }
 
   const FastOpt& operator[](size_t keyId) const {
     switch(type()) {
-      case NodeType::List : return *arrayLookup(keyId);
-      case NodeType::Map  : return *phLookup(keyId);
+      case NodeType::List : return *arrayLookup(keyId, /* check = */ true);
+      case NodeType::Map  : return *phLookup(keyId, /*check = */ true);
       default:
         ABORT("Not a map or list node");
     }
@@ -228,10 +234,42 @@ public:
     return has(crc(key));
   }
 
+  // Getter for scalar
   template <typename T>
-  inline const T& as() const {
-    ABORT_IF(elements_ != 0, "Not a leaf node");
-    return value_->as<T>();
+  class Getter {
+  private:
+    const FastOpt& node_;
+
+  public:
+    Getter(const FastOpt& node) : node_(node) {}
+
+    T as() const {
+      ABORT_IF(node_.elements_ != 0, "Not a leaf node");
+      return node_.value_->as<T>();
+    }
+  };
+
+  // Getter specialization for vectors
+  template <typename T>
+  class Getter<std::vector<T>> {
+  private:
+    const FastOpt& node_;
+
+  public:
+    Getter(const FastOpt& node) : node_(node) {}
+
+    std::vector<T> as() const {
+      ABORT_IF(node_.type() != NodeType::List, "Cannot convert non-list node to vector");
+      std::vector<T> vec;
+      for(int i = 0; i < node_.size(); ++i)
+        vec.push_back(node_[i].as<T>());
+      return vec;
+    }
+  };
+
+  template <typename T>
+  T as() const {
+    return Getter<T>(*this).as();
   }
 
   const FastOpt& operator[](const char* const key) const {

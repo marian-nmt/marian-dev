@@ -107,7 +107,7 @@ private:
 
   template <class V>
   void makeScalar(const V& v) {
-    std::cerr << "Creating scalar " << v << std::endl;
+    //std::cerr << "Creating scalar " << v << std::endl;
 
     value_.reset(new ElementType());
     value_->value = v;
@@ -118,7 +118,7 @@ private:
 
   template <class V>
   void makeList(const std::vector<V>& v) {
-    std::cerr << "Creating list (" << v.size() << ")" << std::endl;
+    //std::cerr << "Creating list (" << v.size() << ")" << std::endl;
 
     array_.resize(v.size());
     elements_ = v.size();
@@ -133,7 +133,7 @@ private:
 
   template <class V>
   void makeMap(const std::map<uint64_t, V>& m) {
-    std::cerr << "Creating map (" << m.size() << ")" << std::endl;
+    //std::cerr << "Creating map (" << m.size() << ")" << std::endl;
 
     std::vector<uint64_t> keys;
     for(const auto& it : m)
@@ -163,9 +163,6 @@ private:
     makeMap(mi);
   }
 
-public:
-  FastOpt(const FastOpt&) = delete;
-
   template <class V>
   FastOpt(const std::map<uint64_t, V>& m) {
     makeMap(m);
@@ -185,6 +182,22 @@ public:
   FastOpt(const V& v) {
     makeScalar(v);
   }
+
+  bool has(size_t keyId) const {
+    return phLookup(keyId)->fingerprint == keyId;
+  }
+
+  const FastOpt& operator[](size_t keyId) const {
+    switch(type()) {
+      case NodeType::List : return *arrayLookup(keyId);
+      case NodeType::Map  : return *phLookup(keyId);
+      default:
+        ABORT("Not a map or list node");
+    }
+  }
+
+public:
+  FastOpt(const FastOpt&) = delete;
 
   FastOpt(const YAML::Node& node) {
     switch(node.Type()) {
@@ -211,10 +224,6 @@ public:
     }
   }
 
-  bool has(size_t keyId) const {
-    return phLookup(keyId)->fingerprint == keyId;
-  }
-
   bool has(const char* key) const {
     return has(crc(key));
   }
@@ -223,15 +232,6 @@ public:
   inline const T& as() const {
     ABORT_IF(elements_ != 0, "Not a leaf node");
     return value_->as<T>();
-  }
-
-  const FastOpt& operator[](size_t keyId) const {
-    switch(type()) {
-      case NodeType::List : return *arrayLookup(keyId);
-      case NodeType::Map  : return *phLookup(keyId);
-      default:
-        ABORT("Not a map or list node");
-    }
   }
 
   const FastOpt& operator[](const char* const key) const {

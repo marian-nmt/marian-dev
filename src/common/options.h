@@ -1,10 +1,12 @@
 #pragma once
 
-#include <sstream>
-#include <string>
 #include "common/definitions.h"
+#include "common/fast_opt.h"
 
 #include "3rd_party/yaml-cpp/yaml.h"
+
+#include <sstream>
+#include <string>
 
 #define YAML_REGISTER_TYPE(registered, type)                \
   namespace YAML {                                          \
@@ -30,23 +32,33 @@ namespace marian {
 class Options {
 protected:
   YAML::Node options_;
+  std::unique_ptr<FastOpt> fastOptions_;
 
 public:
   Options() {}
-  Options(const Options& other) : options_(YAML::Clone(other.options_)) {}
+  Options(const Options& other)
+  : options_(YAML::Clone(other.options_)),
+    fastOptions_(new FastOpt(options_)) {}
 
   /**
    * @brief Return a copy of the object that can be safely modified.
    */
   Options clone() const { return Options(*this); }
 
-  YAML::Node& getYaml() { return options_; }
-  const YAML::Node& getYaml() const { return options_; }
+  YAML::Node& getYaml() {
+    ABORT_IF(fastOptions_, "YAML should not be modified");
+    return options_;
+  } // this should be removed
+
+  const YAML::Node& getYaml() const {
+    return options_;
+  }
 
   void parse(const std::string& yaml) {
     auto node = YAML::Load(yaml);
     for(auto it : node)
       options_[it.first.as<std::string>()] = YAML::Clone(it.second);
+    fastOptions_.reset(new FastOpt(options_));
   }
 
   /**
@@ -62,12 +74,13 @@ public:
     for(auto it : node)
       if(overwrite || !options_[it.first.as<std::string>()])
         options_[it.first.as<std::string>()] = YAML::Clone(it.second);
+    fastOptions_.reset(new FastOpt(options_));
   }
 
   void merge(const YAML::Node& node, bool overwrite = false) { merge(node, overwrite); }
   void merge(Ptr<Options> options) { merge(options->getYaml()); }
 
-  std::string str() {
+  std::string str() const {
     std::stringstream ss;
     ss << options_;
     return ss.str();
@@ -76,23 +89,24 @@ public:
   template <typename T>
   void set(const std::string& key, T value) {
     options_[key] = value;
+    fastOptions_.reset(new FastOpt(options_));
   }
 
   template <typename T>
-  T get(const std::string& key) {
-    ABORT_IF(!has(key), "Required option '{}' has not been set", key);
-    return options_[key].as<T>();
+  T get(const std::string& key) const {
+    ABORT_IF(!fastOptions_->has(key.c_str()), "Required option '{}' has not been set", key);
+    return (*fastOptions_)[key.c_str()].as<T>();
   }
 
   template <typename T>
-  T get(const std::string& key, T defaultValue) {
-    if(has(key))
-      return options_[key].as<T>();
+  T get(const std::string& key, T defaultValue) const {
+    if(fastOptions_->has(key.c_str()))
+      return (*fastOptions_)[key.c_str()].as<T>();
     else
       return defaultValue;
   }
 
-  bool has(const std::string& key) const { return options_[key]; }
+  bool has(const std::string& key) const { return fastOptions_->has(key.c_str()); }
 };
 
 }  // namespace marian

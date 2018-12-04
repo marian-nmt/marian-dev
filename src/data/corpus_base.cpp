@@ -86,9 +86,14 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         // TODO: this is not nice as it modifies the option object and needs to expose the changes
         // outside the corpus as models need to know about the vocabulary size; extract the vocab
         // creation functionality from the class.
-        options_->getYaml()["dim-vocabs"][i] = vocSize;
+        auto dims = options_->get<std::vector<size_t>>("dim-vocabs");
+        dims[i] = vocSize;
+        options_->set("dim-vocabs", dims);
 
-        options_->getYaml()["vocabs"].push_back(paths_[i] + ".yml");
+        auto vocabsVec = options_->get<std::vector<std::string>>("vocabs");
+        vocabsVec.push_back(paths_[i] + ".yml");
+        options_->set("vocabs", vocabsVec);
+
         vocabs_.emplace_back(vocab);
       }
     } else {
@@ -101,7 +106,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         std::set<std::string> paths; // contains all paths that are used for training the vocabulary
         size_t size;                 // contains the maximum vocabulary size
       };
-      
+
       // Group training files based on vocabulary path. If the same
       // vocab path corresponds to different training files, this means
       // that a single vocab should combine tokens from all files.
@@ -120,11 +125,13 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         auto pathsAndSize = groupVocab[vocabPaths[i]];
         std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
         int vocSize = vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
-        
+
         // TODO: this is not nice as it modifies the option object and needs to expose the changes
         // outside the corpus as models need to know about the vocabulary size; extract the vocab
         // creation functionality from the class.
-        options_->getYaml()["dim-vocabs"][i] = vocSize;
+        auto dims = options_->get<std::vector<size_t>>("dim-vocabs");
+        dims[i] = vocSize;
+        options_->set("dim-vocabs", dims);
 
         vocabs_.emplace_back(vocab);
       }
@@ -141,7 +148,10 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     for(size_t i = 0; i + 1 < vocabPaths.size(); ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);
       int vocSize = vocab->load(vocabPaths[i], maxVocabs[i]);
-      options_->getYaml()["dim-vocabs"][i] = vocSize;
+
+      auto dims = options_->get<std::vector<size_t>>("dim-vocabs");
+      dims[i] = vocSize;
+      options_->set("dim-vocabs", dims);
 
       vocabs_.emplace_back(vocab);
     }

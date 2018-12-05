@@ -236,40 +236,30 @@ public:
 
   // Getter for scalar
   template <typename T>
-  class Getter {
-  private:
-    const FastOpt& node_;
-
-  public:
-    Getter(const FastOpt& node) : node_(node) {}
-
-    T as() const {
-      ABORT_IF(node_.elements_ != 0, "Not a leaf node");
-      return node_.value_->as<T>();
+  struct Getter {
+    static T as(const FastOpt& node) {
+      std::cerr << "bubu " << typeid(T()).name() << std::endl;
+      ABORT_IF(node.elements_ != 0, "Not a leaf node");
+      T v = node.value_->as<T>();
+      return v;
     }
   };
 
   // Getter specialization for vectors
   template <typename T>
-  class Getter<std::vector<T>> {
-  private:
-    const FastOpt& node_;
-
-  public:
-    Getter(const FastOpt& node) : node_(node) {}
-
-    std::vector<T> as() const {
-      ABORT_IF(node_.type() != NodeType::List, "Cannot convert non-list node to vector");
+  struct Getter<std::vector<T>> {
+    static std::vector<T> as(const FastOpt& node) {
+      ABORT_IF(node.type() != NodeType::List, "Cannot convert non-list node to vector");
       std::vector<T> vec;
-      for(int i = 0; i < node_.size(); ++i)
-        vec.push_back(node_[i].as<T>());
+      for(int i = 0; i < node.size(); ++i)
+        vec.push_back(node[i].as<T>());
       return vec;
     }
   };
 
   template <typename T>
   T as() const {
-    return Getter<T>(*this).as();
+    return Getter<T>::as(*this);
   }
 
   const FastOpt& operator[](const char* const key) const {

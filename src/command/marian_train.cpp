@@ -14,7 +14,10 @@
 int main(int argc, char** argv) {
   using namespace marian;
 
-  auto options = parseOptions(argc, argv);
+  const auto options = parseOptions(argc, argv);
+  std::cerr << options->get<bool>("multi-node") << std::endl;
+
+  exit(0);
 
   // selects MultiNodeGraphGroup family
   //

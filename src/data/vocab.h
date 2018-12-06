@@ -22,8 +22,7 @@ private:
   size_t batchIndex_;
 
 public:
-  Vocab(Ptr<Options> options, size_t batchIndex)
-  : options_(options), batchIndex_(batchIndex) {}
+  Vocab(Ptr<Options> options, size_t batchIndex) : options_(options), batchIndex_(batchIndex) {}
 
   int loadOrCreate(const std::string& vocabPath,
                    const std::vector<std::string>& trainPaths,
@@ -46,13 +45,10 @@ public:
   const std::string& operator[](Word id) const;
 
   // line of text to list of token ids, can perform tokenization
-  Words encode(const std::string& line,
-               bool addEOS = true,
-               bool inference = false) const;
+  Words encode(const std::string& line, bool addEOS = true, bool inference = false) const;
 
   // list of token ids to single line, can perform detokenization
-  std::string decode(const Words& sentence,
-                     bool ignoreEOS = true) const;
+  std::string decode(const Words& sentence, bool ignoreEOS = true) const;
 
   // number of vocabulary items
   size_t size() const;

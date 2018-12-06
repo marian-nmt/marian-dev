@@ -24,6 +24,17 @@ public:
     size_t maxSize = maxBeamSize * maxBatchSize;
     h_res.resize(maxSize);
     h_res_idx.resize(maxSize);
+
+  }
+
+  void setHypMask(const std::vector<char>& hypMask, int vocabSizeArg) {
+    // TODO: implement
+    ABORT("setHypMask is not implemented for CPU");
+  }
+
+  void clearHypMask() {
+    // TODO: implement
+    ABORT("clearHypMask is not implemented for CPU");
   }
 
 private:
@@ -98,24 +109,35 @@ private:
 };
 
 #ifdef CUDA_FOUND
-GetNBestListFn createGetNBestListGPUFn(size_t beamSize, size_t dimBatch, DeviceId deviceId); // in .cu file
+// in .cu file
+GetNBestListFn createGetNBestListGPUFn(size_t beamSize,
+                                       size_t dimBatch,
+                                       DeviceId deviceId,
+                                       bool xmlInput = false);
 #endif
 
 // factory function
 // Returns a lambda with the same signature as the getNBestList() function.
-GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId) {
+GetNBestListFn createGetNBestListFn(size_t beamSize,
+                                    size_t dimBatch,
+                                    DeviceId deviceId,
+                                    bool xmlInput /* =false */) {
 #ifdef CUDA_FOUND
   if(deviceId.type == DeviceType::gpu)
-    return createGetNBestListGPUFn(beamSize, dimBatch, deviceId);
+    return createGetNBestListGPUFn(beamSize, dimBatch, deviceId, xmlInput);
 #else
     deviceId; // (unused)
 #endif
   auto nth = New<NthElementCPU>(beamSize, dimBatch);
-  return [nth](const std::vector<size_t>& beamSizes,
+  return [nth, xmlInput](const std::vector<size_t>& beamSizes,
       Tensor logProbs,
       std::vector<float>& outCosts,
       std::vector<unsigned>& outKeys,
-      const bool isFirst) {
+      const bool isFirst,
+      const std::vector<char>& hypMask,
+      size_t vocabSizeArg) {
+      if(xmlInput)
+        nth->setHypMask(hypMask, vocabSizeArg);
       return nth->getNBestList(beamSizes, logProbs, outCosts, outKeys, isFirst);
   };
 }

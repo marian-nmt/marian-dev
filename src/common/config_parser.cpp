@@ -499,9 +499,20 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Noise output layer with gumbel noise",
        false);
 
+  // options for processing XML input
+  cli.add<bool>("--xml-input",
+      "Process XML tags in input to direct decoder");
+  cli.add<float>("--xml-alignment-weight",
+      "Weight given to alignment mismatch cost when applying xml constraint",
+      1.f);
+  cli.add<float>("--xml-violation-penalty",
+      "Penalty cost given to constraint violation",
+      10.f);
+
   // TODO: the options should be available only in server
   cli.add_nondefault<size_t>("--port,-p",
       "Port number for web socket server");
+
   // add ULR settings
   addSuboptionsULR(cli);
 

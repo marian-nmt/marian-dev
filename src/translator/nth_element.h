@@ -14,7 +14,12 @@ typedef std::function<void(const std::vector<size_t>& beamSizes,
                            Tensor logProbs,
                            std::vector<float>& outCosts,
                            std::vector<unsigned>& outKeys,
-                           const bool isFirst)> GetNBestListFn;
+                           const bool isFirst,
+                           const std::vector<char>& hypMask,
+                           size_t vocabSizeArg)> GetNBestListFn;
 
-GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId);
+GetNBestListFn createGetNBestListFn(size_t beamSize,
+                                    size_t dimBatch,
+                                    DeviceId deviceId,
+                                    bool xmlInput = false);
 }  // namespace marian

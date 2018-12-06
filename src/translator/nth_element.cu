@@ -20,11 +20,17 @@ namespace marian {
     }                                    \
   }
 
+#define MASK_PROB(i,table) \
+  !useHypMask || d_hypMask[((i))/vocabSize] ? (table)[(i)] : -3.40282e+38f
+
 __global__ void gMaxElement(float* d_out,
                             int* d_ind,
                             float* d_in,
                             int numBatches,
-                            int* batchFirstElementIdxs) {
+                            int* batchFirstElementIdxs,
+                            bool useHypMask,
+                            char* d_hypMask,
+                            int vocabSize) {
   extern __shared__ float sdata[];
   __shared__ int indices[512];
 
@@ -39,13 +45,16 @@ __global__ void gMaxElement(float* d_out,
     sdata[tid] = -3.40282e+38f;
 
     if(i < end) {
-      sdata[tid] = d_in[i];
+      //sdata[tid] = d_in[i];
+      sdata[tid] = MASK_PROB(i,d_in);
       indices[tid] = i;
     }
 
     if(i + blockDim.x < end) {
-      float a = d_in[i];
-      float b = d_in[i + blockDim.x];
+      //float a = d_in[i];
+      //float b = d_in[i + blockDim.x];
+      float a = MASK_PROB(i,d_in);
+      float b = MASK_PROB(i + blockDim.x,d_in);
       if(a > b) {
         sdata[tid] = a;
         indices[tid] = i;
@@ -58,14 +67,16 @@ __global__ void gMaxElement(float* d_out,
     while(i + 2 * gridDim.x * blockDim.x < end) {
       i += 2 * gridDim.x * blockDim.x;
 
-      float a = d_in[i];
+      //float a = d_in[i];
+      float a = MASK_PROB(i,d_in);
       if(a > sdata[tid]) {
         sdata[tid] = a;
         indices[tid] = i;
       }
 
       if(i + blockDim.x < end) {
-        float b = d_in[i + blockDim.x];
+        //float b = d_in[i + blockDim.x];
+        float b = MASK_PROB(i + blockDim.x,d_in);
         if(b > sdata[tid]) {
           sdata[tid] = b;
           indices[tid] = i + blockDim.x;
@@ -107,7 +118,10 @@ __global__ void gMaxElementUpdate(float* binCosts,
                                   float* outCosts,
                                   int* outIdxs,
                                   int* cummulatedBeamSizes,
-                                  int NUM_BLOCKS) {
+                                  int NUM_BLOCKS,
+                                  bool useHypMask,
+                                  char* d_hypMask,
+                                  int vocabSize) {
   extern __shared__ float sdata[];
   __shared__ int indices[512];
   __shared__ float bestBinCost;
@@ -201,13 +215,16 @@ __global__ void gMaxElementUpdate(float* binCosts,
     sdata[tid] = -3.40282e+38f;
 
     if(i < batchFirstElements[batchIdx + 1]) {
-      sdata[tid] = probs[i];
+      //sdata[tid] = probs[i];
+      sdata[tid] = MASK_PROB(i,probs);
       indices[tid] = i;
     }
 
     if(i + blockDim.x < batchFirstElements[batchIdx + 1]) {
-      float a = probs[i];
-      float b = probs[i + blockDim.x];
+      //float a = probs[i];
+      //float b = probs[i + blockDim.x];
+      float a = MASK_PROB(i,probs);
+      float b = MASK_PROB(i + blockDim.x,probs);
       if(a > b) {
         sdata[tid] = a;
         indices[tid] = i;
@@ -220,14 +237,16 @@ __global__ void gMaxElementUpdate(float* binCosts,
     while(i + dist < batchFirstElements[batchIdx + 1]) {
       i += dist;
 
-      float a = probs[i];
+      //float a = probs[i];
+      float a = MASK_PROB(i,probs);
       if(a > sdata[tid]) {
         sdata[tid] = a;
         indices[tid] = i;
       }
 
       if(i + blockDim.x < batchFirstElements[batchIdx + 1]) {
-        float b = probs[i + blockDim.x];
+        //float b = probs[i + blockDim.x];
+        float b = MASK_PROB(i + blockDim.x,probs);
         if(b > sdata[tid]) {
           sdata[tid] = b;
           indices[tid] = i + blockDim.x;
@@ -294,11 +313,13 @@ public:
     CUDA_CHECK(cudaMalloc((void**)&d_res,     maxBatchSize * maxBeamSize * sizeof(float)));
 
     CUDA_CHECK(cudaHostAlloc((void**)&h_res,     maxBeamSize * maxBatchSize * sizeof(float), cudaHostAllocDefault));
-    CUDA_CHECK(cudaHostAlloc((void**)&h_res_idx, maxBeamSize * maxBatchSize * sizeof(int), cudaHostAllocDefault));
+    CUDA_CHECK(cudaHostAlloc((void**)&h_res_idx, maxBeamSize * maxBatchSize * sizeof(int),   cudaHostAllocDefault));
 
-    CUDA_CHECK(cudaMalloc((void**)&d_breakdown, maxBeamSize * sizeof(float)));
+    CUDA_CHECK(cudaMalloc((void**)&d_breakdown,      maxBeamSize       * sizeof(float)));
     CUDA_CHECK(cudaMalloc((void**)&d_batchPosition, (maxBatchSize + 1) * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void**)&d_cumBeamSizes,  (maxBatchSize + 1) * sizeof(int)));
+
+    CUDA_CHECK(cudaMalloc((void**)&d_hypMask, maxBatchSize * maxBeamSize * sizeof(char)));
   }
 
   ~NthElementGPU() {
@@ -313,6 +334,23 @@ public:
     CUDA_CHECK(cudaFree(d_res_idx));
     CUDA_CHECK(cudaFree(d_out));
     CUDA_CHECK(cudaFree(d_ind));
+
+    CUDA_CHECK(cudaFree(d_hypMask));
+  }
+
+  void setHypMask(const std::vector<char>& hypMask, int vocabSizeArg) {
+    cudaSetDevice(deviceId_.no);
+    CUDA_CHECK(cudaMemcpyAsync(d_hypMask,
+                               hypMask.data(),
+                               hypMask.size() * sizeof(char),
+                               cudaMemcpyHostToDevice,
+                               /* stream_ */ 0));
+    useHypMask = true;
+    vocabSize = vocabSizeArg;
+  }
+
+  void clearHypMask() {
+    useHypMask = false;
   }
 
 private:
@@ -337,7 +375,8 @@ private:
                   BLOCK_SIZE,
                   BLOCK_SIZE * sizeof(float),
                   /* stream_ */ 0>>>(
-        d_out, d_ind, probs, numBatches, d_batchPosition);
+        d_out, d_ind, probs, numBatches, d_batchPosition,
+        useHypMask, d_hypMask, vocabSize);
 
     gMaxElementUpdate<<<numBatches,
                         BLOCK_SIZE,
@@ -349,7 +388,10 @@ private:
                                            d_res,
                                            d_res_idx,
                                            d_cumBeamSizes,
-                                           NUM_BLOCKS);
+                                           NUM_BLOCKS,
+                                           useHypMask,
+                                           d_hypMask,
+                                           vocabSize);
   }
 
 public:
@@ -434,17 +476,28 @@ private:
   int* d_batchPosition;
   int* d_cumBeamSizes;
   size_t lastN;
+
+  char* d_hypMask;
+  bool useHypMask;
+  int vocabSize;
 };
 
 // factory function
 // Returns a lambda with the same signature as the getNBestList() function.
-GetNBestListFn createGetNBestListGPUFn(size_t beamSize, size_t dimBatch, DeviceId deviceId) {
+GetNBestListFn createGetNBestListGPUFn(size_t beamSize,
+                                       size_t dimBatch,
+                                       DeviceId deviceId,
+                                       bool xmlInput /* =false */) {
   auto nth = New<NthElementGPU>(beamSize, dimBatch, deviceId);
-  return [nth](const std::vector<size_t>& beamSizes,
+  return [nth, xmlInput](const std::vector<size_t>& beamSizes,
       Tensor logProbs,
       std::vector<float>& outCosts,
       std::vector<unsigned>& outKeys,
-      const bool isFirst) {
+      const bool isFirst,
+      const std::vector<char>& hypMask,
+      size_t vocabSizeArg) {
+      if(xmlInput)
+        nth->setHypMask(hypMask, vocabSizeArg);
       return nth->getNBestList(beamSizes, logProbs, outCosts, outKeys, isFirst);
   };
 }

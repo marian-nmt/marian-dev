@@ -33,6 +33,15 @@ TextInput::TextInput(std::vector<std::string> inputs,
     files_.emplace_back(new std::istringstream(text));
 }
 
+TextInput::TextInput(std::vector<std::string> inputs,
+                     std::vector<Ptr<Vocab>> vocabs,
+                     Ptr<Vocab> target_vocab,
+                     Ptr<Options> options)
+    : DatasetBase(inputs, options), vocabs_(vocabs), target_vocab_(target_vocab) {
+  for(auto path : paths_)
+    files_.emplace_back(new std::istringstream(path));
+}
+
 SentenceTuple TextInput::next() {
   // @TODO: This code mixes two patterns (while and early exit). Fix that.
   bool cont = true;
@@ -46,10 +55,25 @@ SentenceTuple TextInput::next() {
       std::string line;
       io::InputFileStream dummyStream(*files_[i]);
       if(io::getline(dummyStream, line)) {
-        Words words = vocabs_[i]->encode(line, /*addEOS =*/ true, /*inference =*/ inference_);
-        if(words.empty())
-          words.push_back(0);
-        tup.push_back(words);
+        if(options_->get<bool>("xml-input")) {
+          // TODO: refactorize
+          std::cerr << "process xml for " << line << std::endl;
+          std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
+          std::string stripped_line;
+          processXml(line, stripped_line, target_vocab_, tup);
+          //Words words = (*vocabs_[i])(stripped_line);
+          Words words = vocabs_[i]->encode(stripped_line, /*addEOS =*/ true, inference_);
+
+          if(words.empty())
+            words.push_back(0);
+          tup.push_back(words);
+        } else {
+          Words words = vocabs_[i]->encode(line, /*addEOS =*/ true, /*inference =*/ inference_);
+
+          if(words.empty())
+            words.push_back(0);
+          tup.push_back(words);
+        }
       }
     }
 

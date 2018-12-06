@@ -8,6 +8,8 @@
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
 
+#include "data/xml.h"
+
 namespace marian {
 
 class BeamSearch {
@@ -31,8 +33,26 @@ public:
         trgEosId_(trgEosId),
         trgUnkId_(trgUnkId) {}
 
+  void mergeIntoSortedKeysCosts(std::vector<uint> &keys,
+                                std::vector<float> &costs,
+                                std::vector<data::XmlOptionCoveredList *> &xmls,
+                                uint key,
+                                float cost,
+                                data::XmlOptionCoveredList *xml) {
+    auto k=keys.begin();
+    auto c=costs.begin();
+    auto x=xmls.begin();
+    while(c != costs.end() && cost < *c) {
+      k++; c++; x++;
+    }
+    keys.insert(k, key);
+    costs.insert(c, cost);
+    xmls.insert(x, xml);
+  }
+
   Beams toHyps(const std::vector<unsigned int> keys,
                const std::vector<float> pathScores,
+               const std::vector<data::XmlOptionCoveredList *> &xmls,
                size_t vocabSize,
                const Beams& beams,
                std::vector<Ptr<ScorerState>>& states,
@@ -59,6 +79,7 @@ public:
       if(shortlist)
         embIdx = shortlist->reverseMap(embIdx); // @TODO: should reverseMap accept a size_t or a Word?
 
+      // Condition: do not add filler items in the keys/costs matrix
       if(newBeams[beamIdx].size() < beams[beamIdx].size()) {
         auto& beam = beams[beamIdx];
         auto& newBeam = newBeams[beamIdx];
@@ -70,6 +91,7 @@ public:
             = IndexType((hypIdx / beamSize) + (hypIdx % beamSize) * beams.size());
         if(first)
           hypIdxTrans = hypIdx;
+        //std::cerr << "mapping state " << hypIdx << " (" << (hypIdx / beamSize) << "," << (hypIdx % beamSize) << ") -> " << hypIdxTrans << "\n";
 
         size_t beamHypIdx = hypIdx % beamSize;
         if(beamHypIdx >= (int)beam.size())
@@ -96,6 +118,10 @@ public:
         if(!align.empty()) {
           hyp->SetAlignment(
               getAlignmentsForHypothesis(align, batch, (int)beamHypIdx, (int)beamIdx));
+        }
+
+        if (options_->get<bool>("xml-input")) {
+          hyp->SetXml(xmls[i]);
         }
 
         newBeam.push_back(hyp);
@@ -144,9 +170,11 @@ public:
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
+      size_t validCount = 0;
       for(auto hyp : beam) {
         if(hyp->GetWord() != trgEosId_) {
           newBeam.push_back(hyp);
+          validCount++;
         }
       }
       newBeams.push_back(newBeam);
@@ -157,8 +185,20 @@ public:
   // main decoding function
   Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
     int dimBatch = (int)batch->size();
-
+    // initialize data structure for the search graph
     Histories histories;
+
+    // TODO: refactorize and remove debugs!
+    // XML TODO - this is just for debugging, remove it afterwards
+    std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
+    std::vector<std::string> vocabPaths = options_->get<std::vector<std::string>>("vocabs");
+
+    size_t id = vocabPaths.size()-1;
+    auto targetVocab = New<Vocab>(options_, id);
+    int vocSize = targetVocab->load(vocabPaths[id], maxVocabs[id]);
+    std::cerr << "targetVocab-vocSize: " << vocSize << std::endl;
+    // XML TODO ----/
+
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
       auto history = New<History>(sentId,
@@ -169,49 +209,95 @@ public:
 
     size_t localBeamSize = beamSize_; // max over beam sizes of active sentence hypotheses
 
-    auto getNBestList = createGetNBestListFn(localBeamSize, dimBatch, graph->getDeviceId());
+    auto getNBestList = createGetNBestListFn(
+        localBeamSize, dimBatch, graph->getDeviceId(), options_->get<bool>("xml-input"));
 
+    const data::XmlOptionsList *xmlOptionsList = options_->get<bool>("xml-input")
+                                               ? batch->getXmlOptionsList()
+                                               : NULL;
+    if(options_->get<bool>("xml-input")) {
+      std::cerr << "pulling xmlOptionsList " << batch->getXmlOptionsList() << "\n";
+      std::cerr << "xmlOptions " << xmlOptionsList->at(0) << "\n";
+    }
+
+    // create a new beam (one for each input sentence = dimBatch)
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
-    for(auto& beam : beams)
-      beam.resize(localBeamSize, New<Hypothesis>());
+    for(int i = 0; i < dimBatch; ++i) {
+      auto& beam = beams[i];
+      if(options_->get<bool>("xml-input"))
+        beam.resize(localBeamSize, New<Hypothesis>( xmlOptionsList->at(i) ));
+      else
+        beam.resize(localBeamSize, New<Hypothesis>());
+    }
 
     bool first = true;
     bool final = false;
 
+    // add each beam to its history (the complete search graph)
     for(int i = 0; i < dimBatch; ++i)
       histories[i]->Add(beams[i], trgEosId_);
 
-    std::vector<Ptr<ScorerState>> states;
-
+    // initialize computation graph
     for(auto scorer : scorers_) {
       scorer->clear(graph);
     }
 
+    // create and add start states
+    std::vector<Ptr<ScorerState>> states;
     for(auto scorer : scorers_) {
       states.push_back(scorer->startState(graph, batch));
     }
+    std::cerr << "still alive and kicking 4\n";
 
     // main loop over output tokens
     do {
       //**********************************************************************
       // create constant containing previous path scores for current beam
       // also create mapping of hyp indices, which are not 1:1 if sentences complete
-      std::vector<IndexType> hypIndices; // [beamIndex * activeBatchSize + batchIndex] backpointers, concatenated over beam positions. Used for reordering hypotheses
+
+      // [beamIndex * activeBatchSize + batchIndex] backpointers, concatenated over beam positions.
+      // Used for reordering hypotheses
+      std::vector<IndexType> hypIndices;
       std::vector<IndexType> embIndices;
       Expr prevPathScores; // [beam, 1, 1, 1]
+
+      for(int j = 0; j < beams.size(); ++j) {
+        auto& beam = beams[j];
+        for(int i = 0; i < localBeamSize; ++i) {
+          if(i < beam.size()) {
+            auto hyp = beam[i];
+            std::cerr << "beam=" << j << " i=" << i;
+            if (options_->get<bool>("xml-input")) {
+              std::cerr << " xml status=" << hyp->GetXmlStatus() << "/"
+                        << hyp->GetXmlOptionCovered()->size();
+            }
+            std::cerr << "\n";
+          }
+        }
+      }
+
       if(first) {
-        // no scores yet
+        // no scores yet = initial hypothesis, no cost, no subbeams
         prevPathScores = graph->constant({1, 1, 1, 1}, inits::from_value(0));
       } else {
         std::vector<float> beamScores;
 
         dimBatch = (int)batch->size();
 
+        // TODO: remove debugs
+        std::cerr << "starting beam sizes";
+        for(int j = 0; j < beams.size(); ++j) {
+          std::cerr << " " << beams[j].size();
+        }
+        std::cerr << "\n";
+
         for(size_t i = 0; i < localBeamSize; ++i) {
           for(size_t j = 0; j < beams.size(); ++j) { // loop over batch entries (active sentences)
             auto& beam = beams[j];
             if(i < beam.size()) {
               auto hyp = beam[i];
+              //std::cerr << "i=" << i << " j=" << j << " pushback: " << hyp->GetPrevStateIndex()
+                        //<< "," << hyp->GetWord() << "," << hyp->GetPathScore() << "\n";
               hypIndices.push_back((IndexType)hyp->GetPrevStateIndex()); // backpointer
               embIndices.push_back(hyp->GetWord());
               beamScores.push_back(hyp->GetPathScore());
@@ -245,6 +331,7 @@ public:
       if(dimBatch > 1 && localBeamSize > 1)
         pathScores = transpose(pathScores, {2, 1, 0, 3});
 
+      // forward step in computation graph - predict next word distribution
       if(first)
         graph->forward();
       else
@@ -263,12 +350,70 @@ public:
       std::vector<unsigned int> outKeys;
       std::vector<float> outPathScores;
 
-      std::vector<size_t> beamSizes(dimBatch, localBeamSize);
-      getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
-
       int dimTrgVoc = pathScores->shape()[-1];
+      // TODO: remove debugs
+      std::cerr << "starting beam sizes";
+      for(int j = 0; j < beams.size(); ++j) {
+        std::cerr << " " << beams[j].size();
+      }
+      std::cerr << "\n";
+
+      std::vector<data::XmlOptionCoveredList *> outXmls;
+
+      if (options_->get<bool>("xml-input")) {
+        xmlSearch(getNBestList,
+                  beams,
+                  localBeamSize,
+                  pathScores,
+                  outPathScores,
+                  outKeys,
+                  outXmls,
+                  first,
+                  targetVocab,
+                  batch);
+      } else {
+        std::vector<size_t> beamSizes(dimBatch, localBeamSize);
+        // TODO: refactorize and try to avoid using dummy arguments
+        std::vector<char> dummyMask;
+        size_t dummyTrgVocSize = 0;
+        getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first, dummyMask, dummyTrgVocSize);
+      }
+
+      // TODO: refactorize
+      std::cerr << "outCosts.size() = " << outPathScores.size()
+                << ", localBeamSize = " << localBeamSize << "\n";
+      for(size_t i=0; i<outPathScores.size(); i++) {
+        int beamNo = i / localBeamSize;
+        int hypInBeam = i % localBeamSize;
+        int embIdx = outKeys[i] % dimTrgVoc;
+        int hypIdx = (outKeys[i] / dimTrgVoc) % localBeamSize;
+        auto& beam = beams[beamNo];
+        if (hypInBeam >= beam.size()) { // do not report on filler hyps
+          continue;
+        }
+        if (hypIdx >= beam.size()) {
+          std::cerr << "ERR "
+                    << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost "
+                    << outPathScores[i] << "\t " << (*targetVocab)[embIdx] << " ... OUT OF RANGE "
+                    << beam.size() << "\n";
+        }
+        if (beam.size() == 0) continue;
+        if (outPathScores[i] < -9999) continue; // junk hypothesis extension
+        if (hypIdx >= beam.size()) continue;
+        auto hyp = beam[hypIdx];
+        std::cerr << "beam " << beamNo << " hyp " << hypIdx << ">" << hypInBeam << "\tcost "
+                  << outPathScores[i] << "\t " << (*targetVocab)[embIdx] << " ...";
+        std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+        while (hyp->GetWord() != 0) {
+           std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+           hyp = hyp->GetPrevHyp();
+        }
+        std::cerr << std::endl;
+      }
+
       beams = toHyps(outKeys,
                      outPathScores,
+                     outXmls,
                      dimTrgVoc,
                      beams,
                      states,
@@ -276,18 +421,41 @@ public:
                      first,
                      batch);
 
+      // TODO: remove debugs
+      for(int j = 0; j < beams.size(); j++) {
+        auto& beam = beams[j];
+        for(int i = 0; i < beam.size(); ++i) {
+          auto hyp = beam[i];
+          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetPathScore() << "\t";
+          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+          while (hyp->GetWord() != 0) {
+            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+            hyp = hyp->GetPrevHyp();
+          }
+          std::cerr << std::endl;
+        }
+      }
+
+      // remove hypothesis that hit end of sentence (</s>)
+      std::cerr << "pruning the beam\n";
       auto prunedBeams = pruneBeam(beams);
-      for(int i = 0; i < dimBatch; ++i) {
+      for(int i = 0; i < (int)beams.size(); ++i) {
         if(!beams[i].empty()) {
           final = final
                   || histories[i]->size()
                          >= options_->get<float>("max-length-factor")
                                 * batch->front()->batchWidth();
-          histories[i]->Add(
-              beams[i], trgEosId_, prunedBeams[i].empty() || final);
+          std::cerr << "histories[i]->Add(beams[i]\n";
+          histories[i]->Add(beams[i], trgEosId_, prunedBeams[i].empty() || final);
+          std::cerr << "histories[i]->Add(beams[i] OK\n";
         }
       }
       beams = prunedBeams;
+      std::cerr << "remaining beam sizes";
+      for(int j = 0; j < beams.size(); ++j) {
+        std::cerr << " " << beams[j].size();
+      }
+      std::cerr << "\n";
 
       // determine beam size for next sentence, as max over still-active sentences
       if(!first) {
@@ -299,9 +467,36 @@ public:
       }
       first = false;
 
+      // TODO: remove debugs
+      for(int j = 0; j < beams.size(); j++) {
+        auto& beam = beams[j];
+        for(int i = 0; i < beam.size(); ++i) {
+          auto hyp = beam[i];
+          std::cerr << "beam " << j << " hyp " << i << "\tcost " << hyp->GetPathScore() << "\t";
+          std::cerr << "[" << hyp->GetPrevStateIndex() << "] ";
+          while (hyp->GetWord() != 0) {
+            std::cerr << " " << (*targetVocab)[hyp->GetWord()];
+            hyp = hyp->GetPrevHyp();
+          }
+          std::cerr << std::endl;
+        }
+      }
+      std::cerr << "DONE WITH LOOP, localBeamSize now " << localBeamSize << "\n";
+
     } while(localBeamSize != 0 && !final); // end of main loop over output tokens
 
     return histories;
   }
+
+  void xmlSearch(GetNBestListFn getNBestList,
+                 Beams &beams,
+                 size_t localBeamSize,
+                 Expr &totalCosts,
+                 std::vector<float> &outCosts,
+                 std::vector<unsigned> &outKeys,
+                 std::vector<data::XmlOptionCoveredList *> &outXmls,
+                 bool first,
+                 Ptr<Vocab> targetVocab,
+                 Ptr<data::CorpusBatch> batch);
 };
 }  // namespace marian

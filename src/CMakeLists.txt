@@ -26,6 +26,7 @@ add_library(marian STATIC
   data/corpus_sqlite.cpp
   data/corpus_nbest.cpp
   data/text_input.cpp
+  data/xml.cpp
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/svd/svd.cpp
@@ -68,6 +69,7 @@ add_library(marian STATIC
   translator/nth_element.cpp
   translator/helpers.cpp
   translator/scorers.cpp
+  translator/xml_search.cpp
 
   training/graph_group_async.cpp
   training/graph_group_async_drop.cpp

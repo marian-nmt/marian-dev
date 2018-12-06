@@ -41,8 +41,7 @@ SentenceTuple Corpus::next() {
           eofsHit++;
           continue;
         }
-      }
-      else {
+      } else {
         bool gotLine = io::getline(*files_[i], line);
         if(!gotLine) {
           eofsHit++;
@@ -55,7 +54,17 @@ SentenceTuple Corpus::next() {
       } else if(i > 0 && i == weightFileIdx_) {
         addWeightsToSentenceTuple(line, tup);
       } else {
-        addWordsToSentenceTuple(line, i, tup);
+        // TODO: refactorize
+        if(options_->get<bool>("xml-input")) {
+          std::cerr << "process xml for " << line << std::endl;
+          std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
+          std::string stripped_line;
+          processXml(line, stripped_line, target_vocab_, tup);
+          addWordsToSentenceTuple(stripped_line, i, tup);
+        } else {
+          std::cerr << "no xml today\n";
+          addWordsToSentenceTuple(line, i, tup);
+        }
       }
     }
 

@@ -30,10 +30,12 @@ public:
       for(size_t j = 0; j < beam.size(); ++j)
         if(beam[j]->GetWord() == trgEosId || last) {
           float pathScore = (beam[j]->GetPathScore() - WordPenalty(history_.size()))
-                       / LengthPenalty(history_.size());
+                            / LengthPenalty(history_.size());
+          // TODO: refactorize and use 'xml-violation-penalty' instead of 10.0 (?)
+          pathScore += 10.0 * beam[j]->GetXmlStatus();
+          std::cerr << "Add " << history_.size() << " " << j << " " << pathScore
+                    << std::endl;
           topHyps_.push({history_.size(), j, pathScore});
-          // std::cerr << "Add " << history_.size() << " " << j << " " << pathScore
-          // << std::endl;
         }
     }
     history_.push_back(beam);

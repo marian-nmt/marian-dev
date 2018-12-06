@@ -3,18 +3,32 @@
 
 #include "common/definitions.h"
 #include "data/alignment.h"
+#include "data/xml.h"
 
 namespace marian {
 
 class Hypothesis {
 public:
-  Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {}
+  Hypothesis()
+      : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0), xmlOptionCovered_(NULL) {}
 
-  Hypothesis(const Ptr<Hypothesis> prevHyp,
-             Word word,
-             IndexType prevIndex,
-             float pathScore)
-      : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore) {}
+  Hypothesis(const Ptr<Hypothesis> prevHyp, Word word, IndexType prevIndex, float pathScore)
+      : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore) {
+    xmlOptionCovered_ = prevHyp->GetXmlOptionCovered();
+  }
+
+  // TODO: refactorize; what data::XmlOptions is for? do we need it?
+  Hypothesis(const data::XmlOptions* xmlOptions)
+      : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {
+    // create XmlOptionCovered objects
+    xmlOptionCovered_ = new data::XmlOptionCoveredList;
+    std::cerr << "Hypothesis xmlOptions " << xmlOptions << "\n";
+    for(size_t i = 0; i < xmlOptions->size(); i++) {
+      std::cerr << "Hypothesis xmlOption " << (*xmlOptions)[i] << "\n";
+      data::XmlOptionCovered covered((*xmlOptions)[i]);
+      xmlOptionCovered_->push_back(covered);
+    }
+  }
 
   const Ptr<Hypothesis> GetPrevHyp() const { return prevHyp_; }
 
@@ -26,6 +40,22 @@ public:
 
   std::vector<float>& GetScoreBreakdown() { return scoreBreakdown_; }
   std::vector<float>& GetAlignment() { return alignment_; }
+
+  std::vector<data::XmlOptionCovered>* GetXmlOptionCovered() { return xmlOptionCovered_; }
+
+  // how many Xml constraints already satisfied or started
+  size_t GetXmlStatus() {
+    if(xmlOptionCovered_ == NULL) {
+      return 0;
+    }
+    size_t status=0;
+    for(data::XmlOptionCovered &covered : *xmlOptionCovered_) {
+      if(covered.GetCovered() || covered.GetStarted()) {
+        status++;
+      }
+    }
+    return status;
+  }
 
   void SetAlignment(const std::vector<float>& align) { alignment_ = align; };
 
@@ -53,6 +83,10 @@ public:
       return align;
   }
 
+  void SetXml(data::XmlOptionCoveredList* xmlOptionCovered) {
+    xmlOptionCovered_ = xmlOptionCovered;
+  }
+
 private:
   const Ptr<Hypothesis> prevHyp_;
   const IndexType prevIndex_;
@@ -61,6 +95,9 @@ private:
 
   std::vector<float> scoreBreakdown_;
   std::vector<float> alignment_;
+
+  // TODO: refactorize and do not use bare pointers
+  data::XmlOptionCoveredList *xmlOptionCovered_;
 };
 
 typedef std::vector<Ptr<Hypothesis>> Beam;                // Beam = vector of hypotheses

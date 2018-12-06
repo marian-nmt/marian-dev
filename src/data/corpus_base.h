@@ -10,6 +10,7 @@
 #include "data/dataset.h"
 #include "data/rng_engine.h"
 #include "data/vocab.h"
+#include "data/xml.h"
 
 namespace marian {
 namespace data {
@@ -28,6 +29,7 @@ private:
   std::vector<Words> tuple_;    // [stream index][step index]
   std::vector<float> weights_;  // [stream index]
   WordAlignment alignment_;
+  XmlOptions *xmlOptions_;
 
 public:
   typedef Words value_type;
@@ -35,7 +37,7 @@ public:
   /**
    * @brief Creates an empty tuple with the given Id.
    */
-  SentenceTuple(size_t id) : id_(id) {}
+  SentenceTuple(size_t id) : id_(id), xmlOptions_(NULL) {}
 
   ~SentenceTuple() { tuple_.clear(); }
 
@@ -103,6 +105,13 @@ public:
 
   const WordAlignment& getAlignment() const { return alignment_; }
   void setAlignment(const WordAlignment& alignment) { alignment_ = alignment; }
+
+  /**
+   * @brief  Get XML Options for this sentence
+   */
+  const XmlOptions* getXmlOptions() const { return xmlOptions_; }
+  bool hasXmlOptions() const { return xmlOptions_ != NULL && xmlOptions_->size() > 0; }
+  void setXmlOptions( XmlOptions *opts ) { xmlOptions_ = opts; }
 };
 
 /**
@@ -512,6 +521,7 @@ public:
 protected:
   std::vector<UPtr<io::InputFileStream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
+  Ptr<Vocab> target_vocab_;
 
   size_t pos_{0};
 
@@ -550,6 +560,19 @@ protected:
    */
   void addWeightsToSentenceTuple(const std::string& line,
                                  SentenceTuple& tup) const;
+
+  /**
+   * @brief Helper function parsing a line with XML tags, stripping them out
+   * and adding XML Options to the sentence tuple
+  void processXml(const std::string& line,
+                  std::string& stripped_line,
+                  SentenceTuple& tup) const;
+
+  std::vector<std::string> tokenizeXml(const std::string& line) const;
+  std::string TrimXml(const std::string& str) const;
+  bool isXmlTag(const std::string& tag) const;
+  std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName) const;
+   */
 
   void addAlignmentsToBatch(Ptr<CorpusBatch> batch,
                             const std::vector<Sample>& batchVector);

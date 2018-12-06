@@ -61,9 +61,25 @@ SentenceTuple CorpusNBest::next() {
                    "Too few lines in input {}",
                    i);
         }
-        addWordsToSentenceTuple(lastLines_[i], i, tup);
+        if(options_->get<bool>("xml-input")) {
+          std::cerr << "process xml for " << lastLines_[i] << std::endl;
+          std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
+          std::string stripped_line;
+          processXml(lastLines_[i], stripped_line, target_vocab_, tup);
+          addWordsToSentenceTuple(stripped_line, i, tup);
+        } else {
+          addWordsToSentenceTuple(lastLines_[i], i, tup);
+        }
       }
-      addWordsToSentenceTuple(curr_text, last, tup);
+      if(options_->get<bool>("xml-input")) {
+        std::cerr << "process xml for " << curr_text << std::endl;
+        std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
+        std::string stripped_line;
+        processXml(curr_text, stripped_line, target_vocab_, tup);
+        addWordsToSentenceTuple(stripped_line, last, tup);
+      } else {
+        addWordsToSentenceTuple(curr_text, last, tup);
+      }
       lastNum_ = curr_num;
     }
 

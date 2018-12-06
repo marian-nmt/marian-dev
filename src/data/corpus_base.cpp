@@ -101,7 +101,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         std::set<std::string> paths; // contains all paths that are used for training the vocabulary
         size_t size;                 // contains the maximum vocabulary size
       };
-      
+
       // Group training files based on vocabulary path. If the same
       // vocab path corresponds to different training files, this means
       // that a single vocab should combine tokens from all files.
@@ -120,7 +120,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         auto pathsAndSize = groupVocab[vocabPaths[i]];
         std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
         int vocSize = vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
-        
+
         // TODO: this is not nice as it modifies the option object and needs to expose the changes
         // outside the corpus as models need to know about the vocabulary size; extract the vocab
         // creation functionality from the class.
@@ -132,8 +132,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
   }
 
   if(translate) {
-    ABORT_IF(vocabPaths.empty(),
-             "Translating, but vocabularies are not given!");
+    ABORT_IF(vocabPaths.empty(), "Translating, but vocabularies are not given!");
 
     if(maxVocabs.size() < vocabPaths.size())
       maxVocabs.resize(paths_.size(), 0);
@@ -144,6 +143,12 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       options_->getYaml()["dim-vocabs"][i] = vocSize;
 
       vocabs_.emplace_back(vocab);
+    }
+    if(options_->get<bool>("xml-input")) {
+      size_t id = vocabPaths.size() - 1;
+      target_vocab_ = New<Vocab>(options_, id);
+      int vocSize = target_vocab_->load(vocabPaths[id], maxVocabs[id]);
+      LOG(info, "[data] Setting vocabulary size for output {}", vocSize);
     }
   }
 
@@ -190,6 +195,8 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
 void CorpusBase::addWordsToSentenceTuple(const std::string& line,
                                          size_t i,
                                          SentenceTuple& tup) const {
+  // TODO: refactorize and remove debug
+  std::cerr << "CorpusBase::addWordsToSentenceTuple\n";
 
   // This turns a string in to a sequence of numerical word ids. Depending
   // on the vocabulary type, this can be non-trivial, e.g. when SentencePiece

@@ -208,7 +208,7 @@ public:
   FastOpt(const YAML::Node& node) {
     switch(node.Type()) {
       case YAML::NodeType::Scalar:
-        makeScalar(node.as<std::string>());
+        makeScalar(node);
         break;
       case YAML::NodeType::Sequence: {
         std::vector<YAML::Node> nodesVec;
@@ -238,10 +238,8 @@ public:
   template <typename T>
   struct Getter {
     static T as(const FastOpt& node) {
-      std::cerr << "bubu " << typeid(T()).name() << std::endl;
       ABORT_IF(node.elements_ != 0, "Not a leaf node");
-      T v = node.value_->as<T>();
-      return v;
+      return node.value_->as<T>();;
     }
   };
 

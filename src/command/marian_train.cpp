@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
   using namespace marian;
 
   const auto options = parseOptions(argc, argv);
-  std::cerr << options->get<bool>("multi-node") << std::endl;
+  std::cerr << options->get<std::vector<std::string>>("train-sets")[0] << std::endl;
 
   exit(0);
 

@@ -92,10 +92,26 @@ public:
     fastOptions_.reset(new FastOpt(options_));
   }
 
+  template <class T>
+  void print(const std::vector<T>& vals) const {
+    std::cerr << vals[0] << " " << vals.size() << std::endl;
+  }
+
+  template <class T>
+  void print(T val) const {
+    std::cerr << val << std::endl;
+  }
+
   template <typename T>
   T get(const std::string& key) const {
     ABORT_IF(!fastOptions_->has(key.c_str()), "Required option '{}' has not been set", key);
-    return (*fastOptions_)[key.c_str()].as<T>();
+    T temp = options_[key].as<T>();
+    print(temp);
+
+    T temp2 = (*fastOptions_)[key.c_str()].as<T>();
+    print(temp2);
+    
+    return temp;
   }
 
   template <typename T>

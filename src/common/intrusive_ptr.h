@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common/logging.h"
+
 #include <cassert>
 #include <iostream>
 
@@ -101,12 +103,12 @@ public:
   }
 
   T& operator*() const {
-    assert(ptr_ != 0);
+    ABORT_IF(ptr_ == 0, "Pointer not defined");
     return *ptr_;
   }
 
   T* operator->() const {
-    assert(ptr_ != 0);
+    ABORT_IF(ptr_ == 0, "Pointer not defined");
     return ptr_;
   }
 

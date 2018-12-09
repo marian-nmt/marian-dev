@@ -63,6 +63,11 @@ void Config::initialize(int argc, char** argv, cli::mode mode, bool validate) {
     seed = get<size_t>("seed");
   }
 
+  #ifdef CUDA_FOUND
+  // set if Tensor Cores should be used
+  useTensorCores = !get<bool>("no-tensor-cores");
+  #endif
+
   // load model parameters
   if(mode != cli::mode::translation) {
     auto model = get<std::string>("model");

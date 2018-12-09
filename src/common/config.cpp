@@ -66,6 +66,8 @@ void Config::initialize(int argc, char** argv, cli::mode mode, bool validate) {
   #ifdef CUDA_FOUND
   // set if Tensor Cores should be used
   useTensorCores = !get<bool>("no-tensor-cores");
+  if(!useTensorCores)
+    LOG(info, "[config] Disabled Tensor Cores");
   #endif
 
   // load model parameters

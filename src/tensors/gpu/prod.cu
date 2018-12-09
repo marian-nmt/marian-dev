@@ -41,11 +41,12 @@ void Prod(marian::Tensor C,
   cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
 
-  auto cublasHandle = std::static_pointer_cast<gpu::Backend>(C->getBackend())
-                          ->getCublasHandle();
+  auto backend = std::static_pointer_cast<gpu::Backend>(C->getBackend());
+  auto cublasHandle = backend->getCublasHandle();
 
 #if CUDA_VERSION >= 9000
-  cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
+  if(backend->useTensorCores())
+    cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
 
   cublasSgemm(cublasHandle,
@@ -63,7 +64,8 @@ void Prod(marian::Tensor C,
               C->data(),
               ldc);
 #if CUDA_VERSION >= 9000
-  cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
+  if(backend->useTensorCores())
+    cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
 #endif
 }
 
@@ -78,32 +80,6 @@ __global__ void gAddBias(float* out,
       out[index] += bias[index2];
     }
   }
-}
-
-void AddBias(marian::Tensor C, const marian::Tensor bias) {
-  cudaSetDevice(C->getDeviceId().no);
-
-  int length = C->shape().elements();
-  int cols = bias->shape().elements();
-
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-
-  gAddBias<<<blocks, threads>>>(C->data(), bias->data(), length, cols);
-
-  cudaStreamSynchronize(0);
-}
-
-void ProdWithBias(marian::Tensor C,
-                  const marian::Tensor& A,
-                  const marian::Tensor& B,
-                  const marian::Tensor& bias,
-                  bool transA,
-                  bool transB,
-                  float beta,
-                  float scalar) {
-  marian::gpu::Prod(C, A, B, transA, transB, beta, scalar);
-  marian::gpu::AddBias(C, bias);
 }
 
 void ProdBatched(marian::Tensor C,
@@ -140,8 +116,6 @@ void ProdBatched(marian::Tensor C,
   cublasOperation_t opA = transA ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t opB = transB ? CUBLAS_OP_T : CUBLAS_OP_N;
 
-  auto cublasHandle = std::static_pointer_cast<gpu::Backend>(C->getBackend())
-                          ->getCublasHandle();
 
   int strideA = batchA == 1 ? 0 : m * k;
   int strideB = batchB == 1 ? 0 : n * k;
@@ -169,8 +143,12 @@ void ProdBatched(marian::Tensor C,
   auto mp_cptr = allocator->alloc<float*>(cptr.size());
   CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<float*>());
 
+  auto backend = std::static_pointer_cast<gpu::Backend>(C->getBackend());
+  auto cublasHandle = backend->getCublasHandle();
+
 #if CUDA_VERSION >= 9000
-  cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
+  if(backend->useTensorCores())
+    cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
   cublasSgemmBatched(cublasHandle,
                      opB,
@@ -188,7 +166,8 @@ void ProdBatched(marian::Tensor C,
                      ldc,
                      batchC);
 #if CUDA_VERSION >= 9000
-  cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
+  if(backend->useTensorCores())
+    cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
 #endif
 
   allocator->free(mp_aptr);

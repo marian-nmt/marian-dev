@@ -73,8 +73,12 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
      "Seed for all random number generators. 0 means initialize randomly");
   cli.add<float>("--clip-gemm",
      "If not 0 clip GEMM input values to +/- arg");
+#ifdef CUDA_FOUND
+  cli.add<bool>("--no-tensor-cores",
+     "Do not use Tensor Cores (slower on Volta, but numerically more stable)");
+#endif
   cli.add<bool>("--interpolate-env-vars",
-     "allow the use of environment variables in paths, of the form ${VAR_NAME}");
+     "Allow the use of environment variables in paths, of the form ${VAR_NAME}");
   cli.add<bool>("--relative-paths",
      "All paths are relative to the config file location");
   cli.add_nondefault<std::string>("--dump-config",

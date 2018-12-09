@@ -36,6 +36,10 @@ class Config {
 public:
   static size_t seed;
 
+#ifdef CUDA_FOUND
+  static bool useTensorCores;
+#endif
+
   typedef YAML::Node YamlNode;
 
   // TODO: remove mode from this class

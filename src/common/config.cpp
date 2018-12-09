@@ -14,6 +14,14 @@ namespace marian {
 // @TODO: keep seed in a single place, now it is kept here and in Config/Options
 size_t Config::seed = (size_t)time(0);
 
+#ifdef CUDA_FOUND
+// On Volta architectures and newer this will allow to disable Tensor Cores. It is
+// enabled by default as it seems to be universally faster, but we have seen issues
+// with overflow/underflow causing NANs. This needs to be further investigated.
+// Enabled Tensor Cores falls back to normal computation if they are not available.
+bool Config::useTensorCores = true;
+#endif
+
 Config::Config(int argc,
                char** argv,
                cli::mode mode /*= cli::mode::training*/,

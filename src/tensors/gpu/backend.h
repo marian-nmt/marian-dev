@@ -29,8 +29,18 @@ public:
 
   cublasHandle_t getCublasHandle() { return cublasHandle_; }
 
+#if CUDA_VERSION >= 9000
+  bool useTensorCores() {
+    return useTensorCores_;
+  }
+#endif
+
 private:
   cublasHandle_t cublasHandle_;
+
+#if CUDA_VERSION >= 9000
+  bool useTensorCores_{Config::useTensorCores};
+#endif
 
   void setHandles() {
     cublasHandle_ = create_handle();

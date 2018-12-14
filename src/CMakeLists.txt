@@ -28,7 +28,6 @@ add_library(marian STATIC
   data/text_input.cpp
 
   3rd_party/cnpy/cnpy.cpp
-  3rd_party/svd/svd.cpp
   3rd_party/ExceptionWithCallStack.cpp
 
   tensors/backend.cpp
@@ -59,6 +58,7 @@ add_library(marian STATIC
 
   models/model_factory.cpp
   models/encoder_decoder.cpp
+  models/transformer_stub.cpp
 
   rescorer/score_collector.cpp
 

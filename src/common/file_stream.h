@@ -3,10 +3,17 @@
 #include "common/filesystem.h"
 #include "common/logging.h"
 #include "common/definitions.h"
-#include "3rd_party/zstr/zstr.hpp"
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-override"
+#endif
+#include "3rd_party/zstr/zstr.hpp"
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 #include <iostream>
 #include <memory>
@@ -22,7 +29,7 @@ namespace io {
 
 class TemporaryFile {
 private:
-  int fd_;
+  int fd_{-1};
   bool unlink_;
   std::string name_;
 
@@ -129,9 +136,10 @@ class InputFileStream {
 public:
   InputFileStream(const std::string& file)
   : file_(file) {
-    ABORT_IF(!marian::filesystem::exists(file_), "File '{}' could not be opened", file);
+    ABORT_IF(!marian::filesystem::exists(file_), "File '{}' does not exist", file);
 
     if(file_.extension() == marian::filesystem::Path(".gz"))
+      // @TODO: consider make_unique for next refactoring
       istream_.reset(new zstr::ifstream(file_.string()));
     else
       istream_.reset(new std::ifstream(file_.string()));
@@ -171,8 +179,8 @@ public:
 
   void setbufsize(size_t size) const {
     istream_->rdbuf()->pubsetbuf(0, 0);
-    readBuf_.reset(new char[size]);
-    istream_->rdbuf()->pubsetbuf(readBuf_.get(), 0);
+    readBuf_.resize(size);
+    istream_->rdbuf()->pubsetbuf(readBuf_.data(), readBuf_.size());
   }
 
   template <typename T>
@@ -196,9 +204,10 @@ private:
   std::unique_ptr<std::istream> istream_;
 
   boost::iostreams::file_descriptor_source fds_;
+  mutable std::vector<char> readBuf_; // for setbuf()
   std::unique_ptr<boost::iostreams::stream_buffer<boost::iostreams::file_descriptor_source>> fdsBuffer_;
 
-  mutable UPtr<char[]> readBuf_; // for setbuf()
+
 };
 
 // wrapper around std::getline() that handles Windows input files with extra CR
@@ -290,6 +299,7 @@ public:
 private:
   marian::filesystem::Path file_;
   std::unique_ptr<std::ostream> ostream_;
+
 
   boost::iostreams::file_descriptor_sink fds_;
   std::unique_ptr<boost::iostreams::stream_buffer<boost::iostreams::file_descriptor_sink>> fdsBuffer_;

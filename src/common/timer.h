@@ -1,6 +1,14 @@
 #pragma once
 
+#ifdef _GNUC_
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-override"
+#endif
 #include <boost/timer/timer.hpp>
+#ifdef _GNUC_
+#pragma GCC diagnostic pop
+#endif
+
 #ifdef _MSC_VER
 // (needed on Windows only to resolve a link error, but causes a warning on Linux)
 #include <boost/chrono.hpp>
@@ -11,6 +19,14 @@
 
 namespace marian {
 namespace timer {
+
+// Helper function to get the current date and time
+static inline std::string currentDate() {
+  std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  char date[100] = {0};
+  std::strftime(date, sizeof(date), "%F %X %z", std::localtime(&now));
+  return date;
+}
 
 // Timer measures elapsed time.
 // This is a wrapper around std::chrono providing wall time only

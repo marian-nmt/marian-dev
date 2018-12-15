@@ -15,6 +15,40 @@
 #include <memory>
 #include <sstream>
 
+#define DISPATCH_BY_TYPE1(type, func, arg1) \
+do { \
+  switch(type) { \
+    case Type::int8:    return func<int8_t  >(arg1); \
+    case Type::int16:   return func<int16_t >(arg1); \
+    case Type::int32:   return func<int32_t >(arg1); \
+    case Type::int64:   return func<int64_t >(arg1); \
+    case Type::uint8:   return func<uint8_t >(arg1); \
+    case Type::uint16:  return func<uint16_t>(arg1); \
+    case Type::uint32:  return func<uint32_t>(arg1); \
+    case Type::uint64:  return func<uint64_t>(arg1); \
+    case Type::float32: return func<float   >(arg1); \
+    case Type::float64: return func<double  >(arg1); \
+    default: ABORT("Unknown type {}", type_); \
+  } \
+} while(0)
+
+#define DISPATCH_BY_TYPE2(type, func, arg1, arg2) \
+do { \
+  switch(type) { \
+    case Type::int8:    return func<int8_t  >(arg1, arg2); \
+    case Type::int16:   return func<int16_t >(arg1, arg2); \
+    case Type::int32:   return func<int32_t >(arg1, arg2); \
+    case Type::int64:   return func<int64_t >(arg1, arg2); \
+    case Type::uint8:   return func<uint8_t >(arg1, arg2); \
+    case Type::uint16:  return func<uint16_t>(arg1, arg2); \
+    case Type::uint32:  return func<uint32_t>(arg1, arg2); \
+    case Type::uint64:  return func<uint64_t>(arg1, arg2); \
+    case Type::float32: return func<float   >(arg1, arg2); \
+    case Type::float64: return func<double  >(arg1, arg2); \
+    default: ABORT("Unknown type {}", type_); \
+  } \
+} while(0)
+
 namespace marian {
 
 class TensorBase {
@@ -158,23 +192,7 @@ public:
   template <typename T>
   void set(T value) {
     if(!matchType<T>(type_)) {
-      switch(type_) {
-        case Type::float32: set<float   >((float   )value); break;
-        case Type::float64: set<double  >((double  )value); break;
-        case Type::int8:    set<int8_t  >((int8_t  )value); break;
-        case Type::int16:   set<int16_t >((int16_t )value); break;
-        case Type::int32:   set<int32_t >((int32_t )value); break;
-        case Type::int64:   set<int64_t >((int64_t )value); break;
-        case Type::uint8:   set<uint8_t >((uint8_t )value); break;
-        case Type::uint16:  set<uint16_t>((uint16_t)value); break;
-        case Type::uint32:  set<uint32_t>((uint32_t)value); break;
-        case Type::uint64:  set<uint64_t>((uint64_t)value); break;
-        default:
-          ABORT(
-              "Requested type ({}) cannot be converted to underlying type ({})",
-              request<float>(),
-              type_);
-      }
+      DISPATCH_BY_TYPE1(type_, set, value);
     } else {
       if(backend_->getDeviceId().type == DeviceType::cpu) {
         std::fill(data<T>(), data<T>() + size(), value);
@@ -225,22 +243,7 @@ public:
   }
 
   void copyFrom(Tensor in) {
-     switch(type_) {
-      case Type::int8:    copyFrom<int8_t>(in);  break;
-      case Type::int16:   copyFrom<int16_t>(in); break;
-      case Type::int32:   copyFrom<int32_t>(in); break;
-      case Type::int64:   copyFrom<int64_t>(in); break;
-
-      case Type::uint8:   copyFrom<uint8_t>(in);  break;
-      case Type::uint16:  copyFrom<uint16_t>(in); break;
-      case Type::uint32:  copyFrom<uint32_t>(in); break;
-      case Type::uint64:  copyFrom<uint64_t>(in); break;
-
-      case Type::float32: copyFrom<float>(in);  break;
-      case Type::float64: copyFrom<double>(in); break;
-
-      default: ABORT("Unknown type {}", type_);
-    }
+    DISPATCH_BY_TYPE1(type_, copyFrom, in);
   }
 
   // Swaps the contents of the current tensor with the argument tensor
@@ -275,24 +278,9 @@ public:
   }
 
   void swap(Tensor swapee) {
-     switch(type_) {
-      case Type::int8:    swap<int8_t>(swapee);  break;
-      case Type::int16:   swap<int16_t>(swapee); break;
-      case Type::int32:   swap<int32_t>(swapee); break;
-      case Type::int64:   swap<int64_t>(swapee); break;
-
-      case Type::uint8:   swap<uint8_t>(swapee);  break;
-      case Type::uint16:  swap<uint16_t>(swapee); break;
-      case Type::uint32:  swap<uint32_t>(swapee); break;
-      case Type::uint64:  swap<uint64_t>(swapee); break;
-
-      case Type::float32: swap<float>(swapee);  break;
-      case Type::float64: swap<double>(swapee); break;
-
-      default: ABORT("Unknown type {}", type_);
-    }
+    DISPATCH_BY_TYPE1(type_, swap, swapee);
   }
-  
+
   template <typename T>
   std::string debug(int precision = 8, int dispCols = 5) {
     matchOrAbort<T>(type_);
@@ -312,7 +300,7 @@ public:
     get(values);
 
     int colWidth  = precision + 4;
-    
+
     if(isFloat(type_))
       strm << std::fixed << std::setprecision(precision) << std::setfill(' ');
     else
@@ -381,22 +369,7 @@ public:
   }
 
   std::string debug(int precision = 8, int dispCols = 5) {
-    switch(type_) {
-      case Type::int8:    return debug<int8_t  >(precision, dispCols);
-      case Type::int16:   return debug<int16_t >(precision, dispCols);
-      case Type::int32:   return debug<int32_t >(precision, dispCols);
-      case Type::int64:   return debug<int64_t >(precision, dispCols);
-
-      case Type::uint8:   return debug<uint8_t >(precision, dispCols);
-      case Type::uint16:  return debug<uint16_t>(precision, dispCols);
-      case Type::uint32:  return debug<uint32_t>(precision, dispCols);
-      case Type::uint64:  return debug<uint64_t>(precision, dispCols);
-
-      case Type::float32: return debug<float   >(precision, dispCols);
-      case Type::float64: return debug<double  >(precision, dispCols);
-
-      default: ABORT("Unknown type {}", type_);
-    }
+    DISPATCH_BY_TYPE2(type_, debug, precision, dispCols);
   }
 };
 

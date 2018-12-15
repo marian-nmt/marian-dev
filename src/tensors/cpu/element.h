@@ -38,8 +38,9 @@ struct E {
       // bstride(i) is look-up value, either equal to stride if the
       // corresponding dim is larger 1 or 0 if the dim is 1.
       for(size_t k = 0; k < numArg; ++k) {
-        int stride = tensors[k].shape().stride(I);
-        indices[k] += stride == 1 ? 0 : stride;
+        //int stride = tensors[k].shape().stride(I);
+        //indices[k] += stride == 1 ? 0 : stride;
+        indices[k] += tensors[k].shape().bstride(I);
       }
     }
   }
@@ -81,6 +82,11 @@ void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors
   std::vector<marian::Tensor> ts({tensors...});
   bool div8 = true;
   bool div4 = true;
+
+  if(out->shape()[-1] % 8 != 0)
+    div8 = false;
+  if(out->shape()[-1] % 4 != 0)
+    div4 = false;
   for(auto t : ts) {
     if(t->shape()[-1] % 8 != 0)
       div8 = false;

@@ -35,16 +35,17 @@ do { \
 #define DISPATCH_BY_TYPE2(type, func, arg1, arg2) \
 do { \
   switch(type) { \
-    case Type::int8:    return func<int8_t  >(arg1, arg2); \
-    case Type::int16:   return func<int16_t >(arg1, arg2); \
-    case Type::int32:   return func<int32_t >(arg1, arg2); \
-    case Type::int64:   return func<int64_t >(arg1, arg2); \
-    case Type::uint8:   return func<uint8_t >(arg1, arg2); \
-    case Type::uint16:  return func<uint16_t>(arg1, arg2); \
-    case Type::uint32:  return func<uint32_t>(arg1, arg2); \
-    case Type::uint64:  return func<uint64_t>(arg1, arg2); \
-    case Type::float32: return func<float   >(arg1, arg2); \
-    case Type::float64: return func<double  >(arg1, arg2); \
+    case Type::int8    : return func<int8_t  >(arg1, arg2); \
+    case Type::int16   : return func<int16_t >(arg1, arg2); \
+    case Type::int32   : return func<int32_t >(arg1, arg2); \
+    case Type::int64   : return func<int64_t >(arg1, arg2); \
+    case Type::uint8   : return func<uint8_t >(arg1, arg2); \
+    case Type::uint16  : return func<uint16_t>(arg1, arg2); \
+    case Type::uint32  : return func<uint32_t>(arg1, arg2); \
+    case Type::uint64  : return func<uint64_t>(arg1, arg2); \
+    case Type::float32 : return func<float   >(arg1, arg2); \
+    case Type::float64 : return func<double  >(arg1, arg2); \
+    case Type::fp16    : return func<float   >(arg1, arg2); \
     default: ABORT("Unknown type {}", type_); \
   } \
 } while(0)
@@ -155,19 +156,7 @@ public:
   }
 
   template <typename T>
-  void get(std::vector<T>& v) {
-    matchOrAbort<T>(type_);
-
-    v.resize(size());
-    if(backend_->getDeviceId().type == DeviceType::cpu) {
-      std::copy(data<T>(), data<T>() + size(), v.data());
-    }
-#ifdef CUDA_FOUND
-    else {
-      gpu::copy(backend_, data<T>(), data<T>() + size(), v.data());
-    }
-#endif
-  }
+  void get(std::vector<T>& v);
 
   template <typename T>
   void set(const T* begin, const T* end) {
@@ -283,7 +272,13 @@ public:
 
   template <typename T>
   std::string debug(int precision = 8, int dispCols = 5) {
-    matchOrAbort<T>(type_);
+    //matchOrAbort<T>(type_);
+
+    // values
+    size_t totSize = shape_.elements();
+    std::vector<T> values(totSize);
+
+    get(values);
 
     std::stringstream strm;
     assert(shape_.size());
@@ -293,11 +288,6 @@ public:
     strm << " ptr=" << (size_t)memory_->data();
     strm << " bytes=" << memory_->size();
     strm << std::endl;
-
-    // values
-    size_t totSize = shape_.elements();
-    std::vector<T> values(totSize);
-    get(values);
 
     int colWidth  = precision + 4;
 
@@ -375,3 +365,16 @@ public:
 
 typedef TensorBase::PtrType Tensor;
 }  // namespace marian
+
+#include "tensors/get_set.h"
+
+namespace marian {
+
+  template <typename T>
+  void TensorBase::get(std::vector<T>& v) {
+    v.resize(size());
+    auto locTensor = TensorBase::New(memory_, shape_, type_, backend_);
+    Get(locTensor, v.data(), v.data() + v.size());
+  }
+
+}

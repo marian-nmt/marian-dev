@@ -3,7 +3,13 @@
 #include <iostream>
 #include <string>
 
+#ifndef __CUDA_ARCH__
 #include <immintrin.h>
+#endif
+
+#ifdef __CUDA_ARCH__
+#include <cuda_fp16.h>
+#endif
 
 namespace marian {
 
@@ -73,16 +79,17 @@ constexpr inline size_t operator+(TypeClass typeClass, size_t val) {
 }
 
 enum class Type : size_t {
-  int8 = TypeClass::signed_type + 1u,
+  int8  = TypeClass::signed_type + 1u,
   int16 = TypeClass::signed_type + 2u,
   int32 = TypeClass::signed_type + 4u,
   int64 = TypeClass::signed_type + 8u,
 
-  uint8 = TypeClass::unsigned_type + 1u,
+  uint8  = TypeClass::unsigned_type + 1u,
   uint16 = TypeClass::unsigned_type + 2u,
   uint32 = TypeClass::unsigned_type + 4u,
   uint64 = TypeClass::unsigned_type + 8u,
 
+  fp16    = TypeClass::float_type + 2u,
   float32 = TypeClass::float_type + 4u,
   float64 = TypeClass::float_type + 8u
 };
@@ -125,24 +132,29 @@ template <> inline bool matchType<uint16_t>(Type type) { return type == Type::ui
 template <> inline bool matchType<uint32_t>(Type type) { return type == Type::uint32; }
 template <> inline bool matchType<uint64_t>(Type type) { return type == Type::uint64; }
 
+#ifdef __CUDA_ARCH__
+template <> inline bool matchType<half>(Type type)  { return type == Type::fp16; }
+#endif
+
 template <> inline bool matchType<float>(Type type)  { return type == Type::float32; }
 template <> inline bool matchType<double>(Type type) { return type == Type::float64; }
 // clang-format on
 
 static inline std::ostream& operator<<(std::ostream& out, Type type) {
   switch(type) {
-    case Type::int8: out << "int8"; break;
-    case Type::int16: out << "int16"; break;
-    case Type::int32: out << "int32"; break;
-    case Type::int64: out << "int64"; break;
+    case Type::int8    : out << "int8"; break;
+    case Type::int16   : out << "int16"; break;
+    case Type::int32   : out << "int32"; break;
+    case Type::int64   : out << "int64"; break;
 
-    case Type::uint8: out << "uint8"; break;
-    case Type::uint16: out << "uint16"; break;
-    case Type::uint32: out << "uint32"; break;
-    case Type::uint64: out << "uint64"; break;
+    case Type::uint8   : out << "uint8"; break;
+    case Type::uint16  : out << "uint16"; break;
+    case Type::uint32  : out << "uint32"; break;
+    case Type::uint64  : out << "uint64"; break;
 
-    case Type::float32: out << "float32"; break;
-    case Type::float64: out << "float64"; break;
+    case Type::fp16    : out << "fp16"; break;
+    case Type::float32 : out << "float32"; break;
+    case Type::float64 : out << "float64"; break;
   }
   return out;
 }
@@ -160,6 +172,10 @@ template <> inline std::string request<uint8_t>()  { return "uint8"; }
 template <> inline std::string request<uint16_t>() { return "uint16"; }
 template <> inline std::string request<uint32_t>() { return "uint32"; }
 template <> inline std::string request<uint64_t>() { return "uint64"; }
+
+#ifdef __CUDA_ARCH__
+template <> inline std::string request<half>()  { return "fp16"; }
+#endif
 
 template <> inline std::string request<float>()  { return "float32"; }
 template <> inline std::string request<double>() { return "float64"; }

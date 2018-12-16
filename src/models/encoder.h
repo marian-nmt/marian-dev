@@ -24,7 +24,7 @@ protected:
     auto chosenEmbeddings = rows(srcEmbeddings, subBatch->data());
     auto batchEmbeddings = reshape(chosenEmbeddings, { dimWords, dimBatch, dimEmb });
     auto batchMask = graph->constant({ dimWords, dimBatch, 1 },
-                                     inits::from_vector(subBatch->mask()));
+                                     inits::fromVector(subBatch->mask()));
 
     return std::make_tuple(batchEmbeddings, batchMask);
   }
@@ -58,22 +58,22 @@ protected:
     auto qt = dot(queryEmbeddings, ulrTransform, false, false);  //A: transform embeddings based on similarity A :  dimUlrEmb *dimUlrEmb
     auto sqrtDim=std::sqrt((float)queryEmbeddings->shape()[-1]);
     qt = qt/sqrtDim;  // normalize accordin to embed size to avoid dot prodcut growing large in magintude with larger embeds sizes
-    auto z = dot(qt, keyEmbed, false, true);      // query-key similarity 
+    auto z = dot(qt, keyEmbed, false, true);      // query-key similarity
     float dropProb = this->options_->get<float>("ulr-dropout", 0.0f);  // default no dropout
     z = dropout(z, dropProb);
     float tau = this->options_->get<float>("ulr-softmax-temperature", 1.0f);  // default no temperature
     // temperature in softmax is to control randomness of predictions
     // high temperature Softmax outputs are more close to each other
-    // low temperatures the softmax become more similar to  "hardmax" 
+    // low temperatures the softmax become more similar to  "hardmax"
     auto weights = softmax(z / tau);  // assume default  is dim=-1, what about temprature? - scaler ??
-    auto chosenEmbeddings = dot(weights, uniEmbed);  // AVERAGE 
+    auto chosenEmbeddings = dot(weights, uniEmbed);  // AVERAGE
     auto chosenEmbeddings_mix = srcEmbeddings + alpha * chosenEmbeddings;  // this should be elementwise  broadcast
     auto batchEmbeddings = reshape(chosenEmbeddings_mix, { dimWords, dimBatch, dimEmb });
     auto batchMask = graph->constant({ dimWords, dimBatch, 1 },
-                                     inits::from_vector(subBatch->mask()));
+                                     inits::fromVector(subBatch->mask()));
     return std::make_tuple(batchEmbeddings, batchMask);
   }
-public: 
+public:
   EncoderBase(Ptr<Options> options)
       : options_(options),
         prefix_(options->get<std::string>("prefix", "encoder")),

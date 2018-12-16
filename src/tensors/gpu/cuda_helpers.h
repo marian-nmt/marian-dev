@@ -1,6 +1,7 @@
 #pragma once
 #include "common/logging.h"
 #include "cuda_runtime.h"
+#include "cuda_fp16.h"
 
 // fixes a missing constant in CUDA device code
 #define CUDA_FLT_MAX 1.70141e+38; // note: 'static __constant__' causes a warning on gcc; non-static fails CUDA, so #define instead

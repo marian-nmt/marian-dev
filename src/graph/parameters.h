@@ -22,7 +22,7 @@ protected:
   size_t totalCapacity(Ptr<TensorAllocator> alloc) {
     size_t sum = 0;
     for(auto p : params_) {
-      sum += alloc->capacity(p->shape(), Type::float32);
+      sum += alloc->capacity(p->shape(), p->value_type());
     }
     return sum;
   }
@@ -61,7 +61,7 @@ public:
       vals_->reserveExact(totalCapacity(vals_));
       for(auto p : params_) {
         if(!p->val()) {
-          vals_->allocate(p->val(), p->shape());
+          vals_->allocate(p->val(), p->shape(), p->value_type());
         }
       }
     }
@@ -72,7 +72,7 @@ public:
       grads_->reserveExact(totalCapacity(grads_));
       for(auto p : params_)
         if(!p->grad())
-          grads_->allocate(p->grad(), p->shape());
+          grads_->allocate(p->grad(), p->shape(), p->value_type());
     }
   }
 
@@ -102,7 +102,7 @@ public:
     if(!params_.empty()) {
       for(auto p : params_) {
         if(!p->val()) {
-          p->val() = TensorBase::New(nullptr, p->shape(), Type::float32, backend_);
+          p->val() = TensorBase::New(nullptr, p->shape(), p->value_type(), backend_);
         }
       }
     }

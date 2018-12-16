@@ -68,7 +68,7 @@ public:
         = reshape(chosenEmbeddings, {dimWords, dimBatch, opt<int>("dim-emb")});
 
     auto yMask = graph->constant({dimWords, dimBatch, 1},
-                                 inits::from_vector(subBatch->mask()));
+                                 inits::fromVector(subBatch->mask()));
 
     Expr yData;
     if(shortlist_) {
@@ -106,7 +106,7 @@ public:
 
     Expr selectedEmbs;
     if(embIdx.empty()) {
-      selectedEmbs = graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros);
+      selectedEmbs = graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros());
     } else {
       selectedEmbs = rows(yEmb, embIdx);
       selectedEmbs = reshape(selectedEmbs, {dimBeam, 1, dimBatch, dimTrgEmb});

@@ -24,10 +24,22 @@ void ConstantNode::init() {
 
 ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
                      const Shape& shape,
-                     const NodeInitializer& init,
+                     const Ptr<inits::NodeInitializer>& init,
                      bool fixed)
-    : Node(graph, shape),  // TODO: add value_type
-      init_(new NodeInitializer(init)),
+    : Node(graph, shape, Type::float32),
+      init_(init),
+      initialized_(false) {
+  setTrainable(!fixed);
+  setMemoize(graph->isInference());
+}
+
+ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
+                     const Shape& shape,
+                     const Ptr<inits::NodeInitializer>& init,
+                     const Type& valueType,
+                     bool fixed)
+    : Node(graph, shape, valueType),
+      init_(init),
       initialized_(false) {
   setTrainable(!fixed);
   setMemoize(graph->isInference());

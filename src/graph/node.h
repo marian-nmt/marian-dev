@@ -29,7 +29,7 @@ protected:
 
   Weak<ExpressionGraph> graph_;
   Shape shape_{1, 1, 1, 1};
-  Type value_type_{Type::float32};
+  Type valueType_{Type::float32};
 
   std::string name_{"none"};
 
@@ -44,8 +44,10 @@ protected:
   bool recorderStop_;
 
 public:
-  Node(Ptr<ExpressionGraph> graph, Shape shape, Type value_type = Type::float32)
-    : graph_(graph), shape_(shape), value_type_(value_type) {}
+  Node(Ptr<ExpressionGraph> graph, const Shape& shape, const Type& valueType = Type::float32)
+    : graph_(graph), shape_(shape), valueType_(valueType) {
+    std::cerr << "Constructor: " << valueType_ << std::endl;
+  }
 
   virtual ~Node() {
     if(destroy_) {
@@ -114,7 +116,7 @@ public:
   virtual Tensor& grad() override { return adj_; };
 
   virtual const Shape& shape() override { return shape_; }
-  virtual const Type& value_type() override { return value_type_; }
+  virtual const Type& value_type() override { return valueType_; }
 
   void set_name(const std::string& name) override { name_ = name; }
 

@@ -204,7 +204,7 @@ public:
       Expr prevPathScores; // [beam, 1, 1, 1]
       if(first) {
         // no scores yet
-        prevPathScores = graph->constant({1, 1, 1, 1}, inits::from_value(0));
+        prevPathScores = graph->constant({1, 1, 1, 1}, inits::zeros());
       } else {
         std::vector<float> beamScores;
 
@@ -227,7 +227,7 @@ public:
         }
 
         prevPathScores = graph->constant({(int)localBeamSize, 1, dimBatch, 1},
-                                    inits::from_vector(beamScores));
+                                         inits::fromVector(beamScores));
       }
 
       //**********************************************************************

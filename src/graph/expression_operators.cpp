@@ -139,7 +139,7 @@ Expr operator/(Expr a, float b) {
 
 // TODO: efficient version of this without constant()
 Expr operator/(float a, Expr b) {
-  auto aExpr = b->graph()->constant({}, inits::from_value(a));
+  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
   return aExpr / b;
 }
 
@@ -211,7 +211,7 @@ Expr flatten_2d(Expr a) {
   return Expression<ReshapeNodeOp>(a, shape);
 }
 
-Expr constant_like(Expr a, const NodeInitializer& init) {
+Expr constant_like(Expr a, const Ptr<inits::NodeInitializer>& init) {
   const auto& shape = a->shape();
   auto graph = a->graph();
   return graph->constant(shape, init);

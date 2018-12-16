@@ -68,20 +68,20 @@ public:
         num = std::to_string(i);
 
       Expr W = g->param(
-          name + "_W" + num, {in->shape()[-1], dim}, inits::glorot_uniform);
-      Expr b = g->param(name + "_b" + num, {1, dim}, inits::zeros);
+          name + "_W" + num, {in->shape()[-1], dim}, inits::glorotUniform());
+      Expr b = g->param(name + "_b" + num, {1, dim}, inits::zeros());
 
       if(useLayerNorm) {
         if(useNematusNorm) {
           auto ln_s = g->param(
-              name + "_ln_s" + num, {1, dim}, inits::from_value(1.f));
-          auto ln_b = g->param(name + "_ln_b" + num, {1, dim}, inits::zeros);
+              name + "_ln_s" + num, {1, dim}, inits::fromValue(1.f));
+          auto ln_b = g->param(name + "_ln_b" + num, {1, dim}, inits::zeros());
 
           outputs.push_back(
               layerNorm(affine(in, W, b), ln_s, ln_b, NEMATUS_LN_EPS));
         } else {
           auto gamma = g->param(
-              name + "_gamma" + num, {1, dim}, inits::from_value(1.0));
+              name + "_gamma" + num, {1, dim}, inits::fromValue(1.0));
 
           outputs.push_back(layerNorm(dot(in, W), gamma, b));
         }
@@ -142,12 +142,12 @@ public:
       } else {
         W_ = graph_->param(name + "_" + nameW,
                            {input->shape()[-1], dim},
-                           inits::glorot_uniform);
+                           inits::glorotUniform());
         if(shortlist_)
           W_ = cols(W_, shortlist_->indices());
       }
 
-      b_ = graph_->param(name + "_b", {1, dim}, inits::zeros);
+      b_ = graph_->param(name + "_b", {1, dim}, inits::zeros());
       if(shortlist_)
         b_ = cols(b_, shortlist_->indices());
     }
@@ -172,15 +172,16 @@ struct EmbeddingFactory : public Factory {
 
     bool fixed = opt<bool>("fixed", false);
 
-    NodeInitializer initFunc = inits::glorot_uniform;
-  if (options_->has("embFile")) {
-    std::string file = opt<std::string>("embFile");
-    if (!file.empty()) {
-      bool norm = opt<bool>("normalization", false);
-      initFunc = inits::from_word2vec(file, dimVoc, dimEmb, norm);
+    auto initFunc = inits::glorotUniform();
+
+    if (options_->has("embFile")) {
+      std::string file = opt<std::string>("embFile");
+      if (!file.empty()) {
+        bool norm = opt<bool>("normalization", false);
+        initFunc = inits::fromWord2vec(file, dimVoc, dimEmb, norm);
+      }
     }
-  }
-  
+
     return graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
   }
 };
@@ -197,24 +198,24 @@ ULREmbeddingFactory(Ptr<ExpressionGraph> graph) : Factory(graph) {}
     int dimUlrEmb =  opt<int>("dimUlrEmb"); // ULR mono embed size
     bool fixed = opt<bool>("fixed", false);
     std::vector<Expr> ulrEmbeds;
-    NodeInitializer initFunc = inits::glorot_uniform;
+    auto initFunc = inits::glorotUniform();
     std::string queryFile = opt<std::string>("ulrQueryFile");
     std::string keyFile = opt<std::string>("ulrKeysFile");
     bool trainTrans = opt<bool>("ulrTrainTransform", false);
     if (!queryFile.empty() && !keyFile.empty()) {
-      initFunc = inits::from_word2vec(queryFile, dimQueries, dimUlrEmb, false);
+      initFunc = inits::fromWord2vec(queryFile, dimQueries, dimUlrEmb, false);
       name = "ulr_query";
       fixed = true;
       auto query_embed = graph_->param(name, { dimQueries, dimUlrEmb }, initFunc, fixed);
       ulrEmbeds.push_back(query_embed);
       // keys embeds
-      initFunc = inits::from_word2vec(keyFile, dimKeys, dimUlrEmb, false);
+      initFunc = inits::fromWord2vec(keyFile, dimKeys, dimUlrEmb, false);
       name = "ulr_keys";
       fixed = true;
       auto key_embed = graph_->param(name, { dimKeys, dimUlrEmb }, initFunc, fixed);
       ulrEmbeds.push_back(key_embed);
       // actual  trainable embedding
-      initFunc = inits::glorot_uniform;
+      initFunc = inits::glorotUniform();
       name = "ulr_embed";
       fixed = false;
       auto ulr_embed = graph_->param(name, {dimKeys , dimEmb }, initFunc, fixed);  // note the reverse dim
@@ -226,7 +227,7 @@ ULREmbeddingFactory(Ptr<ExpressionGraph> graph) : Factory(graph) {}
       // ulr transformation matrix
       //initFunc = inits::eye(1.f); // identity matrix  - is it ok to init wiht identity or shall we make this to the fixed case only
       if (trainTrans) {
-        initFunc = inits::glorot_uniform;
+        initFunc = inits::glorotUniform();
         fixed = false;
       }
       else
@@ -238,7 +239,7 @@ ULREmbeddingFactory(Ptr<ExpressionGraph> graph) : Factory(graph) {}
       auto ulr_transform = graph_->param(name, { dimUlrEmb, dimUlrEmb }, initFunc, fixed);
       ulrEmbeds.push_back(ulr_transform);
 
-      initFunc = inits::from_value(1.f);  // TBD: we should read sharable flags here - 1 means all sharable - 0 means no universal embeddings - should be zero for top freq only
+      initFunc = inits::fromValue(1.f);  // TBD: we should read sharable flags here - 1 means all sharable - 0 means no universal embeddings - should be zero for top freq only
       fixed = true;
       name = "ulr_shared";
       auto share_embed = graph_->param(name, { dimQueries, 1 }, initFunc, fixed);

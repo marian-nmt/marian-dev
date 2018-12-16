@@ -15,7 +15,7 @@ static inline Expr guidedAlignmentCost(Ptr<ExpressionGraph> graph,
   //debug(att, "Attention");
 
   auto aln = graph->constant(att->shape(),
-                             inits::from_vector(batch->getGuidedAlignment()));
+                             inits::fromVector(batch->getGuidedAlignment()));
 
   //debug(aln, "Alignment");
 

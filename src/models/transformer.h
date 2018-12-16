@@ -65,7 +65,7 @@ public:
 
     // shared across batch entries
     auto signal
-        = graph_->constant({dimWords, 1, dimEmb}, inits::from_vector(vPos));
+        = graph_->constant({dimWords, 1, dimEmb}, inits::fromVector(vPos));
     return input + signal;
   }
 
@@ -75,7 +75,7 @@ public:
     for(int i = 0; i < length; ++i)
       for(int j = 0; j <= i; ++j)
         vMask[i * length + j] = 1.f;
-    return graph_->constant({1, length, length}, inits::from_vector(vMask));
+    return graph_->constant({1, length, length}, inits::fromVector(vMask));
   }
 
   // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
@@ -119,8 +119,8 @@ public:
   {
     auto graph = x->graph();
 
-    auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorot_uniform);
-    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros);
+    auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorotUniform());
+    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
 
     x = affine(x, W, b);
     if (actFn)
@@ -132,8 +132,8 @@ public:
 
   Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) const {
     int dimModel = x->shape()[-1];
-    auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones);
-    auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros);
+    auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
+    auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
     return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
@@ -246,8 +246,8 @@ public:
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
     // @TODO: good opportunity to implement auto-batching here or do something manually?
-    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorot_uniform);
-    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros);
+    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform());
+    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
@@ -256,8 +256,8 @@ public:
     // @TODO: set this automatically by memoizing encoder context and
     // memoization propagation (short-term)
     if (!cache || (cache && cache_.count(prefix + "_keys") == 0)) {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorot_uniform);
-      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros);
+      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform());
+      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
       kh = affine(keys,Wk, bk);      // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -269,8 +269,8 @@ public:
 
     Expr vh;
     if (!cache || (cache && cache_.count(prefix + "_values") == 0)) {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorot_uniform);
-      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros);
+      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform());
+      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
@@ -292,8 +292,8 @@ public:
     bool project = !opt<bool>("transformer-no-projection");
     if(project || dimAtt != dimOut) {
       auto Wo
-        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorot_uniform);
-      auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros);
+        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform());
+      auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
       output = affine(output, Wo, bo);
     }
 
@@ -652,7 +652,7 @@ public:
       int dimBatch = (int)batch->size();
       int dim = opt<int>("dim-emb");
 
-      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
+      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros());
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers

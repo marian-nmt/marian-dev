@@ -175,7 +175,7 @@ public:
 
   void copyParams(Ptr<ExpressionGraph> graph) {
     for(auto p : *graph->params())
-      param(p->name(), p->shape(), inits::dummy);
+      param(p->name(), p->shape(), inits::dummy());
     params()->allocateForward();
     params()->vals()->copyFrom(graph->params()->vals());
   }
@@ -319,7 +319,8 @@ public:
 
   Expr param(const std::string& pname,
              const Shape& shape,
-             const NodeInitializer& init,
+             const Ptr<inits::NodeInitializer>& init,
+             const Type valueType,
              bool fixed = false) {
     std::string name = pname;
     if(!namespace_.empty())
@@ -350,7 +351,7 @@ public:
     ABORT_IF(get(name), "Non-parameter with name '{}' already exists", name);
 
     // create parameter node (adds to tape)
-    p = Expression<ParamNode>(shared_from_this(), shape, init, fixed);
+    p = Expression<ParamNode>(shared_from_this(), shape, init, valueType, fixed);
 
     // set name and id and add to list of parameters
     p->set_name(name);
@@ -359,7 +360,16 @@ public:
     return p;
   }
 
-  Expr constant(const Shape& shape, const NodeInitializer& init, Type value_type = Type::float32) {
+  Expr param(const std::string& pname,
+             const Shape& shape,
+             const Ptr<inits::NodeInitializer>& init,
+             bool fixed = false) {
+    return param(pname, shape, init, Type::float32, fixed);
+  }
+
+  Expr constant(const Shape& shape,
+                const Ptr<inits::NodeInitializer>& init,
+                Type value_type = Type::float32) {
     return Expression<ConstantNode>(shared_from_this(), shape, init, value_type);
   }
 
@@ -368,7 +378,7 @@ public:
   // like rows or select
   Expr indices(const std::vector<IndexType>& indicesVector) {
     return constant({(int)indicesVector.size()},
-                    inits::from_vector(indicesVector),
+                    inits::fromVector(indicesVector),
                     Type::uint32);
   }
   // this version sets up the shape such that the indices are in a given axis
@@ -379,16 +389,16 @@ public:
     shape.resize(indexee->shape().size());
     shape.set(axis, indicesVector.size());
     return constant(Shape(shape),
-                    inits::from_vector(indicesVector),
+                    inits::fromVector(indicesVector),
                     Type::uint32);
   }
 
   Expr ones(const Shape& shape) {
-    return constant(shape, inits::ones);
+    return constant(shape, inits::ones());
   }
 
   Expr zeros(const Shape& shape) {
-    return constant(shape, inits::zeros);
+    return constant(shape, inits::zeros());
   }
 
   // prob = dropProb, e.g. 0.1 means 90% of values are kept
@@ -472,7 +482,7 @@ public:
       // skip over special parameters starting with "special:"
       if(pName.substr(0, 8) == "special:")
         continue;
-      param(pName, item.shape, inits::from_item(item));
+      param(pName, item.shape, inits::fromItem(item));
     }
     if(markReloaded)
       setReloaded(true);

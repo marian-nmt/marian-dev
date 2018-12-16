@@ -25,6 +25,42 @@ inline float stableSigmoid(float x) {
   }
 }
 
+template <typename T>
+void Set(marian::Tensor out, const T* beg, const T* end) {
+  out->set(beg, end);
+}
+
+template void Set<float>(marian::Tensor, const float*, const float*);
+template void Set<IndexType>(marian::Tensor, const IndexType*, const IndexType*);
+
+template <typename T>
+void GetConvert(const marian::Tensor out, T* beg, T* end) {
+  ABORT("Cannot convert {} to {}", out->type(), request<T>());
+}
+
+template <typename T>
+void Get(const marian::Tensor in, T* beg, T* end) {
+  if(matchType<T>(in->type())) {
+    std::copy(in->data<T>(), in->data<T>() + in->size(), beg);
+  }
+  else {
+    GetConvert(in, beg, end);
+  }
+}
+
+template void Get<int8_t>(const marian::Tensor, int8_t*, int8_t*);
+template void Get<int16_t>(const marian::Tensor, int16_t*, int16_t*);
+template void Get<int32_t>(const marian::Tensor, int32_t*, int32_t*);
+template void Get<int64_t>(const marian::Tensor, int64_t*, int64_t*);
+
+template void Get<uint8_t>(const marian::Tensor, uint8_t*, uint8_t*);
+template void Get<uint16_t>(const marian::Tensor, uint16_t*, uint16_t*);
+template void Get<uint32_t>(const marian::Tensor, uint32_t*, uint32_t*);
+template void Get<uint64_t>(const marian::Tensor, uint64_t*, uint64_t*);
+
+template void Get<float>(const marian::Tensor, float*, float*);
+template void Get<double>(const marian::Tensor, double*, double*);
+
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
   int step = 1;
   for(int i = 0; i < axis; ++i)
@@ -248,7 +284,7 @@ void TransposeGeneric(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     gOut.shape().dims(index, oDims);
     for(size_t i = 0; i < N; ++i)
       pDims[permute[i]] = oDims[i];
-    
+
     int inIndex = gIn.shape().index(pDims);
 
     // @TODO: use internal conversion instead of raw indices

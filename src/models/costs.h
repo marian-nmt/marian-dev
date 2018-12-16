@@ -116,7 +116,7 @@ public:
   virtual Ptr<DecoderState> apply(Ptr<DecoderState> state) override {
     // decoder needs normalized probabilities (note: skipped if beam 1 and --skip-cost)
     auto logits = state->getLogProbs();
-    
+
     auto logprobs = logsoftmax(logits);
 
     state->setLogProbs(logprobs);
@@ -131,8 +131,8 @@ class GumbelSoftmaxStep : public CostStep {
 public:
   virtual Ptr<DecoderState> apply(Ptr<DecoderState> state) override {
     auto logits = state->getLogProbs();
-    
-    auto logprobs = logsoftmax(logits + constant_like(logits, inits::gumbel));
+
+    auto logprobs = logsoftmax(logits + constant_like(logits, inits::gumbel()));
 
     state->setLogProbs(logprobs);
     return state;

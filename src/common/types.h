@@ -1,5 +1,7 @@
 #pragma once
 
+#include "half_float/umHalf.h"
+
 #include <iostream>
 #include <string>
 
@@ -89,7 +91,7 @@ enum class Type : size_t {
   uint32 = TypeClass::unsigned_type + 4u,
   uint64 = TypeClass::unsigned_type + 8u,
 
-  fp16    = TypeClass::float_type + 2u,
+  float16 = TypeClass::float_type + 2u,
   float32 = TypeClass::float_type + 4u,
   float64 = TypeClass::float_type + 8u
 };
@@ -133,9 +135,10 @@ template <> inline bool matchType<uint32_t>(Type type) { return type == Type::ui
 template <> inline bool matchType<uint64_t>(Type type) { return type == Type::uint64; }
 
 #ifdef __CUDA_ARCH__
-template <> inline bool matchType<half>(Type type)  { return type == Type::fp16; }
+template <> inline bool matchType<half>(Type type)  { return type == Type::float16; }
 #endif
 
+template <> inline bool matchType<float16>(Type type)  { return type == Type::float16; }
 template <> inline bool matchType<float>(Type type)  { return type == Type::float32; }
 template <> inline bool matchType<double>(Type type) { return type == Type::float64; }
 // clang-format on
@@ -152,7 +155,7 @@ static inline std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::uint32  : out << "uint32"; break;
     case Type::uint64  : out << "uint64"; break;
 
-    case Type::fp16    : out << "fp16"; break;
+    case Type::float16 : out << "float16"; break;
     case Type::float32 : out << "float32"; break;
     case Type::float64 : out << "float64"; break;
   }
@@ -177,8 +180,9 @@ template <> inline std::string request<uint64_t>() { return "uint64"; }
 template <> inline std::string request<half>()  { return "fp16"; }
 #endif
 
-template <> inline std::string request<float>()  { return "float32"; }
-template <> inline std::string request<double>() { return "float64"; }
+template <> inline std::string request<float16>() { return "float16"; }
+template <> inline std::string request<float>()   { return "float32"; }
+template <> inline std::string request<double>()  { return "float64"; }
 // clang-format on
 
 

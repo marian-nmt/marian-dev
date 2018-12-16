@@ -610,9 +610,18 @@ struct ColsNodeOp : public NaryNodeOp {
 
 
 struct ElementBinaryNodeOp : public NaryNodeOp {
-  ElementBinaryNodeOp(Expr a, Expr b) : NaryNodeOp({a, b}, newShape(a, b)) {}
+  ElementBinaryNodeOp(Expr a, Expr b) : NaryNodeOp({a, b}, newShape(a, b), newType(a, b)) {}
 
   Shape newShape(Expr a, Expr b) { return Shape::broadcast({a, b}); }
+
+  Type newType(Expr a, Expr b) {
+    ABORT_IF(a->value_type() != b->value_type(),
+             "Type {} not matching {}",
+             a->value_type(),
+             b->value_type());
+
+    return a->value_type();
+  }
 
   const std::string color() override { return "yellow"; }
 };

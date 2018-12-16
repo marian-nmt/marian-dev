@@ -97,22 +97,17 @@ Ptr<NodeInitializer> gumbel() {
   });
 }
 
-Ptr<NodeInitializer> fromVector(const std::vector<float>& v) {
-  auto vPtr = New<std::vector<float>>(v.begin(), v.end()); // @TODO: consider move for efficiency
+template <typename T>
+Ptr<NodeInitializer> fromVector(const std::vector<T>& v) {
+  auto vPtr = New<std::vector<T>>(v.begin(), v.end());
   return New<LambdaInit>([vPtr](Tensor t) {
-    Set(t, vPtr->data(), vPtr->data() + vPtr->size());
+    t->set(vPtr->data(), vPtr->data() + vPtr->size());
   });
 }
 
-// @TODO: handle this better with proper type support, the NodeInitializer
-// should be able to inform the calling function about the tensor type it
-// is expecting. Probably needs to turn into struct with type information.
-Ptr<NodeInitializer> fromVector(const std::vector<IndexType>& v) {
-  auto vPtr = New<std::vector<IndexType>>(v.begin(), v.end());
-  return New<LambdaInit>([vPtr](Tensor t) {
-    Set(t, vPtr->data(), vPtr->data() + vPtr->size());
-  });
-}
+template Ptr<NodeInitializer> fromVector<float16>(const std::vector<float16>& v);
+template Ptr<NodeInitializer> fromVector<float>(const std::vector<float>& v);
+template Ptr<NodeInitializer> fromVector<IndexType>(const std::vector<IndexType>& v);
 
 Ptr<NodeInitializer> fromSparseVector(std::pair<std::vector<size_t>, std::vector<float>>& v) {
   return New<LambdaInit>([v](Tensor t) {

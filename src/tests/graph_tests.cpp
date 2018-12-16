@@ -54,23 +54,18 @@ TEST_CASE("Expression graph can be initialized with constant values",
     REQUIRE(values == v);
   }
 
-  // SECTION("initializing fp16 node from vector") {
-  //   graph->clear();
-  //   values.clear();
-  //   std::vector<IndexType> v({1, 2, 3, 4, 5, 6});
-  //   std::vector<float> v2({1, 2, 3, 4, 5, 6});
-  //   auto vals = graph->param("vs", {2, 3}, inits::fromVector(v), Type::float32);
-  //   std::cerr << "set type: " << vals->value_type() << std::endl;
-  //   debug(vals);
-  //   graph->forward();
-  //   std::cerr << "set type: " << vals->value_type() << std::endl;
+  SECTION("initializing float16 node from vector") {
+    graph->clear();
+    std::vector<float16> values16;
+    std::vector<float16> v({1, 2, 3, 4, 5, 6});
+    auto vals = graph->param("vs", {2, 3}, inits::fromVector(v), Type::float16);
+    debug(vals + vals);
+    graph->forward();
 
-
-
-  //   REQUIRE(values.empty());
-  //   vals->val()->get(values);
-  //   REQUIRE(values == v2);
-  // }
+    REQUIRE(values.empty());
+    vals->val()->get(values16);
+    REQUIRE(values16 == v);
+  }
 }
 #endif
 

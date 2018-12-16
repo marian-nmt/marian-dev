@@ -26,12 +26,7 @@ ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
                      const Shape& shape,
                      const Ptr<inits::NodeInitializer>& init,
                      bool fixed)
-    : Node(graph, shape, Type::float32),
-      init_(init),
-      initialized_(false) {
-  setTrainable(!fixed);
-  setMemoize(graph->isInference());
-}
+    : ParamNode(graph, shape, init, Type::float32, fixed) {}
 
 ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
                      const Shape& shape,
@@ -41,6 +36,7 @@ ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
     : Node(graph, shape, valueType),
       init_(init),
       initialized_(false) {
+  init_->setGraph(graph);
   setTrainable(!fixed);
   setMemoize(graph->isInference());
 }

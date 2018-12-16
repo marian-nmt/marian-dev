@@ -14,6 +14,7 @@ struct ConstantNode : public Node {
       : Node(graph, shape, value_type),
         init_(init),
         initialized_(false) {
+    init_->setGraph(graph);
     setTrainable(false);
   }
 

@@ -14,7 +14,7 @@ class ExpressionGraph;
 namespace inits {
 
 class NodeInitializer {
-private:
+protected:
   Ptr<ExpressionGraph> graph_;
 
 public:
@@ -38,8 +38,9 @@ Ptr<NodeInitializer> dropout(float dropoutProbabilty);
 Ptr<NodeInitializer> gumbel();
 Ptr<NodeInitializer> dummy();
 
-Ptr<NodeInitializer> fromVector(const std::vector<float>& v);
-Ptr<NodeInitializer> fromVector(const std::vector<IndexType>& v);
+template <typename T>
+Ptr<NodeInitializer> fromVector(const std::vector<T>& v);
+
 Ptr<NodeInitializer> fromItem(const io::Item& item);
 Ptr<NodeInitializer> fromSparseVector(std::pair<std::vector<size_t>, std::vector<float>>& v);
 Ptr<NodeInitializer> fromWord2vec(const std::string& file,

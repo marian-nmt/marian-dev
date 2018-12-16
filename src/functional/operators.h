@@ -3,6 +3,10 @@
 #include "common/types.h"
 #include <cmath>
 
+#if defined(__CUDACC__)
+#include <cuda_fp16.h>
+#endif
+
 namespace marian {
 namespace functional {
 
@@ -218,28 +222,28 @@ struct Ops<float32x4> {
 
   static inline float32x4 if_then_else(const float32x4& x, const float32x4& y, const float32x4& z) { return loop4(Ops<float>::if_then_else, x, y, z);  }
 
-  static inline Single sumReduce(const float32x4& x) { 
+  static inline Single sumReduce(const float32x4& x) {
     Single sum = 0;
     for(int i = 0; i < 4; ++i)
       sum = Ops<Single>::add(sum, x[i]);
     return sum;
   }
-  
-  static inline Single maxReduce(const float32x4& x) { 
+
+  static inline Single maxReduce(const float32x4& x) {
     Single maxs = x[0];
     for(int i = 1; i < 4; ++i)
       maxs = Ops<Single>::max(maxs, x[i]);
     return maxs;
   }
-  
-  static inline Single minReduce(const float32x4& x) { 
+
+  static inline Single minReduce(const float32x4& x) {
     Single mins = x[0];
     for(int i = 1; i < 4; ++i)
       mins = Ops<Single>::min(mins, x[i]);
     return mins;
   }
-  
-  
+
+
 };
 
 #include "3rd_party/avx_mathfun.h"
@@ -333,28 +337,99 @@ struct Ops<float32x8> {
 
   static inline float32x8 if_then_else(const float32x8& x, const float32x8& y, const float32x8& z) { return loop8(Ops<float>::if_then_else, x, y, z);  }
 
-  static inline Single sumReduce(const float32x8& x) { 
+  static inline Single sumReduce(const float32x8& x) {
     Single sum = 0;
     for(int i = 0; i < 8; ++i)
       sum = Ops<Single>::add(sum, x[i]);
     return sum;
   }
-  
-  static inline Single maxReduce(const float32x8& x) { 
+
+  static inline Single maxReduce(const float32x8& x) {
     Single maxs = x[0];
     for(int i = 1; i < 8; ++i)
       maxs = Ops<Single>::max(maxs, x[i]);
     return maxs;
   }
-  
-  static inline Single minReduce(const float32x8& x) { 
+
+  static inline Single minReduce(const float32x8& x) {
     Single mins = x[0];
     for(int i = 1; i < 8; ++i)
       mins = Ops<Single>::min(mins, x[i]);
     return mins;
-  }  
+  }
 };
 
+#endif
+
+#ifdef __CUDA_ARCH__
+
+// Specialization for __half
+template <>
+struct Ops<__half> {
+
+  static __DDI__ __half sub(const __half x, const __half y)  { return __hadd(x, y); }
+  static __DDI__ __half add(const __half x, const __half y)  { return __hadd(x, y); }
+  static __DDI__ __half mul(const __half x, const __half y)  { return __hadd(x, y); }
+  static __DDI__ __half div(const __half x, const __half y)  { return __hadd(x, y); }
+
+  static __DDI__ __half tanh(const __half& x) { return __float2half(tanhf(__half2float(x))); }
+  static __DDI__ __half sin(const __half& x)  { return 0; /*__hsin(x);*/ }
+  static __DDI__ __half cos(const __half& x)  { return 0; /*__hcos(x);*/ }
+  static __DDI__ __half tan(const __half& x)  { return __float2half(tanf(__half2float(x))); }
+  static __DDI__ __half log(const __half& x)  { return 0; /*__hlog(x);*/ }
+  static __DDI__ __half exp(const __half& x)  { return 0; /*__hexp(x);*/ }
+  static __DDI__ __half abs(const __half& x)  { return __float2half(fabs(__half2float(x))); }
+  static __DDI__ __half sqrt(const __half& x) { return 0; /*__hsqrt(x);*/ }
+  static __DDI__ __half neg(const __half& x)  { return __float2half(-__half2float(x)); }
+  static __DDI__ __half sgn(const __half& x)  { return __float2half((0 < __half2float(x)) - (__half2float(x) < 0)); }
+
+
+  static __DDI__ __half max(const __half& x, const __half& y)  { return 0 /* x < y ? y : x*/; }
+  static __DDI__ __half min(const __half& x, const __half& y)  { return 0 /*x < y ? x : y*/; }
+  static __DDI__ __half pow(const __half& x, const __half& y)  { return 0; /*powf(x, y)*/; }
+
+
+  static __DDI__ __half negate(const __half& x)  { return !(bool)x; }
+  static __DDI__ __half eq(const __half& x, const __half& y)   { return 0 /*x == y*/; }
+  static __DDI__ __half neq(const __half& x, const __half& y)  { return 0 /*x != y*/; }
+  static __DDI__ __half gt(const __half& x, const __half& y)   { return 0 /*x > y*/; }
+  static __DDI__ __half lt(const __half& x, const __half& y)   { return 0 /*x < y*/; }
+  static __DDI__ __half geq(const __half& x, const __half& y)  { return 0 /*x >= y*/; }
+  static __DDI__ __half leq(const __half& x, const __half& y)  { return 0; /*x <= y*/; }
+  static __DDI__ __half and_(const __half& x, const __half& y) { return 0 /*x && y*/; } // 'and' is used by gcc
+  static __DDI__ __half or_(const __half& x, const __half& y)  { return 0 /*x || y*/; } // 'or' is used by gcc
+
+  // Neural Networks specific functions
+  static __DDI__ __half sigmoid(const __half& x) {
+    return /*x > 0 ? (1.f / (1.f + exp(-x))) :*/ 0 ; /*(exp(x) / (__float2half(1.f) + exp(x)))*/;
+  }
+
+  static __DDI__ __half log1ph(__half x) {
+    return __float2half(log1pf(__half2float(x)));
+  }
+
+  static __DDI__ __half logaddexp(const __half& x, const __half& y) {
+    // Note: This may not be ideal for CUDA; cf. CNTK implementation
+    return 0; /*x < y ? (y + log1ph(exp(x - y))) : (x + log1ph(exp(y - x)))*/;
+  }
+
+  static __DDI__ __half clip(const __half& x, const __half& y)  { return 0; /*abs(x) >= y ? sgn(x) * y : x*/; }
+  // derivative of Clip, cut-off function
+  static __DDI__ __half bump(const __half& x, const __half& y)  { return 0; /* abs(x) >= y ? __float2half(0.f) : __float2half(1.f);*/ }
+
+  static __DDI__ __half relu(const __half& x)     { return  0; }
+  static __DDI__ __half reluBack(const __half& x) { return  0; }
+
+  static __DDI__ __half prelu(const __half& x, const __half& y)     { return 0; }
+  static __DDI__ __half preluBack(const __half& x, const __half& y) { return 0; }
+
+  static __DDI__ __half if_then_else(const __half& x, const __half& y, const __half& z) { return  0; }
+
+  static __DDI__ __half sumReduce(const __half& x) { return x; }
+  static __DDI__ __half maxReduce(const __half& x) { return x; }
+  static __DDI__ __half minReduce(const __half& x) { return x; }
+
+};
 #endif
 
 //*******************************************************************************************

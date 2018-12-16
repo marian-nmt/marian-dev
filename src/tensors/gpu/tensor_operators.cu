@@ -4,6 +4,7 @@
 
 #include "functional/functional.h"
 #include "functional/tensor.h"
+#include "tensors/allocator.h"
 #include "tensors/gpu/backend.h"
 #include "tensors/gpu/cuda_helpers.h"
 
@@ -36,126 +37,6 @@ bool IsNan(Tensor in) {
   //    begin, end, isnan_test(), 0, thrust::plus<bool>());
   return false;
 }
-
-template <typename T>
-__global__ void gSetConvert(half* out, const T* in, size_t length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
-    if(index < length) {
-      out[index] = __float2half((float)in[index]);
-    }
-  }
-}
-
-template <typename T, typename T2>
-__global__ void gSetConvert(T2* out, const T* in, size_t length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
-    if(index < length) {
-      out[index] = in[index];
-    }
-  }
-}
-
-template <typename T>
-void SetConvert(marian::Tensor out, const T* beg, const T* end) {
-  cudaSetDevice(out->getDeviceId().no);
-
-  int length = out->shape().elements();
-  int threads = std::min(MAX_THREADS, length);
-  int blocks =  std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-
-  ABORT_IF(length != end - beg, "Size of output and input do not match");
-
-  // auto mem = allocator->alloc<T>(length);
-  // gpu::copy(out->getBackend(), beg, end, mem->data<T>());
-
-  // switch(out->type()) {
-  //   case Type::fp16 : {
-  //       functional::Tensor<half> gOut = out;
-  //       gSetConvert<<<blocks, threads>>>(gOut.data(), mem->data<T>(), length);
-  //     } break;
-  //   case Type::float32 : {
-  //       functional::Tensor<float> gOut = out;
-  //       gSetConvert<<<blocks, threads>>>(gOut.data(), mem->data<T>(), length);
-  //     } break;
-  //   default:
-  //     ABORT("Cannot convert {} to {}", request<T>(), out->type());
-  // }
-
-  // allocator->free(mem);
-}
-
-template <typename T>
-void Set(marian::Tensor out, const T* beg, const T* end) {
-  if(matchType<T>(out->type())) {
-    gpu::copy(out->getBackend(), beg, end, out->data<T>());
-  }
-  else {
-    SetConvert(out, beg, end);
-  }
-}
-
-template void Set<float>(marian::Tensor, const float*, const float*);
-template void Set<IndexType>(marian::Tensor, const IndexType*, const IndexType*);
-
-__global__ void gGetConvert(float* out, const half* in, size_t length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
-    if(index < length) {
-      out[index] = __half2float(in[index]);
-    }
-  }
-}
-
-void GetConvert(const marian::Tensor in, float* beg, float* end) {
-  cudaSetDevice(in->getDeviceId().no);
-
-  int length = in->shape().elements();
-  int threads = std::min(MAX_THREADS, length);
-  int blocks =  std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-
-  ABORT_IF(length != end - beg, "Size of output and input do not match");
-
-  switch(in->type()) {
-    case Type::fp16 : {
-        functional::Tensor<half> gIn = in;
-        gGetConvert<<<blocks, threads>>>(beg, gIn.data(), length);
-      }
-      break;
-    default:
-      ABORT("Cannot convert {} to {}", in->type(), request<float>());
-  }
-}
-
-template <typename T>
-void GetConvert(const marian::Tensor out, T* beg, T* end) {
-  ABORT("Cannot convert {} to {}", out->type(), request<T>());
-}
-
-
-template <typename T>
-void Get(const marian::Tensor in, T* beg, T* end) {
-  if(matchType<T>(in->type())) {
-    gpu::copy(in->getBackend(), in->data<T>(), in->data<T>() + in->size(), beg);
-  }
-  else {
-    GetConvert(in, beg, end);
-  }
-}
-
-template void Get<int8_t>(const marian::Tensor, int8_t*, int8_t*);
-template void Get<int16_t>(const marian::Tensor, int16_t*, int16_t*);
-template void Get<int32_t>(const marian::Tensor, int32_t*, int32_t*);
-template void Get<int64_t>(const marian::Tensor, int64_t*, int64_t*);
-
-template void Get<uint8_t>(const marian::Tensor, uint8_t*, uint8_t*);
-template void Get<uint16_t>(const marian::Tensor, uint16_t*, uint16_t*);
-template void Get<uint32_t>(const marian::Tensor, uint32_t*, uint32_t*);
-template void Get<uint64_t>(const marian::Tensor, uint64_t*, uint64_t*);
-
-template void Get<float>(const marian::Tensor, float*, float*);
-template void Get<double>(const marian::Tensor, double*, double*);
 
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
   cudaSetDevice(out->getDeviceId().no);

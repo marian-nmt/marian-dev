@@ -27,6 +27,7 @@ template void copy<uint32_t>(Ptr<Backend>, const uint32_t*, const uint32_t*, uin
 template void copy<uint64_t>(Ptr<Backend>, const uint64_t*, const uint64_t*, uint64_t*);
 
 template void copy<char>(Ptr<Backend>, const char*, const char*, char*);
+template void copy<float16>(Ptr<Backend>, const float16*, const float16*, float16*);
 template void copy<float>(Ptr<Backend>, const float*, const float*, float*);
 template void copy<double>(Ptr<Backend>, const double*, const double*, double*);
 // clang-format on
@@ -84,7 +85,7 @@ __global__ void gSwap(T* d_v1, T* d_v2, int size) {
   if(index < size) {
     T temp = d_v1[index];
     d_v1[index] = d_v2[index];
-    d_v2[index] = temp;  
+    d_v2[index] = temp;
   }
 }
 
@@ -93,7 +94,7 @@ void swap_ranges(Ptr<Backend> backend, T* begin, T* end, T* dest) {
   int size = end - begin;
   if (size == 0)
     return;
-  
+
   CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
   int threadsPerBlock = std::min(MAX_THREADS, size);
   int blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)

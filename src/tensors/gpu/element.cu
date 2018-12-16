@@ -6,13 +6,15 @@
 #include "functional/tmp.h"
 #include "tensors/gpu/cuda_helpers.h"
 
+#include <cuda_fp16.h>
+
 namespace marian {
 namespace gpu {
 
-template <size_t K, bool broadcast, class Functor>
+template <size_t K, bool broadcast, class Functor, typename T>
 __global__ void gElement(
     Functor functor,
-    functional::Array<functional::Tensor<float>, K> tensors) {
+    functional::Array<functional::Tensor<T>, K> tensors) {
   int length = tensors[0].shape().elements();
   functional::Array<int, functional::Shape::size()> dims;
   functional::Array<int, K> indices;
@@ -33,25 +35,42 @@ __global__ void gElement(
   }
 }
 
-template <class Functor, class... Tensors>
-void Element(Functor functor, Tensor out, Tensors... tensors) {
+
+template <typename T, class Functor, class... Tensors>
+void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
   cudaSetDevice(out->getDeviceId().no);
 
-  constexpr size_t K = sizeof...(tensors) + 1;
-  functional::Array<functional::Tensor<float>, K> gTensors = {out, tensors...};
+  std::cerr << "Element: " << out->type() << std::endl;
 
-  int length = gTensors[0].shape().elements();
+  int length = out->shape().elements();
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  constexpr size_t K = sizeof...(tensors) + 1;
+  functional::Array<functional::Tensor<T>, K> gTensors = {out, tensors...};
 
   bool broadcast = false;
   for(int i = 1; i < K; ++i)
     broadcast = broadcast || gTensors[0].shape() != gTensors[i].shape();
-
   if(broadcast)
     gElement<K, true><<<blocks, threads>>>(functor, gTensors);
   else
     gElement<K, false><<<blocks, threads>>>(functor, gTensors);
+}
+
+template <class Functor, class... Tensors>
+void Element(Functor functor, Tensor out, Tensors... tensors) {
+  std::cerr << "Element: " << out->type() << std::endl;
+
+  if(out->type() == Type::float32) {
+    ElementTyped<float>(functor, out, tensors...);
+  } else if(out->type() == Type::float16) {
+    ElementTyped<half>(functor, out, tensors...);
+  // } else if(out->type() == Type::float16) {
+  //   ElementTyped<half2>(functor, out, tensors...);
+  } else {
+    ABORT("Type {} not yet supported", out->type());
+  }
 }
 
 #include "tensors/gpu/element.inc"

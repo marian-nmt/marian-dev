@@ -50,36 +50,36 @@ struct View {
   T* data_;
   ConstantShape<D> shape_;
 
-  __HD__ View() {}
+  HOST_DEVICE View() {}
 
-  __HD__ View(T* ptr, const ConstantShape<D>& shape)
+  HOST_DEVICE View(T* ptr, const ConstantShape<D>& shape)
       : data_(ptr), shape_(shape) {}
 
-  __H__ View(marian::Tensor t) : data_(t->data<T>()), shape_(adapt<T>(t->shape())) {}
+  HOST View(marian::Tensor t) : data_(t->data<T>()), shape_(adapt<T>(t->shape())) {}
 
-  __HDI__ T& operator[](size_t i) {
+  HOST_DEVICE_INLINE T& operator[](size_t i) {
      return data_[shape_.index(i)];
   }
 
-  __HDI__ const T& operator[](size_t i) const {
+  HOST_DEVICE_INLINE const T& operator[](size_t i) const {
      return data_[shape_.index(i)];
   }
 
-  __HDI__ T& operator[](const Array<int, D>& indices) {
+  HOST_DEVICE_INLINE T& operator[](const Array<int, D>& indices) {
     return data_[shape_.index(indices)];
   }
 
-  __HDI__ const T& operator[](const Array<int, D>& indices) const {
+  HOST_DEVICE_INLINE const T& operator[](const Array<int, D>& indices) const {
      return data_[shape_.index(indices)];
   }
 
-  __HDI__ T* data() { return data_; }
-  __HDI__ const T* data() const { return data_; }
+  HOST_DEVICE_INLINE T* data() { return data_; }
+  HOST_DEVICE_INLINE const T* data() const { return data_; }
 
-  __HDI__ ConstantShape<D>& shape() { return shape_; }
-  __HDI__ const ConstantShape<D>& shape() const { return shape_; }
+  HOST_DEVICE_INLINE ConstantShape<D>& shape() { return shape_; }
+  HOST_DEVICE_INLINE const ConstantShape<D>& shape() const { return shape_; }
 
-  __HDI__ size_t size() const { return shape_.elements(); }
+  HOST_DEVICE_INLINE size_t size() const { return shape_.elements(); }
 
   std::string debug(int precision = 8, int dispCols = 5) {
     std::stringstream strm;
@@ -156,7 +156,7 @@ struct View {
 };
 
 template <typename T, const int D>
-__HDI__ View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
+HOST_DEVICE_INLINE View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
   const auto& slicedShape = view.shape().slice(slices);
   return View<T, D>(view.data(), slicedShape);
 }
@@ -168,20 +168,20 @@ __HDI__ View<T, D> slice(View<T, D> view, const Array<Slice, D>& slices) {
 // }
 
 template <typename T>
-__HDI__ View<T, 1> slice(View<T, 1>& view,
+HOST_DEVICE_INLINE View<T, 1> slice(View<T, 1>& view,
                          const Slice& slice0) {
   return slice(view, {slice0});
 }
 
 template <typename T>
-__HDI__ View<T, 2> slice(View<T, 2>& view,
+HOST_DEVICE_INLINE View<T, 2> slice(View<T, 2>& view,
                          const Slice& slice0,
                          const Slice& slice1) {
   return slice(view, {slice0, slice1});
 }
 
 template <typename T>
-__HDI__ View<T, 3> slice(View<T, 3>& view,
+HOST_DEVICE_INLINE View<T, 3> slice(View<T, 3>& view,
                         const Slice& slice0,
                         const Slice& slice1,
                         const Slice& slice2) {
@@ -189,7 +189,7 @@ __HDI__ View<T, 3> slice(View<T, 3>& view,
 }
 
 template <typename T>
-__HDI__ View<T, 4> slice(View<T, 4>& view,
+HOST_DEVICE_INLINE View<T, 4> slice(View<T, 4>& view,
                          const Slice& slice0,
                          const Slice& slice1,
                          const Slice& slice2,

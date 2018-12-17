@@ -168,8 +168,6 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 #endif
 
     auto a = graph->constant({2, 2, 4}, inits::glorotUniform(), floatType);
-    debug(a);
-
     auto gamma = graph->param("gamma", {1, 4}, inits::ones(), floatType);
     auto beta = graph->param("beta", {1, 4}, inits::zeros(), floatType);
     auto ln = layerNorm(a, gamma, beta);
@@ -194,11 +192,14 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
     std::vector<T> vW({2.77778f, 6.77778f});
 
-
     auto a = graph->constant({2, 4}, inits::fromVector(vA), floatType);
+    debug(a);
 
     auto s1 = sum(a, /*axis=*/ 0);
     auto s2 = sum(a, /*axis=*/ 1);
+
+    debug(s1);
+    debug(s2);
 
     auto m3 = mean(s1, /*axis=*/ 1);
 

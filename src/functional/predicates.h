@@ -14,7 +14,7 @@ struct UnaryFunctor {
   UnaryFunctor(Arg a) : x(a) {}
 
   template <typename T, typename... Args>
-  __HDI__ T operator()(T arg, Args&&... args) {
+  HOST_DEVICE_INLINE T operator()(T arg, Args&&... args) {
     return Function::apply(x(arg, args...));
   }
 
@@ -30,7 +30,7 @@ struct BinaryFunctor {
   BinaryFunctor(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
 
   template <typename T, typename... Args>
-  __HDI__ T operator()(T arg, Args&&... args) {
+  HOST_DEVICE_INLINE T operator()(T arg, Args&&... args) {
     return Function::apply(x(arg, args...), y(arg, args...));
   }
 
@@ -43,7 +43,7 @@ struct BinaryFunctor {
   namespace elem {                                                    \
   struct name {                                                       \
     template <typename ElementType>                                   \
-    __HDI__ static ElementType apply(const ElementType& x) { return func; } \
+    HOST_DEVICE_INLINE static ElementType apply(const ElementType& x) { return func; } \
     static std::string n() { return #name; }                          \
   };                                                                  \
   }                                                                   \
@@ -59,7 +59,7 @@ struct BinaryFunctor {
   namespace elem {                                                \
   struct name {                                                   \
     template <typename ElementType>                               \
-    __HDI__ static ElementType apply(const ElementType& x,        \
+    HOST_DEVICE_INLINE static ElementType apply(const ElementType& x,        \
                                      const ElementType& y)        \
       { return func; }                                            \
     static std::string n() { return #name; }                      \
@@ -90,7 +90,7 @@ struct TernaryFunctor {
   TernaryFunctor(Arg1 arg1, Arg2 arg2, Arg3 arg3) : x(arg1), y(arg2), z(arg3) {}
 
   template <typename... Args>
-  __HDI__ float operator()(Args&&... args) {
+  HOST_DEVICE_INLINE float operator()(Args&&... args) {
     return Function::apply(x(args...), y(args...), z(args...));
   }
 };
@@ -99,7 +99,7 @@ struct TernaryFunctor {
   namespace elem {                                                         \
   struct name {                                                            \
     template <typename ElementType>                                        \
-    __HDI__ static ElementType apply(ElementType x,                        \
+    HOST_DEVICE_INLINE static ElementType apply(ElementType x,                        \
                                      ElementType y,                        \
                                      ElementType z)                        \
     { return func; }                                                       \
@@ -141,7 +141,7 @@ struct Assign {
   Assign(Arg1 arg1, Arg2 arg2) : x(arg1), y(arg2) {}
 
   template <typename T, typename... Args>
-  __HDI__ T operator()(T&& arg, Args&&... args) {
+  HOST_DEVICE_INLINE T operator()(T&& arg, Args&&... args) {
     return x(arg, args...) = y(arg, args...);
   }
 
@@ -158,7 +158,7 @@ struct Assignee {
   Assignee(Var<N> v) : var(v) {}
 
   template <typename T, typename... Args>
-  __HDI__ T& operator()(T&& arg, Args&&... args) {
+  HOST_DEVICE_INLINE T& operator()(T&& arg, Args&&... args) {
     return var(arg, args...);
   }
 

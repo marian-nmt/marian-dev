@@ -13,7 +13,7 @@ using IsClass = typename std::enable_if<std::is_class<C>::value, C>::type;
 template <int N>
 struct Select {
   template <typename T, typename... Args>
-  __HDI__ static auto apply(T&& /*arg*/, Args&&... args)
+  HOST_DEVICE_INLINE static auto apply(T&& /*arg*/, Args&&... args)
       -> decltype(Select<N - 1>::apply(args...)) {
     return Select<N - 1>::apply(args...);
   }
@@ -22,7 +22,7 @@ struct Select {
 template <>
 struct Select<0> {
   template <typename T, typename... Args>
-  __HDI__ static T apply(T&& arg, Args&&... /*args*/) {
+  HOST_DEVICE_INLINE static T apply(T&& arg, Args&&... /*args*/) {
     return arg;
   }
 };
@@ -34,7 +34,7 @@ struct C {
   static constexpr auto value = V;
 
   template <typename T, typename... Args>
-  __HDI__ T operator()(T&& /*arg*/, Args&&... /*args*/) {
+  HOST_DEVICE_INLINE T operator()(T&& /*arg*/, Args&&... /*args*/) {
     return (T)V;
   }
 
@@ -49,7 +49,7 @@ struct Capture {
   Capture(float val) : value(val){};
 
   template <typename T, typename... Args>
-  __HDI__ T operator()(const T& /*arg*/, const Args&... /*args*/) {
+  HOST_DEVICE_INLINE T operator()(const T& /*arg*/, const Args&... /*args*/) {
     return T(value);
   }
 
@@ -63,7 +63,7 @@ struct Var {
   static constexpr auto index = N;
 
   template <typename T, typename... Args>
-  __HDI__ T& operator()(T&& arg, Args&&... args) {
+  HOST_DEVICE_INLINE T& operator()(T&& arg, Args&&... args) {
     return Select<N - 1>::apply(arg, args...);
   }
 

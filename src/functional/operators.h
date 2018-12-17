@@ -3,7 +3,7 @@
 #include "common/types.h"
 #include <cmath>
 
-#if defined(__CUDACC__)
+#ifdef __CUDA_ARCH__
 #include <cuda_fp16.h>
 #endif
 
@@ -14,52 +14,52 @@ namespace functional {
 // and will fail with an abort message.
 template <typename T>
 struct Ops {
-  static __HDI__ T tanh(const T& x) { ABORT("Unknown type"); }
-  static __HDI__ T sin(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T cos(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T tan(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T log(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T exp(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T abs(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T sqrt(const T& x) { ABORT("Unknown type"); }
-  static __HDI__ T neg(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T sgn(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T tanh(const T& x) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sin(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T cos(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T tan(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T log(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T exp(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T abs(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sqrt(const T& x) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T neg(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sgn(const T& x)  { ABORT("Unknown type"); }
 
-  static __HDI__ T add(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T sub(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T mul(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T div(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T add(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sub(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T mul(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T div(const T& x, const T& y)  { ABORT("Unknown type"); }
 
-  static __HDI__ T max(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T min(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T pow(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T max(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T min(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T pow(const T& x, const T& y)  { ABORT("Unknown type"); }
 
-  static __HDI__ T negate(const T& x)  { ABORT("Unknown type"); }
-  static __HDI__ T eq(const T& x, const T& y)   { ABORT("Unknown type"); }
-  static __HDI__ T neq(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T gt(const T& x, const T& y)   { ABORT("Unknown type"); }
-  static __HDI__ T lt(const T& x, const T& y)   { ABORT("Unknown type"); }
-  static __HDI__ T geq(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T leq(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static __HDI__ T _and(const T& x, const T& y) { ABORT("Unknown type"); } // 'and' is used by gcc
-  static __HDI__ T _or(const T& x, const T& y)  { ABORT("Unknown type"); } // 'or' is used by gcc
+  static HOST_DEVICE_INLINE T negate(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T eq(const T& x, const T& y)   { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T neq(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T gt(const T& x, const T& y)   { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T lt(const T& x, const T& y)   { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T geq(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T leq(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T _and(const T& x, const T& y) { ABORT("Unknown type"); } // 'and' is used by gcc
+  static HOST_DEVICE_INLINE T _or(const T& x, const T& y)  { ABORT("Unknown type"); } // 'or' is used by gcc
 
   // Neural Networks specific functions
-  static __HDI__ T sigmoid(const T& x)               { ABORT("Unknown type"); }
-  static __HDI__ T logaddexp(const T& x, const T& y) { ABORT("Unknown type"); }
-  static __HDI__ T clip(const T& x, const T& y)      { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sigmoid(const T& x)               { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T logaddexp(const T& x, const T& y) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T clip(const T& x, const T& y)      { ABORT("Unknown type"); }
   // derivative of Clip, cut-off function
-  static __HDI__ T bump(const T& x, const T& y)      { ABORT("Unknown type"); }
-  static __HDI__ T relu(const T& x)                  { ABORT("Unknown type"); }
-  static __HDI__ T reluBack(const T& x)              { ABORT("Unknown type"); }
-  static __HDI__ T prelu(const T& x, const T& y)     { ABORT("Unknown type"); }
-  static __HDI__ T preluBack(const T& x, const T& y) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T bump(const T& x, const T& y)      { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T relu(const T& x)                  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T reluBack(const T& x)              { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T prelu(const T& x, const T& y)     { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T preluBack(const T& x, const T& y) { ABORT("Unknown type"); }
 
-  static __HDI__ T if_then_else(const T& x, const T& y, const T& z) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T if_then_else(const T& x, const T& y, const T& z) { ABORT("Unknown type"); }
 
-  static __HDI__ T sumReduce(const T& x) { ABORT("Unknown type"); }
-  static __HDI__ T maxReduce(const T& x) { ABORT("Unknown type"); }
-  static __HDI__ T minReduce(const T& x) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sumReduce(const T& x) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T maxReduce(const T& x) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T minReduce(const T& x) { ABORT("Unknown type"); }
 };
 
 // Specialization for float
@@ -67,62 +67,62 @@ template <>
 struct Ops<float> {
   typedef float Single;
 
-  static __HDI__ float tanh(const float& x) { return tanhf(x); }
-  static __HDI__ float sin(const float& x)  { return sinf(x); }
-  static __HDI__ float cos(const float& x)  { return cosf(x); }
-  static __HDI__ float tan(const float& x)  { return tanf(x); }
-  static __HDI__ float log(const float& x)  { return logf(x); }
-  static __HDI__ float exp(const float& x)  { return expf(x); }
-  static __HDI__ float abs(const float& x)  { return fabs(x); }
-  static __HDI__ float sqrt(const float& x) { return sqrtf(x); }
-  static __HDI__ float neg(const float& x)  { return -x; }
-  static __HDI__ float sgn(const float& x)  { return (0 < x) - (x < 0); }
+  static HOST_DEVICE_INLINE float tanh(const float& x) { return tanhf(x); }
+  static HOST_DEVICE_INLINE float sin(const float& x)  { return sinf(x); }
+  static HOST_DEVICE_INLINE float cos(const float& x)  { return cosf(x); }
+  static HOST_DEVICE_INLINE float tan(const float& x)  { return tanf(x); }
+  static HOST_DEVICE_INLINE float log(const float& x)  { return logf(x); }
+  static HOST_DEVICE_INLINE float exp(const float& x)  { return expf(x); }
+  static HOST_DEVICE_INLINE float abs(const float& x)  { return fabs(x); }
+  static HOST_DEVICE_INLINE float sqrt(const float& x) { return sqrtf(x); }
+  static HOST_DEVICE_INLINE float neg(const float& x)  { return -x; }
+  static HOST_DEVICE_INLINE float sgn(const float& x)  { return (0 < x) - (x < 0); }
 
-  static __HDI__ float add(const float& x, const float& y)  { return x + y; }
-  static __HDI__ float sub(const float& x, const float& y)  { return x - y; }
-  static __HDI__ float mul(const float& x, const float& y)  { return x * y; }
-  static __HDI__ float div(const float& x, const float& y)  { return x / y; }
+  static HOST_DEVICE_INLINE float add(const float& x, const float& y)  { return x + y; }
+  static HOST_DEVICE_INLINE float sub(const float& x, const float& y)  { return x - y; }
+  static HOST_DEVICE_INLINE float mul(const float& x, const float& y)  { return x * y; }
+  static HOST_DEVICE_INLINE float div(const float& x, const float& y)  { return x / y; }
 
-  static __HDI__ float max(const float& x, const float& y)  { return x < y ? y : x; }
-  static __HDI__ float min(const float& x, const float& y)  { return x < y ? x : y; }
-  static __HDI__ float pow(const float& x, const float& y)  { return powf(x, y); }
+  static HOST_DEVICE_INLINE float max(const float& x, const float& y)  { return x < y ? y : x; }
+  static HOST_DEVICE_INLINE float min(const float& x, const float& y)  { return x < y ? x : y; }
+  static HOST_DEVICE_INLINE float pow(const float& x, const float& y)  { return powf(x, y); }
 
 
-  static __HDI__ float negate(const float& x)  { return !(bool)x; }
-  static __HDI__ float eq(const float& x, const float& y)   { return x == y; }
-  static __HDI__ float neq(const float& x, const float& y)  { return x != y; }
-  static __HDI__ float gt(const float& x, const float& y)   { return x > y; }
-  static __HDI__ float lt(const float& x, const float& y)   { return x < y; }
-  static __HDI__ float geq(const float& x, const float& y)  { return x >= y; }
-  static __HDI__ float leq(const float& x, const float& y)  { return x <= y; }
-  static __HDI__ float and_(const float& x, const float& y) { return x && y; } // 'and' is used by gcc
-  static __HDI__ float or_(const float& x, const float& y)  { return x || y; } // 'or' is used by gcc
+  static HOST_DEVICE_INLINE float negate(const float& x)  { return !(bool)x; }
+  static HOST_DEVICE_INLINE float eq(const float& x, const float& y)   { return x == y; }
+  static HOST_DEVICE_INLINE float neq(const float& x, const float& y)  { return x != y; }
+  static HOST_DEVICE_INLINE float gt(const float& x, const float& y)   { return x > y; }
+  static HOST_DEVICE_INLINE float lt(const float& x, const float& y)   { return x < y; }
+  static HOST_DEVICE_INLINE float geq(const float& x, const float& y)  { return x >= y; }
+  static HOST_DEVICE_INLINE float leq(const float& x, const float& y)  { return x <= y; }
+  static HOST_DEVICE_INLINE float and_(const float& x, const float& y) { return x && y; } // 'and' is used by gcc
+  static HOST_DEVICE_INLINE float or_(const float& x, const float& y)  { return x || y; } // 'or' is used by gcc
 
   // Neural Networks specific functions
-  static __HDI__ float sigmoid(const float& x) {
-    return /*x > 0 ? (1.f / (1.f + exp(-x))) :*/ (exp(x) / (1.f + exp(x)));
+  static HOST_DEVICE_INLINE float sigmoid(const float& x) {
+    return x > 0 ? (1.f / (1.f + exp(-x))) : (exp(x) / (1.f + exp(x)));
   }
 
-  static __HDI__ float logaddexp(const float& x, const float& y) {
+  static HOST_DEVICE_INLINE float logaddexp(const float& x, const float& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
     return x < y ? (y + log1pf(exp(x - y))) : (x + log1pf(exp(y - x)));
   }
 
-  static __HDI__ float clip(const float& x, const float& y)  { return abs(x) >= y ? sgn(x) * y : x; }
+  static HOST_DEVICE_INLINE float clip(const float& x, const float& y)  { return abs(x) >= y ? sgn(x) * y : x; }
   // derivative of Clip, cut-off function
-  static __HDI__ float bump(const float& x, const float& y)  { return abs(x) >= y ? 0.f : 1.f; }
+  static HOST_DEVICE_INLINE float bump(const float& x, const float& y)  { return abs(x) >= y ? 0.f : 1.f; }
 
-  static __HDI__ float relu(const float& x)     { return x > 0.f ? x : 0.f; }
-  static __HDI__ float reluBack(const float& x) { return x > 0.f ? 1.f : 0.f; }
+  static HOST_DEVICE_INLINE float relu(const float& x)     { return x > 0.f ? x : 0.f; }
+  static HOST_DEVICE_INLINE float reluBack(const float& x) { return x > 0.f ? 1.f : 0.f; }
 
-  static __HDI__ float prelu(const float& x, const float& y)     { return x > 0.f ? x : x * y; }
-  static __HDI__ float preluBack(const float& x, const float& y) { return x > 0.f ? 1.f : y; }
+  static HOST_DEVICE_INLINE float prelu(const float& x, const float& y)     { return x > 0.f ? x : x * y; }
+  static HOST_DEVICE_INLINE float preluBack(const float& x, const float& y) { return x > 0.f ? 1.f : y; }
 
-  static __HDI__ float if_then_else(const float& x, const float& y, const float& z) { return x ? y : z; }
+  static HOST_DEVICE_INLINE float if_then_else(const float& x, const float& y, const float& z) { return x ? y : z; }
 
-  static __HDI__ float sumReduce(const float& x) { return x; }
-  static __HDI__ float maxReduce(const float& x) { return x; }
-  static __HDI__ float minReduce(const float& x) { return x; }
+  static HOST_DEVICE_INLINE float sumReduce(const float& x) { return x; }
+  static HOST_DEVICE_INLINE float maxReduce(const float& x) { return x; }
+  static HOST_DEVICE_INLINE float minReduce(const float& x) { return x; }
 
 };
 
@@ -157,7 +157,8 @@ struct Ops<float32x4> {
   }
 
   // @TODO: why is this slow?
-  static inline float32x4 tanh(const float32x4& x) { // ( e^x - e^-x )/( e^x + e^-x ) = (e^2x - 1) / (e^2x + 1)
+  static inline float32x4 tanh(const float32x4& x) {
+    // ( e^x - e^-x )/( e^x + e^-x ) = (e^2x - 1) / (e^2x + 1)
     float32x4 e2x = exp(mul(2.f, x));
     return div(sub(e2x, 1.f), add(e2x, 1.f));
   }
@@ -205,7 +206,7 @@ struct Ops<float32x4> {
   }
 
   // // Neural Networks specific functions
-  // static __HDI__ float sigmoid(const float& x) {
+  // static HOST_DEVICE_INLINE float sigmoid(const float& x) {
   //   return x > 0 ? (1.f / (1.f + exp(-x))) : (exp(x) / (1.f + exp(x)));
   // }
 
@@ -367,83 +368,90 @@ struct Ops<float32x8> {
 template <>
 struct Ops<__half> {
 
-  static __DDI__ __half tanh(const __half& x) { return __float2half(tanhf(__half2float(x))); } // @TODO: approximate?
-  static __DDI__ __half sin(const __half& x)  { return hsin(x); }
-  static __DDI__ __half cos(const __half& x)  { return hcos(x); }
-  static __DDI__ __half tan(const __half& x)  { return hsin(x) / hcos(x); }
-  static __DDI__ __half log(const __half& x)  { return hlog(x); }
-  static __DDI__ __half exp(const __half& x)  { return hexp(x); }
-  static __DDI__ __half abs(const __half& x)  { return __float2half(fabs(__half2float(x))); }
-  static __DDI__ __half sqrt(const __half& x) { return hsqrt(x); }
-  static __DDI__ __half neg(const __half& x)  { return -x; }
-  static __DDI__ __half sgn(const __half& x)  { __half zero = __float2half(0.0); return (zero < x) - (x < zero); }
+  static DEVICE_INLINE __half tanh(const __half& x) {
+    // tanh(x) = ( e^x - e^-x )/( e^x + e^-x ) = (e^2x - 1) / (e^2x + 1)
+    __half one = 1.f;
+    __half two = 2.f;
+    __half e2x = hexp(two * x);
+    return (e2x - one) / (e2x + one);
+  }
 
-  static __DDI__ __half add(const __half x, const __half y)  { return x + y; }
-  static __DDI__ __half sub(const __half x, const __half y)  { return x - y; }
-  static __DDI__ __half mul(const __half x, const __half y)  { return x * y; }
-  static __DDI__ __half div(const __half x, const __half y)  { return x / y; }
+  static DEVICE_INLINE __half sin(const __half& x)  { return hsin(x); }
+  static DEVICE_INLINE __half cos(const __half& x)  { return hcos(x); }
+  static DEVICE_INLINE __half tan(const __half& x)  { return hsin(x) / hcos(x); }
+  static DEVICE_INLINE __half log(const __half& x)  { return hlog(x); }
+  static DEVICE_INLINE __half exp(const __half& x)  { return hexp(x); }
+  static DEVICE_INLINE __half abs(const __half& x)  { return __float2half(fabs(__half2float(x))); }
+  static DEVICE_INLINE __half sqrt(const __half& x) { return hsqrt(x); }
+  static DEVICE_INLINE __half neg(const __half& x)  { return -x; }
+  static DEVICE_INLINE __half sgn(const __half& x)  { __half zero = __float2half(0.0); return (zero < x) - (x < zero); }
 
-  static __DDI__ __half max(const __half& x, const __half& y)  { return x < y ? y : x; }
-  static __DDI__ __half min(const __half& x, const __half& y)  { return x < y ? x : y; }
-  static __DDI__ __half pow(const __half& x, const __half& y)  { return __float2half(powf(__half2float(x), __half2float(y))); }
+  static DEVICE_INLINE __half add(const __half& x, const __half& y)  { return x + y; }
+  static DEVICE_INLINE __half sub(const __half& x, const __half& y)  { return x - y; }
+  static DEVICE_INLINE __half mul(const __half& x, const __half& y)  { return x * y; }
+  static DEVICE_INLINE __half div(const __half& x, const __half& y)  { return x / y; }
 
-  static __DDI__ __half negate(const __half& x)  { return !(bool)x; }
-  static __DDI__ __half eq(const __half& x, const __half& y)   { return x == y; }
-  static __DDI__ __half neq(const __half& x, const __half& y)  { return x != y; }
-  static __DDI__ __half gt(const __half& x, const __half& y)   { return x > y;  }
-  static __DDI__ __half lt(const __half& x, const __half& y)   { return x < y;  }
-  static __DDI__ __half geq(const __half& x, const __half& y)  { return x >= y; }
-  static __DDI__ __half leq(const __half& x, const __half& y)  { return x <= y; }
-  static __DDI__ __half and_(const __half& x, const __half& y) { return x && y; } // 'and' is used by gcc
-  static __DDI__ __half or_(const __half& x, const __half& y)  { return x || y; } // 'or' is used by gcc
+  static DEVICE_INLINE __half max(const __half& x, const __half& y)  { return x < y ? y : x; }
+  static DEVICE_INLINE __half min(const __half& x, const __half& y)  { return x < y ? x : y; }
+  static DEVICE_INLINE __half pow(const __half& x, const __half& y)  { return exp(mul(y, log(x))); }
+
+  static DEVICE_INLINE __half negate(const __half& x)  { return !(bool)x; }
+  static DEVICE_INLINE __half eq(const __half& x, const __half& y)   { return x == y; }
+  static DEVICE_INLINE __half neq(const __half& x, const __half& y)  { return x != y; }
+  static DEVICE_INLINE __half gt(const __half& x, const __half& y)   { return x > y;  }
+  static DEVICE_INLINE __half lt(const __half& x, const __half& y)   { return x < y;  }
+  static DEVICE_INLINE __half geq(const __half& x, const __half& y)  { return x >= y; }
+  static DEVICE_INLINE __half leq(const __half& x, const __half& y)  { return x <= y; }
+  static DEVICE_INLINE __half and_(const __half& x, const __half& y) { return x && y; } // 'and' is used by gcc
+  static DEVICE_INLINE __half or_(const __half& x, const __half& y)  { return x || y; } // 'or' is used by gcc
 
   // Neural Networks specific functions
-  static __DDI__ __half sigmoid(const __half& x) {
+  static DEVICE_INLINE __half sigmoid(const __half& x) {
     __half one = __float2half(1.0);
     return exp(x) / (one + exp(x));
   }
 
-  static __DDI__ __half log1ph(__half x) {
+  static DEVICE_INLINE __half log1ph(__half x) {
     return __float2half(log1pf(__half2float(x)));
   }
 
-  static __DDI__ __half logaddexp(const __half& x, const __half& y) {
+  static DEVICE_INLINE __half logaddexp(const __half& x, const __half& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
     return x < y ? (y + log1ph(exp(x - y))) : (x + log1ph(exp(y - x)));
   }
 
-  static __DDI__ __half clip(const __half& x, const __half& y)  { return abs(x) >= y ? sgn(x) * y : x; }
+  static DEVICE_INLINE __half clip(const __half& x, const __half& y)  { return abs(x) >= y ? sgn(x) * y : x; }
   // derivative of Clip, cut-off function
-  static __DDI__ __half bump(const __half& x, const __half& y)  {
+  static DEVICE_INLINE __half bump(const __half& x, const __half& y)  {
     __half zero = __float2half(0.0);
     __half one = __float2half(1.0);
     return abs(x) >= y ? zero : one;
   }
-  static __DDI__ float relu(const __half& x) {
+  static DEVICE_INLINE __half relu(const __half& x) {
     __half zero = __float2half(0.0);
     return x > zero ? x : zero;
   }
-  static __DDI__ float reluBack(const __half& x) {
+  static DEVICE_INLINE __half reluBack(const __half& x) {
     __half zero = __float2half(0.0);
     __half one = __float2half(1.0);
     return x > zero ? one : zero;
   }
 
-  static __DDI__ float prelu(const __half& x, const __half& y)     {
+  static DEVICE_INLINE __half prelu(const __half& x, const __half& y)     {
     __half zero = __float2half(0.0);
     return x > zero ? x : x * y;
   }
-  static __DDI__ float preluBack(const __half& x, const __half& y) {
+  static DEVICE_INLINE __half preluBack(const __half& x, const __half& y) {
     __half zero = __float2half(0.0);
     __half one = __float2half(1.0);
     return x > zero ? one : y;
   }
 
-  static __DDI__ float if_then_else(const __half& x, const __half& y, const __half& z) { return x ? y : z; }
+  static DEVICE_INLINE __half if_then_else(const __half& x, const __half& y, const __half& z) { return x ? y : z; }
 
-  static __DDI__ __half sumReduce(const __half& x) { return x; }
-  static __DDI__ __half maxReduce(const __half& x) { return x; }
-  static __DDI__ __half minReduce(const __half& x) { return x; }
+  static DEVICE_INLINE __half sumReduce(const __half& x) { return x; }
+  static DEVICE_INLINE __half maxReduce(const __half& x) { return x; }
+  static DEVICE_INLINE __half minReduce(const __half& x) { return x; }
 
 };
 

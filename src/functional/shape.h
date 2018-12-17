@@ -60,13 +60,13 @@ struct ConstantShape {
   size_t offset_{0};
 
   // @TODO: review all these constructors
-  __HD__ ConstantShape() {
+  HOST_DEVICE ConstantShape() {
     shape_.fill(1);
     stride_.fill(1);
     bstride_.fill(0);
   }
 
-  __HD__ ConstantShape(const ConstantShape& shape)
+  HOST_DEVICE ConstantShape(const ConstantShape& shape)
       : shape_(shape.shape_),
         stride_(shape.stride_),
         bstride_(shape.bstride_),
@@ -74,7 +74,7 @@ struct ConstantShape {
         offset_(shape.offset_) {}
 
   template <size_t M>
-  __HD__ ConstantShape(const Array<int, M>& shape) {
+  HOST_DEVICE ConstantShape(const Array<int, M>& shape) {
     ABORT_IF(M > N, "Recompile with CONST_SHAPE_DIMS >= {}", M);
 
     std::copy(shape.begin(), shape.end(), shape_.begin() + N - M);
@@ -85,7 +85,7 @@ struct ConstantShape {
     updateElements();
   }
 
-  __HD__ ConstantShape(const Array<int, N>& shape,
+  HOST_DEVICE ConstantShape(const Array<int, N>& shape,
                        const Array<int, N>& stride,
                        size_t offset)
   : shape_(shape), stride_(stride), offset_(offset) {
@@ -107,7 +107,7 @@ struct ConstantShape {
   }
 
   // @TODO: do we need bstrides at all?
-  __HDI__ void updateStrides() {
+  HOST_DEVICE_INLINE void updateStrides() {
     stride_[N - 1] = 1;
     bstride_[N - 1] = shape_[N - 1] == 1 ? 0 : stride_[N - 1];
 
@@ -117,31 +117,31 @@ struct ConstantShape {
     }
   }
 
-  __HDI__ void updateElements() {
+  HOST_DEVICE_INLINE void updateElements() {
     elements_ = 1;
     for(int i = 0; i < N; ++i)
       elements_ *= shape_[i];
   }
 
-  __HDI__ void set(int i, int dim) {
+  HOST_DEVICE_INLINE void set(int i, int dim) {
     shape_[i] = dim;
     updateStrides();
     updateElements();
   }
 
-  __HDI__ const int& dim(int i) const { return shape_[i]; }
+  HOST_DEVICE_INLINE const int& dim(int i) const { return shape_[i]; }
 
-  __HDI__ const int& back() const { return dim(N - 1); }
+  HOST_DEVICE_INLINE const int& back() const { return dim(N - 1); }
 
-  __HDI__ const int& operator[](int i) const { return dim(i); }
+  HOST_DEVICE_INLINE const int& operator[](int i) const { return dim(i); }
 
-  __HDI__ const int& stride(int i) const { return stride_[i]; }
+  HOST_DEVICE_INLINE const int& stride(int i) const { return stride_[i]; }
 
-  __HDI__ const int& bstride(int i) const { return bstride_[i]; }
+  HOST_DEVICE_INLINE const int& bstride(int i) const { return bstride_[i]; }
 
-  __HDI__ static constexpr size_t size() { return N; }
+  HOST_DEVICE_INLINE static constexpr size_t size() { return N; }
 
-  __HDI__ int elements() const { return (int)elements_; }
+  HOST_DEVICE_INLINE int elements() const { return (int)elements_; }
 
   // The following functions iterate over shape dimensions and use resursive
   // templates. They unroll over a compile-time defined number of dimensions.
@@ -149,18 +149,18 @@ struct ConstantShape {
   // Struct for recurrent template calls over shape dimensions,
   // version for K > 0
   template <const int K, const int D> struct I {
-    __HDI__ static int index(const Array<int, D>& dims,
+    HOST_DEVICE_INLINE static int index(const Array<int, D>& dims,
                              const Array<int, D>& stride) {
       return dims[K] * stride[K] + I<K-1, D>::index(dims, stride);
     }
 
-    __HDI__ static int index(int si,
+    HOST_DEVICE_INLINE static int index(int si,
                              const Array<int, D>& shape,
                              const Array<int, D>& stride) {
       return (si % shape[K]) * stride[K] + I<K-1, D>::index(si / shape[K], shape, stride);
     }
 
-    __HDI__ static void dims(int si,
+    HOST_DEVICE_INLINE static void dims(int si,
                              Array<int, D>& dims,
                              const Array<int, D>& shape) {
       dims[K] = si % shape[K];
@@ -172,37 +172,37 @@ struct ConstantShape {
   // Struct for recurrent template calls over shape dimensions,
   // specialization for K == 0
   template <const int D> struct I<0, D> {
-    __HDI__ static int index(const Array<int, D>& dims,
+    HOST_DEVICE_INLINE static int index(const Array<int, D>& dims,
                              const Array<int, D>& stride) {
       return dims[0] * stride[0];
     }
 
-    __HDI__ static int index(int si,
+    HOST_DEVICE_INLINE static int index(int si,
                              const Array<int, D>& shape,
                              const Array<int, D>& stride) {
       return (si % shape[0]) * stride[0];
     }
 
-   __HDI__ static void dims(int si,
+   HOST_DEVICE_INLINE static void dims(int si,
                             Array<int, D>& dims,
                             const Array<int, D>& shape) {
       dims[0] = si % shape[0];
     }
   };
 
-  __HDI__ int index(const Array<int, N>& dims) const {
+  HOST_DEVICE_INLINE int index(const Array<int, N>& dims) const {
     return offset_ + I<N-1, N>::index(dims, stride_);
   }
 
-  __HDI__ int index(int si) const {
+  HOST_DEVICE_INLINE int index(int si) const {
     return offset_ + I<N-1, N>::index(si, shape_, stride_);
   }
 
-  __HDI__ void dims(int si, Array<int, N>& dims) const {
+  HOST_DEVICE_INLINE void dims(int si, Array<int, N>& dims) const {
     I<N-1, N>::dims(si, dims, shape_);
   }
 
-  __HDI__ int bindex(const Array<int, N>& dims) const {
+  HOST_DEVICE_INLINE int bindex(const Array<int, N>& dims) const {
     int i = 0;
     // ?? : return offset_ + I<N-1, N>::index(d, bstride_);
     for(int j = 0; j < N; ++j)
@@ -211,14 +211,14 @@ struct ConstantShape {
   }
 
   // @TODO: should this check all the members?
-  __HDI__ bool operator==(const ConstantShape& other) const {
+  HOST_DEVICE_INLINE bool operator==(const ConstantShape& other) const {
     for(int i = 0; i < N; ++i)
       if(shape_[i] != other[i])
         return false;
     return true;
   }
 
-  __HDI__ bool operator!=(const ConstantShape& other) const {
+  HOST_DEVICE_INLINE bool operator!=(const ConstantShape& other) const {
     return !(*this == other);
   }
 
@@ -234,7 +234,7 @@ struct ConstantShape {
 
   // Performs numpy-like slicing on a given shape object. The number
   // of slices corresponds to the number of dimensions.
-  __HDI__ ConstantShape<N> slice(const Array<Slice, N>& slices) {
+  HOST_DEVICE_INLINE ConstantShape<N> slice(const Array<Slice, N>& slices) {
     // @TODO: add various checks
     Array<int, N> offsets;
     Array<int, N> shape;
@@ -264,7 +264,7 @@ struct ConstantShape {
 
 // non-continguous slices cannot be reshaped! need to be copied
 //   template <const int D>
-//   __HDI__ ConstantShape<D> reshape(const ConstantShape<D>& other) const {
+//   HOST_DEVICE_INLINE ConstantShape<D> reshape(const ConstantShape<D>& other) const {
 //     // @TODO: add various checks
 // #ifndef __CUDA__ARCH__
 //     ABORT_IF(elements() != other.elements(),

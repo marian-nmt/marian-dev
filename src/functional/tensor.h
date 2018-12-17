@@ -8,8 +8,8 @@ namespace marian {
 namespace functional {
 
 // general case, do nothing. Usually the number of elements in a tensor is correctly mirrored in the
-// shape object. Only special multi-element types like floatX4 (4 floats), floatX16 (16 floats)
-// and halfX2 (2 half) require special handling. Similar for multi-element integer types to be added
+// shape object. Only special multi-element types like float32x4 (4 floats), float32x8 (8 floats)
+// and half2 (2 half) require special handling. Similar for multi-element integer types to be added
 // later.
 template <typename T>
 inline marian::Shape adapt(const marian::Shape& shape) {

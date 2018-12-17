@@ -81,6 +81,7 @@ struct View {
 
   HOST_DEVICE_INLINE size_t size() const { return shape_.elements(); }
 
+  // @TODO: This is code duplication from marian::Tensor
   std::string debug(int precision = 8, int dispCols = 5) {
     std::stringstream strm;
     assert(shape_.size());

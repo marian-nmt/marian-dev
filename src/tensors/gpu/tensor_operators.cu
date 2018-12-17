@@ -252,10 +252,10 @@ void Deconcatenate(std::vector<Tensor>& outputs, const Tensor in, int ax) {
     SplitCont(outputs, in, ax);
 }
 
-template <bool add>
+template <bool add, typename T>
 __global__ void gTransposeND(
-    functional::Tensor<float> out,
-    const functional::Tensor<float> in,
+    functional::Tensor<T> out,
+    const functional::Tensor<T> in,
     const functional::Array<int, functional::Shape::size()> permute) {
   constexpr size_t N = functional::Shape::size();
   functional::Array<int, N> oDims;
@@ -281,9 +281,9 @@ __global__ void gTransposeND(
   }
 }
 
-template <bool add>
-__global__ void gTranspose0213(float* out,
-                               const float* in,
+template <bool add, typename T>
+__global__ void gTranspose0213(T* out,
+                               const T* in,
                                int rows,
                                int cols,
                                int stride1,
@@ -292,14 +292,14 @@ __global__ void gTranspose0213(float* out,
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* rowOut = out + j * cols;
+      T* rowOut = out + j * cols;
 
       int z = j / stride;
       int y = (j % stride) / stride1;
       int x = (j % stride) % stride1;
       int j2 = z * stride + x * stride2 + y;
 
-      const float* rowIn = in + j2 * cols;
+      const T* rowIn = in + j2 * cols;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
@@ -316,6 +316,7 @@ __global__ void gTranspose0213(float* out,
 
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   cudaSetDevice(out->getDeviceId().no);
+
   if(vAxis == std::vector<int>({0, 2, 1, 3})) {
     int rows = out->shape().elements() / out->shape().back();
     int cols = out->shape().back();
@@ -326,8 +327,13 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     int stride1 = out->shape()[-2];
     int stride2 = out->shape()[-3];
 
-    gTranspose0213<false><<<blocks, threads>>>(
-        out->data(), in->data(), rows, cols, stride1, stride2);
+    if(in->type() == Type::float32) {
+      gTranspose0213<false><<<blocks, threads>>>(out->data<float>(), in->data<float>(), rows, cols, stride1, stride2);
+    } else if(in->type() == Type::float16) {
+      gTranspose0213<false><<<blocks, threads>>>(out->data<__half>(), in->data<__half>(), rows, cols, stride1, stride2);
+    } else {
+      ABORT("Transpose for type {} not implemented", in->type());
+    }
   } else {
     functional::Array<int, functional::Shape::size()> axes;
     int diff = functional::Shape::size() - vAxis.size();
@@ -342,10 +348,17 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     int blocks
         = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-    gTransposeND<false><<<blocks, threads>>>(out, in, axes);
+    if(in->type() == Type::float32) {
+      gTransposeND<false, float><<<blocks, threads>>>(out, in, axes);
+    } else if(in->type() == Type::float16) {
+      gTransposeND<false, __half><<<blocks, threads>>>(out, in, axes);
+    } else {
+      ABORT("Transpose for type {} not implemented", in->type());
+    }
   }
 }
 
+//@TODO: code duplication?
 void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   cudaSetDevice(out->getDeviceId().no);
   if(vAxis == std::vector<int>({0, 2, 1, 3})) {
@@ -358,8 +371,13 @@ void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     int stride1 = out->shape()[-2];
     int stride2 = out->shape()[-3];
 
-    gTranspose0213<true><<<blocks, threads>>>(
-        out->data(), in->data(), rows, cols, stride1, stride2);
+    if(in->type() == Type::float32) {
+      gTranspose0213<true><<<blocks, threads>>>(out->data<float>(), in->data<float>(), rows, cols, stride1, stride2);
+    } else if(in->type() == Type::float16) {
+      gTranspose0213<true><<<blocks, threads>>>(out->data<__half>(), in->data<__half>(), rows, cols, stride1, stride2);
+    } else {
+      ABORT("Transpose for type {} not implemented", in->type());
+    }
   } else {
     functional::Array<int, functional::Shape::size()> axes;
     int diff = functional::Shape::size() - vAxis.size();
@@ -374,25 +392,35 @@ void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     int blocks
         = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-    gTransposeND<true><<<blocks, threads>>>(out, in, axes);
+    if(in->type() == Type::float32) {
+      gTransposeND<true, float><<<blocks, threads>>>(out, in, axes);
+    } else if(in->type() == Type::float16) {
+      gTransposeND<true, __half><<<blocks, threads>>>(out, in, axes);
+    } else {
+      ABORT("Transpose for type {} not implemented", in->type());
+    }
   }
 }
 
-__global__ void gSoftmax(float* out,
+// @TODO: handle __half2
+template <typename T>
+__global__ void gSoftmax(T* out,
                          functional::Shape outShape,
-                         const float* in) {
+                         const T* in) {
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* so = out + j * cols;
-      const float* sp = in + j * cols;
+      T* so = out + j * cols;
+      const T* sp = in + j * cols;
 
-      extern __shared__ float _share[];
+      // CUDA complains if type or size of shared memory changes, keep size constant.
+      extern __shared__ uint8_t _sharedBytes[];
+      T* _share = (T*)_sharedBytes;
 
-      float* _max = _share + blockDim.x;
+      T* _max = _share + blockDim.x;
       _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -414,16 +442,16 @@ __global__ void gSoftmax(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float max = _max[0];
+      T max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
+      T* _sum = _share + blockDim.x;
 
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float ex = __expf(sp[id] - max);
+          T ex = __expf(sp[id] - max); // fix this
           so[id] = ex;
           _sum[threadIdx.x] += ex;
         }
@@ -456,26 +484,36 @@ void Softmax(Tensor out, Tensor in) {
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads * 2;
 
-  gSoftmax<<<blocks, threads, shared>>>(out->data(), out->shape(), in->data());
+  if(in->type() == Type::float32) {
+    int shared = sizeof(float) * threads * 2;
+    gSoftmax<<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
+  } else if (in->type() == Type::float16) {
+    int shared = sizeof(float) * threads * 2; // keep size of shared memory
+    gSoftmax<<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
+  } else {
+    ABORT("Softmax not implemented for type {}", in->type());
+  }
 }
 
-__global__ void gLogSoftmax(float* out,
+template <typename T>
+__global__ void gLogSoftmax(T* out,
                             const functional::Shape outShape,
-                            const float* in) {
+                            const T* in) {
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* so = out + j * cols;
-      const float* sp = in + j * cols;
+      T* so = out + j * cols;
+      const T* sp = in + j * cols;
 
-      extern __shared__ float _share[];
+      // CUDA complains if type or size of shared memory changes, keep size constant.
+      extern __shared__ uint8_t _sharedBytes[];
+      T* _share = (T*)_sharedBytes;
 
-      float* _max = _share + blockDim.x;
+      T* _max = _share + blockDim.x;
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -497,17 +535,17 @@ __global__ void gLogSoftmax(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float max = _max[0];
+      T max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
+      T* _sum = _share + blockDim.x;
 
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float sm = sp[id] - max;
-          float ex = __expf(sm);
+          T sm = sp[id] - max;
+          T ex = __expf(sm); // fix this
           so[id] = sm;
           _sum[threadIdx.x] += ex;
         }
@@ -525,7 +563,7 @@ __global__ void gLogSoftmax(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols)
-          so[id] -= __logf(_sum[0]);
+          so[id] -= __logf(_sum[0]); // fix this
       }
     }
   }
@@ -539,10 +577,16 @@ void LogSoftmax(Tensor out, Tensor in) {
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads * 2;
 
-  gLogSoftmax<<<blocks, threads, shared>>>(
-      out->data(), out->shape(), in->data());
+  if(in->type() == Type::float32) {
+    int shared = sizeof(float) * threads * 2;
+    gLogSoftmax<<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
+  } else if (in->type() == Type::float16) {
+    int shared = sizeof(float) * threads * 2; // keep size of shared memory
+    gLogSoftmax<<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
+  } else {
+    ABORT("LogSoftmax not implemented for type {}", in->type());
+  }
 }
 
 ///////////////////////////////////////////////////////

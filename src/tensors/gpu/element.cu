@@ -36,6 +36,8 @@ __global__ void gElement(
 
 template <typename T, class Functor, class... Tensors>
 void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
+  //matchOrAbort<T>(out->type()); // @TODO: figure out undefined reference
+
   cudaSetDevice(out->getDeviceId().no);
 
   std::cerr << "ElementTyped: " << out->type() << std::endl;

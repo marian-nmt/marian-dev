@@ -705,14 +705,14 @@ public:
 
   Tensor& val() override {
     auto childVal = reshapee_->val();
-    auto temp = TensorBase::New(childVal->memory(), shape(), childVal->getBackend());
+    auto temp = TensorBase::New(childVal->memory(), shape(), childVal->type(), childVal->getBackend());
     val_.swap(temp);
     return val_;
   };
 
   Tensor& grad() override {
     auto childGrad = reshapee_->grad();
-    auto temp = TensorBase::New(childGrad->memory(), shape(), childGrad->getBackend());
+    auto temp = TensorBase::New(childGrad->memory(), shape(), childGrad->type(), childGrad->getBackend());
     adj_.swap(temp);
     return adj_;
   };

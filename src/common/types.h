@@ -9,10 +9,6 @@
 #include <immintrin.h>
 #endif
 
-#ifdef __CUDA_ARCH__
-#include <cuda_fp16.h>
-#endif
-
 namespace marian {
 
 #ifndef __CUDA_ARCH__
@@ -134,10 +130,6 @@ template <> inline bool matchType<uint16_t>(Type type) { return type == Type::ui
 template <> inline bool matchType<uint32_t>(Type type) { return type == Type::uint32; }
 template <> inline bool matchType<uint64_t>(Type type) { return type == Type::uint64; }
 
-#ifdef __CUDA_ARCH__
-template <> inline bool matchType<half>(Type type)  { return type == Type::float16; }
-#endif
-
 template <> inline bool matchType<float16>(Type type)  { return type == Type::float16; }
 template <> inline bool matchType<float>(Type type)  { return type == Type::float32; }
 template <> inline bool matchType<double>(Type type) { return type == Type::float64; }
@@ -175,10 +167,6 @@ template <> inline std::string request<uint8_t>()  { return "uint8"; }
 template <> inline std::string request<uint16_t>() { return "uint16"; }
 template <> inline std::string request<uint32_t>() { return "uint32"; }
 template <> inline std::string request<uint64_t>() { return "uint64"; }
-
-#ifdef __CUDA_ARCH__
-template <> inline std::string request<half>()  { return "fp16"; }
-#endif
 
 template <> inline std::string request<float16>() { return "float16"; }
 template <> inline std::string request<float>()   { return "float32"; }

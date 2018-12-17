@@ -6,7 +6,7 @@ using namespace marian;
 
 template <typename T>
 void tests(DeviceType device, Type floatType = Type::float32) {
-  auto floatApprox = [](T x, T y) { return x == Approx(y); };
+  auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.01); };
 
   Config::seed = 1234;
 
@@ -128,10 +128,10 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     std::vector<T> lsmOut({ -0.6444f, -0.7444f, -1.10319f, -0.40319f,
                                 -111.45f, 0.0f, -100.05001f, 0.0f });
 
-    auto input = graph->constant({2, 2, 2}, inits::fromVector(in));
+    auto input = graph->constant({2, 2, 2}, inits::fromVector(in), floatType);
 
-    auto sm  = softmax(input);
-    auto lsm = logsoftmax(input);
+    auto sm  = debug(softmax(input));
+    auto lsm = debug(logsoftmax(input));
 
     graph->forward();
 
@@ -141,12 +141,12 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     sm->val()->get(values);
 
     CHECK( std::equal(values.begin(), values.end(),
-                        smOut.begin(), floatApprox) );
+                      smOut.begin(), floatApprox) );
 
     lsm->val()->get(values);
 
     CHECK( std::equal(values.begin(), values.end(),
-                        lsmOut.begin(), floatApprox) );
+                      lsmOut.begin(), floatApprox) );
   }
 
   SECTION("layer normalization") {

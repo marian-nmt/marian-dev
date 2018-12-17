@@ -6,8 +6,6 @@
 #include "functional/tmp.h"
 #include "tensors/gpu/cuda_helpers.h"
 
-#include <cuda_fp16.h>
-
 namespace marian {
 namespace gpu {
 
@@ -40,7 +38,7 @@ template <typename T, class Functor, class... Tensors>
 void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
   cudaSetDevice(out->getDeviceId().no);
 
-  std::cerr << "Element: " << out->type() << std::endl;
+  std::cerr << "ElementTyped: " << out->type() << std::endl;
 
   int length = out->shape().elements();
   int threads = std::min(MAX_THREADS, length);

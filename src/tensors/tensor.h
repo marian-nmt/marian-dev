@@ -26,6 +26,7 @@ do { \
     case Type::uint16:  return func<uint16_t>(arg1); \
     case Type::uint32:  return func<uint32_t>(arg1); \
     case Type::uint64:  return func<uint64_t>(arg1); \
+    case Type::float16: return func<float16 >(arg1); \
     case Type::float32: return func<float   >(arg1); \
     case Type::float64: return func<double  >(arg1); \
     default: ABORT("Unknown type {}", type_); \

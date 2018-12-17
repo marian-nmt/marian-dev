@@ -367,41 +367,40 @@ struct Ops<float32x8> {
 template <>
 struct Ops<__half> {
 
-  static __DDI__ __half sub(const __half x, const __half y)  { return __hadd(x, y); }
-  static __DDI__ __half add(const __half x, const __half y)  { return __hadd(x, y); }
-  static __DDI__ __half mul(const __half x, const __half y)  { return __hadd(x, y); }
-  static __DDI__ __half div(const __half x, const __half y)  { return __hadd(x, y); }
-
-  static __DDI__ __half tanh(const __half& x) { return __float2half(tanhf(__half2float(x))); }
-  static __DDI__ __half sin(const __half& x)  { return 0; /*__hsin(x);*/ }
-  static __DDI__ __half cos(const __half& x)  { return 0; /*__hcos(x);*/ }
-  static __DDI__ __half tan(const __half& x)  { return __float2half(tanf(__half2float(x))); }
-  static __DDI__ __half log(const __half& x)  { return 0; /*__hlog(x);*/ }
-  static __DDI__ __half exp(const __half& x)  { return 0; /*__hexp(x);*/ }
+  static __DDI__ __half tanh(const __half& x) { return __float2half(tanhf(__half2float(x))); } // @TODO: approximate?
+  static __DDI__ __half sin(const __half& x)  { return hsin(x); }
+  static __DDI__ __half cos(const __half& x)  { return hcos(x); }
+  static __DDI__ __half tan(const __half& x)  { return hsin(x) / hcos(x); }
+  static __DDI__ __half log(const __half& x)  { return hlog(x); }
+  static __DDI__ __half exp(const __half& x)  { return hexp(x); }
   static __DDI__ __half abs(const __half& x)  { return __float2half(fabs(__half2float(x))); }
-  static __DDI__ __half sqrt(const __half& x) { return 0; /*__hsqrt(x);*/ }
-  static __DDI__ __half neg(const __half& x)  { return __float2half(-__half2float(x)); }
-  static __DDI__ __half sgn(const __half& x)  { return __float2half((0 < __half2float(x)) - (__half2float(x) < 0)); }
+  static __DDI__ __half sqrt(const __half& x) { return hsqrt(x); }
+  static __DDI__ __half neg(const __half& x)  { return -x; }
+  static __DDI__ __half sgn(const __half& x)  { __half zero = __float2half(0.0); return (zero < x) - (x < zero); }
 
+  static __DDI__ __half add(const __half x, const __half y)  { return x + y; }
+  static __DDI__ __half sub(const __half x, const __half y)  { return x - y; }
+  static __DDI__ __half mul(const __half x, const __half y)  { return x * y; }
+  static __DDI__ __half div(const __half x, const __half y)  { return x / y; }
 
-  static __DDI__ __half max(const __half& x, const __half& y)  { return 0 /* x < y ? y : x*/; }
-  static __DDI__ __half min(const __half& x, const __half& y)  { return 0 /*x < y ? x : y*/; }
-  static __DDI__ __half pow(const __half& x, const __half& y)  { return 0; /*powf(x, y)*/; }
-
+  static __DDI__ __half max(const __half& x, const __half& y)  { return x < y ? y : x; }
+  static __DDI__ __half min(const __half& x, const __half& y)  { return x < y ? x : y; }
+  static __DDI__ __half pow(const __half& x, const __half& y)  { return __float2half(powf(__half2float(x), __half2float(y))); }
 
   static __DDI__ __half negate(const __half& x)  { return !(bool)x; }
-  static __DDI__ __half eq(const __half& x, const __half& y)   { return 0 /*x == y*/; }
-  static __DDI__ __half neq(const __half& x, const __half& y)  { return 0 /*x != y*/; }
-  static __DDI__ __half gt(const __half& x, const __half& y)   { return 0 /*x > y*/; }
-  static __DDI__ __half lt(const __half& x, const __half& y)   { return 0 /*x < y*/; }
-  static __DDI__ __half geq(const __half& x, const __half& y)  { return 0 /*x >= y*/; }
-  static __DDI__ __half leq(const __half& x, const __half& y)  { return 0; /*x <= y*/; }
-  static __DDI__ __half and_(const __half& x, const __half& y) { return 0 /*x && y*/; } // 'and' is used by gcc
-  static __DDI__ __half or_(const __half& x, const __half& y)  { return 0 /*x || y*/; } // 'or' is used by gcc
+  static __DDI__ __half eq(const __half& x, const __half& y)   { return x == y; }
+  static __DDI__ __half neq(const __half& x, const __half& y)  { return x != y; }
+  static __DDI__ __half gt(const __half& x, const __half& y)   { return x > y;  }
+  static __DDI__ __half lt(const __half& x, const __half& y)   { return x < y;  }
+  static __DDI__ __half geq(const __half& x, const __half& y)  { return x >= y; }
+  static __DDI__ __half leq(const __half& x, const __half& y)  { return x <= y; }
+  static __DDI__ __half and_(const __half& x, const __half& y) { return x && y; } // 'and' is used by gcc
+  static __DDI__ __half or_(const __half& x, const __half& y)  { return x || y; } // 'or' is used by gcc
 
   // Neural Networks specific functions
   static __DDI__ __half sigmoid(const __half& x) {
-    return /*x > 0 ? (1.f / (1.f + exp(-x))) :*/ 0 ; /*(exp(x) / (__float2half(1.f) + exp(x)))*/;
+    __half one = __float2half(1.0);
+    return exp(x) / (one + exp(x));
   }
 
   static __DDI__ __half log1ph(__half x) {
@@ -410,26 +409,44 @@ struct Ops<__half> {
 
   static __DDI__ __half logaddexp(const __half& x, const __half& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
-    return 0; /*x < y ? (y + log1ph(exp(x - y))) : (x + log1ph(exp(y - x)))*/;
+    return x < y ? (y + log1ph(exp(x - y))) : (x + log1ph(exp(y - x)));
   }
 
-  static __DDI__ __half clip(const __half& x, const __half& y)  { return 0; /*abs(x) >= y ? sgn(x) * y : x*/; }
+  static __DDI__ __half clip(const __half& x, const __half& y)  { return abs(x) >= y ? sgn(x) * y : x; }
   // derivative of Clip, cut-off function
-  static __DDI__ __half bump(const __half& x, const __half& y)  { return 0; /* abs(x) >= y ? __float2half(0.f) : __float2half(1.f);*/ }
+  static __DDI__ __half bump(const __half& x, const __half& y)  {
+    __half zero = __float2half(0.0);
+    __half one = __float2half(1.0);
+    return abs(x) >= y ? zero : one;
+  }
+  static __DDI__ float relu(const __half& x) {
+    __half zero = __float2half(0.0);
+    return x > zero ? x : zero;
+  }
+  static __DDI__ float reluBack(const __half& x) {
+    __half zero = __float2half(0.0);
+    __half one = __float2half(1.0);
+    return x > zero ? one : zero;
+  }
 
-  static __DDI__ __half relu(const __half& x)     { return  0; }
-  static __DDI__ __half reluBack(const __half& x) { return  0; }
+  static __DDI__ float prelu(const __half& x, const __half& y)     {
+    __half zero = __float2half(0.0);
+    return x > zero ? x : x * y;
+  }
+  static __DDI__ float preluBack(const __half& x, const __half& y) {
+    __half zero = __float2half(0.0);
+    __half one = __float2half(1.0);
+    return x > zero ? one : y;
+  }
 
-  static __DDI__ __half prelu(const __half& x, const __half& y)     { return 0; }
-  static __DDI__ __half preluBack(const __half& x, const __half& y) { return 0; }
-
-  static __DDI__ __half if_then_else(const __half& x, const __half& y, const __half& z) { return  0; }
+  static __DDI__ float if_then_else(const __half& x, const __half& y, const __half& z) { return x ? y : z; }
 
   static __DDI__ __half sumReduce(const __half& x) { return x; }
   static __DDI__ __half maxReduce(const __half& x) { return x; }
   static __DDI__ __half minReduce(const __half& x) { return x; }
 
 };
+
 #endif
 
 //*******************************************************************************************

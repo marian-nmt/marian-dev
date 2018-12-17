@@ -45,9 +45,7 @@ protected:
 
 public:
   Node(Ptr<ExpressionGraph> graph, const Shape& shape, const Type& valueType = Type::float32)
-    : graph_(graph), shape_(shape), valueType_(valueType) {
-    std::cerr << "Constructor: " << valueType_ << std::endl;
-  }
+    : graph_(graph), shape_(shape), valueType_(valueType) {}
 
   virtual ~Node() {
     if(destroy_) {
@@ -159,10 +157,25 @@ public:
 struct NaryNodeOp : public Node {
   size_t hash_{0};
 
+  // deduce type automatically, but then all types must be the same
+  Type commonType(const std::vector<Expr>& nodes) {
+    ABORT_IF(nodes.size() == 0, "NaryNodeOp has no children");
+    Type type = nodes[0]->value_type();
+    for(int i = 1; i < nodes.size(); ++i)
+      ABORT_IF(nodes[i]->value_type() != type,
+               "Children must have same type for deduction ({} != {})",
+               type, nodes[i]->value_type());
+    return type;
+  }
+
+  NaryNodeOp(const std::vector<Expr>& nodes, Shape shape)
+  : NaryNodeOp(nodes, shape, commonType(nodes)) {}
+
   NaryNodeOp(const std::vector<Expr>& nodes,
              Shape shape,
-             Type value_type = Type::float32)
+             Type value_type)
       : Node(nodes.front()->graph(), shape, value_type) {
+
     children_.resize(nodes.size());
     for(size_t i = 0; i < nodes.size(); ++i)
       children_[i] = nodes[i];

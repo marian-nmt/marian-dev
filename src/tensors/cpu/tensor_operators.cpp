@@ -26,6 +26,10 @@ inline float stableSigmoid(float x) {
   }
 }
 
+void CopyCast(Tensor out, Tensor in) {
+  ABORT("Not implemented");
+}
+
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
   int step = 1;
   for(int i = 0; i < axis; ++i)

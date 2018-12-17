@@ -38,6 +38,46 @@ bool IsNan(Tensor in) {
   return false;
 }
 
+template <typename To, typename From>
+__global__ void gCopyCastTo(To* out, const From* in, int length) {
+  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+    if(index < length) {
+      out[index] = in[index];
+    }
+  }
+}
+
+template <typename To, typename From>
+void CopyCastTo(To* out, const From* in, int length) {
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  gCopyCastTo<<<blocks, threads>>>(out, in, length);
+}
+
+template <typename T>
+void CopyCastFrom(Tensor out, const T* in, int length) {
+  if(out->type() == Type::float32) {
+    CopyCastTo(out->data<half>(), in, length);
+  } else if(out->type() == Type::float16) {
+    CopyCastTo(out->data<half>(), in, length);
+  } else {
+    ABORT("CopyCastTo to type {} not implemented", out->type());
+  }
+}
+
+void CopyCast(Tensor out, Tensor in) {
+  cudaSetDevice(out->getDeviceId().no);
+
+  if(in->type() == Type::float32) {
+    CopyCastFrom(out, in->data<float>(), (int)in->size());
+  } else if(in->type() == Type::float16) {
+    CopyCastFrom(out, in->data<half>(), (int)in->size());
+  } else {
+    ABORT("CopyCastFrom from type {} not implemented", in->type());
+  }
+}
+
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
   cudaSetDevice(out->getDeviceId().no);
   int step = 1;
@@ -407,6 +447,8 @@ template <typename T>
 __global__ void gSoftmax(T* out,
                          functional::Shape outShape,
                          const T* in) {
+  using namespace functional;
+
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
@@ -451,7 +493,7 @@ __global__ void gSoftmax(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          T ex = __expf(sp[id] - max); // fix this
+          T ex = Ops<T>::exp(sp[id] - max);
           so[id] = ex;
           _sum[threadIdx.x] += ex;
         }
@@ -500,6 +542,9 @@ template <typename T>
 __global__ void gLogSoftmax(T* out,
                             const functional::Shape outShape,
                             const T* in) {
+
+  using namespace functional;
+
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
@@ -545,7 +590,7 @@ __global__ void gLogSoftmax(T* out,
         int id = tid + threadIdx.x;
         if(id < cols) {
           T sm = sp[id] - max;
-          T ex = __expf(sm); // fix this
+          T ex = Ops<T>::exp(sm);
           so[id] = sm;
           _sum[threadIdx.x] += ex;
         }
@@ -563,7 +608,7 @@ __global__ void gLogSoftmax(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols)
-          so[id] -= __logf(_sum[0]); // fix this
+          so[id] -= Ops<T>::log(_sum[0]);
       }
     }
   }
@@ -1486,22 +1531,24 @@ void AttBack(Tensor gVa,
                                 n);
 }
 
-__global__ void gLNormalization(float* out,
-                                const float* in,
-                                const float* alpha,
-                                const float* beta,
+template <typename T>
+__global__ void gLNormalization(T* out,
+                                const T* in,
+                                const T* alpha,
+                                const T* beta,
                                 int rows,
                                 int cols,
-                                float eps = 1e-9) {
-  extern __shared__ float _share[];
+                                T eps = 1e-9) {
+  extern __shared__ uint8_t _sharedBytes[];
+  T* _share = (T*)_sharedBytes;
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* so = out + j * cols;
-      const float* sp = in + j * cols;
+      T* so = out + j * cols;
+      const T* sp = in + j * cols;
 
-      float* _sum = _share + blockDim.x;
+      T* _sum = _share + blockDim.x;
       _sum[threadIdx.x] = 0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1520,16 +1567,16 @@ __global__ void gLNormalization(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float mean = _sum[0] / cols;
+      T mean = _sum[0] / (T)cols;
       __syncthreads();
 
-      float* _sqSum = _share + blockDim.x;
+      T* _sqSum = _share + blockDim.x;
 
       _sqSum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float ex = sp[id] - mean;
+          T ex = sp[id] - mean;
           _sqSum[threadIdx.x] += ex * ex;
         }
       }
@@ -1543,13 +1590,13 @@ __global__ void gLNormalization(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float sigma = sqrtf(eps + (_sqSum[0] / cols));
+      T sigma = functional::Ops<T>::sqrt(eps + (_sqSum[0] / (T)cols));
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float t = alpha[id] * ((sp[id] - mean) / sigma);
+          T t = alpha[id] * ((sp[id] - mean) / sigma);
           if(beta != nullptr)
             t += beta[id];
           so[id] = t;
@@ -1573,40 +1620,86 @@ void LayerNormalization(Tensor out,
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = 2 * threads * sizeof(float);
 
-  gLNormalization<<<blocks, threads, shared>>>(out->data(),
-                                               in->data(),
-                                               gamma->data(),
-                                               beta ? beta->data() : nullptr,
-                                               rows,
-                                               cols,
-                                               eps);
+  if(out->type() == Type::float32) {
+    gLNormalization<<<blocks, threads, shared>>>(out->data<float>(),
+                                                 in->data<float>(),
+                                                 gamma->data<float>(),
+                                                 beta ? beta->data<float>() : nullptr,
+                                                 rows,
+                                                 cols,
+                                                 eps);
+  } else if (out->type() == Type::float16) {
+    gLNormalization<<<blocks, threads, shared>>>(out->data<half>(),
+                                                 in->data<half>(),
+                                                 gamma->data<half>(),
+                                                 beta ? beta->data<half>() : nullptr,
+                                                 rows,
+                                                 cols,
+                                                 __float2half(eps));
+
+  } else {
+    ABORT("LayerNormaliztion not implemented for type {}", out->type());
+  }
 }
 
-__global__ void gLayerNormalizationGrad(float* gradX,
-                                        float* gradGamma,
-                                        float* gradBeta,
-                                        float* adj,
-                                        float* y,
-                                        float* x,
-                                        float* gamma,
-                                        float* beta,
+namespace atomics {
+
+static inline  __device__ void atomicAdd(float *address, float val) {
+  ::atomicAdd(address, val);
+}
+
+// from CuTorch
+static inline  __device__ void atomicAdd(half *address, half val) {
+  unsigned int * address_as_ui =
+      (unsigned int *) ((char *)address - ((size_t)address & 2));
+  unsigned int old = *address_as_ui;
+  unsigned int assumed;
+
+  do {
+    assumed = old;
+#if CUDA_VERSION < 9000
+    half hsum;
+    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
+    hsum = hsum + val;
+#else
+    __half_raw hsum;
+    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
+    half tmpres = hsum + val;
+    hsum = __half_raw(tmpres);
+#endif
+    old = (size_t)address & 2 ? (old & 0xffff) | (hsum.x << 16) : (old & 0xffff0000) | hsum.x;
+    old = atomicCAS(address_as_ui, assumed, old);
+   } while (assumed != old);
+}
+}
+
+template <typename T>
+__global__ void gLayerNormalizationGrad(T* gradX,
+                                        T* gradGamma,
+                                        T* gradBeta,
+                                        T* adj,
+                                        T* y,
+                                        T* x,
+                                        T* gamma,
+                                        T* beta,
                                         int rows,
                                         int cols,
-                                        float eps = 1e-9) {
-  extern __shared__ float shared[];
+                                        T eps = 1e-9) {
+  extern __shared__ uint8_t sharedBytes[];
+  T* shared = (T*)sharedBytes;
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* sum_adj = shared;
-      float* sum_adj_x = shared + blockDim.x;
-      float* sum_x = shared + 2 * blockDim.x;
-      float* sum_sqr = shared + 3 * blockDim.x;
+      T* sum_adj = shared;
+      T* sum_adj_x = shared + blockDim.x;
+      T* sum_x = shared + 2 * blockDim.x;
+      T* sum_sqr = shared + 3 * blockDim.x;
 
-      const float* xRow = x + j * cols;
-      const float* yRow = y + j * cols;
-      const float* adjRow = adj + j * cols;
-      float* gradXRow = gradX + j * cols;
+      const T* xRow = x + j * cols;
+      const T* yRow = y + j * cols;
+      const T* adjRow = adj + j * cols;
+      T* gradXRow = gradX + j * cols;
 
       sum_x[threadIdx.x] = 0.0f;
       sum_adj[threadIdx.x] = 0.0f;
@@ -1618,7 +1711,7 @@ __global__ void gLayerNormalizationGrad(float* gradX,
         if(id < cols) {
           sum_x[threadIdx.x] += xRow[id];
           sum_adj_x[threadIdx.x]
-              += adjRow[id] * (yRow[id] - ((beta) ? beta[id] : 0)) / gamma[id];
+              += adjRow[id] * (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
           sum_adj[threadIdx.x] += adjRow[id];
         }
       }
@@ -1635,13 +1728,13 @@ __global__ void gLayerNormalizationGrad(float* gradX,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float mean = sum_x[0] / cols;
+      T mean = sum_x[0] / (T)cols;
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float ex = xRow[id] - mean;
+          T ex = xRow[id] - mean;
           sum_sqr[threadIdx.x] += ex * ex;
         }
       }
@@ -1656,27 +1749,29 @@ __global__ void gLayerNormalizationGrad(float* gradX,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float sigma = sqrtf(eps + (sum_sqr[0] / cols));
+      T sigma = functional::Ops<T>::sqrt(eps + (sum_sqr[0] / (T)cols));
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float grad_x = 0.0f;
-          float x_hat = (yRow[id] - ((beta) ? beta[id] : 0)) / gamma[id];
-          grad_x += cols * adjRow[id];
+          T grad_x = (T)0.0f;
+          T x_hat = (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
+          grad_x += (T)cols * adjRow[id];
           grad_x -= sum_adj[0];
           grad_x -= sum_adj_x[0] * x_hat;
-          grad_x /= (cols * sigma);
+          grad_x /= ((T)cols * sigma);
 
-          float valX = gamma[id] * grad_x;
-          float sign = (0.f < valX) - (valX < 0.f);
-          valX = fabs(valX) > 1000 ? sign * 1000 : valX;
+          T valX = gamma[id] * grad_x;
+
+          // @TODO: What is this? Some kind of clipping? Did I add this?
+          T sign = functional::Ops<T>::sgn(valX);
+          valX = functional::Ops<T>::abs(valX) > (T)1000.f ? sign * (T)1000.f : valX;
 
           gradXRow[id] += valX;
-          atomicAdd(gradGamma + id, adjRow[id] * x_hat);
+          atomics::atomicAdd(gradGamma + id, adjRow[id] * x_hat);
           if(beta) {
-            atomicAdd(gradBeta + id, adjRow[id]);
+            atomics::atomicAdd(gradBeta + id, adjRow[id]);
           }
         }
       }
@@ -1701,18 +1796,35 @@ void LayerNormalizationGrad(Tensor gradX,
   int blocks = std::min(MAX_BLOCKS, rows);
   int shared = sizeof(float) * threads * 4;
 
-  gLayerNormalizationGrad<<<blocks, threads, shared>>>(
-      gradX->data(),
-      gradGamma->data(),
-      (gradBeta) ? gradBeta->data() : nullptr,
-      adj->data(),
-      y->data(),
-      x->data(),
-      gamma->data(),
-      (beta) ? beta->data() : nullptr,
+  if(gradX->type() == Type::float32) {
+    gLayerNormalizationGrad<<<blocks, threads, shared>>>(
+      gradX->data<float>(),
+      gradGamma->data<float>(),
+      (gradBeta) ? gradBeta->data<float>() : nullptr,
+      adj->data<float>(),
+      y->data<float>(),
+      x->data<float>(),
+      gamma->data<float>(),
+      (beta) ? beta->data<float>() : nullptr,
       rows,
       cols,
       eps);
+  } else if (gradX->type() == Type::float16) {
+    gLayerNormalizationGrad<<<blocks, threads, shared>>>(
+      gradX->data<half>(),
+      gradGamma->data<half>(),
+      (gradBeta) ? gradBeta->data<half>() : nullptr,
+      adj->data<half>(),
+      y->data<half>(),
+      x->data<half>(),
+      gamma->data<half>(),
+      (beta) ? beta->data<half>() : nullptr,
+      rows,
+      cols,
+      __float2half(eps));
+  } else {
+    ABORT("LayerNormaliztionGrad not implemented for type {}", gradX->type());
+  }
 }
 
 template <bool add>

@@ -130,8 +130,8 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
     auto input = graph->constant({2, 2, 2}, inits::fromVector(in), floatType);
 
-    auto sm  = debug(softmax(input));
-    auto lsm = debug(logsoftmax(input));
+    auto sm  = softmax(input);
+    auto lsm = logsoftmax(input);
 
     graph->forward();
 
@@ -168,10 +168,10 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 #endif
 
     auto a = graph->constant({2, 2, 4}, inits::glorotUniform(), floatType);
+    debug(a);
 
     auto gamma = graph->param("gamma", {1, 4}, inits::ones(), floatType);
     auto beta = graph->param("beta", {1, 4}, inits::zeros(), floatType);
-
     auto ln = layerNorm(a, gamma, beta);
 
     graph->forward();

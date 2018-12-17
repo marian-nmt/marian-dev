@@ -40,8 +40,6 @@ void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
 
   cudaSetDevice(out->getDeviceId().no);
 
-  std::cerr << "ElementTyped: " << out->type() << std::endl;
-
   int length = out->shape().elements();
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
@@ -60,7 +58,6 @@ void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
 
 template <class Functor, class... Tensors>
 void Element(Functor functor, Tensor out, Tensors... tensors) {
-  std::cerr << "Element: " << out->type() << std::endl;
 
   if(out->type() == Type::float32) {
     ElementTyped<float>(functor, out, tensors...);

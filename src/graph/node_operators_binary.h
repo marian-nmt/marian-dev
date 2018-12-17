@@ -456,7 +456,7 @@ struct ScalarProductNodeOp : public NaryNodeOp {
 
 struct RowsNodeOp : public NaryNodeOp {
   RowsNodeOp(Expr a, Expr indices)
-      : NaryNodeOp({a, indices}, newShape(a, indices->shape().elements())) {
+      : NaryNodeOp({a, indices}, newShape(a, indices), a->value_type()) {
       matchOrAbort<IndexType>(indices->value_type());
   }
 
@@ -469,12 +469,11 @@ struct RowsNodeOp : public NaryNodeOp {
     return {NodeOp(PasteRows(child(0)->grad(), adj_, child(1)->val()))};
   }
 
-  template <class... Args>
-  Shape newShape(Expr a, size_t num) {
+  Shape newShape(Expr a, Expr indices) {
     Shape shape = a->shape();
     ABORT_IF(shape.size() != 2,
              "rows operator can only be used with 2-dimensional tensors");
-    shape.set(0, num);
+    shape.set(0, (int)indices->shape().elements());
     return shape;
   }
 
@@ -584,7 +583,7 @@ struct SelectNodeOp : public NaryNodeOp {
 
 struct ColsNodeOp : public NaryNodeOp {
   ColsNodeOp(Expr a, Expr indices)
-    : NaryNodeOp({a, indices}, newShape(a, indices->shape().elements())) {
+    : NaryNodeOp({a, indices}, newShape(a, indices), a->value_type()) {
     matchOrAbort<IndexType>(indices->value_type());
   }
 
@@ -596,10 +595,9 @@ struct ColsNodeOp : public NaryNodeOp {
     return {NodeOp(PasteCols(child(0)->grad(), adj_, child(1)->val()))};
   }
 
-  template <class... Args>
-  Shape newShape(Expr a, size_t num) {
+  Shape newShape(Expr a, Expr indices) {
     Shape shape = a->shape();
-    shape.set(1, num);
+    shape.set(1, (int)indices->shape().elements());
     return shape;
   }
 
@@ -610,18 +608,10 @@ struct ColsNodeOp : public NaryNodeOp {
 
 
 struct ElementBinaryNodeOp : public NaryNodeOp {
-  ElementBinaryNodeOp(Expr a, Expr b) : NaryNodeOp({a, b}, newShape(a, b), newType(a, b)) {}
+  ElementBinaryNodeOp(Expr a, Expr b)
+   : NaryNodeOp({a, b}, newShape(a, b)) {}
 
   Shape newShape(Expr a, Expr b) { return Shape::broadcast({a, b}); }
-
-  Type newType(Expr a, Expr b) {
-    ABORT_IF(a->value_type() != b->value_type(),
-             "Type {} not matching {}",
-             a->value_type(),
-             b->value_type());
-
-    return a->value_type();
-  }
 
   const std::string color() override { return "yellow"; }
 };
@@ -824,7 +814,8 @@ struct MinimumNodeOp : public ElementBinaryNodeOp {
 // that matches the label indexed by i (the picked element).
 // C = sum_{v in V}(-logsoftmax(A) * delta(v, i) = -logsoftmax(A)[i]
 struct CrossEntropyNodeOp : public NaryNodeOp {
-  CrossEntropyNodeOp(Expr a, Expr indices) : NaryNodeOp({a, indices}, newShape(a)) {
+  CrossEntropyNodeOp(Expr a, Expr indices)
+    : NaryNodeOp({a, indices}, newShape(a), a->value_type()) {
     matchOrAbort<IndexType>(indices->value_type());
   }
 

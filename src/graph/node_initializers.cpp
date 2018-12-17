@@ -17,8 +17,40 @@ class LambdaInit : public NodeInitializer {
 
   public:
     LambdaInit(std::function<void(Tensor)>&& lambda) : lambda_(std::move(lambda)) {}
-    void operator()(Tensor tensor) override { lambda_(tensor); }
+
+    void operator()(Tensor tensor) override {
+      lambda_(tensor);
+    }
 };
+
+class LambdaInitConvert : public NodeInitializer {
+  private:
+    std::function<void(Tensor)> lambda_;
+    Type intermediateType_;
+
+  public:
+    LambdaInitConvert(std::function<void(Tensor)>&& lambda,
+                      Type intermediateType = Type::float32)
+      : lambda_(std::move(lambda)), intermediateType_(intermediateType) {}
+
+    void operator()(Tensor tensor) override {
+      if(tensor->type() != intermediateType_) {
+        auto allocator = graph_->allocator();
+        auto memory = allocator->alloc(tensor->size(), intermediateType_);
+        auto temp = TensorBase::New(memory,
+                                    tensor->shape(),
+                                    intermediateType_,
+                                    tensor->getBackend());
+        lambda_(temp);
+        CopyCast(tensor, temp);
+        allocator->free(memory);
+      }
+      else {
+        lambda_(tensor);
+      }
+    }
+};
+
 
 Ptr<NodeInitializer> zeros() {
   return fromValue(0.0f);
@@ -47,47 +79,47 @@ Ptr<NodeInitializer> eye(float val) {
     t->set(vec);
   };
 
-  return New<LambdaInit>(eyeLambda);
+  return New<LambdaInitConvert>(eyeLambda);
 }
 
 Ptr<NodeInitializer> uniform(float a, float b) {
-  return New<LambdaInit>([a, b](Tensor t) {
+  return New<LambdaInitConvert>([a, b](Tensor t) {
     t->getBackend()->getRandomGenerator()->uniform(t, a, b);
   });
 }
 
 Ptr<NodeInitializer> normal(float mean, float stddev) {
-  return New<LambdaInit>([mean, stddev](Tensor t) {
+  return New<LambdaInitConvert>([mean, stddev](Tensor t) {
     t->getBackend()->getRandomGenerator()->normal(t, mean, stddev);
   });
 }
 
 Ptr<NodeInitializer> glorotUniform() {
-  return New<LambdaInit>([](Tensor t) {
+  return New<LambdaInitConvert>([](Tensor t) {
     float scale = sqrtf(6.0f / (t->shape()[-2] + t->shape()[-1]));
     t->getBackend()->getRandomGenerator()->uniform(t, -scale, scale);
   });
 }
 
 Ptr<NodeInitializer> glorotNormal() {
-  return New<LambdaInit>([](Tensor t) {
+  return New<LambdaInitConvert>([](Tensor t) {
     float scale = sqrtf(2.0f / (t->shape()[-2] + t->shape()[-1]));
     t->getBackend()->getRandomGenerator()->normal(t, 0.f, scale);
   });
 }
 
 Ptr<NodeInitializer> bernoulli(float prob, float scale) {
-  return New<LambdaInit>([prob, scale](Tensor t) { Bernoulli(t, prob, scale); });
+  return New<LambdaInitConvert>([prob, scale](Tensor t) { Bernoulli(t, prob, scale); });
 }
 
 Ptr<NodeInitializer> dropout(float dropProb) {
-  return New<LambdaInit>([dropProb](Tensor t) { Dropout(t, dropProb); });
+  return New<LambdaInitConvert>([dropProb](Tensor t) { Dropout(t, dropProb); });
 }
 
 // gumbel noise:
 // -log(-log(uniform(0.f + eps, 1.f - eps)));
 Ptr<NodeInitializer> gumbel() {
-  return New<LambdaInit>([](Tensor t) {
+  return New<LambdaInitConvert>([](Tensor t) {
     using namespace functional;
     float eps = 1e-05f; // @TODO: make eps a parameter? Seems to influence amplitude quite heavily
     auto rng = t->getBackend()->getRandomGenerator();

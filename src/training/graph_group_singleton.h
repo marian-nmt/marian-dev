@@ -33,8 +33,10 @@ public:
     // Initialize graph
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
+
     graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
+
     opt_ = Optimizer(options_);
     builder_ = models::from_options(options_, models::usage::training);
   }

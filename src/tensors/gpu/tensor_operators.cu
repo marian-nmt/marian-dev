@@ -845,7 +845,7 @@ void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
       grad->data<half>(), adj->data<half>(), val->data<half>(), m, k);
   } else {
     ABORT("LogSoftmaxGrad not implemented for type {}", grad->type());
-  }  
+  }
 }
 
 ///////////////////////////////////////////////////////
@@ -1107,14 +1107,14 @@ void Select(Tensor out,
                                 in->data<float>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());  
+                                indices->data<IndexType>());
   } else if (out->type() == Type::float16) {
     gSelect<<<blocks, threads>>>(out->data<half>(),
                                 out->shape(),
                                 in->data<half>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());  
+                                indices->data<IndexType>());
   } else {
     ABORT("Select not implemented for type {}", out->type());
   }
@@ -1140,14 +1140,14 @@ void Insert(Tensor out,
                                 in->data<float>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());  
+                                indices->data<IndexType>());
   } else if (out->type() == Type::float16) {
     gInsert<<<blocks, threads>>>(out->data<half>(),
                                 out->shape(),
                                 in->data<half>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());  
+                                indices->data<IndexType>());
   } else {
     ABORT("Insert not implemented for type {}", out->type());
   }
@@ -1336,21 +1336,23 @@ void GRUFastBackward(std::vector<Tensor> outputs,
       final);
 }
 
-__global__ void gCrossEntropyPick(float* out,
+template <typename T, typename AccType = float>
+__global__ void gCrossEntropyPick(T* out,
                                   const functional::Shape outShape,
-                                  const float* in,
+                                  const T* in,
                                   const functional::Shape inShape,
                                   const IndexType* pick) {
   int rows = inShape.elements() / inShape.back();
   int cols = inShape.back();
 
+  extern __shared__ uint8_t _sharedBytes[];
+
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      const float* sp = in + j * cols;
+      const T* sp = in + j * cols;
 
-      extern __shared__ float _share[];
-      float* _max = _share + blockDim.x;
+      T* _max = (T*)_sharedBytes + blockDim.x;
 
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 1; tid < cols; tid += blockDim.x) {
@@ -1373,15 +1375,15 @@ __global__ void gCrossEntropyPick(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float max = _max[0];
+      T max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
-      _sum[threadIdx.x] = 0.0;
+      AccType* _sum = (AccType*)_sharedBytes + blockDim.x;
+      _sum[threadIdx.x] = (AccType)0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          _sum[threadIdx.x] += __expf(sp[id] - max);
+          _sum[threadIdx.x] += functional::Ops<AccType>::exp(sp[id] - max);
         }
       }
       __syncthreads();
@@ -1399,7 +1401,7 @@ __global__ void gCrossEntropyPick(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id == (int)pick[j]) {
-          out[j] = __logf(_sum[0]) - sp[id] + max;
+          out[j] = (T)functional::Ops<AccType>::log(_sum[0]) - sp[id] + max;
         }
       }
     }
@@ -1411,7 +1413,6 @@ __global__ void gCrossEntropyPick(float* out,
 // that matches the label indexed by i (the picked element).
 // C = sum_{v in V}(-logsoftmax(A) * delta(v, i) = -logsoftmax(A)[i]
 void CrossEntropyPick(Tensor out, Tensor in, Tensor indices) {
-  matchOrAbort<float>(out->type());
   matchOrAbort<IndexType>(indices->type());
 
   cudaSetDevice(out->getDeviceId().no);
@@ -1423,26 +1424,35 @@ void CrossEntropyPick(Tensor out, Tensor in, Tensor indices) {
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = sizeof(float) * threads * 2;
 
-  gCrossEntropyPick<<<blocks, threads, shared>>>(
-      out->data(), out->shape(), in->data(), in->shape(), indices->data<IndexType>());
+  if(out->type() == Type::float32) {
+    gCrossEntropyPick<float, float><<<blocks, threads, shared>>>(
+      out->data<float>(), out->shape(), in->data<float>(), in->shape(), indices->data<IndexType>());
+  } else if(out->type() == Type::float16) {
+    gCrossEntropyPick<half, float><<<blocks, threads, shared>>>(
+      out->data<half>(), out->shape(), in->data<half>(), in->shape(), indices->data<IndexType>());
+  } else {
+    ABORT("CrossEntropyPick not implemented for type {}", out->type());
+  }
 }
 
-__global__ void gCrossEntropyPickBackward(float* out,
+template <typename T, typename AccType = float>
+__global__ void gCrossEntropyPickBackward(T* out,
                                           const functional::Shape outShape,
-                                          const float* adj,
-                                          const float* in,
+                                          const T* adj,
+                                          const T* in,
                                           const IndexType* pick) {
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
+
+  extern __shared__ uint8_t _sharedBytes[];
+
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      const float* sp = in + j * cols;
-      float* so = out + j * cols;
+      const T* sp = in + j * cols;
+      T* so = out + j * cols;
 
-      extern __shared__ float _share[];
-      float* _max = _share + blockDim.x;
-
+      T* _max = (T*)_sharedBytes + blockDim.x;
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 1; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1464,15 +1474,15 @@ __global__ void gCrossEntropyPickBackward(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      float max = _max[0];
+      T max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
+      AccType* _sum = (AccType*)_sharedBytes + blockDim.x;
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float ex = __expf(sp[id] - max);
+          AccType ex = functional::Ops<AccType>::exp(sp[id] - max);
           _sum[threadIdx.x] += ex;
         }
       }
@@ -1491,8 +1501,8 @@ __global__ void gCrossEntropyPickBackward(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float sub = (float)(id == (int)pick[j]);
-          so[id] += adj[j] * (__expf(sp[id] - max) / _sum[0] - sub);
+          AccType sub = (AccType)(id == (int)pick[j]);
+          so[id] += (AccType)adj[j] * (functional::Ops<AccType>::exp(sp[id] - max) / _sum[0] - sub);
         }
       }
     }
@@ -1500,7 +1510,6 @@ __global__ void gCrossEntropyPickBackward(float* out,
 }
 
 void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) {
-  matchOrAbort<float>(out->type());
   matchOrAbort<IndexType>(indices->type());
 
   cudaSetDevice(out->getDeviceId().no);
@@ -1512,8 +1521,15 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) 
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = sizeof(float) * threads * 2;
 
-  gCrossEntropyPickBackward<<<blocks, threads, shared>>>(
-      out->data(), out->shape(), adj->data(), a->data(), indices->data<IndexType>());
+  if(out->type() == Type::float32) {
+    gCrossEntropyPickBackward<float, float><<<blocks, threads, shared>>>(
+      out->data<float>(), out->shape(), adj->data<float>(), a->data<float>(), indices->data<IndexType>());
+  } else if(out->type() == Type::float16) {
+    gCrossEntropyPickBackward<half, float><<<blocks, threads, shared>>>(
+      out->data<half>(), out->shape(), adj->data<half>(), a->data<half>(), indices->data<IndexType>());
+  } else {
+    ABORT("CrossEntropyPick not implemented for type {}", out->type());
+  }
 }
 
 float L2Norm(Tensor in) {
@@ -2431,7 +2447,7 @@ void HighwayBackward(Tensor out1,
                                           in2->data<float>(),
                                           t->data<float>(),
                                           adj->data<float>(),
-                                          length); 
+                                          length);
   } else if(out1->type() == Type::float16) {
     gHighwayBackward<<<blocks, threads>>>(out1->data<half>(),
                                           out2->data<half>(),
@@ -2440,7 +2456,7 @@ void HighwayBackward(Tensor out1,
                                           in2->data<half>(),
                                           t->data<half>(),
                                           adj->data<half>(),
-                                          length); 
+                                          length);
   } else {
     ABORT("HighwayForward not implemented for type {}", out1->type());
   }

@@ -511,7 +511,7 @@ void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
 }
 
 // @TODO: handle __half2
-template <typename T>
+template <typename T, typename AccType = float>
 __global__ void gSoftmax(T* out,
                          functional::Shape outShape,
                          const T* in) {
@@ -529,7 +529,7 @@ __global__ void gSoftmax(T* out,
       // CUDA complains if type or size of shared memory changes, keep size constant.
       extern __shared__ uint8_t _sharedBytes[];
       T* _share = (T*)_sharedBytes;
-      float* _shareFloat = (float*)_sharedBytes;
+      AccType* _shareAccType = (AccType*)_sharedBytes;
 
       T* _max = _share + blockDim.x;
       _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
@@ -556,7 +556,7 @@ __global__ void gSoftmax(T* out,
       T max = _max[0];
       __syncthreads();
 
-      float* _sum = _shareFloat + blockDim.x; // accumulate into float
+      AccType* _sum = _shareAccType + blockDim.x; // accumulate into AccType
 
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -564,7 +564,7 @@ __global__ void gSoftmax(T* out,
         if(id < cols) {
           T ex = Ops<T>::exp(sp[id] - max);
           so[id] = (T)ex;
-          _sum[threadIdx.x] += (float)ex; // accumulate into float
+          _sum[threadIdx.x] += (AccType)ex; // accumulate into AccType
         }
       }
       __syncthreads();
@@ -580,7 +580,7 @@ __global__ void gSoftmax(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          so[id] = (T)((float)so[id] / _sum[0]); // divide as float then convert
+          so[id] = (T)((AccType)so[id] / _sum[0]); // divide as AccType then convert
         }
       }
     }
@@ -598,16 +598,17 @@ void Softmax(Tensor out, Tensor in) {
 
   if(in->type() == Type::float32) {
     int shared = sizeof(float) * threads * 2;
-    gSoftmax<<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
+    gSoftmax<float, float><<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
   } else if (in->type() == Type::float16) {
     int shared = sizeof(float) * threads * 2; // keep size of shared memory
-    gSoftmax<<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
+    // accumulate into float
+    gSoftmax<half, float><<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
   } else {
     ABORT("Softmax not implemented for type {}", in->type());
   }
 }
 
-template <typename T>
+template <typename T, typename AccType = float>
 __global__ void gLogSoftmax(T* out,
                             const functional::Shape outShape,
                             const T* in) {
@@ -626,7 +627,7 @@ __global__ void gLogSoftmax(T* out,
       // CUDA complains if type or size of shared memory changes, keep size constant.
       extern __shared__ uint8_t _sharedBytes[];
       T* _share = (T*)_sharedBytes;
-      float* _shareFloat = (float*)_sharedBytes;
+      AccType* _shareAccType = (AccType*)_sharedBytes;
 
       T* _max = _share + blockDim.x;
       _max[threadIdx.x] = sp[threadIdx.x];
@@ -653,16 +654,16 @@ __global__ void gLogSoftmax(T* out,
       T max = _max[0];
       __syncthreads();
 
-      float* _sum = _shareFloat + blockDim.x; // keep float for accumulation
+      AccType* _sum = _shareAccType + blockDim.x; // keep AccType for accumulation
 
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
           T sm = sp[id] - max;
-          float ex = Ops<float>::exp(sm); // sum with float
+          AccType ex = Ops<AccType>::exp(sm); // sum with AccType
           so[id] = sm;
-          _sum[threadIdx.x] += ex; // sum with float
+          _sum[threadIdx.x] += ex; // sum with AccType
         }
       }
       __syncthreads();
@@ -678,7 +679,7 @@ __global__ void gLogSoftmax(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols)
-          so[id] -= (T)Ops<float>::log(_sum[0]); // take log at the end and convert
+          so[id] -= (T)Ops<AccType>::log(_sum[0]); // take log at the end and convert
         }
     }
   }
@@ -695,10 +696,11 @@ void LogSoftmax(Tensor out, Tensor in) {
 
   if(in->type() == Type::float32) {
     int shared = sizeof(float) * threads * 2;
-    gLogSoftmax<<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
+    gLogSoftmax<float, float><<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
   } else if (in->type() == Type::float16) {
     int shared = sizeof(float) * threads * 2; // keep size of shared memory
-    gLogSoftmax<<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
+    // accumulate in float
+    gLogSoftmax<half, float><<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
   } else {
     ABORT("LogSoftmax not implemented for type {}", in->type());
   }
@@ -706,7 +708,7 @@ void LogSoftmax(Tensor out, Tensor in) {
 
 ///////////////////////////////////////////////////////
 
-template <typename T>
+template <typename T, typename AccType = float>
 __global__ void gSoftmaxGrad(T* grad,
                              const T* adj,
                              const T* val,
@@ -716,18 +718,18 @@ __global__ void gSoftmaxGrad(T* grad,
     int j = bid + blockIdx.x;
     if(j < rows) {
       extern __shared__ uint8_t _sharedBytes[];
-      T* _share = (T*)_sharedBytes;
+      AccType* _shareAccType = (AccType*)_sharedBytes;
 
-      T* _sum = _share + blockDim.x;
+      AccType* _sum = _shareAccType + blockDim.x;
 
       T* gradRow = grad + j * cols;
       const T* adjRow = adj + j * cols;
       const T* valRow = val + j * cols;
-      _sum[threadIdx.x] = 0.0;
+      _sum[threadIdx.x] = (AccType)0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          _sum[threadIdx.x] += valRow[id] * adjRow[id];
+          _sum[threadIdx.x] += (AccType)valRow[id] * (AccType)adjRow[id];
         }
       }
       __syncthreads();
@@ -736,16 +738,16 @@ __global__ void gSoftmaxGrad(T* grad,
         __syncthreads();
         int skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
-          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
+          _sum[threadIdx.x] += _sum[threadIdx.x + skip]; // accumulates in AccType
         len = (len + 1) >> 1;
       }
       __syncthreads();
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          T val = valRow[id] * (adjRow[id] - _sum[0]);
+          AccType val = (AccType)valRow[id] * ((AccType)adjRow[id] - _sum[0]);
           if(val)
-            gradRow[id] += val;
+            gradRow[id] += (T)val;
         }
       }
     }
@@ -766,17 +768,18 @@ void SoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
   int shared = sizeof(float) * threads * 2;
 
   if(grad->type() == Type::float32) {
-    gSoftmaxGrad<<<blocks, threads, shared>>>(
+    gSoftmaxGrad<float, float><<<blocks, threads, shared>>>(
       grad->data<float>(), adj->data<float>(), val->data<float>(), m, k);
   } else if (grad->type() == Type::float16) {
-    gSoftmaxGrad<<<blocks, threads, shared>>>(
+    // Accumulate into float
+    gSoftmaxGrad<half, float><<<blocks, threads, shared>>>(
       grad->data<half>(), adj->data<half>(), val->data<half>(), m, k);
   } else {
     ABORT("SoftmaxGrad not implemented for type {}", grad->type());
   }
 }
 
-template <typename T>
+template <typename T, typename AccType = float>
 __global__ void gLogSoftmaxGrad(T* grad,
                                 const T* adj,
                                 const T* val,
@@ -786,9 +789,9 @@ __global__ void gLogSoftmaxGrad(T* grad,
     int j = bid + blockIdx.x;
     if(j < rows) {
       extern __shared__ uint8_t _sharedBytes[];
-      T* _share = (T*)_sharedBytes;
+      AccType* _share = (AccType*)_sharedBytes;
 
-      T* _sum = _share + blockDim.x;
+      AccType* _sum = _share + blockDim.x;
 
       T* gradRow = grad + j * cols;
       const T* adjRow = adj + j * cols;
@@ -797,7 +800,7 @@ __global__ void gLogSoftmaxGrad(T* grad,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          _sum[threadIdx.x] += adjRow[id];
+          _sum[threadIdx.x] += (AccType)adjRow[id];
         }
       }
       __syncthreads();
@@ -806,14 +809,14 @@ __global__ void gLogSoftmaxGrad(T* grad,
         __syncthreads();
         int skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
-          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
+          _sum[threadIdx.x] += _sum[threadIdx.x + skip]; // AccType
         len = (len + 1) >> 1;
       }
       __syncthreads();
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols)
-          gradRow[id] += adjRow[id] - (functional::Ops<T>::exp(valRow[id]) * _sum[0]);
+          gradRow[id] += (T)((AccType)adjRow[id] - (functional::Ops<AccType>::exp((AccType)valRow[id]) * _sum[0]));
       }
     }
   }
@@ -834,10 +837,11 @@ void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
   int shared = sizeof(float) * threads * 2;
 
   if(grad->type() == Type::float32) {
-    gLogSoftmaxGrad<<<blocks, threads, shared>>>(
+    gLogSoftmaxGrad<float, float><<<blocks, threads, shared>>>(
       grad->data<float>(), adj->data<float>(), val->data<float>(), m, k);
   } else if (grad->type() == Type::float16) {
-    gLogSoftmaxGrad<<<blocks, threads, shared>>>(
+    // accumulate into float
+    gLogSoftmaxGrad<half, float><<<blocks, threads, shared>>>(
       grad->data<half>(), adj->data<half>(), val->data<half>(), m, k);
   } else {
     ABORT("LogSoftmaxGrad not implemented for type {}", grad->type());
@@ -1706,7 +1710,7 @@ __global__ void gLNormalization(T* out,
       AccType mean = (T)(_sum[0] / (AccType)cols);
       __syncthreads();
 
-      float* _sqSum = _shareFloat + blockDim.x;
+      AccType* _sqSum = _shareFloat + blockDim.x;
 
       _sqSum[threadIdx.x] = 0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -1757,7 +1761,7 @@ void LayerNormalization(Tensor out,
   int shared = 2 * threads * sizeof(float);
 
   if(out->type() == Type::float32) {
-    gLNormalization<<<blocks, threads, shared>>>(out->data<float>(),
+    gLNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
                                                  in->data<float>(),
                                                  gamma->data<float>(),
                                                  beta ? beta->data<float>() : nullptr,
@@ -1765,7 +1769,7 @@ void LayerNormalization(Tensor out,
                                                  cols,
                                                  eps);
   } else if (out->type() == Type::float16) {
-    gLNormalization<<<blocks, threads, shared>>>(out->data<half>(),
+    gLNormalization<half, float><<<blocks, threads, shared>>>(out->data<half>(),
                                                  in->data<half>(),
                                                  gamma->data<half>(),
                                                  beta ? beta->data<half>() : nullptr,
@@ -1778,7 +1782,7 @@ void LayerNormalization(Tensor out,
   }
 }
 
-template <typename T>
+template <typename T, typename AccType = float>
 __global__ void gLayerNormalizationGrad(T* gradX,
                                         T* gradGamma,
                                         T* gradBeta,
@@ -1789,35 +1793,35 @@ __global__ void gLayerNormalizationGrad(T* gradX,
                                         T* beta,
                                         int rows,
                                         int cols,
-                                        T eps = 1e-9) {
+                                        AccType eps = 1e-9) {
   extern __shared__ uint8_t sharedBytes[];
-  T* shared = (T*)sharedBytes;
+  AccType* shared = (AccType*)sharedBytes;
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      T* sum_adj = shared;
-      T* sum_adj_x = shared + blockDim.x;
-      T* sum_x = shared + 2 * blockDim.x;
-      T* sum_sqr = shared + 3 * blockDim.x;
+      AccType* sum_adj = shared;
+      AccType* sum_adj_x = shared + blockDim.x;
+      AccType* sum_x = shared + 2 * blockDim.x;
+      AccType* sum_sqr = shared + 3 * blockDim.x;
 
       const T* xRow = x + j * cols;
       const T* yRow = y + j * cols;
       const T* adjRow = adj + j * cols;
       T* gradXRow = gradX + j * cols;
 
-      sum_x[threadIdx.x] = 0.0f;
-      sum_adj[threadIdx.x] = 0.0f;
-      sum_adj_x[threadIdx.x] = 0.0f;
-      sum_sqr[threadIdx.x] = 0.0f;
+      sum_x[threadIdx.x] = (AccType)0.0f;
+      sum_adj[threadIdx.x] = (AccType)0.0f;
+      sum_adj_x[threadIdx.x] = (AccType)0.0f;
+      sum_sqr[threadIdx.x] = (AccType)0.0f;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          sum_x[threadIdx.x] += xRow[id];
+          sum_x[threadIdx.x] += (AccType)xRow[id];
           sum_adj_x[threadIdx.x]
-              += adjRow[id] * (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
-          sum_adj[threadIdx.x] += adjRow[id];
+              += (AccType)(adjRow[id] * (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id]);
+          sum_adj[threadIdx.x] += (AccType)adjRow[id];
         }
       }
       __syncthreads();
@@ -1826,20 +1830,20 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         __syncthreads();
         int skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
-          sum_x[threadIdx.x] += sum_x[threadIdx.x + skip];
-          sum_adj[threadIdx.x] += sum_adj[threadIdx.x + skip];
-          sum_adj_x[threadIdx.x] += sum_adj_x[threadIdx.x + skip];
+          sum_x[threadIdx.x] += sum_x[threadIdx.x + skip]; // Accumulates in AccType
+          sum_adj[threadIdx.x] += sum_adj[threadIdx.x + skip]; // Accumulates in AccType
+          sum_adj_x[threadIdx.x] += sum_adj_x[threadIdx.x + skip]; // Accumulates in AccType
         }
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      T mean = sum_x[0] / (T)cols;
+      AccType mean = sum_x[0] / (AccType)cols;
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          T ex = xRow[id] - mean;
+          AccType ex = (AccType)xRow[id] - mean;
           sum_sqr[threadIdx.x] += ex * ex;
         }
       }
@@ -1850,31 +1854,31 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         __syncthreads();
         int skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
-          sum_sqr[threadIdx.x] += sum_sqr[threadIdx.x + skip];
+          sum_sqr[threadIdx.x] += sum_sqr[threadIdx.x + skip]; // Accumulates in AccType
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      T sigma = functional::Ops<T>::sqrt(eps + (sum_sqr[0] / (T)cols));
+      AccType sigma = functional::Ops<AccType>::sqrt(eps + (sum_sqr[0] / (AccType)cols));
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          T grad_x = (T)0.0f;
-          T x_hat = (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
-          grad_x += (T)cols * adjRow[id];
+          AccType grad_x = (AccType)0.0f;
+          AccType x_hat = (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
+          grad_x += (AccType)cols * (AccType)adjRow[id];
           grad_x -= sum_adj[0];
           grad_x -= sum_adj_x[0] * x_hat;
-          grad_x /= ((T)cols * sigma);
+          grad_x /= ((AccType)cols * sigma);
 
-          T valX = gamma[id] * grad_x;
+          AccType valX = (AccType)gamma[id] * grad_x;
 
           // @TODO: What is this? Some kind of clipping? Did I add this?
-          T sign = functional::Ops<T>::sgn(valX);
-          valX = functional::Ops<T>::abs(valX) > (T)1000.f ? sign * (T)1000.f : valX;
+          AccType sign = functional::Ops<AccType>::sgn(valX);
+          valX = functional::Ops<AccType>::abs(valX) > (AccType)1000.f ? sign * (AccType)1000.f : valX;
 
-          gradXRow[id] += valX;
-          atomics::atomicAdd(gradGamma + id, adjRow[id] * x_hat);
+          gradXRow[id] += (T)valX;
+          atomics::atomicAdd(gradGamma + id, adjRow[id] * (T)x_hat);
           if(beta) {
             atomics::atomicAdd(gradBeta + id, adjRow[id]);
           }
@@ -1902,7 +1906,7 @@ void LayerNormalizationGrad(Tensor gradX,
   int shared = sizeof(float) * threads * 4;
 
   if(gradX->type() == Type::float32) {
-    gLayerNormalizationGrad<<<blocks, threads, shared>>>(
+    gLayerNormalizationGrad<float, float><<<blocks, threads, shared>>>(
       gradX->data<float>(),
       gradGamma->data<float>(),
       (gradBeta) ? gradBeta->data<float>() : nullptr,
@@ -1915,7 +1919,8 @@ void LayerNormalizationGrad(Tensor gradX,
       cols,
       eps);
   } else if (gradX->type() == Type::float16) {
-    gLayerNormalizationGrad<<<blocks, threads, shared>>>(
+    // accumulate in float
+    gLayerNormalizationGrad<half, float><<<blocks, threads, shared>>>(
       gradX->data<half>(),
       gradGamma->data<half>(),
       (gradBeta) ? gradBeta->data<half>() : nullptr,
@@ -1926,7 +1931,7 @@ void LayerNormalizationGrad(Tensor gradX,
       (beta) ? beta->data<half>() : nullptr,
       rows,
       cols,
-      __float2half(eps));
+      eps);
   } else {
     ABORT("LayerNormaliztionGrad not implemented for type {}", gradX->type());
   }

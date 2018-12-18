@@ -1964,7 +1964,6 @@ void Shift(Tensor out,
            marian::Shape shift,
            float padValue,
            bool invert) {
-  matchOrAbort<float>(out->type());
   ABORT_IF(in->shape().size() != shift.size(), "bad dimensions");
 
   // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the
@@ -1986,7 +1985,7 @@ void Shift(Tensor out,
   if(out->type() == Type::float32) {
     gShift<false>
         <<<blocks, threads>>>(out->data<float>(), in->data<float>(), length, offset, padValue);
-  } else if() {
+  } else if(out->type() == Type::float16) {
     gShift<false>
         <<<blocks, threads>>>(out->data<half>(), in->data<half>(), length, offset, padValue);
   } else {
@@ -1995,7 +1994,6 @@ void Shift(Tensor out,
 }
 
 void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
-  matchOrAbort<float>(out->type());
   ABORT_IF(in->shape().size() != shift.size(), "bad dimensions");
 
   // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the
@@ -2017,7 +2015,7 @@ void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
   if(out->type() == Type::float32) {
     gShift<true>
         <<<blocks, threads>>>(out->data<float>(), in->data<float>(), length, offset, 0.f); // @TODO: What about padValue?
-  } else if() {
+  } else if(out->type() == Type::float16) {
     gShift<true>
         <<<blocks, threads>>>(out->data<half>(), in->data<half>(), length, offset, 0.f);
   } else {

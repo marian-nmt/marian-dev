@@ -1937,9 +1937,9 @@ void LayerNormalizationGrad(Tensor gradX,
   }
 }
 
-template <bool add>
-__global__ void gShift(float* out,
-                       const float* in,
+template <bool add, typename T>
+__global__ void gShift(T* out,
+                       const T* in,
                        int length,
                        int offset,
                        float padValue) {
@@ -1951,7 +1951,7 @@ __global__ void gShift(float* out,
           out[index] += in[index - offset];
       } else {
         if(index - offset < 0 || index - offset >= length)
-          out[index] = padValue;
+          out[index] = (T)padValue;
         else
           out[index] = in[index - offset];
       }
@@ -1983,8 +1983,15 @@ void Shift(Tensor out,
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-  gShift<false>
-      <<<blocks, threads>>>(out->data(), in->data(), length, offset, padValue);
+  if(out->type() == Type::float32) {
+    gShift<false>
+        <<<blocks, threads>>>(out->data<float>(), in->data<float>(), length, offset, padValue);
+  } else if() {
+    gShift<false>
+        <<<blocks, threads>>>(out->data<half>(), in->data<half>(), length, offset, padValue);
+  } else {
+    ABORT("Shift not implemented for type {}", out->type());
+  }
 }
 
 void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
@@ -2007,8 +2014,15 @@ void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-  gShift<true>
-      <<<blocks, threads>>>(out->data(), in->data(), length, offset, 0.f);
+  if(out->type() == Type::float32) {
+    gShift<true>
+        <<<blocks, threads>>>(out->data<float>(), in->data<float>(), length, offset, 0.f); // @TODO: What about padValue?
+  } else if() {
+    gShift<true>
+        <<<blocks, threads>>>(out->data<half>(), in->data<half>(), length, offset, 0.f);
+  } else {
+    ABORT("Shift not implemented for type {}", out->type());
+  }
 }
 
 __global__ void gSetSparse(float* out,

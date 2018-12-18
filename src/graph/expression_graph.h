@@ -159,6 +159,9 @@ public:
     params_->clear();
   }
 
+// @TODO: actually this should not be static and not public!
+  static Type defaultFloatType;
+
   void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
                  Ptr<Device> device = nullptr);
 
@@ -231,7 +234,7 @@ public:
       v->forward();
 
       checkNan(v->val());
-
+      
       if(v->marked_for_debug()) {
         std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
                   << std::endl;
@@ -364,13 +367,13 @@ public:
              const Shape& shape,
              const Ptr<inits::NodeInitializer>& init,
              bool fixed = false) {
-    return param(pname, shape, init, Type::float32, fixed);
+    return param(pname, shape, init, defaultFloatType, fixed);
   }
 
   Expr constant(const Shape& shape,
                 const Ptr<inits::NodeInitializer>& init,
-                Type value_type = Type::float32) {
-    return Expression<ConstantNode>(shared_from_this(), shape, init, value_type);
+                Type valueType = defaultFloatType) {
+    return Expression<ConstantNode>(shared_from_this(), shape, init, valueType);
   }
 
   // @TODO: add version with iterators
@@ -393,16 +396,16 @@ public:
                     Type::uint32);
   }
 
-  Expr ones(const Shape& shape) {
-    return constant(shape, inits::ones());
+  Expr ones(const Shape& shape, Type valueType = defaultFloatType) {
+    return constant(shape, inits::ones(), valueType);
   }
 
-  Expr zeros(const Shape& shape) {
-    return constant(shape, inits::zeros());
+  Expr zeros(const Shape& shape, Type valueType = defaultFloatType) {
+    return constant(shape, inits::zeros(), valueType);
   }
 
   // prob = dropProb, e.g. 0.1 means 90% of values are kept
-  Expr dropout(float dropProb, const Shape& shape);
+  Expr dropout(float dropProb, const Shape& shape, Type valueType = defaultFloatType);
 
   Expr get(std::string name) {
     if(!namespace_.empty())

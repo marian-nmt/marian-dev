@@ -11,15 +11,44 @@ namespace marian {
 
 namespace gpu {
 
-void Prod(marian::Tensor C,
-          const marian::Tensor& A,
-          const marian::Tensor& B,
-          bool transA,
-          bool transB,
-          float beta,
-          float scalar) {
+cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
+                               cublasOperation_t transa, 
+                               cublasOperation_t transb,
+                               int m, int n, int k,
+                               const float* alpha,
+                               const float* A, int lda,
+                               const float* B, int ldb,
+                               const float* beta,
+                               float* C, int ldc) {
+  return cublasSgemm(handle, transa, transb, 
+                     m, n, k, alpha, 
+                     A, lda, B, ldb, beta, C, ldc);
+}
+
+cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
+                               cublasOperation_t transa, 
+                               cublasOperation_t transb,
+                               int m, int n, int k,
+                               const half* alpha,
+                               const half* A, int lda,
+                               const half* B, int ldb,
+                               const half* beta,
+                               half* C, int ldc) {
+  return cublasHgemm(handle, transa, transb, 
+                     m, n, k, alpha, 
+                     A, lda, B, ldb, beta, C, ldc);
+}
+
+template <typename T>
+void ProdTyped(marian::Tensor C,
+               const marian::Tensor& A,
+               const marian::Tensor& B,
+               bool transA,
+               bool transB,
+               T beta,
+               T scalar) {
   cudaSetDevice(C->getDeviceId().no);
-  float alpha = scalar;
+  T alpha = scalar;
 
   size_t m = A->shape().elements() / A->shape().back();
   size_t k = A->shape().back();
@@ -47,36 +76,87 @@ void Prod(marian::Tensor C,
 #if CUDA_VERSION >= 9000
   cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
+  cublasGemmTyped(cublasHandle,
+                  opB,
+                  opA,
+                  n,
+                  m,
+                  k,
+                  &alpha,
+                  B->data<T>(),
+                  ldb,
+                  A->data<T>(),
+                  lda,
+                  &beta,
+                  C->data<T>(),
+                  ldc);
 
-  cublasSgemm(cublasHandle,
-              opB,
-              opA,
-              n,
-              m,
-              k,
-              &alpha,
-              B->data(),
-              ldb,
-              A->data(),
-              lda,
-              &beta,
-              C->data(),
-              ldc);
 #if CUDA_VERSION >= 9000
   cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
 #endif
 }
 
-void ProdBatched(marian::Tensor C,
-                 Ptr<Allocator> allocator,
-                 const marian::Tensor A,
-                 const marian::Tensor B,
-                 bool transA,
-                 bool transB,
-                 float beta,
-                 float scalar) {
+void Prod(marian::Tensor C,
+          const marian::Tensor& A,
+          const marian::Tensor& B,
+          bool transA,
+          bool transB,
+          float beta,
+          float scalar) {
+  if(C->type() == Type::float32) {
+    ProdTyped<float>(C, A, B, transA, transB, beta, scalar);
+  } else if(C->type() == Type::float16) {
+    ProdTyped<half>(C, A, B, transA, transB, __float2half(beta), __float2half(scalar));
+  } else {
+    ABORT("Prod not implemented for type {}", C->type());
+  }
+}
+
+cublasStatus_t cublasGemmBatchedTyped(cublasHandle_t handle,
+                                      cublasOperation_t transa, 
+                                      cublasOperation_t transb,
+                                      int m, int n, int k,
+                                      const float *alpha,
+                                      const float *Aarray[], int lda,
+                                      const float *Barray[], int ldb,
+                                      const float *beta,
+                                      float *Carray[], int ldc, 
+                                      int batchCount) {
+  return
+  cublasSgemmBatched(handle, transa, transb, 
+                     m, n, k, alpha, 
+                     Aarray, lda, Barray, ldb, beta,
+                     Carray, ldc, batchCount);
+}
+
+cublasStatus_t cublasGemmBatchedTyped(cublasHandle_t handle,
+                                      cublasOperation_t transa, 
+                                      cublasOperation_t transb,
+                                      int m, int n, int k,
+                                      const half *alpha,
+                                      const half *Aarray[], int lda,
+                                      const half *Barray[], int ldb,
+                                      const half *beta,
+                                      half *Carray[], int ldc, 
+                                      int batchCount) {
+  return
+  cublasHgemmBatched(handle, transa, transb, 
+                     m, n, k, alpha, 
+                     Aarray, lda, Barray, ldb, beta,
+                     Carray, ldc, batchCount);
+}
+
+template <typename T>
+void ProdBatchedTyped(marian::Tensor C,
+                      Ptr<Allocator> allocator,
+                      const marian::Tensor A,
+                      const marian::Tensor B,
+                      bool transA,
+                      bool transB,
+                      T beta,
+                      T scalar) {
   cudaSetDevice(C->getDeviceId().no);
-  float alpha = scalar;
+  T alpha = scalar;
 
   size_t batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
   size_t batchB = B->shape().elements() / (B->shape()[-1] * B->shape()[-2]);
@@ -109,45 +189,45 @@ void ProdBatched(marian::Tensor C,
   int strideC = n * m;
   int batchC = std::max(batchA, batchB);
 
-  std::vector<const float*> aptr;
-  std::vector<const float*> bptr;
-  std::vector<float*> cptr;
+  std::vector<const T*> aptr;
+  std::vector<const T*> bptr;
+  std::vector<T*> cptr;
 
   for(int i = 0; i < batchC; i++) {
-    aptr.push_back(A->data() + (i % batchA) * strideA);
-    bptr.push_back(B->data() + (i % batchB) * strideB);
-    cptr.push_back(C->data() + i * strideC);
+    aptr.push_back(A->data<T>() + (i % batchA) * strideA);
+    bptr.push_back(B->data<T>() + (i % batchB) * strideB);
+    cptr.push_back(C->data<T>() + i * strideC);
   }
 
-  auto mp_aptr = allocator->alloc<const float*>(aptr.size());
+  IPtr<MemoryPiece> mp_aptr = allocator->alloc<const T*>(aptr.size());
   CudaCopy(
-      aptr.data(), aptr.data() + aptr.size(), mp_aptr->data<const float*>());
+      aptr.data(), aptr.data() + aptr.size(), mp_aptr->data<const T*>());
 
-  auto mp_bptr = allocator->alloc<const float*>(bptr.size());
+  IPtr<MemoryPiece> mp_bptr = allocator->alloc<const T*>(bptr.size());
   CudaCopy(
-      bptr.data(), bptr.data() + bptr.size(), mp_bptr->data<const float*>());
+      bptr.data(), bptr.data() + bptr.size(), mp_bptr->data<const T*>());
 
-  auto mp_cptr = allocator->alloc<float*>(cptr.size());
-  CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<float*>());
+  IPtr<MemoryPiece> mp_cptr = allocator->alloc<T*>(cptr.size());
+  CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<T*>());
 
 #if CUDA_VERSION >= 9000
   cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
-  cublasSgemmBatched(cublasHandle,
-                     opB,
-                     opA,
-                     n,
-                     m,
-                     k,
-                     &alpha,
-                     mp_bptr->data<const float*>(),
-                     ldb,
-                     mp_aptr->data<const float*>(),
-                     lda,
-                     &beta,
-                     mp_cptr->data<float*>(),
-                     ldc,
-                     batchC);
+  cublasGemmBatchedTyped(cublasHandle,
+                         opB,
+                         opA,
+                         n,
+                         m,
+                         k,
+                         &alpha,
+                         mp_bptr->data<const T*>(),
+                         ldb,
+                         mp_aptr->data<const T*>(),
+                         lda,
+                         &beta,
+                         mp_cptr->data<T*>(),
+                         ldc,
+                         batchC);
 #if CUDA_VERSION >= 9000
   cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
 #endif
@@ -155,6 +235,23 @@ void ProdBatched(marian::Tensor C,
   allocator->free(mp_aptr);
   allocator->free(mp_bptr);
   allocator->free(mp_cptr);
+}
+
+void ProdBatched(marian::Tensor C,
+                 Ptr<Allocator> allocator,
+                 const marian::Tensor A,
+                 const marian::Tensor B,
+                 bool transA,
+                 bool transB,
+                 float beta,
+                 float scalar) {
+  if(C->type() == Type::float32) {
+    ProdBatchedTyped<float>(C, allocator, A, B, transA, transB, beta, scalar);
+  } else if(C->type() == Type::float16) {
+    ProdBatchedTyped<half>(C, allocator, A, B, transA, transB, __float2half(beta), __float2half(scalar));
+  } else {
+    ABORT("ProdBatched not implemented for type {}", C->type());
+  }
 }
 
 }  // namespace gpu

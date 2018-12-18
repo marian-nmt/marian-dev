@@ -69,7 +69,7 @@ Expr softmax(Expr a, int axis /*=-1*/)
 }
 
 Expr softmax(Expr a, Expr zeroOneMask, int axis /*=-1*/) {
-  auto logMask = (1 - zeroOneMask) * -99999999.f;
+  auto logMask = (1.f - zeroOneMask) * -65504.f; // Make this better
   return softmax(a + logMask, axis);
 }
 
@@ -355,7 +355,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           bc = rec2(bc);
 
         int rows = ac->shape().elements() / ac->shape()[-1];
-        Expr ones = ac->graph()->ones({rows, 1});
+        // use same type as bias, bias is last child.
+        Expr ones = ac->graph()->ones({rows, 1}, bias->value_type());
         std::vector<Expr> nodes = {ac, bc, bias, ones};
         return rec2(Expression<AffineNodeOp>(nodes, transA, transB, scale),
                     true);
@@ -382,7 +383,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     // in the future when we explore better ways to handle this.
 
     int rows = a->shape().elements() / a->shape()[-1];
-    Expr ones = a->graph()->ones({rows, 1});
+    // use same type as bias.
+    Expr ones = a->graph()->ones({rows, 1}, bias->value_type());
+
     std::vector<Expr> nodes
         = {clip(a, clipValue), clip(b, clipValue), bias, ones};
     return Expression<AffineNodeOp>(nodes, transA, transB, scale);

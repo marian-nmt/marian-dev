@@ -163,8 +163,8 @@ struct NaryNodeOp : public Node {
     Type type = nodes[0]->value_type();
     for(int i = 1; i < nodes.size(); ++i)
       ABORT_IF(nodes[i]->value_type() != type,
-               "Children must have same type for deduction ({} != {})",
-               type, nodes[i]->value_type());
+               "Child {} has different type (first: {} != child: {})",
+               i, type, nodes[i]->value_type());
     return type;
   }
 

@@ -254,6 +254,10 @@ class numeric_limits<HalfFloat> {
     static const bool is_modulo		= false;
     static const bool is_bounded	= true;
 
+	static const HalfFloat lowest() {
+	  return HalfFloat(~0,HalfFloat::MAX_EXPONENT_VALUE-1,~0);
+	}
+
 	// Floating point specific.
 
     static HalfFloat epsilon ()

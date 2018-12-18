@@ -9,12 +9,14 @@
 #include "data/types.h"
 #include "tensors/tensor.h"
 #include "translator/helpers.h"
+#include "tensors/gpu/cuda_helpers.h"
 
 namespace marian {
 
 namespace gpu {
 
-__global__ void gSetColumn(float* d_in,
+template <typename T>
+__global__ void gSetColumn(T* d_in,
                            size_t n_columns,
                            size_t n_rows,
                            size_t noColumn,
@@ -23,22 +25,26 @@ __global__ void gSetColumn(float* d_in,
   size_t index = noColumn + rowNumber * n_columns;
 
   if(index < n_columns * n_rows) {
-    d_in[index] = value;
+    d_in[index] = (T)value;
   }
 }
 
-void SetColumn(Tensor in_, size_t col, float value) {
-  int nRows = in_->shape().elements() / in_->shape()[-1];
-  int nColumns = in_->shape()[-1];
+void suppressWord(Expr probs, Word id) {
+  Tensor p = probs->val();
+
+  int nRows = p->shape().elements() / p->shape()[-1];
+  int nColumns = p->shape()[-1];
 
   int nBlocks = nRows / 512 + ((nRows % 512 == 0) ? 0 : 1);
   int nThreads = std::min(512, nRows);
 
-  gSetColumn<<<nBlocks, nThreads>>>(in_->data(), nColumns, nRows, col, value);
-}
-
-void suppressWord(Expr probs, Word id) {
-  SetColumn(probs->val(), id, std::numeric_limits<float>::lowest());
+  if(p->type() == Type::float32) {
+    gSetColumn<<<nBlocks, nThreads>>>(p->data<float>(), nColumns, nRows, id, std::numeric_limits<float>::lowest());
+  } else if (p->type() == Type::float16) {
+    gSetColumn<<<nBlocks, nThreads>>>(p->data<half>(), nColumns, nRows, id, std::numeric_limits<float16>::lowest());
+  } else {
+    ABORT("suppressWord not implemented for type {}", p->type());
+  }
 }
 }  // namespace gpu
 }  // namespace marian

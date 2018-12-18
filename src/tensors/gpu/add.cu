@@ -16,12 +16,12 @@ namespace marian {
 
 namespace gpu {
 
-template <size_t K, class Functor>
+template <size_t K, class Functor, typename T>
 __global__ void gAddGeneric(Functor functor,
                             const functional::Shape full,
-                            functional::Tensor<float> out,
-                            functional::Array<functional::Tensor<float>, K> ins,
-                            float scale = 1.0) {
+                            functional::Tensor<T> out,
+                            functional::Array<functional::Tensor<T>, K> ins,
+                            T scale = 1.0) {
   int outLength = out.shape().elements();
   bool same = outLength == full.elements();
   for(int i = 0; i < K; ++i)
@@ -46,11 +46,11 @@ __global__ void gAddGeneric(Functor functor,
   }
 }
 
-template <size_t K, class Functor>
+template <size_t K, class Functor, typename T>
 __global__ void gAddEqual(Functor functor,
-                          functional::Tensor<float> out,
-                          functional::Array<functional::Tensor<float>, K> ins,
-                          float scale,
+                          functional::Tensor<T> out,
+                          functional::Array<functional::Tensor<T>, K> ins,
+                          T scale,
                           bool broadcast) {
   int length = out.shape().elements();
   functional::Array<int, functional::Shape::size()> dims;
@@ -72,12 +72,12 @@ __global__ void gAddEqual(Functor functor,
   }
 }
 
-template <size_t K, class Functor>
+template <size_t K, class Functor, typename T>
 __global__ void gAddReduce(Functor functor,
                            const functional::Shape full,
-                           functional::Tensor<float> out,
-                           functional::Array<functional::Tensor<float>, K> ins,
-                           float scale = 1.0) {
+                           functional::Tensor<T> out,
+                           functional::Array<functional::Tensor<T>, K> ins,
+                           T scale = 1.0) {
   int rows = full.elements() / full.back();
   int cols = full.back();
 
@@ -88,9 +88,12 @@ __global__ void gAddReduce(Functor functor,
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      extern __shared__ float _share[];
-      float* _sum = _share + blockDim.x;
-
+      // make sure shared memory is the same for different types 
+      // by using bytes instead of typeS T
+      extern __shared__ uint8_t _sharedBytes[];
+      T* _share = (T*)_sharedBytes;
+      
+      T* _sum = _share + blockDim.x;
       if(same) {
         _sum[threadIdx.x] = 0;
         for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -129,8 +132,8 @@ __global__ void gAddReduce(Functor functor,
   }
 }
 
-template <class Functor, class... Tensors>
-void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
+template <typename T, class Functor, class... Tensors>
+void AddTyped(Functor functor, T scale, marian::Tensor out, Tensors... tensors) {
   cudaSetDevice(out->getDeviceId().no);
 
   auto full = marian::Shape::broadcast({out, tensors...});
@@ -139,8 +142,8 @@ void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
 
   constexpr size_t K = sizeof...(Tensors);
 
-  functional::Tensor<float> gOut = out;
-  functional::Array<functional::Tensor<float>, K> gIns = {tensors...};
+  functional::Tensor<T> gOut = out;
+  functional::Array<functional::Tensor<T>, K> gIns = {tensors...};
 
   if(full.back() != 1 && out->shape().back() == 1) {
     size_t m = full.elements() / length;
@@ -167,6 +170,18 @@ void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
         = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     gAddGeneric<<<blocks, threads>>>(functor, full, gOut, gIns, scale);
+  }
+}
+
+template <class Functor, class... Tensors>
+void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
+
+  if(out->type() == Type::float32) {
+    AddTyped<float>(functor, scale, out, tensors...);
+  } else if(out->type() == Type::float16) {
+    AddTyped<half>(functor, __float2half(scale), out, tensors...);
+  } else {
+    ABORT("Type {} not yet supported", out->type());
   }
 }
 

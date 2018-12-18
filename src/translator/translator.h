@@ -34,6 +34,9 @@ public:
     // or config is created anew from Options in the validator
     options_->set("inference", true);
 
+    if(options_->get<bool>("fp16"))
+      ExpressionGraph::defaultFloatType = Type::float16;
+
     corpus_ = New<data::Corpus>(options_, true);
 
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");

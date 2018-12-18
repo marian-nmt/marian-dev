@@ -488,6 +488,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
+  cli.add<bool>("--fp16",
+      "Use fp16 for inference (GPU only)");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
 

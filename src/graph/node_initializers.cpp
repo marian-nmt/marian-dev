@@ -42,7 +42,7 @@ class LambdaInitConvert : public NodeInitializer {
                                     intermediateType_,
                                     tensor->getBackend());
         lambda_(temp);
-        CopyCast(tensor, temp);
+        CopyCast(tensor, temp); // Casting from temp to tensor
         allocator->free(memory);
       }
       else {
@@ -132,9 +132,9 @@ Ptr<NodeInitializer> gumbel() {
 template <typename T>
 Ptr<NodeInitializer> fromVector(const std::vector<T>& v) {
   auto vPtr = New<std::vector<T>>(v.begin(), v.end());
-  return New<LambdaInit>([vPtr](Tensor t) {
+  return New<LambdaInitConvert>([vPtr](Tensor t) {
     t->set(vPtr->data(), vPtr->data() + vPtr->size());
-  });
+  }, typeId<T>());
 }
 
 template Ptr<NodeInitializer> fromVector<float16>(const std::vector<float16>& v);
@@ -180,10 +180,10 @@ Ptr<NodeInitializer> fromItem(const io::Item& item) {
       t->reset(mp);
     });
   } else {
-    return New<LambdaInit>([item](Tensor t) {
+    return New<LambdaInitConvert>([item](Tensor t) {
       // @TODO: implement other types, for now croak loudly.
       ABORT_IF(!matchType<float>(t->type()),
-               "Tensor type and type for mapping do not match");
+               "Tensor type and type for loading do not match");
       t->set((const float*)item.bytes.data(),
              (const float*)item.bytes.data() + t->size());
     });

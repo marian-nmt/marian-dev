@@ -173,6 +173,22 @@ template <> inline std::string request<float>()   { return "float32"; }
 template <> inline std::string request<double>()  { return "float64"; }
 // clang-format on
 
+template <typename T>
+inline Type typeId();
+
+template <> inline Type typeId<int8_t>()  { return Type::int8; }
+template <> inline Type typeId<int16_t>() { return Type::int16; }
+template <> inline Type typeId<int32_t>() { return Type::int32; }
+template <> inline Type typeId<int64_t>() { return Type::int64; }
+
+template <> inline Type typeId<uint8_t>()  { return Type::uint8; }
+template <> inline Type typeId<uint16_t>() { return Type::uint16; }
+template <> inline Type typeId<uint32_t>() { return Type::uint32; }
+template <> inline Type typeId<uint64_t>() { return Type::uint64; }
+
+template <> inline Type typeId<float16>() { return Type::float16; }
+template <> inline Type typeId<float>()   { return Type::float32; }
+template <> inline Type typeId<double>()  { return Type::float64; }
 
 // Abort if given C++ does not correspond to runtime type
 template <typename T>

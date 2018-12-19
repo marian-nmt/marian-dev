@@ -204,26 +204,27 @@ public:
     parallel &= graphs_.size() > 1;
 
     for(size_t i = 0; i < graphs_.size(); ++i) {
-      size_t begin, end; std::tie
+      size_t begin, end;
+      std::tie
       (begin, end) = localShardRange(i);
       //std::cerr << "[" << mpiIdStr() << "] foreach " << begin << " " << end << std::endl;
-try{
-      if (parallel)
-        threadResults_[i] = threadPool_.enqueue(func, i, begin, end);
-        //group.emplace_back(func, i, begin, end);
-        //threadPool_.enqueue([&](size_t i){
-        //  func(i, begin, end);
-        //}, i);
-      else
-        func(i, begin, end);
-}
-catch (const std::exception& e) // something leaks thread handles
-{
-  // keeping this around, in case the error still happens  --@TODO: remove once this has not been observed anymore
-  LOG(info, "caught exception in foreach {}", i);
-  system("ps -T -A");
-  throw;
-}
+      try{
+        if (parallel)
+          threadResults_[i] = threadPool_.enqueue(func, i, begin, end);
+          //group.emplace_back(func, i, begin, end);
+          //threadPool_.enqueue([&](size_t i){
+          //  func(i, begin, end);
+          //}, i);
+        else
+          func(i, begin, end);
+        }
+      catch (const std::exception& e) // something leaks thread handles
+      {
+        // keeping this around, in case the error still happens  --@TODO: remove once this has not been observed anymore
+        LOG(info, "caught exception in foreach {}", i);
+        system("ps -T -A");
+        throw;
+      }
     }
     if (parallel)
       for(size_t i = 0; i < graphs_.size(); ++i)

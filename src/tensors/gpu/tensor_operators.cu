@@ -89,7 +89,7 @@ void CopyCastTo(To* out, const From* in, int length) {
 template <typename T>
 void CopyCastFrom(Tensor out, const T* in, int length) {
   if(out->type() == Type::float32) {
-    CopyCastTo(out->data<half>(), in, length);
+    CopyCastTo(out->data<float>(), in, length);
   } else if(out->type() == Type::float16) {
     CopyCastTo(out->data<half>(), in, length);
   } else {
@@ -97,7 +97,7 @@ void CopyCastFrom(Tensor out, const T* in, int length) {
   }
 }
 
-void CopyCast(Tensor out, Tensor in) {
+void CopyCast(Tensor out, const Tensor in) {
   cudaSetDevice(out->getDeviceId().no);
 
   if(in->type() == Type::float32) {

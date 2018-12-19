@@ -30,8 +30,9 @@ Expr LossBase::getCrossEntropy(Expr logits,
 
   if(smoothing_ > 0) {
     // @TODO: add this to CE kernels instead
+    // Accumulation in float, so we are safe for mixed precision
     auto ceq = mean(logsoftmax(logits), /*axis=*/ -1);
-    ce = (1 - smoothing_) * ce - smoothing_ * ceq;
+    ce = (1.f - smoothing_) * ce - smoothing_ * ceq;
   }
 
   if(mask)
@@ -55,7 +56,8 @@ Expr CrossEntropyMeanLoss::getCost(Expr logits,
   //          / sum(mean(mask * weights, /*axis =*/ -3) /*axis =*/ -2);
   // }
   // else {
-    return mean(sum(ce, /*axis =*/ -3), /*axis =*/ -2);
+    // Cast to float32 before any summation
+    return mean(sum(cast(ce, Type::float32), /*axis =*/ -3), /*axis =*/ -2);
   // }
 }
 
@@ -69,8 +71,9 @@ Expr CrossEntropyMeanWordsLoss::getCost(Expr logits,
   //          / sum(sum(mask * weights, /*axis =*/ -3), /*axis =*/ -2));
   // }
   // else {
-    return sum(sum(ce, /*axis =*/ -3), /*axis =*/ -2) // sum CE over all words in the batch
-           / sum(sum(mask, /*axis =*/ -3), /*axis =*/ -2); // divide by number of words (sum over mask)
+    // Cast to float32 before any summation
+    return sum(sum(cast(ce, Type::float32), /*axis =*/ -3), /*axis =*/ -2) // sum CE over all words in the batch
+           / sum(sum(cast(mask, Type::float32), /*axis =*/ -3), /*axis =*/ -2); // divide by number of words (sum over mask)
   // }
 }
 
@@ -84,7 +87,8 @@ Expr CrossEntropySumLoss::getCost(Expr logits,
   //          / mean(mean(mask * weights, /*axis =*/ -3), /*axis =*/ -2);
   // }
   // else {
-    return sum(sum(ce, /*axis =*/ -3), /*axis =*/ -2);
+    // Cast to float32 before any summation
+    return sum(sum(cast(ce, Type::float32), /*axis =*/ -3), /*axis =*/ -2);
   // }
 }
 
@@ -98,8 +102,9 @@ Expr PerplexityLoss::getCost(Expr logits,
   //              / sum(sum(mask * weights, /*axis =*/ -3), /*axis =*/ -2));
   // }
   // else {
-    return exp(sum(sum(ce, /*axis =*/ -3), /*axis =*/ -2) // sum CE over all words in the batch
-               / sum(sum(mask, /*axis =*/ -3), /*axis =*/ -2)); // divide by number of words (sum over mask)
+    // Cast to float32 before any summation
+    return exp(sum(sum(cast(ce, Type::float32), /*axis =*/ -3), /*axis =*/ -2) // sum CE over all words in the batch
+               / sum(sum(cast(mask, Type::float32), /*axis =*/ -3), /*axis =*/ -2)); // divide by number of words (sum over mask)
   // }
 }
 
@@ -108,7 +113,7 @@ Expr CrossEntropyRescoreLoss::getCost(Expr logits,
                                       Expr mask,
                                       Expr weights) {
   auto ce = getCrossEntropy(logits, indices, mask, weights);
-  return -sum(ce, /*axis =*/ -3);
+  return -sum(cast(ce, Type::float32), /*axis =*/ -3);
 }
 
 Expr CrossEntropyRescoreMeanLoss::getCost(Expr logits,
@@ -117,7 +122,7 @@ Expr CrossEntropyRescoreMeanLoss::getCost(Expr logits,
                                           Expr weights) {
   auto ce = getCrossEntropy(logits, indices, mask, weights);
   // divide by number of words in sentence
-  return -sum(ce, /*axis =*/ -3) / sum(mask, /*axis =*/ -3);
+  return -sum(cast(ce, Type::float32), /*axis =*/ -3) / sum(cast(mask, Type::float32), /*axis =*/ -3);
 }
 
 }  // namespace marian

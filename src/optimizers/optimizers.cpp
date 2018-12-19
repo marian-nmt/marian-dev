@@ -156,7 +156,8 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
   Element(_1 = (beta2_ * _1) + ((1 - beta2_) * (_2 * _2)), vt_, grads);
 
   // make sure eps_ does not drop below minimum value, this is important
-  // when training with mixed precision. Otherwise we divide by 0
+  // when training with mixed precision. Otherwise we divide by 0.
+  // We multiply the minimum by 2 in order to step away from the abyss.
   eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
 
   Element(_1 -= eta_                         // learning-rate: x_t = x_{t-1} - \eta * (...)

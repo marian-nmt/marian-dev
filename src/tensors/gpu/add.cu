@@ -72,12 +72,12 @@ __global__ void gAddEqual(Functor functor,
   }
 }
 
-template <size_t K, class Functor, typename T>
+template <size_t K, class Functor, typename T, typename AccType = float>
 __global__ void gAddReduce(Functor functor,
                            const functional::Shape full,
                            functional::Tensor<T> out,
                            functional::Array<functional::Tensor<T>, K> ins,
-                           T scale = 1.0) {
+                           AccType scale = 1.0) {
   int rows = full.elements() / full.back();
   int cols = full.back();
 
@@ -88,22 +88,22 @@ __global__ void gAddReduce(Functor functor,
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      // make sure shared memory is the same for different types 
+      // make sure shared memory is the same for different types
       // by using bytes instead of typeS T
       extern __shared__ uint8_t _sharedBytes[];
-      T* _share = (T*)_sharedBytes;
-      
-      T* _sum = _share + blockDim.x;
+      AccType* _share = (AccType*)_sharedBytes;
+
+      AccType* _sum = _share + blockDim.x;
       if(same) {
-        _sum[threadIdx.x] = 0;
+        _sum[threadIdx.x] = (AccType)0.f;
         for(int tid = 0; tid < cols; tid += blockDim.x) {
           int id = tid + threadIdx.x;
           if(id < cols)
-            _sum[threadIdx.x] += functional::apply(functor, ins, j * cols + id);
+            _sum[threadIdx.x] += (AccType)functional::apply(functor, ins, j * cols + id);
         }
       } else {
         functional::Array<int, functional::Shape::size()> dims;
-        _sum[threadIdx.x] = 0;
+        _sum[threadIdx.x] = (AccType)0.f;
 
         for(int tid = 0; tid < cols; tid += blockDim.x) {
           int id = tid + threadIdx.x;
@@ -112,7 +112,7 @@ __global__ void gAddReduce(Functor functor,
             functional::Array<int, K> indices;
             for(int i = 0; i < K; ++i)
               indices[i] = ins[i].shape().bindex(dims);
-            _sum[threadIdx.x] += functional::apply(functor, ins, indices);
+            _sum[threadIdx.x] += (AccType)functional::apply(functor, ins, indices);
           }
         }
       }
@@ -153,7 +153,7 @@ void AddTyped(Functor functor, T scale, marian::Tensor out, Tensors... tensors) 
     int threads = std::min(MAX_THREADS, (int)k);
     int shared = sizeof(float) * threads * 2;
 
-    gAddReduce<<<blocks, threads, shared>>>(functor, full, gOut, gIns, scale);
+    gAddReduce<K, Functor, T, float><<<blocks, threads, shared>>>(functor, full, gOut, gIns, scale);
 
   } else if(out->shape() == full) {
     int threads = std::min(MAX_THREADS, length);

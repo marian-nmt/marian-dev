@@ -26,8 +26,28 @@ inline float stableSigmoid(float x) {
   }
 }
 
-void CopyCast(Tensor out, Tensor in) {
-  ABORT("Not implemented");
+template <typename To, typename From>
+void CopyCastTo(To* out, const From* in, int length) {
+  for(int i = 0; i < length; ++i)
+    out[i] = in[i];
+}
+
+template <typename T>
+void CopyCastFrom(Tensor out, const T* in, int length) {
+  if(out->type() == Type::float32) {
+    CopyCastTo(out->data<float>(), in, length);
+  } else {
+    ABORT("CopyCastTo to type {} not implemented", out->type());
+  }
+}
+
+// currently useless on the CPU until more types are added
+void CopyCast(Tensor out, const Tensor in) {
+  if(in->type() == Type::float32) {
+    CopyCastFrom(out, in->data<float>(), (int)in->size());
+  } else {
+    ABORT("CopyCastFrom from type {} not implemented", in->type());
+  }
 }
 
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {

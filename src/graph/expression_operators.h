@@ -94,6 +94,8 @@ Expr transpose(Expr a, const std::vector<int>& axes);
 
 Expr swapAxes(Expr x, int axis1, int axis2);
 
+Expr cast(Expr a, Type type = Type::float32);
+
 Expr concatenate(const std::vector<Expr>& concats, int ax = 0);
 Expr repeat(Expr a, size_t repeats, int ax = 0);
 

@@ -69,10 +69,12 @@ Expr softmax(Expr a, int axis /*=-1*/)
 }
 
 Expr softmax(Expr a, Expr zeroOneMask, int axis /*=-1*/) {
-  auto logMask = (1.f - zeroOneMask) * -65504.f; // Make this better
-  return softmax(a + logMask, axis);
+  float smallestFloat = -NumericLimits<float>(a->value_type()).max;
+  auto logMask = (1.f - zeroOneMask) * smallestFloat;
+  return softmax(a + logMask, axis); // -x - smallestFloat = Nan?
 }
 
+// @TODO: add mask
 Expr logsoftmax(Expr a) {
   return Expression<LogSoftmaxNodeOp>(a);
 }
@@ -422,6 +424,14 @@ Expr swapAxes(Expr x, int axis1, int axis2)
     axes[i] = i;
   std::swap(axes[axis1], axes[axis2]);
   return transpose(x, axes);
+}
+
+Expr cast(Expr a, Type type) {
+  if(a->value_type() == type) {
+    return a;
+  } else {
+    return Expression<CastNodeOp>(a, type);
+  }
 }
 
 Expr step(Expr a, int step, int axis) {

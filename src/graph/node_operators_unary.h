@@ -68,6 +68,26 @@ public:
   }
 };
 
+struct CastNodeOp : public UnaryNodeOp {
+private:
+  Type type_{Type::float32};
+
+public:
+  CastNodeOp(Expr a, Type type) : UnaryNodeOp(a, type) {}
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+    return { NodeOp(CopyCast(val_, child(0)->val())) };
+  }
+
+  NodeOps backwardOps() override {
+    using namespace functional;
+    return { NodeOp(CopyCast(child(0)->grad(), adj_)) };
+  }
+
+  const std::string type() override { return "cast"; }
+};
+
 struct ScalarMultNodeOp : public UnaryNodeOp {
 private:
   float scalar_{0};

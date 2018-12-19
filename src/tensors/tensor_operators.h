@@ -34,7 +34,7 @@ void copy(Ptr<Backend> backend, const InIt beg, const InIt end, OutIt it) {
     std::copy(beg, end, it);
 }
 
-DISPATCH2(CopyCast, marian::Tensor, marian::Tensor)
+DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor)
 
 template <class Functor, class... Tensors>
 void Element(Functor functor, marian::Tensor out, Tensors... tensors) {

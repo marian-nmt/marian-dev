@@ -107,11 +107,11 @@ private:
         auto paramsAlloc = New<TensorAllocator>(graph->getBackend());
         paramsAllocs_.push_back(paramsAlloc);
 
-        paramsAlloc->reserveExact(__size__ * sizeof(float));
+        paramsAlloc->reserveExact(__size__ * sizeOf(ExpressionGraph::defaultFloatType));
 
         Tensor tmp;
 
-        paramsAlloc->allocate(tmp, {1, __size__});
+        paramsAlloc->allocate(tmp, {1, __size__}, ExpressionGraph::defaultFloatType);
         tmpTensors_.push_back(tmp);
 
         // move to next shard

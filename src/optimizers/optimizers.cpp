@@ -23,7 +23,7 @@ void Adagrad::updateImpl(Tensor params, Tensor grads) {
   if(!gt_) {
     int elements = (int)params->size();
     alloc_->reserveExact(params->memory()->size());
-    alloc_->allocate(gt_, {1, elements});
+    alloc_->allocate(gt_, {1, elements}, params->type());
     gt_->set(0.f);
   }
 
@@ -77,8 +77,8 @@ void Adagrad::load(const std::string& name,
       if(!opt->alloc_)
         opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
       auto size = end-begin;
-      opt->alloc_->reserveExact(sizeof(float) * size);
-      opt->alloc_->allocate(opt->gt_, {1, (int)size});
+      opt->alloc_->reserveExact(sizeOf(ExpressionGraph::defaultFloatType) * size);
+      opt->alloc_->allocate(opt->gt_, {1, (int)size}, ExpressionGraph::defaultFloatType);
     }
     opt->gt_->set(std::vector<float>(begin, end));
   });
@@ -128,10 +128,10 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
   if(!mt_) {
     int elements = (int)params->size();
     alloc_->reserveExact(2 * params->memory()->size());
-    alloc_->allocate(mt_, {1, elements});
+    alloc_->allocate(mt_, {1, elements}, ExpressionGraph::defaultFloatType);
     mt_->set(0.f);
 
-    alloc_->allocate(vt_, {1, elements});
+    alloc_->allocate(vt_, {1, elements}, ExpressionGraph::defaultFloatType);
     vt_->set(0.f);
   }
 
@@ -200,9 +200,9 @@ void Adam::load(const std::string& name,
       if(!opt->alloc_)
         opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
       auto size = end-begin;
-      opt->alloc_->reserveExact(2 * sizeof(float) * size);
-      opt->alloc_->allocate(opt->mt_, {1, (int)size});
-      opt->alloc_->allocate(opt->vt_, {1, (int)size});
+      opt->alloc_->reserveExact(2 * sizeOf(ExpressionGraph::defaultFloatType) * size);
+      opt->alloc_->allocate(opt->mt_, {1, (int)size}, ExpressionGraph::defaultFloatType);
+      opt->alloc_->allocate(opt->vt_, {1, (int)size}, ExpressionGraph::defaultFloatType);
     }
     opt->mt_->set(std::vector<float>(begin, end)); // set the value
   });

@@ -19,6 +19,8 @@ protected:
   Ptr<TensorAllocator> vals_;
   Ptr<TensorAllocator> grads_;
 
+  Type type_;
+
   size_t totalCapacity(Ptr<TensorAllocator> alloc) {
     size_t sum = 0;
     for(auto p : params_) {
@@ -51,7 +53,8 @@ public:
     named_[name] = p;
   }
 
-  virtual void init(Ptr<Backend> backend) {
+  virtual void init(Ptr<Backend> backend, Type type = Type::float32) {
+    type_ = type;
     vals_ = New<TensorAllocator>(backend);
     grads_ = New<TensorAllocator>(backend);
   }
@@ -78,9 +81,9 @@ public:
 
   virtual void set_zero_adjoint() { grads()->set(0.f); }
 
-  virtual Tensor vals() { return vals_->asTensor(); }
+  virtual Tensor vals() { return vals_->asTensor(type_); }
 
-  virtual Tensor grads() { return grads_->asTensor(); }
+  virtual Tensor grads() { return grads_->asTensor(type_); }
 
   virtual void clear() {
     params_.clear();
@@ -96,7 +99,7 @@ private:
   Ptr<Backend> backend_;
 
 public:
-  virtual void init(Ptr<Backend> backend) override { backend_ = backend; }
+  virtual void init(Ptr<Backend> backend, Type type = Type::float32) override { type_ = type; backend_ = backend; }
 
   virtual void allocateForward() override {
     if(!params_.empty()) {

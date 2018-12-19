@@ -244,7 +244,11 @@ catch (const std::exception& e) // something leaks thread handles
       auto*       recvbuf = grads->subtensor(begin, end-begin)->data();
       size_t      bufsize = shardSize();
 
-      NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloat, ncclSum, comms_[i], streams_[i]));
+      ncclDataType_t ncclFloatType = ncclFloat32;
+      if(grads->type() == Type::float16)
+        ncclFloatType = ncclFloat16;
+
+      NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloatType, ncclSum, comms_[i], streams_[i]));
     }
     groupEnd();
     //std::cerr << "scatterReduce submitted" << std::endl;
@@ -267,7 +271,11 @@ catch (const std::exception& e) // something leaks thread handles
       void*       recvbuf = vals->data();
       size_t      bufsize = shardSize();
 
-      NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, bufsize, ncclFloat, comms_[i], streams_[i]));
+      ncclDataType_t ncclFloatType = ncclFloat32;
+      if(vals->type() == Type::float16)
+        ncclFloatType = ncclFloat16;
+
+      NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, bufsize, ncclFloatType, comms_[i], streams_[i]));
     }
     groupEnd();
     synchronizeAll();

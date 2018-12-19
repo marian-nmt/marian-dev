@@ -506,7 +506,7 @@ public:
              "Memory mapping only supported for CPU inference mode");
 
     params_ = New<MappedParameters>();
-    params_->init(backend_);
+    params_->init(backend_, defaultFloatType);
 
     LOG(info, "Memory mapping model at {}", ptr);
     load(io::mmapItems(ptr), markReloaded);

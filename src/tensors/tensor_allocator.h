@@ -76,13 +76,13 @@ public:
 
   void free(Tensor& t) { allocator_->free(t->memory()); }
 
-  Tensor asTensor() {
+  Tensor asTensor(Type type = Type::float32) {
     auto mem = allocator_->memory();
-    auto size = mem->size() / sizeof(float);
-    return TensorBase::New(mem, Shape({1, (int)size}), backend_);
+    auto size = mem->size() / sizeOf(type);
+    return TensorBase::New(mem, Shape({1, (int)size}), type, backend_);
   }
 
-  size_t size() { return allocator_->size() / sizeof(float); }
+  size_t size(Type type = Type::float32) { return allocator_->size() / sizeOf(type); }
 
   Ptr<Allocator> allocator() { return allocator_; }
 };

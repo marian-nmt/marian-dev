@@ -15,6 +15,24 @@
 #include <memory>
 #include <sstream>
 
+#define DISPATCH_BY_TYPE0(type, func) \
+do { \
+  switch(type) { \
+    case Type::int8:    return func<int8_t  >(); \
+    case Type::int16:   return func<int16_t >(); \
+    case Type::int32:   return func<int32_t >(); \
+    case Type::int64:   return func<int64_t >(); \
+    case Type::uint8:   return func<uint8_t >(); \
+    case Type::uint16:  return func<uint16_t>(); \
+    case Type::uint32:  return func<uint32_t>(); \
+    case Type::uint64:  return func<uint64_t>(); \
+    case Type::float16: return func<float16 >(); \
+    case Type::float32: return func<float   >(); \
+    case Type::float64: return func<double  >(); \
+    default: ABORT("Unknown type {}", type_); \
+  } \
+} while(0)
+
 #define DISPATCH_BY_TYPE1(type, func, arg1) \
 do { \
   switch(type) { \
@@ -103,15 +121,16 @@ public:
 
   virtual size_t size() { return shape_.elements(); }
 
+  // this version of scalar will abort if numeric types do not match
   template <typename T>
   T scalar() {
-    matchOrAbort<T>(type_);
     ABORT_IF(size() != 1, "Tensor is not a scalar");
     return get<T>(0);
   }
 
+  // this version converts all numeric types to float
   virtual float scalar() {
-    return scalar<float>();
+    DISPATCH_BY_TYPE0(type_, scalar);
   }
 
   Ptr<Backend> getBackend() { return backend_; }
@@ -119,7 +138,7 @@ public:
 
   Tensor subtensor(size_t offset, size_t size) {
     auto mem = MemoryPiece::New(memory_->data() + sizeOf(type_) * offset, sizeOf(type_) * size);
-    return TensorBase::New(mem, Shape{1, (int)size}, backend_);
+    return TensorBase::New(mem, Shape{1, (int)size}, type(), backend_);
   }
 
   template <typename T>
@@ -143,20 +162,6 @@ public:
   }
 
   template <typename T>
-  void set(size_t i, T value) {
-    matchOrAbort<T>(type_);
-
-    if(backend_->getDeviceId().type == DeviceType::cpu) {
-      std::copy(&value, &value + 1, data<T>() + i);
-    }
-#ifdef CUDA_FOUND
-    else {
-      gpu::copy(backend_, &value, &value + 1, data<T>() + i);
-    }
-#endif
-  }
-
-  template <typename T>
   void get(std::vector<T>& v) {
     ABORT_IF(!matchType<T>(type_),
              "Requested type ({}) and underlying type ({}) do not match",
@@ -170,6 +175,20 @@ public:
 #ifdef CUDA_FOUND
     else {
       gpu::copy(backend_, data<T>(), data<T>() + size(), v.data());
+    }
+#endif
+  }
+
+  template <typename T>
+  void set(size_t i, T value) {
+    matchOrAbort<T>(type_);
+
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
+      std::copy(&value, &value + 1, data<T>() + i);
+    }
+#ifdef CUDA_FOUND
+    else {
+      gpu::copy(backend_, &value, &value + 1, data<T>() + i);
     }
 #endif
   }
@@ -380,5 +399,17 @@ public:
 };
 
 typedef TensorBase::PtrType Tensor;
+
+template <class TensorType0, class ...TensorTypeRest>
+static inline void checkCommonType(TensorType0 first, TensorTypeRest ...rest) {
+  std::vector<Tensor> vTensors({first, rest...});
+  Type firstType = first->type();
+  for(int i = 1; i < vTensors.size(); ++i) {
+    ABORT_IF(vTensors[i]->type() != firstType, 
+             "Type of tensor {} is different from type of tensor 0 ({} != {})", 
+             i, vTensors[i]->type(), firstType);
+  }
+}
+
 }  // namespace marian
 

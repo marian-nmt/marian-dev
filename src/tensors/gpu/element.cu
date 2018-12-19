@@ -58,6 +58,7 @@ void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
 
 template <class Functor, class... Tensors>
 void Element(Functor functor, Tensor out, Tensors... tensors) {
+  checkCommonType(out, tensors...);
 
   if(out->type() == Type::float32) {
     ElementTyped<float>(functor, out, tensors...);

@@ -57,6 +57,7 @@ public:
     int dimBatch = batch->size();
 
     // @TODO: this creates fake ground truth, need to implement reader
+    // and the we can train a classifier on top of any encoder.
     std::vector<IndexType> fakeOutputs(dimBatch, 0);
     for(auto& out : fakeOutputs)
         out = (int)rand() % classes;

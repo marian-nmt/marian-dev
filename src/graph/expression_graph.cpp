@@ -12,7 +12,7 @@ void ExpressionGraph::setDevice(DeviceId deviceId, Ptr<Device> device) {
   if(!backend_) {
     backend_ = BackendByDeviceId(deviceId, Config::seed);
     params_ = New<Parameters>();
-    params_->init(backend_);
+    params_->init(backend_, defaultFloatType);
     if(device)
       tensors_ = New<Tensors>(backend_, device);
     else

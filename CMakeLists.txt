@@ -225,9 +225,9 @@ else(COMPILE_CUDA)
 endif(COMPILE_CUDA)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75)
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75)
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math;  -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75)
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75)
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
   # @TODO: add warnings here too

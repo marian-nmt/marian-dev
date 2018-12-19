@@ -5,16 +5,18 @@
 #ifndef LIBCNPY_H_
 #define LIBCNPY_H_
 
-#include<string>
-#include<stdexcept>
-#include<sstream>
-#include<vector>
-#include<cstdio>
-#include<typeinfo>
-#include<iostream>
-#include<cassert>
-#include<zlib.h>
-#include<map>
+// use included zlib
+#include "zlib/zlib.h"
+
+#include <string>
+#include <stdexcept>
+#include <sstream>
+#include <vector>
+#include <cstdio>
+#include <typeinfo>
+#include <iostream>
+#include <cassert>
+#include <map>
 #include <memory>
 
 namespace cnpy {

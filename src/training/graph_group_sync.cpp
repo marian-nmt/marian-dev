@@ -13,6 +13,9 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> config)
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
+    if(options_->get<bool>("fp16"))
+      graph->setParameterType(Type::float16);
+
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
 
@@ -69,6 +72,8 @@ void SyncGraphGroup::initializeAvg() {
     // Load the averaged parameters into a temporary graph
     graphAvg = New<ExpressionGraph>();
     graphAvg->setDevice({0, DeviceType::cpu});
+    graphAvg->setParameterType(graphs_[0]->getParameterType());
+
     graphAvg->load(name, false);
     graphAvg->forward(); // initialize parameters if needed
   }
@@ -80,10 +85,10 @@ void SyncGraphGroup::initializeAvg() {
     auto paramsAllocator = New<TensorAllocator>(graphs_[localDeviceIndex]->getBackend());
     paramsAllocs_[localDeviceIndex] = paramsAllocator;
 
-    paramsAllocator->reserveExact(size * sizeof(float));
+    paramsAllocator->reserveExact(size * sizeOf(graphs_[0]->getParameterType()));
 
     Tensor paramAvg;
-    paramsAllocator->allocate(paramAvg, {1, (int)size});
+    paramsAllocator->allocate(paramAvg, {1, (int)size}, graphs_[0]->getParameterType());
     paramsAvg_[localDeviceIndex] = paramAvg;
 
     if(graphAvg)
@@ -144,10 +149,12 @@ void SyncGraphGroup::update(Ptr<data::Batch> batch) /*override*/ {
       if(subBatch) {
         timer::Timer timer;
         auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
+        costNode = costNode * costScale_;
+
         //LOG(info, timer.format(2, "after build: %ws"));
         graph->forward();
         //LOG(info, timer.format(2, "after forward (no sync): %ws"));
-        localDeviceCosts[localDeviceIndex] += costNode->scalar();
+        localDeviceCosts[localDeviceIndex] += costNode->scalar() / costScale_;
         graph->backward(/*zero=*/t == 0); // only reset gradients to 0 if t = 0
         //LOG(info, timer.format(2, "after backward (no sync): %ws"));
         //localDeviceCosts[localDeviceIndex] += costNode->scalar(); // moved here for time measurements; @TODO: move this back

@@ -19,7 +19,9 @@ protected:
   Ptr<TensorAllocator> vals_;
   Ptr<TensorAllocator> grads_;
 
-  Type type_;
+  // A set of parameters should be of the same type
+  Type parameterType_{Type::float32};
+  bool parameterTypeSet_{false};
 
   size_t totalCapacity(Ptr<TensorAllocator> alloc) {
     size_t sum = 0;
@@ -48,13 +50,17 @@ public:
   size_t size() { return params_.size(); }
 
   void add(Expr p, const std::string& name) {
-    params_.push_back(p);
     ABORT_IF(named_.count(name), "Parameter '{}' already exists", name);
+    ABORT_IF(parameterTypeSet_ && p->value_type() != parameterType_,
+             "Requested parameter type ({}) is different from chosen parameter type ({})",
+             p->value_type(), parameterType_);
+    params_.push_back(p);
     named_[name] = p;
+    parameterType_ = p->value_type();
+    parameterTypeSet_ = true;
   }
 
-  virtual void init(Ptr<Backend> backend, Type type = Type::float32) {
-    type_ = type;
+  virtual void init(Ptr<Backend> backend) {
     vals_ = New<TensorAllocator>(backend);
     grads_ = New<TensorAllocator>(backend);
   }
@@ -81,9 +87,9 @@ public:
 
   virtual void set_zero_adjoint() { grads()->set(0.f); }
 
-  virtual Tensor vals() { return vals_->asTensor(type_); }
+  virtual Tensor vals() { return vals_->asTensor(parameterType_); }
 
-  virtual Tensor grads() { return grads_->asTensor(type_); }
+  virtual Tensor grads() { return grads_->asTensor(parameterType_); }
 
   virtual void clear() {
     params_.clear();
@@ -99,7 +105,7 @@ private:
   Ptr<Backend> backend_;
 
 public:
-  virtual void init(Ptr<Backend> backend, Type type = Type::float32) override { type_ = type; backend_ = backend; }
+  virtual void init(Ptr<Backend> backend) override { backend_ = backend; }
 
   virtual void allocateForward() override {
     if(!params_.empty()) {

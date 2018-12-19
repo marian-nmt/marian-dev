@@ -34,6 +34,9 @@ public:
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
 
+    if(options_->get<bool>("fp16"))
+      graph_->setParameterType(Type::float16);
+
     graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 

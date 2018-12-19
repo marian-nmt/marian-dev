@@ -244,6 +244,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // clang-format off
   cli.add<std::string>("--cost-type",
       "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");
+  cli.add<float>("--cost-scaling",
+      "Scale cost to scale gradients. No scaling with 1.f", 1.f);
   cli.add<bool>("--overwrite",
       "Do not create model checkpoints, only overwrite main model file with last checkpoint. "
       "Reduces disk usage");

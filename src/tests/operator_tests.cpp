@@ -9,10 +9,8 @@ void tests(DeviceType device, Type floatType = Type::float32) {
   auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.01); };
 
   Config::seed = 1234;
-  ExpressionGraph::defaultFloatType = floatType;
-
   auto graph = New<ExpressionGraph>();
-
+  graph->setParameterType(floatType);
   graph->setDevice({0, device});
   graph->reserveWorkspaceMB(16);
 
@@ -221,13 +219,13 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
     // Odd: m3->val()->scalar<T>() does not compile, but the code
     // below does. Seems to be a bug in g++-5?
-    // @TODO: check other g++ versions. 
+    // @TODO: check other g++ versions.
     Tensor val1 = m3->val();
     T test1 = val1->scalar<T>();
 
     Tensor val2 = sp->val();
     T test2 = val2->scalar<T>();
-    
+
     CHECK( test1 == (T)9.f );
     CHECK( test2 == (T)776.f );
 

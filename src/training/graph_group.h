@@ -21,9 +21,12 @@ protected:
   Ptr<OptimizerBase> opt_;   // the optimizer
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
+  float costScale_{1.f};
 
 public:
-  GraphGroup(Ptr<Options> options) : options_(options), opt_(Optimizer(options)) {}
+  GraphGroup(Ptr<Options> options) : options_(options), opt_(Optimizer(options)) {
+    costScale_ = options_->get<float>("cost-scaling", 1.f);
+  }
 
   virtual ~GraphGroup() {}
 
@@ -141,6 +144,10 @@ public:
     // Create builders and graphs for clients; that is, for each GPU we use on this node.
     for (size_t i = 0; i < devices_.size(); i++) {
       clientGraphs_.push_back(New<ExpressionGraph>());
+
+      if(options_->get<bool>("fp16"))
+          clientGraphs_[i]->setParameterType(Type::float16);
+
       clientGraphs_[i]->setDevice({ devices_[i], DeviceType::gpu });
       clientGraphs_[i]->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       clientBuilders_.push_back(models::from_options(options_, models::usage::training));

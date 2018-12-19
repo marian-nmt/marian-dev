@@ -16,6 +16,10 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> config)
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
+
+    if(options_->get<bool>("fp16"))
+      graph->setParameterType(Type::float16);
+
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graphs_.push_back(graph);
@@ -111,8 +115,8 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
       Tensor param;
       Ptr<TensorAllocator> allocator
           = New<TensorAllocator>(graph->getBackend());
-      allocator->reserveExact(__size__ * sizeof(float));
-      allocator->allocate(param, {1, __size__});
+      allocator->reserveExact(__size__ * sizeOf(graph->getParameterType()));
+      allocator->allocate(param, {1, __size__}, graph->getParameterType());
       paramsAlloc_.push_back(allocator);
 
       param->copyFrom(graphs_[0]->params()->vals()->subtensor(pos, __size__));
@@ -131,8 +135,8 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
       Ptr<TensorAllocator> allocator
           = New<TensorAllocator>(graph->getBackend());
 
-      allocator->reserveExact(__size__ * sizeof(float));
-      allocator->allocate(grad, {1, __size__});
+      allocator->reserveExact(__size__ * sizeOf(graph->getParameterType()));
+      allocator->allocate(grad, {1, __size__}, graph->getParameterType());
       gradsAlloc_.push_back(allocator);
       grads_.push_back(grad);
     }
@@ -159,8 +163,8 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
       Ptr<TensorAllocator> allocator
           = New<TensorAllocator>(graph->getBackend());
 
-      allocator->reserveExact(__size__ * sizeof(float));
-      allocator->allocate(paramAvg, {1, __size__});
+      allocator->reserveExact(__size__ * sizeOf(graph->getParameterType()));
+      allocator->allocate(paramAvg, {1, __size__}, graph->getParameterType());
 
       if(graphAvg)
         paramAvg->copyFrom(graphAvg->params()->vals()->subtensor(pos, __size__));
@@ -205,13 +209,14 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     }
 
     auto costNode = builder->build(graph, batch);
+    costNode = costNode * costScale_;
 
     if(t % optimizerDelay_ == 0) {
       fetchParams(graph->params()->vals(), params_, t_id);
     }
 
     graph->forward();
-    cost += costNode->scalar();
+    cost += costNode->scalar() / costScale_; // divide for reporting
     graph->backward();
 
     Tensor gradients;
@@ -219,7 +224,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
       if(t == 0) {
         accAlloc = New<TensorAllocator>(graph->getBackend());
         accAlloc->reserveExact(graph->params()->grads()->memory()->size());
-        accAlloc->allocate(accGradients, graph->params()->grads()->shape());
+        accAlloc->allocate(accGradients, graph->params()->grads()->shape(), graph->getParameterType());
         accGradients->set(0);
       }
 

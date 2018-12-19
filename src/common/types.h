@@ -9,6 +9,60 @@
 #include <immintrin.h>
 #endif
 
+#define DISPATCH_BY_TYPE0(type, func) \
+do { \
+  switch(type) { \
+    case Type::int8:    return func<int8_t  >(); \
+    case Type::int16:   return func<int16_t >(); \
+    case Type::int32:   return func<int32_t >(); \
+    case Type::int64:   return func<int64_t >(); \
+    case Type::uint8:   return func<uint8_t >(); \
+    case Type::uint16:  return func<uint16_t>(); \
+    case Type::uint32:  return func<uint32_t>(); \
+    case Type::uint64:  return func<uint64_t>(); \
+    case Type::float16: return func<float16 >(); \
+    case Type::float32: return func<float   >(); \
+    case Type::float64: return func<double  >(); \
+    default: ABORT("Unknown type {}", type); \
+  } \
+} while(0)
+
+#define DISPATCH_BY_TYPE1(type, func, arg1) \
+do { \
+  switch(type) { \
+    case Type::int8:    return func<int8_t  >(arg1); \
+    case Type::int16:   return func<int16_t >(arg1); \
+    case Type::int32:   return func<int32_t >(arg1); \
+    case Type::int64:   return func<int64_t >(arg1); \
+    case Type::uint8:   return func<uint8_t >(arg1); \
+    case Type::uint16:  return func<uint16_t>(arg1); \
+    case Type::uint32:  return func<uint32_t>(arg1); \
+    case Type::uint64:  return func<uint64_t>(arg1); \
+    case Type::float16: return func<float16 >(arg1); \
+    case Type::float32: return func<float   >(arg1); \
+    case Type::float64: return func<double  >(arg1); \
+    default: ABORT("Unknown type {}", type); \
+  } \
+} while(0)
+
+#define DISPATCH_BY_TYPE2(type, func, arg1, arg2) \
+do { \
+  switch(type) { \
+    case Type::int8    : return func<int8_t  >(arg1, arg2); \
+    case Type::int16   : return func<int16_t >(arg1, arg2); \
+    case Type::int32   : return func<int32_t >(arg1, arg2); \
+    case Type::int64   : return func<int64_t >(arg1, arg2); \
+    case Type::uint8   : return func<uint8_t >(arg1, arg2); \
+    case Type::uint16  : return func<uint16_t>(arg1, arg2); \
+    case Type::uint32  : return func<uint32_t>(arg1, arg2); \
+    case Type::uint64  : return func<uint64_t>(arg1, arg2); \
+    case Type::float16 : return func<float16 >(arg1, arg2); \
+    case Type::float32 : return func<float   >(arg1, arg2); \
+    case Type::float64 : return func<double  >(arg1, arg2); \
+    default: ABORT("Unknown type {}", type); \
+  } \
+} while(0)
+
 namespace marian {
 
 #ifndef __CUDA_ARCH__
@@ -198,5 +252,29 @@ void matchOrAbort(Type type) {
            request<T>(),
            type);
 }
+
+template <typename T>
+class NumericLimits {
+private:
+  template <typename L>
+  void setLimits() {
+    max = std::numeric_limits<L>::max();
+    min = std::numeric_limits<L>::min();
+    lowest = std::numeric_limits<L>::lowest();
+  }
+
+  void setLimits(Type type) {
+    DISPATCH_BY_TYPE0(type, setLimits);
+  }
+
+public:
+  T max;
+  T min;
+  T lowest;
+
+  NumericLimits(Type type) {
+    setLimits(type);
+  }
+};
 
 }  // namespace marian

@@ -107,11 +107,11 @@ private:
         auto paramsAlloc = New<TensorAllocator>(graph->getBackend());
         paramsAllocs_.push_back(paramsAlloc);
 
-        paramsAlloc->reserveExact(__size__ * sizeOf(ExpressionGraph::defaultFloatType));
+        paramsAlloc->reserveExact(__size__ * sizeOf(graph->getParameterType()));
 
         Tensor tmp;
 
-        paramsAlloc->allocate(tmp, {1, __size__}, ExpressionGraph::defaultFloatType);
+        paramsAlloc->allocate(tmp, {1, __size__}, graph->getParameterType());
         tmpTensors_.push_back(tmp);
 
         // move to next shard
@@ -203,7 +203,7 @@ public:
 
   void swapParams(const std::vector<Tensor>& paramShards) const override {
     // Update all graphs with parameter shard
-    
+
     auto gather = [this, paramShards](size_t idx, size_t begin, size_t end) {
       ABORT_IF(end - begin != paramShards[idx]->size(), "inconsistent shard size (swapParams, [{}], {} vs {})??", idx, end-begin, paramShards[idx]->size());
       // Copy parameter shard to each graph, apart from last graph

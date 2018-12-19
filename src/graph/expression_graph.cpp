@@ -6,13 +6,15 @@
 namespace marian {
 
 ExpressionGraph::ExpressionGraph(bool inference, bool optimized)
-    : inferenceOnly_(inference), optimized_(optimized), backend_(nullptr) {}
+  : inferenceOnly_(inference),
+    optimized_(optimized),
+    backend_(nullptr) {}
 
 void ExpressionGraph::setDevice(DeviceId deviceId, Ptr<Device> device) {
   if(!backend_) {
     backend_ = BackendByDeviceId(deviceId, Config::seed);
     params_ = New<Parameters>();
-    params_->init(backend_, defaultFloatType);
+    params_->init(backend_);
     if(device)
       tensors_ = New<Tensors>(backend_, device);
     else
@@ -22,6 +24,9 @@ void ExpressionGraph::setDevice(DeviceId deviceId, Ptr<Device> device) {
 
 Expr ExpressionGraph::dropout(float prob, const Shape& shape, Type valueType) {
   return constant(shape, inits::dropout(prob), valueType);
+}
+Expr ExpressionGraph::dropout(float prob, const Shape& shape) {
+  return constant(shape, inits::dropout(prob), parameterType_);
 }
 
 void ExpressionGraph::checkNan(Tensor t) {
@@ -61,10 +66,5 @@ void ExpressionGraph::save(std::vector<io::Item>& ioItems) {
     ioItems.emplace_back(std::move(item));
   }
 }
-
-// Set default type for parameters and constants when
-// no other type information is given
-Type ExpressionGraph::defaultFloatType = Type::float32;
-
 
 }  // namespace marian

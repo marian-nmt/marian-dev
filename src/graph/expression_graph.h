@@ -130,6 +130,8 @@ private:
 
   std::unordered_map<size_t, std::vector<Expr>> memoized_;
 
+  Type parameterType_{Type::float32};
+
   bool inferenceOnly_{false};
   bool optimized_{false};
   Ptr<Backend> backend_;
@@ -158,9 +160,6 @@ public:
     clear();
     params_->clear();
   }
-
-// @TODO: actually this should not be static and not public!
-  static Type defaultFloatType;
 
   void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
                  Ptr<Device> device = nullptr);
@@ -234,7 +233,7 @@ public:
       v->forward();
 
       checkNan(v->val());
-      
+
       if(v->marked_for_debug()) {
         std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
                   << std::endl;
@@ -367,13 +366,18 @@ public:
              const Shape& shape,
              const Ptr<inits::NodeInitializer>& init,
              bool fixed = false) {
-    return param(pname, shape, init, defaultFloatType, fixed);
+    return param(pname, shape, init, parameterType_, fixed);
   }
 
   Expr constant(const Shape& shape,
                 const Ptr<inits::NodeInitializer>& init,
-                Type valueType = defaultFloatType) {
+                Type valueType) {
     return Expression<ConstantNode>(shared_from_this(), shape, init, valueType);
+  }
+
+  Expr constant(const Shape& shape,
+                const Ptr<inits::NodeInitializer>& init) {
+    return Expression<ConstantNode>(shared_from_this(), shape, init, parameterType_);
   }
 
   // @TODO: add version with iterators
@@ -396,16 +400,23 @@ public:
                     Type::uint32);
   }
 
-  Expr ones(const Shape& shape, Type valueType = defaultFloatType) {
+  Expr ones(const Shape& shape, Type valueType) {
     return constant(shape, inits::ones(), valueType);
   }
+  Expr ones(const Shape& shape) {
+    return constant(shape, inits::ones(), parameterType_);
+  }
 
-  Expr zeros(const Shape& shape, Type valueType = defaultFloatType) {
+  Expr zeros(const Shape& shape, Type valueType) {
     return constant(shape, inits::zeros(), valueType);
+  }
+  Expr zeros(const Shape& shape) {
+    return constant(shape, inits::zeros(), parameterType_);
   }
 
   // prob = dropProb, e.g. 0.1 means 90% of values are kept
-  Expr dropout(float dropProb, const Shape& shape, Type valueType = defaultFloatType);
+  Expr dropout(float dropProb, const Shape& shape, Type valueType);
+  Expr dropout(float dropProb, const Shape& shape);
 
   Expr get(std::string name) {
     if(!namespace_.empty())
@@ -418,6 +429,14 @@ public:
   }
 
   Ptr<Parameters>& params() { return params_; }
+
+  Type getParameterType() {
+    return parameterType_;
+  }
+
+  void setParameterType(Type parameterType) {
+    parameterType_ = parameterType;
+  }
 
   Expr add(Expr node) {
     auto found = tensors_->findOrRemember(node);
@@ -506,7 +525,7 @@ public:
              "Memory mapping only supported for CPU inference mode");
 
     params_ = New<MappedParameters>();
-    params_->init(backend_, defaultFloatType);
+    params_->init(backend_);
 
     LOG(info, "Memory mapping model at {}", ptr);
     load(io::mmapItems(ptr), markReloaded);

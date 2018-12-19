@@ -472,6 +472,8 @@ Expr layerNorm(Expr x,
                Expr gamma,
                Expr beta /*= nullptr*/,
                float eps /*= 1e-9*/) {
+
+  // layerNorm accumulates in float, so small eps is fine
   std::vector<Expr> nodes = {x, gamma};
   if(beta)
     nodes.push_back(beta);

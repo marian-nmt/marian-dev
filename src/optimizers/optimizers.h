@@ -18,8 +18,8 @@ namespace marian {
  */
 class OptimizerBase : public TrainingObserver {
 public:
-  OptimizerBase(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : eta_(eta), clipper_(clipper) {}
+  OptimizerBase(float eta, float costScale = 1.f, Ptr<ClipperBase> clipper = nullptr)
+      : eta_(eta), costScale_(costScale), clipper_(clipper) { }
 
   void update(Ptr<ExpressionGraph> graph) {
     Tensor p = graph->params()->vals();
@@ -30,7 +30,7 @@ public:
 
   void update(Tensor params, Tensor grads) {
     if(clipper_)
-      clipper_->clip(grads);
+      clipper_->clip(grads); // @TODO: handle cost scaling?
 
     // In case we want to add a multiply factor to our learning rate
     updateImpl(params, grads);
@@ -84,6 +84,8 @@ protected:
 
   // Learning rate
   float eta_;
+  // Cost scaling factor
+  float costScale_{1.f};
   // Clip gradient norm
   Ptr<ClipperBase> clipper_;
 };
@@ -93,8 +95,8 @@ protected:
  */
 class Sgd : public OptimizerBase {
 public:
-  Sgd(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, clipper) {}
+  Sgd(float eta, float costScale, Ptr<ClipperBase> clipper = nullptr)
+      : OptimizerBase(eta, costScale, clipper) {}
 
 private:
   void updateImpl(Tensor params, Tensor grads) override;
@@ -110,8 +112,8 @@ private:
  */
 class Adagrad : public OptimizerBase {
 public:
-  Adagrad(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, clipper) {}
+  Adagrad(float eta, float costScale, Ptr<ClipperBase> clipper = nullptr)
+      : OptimizerBase(eta, costScale, clipper) {}
 
   void load(const std::string& name,
             const std::vector<Ptr<OptimizerBase>>& opts,
@@ -143,8 +145,8 @@ private:
  */
 class Adam : public OptimizerBase {
 public:
-  Adam(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, clipper), t_(0) {}
+  Adam(float eta, float costScale, Ptr<ClipperBase> clipper = nullptr)
+      : OptimizerBase(eta, costScale, clipper), t_(0) {}
 
   void load(const std::string& name,
             const std::vector<Ptr<OptimizerBase>>& opts,
@@ -185,9 +187,10 @@ private:
 
 template <class Algorithm>
 Ptr<OptimizerBase> Optimizer(float eta,
+                             float costScale,
                              Ptr<ClipperBase> clipper = nullptr,
                              std::vector<float> params = {}) {
-  auto opt = Ptr<OptimizerBase>(new Algorithm(eta, clipper));
+  auto opt = Ptr<OptimizerBase>(new Algorithm(eta, costScale, clipper));
   opt->setParams(params);
   return opt;
 }

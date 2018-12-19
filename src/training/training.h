@@ -17,10 +17,7 @@ private:
   Ptr<Options> options_;
 
 public:
-  Train(Ptr<Options> options) : options_(options) {
-    if(options->get<bool>("fp16")) // @TODO: only for testing, remove later
-      ExpressionGraph::defaultFloatType = Type::float16;
-  }
+  Train(Ptr<Options> options) : options_(options) {}
 
   void run() override {
     using namespace data;

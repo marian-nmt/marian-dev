@@ -34,9 +34,6 @@ public:
     // or config is created anew from Options in the validator
     options_->set("inference", true);
 
-    if(options_->get<bool>("fp16"))
-      ExpressionGraph::defaultFloatType = Type::float16;
-
     corpus_ = New<data::Corpus>(options_, true);
 
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
@@ -60,6 +57,8 @@ public:
       auto task = [&](DeviceId device, size_t id) {
         auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
         graph->setDevice(device);
+        if(options_->get<bool>("fp16"))
+          graph->setParameterType(Type::float16);
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
@@ -175,6 +174,8 @@ public:
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
       graph->setDevice(device);
+      if(options_->get<bool>("fp16"))
+          graph->setParameterType(Type::float16);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

@@ -7,7 +7,7 @@ namespace marian {
 
 void Sgd::updateImpl(Tensor params, Tensor grads) {
   using namespace functional;
-  Element(_1 -= eta_ * _2,
+  Element(_1 -= (eta_ / costScale_) * _2,
           params,
           grads);
 
@@ -29,7 +29,14 @@ void Adagrad::updateImpl(Tensor params, Tensor grads) {
 
   using namespace functional;
 
+  // reverse cost scaling
+  if(costScale_ != 1.f)
+    Element(_1 = _1 / costScale_, grads);
+
   Element(_1 += (_2 * _2), gt_, grads);
+
+  // make sure eps_ does not drop below minimum value
+  eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
 
   Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3,
           params,
@@ -77,8 +84,8 @@ void Adagrad::load(const std::string& name,
       if(!opt->alloc_)
         opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
       auto size = end-begin;
-      opt->alloc_->reserveExact(sizeOf(ExpressionGraph::defaultFloatType) * size);
-      opt->alloc_->allocate(opt->gt_, {1, (int)size}, ExpressionGraph::defaultFloatType);
+      opt->alloc_->reserveExact(sizeof(float) * size);
+      opt->alloc_->allocate(opt->gt_, {1, (int)size});
     }
     opt->gt_->set(std::vector<float>(begin, end));
   });
@@ -128,10 +135,10 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
   if(!mt_) {
     int elements = (int)params->size();
     alloc_->reserveExact(2 * params->memory()->size());
-    alloc_->allocate(mt_, {1, elements}, ExpressionGraph::defaultFloatType);
+    alloc_->allocate(mt_, {1, elements}, params->type());
     mt_->set(0.f);
 
-    alloc_->allocate(vt_, {1, elements}, ExpressionGraph::defaultFloatType);
+    alloc_->allocate(vt_, {1, elements}, params->type());
     vt_->set(0.f);
   }
 
@@ -141,8 +148,16 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
 
   using namespace functional;
 
+// reverse cost scaling
+  if(costScale_ != 1.f)
+    Element(_1 = _1 / costScale_, grads);
+
   Element(_1 = (beta1_ * _1) + ((1 - beta1_) * _2), mt_, grads);
   Element(_1 = (beta2_ * _1) + ((1 - beta2_) * (_2 * _2)), vt_, grads);
+
+  // make sure eps_ does not drop below minimum value, this is important
+  // when training with mixed precision. Otherwise we divide by 0
+  eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
 
   Element(_1 -= eta_                         // learning-rate: x_t = x_{t-1} - \eta * (...)
                 * ((_2 / denom1)             // 1st moment: m_{t-1}
@@ -200,9 +215,9 @@ void Adam::load(const std::string& name,
       if(!opt->alloc_)
         opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
       auto size = end-begin;
-      opt->alloc_->reserveExact(2 * sizeOf(ExpressionGraph::defaultFloatType) * size);
-      opt->alloc_->allocate(opt->mt_, {1, (int)size}, ExpressionGraph::defaultFloatType);
-      opt->alloc_->allocate(opt->vt_, {1, (int)size}, ExpressionGraph::defaultFloatType);
+      opt->alloc_->reserveExact(2 * sizeof(float) * size);
+      opt->alloc_->allocate(opt->mt_, {1, (int)size});
+      opt->alloc_->allocate(opt->vt_, {1, (int)size});
     }
     opt->mt_->set(std::vector<float>(begin, end)); // set the value
   });
@@ -270,24 +285,26 @@ void Adam::resetStats() {
 }
 
 Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
-  float lrate = (float)options->get<double>("learn-rate"); // @TODO: should this be <float>?
+  float lrate = options->get<float>("learn-rate");
+  float costScale = options->get<float>("cost-scaling", 1.f);
+
   auto params = options->has("optimizer-params")
                     ? options->get<std::vector<float>>("optimizer-params")
                     : std::vector<float>({});
 
   Ptr<ClipperBase> clipper = nullptr;
-  float clipNorm = (float)options->get<double>("clip-norm"); // @TODO: should this be <float>?
+  float clipNorm = options->get<float>("clip-norm");
   if(clipNorm > 0)
     clipper = Clipper<Norm>(clipNorm);
 
   auto opt = options->get<std::string>("optimizer");
 
   if(opt == "sgd") {
-    return Optimizer<Sgd>(lrate, clipper, params);
+    return Optimizer<Sgd>(lrate, costScale, clipper, params);
   } else if(opt == "adagrad") {
-    return Optimizer<Adagrad>(lrate, clipper, params);
+    return Optimizer<Adagrad>(lrate, costScale, clipper, params);
   } else if(opt == "adam") {
-    return Optimizer<Adam>(lrate, clipper, params);
+    return Optimizer<Adam>(lrate, costScale, clipper, params);
   } else {
     ABORT("Unknown optimizer: {}", opt);
   }

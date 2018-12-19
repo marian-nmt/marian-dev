@@ -909,7 +909,9 @@ public:
   }
 
   NodeOps backwardOps() override {
-    return {NodeOp(LayerNormalizationGrad(
+    return {NodeOp(
+      LayerNormalizationGrad(
+        graph()->allocator(),
         child(0)->grad(),
         child(1)->grad(),
         (children_.size() == 3) ? child(2)->grad() : nullptr,

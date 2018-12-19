@@ -1801,7 +1801,6 @@ void LayerNormalization(Tensor out,
 template <typename T, typename AccType = float>
 __global__ void gLayerNormalizationGrad(T* gradX,
                                         T* gradGamma,
-                                        T* gradBeta,
                                         T* adj,
                                         T* y,
                                         T* x,
@@ -1824,8 +1823,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
       const T* xRow = x + j * cols;
       const T* yRow = y + j * cols;
       const T* adjRow = adj + j * cols;
-      T* gradXRow = gradX + j * cols;
-
+     
       sum_x[threadIdx.x] = (AccType)0.0f;
       sum_adj[threadIdx.x] = (AccType)0.0f;
       sum_adj_x[threadIdx.x] = (AccType)0.0f;
@@ -1882,10 +1880,12 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         if(id < cols) {
           AccType grad_x = (AccType)0.0f;
           AccType x_hat = (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
+
           grad_x += (AccType)cols * (AccType)adjRow[id];
           grad_x -= sum_adj[0];
           grad_x -= sum_adj_x[0] * x_hat;
           grad_x /= ((AccType)cols * sigma);
+
 
           AccType valX = (AccType)gamma[id] * grad_x;
 
@@ -1893,18 +1893,20 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType sign = functional::Ops<AccType>::sgn(valX);
           valX = functional::Ops<AccType>::abs(valX) > (AccType)1000.f ? sign * (AccType)1000.f : valX;
 
+          T* gradXRow = gradX + j * cols;
+          T* gradGammaRow = gradGamma + j * cols;
+          
           gradXRow[id] += (T)valX;
-          atomics::atomicAdd(gradGamma + id, adjRow[id] * (T)x_hat);
-          if(beta) {
-            atomics::atomicAdd(gradBeta + id, adjRow[id]);
-          }
+          gradGammaRow[id] = adjRow[id] * (T)x_hat; // assignment is correct, this gets summed up later
         }
       }
+
     }
   }
 }
 
-void LayerNormalizationGrad(Tensor gradX,
+void LayerNormalizationGrad(Ptr<Allocator> allocator,
+                            Tensor gradX,
                             Tensor gradGamma,
                             Tensor gradBeta,
                             Tensor adj,
@@ -1921,11 +1923,18 @@ void LayerNormalizationGrad(Tensor gradX,
   int blocks = std::min(MAX_BLOCKS, rows);
   int shared = sizeof(float) * threads * 4;
 
+  IPtr<MemoryPiece> tempGradGammaMemory = allocator->alloc(adj->memory()->size(), adj->type());
+  Tensor tempGradGamma = TensorBase::New(tempGradGammaMemory, adj->shape(), adj->type(), adj->getBackend());
+  tempGradGamma->set(0.f);
+
+  IPtr<MemoryPiece> tempOnesMemory = allocator->alloc(rows * sizeOf(adj->type()), adj->type());
+  Tensor tempOnes = TensorBase::New(tempOnesMemory, Shape({1, rows}), adj->type(), adj->getBackend());
+  tempOnes->set(1.f);
+
   if(gradX->type() == Type::float32) {
     gLayerNormalizationGrad<float, float><<<blocks, threads, shared>>>(
       gradX->data<float>(),
-      gradGamma->data<float>(),
-      (gradBeta) ? gradBeta->data<float>() : nullptr,
+      tempGradGamma->data<float>(),
       adj->data<float>(),
       y->data<float>(),
       x->data<float>(),
@@ -1938,8 +1947,7 @@ void LayerNormalizationGrad(Tensor gradX,
     // accumulate in float
     gLayerNormalizationGrad<half, float><<<blocks, threads, shared>>>(
       gradX->data<half>(),
-      gradGamma->data<half>(),
-      (gradBeta) ? gradBeta->data<half>() : nullptr,
+      tempGradGamma->data<half>(),
       adj->data<half>(),
       y->data<half>(),
       x->data<half>(),
@@ -1949,8 +1957,17 @@ void LayerNormalizationGrad(Tensor gradX,
       cols,
       eps);
   } else {
-    ABORT("LayerNormaliztionGrad not implemented for type {}", gradX->type());
+    ABORT("LayerNormalizationGrad not implemented for type {}", gradX->type());
   }
+
+  // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
+  // This is much faster for fp16 which seems to have a broken atomicAdd implementation
+  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1); // beta set to one to add
+  if(gradBeta)
+    gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1); // beta set to one to add
+
+  allocator->free(tempGradGammaMemory);
+  allocator->free(tempOnesMemory);
 }
 
 template <bool add, typename T>

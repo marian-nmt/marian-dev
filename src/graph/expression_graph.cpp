@@ -43,9 +43,6 @@ void ExpressionGraph::save(std::vector<io::Item>& ioItems) {
         pName = pName.substr(namespace_.size() + 2);
     }
 
-    ABORT_IF(p.second->val()->type() != Type::float32,
-             "Only float32 supported at the moment");
-
     Tensor val = p.second->val();
 
     io::Item item;

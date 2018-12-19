@@ -14,37 +14,6 @@ namespace marian {
 
 namespace gpu {
 
-namespace atomics {
-
-static inline  __device__ void atomicAdd(float *address, float val) {
-  ::atomicAdd(address, val);
-}
-
-// @TODO: copied from CuTorch, adapt this better, give credit.
-static inline  __device__ void atomicAdd(half *address, half val) {
-  unsigned int * address_as_ui =
-      (unsigned int *) ((char *)address - ((size_t)address & 2));
-  unsigned int old = *address_as_ui;
-  unsigned int assumed;
-
-  do {
-    assumed = old;
-#if CUDA_VERSION < 9000
-    half hsum;
-    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
-    hsum = hsum + val;
-#else
-    __half_raw hsum;
-    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
-    half tmpres = hsum + val;
-    hsum = __half_raw(tmpres);
-#endif
-    old = (size_t)address & 2 ? (old & 0xffff) | (hsum.x << 16) : (old & 0xffff0000) | hsum.x;
-    old = atomicCAS(address_as_ui, assumed, old);
-   } while (assumed != old);
-}
-}
-
 struct isnan_test {
   __host__ __device__ bool operator()(const float a) const { return isnan(a); }
 };
@@ -916,8 +885,10 @@ __global__ void gPasteRows(T* out,
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
-        if(i < cols)
-          atomics::atomicAdd(rowOut + i, rowIn[i]);
+        if(i < cols) {
+          // @TODO: Do we need to get rid of this atomic add? It seems slow for fp16
+          atomicAdd(rowOut + i, rowIn[i]); 
+        }
       }
     }
   }
@@ -1080,8 +1051,8 @@ __global__ void gInsert(T* out,
     if(index < length) {
       inShape.dims(index, dims);
       dims[axis] = d_indices[dims[axis]];
-      int outIndex = outShape.index(dims);
-      out[outIndex] += in[index];
+      int outIndex = outShape.index(dims); 
+      out[outIndex] += in[index]; // this is probably wrong, atomicAdd? 
     }
   }
 }

@@ -14,20 +14,6 @@ namespace marian {
 
 namespace gpu {
 
-// __device__ bool isNan()(const float a) const { return isnan(a); }
-// __device__ bool isNan()(const half a) const { return (a); }
-
-
-__device__ inline float stableSigmoid(float x) {
-  if(x >= 0) {
-    float z = expf(-x);
-    return 1.0 / (1.0 + z);
-  } else {
-    float z = expf(x);
-    return z / (1.0 + z);
-  }
-}
-
 template <typename T>
 __global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
@@ -1177,11 +1163,11 @@ __global__ void gGRUFastForward(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float r = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
+          float r = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
 
-          float z = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+          float z = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
           float h;
@@ -1253,8 +1239,8 @@ __global__ void gGRUFastBackward(float* outState,
           int k = i + cols;
           int l = i + 2 * cols;
 
-          float r = stableSigmoid(rowXW[i] + rowSU[i] + b[i]);
-          float z = stableSigmoid(rowXW[k] + rowSU[k] + b[k]);
+          float r = functional::Ops<float>::sigmoid(rowXW[i] + rowSU[i] + b[i]);
+          float z = functional::Ops<float>::sigmoid(rowXW[k] + rowSU[k] + b[k]);
 
           float h;
           if(final)
@@ -2120,10 +2106,10 @@ __global__ void gLSTMCellForward(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float gf = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
+          float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
-          float gi = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+          float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
           float gc = tanhf(xWrow[l] + sUrow[l] + b[l]);
@@ -2177,7 +2163,7 @@ __global__ void gLSTMOutputForward(float* out,
         int i = tid + threadIdx.x;
         if(i < cols) {
           int k = i + 3 * cols;
-          float go = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+          float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           rowOut[i] = go * tanhf(rowCell[i]);
         }
@@ -2235,10 +2221,10 @@ __global__ void gLSTMCellBackward(float* outCell,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float gf = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
+          float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
-          float gi = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+          float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
           float gc = tanhf(xWrow[l] + sUrow[l] + b[l]);
@@ -2336,7 +2322,7 @@ __global__ void gLSTMOutputBackward(float* outCell,
         int i = tid + threadIdx.x;
         if(i < cols) {
           int k = i + 3 * cols;
-          float go = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+          float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           float t = tanhf(rowCell[i]);
 

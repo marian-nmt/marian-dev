@@ -16,16 +16,6 @@ namespace marian {
 
 namespace cpu {
 
-inline float stableSigmoid(float x) {
-  if(x >= 0) {
-    float z = expf(-x);
-    return 1.0f / (1.0f + z);
-  } else {
-    float z = expf(x);
-    return z / (1.0f + z);
-  }
-}
-
 void IsNan(const Tensor in, Ptr<Allocator> allocator, bool& isNan, bool& isInf) {
   ABORT("Not implemented");
 }
@@ -632,11 +622,11 @@ void GRUFastForward(Tensor out_, std::vector<Tensor> inputs, bool final) {
 
 #pragma omp simd
     for(int i = 0; i < cols; ++i) {
-      float r = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
+      float r = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
       int k = i + cols;
 
-      float z = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+      float z = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
       int l = i + 2 * cols;
       float h;
@@ -688,8 +678,8 @@ void GRUFastBackward(std::vector<Tensor> outputs,
       int k = i + cols;
       int l = i + 2 * cols;
 
-      float r = stableSigmoid(rowXW[i] + rowSU[i] + b[i]);
-      float z = stableSigmoid(rowXW[k] + rowSU[k] + b[k]);
+      float r = functional::Ops<float>::sigmoid(rowXW[i] + rowSU[i] + b[i]);
+      float z = functional::Ops<float>::sigmoid(rowXW[k] + rowSU[k] + b[k]);
 
       float h;
       if(final)
@@ -1131,10 +1121,10 @@ void LSTMCellForward(Tensor out_, std::vector<Tensor> inputs) {
     const float* sUrow = sU + j * cols * 4;
 
     for(int i = 0; i < cols; ++i) {
-      float gf = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
+      float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
       int k = i + cols;
-      float gi = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+      float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
       int l = i + 2 * cols;
       float gc = std::tanh(xWrow[l] + sUrow[l] + b[l]);
@@ -1164,7 +1154,7 @@ void LSTMOutputForward(Tensor out_, std::vector<Tensor> inputs) {
 
     for(int i = 0; i < cols; ++i) {
       int k = i + 3 * cols;
-      float go = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+      float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
       rowOut[i] = go * std::tanh(rowCell[i]);
     }
@@ -1204,10 +1194,10 @@ void LSTMCellBackward(std::vector<Tensor> outputs,
     const float* rowAdj = adj + j * cols;
 
     for(int i = 0; i < cols; ++i) {
-      float gf = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
+      float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
       int k = i + cols;
-      float gi = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+      float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
       int l = i + 2 * cols;
       float gc = std::tanh(xWrow[l] + sUrow[l] + b[l]);
@@ -1289,7 +1279,7 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
 
     for(int i = 0; i < cols; ++i) {
       int k = i + 3 * cols;
-      float go = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
+      float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
       float t = std::tanh(rowCell[i]);
 
@@ -1330,7 +1320,7 @@ void HighwayForward(Tensor out,
 //                     const Tensor t) {
 //   size_t length = out->shape().elements();
 
-//   static functional::Approx<10, 0, 100> approxSigmoid(stableSigmoid);
+//   static functional::Approx<10, 0, 100> approxSigmoid(functional::Ops<float>::sigmoid);
 
 //   for(size_t i = 0; i < length; ++i) {
 //     float sigma = approxSigmoid(t->data()[i]);

@@ -381,10 +381,10 @@ struct Ops<half> {
   static DEVICE_INLINE half tan(const half& x)  { return hsin(x) / hcos(x); }
   static DEVICE_INLINE half log(const half& x)  { return hlog(x); }
   static DEVICE_INLINE half exp(const half& x)  { return hexp(x); }
-  static DEVICE_INLINE half abs(const half& x)  { return fabs((float)x); }
+  static DEVICE_INLINE half abs(const half& x)  { return fabs((float)x); }// @TODO half has this information somewhere in the struct, right?
   static DEVICE_INLINE half sqrt(const half& x) { return hsqrt(x); }
   static DEVICE_INLINE half neg(const half& x)  { return -x; }
-  static DEVICE_INLINE half sgn(const half& x)  { half zero = 0.f; return (zero < x) - (x < zero); }
+  static DEVICE_INLINE half sgn(const half& x)  { half zero = 0.f; return (zero < x) - (x < zero); } // @TODO half has this information somewhere in the struct, right?
 
   static DEVICE_INLINE half add(const half& x, const half& y)  { return x + y; }
   static DEVICE_INLINE half sub(const half& x, const half& y)  { return x - y; }
@@ -393,7 +393,7 @@ struct Ops<half> {
 
   static DEVICE_INLINE half max(const half& x, const half& y)  { return x < y ? y : x; }
   static DEVICE_INLINE half min(const half& x, const half& y)  { return x < y ? x : y; }
-  static DEVICE_INLINE half pow(const half& x, const half& y)  { return exp(mul(y, log(x))); }
+  static DEVICE_INLINE half pow(const half& x, const half& y)  { return exp(y * log(x)); }
 
   static DEVICE_INLINE half negate(const half& x)  { return !(bool)x; }
   static DEVICE_INLINE half eq(const half& x, const half& y)   { return x == y; }
@@ -409,16 +409,16 @@ struct Ops<half> {
   static DEVICE_INLINE half sigmoid(const half& x) {
     half zero = 0.f;
     half one  = 1.f;
-    return x > zero ? (one / (one + exp(-x))) : (exp(x) / (one + exp(x)));
+    return x > zero ? (one / (one + exp(-x))) : (exp(x) / (one + exp(x))); // safe sigmoid
   }
 
-  static DEVICE_INLINE half log1ph(const half& x) {
-    return log1pf((float)x);
+  static DEVICE_INLINE half log1p(const half& x) {
+    return log(x + (half)1.f); // probably acceptable loss of precision, it's half anyway
   }
 
   static DEVICE_INLINE half logaddexp(const half& x, const half& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
-    return x < y ? (y + log1ph(exp(x - y))) : (x + log1ph(exp(y - x)));
+    return x < y ? (y + log1p(exp(x - y))) : (x + log1p(exp(y - x)));
   }
 
   static DEVICE_INLINE half clip(const half& x, const half& y)  { return abs(x) >= y ? sgn(x) * y : x; }

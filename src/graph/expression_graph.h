@@ -236,7 +236,7 @@ public:
         bool isNan = false, isInf = false;
         checkNan(v->val(), isNan, isInf);
         if(isNan || isInf) {
-          LOG(critical, "Detected NaN {{}} or Inf {{}} in value (forward pass)", isNan, isInf);
+          LOG(critical, "Detected NaN ({}) or Inf ({}) in value (forward pass)", isNan, isInf);
           LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
               v->type(), v->shape(), v->name(), v->getId(), v->hash());
           LOG(critical, "Value debug {}", v->val()->debug());

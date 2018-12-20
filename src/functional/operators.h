@@ -364,94 +364,95 @@ struct Ops<float32x8> {
 
 #ifdef __CUDA_ARCH__
 
-// Specialization for __half
+// Specialization for half
 template <>
-struct Ops<__half> {
+struct Ops<half> {
 
-  static DEVICE_INLINE __half tanh(const __half& x) {
+  static DEVICE_INLINE half tanh(const half& x) {
     // tanh(x) = ( e^x - e^-x )/( e^x + e^-x ) = (e^2x - 1) / (e^2x + 1)
-    __half one = 1.f;
-    __half two = 2.f;
-    __half e2x = hexp(two * x);
+    half one = 1.f;
+    half two = 2.f;
+    half e2x = hexp(two * x);
     return (e2x - one) / (e2x + one);
   }
 
-  static DEVICE_INLINE __half sin(const __half& x)  { return hsin(x); }
-  static DEVICE_INLINE __half cos(const __half& x)  { return hcos(x); }
-  static DEVICE_INLINE __half tan(const __half& x)  { return hsin(x) / hcos(x); }
-  static DEVICE_INLINE __half log(const __half& x)  { return hlog(x); }
-  static DEVICE_INLINE __half exp(const __half& x)  { return hexp(x); }
-  static DEVICE_INLINE __half abs(const __half& x)  { return __float2half(fabs(__half2float(x))); }
-  static DEVICE_INLINE __half sqrt(const __half& x) { return hsqrt(x); }
-  static DEVICE_INLINE __half neg(const __half& x)  { return -x; }
-  static DEVICE_INLINE __half sgn(const __half& x)  { __half zero = __float2half(0.0); return (zero < x) - (x < zero); }
+  static DEVICE_INLINE half sin(const half& x)  { return hsin(x); }
+  static DEVICE_INLINE half cos(const half& x)  { return hcos(x); }
+  static DEVICE_INLINE half tan(const half& x)  { return hsin(x) / hcos(x); }
+  static DEVICE_INLINE half log(const half& x)  { return hlog(x); }
+  static DEVICE_INLINE half exp(const half& x)  { return hexp(x); }
+  static DEVICE_INLINE half abs(const half& x)  { return fabs((float)x); }
+  static DEVICE_INLINE half sqrt(const half& x) { return hsqrt(x); }
+  static DEVICE_INLINE half neg(const half& x)  { return -x; }
+  static DEVICE_INLINE half sgn(const half& x)  { half zero = 0.f; return (zero < x) - (x < zero); }
 
-  static DEVICE_INLINE __half add(const __half& x, const __half& y)  { return x + y; }
-  static DEVICE_INLINE __half sub(const __half& x, const __half& y)  { return x - y; }
-  static DEVICE_INLINE __half mul(const __half& x, const __half& y)  { return x * y; }
-  static DEVICE_INLINE __half div(const __half& x, const __half& y)  { return x / y; }
+  static DEVICE_INLINE half add(const half& x, const half& y)  { return x + y; }
+  static DEVICE_INLINE half sub(const half& x, const half& y)  { return x - y; }
+  static DEVICE_INLINE half mul(const half& x, const half& y)  { return x * y; }
+  static DEVICE_INLINE half div(const half& x, const half& y)  { return x / y; }
 
-  static DEVICE_INLINE __half max(const __half& x, const __half& y)  { return x < y ? y : x; }
-  static DEVICE_INLINE __half min(const __half& x, const __half& y)  { return x < y ? x : y; }
-  static DEVICE_INLINE __half pow(const __half& x, const __half& y)  { return exp(mul(y, log(x))); }
+  static DEVICE_INLINE half max(const half& x, const half& y)  { return x < y ? y : x; }
+  static DEVICE_INLINE half min(const half& x, const half& y)  { return x < y ? x : y; }
+  static DEVICE_INLINE half pow(const half& x, const half& y)  { return exp(mul(y, log(x))); }
 
-  static DEVICE_INLINE __half negate(const __half& x)  { return !(bool)x; }
-  static DEVICE_INLINE __half eq(const __half& x, const __half& y)   { return x == y; }
-  static DEVICE_INLINE __half neq(const __half& x, const __half& y)  { return x != y; }
-  static DEVICE_INLINE __half gt(const __half& x, const __half& y)   { return x > y;  }
-  static DEVICE_INLINE __half lt(const __half& x, const __half& y)   { return x < y;  }
-  static DEVICE_INLINE __half geq(const __half& x, const __half& y)  { return x >= y; }
-  static DEVICE_INLINE __half leq(const __half& x, const __half& y)  { return x <= y; }
-  static DEVICE_INLINE __half and_(const __half& x, const __half& y) { return x && y; } // 'and' is used by gcc
-  static DEVICE_INLINE __half or_(const __half& x, const __half& y)  { return x || y; } // 'or' is used by gcc
+  static DEVICE_INLINE half negate(const half& x)  { return !(bool)x; }
+  static DEVICE_INLINE half eq(const half& x, const half& y)   { return x == y; }
+  static DEVICE_INLINE half neq(const half& x, const half& y)  { return x != y; }
+  static DEVICE_INLINE half gt(const half& x, const half& y)   { return x > y;  }
+  static DEVICE_INLINE half lt(const half& x, const half& y)   { return x < y;  }
+  static DEVICE_INLINE half geq(const half& x, const half& y)  { return x >= y; }
+  static DEVICE_INLINE half leq(const half& x, const half& y)  { return x <= y; }
+  static DEVICE_INLINE half and_(const half& x, const half& y) { return x && y; } // 'and' is used by gcc
+  static DEVICE_INLINE half or_(const half& x, const half& y)  { return x || y; } // 'or' is used by gcc
 
   // Neural Networks specific functions
-  static DEVICE_INLINE __half sigmoid(const __half& x) {
-    __half one = __float2half(1.0);
-    return exp(x) / (one + exp(x));
+  static DEVICE_INLINE half sigmoid(const half& x) {
+    half zero = 0.f;
+    half one  = 1.f;
+    return x > zero ? (one / (one + exp(-x))) : (exp(x) / (one + exp(x)));
   }
 
-  static DEVICE_INLINE __half log1ph(__half x) {
-    return __float2half(log1pf(__half2float(x)));
+  static DEVICE_INLINE half log1ph(const half& x) {
+    return log1pf((float)x);
   }
 
-  static DEVICE_INLINE __half logaddexp(const __half& x, const __half& y) {
+  static DEVICE_INLINE half logaddexp(const half& x, const half& y) {
     // Note: This may not be ideal for CUDA; cf. CNTK implementation
     return x < y ? (y + log1ph(exp(x - y))) : (x + log1ph(exp(y - x)));
   }
 
-  static DEVICE_INLINE __half clip(const __half& x, const __half& y)  { return abs(x) >= y ? sgn(x) * y : x; }
+  static DEVICE_INLINE half clip(const half& x, const half& y)  { return abs(x) >= y ? sgn(x) * y : x; }
   // derivative of Clip, cut-off function
-  static DEVICE_INLINE __half bump(const __half& x, const __half& y)  {
-    __half zero = __float2half(0.0);
-    __half one = __float2half(1.0);
+  static DEVICE_INLINE half bump(const half& x, const half& y)  {
+    half zero = 0.f;
+    half one =  1.f;
     return abs(x) >= y ? zero : one;
   }
-  static DEVICE_INLINE __half relu(const __half& x) {
-    __half zero = __float2half(0.0);
+  static DEVICE_INLINE half relu(const half& x) {
+    half zero = 0.f;
     return x > zero ? x : zero;
   }
-  static DEVICE_INLINE __half reluBack(const __half& x) {
-    __half zero = __float2half(0.0);
-    __half one = __float2half(1.0);
+  static DEVICE_INLINE half reluBack(const half& x) {
+    half zero = 0.f;
+    half one =  1.f;
     return x > zero ? one : zero;
   }
 
-  static DEVICE_INLINE __half prelu(const __half& x, const __half& y)     {
-    __half zero = __float2half(0.0);
+  static DEVICE_INLINE half prelu(const half& x, const half& y)     {
+    half zero = 0.f;
     return x > zero ? x : x * y;
   }
-  static DEVICE_INLINE __half preluBack(const __half& x, const __half& y) {
-    __half zero = __float2half(0.0);
-    __half one = __float2half(1.0);
+  static DEVICE_INLINE half preluBack(const half& x, const half& y) {
+    half zero = 0.f;
+    half one =  1.f;
     return x > zero ? one : y;
   }
 
-  static DEVICE_INLINE __half if_then_else(const __half& x, const __half& y, const __half& z) { return x ? y : z; }
+  static DEVICE_INLINE half if_then_else(const half& x, const half& y, const half& z) { return x ? y : z; }
 
-  static DEVICE_INLINE __half sumReduce(const __half& x) { return x; }
-  static DEVICE_INLINE __half maxReduce(const __half& x) { return x; }
-  static DEVICE_INLINE __half minReduce(const __half& x) { return x; }
+  static DEVICE_INLINE half sumReduce(const half& x) { return x; }
+  static DEVICE_INLINE half maxReduce(const half& x) { return x; }
+  static DEVICE_INLINE half minReduce(const half& x) { return x; }
 
 };
 

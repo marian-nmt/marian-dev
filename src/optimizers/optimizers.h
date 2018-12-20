@@ -183,6 +183,9 @@ private:
   Ptr<TensorAllocator> alloc_;
   Tensor mt_;
   Tensor vt_;
+
+  Tensor pm_;
+  Tensor gd_;
 };
 
 template <class Algorithm>

@@ -134,12 +134,17 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
 
   if(!mt_) {
     int elements = (int)params->size();
-    alloc_->reserveExact(2 * params->memory()->size());
-    alloc_->allocate(mt_, {1, elements}, params->type());
+    alloc_->reserveExact(4 * elements * sizeOf(Type::float32));
+    alloc_->allocate(mt_, {1, elements}, Type::float32);
     mt_->set(0.f);
 
-    alloc_->allocate(vt_, {1, elements}, params->type());
+    alloc_->allocate(vt_, {1, elements}, Type::float32);
     vt_->set(0.f);
+
+    alloc_->allocate(pm_, {1, elements}, Type::float32);
+    CopyCast(pm_, params);
+
+    alloc_->allocate(gd_, {1, elements}, Type::float32);
   }
 
   t_++;
@@ -148,25 +153,28 @@ void Adam::updateImpl(Tensor params, Tensor grads) {
 
   using namespace functional;
 
-// reverse cost scaling
+  CopyCast(gd_, grads);
+  // reverse cost scaling
   if(costScale_ != 1.f)
-    Element(_1 = _1 / costScale_, grads);
+    Element(_1 = _1 / costScale_, gd_);
 
-  Element(_1 = (beta1_ * _1) + ((1 - beta1_) * _2), mt_, grads);
-  Element(_1 = (beta2_ * _1) + ((1 - beta2_) * (_2 * _2)), vt_, grads);
+  Element(_1 = (beta1_ * _1) + ((1 - beta1_) * _2), mt_, gd_);
+  Element(_1 = (beta2_ * _1) + ((1 - beta2_) * (_2 * _2)), vt_, gd_);
 
   // make sure eps_ does not drop below minimum value, this is important
   // when training with mixed precision. Otherwise we divide by 0.
   // We multiply the minimum by 2 in order to step away from the abyss.
-  eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
+  //eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
 
   Element(_1 -= eta_                         // learning-rate: x_t = x_{t-1} - \eta * (...)
                 * ((_2 / denom1)             // 1st moment: m_{t-1}
                 / (sqrt(_3 / denom2) + eps_) // 2nd moment: \sqrt(v_{t-1})
                 + w_ * _1),                  // weight-decay: w * x_{t-1}
-          params,
+          pm_,
           mt_,
           vt_);
+
+  CopyCast(params, pm_);
 
   params->getBackend()->synchronize();
 }

@@ -15,6 +15,8 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> config)
     graph->setDevice(device);
     if(options_->get<bool>("fp16"))
       graph->setParameterType(Type::float16);
+    if(options_->get<bool>("check-nan")) // @TODO: add to other places
+      graph->setThrowNan(true);
 
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));

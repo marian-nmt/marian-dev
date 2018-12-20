@@ -75,6 +75,8 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
      "If not 0 clip GEMM input values to +/- arg");
   cli.add<bool>("--fp16",
       "Use fp16 for inference (GPU only)");
+  cli.add<bool>("--check-nan",
+      "Check for NaNs or Infs in forward and backward pass. Will abort when found.");
   cli.add<bool>("--interpolate-env-vars",
      "allow the use of environment variables in paths, of the form ${VAR_NAME}");
   cli.add<bool>("--relative-paths",

@@ -139,7 +139,7 @@ private:
   bool reloaded_{false};
   std::string namespace_;
 
-  bool throwNaN_{false};
+  bool throwNan_{false};
 
 protected:
   // Delete, copy and move constructors
@@ -232,7 +232,17 @@ public:
       v->init();
       v->forward();
 
-      //checkNan(v->val());
+      if(throwNan_) {
+        bool isNan = false, isInf = false;
+        checkNan(v->val(), isNan, isInf);
+        if(isNan || isInf) {
+          LOG(critical, "Found NaN {} or Inf {} in value (forward pass)", isNan, isInf);
+          LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
+              v->type(), v->shape(), v->name(), v->getId(), v->hash());
+          LOG(critical, "Value debug", v->val()->debug());
+          ABORT("Aborting");
+        }
+      }
 
       if(v->marked_for_debug()) {
         std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
@@ -285,16 +295,24 @@ public:
       if(v->trainable())
         v->backward();
 
-      if(v->trainable()) {
-        bool isNan = false, isInf = false;
-        checkNan(v->grad(), isNan, isInf);
-        if(isNan || isInf) {
-          LOG(critical, "Found NaN {} or Inf {} in gradient", isNan, isInf);
-          LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
-              v->type(), v->shape(), v->name(), v->getId(), v->hash());
-          LOG(critical, "Value debug", v->val()->debug());
-          LOG(critical, "Grad debug", v->grad()->debug());
-          ABORT("Aborting");
+      if(throwNan_) {
+        for(auto&& child : v->children()) {
+          if(child->trainable()) {  
+            bool isNan = false, isInf = false;
+            checkNan(child->grad(), isNan, isInf);
+            if(isNan || isInf) {
+              LOG(critical, "Found NaN ({}) or Inf ({}) in gradient (backward pass) of child node", isNan, isInf);
+              LOG(critical, "Child - Type: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
+                  child->type(), child->shape(), child->name(), child->getId(), child->hash());
+              LOG(critical, "Value debug: {}", child->val()->debug());
+              LOG(critical, "Grad debug: {}", child->grad()->debug());
+              LOG(critical, "Parent - Type: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
+                  v->type(), v->shape(), v->name(), v->getId(), v->hash());
+              LOG(critical, "Value debug: {}", v->val()->debug());
+              LOG(critical, "Grad debug: {}", v->grad()->debug());
+              ABORT("Aborting");
+            }
+          }
         }
       }
 
@@ -504,7 +522,7 @@ public:
 
   void setReloaded(bool reloaded) { reloaded_ = reloaded; }
 
-  void setThrowNaN(bool throwNaN) { throwNaN_ = throwNaN; }
+  void setThrowNan(bool throwNan) { throwNan_ = throwNan; }
 
 public:
   // convert all parameters into an array of IoItem elements, for loading

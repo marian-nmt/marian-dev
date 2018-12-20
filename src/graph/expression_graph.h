@@ -232,7 +232,7 @@ public:
       v->init();
       v->forward();
 
-      if(throwNan_) {
+      if(v->trainable() && throwNan_) {
         bool isNan = false, isInf = false;
         checkNan(v->val(), isNan, isInf);
         if(isNan || isInf) {
@@ -258,7 +258,7 @@ public:
 
   void backward(bool zero = true) {
     if(topNodes_.size() > 1) {
-      LOG(critical, "There are more ({}) than one top most node for backward step:", topNodes_.size());
+      LOG(critical, "There are more ({}) than one top most nodes for backward step:", topNodes_.size());
       for(auto node : topNodes_) {
         LOG(critical,
             "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",

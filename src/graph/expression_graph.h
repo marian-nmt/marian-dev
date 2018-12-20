@@ -236,10 +236,10 @@ public:
         bool isNan = false, isInf = false;
         checkNan(v->val(), isNan, isInf);
         if(isNan || isInf) {
-          LOG(critical, "Found NaN {} or Inf {} in value (forward pass)", isNan, isInf);
+          LOG(critical, "Detected NaN {{}} or Inf {{}} in value (forward pass)", isNan, isInf);
           LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
               v->type(), v->shape(), v->name(), v->getId(), v->hash());
-          LOG(critical, "Value debug", v->val()->debug());
+          LOG(critical, "Value debug {}", v->val()->debug());
           ABORT("Aborting");
         }
       }
@@ -258,7 +258,7 @@ public:
 
   void backward(bool zero = true) {
     if(topNodes_.size() > 1) {
-      LOG(critical, "There are more ({}) than one top most nodes for backward step:", topNodes_.size());
+      LOG(critical, "There are more ({}) than one top most nodes for backward pass:", topNodes_.size());
       for(auto node : topNodes_) {
         LOG(critical,
             "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
@@ -301,7 +301,7 @@ public:
             bool isNan = false, isInf = false;
             checkNan(child->grad(), isNan, isInf);
             if(isNan || isInf) {
-              LOG(critical, "Found NaN ({}) or Inf ({}) in gradient (backward pass) of child node", isNan, isInf);
+              LOG(critical, "Detected NaN ({}) or Inf ({}) in gradient (backward pass) of child node", isNan, isInf);
               LOG(critical, "Child - Type: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
                   child->type(), child->shape(), child->name(), child->getId(), child->hash());
               LOG(critical, "Value debug: {}", child->val()->debug());

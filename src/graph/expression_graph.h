@@ -220,7 +220,7 @@ public:
     forwardNext();
   }
 
-  void checkNan(Tensor t);
+  void checkNan(Tensor t, bool& isNan, bool& isInf);
 
   void forwardNext() {
     // @TODO: check if allocation works properly
@@ -232,7 +232,7 @@ public:
       v->init();
       v->forward();
 
-      checkNan(v->val());
+      //checkNan(v->val());
 
       if(v->marked_for_debug()) {
         std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
@@ -285,7 +285,18 @@ public:
       if(v->trainable())
         v->backward();
 
-      checkNan(v->grad());
+      if(v->trainable()) {
+        bool isNan = false, isInf = false;
+        checkNan(v->grad(), isNan, isInf);
+        if(isNan || isInf) {
+          LOG(critical, "Found NaN {} or Inf {} in gradient", isNan, isInf);
+          LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
+              v->type(), v->shape(), v->name(), v->getId(), v->hash());
+          LOG(critical, "Value debug", v->val()->debug());
+          LOG(critical, "Grad debug", v->grad()->debug());
+          ABORT("Aborting");
+        }
+      }
 
       if(v->trainable() && v->marked_for_debug()) {
         std::cerr << "Debug Grad: " << v->debug_message() << std::endl;

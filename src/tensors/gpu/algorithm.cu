@@ -70,6 +70,7 @@ void fill(Ptr<Backend> backend, float16* begin, float16* end, float16 value) {
   CUDA_CHECK(cudaStreamSynchronize(0));
 }
 
+template void fill<bool>(Ptr<Backend>, bool*, bool*, bool);
 template void fill<int8_t>(Ptr<Backend>, int8_t*, int8_t*, int8_t);
 template void fill<int16_t>(Ptr<Backend>, int16_t*, int16_t*, int16_t);
 template void fill<int32_t>(Ptr<Backend>, int32_t*, int32_t*, int32_t);

@@ -26,6 +26,10 @@ inline float stableSigmoid(float x) {
   }
 }
 
+void IsNan(const Tensor in, Ptr<Allocator> allocator, bool& isNan, bool& isInf) {
+  ABORT("Not implemented");
+}
+
 template <typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   for(int i = 0; i < length; ++i)

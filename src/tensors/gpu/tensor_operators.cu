@@ -14,9 +14,9 @@ namespace marian {
 
 namespace gpu {
 
-struct isnan_test {
-  __host__ __device__ bool operator()(const float a) const { return isnan(a); }
-};
+// __device__ bool isNan()(const float a) const { return isnan(a); }
+// __device__ bool isNan()(const half a) const { return (a); }
+
 
 __device__ inline float stableSigmoid(float x) {
   if(x >= 0) {
@@ -28,15 +28,46 @@ __device__ inline float stableSigmoid(float x) {
   }
 }
 
-bool IsNan(Tensor in) {
-  // cudaSetDevice(in->getDeviceId().no);
-  // thrust::device_ptr<float> begin = thrust::device_pointer_cast(in->data());
-  // thrust::device_ptr<float> end
-  //    = thrust::device_pointer_cast(in->data() + in->size());
-  // return thrust::transform_reduce(
-  //    begin, end, isnan_test(), 0, thrust::plus<bool>());
-  return false;
+template <typename T>
+__global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
+  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+    if(index < length) {
+      if(isnan((float)in[index])) *isNan = true;
+      if(isinf((float)in[index])) *isInf = true;
+    }
+  }
 }
+
+void IsNan(const Tensor in, Ptr<Allocator> allocator, bool& isNan, bool& isInf) {
+  cudaSetDevice(in->getDeviceId().no);
+
+  int length = in->size();
+
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  auto mem = allocator->alloc<bool>(2);
+  bool* dIsNan = &mem->data<bool>()[0];
+  bool* dIsInf = &mem->data<bool>()[1];
+  fill(in->getBackend(), dIsNan, dIsNan + 2, false);
+
+  if(in->type() == Type::float32) {
+    gIsNan<<<blocks, threads>>>(in->data<float>(), length, dIsNan, dIsInf);
+  } else if(in->type() == Type::float16) {
+    gIsNan<<<blocks, threads>>>(in->data<half>(), length, dIsNan, dIsInf);
+  } else {
+    ABORT("IsNan for type {} not implemented", in->type());
+  }
+
+  CudaCopy(dIsNan, dIsNan + 1, &isNan);
+  CudaCopy(dIsInf, dIsInf + 1, &isInf);
+
+  allocator->free(mem);
+
+  cudaStreamSynchronize(0);
+}
+
 
 template <typename To, typename From>
 __global__ void gCopyCastTo(To* out, const From* in, int length) {
@@ -887,7 +918,7 @@ __global__ void gPasteRows(T* out,
         int i = tid + threadIdx.x;
         if(i < cols) {
           // @TODO: Do we need to get rid of this atomic add? It seems slow for fp16
-          atomicAdd(rowOut + i, rowIn[i]); 
+          atomicAdd(rowOut + i, rowIn[i]);
         }
       }
     }
@@ -1051,8 +1082,8 @@ __global__ void gInsert(T* out,
     if(index < length) {
       inShape.dims(index, dims);
       dims[axis] = d_indices[dims[axis]];
-      int outIndex = outShape.index(dims); 
-      out[outIndex] += in[index]; // this is probably wrong, atomicAdd? 
+      int outIndex = outShape.index(dims);
+      out[outIndex] += in[index]; // this is probably wrong, atomicAdd?
     }
   }
 }
@@ -1723,10 +1754,10 @@ __global__ void gLNormalization(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          T t = alpha[id] * ((sp[id] - (T)mean) / (T)sigma);
+          AccType t = (AccType)alpha[id] * ((AccType)sp[id] - mean) / sigma;
           if(beta != nullptr)
-            t += beta[id];
-          so[id] = t;
+            t += (AccType)beta[id];
+          so[id] = (T)t;
         }
       }
     }
@@ -1794,7 +1825,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
       const T* xRow = x + j * cols;
       const T* yRow = y + j * cols;
       const T* adjRow = adj + j * cols;
-     
+
       sum_x[threadIdx.x] = (AccType)0.0f;
       sum_adj[threadIdx.x] = (AccType)0.0f;
       sum_adj_x[threadIdx.x] = (AccType)0.0f;
@@ -1860,13 +1891,13 @@ __global__ void gLayerNormalizationGrad(T* gradX,
 
           AccType valX = (AccType)gamma[id] * grad_x;
 
-          // @TODO: What is this? Some kind of clipping? Did I add this?
+          // @TODO: Some kind of clipping? Did I add this?
           AccType sign = functional::Ops<AccType>::sgn(valX);
           valX = functional::Ops<AccType>::abs(valX) > (AccType)1000.f ? sign * (AccType)1000.f : valX;
 
           T* gradXRow = gradX + j * cols;
           T* gradGammaRow = gradGamma + j * cols;
-          
+
           gradXRow[id] += (T)valX;
           gradGammaRow[id] = adjRow[id] * (T)x_hat; // assignment is correct, this gets summed up later
         }

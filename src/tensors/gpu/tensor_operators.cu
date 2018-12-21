@@ -14,6 +14,39 @@ namespace marian {
 
 namespace gpu {
 
+
+namespace atomics {
+
+static inline  __device__ void atomicAdd(float *address, float val) {
+  ::atomicAdd(address, val);
+}
+
+// @TODO: copied from CuTorch, adapt this better, give credit.
+static inline  __device__ void atomicAdd(half *address, half val) {
+  unsigned int * address_as_ui =
+      (unsigned int *) ((char *)address - ((size_t)address & 2));
+  unsigned int old = *address_as_ui;
+  unsigned int assumed;
+
+  do {
+    assumed = old;
+#if CUDA_VERSION < 9000
+    half hsum;
+    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
+    hsum = hsum + val;
+#else
+    __half_raw hsum;
+    hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
+    half tmpres = hsum + val;
+    hsum = __half_raw(tmpres);
+#endif
+    old = (size_t)address & 2 ? (old & 0xffff) | (hsum.x << 16) : (old & 0xffff0000) | hsum.x;
+    old = atomicCAS(address_as_ui, assumed, old);
+   } while (assumed != old);
+}
+
+}
+
 template <typename T>
 __global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
@@ -903,7 +936,7 @@ __global__ void gPasteRows(T* out,
         int i = tid + threadIdx.x;
         if(i < cols) {
           // @TODO: Do we need to get rid of this atomic add? It seems slow for fp16
-          atomicAdd(rowOut + i, rowIn[i]);
+          atomics::atomicAdd(rowOut + i, rowIn[i]);
         }
       }
     }
@@ -1266,7 +1299,7 @@ __global__ void gGRUFastBackward(float* outState,
           if(outSU)
             rowOutSU[i] += dfdxW_r;
           if(outB)
-            atomicAdd(outB + i, dfdxW_r);
+            atomics::atomicAdd(outB + i, dfdxW_r);
 
           // df/d(xW_z) ...
           float dfdxW_z = m * (1 - z) * z * (rowState[i] - h) * adj;
@@ -1275,7 +1308,7 @@ __global__ void gGRUFastBackward(float* outState,
           if(outSU)
             rowOutSU[k] += dfdxW_z;
           if(outB)
-            atomicAdd(outB + k, dfdxW_z);
+            atomics::atomicAdd(outB + k, dfdxW_z);
 
           // df/d(xW_x) ...
           float dfdxW_x = m * t * adj;
@@ -1285,9 +1318,9 @@ __global__ void gGRUFastBackward(float* outState,
             rowOutSU[l] += dfdxW_x * r;
           if(outB)
             if(final)
-              atomicAdd(outB + l, dfdxW_x * r);
+              atomics::atomicAdd(outB + l, dfdxW_x * r);
             else
-              atomicAdd(outB + l, dfdxW_x);
+              atomics::atomicAdd(outB + l, dfdxW_x);
         }
       }
     }
@@ -1636,7 +1669,7 @@ __global__ void gAttBack(float* gVa,
 
           gcRow[id] += r * adj[j];
           gsRow[id] += r * adj[j];
-          atomicAdd(gVa + id, t * adj[j]);
+          atomics::atomicAdd(gVa + id, t * adj[j]);
         }
       }
     }
@@ -2241,7 +2274,7 @@ __global__ void gLSTMCellBackward(float* outCell,
           if(outSU)
             rowOutSU[i] += dcdxf;
           if(outB)
-            atomicAdd(outB + i, dcdxf);
+            atomics::atomicAdd(outB + i, dcdxf);
 
           // dc/d(b_i) ...
           float dcdb_i = m * gc * gi * (1 - gi) * adj;
@@ -2250,7 +2283,7 @@ __global__ void gLSTMCellBackward(float* outCell,
           if(outSU)
             rowOutSU[k] += dcdb_i;
           if(outB)
-            atomicAdd(outB + k, dcdb_i);
+            atomics::atomicAdd(outB + k, dcdb_i);
 
           // dc/d(b_c) ...
           float dcdxc = m * gi * (1 - gc * gc) * adj;
@@ -2259,7 +2292,7 @@ __global__ void gLSTMCellBackward(float* outCell,
           if(outSU)
             rowOutSU[l] += dcdxc;
           if(outB)
-            atomicAdd(outB + l, dcdxc);
+            atomics::atomicAdd(outB + l, dcdxc);
         }
       }
     }
@@ -2338,7 +2371,7 @@ __global__ void gLSTMOutputBackward(float* outCell,
           if(outSU)
             rowOutSU[k] += dcdxo;
           if(outB)
-            atomicAdd(outB + k, dcdxo);
+            atomics::atomicAdd(outB + k, dcdxo);
         }
       }
     }

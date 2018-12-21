@@ -30,7 +30,6 @@ public:
   }
 
   static constexpr size_t mbSizeNotProvided = SIZE_MAX;
->>>>>>> master
 
   void update(Ptr<ExpressionGraph> graph, size_t mbSize = mbSizeNotProvided) {
     Tensor p = graph->params()->vals();
@@ -203,6 +202,7 @@ private:
   float beta2_ = 0.999f;
   float eps_ = 1e-8f;
   float w_ = 0.0f;
+  size_t t_;
 
   // CPU-side running accumulators
   double denom1_ = 0;

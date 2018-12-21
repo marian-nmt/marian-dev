@@ -100,22 +100,28 @@ struct FApply<4, Functor> {
 
 template <class Functor>
 struct FApply<5, Functor> {
+  template <typename ElementType>
   HOST_DEVICE_INLINE static ElementType apply(
       Functor functor,
-      functional::Array<functional::Tensor<float>, 5>& in,
+      functional::Array<functional::Tensor<ElementType>, 5>& in,
       const functional::Array<int, 5>& indices) {
-    return functor(in[0][indices[0]],
-                   in[1][indices[1]],
-                   in[2][indices[2]],
-                   in[3][indices[3]],
-                   in[4][indices[4]]);
+    return functor(in[0].data()[indices[0]],
+                   in[1].data()[indices[1]],
+                   in[2].data()[indices[2]],
+                   in[3].data()[indices[3]],
+                   in[4].data()[indices[4]]);
   }
 
+  template <typename ElementType>
   HOST_DEVICE_INLINE static ElementType apply(
       Functor functor,
-      functional::Array<functional::Tensor<float>, 5>& in,
+      functional::Array<functional::Tensor<ElementType>, 5>& in,
       int index) {
-    return functor(in[0][index], in[1][index], in[2][index], in[3][index], in[4][index]);
+    return functor(in[0].data()[index], 
+                   in[1].data()[index], 
+                   in[2].data()[index], 
+                   in[3].data()[index], 
+                   in[4].data()[index]);
   }
 };
 
@@ -124,6 +130,13 @@ HOST_DEVICE_INLINE ElementType apply(Functor functor,
                     functional::Array<functional::Tensor<ElementType>, K>& in,
                     const functional::Array<int, K>& indices) {
   return FApply<K, Functor>::apply(functor, in, indices);
+}
+
+template <size_t K, class Functor, typename ElementType>
+HOST_DEVICE_INLINE ElementType apply(Functor functor,
+                    functional::Array<functional::Tensor<ElementType>, K>& in,
+                    int index) {
+  return FApply<K, Functor>::apply(functor, in, index);
 }
 
 /******************************************************************************/

@@ -98,18 +98,32 @@ struct FApply<4, Functor> {
   }
 };
 
+template <class Functor>
+struct FApply<5, Functor> {
+  HOST_DEVICE_INLINE static ElementType apply(
+      Functor functor,
+      functional::Array<functional::Tensor<float>, 5>& in,
+      const functional::Array<int, 5>& indices) {
+    return functor(in[0][indices[0]],
+                   in[1][indices[1]],
+                   in[2][indices[2]],
+                   in[3][indices[3]],
+                   in[4][indices[4]]);
+  }
+
+  HOST_DEVICE_INLINE static ElementType apply(
+      Functor functor,
+      functional::Array<functional::Tensor<float>, 5>& in,
+      int index) {
+    return functor(in[0][index], in[1][index], in[2][index], in[3][index], in[4][index]);
+  }
+};
+
 template <size_t K, class Functor, typename ElementType>
 HOST_DEVICE_INLINE ElementType apply(Functor functor,
                     functional::Array<functional::Tensor<ElementType>, K>& in,
                     const functional::Array<int, K>& indices) {
   return FApply<K, Functor>::apply(functor, in, indices);
-}
-
-template <size_t K, class Functor, typename ElementType>
-HOST_DEVICE_INLINE ElementType apply(Functor functor,
-                    functional::Array<functional::Tensor<ElementType>, K>& in,
-                    int index) {
-  return FApply<K, Functor>::apply(functor, in, index);
 }
 
 /******************************************************************************/

@@ -57,7 +57,7 @@ struct ParamNode : public Node {
   ~ParamNode() {}
 
   virtual size_t allocate() override {
-    ABORT_IF(!val_, "Parameters should be allocated by their graph");
+    ABORT_IF(!val_, "Parameters should be allocated by their graph. Parameter {} was not", name_);
     return 0;
   }
 

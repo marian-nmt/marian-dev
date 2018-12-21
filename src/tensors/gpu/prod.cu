@@ -11,6 +11,33 @@ namespace marian {
 
 namespace gpu {
 
+static void setTensorMode(cublasHandle_t cublasHandle) {
+  static int mode = 0;  // 1: use TC; -1: do not use TC; 0: not set yet
+  if (mode == 0) { // multi-thread note: this is sort-of thread-safe, since multiple threads would determine the same value
+    const char* var = getenv("ENABLE_CUBLAS_TENSOR_OP_MATH_FP32");
+    if (!var)
+      var = "1";
+    switch(var[0]) {
+    case '0': mode = -1; break;
+    case '1': mode =  1; break;
+    default: ABORT("Invalid ENABLE_CUBLAS_TENSOR_OP_MATH_FP32={}", var);
+    }
+    if (mode > 0) { // try whether it can be set   --@TODO: check whether this actually works
+      cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
+      cublasMath_t actual = CUBLAS_DEFAULT_MATH;
+      cublasGetMathMode(cublasHandle, &actual);
+      if (actual != CUBLAS_TENSOR_OP_MATH) {
+        LOG(info, "WARNING: TensorCores requested but not available");
+        mode = -1;
+      }
+    }
+    if (mode > 0)
+      LOG(info, "16-bit TensorCores enabled for float32 matrix operations");
+  }
+  cublasSetMathMode(cublasHandle, mode > 0 ? CUBLAS_TENSOR_OP_MATH : CUBLAS_DEFAULT_MATH);
+}
+
+
 cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
                                cublasOperation_t transa, 
                                cublasOperation_t transb,
@@ -74,7 +101,8 @@ void ProdTyped(marian::Tensor C,
                           ->getCublasHandle();
 
 #if CUDA_VERSION >= 9000
-  cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
+  setTensorMode(cublasHandle);
+  //cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
   cublasGemmTyped(cublasHandle,
                   opB,
@@ -211,7 +239,8 @@ void ProdBatchedTyped(marian::Tensor C,
   CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<T*>());
 
 #if CUDA_VERSION >= 9000
-  cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
+  setTensorMode(cublasHandle);
+  //cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
   cublasGemmBatchedTyped(cublasHandle,
                          opB,

@@ -367,7 +367,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         break;
 
       auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
-      auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
       costNode = costNode * costScale_;
 
       graph->forward();

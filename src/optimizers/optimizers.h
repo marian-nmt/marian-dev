@@ -188,6 +188,8 @@ private:
   Tensor gd_;
 };
 
+// @TODO: make optimizer take options and maybe a graph or workspace?
+// The current way makes it hard to add new features
 template <class Algorithm>
 Ptr<OptimizerBase> Optimizer(float eta,
                              float costScale,

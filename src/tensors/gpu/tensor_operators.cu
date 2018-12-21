@@ -54,7 +54,6 @@ void IsNan(const Tensor in, Ptr<Allocator> allocator, bool& isNan, bool& isInf) 
   cudaStreamSynchronize(0);
 }
 
-
 template <typename To, typename From>
 __global__ void gCopyCastTo(To* out, const From* in, int length) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {

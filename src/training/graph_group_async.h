@@ -1,7 +1,6 @@
 #pragma once
 
 #include "3rd_party/threadpool.h"
-#include "training/exponential_smoothing.h"
 #include "training/graph_group.h"
 
 #include <future>
@@ -9,7 +8,7 @@
 
 namespace marian {
 
-class AsyncGraphGroup : public GraphGroup, public ExponentialSmoothing {
+class AsyncGraphGroup : public GraphGroup {
 public:
   virtual void setScheduler(Ptr<Scheduler> scheduler) override;
 
@@ -35,8 +34,6 @@ protected:
 
   int shardSize_;
 
-  std::vector<Tensor> paramsAvg_;
-  std::vector<Ptr<TensorAllocator>> paramsAllocAvg_;
   std::unique_ptr<ThreadPool> pool_;
 
   size_t optimizerDelay_{1};

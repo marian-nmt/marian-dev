@@ -3,6 +3,7 @@
 #include "common/options.h"
 #include "graph/expression_graph.h"
 #include "optimizers/clippers.h"
+#include "optimizers/exponential_smoothing.h"
 #include "tensors/backend.h"
 #include "tensors/tensor.h"
 #include "training/training_state.h"
@@ -16,10 +17,21 @@ namespace marian {
 /**
  * Base class for optimizers.
  */
-class OptimizerBase : public TrainingObserver {
+class OptimizerBase
+  : public TrainingObserver,
+    public ExponentialSmoothing
+{
 public:
-  OptimizerBase(float eta, size_t refMBWordsParam, float costScale, Ptr<ClipperBase> clipper)
-      : eta_(eta), refMBWordsParam_(refMBWordsParam), costScale_(costScale), clipper_(clipper) {
+  OptimizerBase(Ptr<Options> options)
+  : ExponentialSmoothing(options),
+    options_(options),
+    eta_(options_->get<float>("learn-rate")),
+    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")),
+    costScale_(options_->get<float>("cost-scaling", 1.f)) {
+
+    float clipNorm = options->get<float>("clip-norm");
+    if(clipNorm > 0)
+      clipper_ = Clipper<Norm>(clipNorm);
 
     // automatic learning-rate adjustment
     // If users provide, in addition to the hyper-parameters, a reference minibatch size,
@@ -38,21 +50,7 @@ public:
     update(p, g, mbSize);
   }
 
-  void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided) {
-    if(clipper_)
-      clipper_->clip(grads); // @TODO: handle cost scaling?
-
-    size_t refMBWords = refMBWordsParam_;
-    if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
-      refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
-    }
-    else { // optimizer is configured to auto-adjust hyper-parameters
-      ABORT_IF(mbSize == mbSizeNotProvided, "Using rational optimizer auto-adjustment with trainer that does not provide MB size");
-      // note: this behavior is only meaningful if using the ce-sum criterion
-    }
-
-    updateImpl(params, grads, mbSize, refMBWords);
-  }
+  void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided);
 
   virtual void init(TrainingState& state) override {
     eta_ = state.eta;
@@ -67,6 +65,8 @@ public:
   }
   virtual void actAfterBatches(TrainingState& state) override {
     eta_ = state.eta;
+    batchesSeen_ = state.batches;
+
     if(state.reset)
       resetStats();
   }
@@ -99,14 +99,26 @@ protected:
   virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
   virtual void resetStats() = 0;
 
+  Ptr<Options> options_;
+
   // Learning rate
   float eta_;
   // Reference MB size. This enables automatic adjustment of optimizer hyper-parameters to MB size.
   size_t refMBWordsParam_{0}; // 0 means no adjustment
   // Cost scaling factor
   float costScale_{1.f};
+  // Seen updates so far
+  size_t batchesSeen_{0};
   // Clip gradient norm
   Ptr<ClipperBase> clipper_;
+
+  Type optimizerType_{Type::float32};
+  Ptr<TensorAllocator> optAlloc_;
+
+  Tensor avg_;
+
+  Tensor pm_;
+  Tensor gd_;
 };
 
 /**
@@ -114,8 +126,7 @@ protected:
  */
 class Sgd : public OptimizerBase {
 public:
-  Sgd(float eta, size_t refMBWordsParam = 0, float costScale = 1.f, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, refMBWordsParam, costScale, clipper) {}
+  Sgd(Ptr<Options> options) : OptimizerBase(options) {}
 
   virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
@@ -131,8 +142,7 @@ private:
  */
 class Adagrad : public OptimizerBase {
 public:
-  Adagrad(float eta, size_t refMBWordsParam = 0, float costScale = 1.f, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, refMBWordsParam, costScale, clipper) {}
+  Adagrad(Ptr<Options> options) : OptimizerBase(options) {}
 
   void load(const std::string& name,
             const std::vector<Ptr<OptimizerBase>>& opts,
@@ -166,8 +176,7 @@ private:
  */
 class Adam : public OptimizerBase {
 public:
-  Adam(float eta, size_t refMBWordsParam = 0, float costScale = 1.f, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, refMBWordsParam, costScale, clipper), t_(0) {}
+  Adam(Ptr<Options> options) : OptimizerBase(options), t_{0} {}
 
   void load(const std::string& name,
             const std::vector<Ptr<OptimizerBase>>& opts,
@@ -216,19 +225,6 @@ private:
   Tensor pm_;
   Tensor gd_;
 };
-
-// @TODO: make optimizer take options and maybe a graph or workspace?
-// The current way makes it hard to add new features
-template <class Algorithm>
-Ptr<OptimizerBase> Optimizer(float eta,
-                             size_t refMBWordsParam = 0,
-                             float costScale = 1.f,
-                             Ptr<ClipperBase> clipper = nullptr,
-                             std::vector<float> params = {}) {
-  auto opt = Ptr<OptimizerBase>(new Algorithm(eta, refMBWordsParam, costScale, clipper));
-  opt->setParams(params);
-  return opt;
-}
 
 Ptr<OptimizerBase> Optimizer(Ptr<Options> options);
 }  // namespace marian

@@ -2,7 +2,6 @@
 
 #include "training/graph_group.h"
 #include "common/filesystem.h"
-#include "training/exponential_smoothing.h"
 
 #include <future>
 

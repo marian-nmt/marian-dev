@@ -2,7 +2,6 @@
 
 #include "training/graph_group.h"
 #include "training/communicator.h"
-#include "training/exponential_smoothing.h"
 
 namespace marian {
 

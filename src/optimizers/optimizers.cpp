@@ -6,20 +6,98 @@
 
 namespace marian {
 
-void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
-  actualMBSize, refMBWords; // (no correction for base update needed beyond using ce-sum)
+void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
+  size_t refMBWords = refMBWordsParam_;
+  if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
+    refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
+  }
+  else { // optimizer is configured to auto-adjust hyper-parameters
+    ABORT_IF(mbSize == mbSizeNotProvided, "Using rational optimizer auto-adjustment with trainer that does not provide MB size");
+    // note: this behavior is only meaningful if using the ce-sum criterion
+  }
+
+  // if true model for forward/backward uses a different type than the optimizer
+  bool castOptimizerType = params->type() != optimizerType_;
+
+  int elements = (int)params->size();
+
+  // use an exponentially smoothed set of parameters
+  if(mvAvg_) {
+    // allocate storage for shards
+    if(!optAlloc_) {
+      optAlloc_ = New<TensorAllocator>(params->getBackend());
+      // if optimizer type is different allocate also space for conversion tensors
+      // and master parameter copy
+      int numAllocateShards = castOptimizerType ? 3 : 1;
+      optAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
+      optAlloc_->allocate(avg_, {1, elements}, optimizerType_);
+    }
+  }
+
+  if(castOptimizerType) {
+    // if no smoothing is used, shards for conversion get allocated here
+    if(!optAlloc_) {
+      optAlloc_ = New<TensorAllocator>(params->getBackend());
+      optAlloc_->reserveExact(2 * elements * sizeOf(optimizerType_));
+    }
+
+    if(!pm_) {
+      // create parameter master copy and temporary gradient shard
+      optAlloc_->allocate(pm_, {1, elements}, optimizerType_);
+      optAlloc_->allocate(gd_, {1, elements}, optimizerType_);
+
+      // keep parameter master copy around and initialize once, converting types
+      CopyCast(pm_, params);
+    }
+
+    // overwrite temporary gradients with every update
+    CopyCast(gd_, grads);
+  } else {
+    // no conversion, just assign at each update
+    pm_ = params;
+    gd_ = grads;
+  }
+
   using namespace functional;
-  Element(_1 -= (eta_ / costScale_) * _2,
-          params,
-          grads);
+
+  // reverse cost scaling when used
+  if(costScale_ != 1.f) {
+    Element(_1 = _1 / costScale_, gd_);
+  }
+
+  // clip gradiens when used
+  // @TODO, also check for nan?
+  if(clipper_)
+    clipper_->clip(grads);
+
+  // perform update on master copy with cast gradients
+  // if a type cast has been performed. Otherwise the
+  // original tensors are used.
+  updateImpl(pm_, gd_, mbSize, refMBWords);
+
+  // @TODO: update moving average here
+  if(mvAvg_)
+    updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
+
+  // undo paramter type cast if required
+  if(castOptimizerType) {
+    CopyCast(params, pm_);
+  }
 
   params->getBackend()->synchronize();
 }
 
-// Adagrad
+void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
+  actualMBSize, refMBWords; // (no correction for base update needed beyond using ce-sum)
+  using namespace functional;
+  Element(_1 -= eta_ * _2, params, grads);
+}
 
+// Adagrad update rule
 void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
   ABORT_IF(actualMBSize != refMBWords, "Adagrad does not support rational hyper-parameter adjustment");
+
+  // allocate optimizer-specific parameters
   if(!alloc_)
     alloc_ = New<TensorAllocator>(params->getBackend());
 
@@ -31,22 +109,11 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
   }
 
   using namespace functional;
-
-  // reverse cost scaling
-  if(costScale_ != 1.f)
-    Element(_1 = _1 / costScale_, grads);
-
   Element(_1 += (_2 * _2), gt_, grads);
 
   // make sure eps_ does not drop below minimum value
   eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
-
-  Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3,
-          params,
-          gt_,
-          grads);
-
-  params->getBackend()->synchronize();
+  Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, params, gt_, grads);
 }
 
 void Adagrad::load(const std::string& name,
@@ -129,7 +196,6 @@ void Adagrad::resetStats() {
 }
 
 // Adam
-
 void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
   // lazy allocation
   if(!alloc_)
@@ -137,9 +203,10 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
 
   if(!mt_) {
     int elements = (int)params->size();
-    alloc_->reserveExact(2 * params->memory()->size());
+    alloc_->reserveExact(2 * elements * sizeOf(params->type()));
     alloc_->allocate(mt_, {1, elements}, params->type());
     mt_->set(0.f);
+
     alloc_->allocate(vt_, {1, elements}, params->type());
     vt_->set(0.f);
   }
@@ -161,18 +228,13 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
 
   // numerators. Divide by T to convert ce-sum gradient to avg gradient.
   using namespace functional;
-
-// reverse cost scaling
-  if(costScale_ != 1.f)
-    Element(_1 = _1 / costScale_, grads);
-
   Element(_1 = ((float)beta1 * _1) + float((1 - beta1) / T    ) *  _2,       mt_, grads); // momentum smoothing. At steady state: =smoothed avg gradient
   Element(_1 = ((float)beta2 * _1) + float((1 - beta2) / T / T) * (_2 * _2), vt_, grads); // RMS normalization.  At steady state: =mean square of the avg gradients
 
   // make sure eps_ does not drop below minimum value, this is important
   // when training with mixed precision. Otherwise we divide by 0.
   // We multiply the minimum by 2 in order to step away from the abyss.
-  eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
+  //eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
 
   // apply Adam normalization
   float etaf = (float)eta, denom1f = (float)denom1_, denom2f = (float)denom2_, decayf = (float)decay; // (get casts out of Element expression for readability)
@@ -180,12 +242,10 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
                 * ((  (     _2 / denom1f)          // momentum-smoothed per-sample gradient: m_{t-1}
                     / (sqrt(_3 / denom2f) + eps_)) // normalize by RMS: \sqrt(v_{t-1})
                    + decayf * _1),                 // weight-decay: w * x_{t-1}
-          params, // =_1
-          mt_,    // =_2
-          vt_     // =_3
+          params,  // =_1
+          mt_,     // =_2
+          vt_      // =_3
           );
-
-  params->getBackend()->synchronize(); // @TODO: This should not be in here. Maybe in the wrapper. Why is it needed at all?
 }
 
 void Adam::load(const std::string& name,
@@ -326,29 +386,22 @@ void Adam::resetStats() {
 }
 
 Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
-  float lrate = options->get<float>("learn-rate");
-  float costScale = options->get<float>("cost-scaling", 1.f);
-
+  auto optType = options->get<std::string>("optimizer");
   auto params = options->has("optimizer-params")
-                    ? options->get<std::vector<float>>("optimizer-params")
-                    : std::vector<float>({});
-  size_t refMBWordsParam = options->get<size_t>("mini-batch-words-ref"); // adjust hyper-parameters as if our MB size (in target labels) was this value
-
-  Ptr<ClipperBase> clipper = nullptr;
-  float clipNorm = options->get<float>("clip-norm");
-  if(clipNorm > 0)
-    clipper = Clipper<Norm>(clipNorm);
-
-  auto opt = options->get<std::string>("optimizer");
-
-  if(opt == "sgd") {
-    return Optimizer<Sgd>(lrate, refMBWordsParam, costScale, clipper, params);
-  } else if(opt == "adagrad") {
-    return Optimizer<Adagrad>(lrate, refMBWordsParam, costScale, clipper, params);
-  } else if(opt == "adam") {
-    return Optimizer<Adam>(lrate, refMBWordsParam, costScale, clipper, params);
+                     ? options->get<std::vector<float>>("optimizer-params")
+                     : std::vector<float>({});
+  Ptr<OptimizerBase> opt;
+  if(optType == "sgd") {
+    opt = New<Sgd>(options);
+  } else if(optType == "adagrad") {
+    opt = New<Adagrad>(options);
+  } else if(optType == "adam") {
+    opt = New<Adam>(options);
   } else {
     ABORT("Unknown optimizer kind: {}", opt);
   }
+
+  opt->setParams(params);
+  return opt;
 }
 }  // namespace marian

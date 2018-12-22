@@ -20,19 +20,19 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
   // Get batch stats
   opt_->update(graph_);
 
-  if(mvAvg_) {
-    ABORT_IF(!scheduler_, "Scheduler is required for exponential smoothing");
+  // if(mvAvg_) {
+  //   ABORT_IF(!scheduler_, "Scheduler is required for exponential smoothing");
 
-    if(!graphAvg_) {
-      graphAvg_ = New<ExpressionGraph>();
-      graphAvg_->setDevice(graph_->getDeviceId());
-      graphAvg_->copyParams(graph_);
-    } else {
-      updateAvgParams(graphAvg_->params()->vals(),
-                      graph_->params()->vals(),
-                      scheduler_->numberOfBatches());
-    }
-  }
+  //   if(!graphAvg_) {
+  //     graphAvg_ = New<ExpressionGraph>();
+  //     graphAvg_->setDevice(graph_->getDeviceId());
+  //     graphAvg_->copyParams(graph_);
+  //   } else {
+  //     updateAvgParams(graphAvg_->params()->vals(),
+  //                     graph_->params()->vals(),
+  //                     scheduler_->numberOfBatches());
+  //   }
+  // }
 
   if(scheduler_) {
     scheduler_->update(cost, batch);

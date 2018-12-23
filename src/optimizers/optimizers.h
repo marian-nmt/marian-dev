@@ -104,7 +104,7 @@ protected:
 
   virtual void save(std::vector<io::Item>& items,
                     const std::vector<Ptr<OptimizerBase>>& opts,
-                    const GatherStateFunc& gatherFn) {}
+                    const GatherStateFunc& gatherFn);
 
   Ptr<Options> options_;
 
@@ -118,6 +118,8 @@ protected:
   size_t batchesSeen_{0};
 
   Type optimizerType_{Type::float32};
+  bool castOptimizerType_{false};
+
     // Clip gradient norm
   Ptr<ClipperBase> clipper_;
 

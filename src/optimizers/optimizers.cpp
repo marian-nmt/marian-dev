@@ -10,14 +10,13 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
   size_t refMBWords = refMBWordsParam_;
   if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
     refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
-  }
-  else { // optimizer is configured to auto-adjust hyper-parameters
+  } else { // optimizer is configured to auto-adjust hyper-parameters
     ABORT_IF(mbSize == mbSizeNotProvided, "Using rational optimizer auto-adjustment with trainer that does not provide MB size");
     // note: this behavior is only meaningful if using the ce-sum criterion
   }
 
   // if true model for forward/backward uses a different type than the optimizer
-  bool castOptimizerType = params->type() != optimizerType_;
+  castOptimizerType_ = params->type() != optimizerType_;
   int elements = (int)params->size();
 
   LOG_ONCE(info, "Parameter type {}, optimization type {}",
@@ -25,7 +24,7 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
 
   int numAllocateShards = 0;
   if(mvAvg_) numAllocateShards += 1; // one shard for exp smoothing
-  if(castOptimizerType) numAllocateShards += 2; // two shards for conversion
+  if(castOptimizerType_) numAllocateShards += 2; // two shards for conversion
 
   // allocate storage for shards
   if(numAllocateShards > 0 && !optAlloc_) {
@@ -38,7 +37,7 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
     // allocate exp smooth shard tensor
     optAlloc_->allocate(avg_, {1, elements}, optimizerType_);
 
-  if(castOptimizerType) {
+  if(castOptimizerType_) {
     if(!pm_) {
       // create parameter master copy and temporary gradient shard
       optAlloc_->allocate(pm_, {1, elements}, optimizerType_);
@@ -75,11 +74,36 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
     updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
 
   // undo paramter type cast if required
-  if(castOptimizerType) {
+  if(castOptimizerType_) {
     CopyCast(params, pm_);
   }
 
   params->getBackend()->synchronize();
+}
+
+void OptimizerBase::save(std::vector<io::Item>& items,
+                         const std::vector<Ptr<OptimizerBase>>& opts,
+                         const GatherStateFunc& gatherFn) {
+  if(castOptimizerType_) {
+    // fetch and concatenate state vectors for high precision copy
+    auto vPm = gatherFn([&](size_t localDeviceIndex) {
+        auto opt = opts[localDeviceIndex];
+        std::vector<float> data;
+        opt->pm_->get(data);
+        return data;
+      });
+    items.emplace_back(std::move(io::fromVector(vPm, "master_parameters")));
+  }
+  if(mvAvg_) {
+    // fetch and concatenate state vectors for smoothed parameters
+    auto vAvg = gatherFn([&](size_t localDeviceIndex) {
+        auto opt = opts[localDeviceIndex];
+        std::vector<float> data;
+        opt->avg_->get(data);
+        return data;
+      });
+    items.emplace_back(std::move(io::fromVector(vAvg, "exp_smoothing")));
+  }
 }
 
 void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {

@@ -106,16 +106,16 @@ template std::string TensorBase::debug<int64_t>(int, int);
 const io::Item TensorBase::toItem(const std::string& name) {
   std::vector<char> bytes(memory_->size());
   copy(backend_,
-        memory_->data<char>(),
-        memory_->data<char>() + memory_->size(),
-        bytes.data());
+       memory_->data<char>(),
+       memory_->data<char>() + memory_->size(),
+       bytes.data());
 
   io::Item item;
   item.name = name;
   item.shape = shape_;
 
   // Model files are saved as tensors of float. Other floating point
-  // types will be converted first. 
+  // types will be converted first.
   if(type_ == Type::float32) {
     item.type = type_;
     // Use the actual memory as this will be aligned and padded.
@@ -131,8 +131,8 @@ const io::Item TensorBase::toItem(const std::string& name) {
     const float16* end16 = beg16 + size();
     float* beg32 = (float*)item.bytes.data();
 
-    // This performs a conversion due to different pointer
-    std::copy(beg16, end16, beg32); 
+    // This performs a conversion due to different pointer type
+    std::copy(beg16, end16, beg32);
   } else {
     ABORT("Other types are currently not supported for saving");
   }

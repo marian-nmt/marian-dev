@@ -297,7 +297,7 @@ public:
 
       if(throwNan_) {
         for(auto&& child : v->children()) {
-          if(child->trainable()) {  
+          if(child->trainable()) {
             bool isNan = false, isInf = false;
             checkNan(child->grad(), isNan, isInf);
             if(isNan || isInf) {
@@ -525,7 +525,7 @@ public:
   void setThrowNan(bool throwNan) { throwNan_ = throwNan; }
 
 public:
-  // convert all parameters into an array of IoItem elements, for loading
+  // loading from array of io::Items
   void load(const std::vector<io::Item>& ioItems, bool markReloaded = true) {
     setReloaded(false);
     for(auto& item : ioItems) {

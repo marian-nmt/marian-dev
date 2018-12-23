@@ -18,29 +18,27 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
 
   // if true model for forward/backward uses a different type than the optimizer
   bool castOptimizerType = params->type() != optimizerType_;
-
   int elements = (int)params->size();
 
-  // use an exponentially smoothed set of parameters
-  if(mvAvg_) {
-    // allocate storage for shards
-    if(!optAlloc_) {
-      optAlloc_ = New<TensorAllocator>(params->getBackend());
-      // if optimizer type is different allocate also space for conversion tensors
-      // and master parameter copy
-      int numAllocateShards = castOptimizerType ? 3 : 1;
-      optAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
-      optAlloc_->allocate(avg_, {1, elements}, optimizerType_);
-    }
+  LOG_ONCE(info, "Parameter type {}, optimization type {}",
+           params->type(), optimizerType_);
+
+  int numAllocateShards = 0;
+  if(mvAvg_) numAllocateShards += 1; // one shard for exp smoothing
+  if(castOptimizerType) numAllocateShards += 2; // two shards for conversion
+
+  // allocate storage for shards
+  if(numAllocateShards > 0 && !optAlloc_) {
+    LOG_ONCE(info, "Allocating memory for general optimizer shards");
+    optAlloc_ = New<TensorAllocator>(params->getBackend());
+    optAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
   }
 
-  if(castOptimizerType) {
-    // if no smoothing is used, shards for conversion get allocated here
-    if(!optAlloc_) {
-      optAlloc_ = New<TensorAllocator>(params->getBackend());
-      optAlloc_->reserveExact(2 * elements * sizeOf(optimizerType_));
-    }
+  if(mvAvg_ && !avg_)
+    // allocate exp smooth shard tensor
+    optAlloc_->allocate(avg_, {1, elements}, optimizerType_);
 
+  if(castOptimizerType) {
     if(!pm_) {
       // create parameter master copy and temporary gradient shard
       optAlloc_->allocate(pm_, {1, elements}, optimizerType_);
@@ -49,7 +47,6 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
       // keep parameter master copy around and initialize once, converting types
       CopyCast(pm_, params);
     }
-
     // overwrite temporary gradients with every update
     CopyCast(gd_, grads);
   } else {
@@ -59,7 +56,6 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
   }
 
   using namespace functional;
-
   // reverse cost scaling when used
   if(costScale_ != 1.f) {
     Element(_1 = _1 / costScale_, gd_);
@@ -75,7 +71,6 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
   // original tensors are used.
   updateImpl(pm_, gd_, mbSize, refMBWords);
 
-  // @TODO: update moving average here
   if(mvAvg_)
     updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
 
@@ -98,8 +93,10 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
   ABORT_IF(actualMBSize != refMBWords, "Adagrad does not support rational hyper-parameter adjustment");
 
   // allocate optimizer-specific parameters
-  if(!alloc_)
+  if(!alloc_) {
+    LOG_ONCE(info, "Allocating memory for Adagrad-specific shards");
     alloc_ = New<TensorAllocator>(params->getBackend());
+  }
 
   if(!gt_) {
     int elements = (int)params->size();
@@ -111,8 +108,8 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
   using namespace functional;
   Element(_1 += (_2 * _2), gt_, grads);
 
-  // make sure eps_ does not drop below minimum value
-  eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
+  // make sure eps_ does not drop below minimum value, add some reserve by multiplying with 2
+  eps_ = std::max(NumericLimits<double>(params->type()).min * 2.f, (double)eps_);
   Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, params, gt_, grads);
 }
 
@@ -128,19 +125,17 @@ void Adagrad::load(const std::string& name,
   LOG(info, "Loading Adagrad parameters from {}", name);
 
   std::vector<float> vGt;
-
   auto items = io::loadItems(name);
   for(auto item : items) {
-    // get the size of gt_
-    auto totalSize = item.shape.elements();
-
     // extract data into vectors
     if(item.name == "adagrad_gt") {
+      // get the size of gt_
+      auto totalSize = item.shape.elements();
       vGt.resize(totalSize);
-      std::copy(
-          (float*)item.data(), ((float*)item.data()) + totalSize, vGt.begin());
+      std::copy((float*)item.data(), ((float*)item.data()) + totalSize, vGt.begin());
     }
   }
+
   if(vGt.empty()) {
     LOG(warn, "[warn] Adagrad parameters not found in .npz file");
     return;
@@ -160,11 +155,9 @@ void Adagrad::load(const std::string& name,
   });
 }
 
-void Adagrad::save(const std::string& name,
+void Adagrad::save(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
-                   const GatherStateFunc& gatherFn,
-                   bool isMainProcess /*= true*/) {
-  LOG(info, "Saving Adagrad parameters to {}", name);
+                   const GatherStateFunc& gatherFn) {
 
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   auto vGt = gatherFn([&](size_t localDeviceIndex) {
@@ -174,20 +167,23 @@ void Adagrad::save(const std::string& name,
       return data;
     });
 
+  items.emplace_back(std::move(io::fromVector(vGt, "adagrad_gt")));
+}
+
+void Adagrad::save(const std::string& name,
+                   const std::vector<Ptr<OptimizerBase>>& opts,
+                   const GatherStateFunc& gatherFn,
+                   bool isMainProcess /*= true*/) {
   // if not main MPI process then we have done our duty
   if (!isMainProcess)
     return;
 
-  // save to file
-  io::Item item;
-  item.name = "adagrad_gt";
-  item.shape = Shape({1, (int)vGt.size()});
-  item.type = Type::float32;
-  item.bytes.resize(vGt.size() * sizeOf(item.type));
-  std::copy(
-      (char*)vGt.data(), (char*)(vGt.data() + vGt.size()), item.bytes.begin());
+  LOG(info, "Saving Adagrad parameters to {}", name);
 
-  io::saveItems(name, {item});
+  std::vector<io::Item> items;
+  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+  save(items, opts, gatherFn); // collect parameters for this optimizer class
+  io::saveItems(name, items); // save all to file
 }
 
 void Adagrad::resetStats() {
@@ -198,8 +194,10 @@ void Adagrad::resetStats() {
 // Adam
 void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
   // lazy allocation
-  if(!alloc_)
+  if(!alloc_) {
+    LOG_ONCE(info, "Allocating memory for Adam-specific shards");
     alloc_ = New<TensorAllocator>(params->getBackend());
+  }
 
   if(!mt_) {
     int elements = (int)params->size();
@@ -234,7 +232,7 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
   // make sure eps_ does not drop below minimum value, this is important
   // when training with mixed precision. Otherwise we divide by 0.
   // We multiply the minimum by 2 in order to step away from the abyss.
-  //eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
+  eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
 
   // apply Adam normalization
   float etaf = (float)eta, denom1f = (float)denom1_, denom2f = (float)denom2_, decayf = (float)decay; // (get casts out of Element expression for readability)
@@ -271,18 +269,15 @@ void Adam::load(const std::string& name,
     // extract data into vectors
     if(item.name == "adam_mt") {
       vMt.resize(totalSize);
-      std::copy(
-          (float*)item.data(), ((float*)item.data()) + totalSize, vMt.begin());
+      std::copy((float*)item.data(), ((float*)item.data()) + totalSize, vMt.begin());
     }
     else if(item.name == "adam_vt") {
       vVt.resize(totalSize);
-      std::copy(
-          (float*)item.data(), ((float*)item.data()) + totalSize, vVt.begin());
+      std::copy((float*)item.data(), ((float*)item.data()) + totalSize, vVt.begin());
     }
     else if(item.name == "adam_denoms") {
       ABORT_IF(totalSize != 2, "adam_denoms should have 2 entries");
-      std::copy(
-          (double*)item.data(), ((double*)item.data()) + totalSize, vDenoms.begin());
+      std::copy((double*)item.data(), ((double*)item.data()) + totalSize, vDenoms.begin());
       // Back compat note: Old files lacked "adam_denoms". For those, vDenoms will remain 0, which reproduces the old behavior.
     }
   }
@@ -318,12 +313,10 @@ void Adam::load(const std::string& name,
   //LOG(info, "done loading Adam params");
 }
 
-void Adam::save(const std::string& name,
+void Adam::save(std::vector<io::Item>& items,
                 const std::vector<Ptr<OptimizerBase>>& opts,
-                const GatherStateFunc& gatherFn,
-                bool isMainProcess /*= true*/) {
-  if (isMainProcess)
-    LOG(info, "Saving Adam parameters to {}", name);
+                const GatherStateFunc& gatherFn) {
+  // @TODO: switch to bytes
 
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   auto vMt = gatherFn([&](size_t localDeviceIndex) {
@@ -332,6 +325,7 @@ void Adam::save(const std::string& name,
     opt->mt_->get(data);
     return data;
   });
+  items.emplace_back(std::move(io::fromVector(vMt, "adam_mt")));
 
   auto vVt = gatherFn([&](size_t localDeviceIndex) {
     auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
@@ -339,39 +333,26 @@ void Adam::save(const std::string& name,
     opt->vt_->get(data);
     return data;
   });
+  items.emplace_back(std::move(io::fromVector(vVt, "adam_vt")));
 
+  std::vector<double> vDenoms{denom1_, denom2_};
+  items.emplace_back(std::move(io::fromVector(vVt, "adam_denoms")));
+}
+
+void Adam::save(const std::string& name,
+                const std::vector<Ptr<OptimizerBase>>& opts,
+                const GatherStateFunc& gatherFn,
+                bool isMainProcess /*= true*/) {
   // if not main MPI process then we have done our duty
   if (!isMainProcess)
-      return;
+    return;
 
-  // save to file
-  io::Item itemMt;
-  itemMt.name = "adam_mt";
-  itemMt.shape = Shape({1, (int)vMt.size()});
-  itemMt.type = Type::float32;
-  itemMt.bytes.resize(vMt.size() * sizeOf(itemMt.type));
-  std::copy(
-      (char*)vMt.data(), (char*)(vMt.data() + vMt.size()), itemMt.bytes.begin());
+  LOG(info, "Saving Adam parameters to {}", name);
 
-  io::Item itemVt;
-  itemVt.name = "adam_vt";
-  itemVt.shape = Shape({1, (int)vVt.size()});
-  itemVt.type = Type::float32;
-  itemVt.bytes.resize(vVt.size() * sizeOf(itemVt.type));
-  std::copy(
-      (char*)vVt.data(), (char*)(vVt.data() + vVt.size()), itemVt.bytes.begin());
-
-  // @TODO: this pattern is duplicated several times; refactor it
-  std::array<double, 2> vDenoms{denom1_, denom2_};
-  io::Item itemDenoms;
-  itemDenoms.name = "adam_denoms";
-  itemDenoms.shape = Shape({1, (int)vDenoms.size()});
-  itemDenoms.type = Type::float64;
-  itemDenoms.bytes.resize(vDenoms.size() * sizeOf(itemDenoms.type));
-  std::copy(
-      (char*)vDenoms.data(), (char*)(vDenoms.data() + vDenoms.size()), itemDenoms.bytes.begin());
-
-  io::saveItems(name, {itemMt, itemVt, itemDenoms});
+  std::vector<io::Item> items;
+  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+  save(items, opts, gatherFn); // collect parameters for this optimizer class
+  io::saveItems(name, items); // save all to file
 }
 
 void Adam::resetStats() {
@@ -398,7 +379,7 @@ Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
   } else if(optType == "adam") {
     opt = New<Adam>(options);
   } else {
-    ABORT("Unknown optimizer kind: {}", opt);
+    ABORT("Unknown optimizer type: {}", opt);
   }
 
   opt->setParams(params);

@@ -29,6 +29,9 @@ public:
     refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")),
     costScale_(options_->get<float>("cost-scaling", 1.f)) {
 
+    auto precisions = options_->get<std::vector<std::string>>("precision");
+    optimizerType_ = typeFromString(precisions[1]);
+
     float clipNorm = options->get<float>("clip-norm");
     if(clipNorm > 0)
       clipper_ = Clipper<Norm>(clipNorm);
@@ -99,6 +102,10 @@ protected:
   virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
   virtual void resetStats() = 0;
 
+  virtual void save(std::vector<io::Item>& items,
+                    const std::vector<Ptr<OptimizerBase>>& opts,
+                    const GatherStateFunc& gatherFn) {}
+
   Ptr<Options> options_;
 
   // Learning rate
@@ -109,10 +116,11 @@ protected:
   float costScale_{1.f};
   // Seen updates so far
   size_t batchesSeen_{0};
-  // Clip gradient norm
-  Ptr<ClipperBase> clipper_;
 
   Type optimizerType_{Type::float32};
+    // Clip gradient norm
+  Ptr<ClipperBase> clipper_;
+
   Ptr<TensorAllocator> optAlloc_;
 
   Tensor avg_;
@@ -162,6 +170,10 @@ private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
   void resetStats() override;
 
+  void save(std::vector<io::Item>& items,
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const GatherStateFunc& gatherFn) override;
+
   float eps_ = 1e-8f;
   Ptr<TensorAllocator> alloc_;
   Tensor gt_;
@@ -190,6 +202,10 @@ public:
 private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
   void resetStats() override;
+
+  void save(std::vector<io::Item>& items,
+          const std::vector<Ptr<OptimizerBase>>& opts,
+          const GatherStateFunc& gatherFn) override;
 
   // Adam parameters:
   // [beta1, beta2, eps, w, refMBWords]
@@ -221,9 +237,6 @@ private:
   Ptr<TensorAllocator> alloc_;
   Tensor mt_;
   Tensor vt_;
-
-  Tensor pm_;
-  Tensor gd_;
 };
 
 Ptr<OptimizerBase> Optimizer(Ptr<Options> options);

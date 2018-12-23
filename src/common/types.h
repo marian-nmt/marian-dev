@@ -227,6 +227,35 @@ template <> inline std::string request<float>()   { return "float32"; }
 template <> inline std::string request<double>()  { return "float64"; }
 // clang-format on
 
+static Type inline typeFromString(const std::string& str) {
+  if(str == "int8")
+    return Type::int8;
+  if(str == "int16")
+    return Type::int16;
+  if(str == "int32")
+    return Type::int32;
+  if(str == "int64")
+    return Type::int64;
+
+  if(str == "uint8")
+    return Type::uint8;
+  if(str == "uint16")
+    return Type::uint16;
+  if(str == "uint32")
+    return Type::uint32;
+  if(str == "uint64")
+    return Type::uint64;
+
+  if(str == "float16")
+    return Type::float16;
+  if(str == "float32")
+    return Type::float32;
+  if(str == "float64")
+    return Type::float64;
+
+  ABORT("Unknown type {}", str);
+}
+
 template <typename T>
 inline Type typeId();
 

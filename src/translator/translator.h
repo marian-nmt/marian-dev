@@ -57,8 +57,8 @@ public:
       auto task = [&](DeviceId device, size_t id) {
         auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
         graph->setDevice(device);
-        if(options_->get<bool>("fp16"))
-          graph->setParameterType(Type::float16);
+        auto prec = options_->get<std::vector<std::string>>("precision");
+        graph->setParameterType(typeFromString(prec[0]));
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;

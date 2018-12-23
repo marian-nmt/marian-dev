@@ -4,7 +4,6 @@ namespace marian {
 
 SyncGraphGroup::SyncGraphGroup(Ptr<Options> config)
     : GraphGroup(config),
-      ExponentialSmoothing(config),
       delay_{options_->get<double>("optimizer-delay")} { // @TODO: rename to something else; delay means delayed updated, not accumulation
 
   mpi_ = initMPI(/*multiThreaded=*/false); // when not running under MPI, this will be a fake object that represents a one-MPI-process setup
@@ -13,8 +12,10 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> config)
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
-    if(options_->get<bool>("fp16"))
-      graph->setParameterType(Type::float16);
+
+    auto precisions = options_->get<std::vector<std::string>>("precision");
+    graph->setParameterType(typeFromString(precisions[0]));
+
     if(options_->get<bool>("check-nan")) // @TODO: add to other places
       graph->setThrowNan(true);
 
@@ -83,15 +84,15 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
 void SyncGraphGroup::initializeAvg() {
   Ptr<ExpressionGraph> graphAvg; // CPU-side temp
   std::string name = options_->get<std::string>("model");
-  if(filesystem::exists(name + ".orig.npz")) {
-    // Load the averaged parameters into a temporary graph
-    graphAvg = New<ExpressionGraph>();
-    graphAvg->setDevice({0, DeviceType::cpu});
-    graphAvg->setParameterType(graphs_[0]->getParameterType());
+  // if(filesystem::exists(name + ".orig.npz")) {
+  //   // Load the averaged parameters into a temporary graph
+  //   graphAvg = New<ExpressionGraph>();
+  //   graphAvg->setDevice({0, DeviceType::cpu});
+  //   graphAvg->setParameterType(graphs_[0]->getParameterType());
 
-    graphAvg->load(name, false);
-    graphAvg->forward(); // initialize parameters if needed
-  }
+  //   graphAvg->load(name, false);
+  //   graphAvg->forward(); // initialize parameters if needed
+  // }
 
   auto init = [&](size_t localDeviceIndex, size_t begin, size_t end) {
     size_t size = end-begin;
@@ -102,21 +103,11 @@ void SyncGraphGroup::initializeAvg() {
 
     paramsAllocator->reserveExact(size * sizeOf(graphs_[0]->getParameterType()));
 
-    Tensor paramAvg;
-    paramsAllocator->allocate(paramAvg, {1, (int)size}, graphs_[0]->getParameterType());
-    paramsAvg_[localDeviceIndex] = paramAvg;
-
-    if(graphAvg)
-      paramAvg->copyFrom(graphAvg  ->params()->vals()->subtensor(begin, size));
-    else
-      paramAvg->copyFrom(graphs_[0]->params()->vals()->subtensor(begin, size));
-
     // note: for multi-node, graphAvg and graphs_[0] contain a complete copy, from which
     // each MPI process copies only part into its respective shard(s)
   };
 
   paramsAllocs_.resize(graphs_.size()); // allocators
-  paramsAvg_.resize(graphs_.size());    // averaged parameters (shards; distributed over MPI processes if applicable)
   comm_->foreach(init, /*parallel=*/false); // @TODO: is sequential operation necessary here? (is the allocation stuff sufficiently reentrant or thread-separated?)
 }
 
@@ -345,8 +336,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     LOG(info, "[training] Batches are processed as {} process(es) x {} devices/process",
         mpi_->numMPIProcesses(), devices_.size());
     initialize(subBatches.front());
-    if(mvAvg_ && paramsAvg_.empty())
-      initializeAvg();
+    // if(mvAvg_ && paramsAvg_.empty())
+    //   initializeAvg();
     first_ = false;
   }
 
@@ -401,9 +392,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     shardOpt_[i]->update(curParam, curGrad, updateTrgWords);
     curGrad->set(0.f);
 
-    if(mvAvg_)
-      updateAvgParams(
-          paramsAvg_[i], curParam, scheduler_->numberOfBatches(), updateTrgWords);
+    // if(mvAvg_)
+    //   updateAvgParams(
+    //       paramsAvg_[i], curParam, scheduler_->numberOfBatches(), updateTrgWords);
   };
 
   comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices (globally) into shards
@@ -453,9 +444,9 @@ void SyncGraphGroup::load() /*override*/ {
         scheduler_->load(name);
 
       std::string nameGraph = name;
-      if(mvAvg_ && filesystem::exists(name + ".orig.npz"))
-        // Load the original parameters from model.npz.orig.npz
-        nameGraph += ".orig.npz";
+      // if(mvAvg_ && filesystem::exists(name + ".orig.npz"))
+      //   // Load the original parameters from model.npz.orig.npz
+      //   nameGraph += ".orig.npz";
 
       size_t i = 0;
       for(auto graph : graphs_)
@@ -501,9 +492,9 @@ void SyncGraphGroup::save(bool final) /*override*/ {
 
   barrier(); // (for better grouping of log messages)
   // if smoothing then save original (unsmoothed) parameters as well
-  if(mvAvg_ && paramsAvg_.size() > 0 && isMainProcess()) // only save from one MPI process
-    // Save the original parameters in model.npz.orig.npz
-    builders_[0]->save(graphs_[0], name + ".orig.npz", true);
+  // if(mvAvg_ && paramsAvg_.size() > 0 && isMainProcess()) // only save from one MPI process
+  //   // Save the original parameters in model.npz.orig.npz
+  //   builders_[0]->save(graphs_[0], name + ".orig.npz", true);
 
   // Temporarily switch to the averaged parameters
   // Note: the smoothed model is sharded across GPUs, and across MPI processes if applicable. This brings it into MPI process[*].device[*]
@@ -538,7 +529,7 @@ void SyncGraphGroup::save(bool final) /*override*/ {
       return comm_->gatherState(getShardFn);
     },
     isMainProcess());
-  
+
   barrier(); // (for better grouping of log messages)
 }
 
@@ -546,7 +537,7 @@ void SyncGraphGroup::finalize() /*override*/ {
   validate();
   Base::finalize();
 }
- 
+
 SyncGraphGroup::~SyncGraphGroup() /*override*/ {
   comm_ = nullptr;
   finalizeMPI(std::move(mpi_));

@@ -126,6 +126,70 @@ struct Ops<float> {
 
 };
 
+// Specialization for double
+template <>
+struct Ops<double> {
+  typedef double Single;
+
+  static HOST_DEVICE_INLINE double tanh(const double& x) { return tanh(x); }
+  static HOST_DEVICE_INLINE double sin(const double& x)  { return sin(x); }
+  static HOST_DEVICE_INLINE double cos(const double& x)  { return cos(x); }
+  static HOST_DEVICE_INLINE double tan(const double& x)  { return tan(x); }
+  static HOST_DEVICE_INLINE double log(const double& x)  { return log(x); }
+  static HOST_DEVICE_INLINE double exp(const double& x)  { return exp(x); }
+  static HOST_DEVICE_INLINE double abs(const double& x)  { return abs(x); }
+  static HOST_DEVICE_INLINE double sqrt(const double& x) { return sqrt(x); }
+  static HOST_DEVICE_INLINE double neg(const double& x)  { return -x; }
+  static HOST_DEVICE_INLINE double sgn(const double& x)  { return (0 < x) - (x < 0); }
+
+  static HOST_DEVICE_INLINE double add(const double& x, const double& y)  { return x + y; }
+  static HOST_DEVICE_INLINE double sub(const double& x, const double& y)  { return x - y; }
+  static HOST_DEVICE_INLINE double mul(const double& x, const double& y)  { return x * y; }
+  static HOST_DEVICE_INLINE double div(const double& x, const double& y)  { return x / y; }
+
+  static HOST_DEVICE_INLINE double max(const double& x, const double& y)  { return x < y ? y : x; }
+  static HOST_DEVICE_INLINE double min(const double& x, const double& y)  { return x < y ? x : y; }
+  static HOST_DEVICE_INLINE double pow(const double& x, const double& y)  { return pow(x, y); }
+
+
+  static HOST_DEVICE_INLINE double negate(const double& x)  { return !(bool)x; }
+  static HOST_DEVICE_INLINE double eq(const double& x, const double& y)   { return x == y; }
+  static HOST_DEVICE_INLINE double neq(const double& x, const double& y)  { return x != y; }
+  static HOST_DEVICE_INLINE double gt(const double& x, const double& y)   { return x > y; }
+  static HOST_DEVICE_INLINE double lt(const double& x, const double& y)   { return x < y; }
+  static HOST_DEVICE_INLINE double geq(const double& x, const double& y)  { return x >= y; }
+  static HOST_DEVICE_INLINE double leq(const double& x, const double& y)  { return x <= y; }
+  static HOST_DEVICE_INLINE double and_(const double& x, const double& y) { return x && y; } // 'and' is used by gcc
+  static HOST_DEVICE_INLINE double or_(const double& x, const double& y)  { return x || y; } // 'or' is used by gcc
+
+  // Neural Networks specific functions
+  static HOST_DEVICE_INLINE double sigmoid(const double& x) {
+    return x > 0 ? (1.f / (1.f + exp(-x))) : (exp(x) / (1.f + exp(x)));
+  }
+
+  static HOST_DEVICE_INLINE double logaddexp(const double& x, const double& y) {
+    // Note: This may not be ideal for CUDA; cf. CNTK implementation
+    return x < y ? (y + log1p(exp(x - y))) : (x + log1p(exp(y - x)));
+  }
+
+  static HOST_DEVICE_INLINE double clip(const double& x, const double& y)  { return abs(x) >= y ? sgn(x) * y : x; }
+  // derivative of Clip, cut-off function
+  static HOST_DEVICE_INLINE double bump(const double& x, const double& y)  { return abs(x) >= y ? 0.f : 1.f; }
+
+  static HOST_DEVICE_INLINE double relu(const double& x)     { return x > 0.f ? x : 0.f; }
+  static HOST_DEVICE_INLINE double reluBack(const double& x) { return x > 0.f ? 1.f : 0.f; }
+
+  static HOST_DEVICE_INLINE double prelu(const double& x, const double& y)     { return x > 0.f ? x : x * y; }
+  static HOST_DEVICE_INLINE double preluBack(const double& x, const double& y) { return x > 0.f ? 1.f : y; }
+
+  static HOST_DEVICE_INLINE double if_then_else(const double& x, const double& y, const double& z) { return x ? y : z; }
+
+  static HOST_DEVICE_INLINE double sumReduce(const double& x) { return x; }
+  static HOST_DEVICE_INLINE double maxReduce(const double& x) { return x; }
+  static HOST_DEVICE_INLINE double minReduce(const double& x) { return x; }
+
+};
+
 #ifndef __CUDA_ARCH__
 
 #include "3rd_party/sse_mathfun.h"

@@ -10,7 +10,7 @@ namespace marian {
 /**
  * Single GPU training
  */
-class SingletonGraph : public GraphGroup, public ExponentialSmoothing {
+class SingletonGraph : public GraphGroup {
 public:
   virtual void setScheduler(Ptr<Scheduler> scheduler) override;
 
@@ -23,8 +23,7 @@ private:
 
 public:
   SingletonGraph(Ptr<Options> config)
-      : GraphGroup(config),
-        ExponentialSmoothing(config) {
+    : GraphGroup(config) {
     // Get device ID
     auto devices = Config::getDevices(options_);
     ABORT_IF(devices.size() != 1, "Only one device ID should be provided for singleton training");
@@ -56,18 +55,18 @@ public:
         if(scheduler_)
           scheduler_->load(name);
 
-        if(mvAvg_ && filesystem::exists(name + ".orig.npz")) {
-          // Load the original parameters from model.npz
-          builder_->load(graph_, name + ".orig.npz");
+        // if(mvAvg_ && filesystem::exists(name + ".orig.npz")) {
+        //   // Load the original parameters from model.npz
+        //   builder_->load(graph_, name + ".orig.npz");
 
-          // Load the averaged parameters from model.npz
-          graphAvg_ = New<ExpressionGraph>();
-          graphAvg_->setDevice(graph_->getDeviceId());
-          builder_->load(graphAvg_, name);
-          graphAvg_->forward();
-        } else {
+        //   // Load the averaged parameters from model.npz
+        //   graphAvg_ = New<ExpressionGraph>();
+        //   graphAvg_->setDevice(graph_->getDeviceId());
+        //   builder_->load(graphAvg_, name);
+        //   graphAvg_->forward();
+        // } else {
           builder_->load(graph_, name);
-        }
+        // }
 
         opt_->load(name + ".optimizer.npz", {opt_}, {graph_->getBackend()},
           /*scatterStateFn=*/[&](const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
@@ -85,14 +84,14 @@ public:
 
   void save(bool final = false) override {
     auto saveGraph = graph_;
-    if(mvAvg_) {
-      // The model with averaged parameters will be saved into model.npz as
-      // it's a model which should be used for decoding
-      saveGraph = graphAvg_;
-      // Save the original parameters in model.npz.orig.npz
-      std::string name = options_->get<std::string>("model");
-      builder_->save(graph_, name + ".orig.npz");
-    }
+    // if(mvAvg_) {
+    //   // The model with averaged parameters will be saved into model.npz as
+    //   // it's a model which should be used for decoding
+    //   saveGraph = graphAvg_;
+    //   // Save the original parameters in model.npz.orig.npz
+    //   std::string name = options_->get<std::string>("model");
+    //   builder_->save(graph_, name + ".orig.npz");
+    // }
 
     if(final && scheduler_)
       scheduler_->validate({saveGraph}, true);

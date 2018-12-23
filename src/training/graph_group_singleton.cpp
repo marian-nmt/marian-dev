@@ -38,12 +38,12 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
     scheduler_->update(cost, batch);
 
     if(scheduler_->validating()) {
-      if(mvAvg_) {
-        graphAvg_->reuseWorkspace(graph_);
-        scheduler_->validate({graphAvg_});
-      } else {
+      // if(mvAvg_) {
+      //   graphAvg_->reuseWorkspace(graph_);
+      //   scheduler_->validate({graphAvg_});
+      // } else {
         scheduler_->validate({graph_});
-      }
+      // }
     }
 
     if(scheduler_->saving())

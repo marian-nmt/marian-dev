@@ -110,6 +110,8 @@ void CopyCastFrom(Tensor out, const T* in, int length) {
     CopyCastTo(out->data<float>(), in, length);
   } else if(out->type() == Type::float16) {
     CopyCastTo(out->data<half>(), in, length);
+  } else if(out->type() == Type::float64) {
+    CopyCastTo(out->data<double>(), in, length);
   } else {
     ABORT("CopyCastTo to type {} not implemented", out->type());
   }
@@ -122,6 +124,8 @@ void CopyCast(Tensor out, const Tensor in) {
     CopyCastFrom(out, in->data<float>(), (int)in->size());
   } else if(in->type() == Type::float16) {
     CopyCastFrom(out, in->data<half>(), (int)in->size());
+  } else if(in->type() == Type::float64) {
+    CopyCastFrom(out, in->data<double>(), (int)in->size());
   } else {
     ABORT("CopyCastFrom from type {} not implemented", in->type());
   }

@@ -64,8 +64,8 @@ void Element(Functor functor, Tensor out, Tensors... tensors) {
     ElementTyped<float>(functor, out, tensors...);
   } else if(out->type() == Type::float16) {
     ElementTyped<half>(functor, out, tensors...);
-  // } else if(out->type() == Type::float16) {
-  //   ElementTyped<half2>(functor, out, tensors...);
+  } else if(out->type() == Type::float64) {
+    ElementTyped<double>(functor, out, tensors...);
   } else {
     ABORT("Type {} not yet supported", out->type());
   }

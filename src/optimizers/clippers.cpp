@@ -12,7 +12,9 @@ void Elementwise::clip(Tensor t) {
 void Norm::clip(Tensor t) {
   using namespace functional;
   float l2Norm = L2Norm(t);
-  if(l2Norm >= c_)
+  if(l2Norm >= c_) {
+    LOG(info, "Clipping gradient norm {} to {}", l2Norm, c_);
     Element(_1 = (c_ / l2Norm) * _1, t);
+  }
 }
 }  // namespace marian

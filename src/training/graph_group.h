@@ -74,15 +74,11 @@ public:
     size_t maxLength = options_->get<size_t>("max-length");
     maxLength = (size_t)(std::ceil(maxLength / (float)step) * step);
 
-    // @TODO: ugly
-    auto toptions = New<Options>();
-    toptions->merge(options_);
-
     size_t maxBatch = 512;
     bool fits = true;
     while(fits) {
       std::vector<size_t> lengths(numFiles, first);
-      auto batch = data::CorpusBatch::fakeBatch(lengths, maxBatch, toptions);
+      auto batch = data::CorpusBatch::fakeBatch(lengths, maxBatch, options_);
       auto cost = model->build(graph, batch);
       fits = graph->fits();
       if(fits)
@@ -98,7 +94,7 @@ public:
 
       do {
         size_t current = (start + end) / 2;
-        auto batch = data::CorpusBatch::fakeBatch(lengths, current, toptions);
+        auto batch = data::CorpusBatch::fakeBatch(lengths, current, options_);
         auto cost = model->build(graph, batch);
         fits = graph->fits();
 

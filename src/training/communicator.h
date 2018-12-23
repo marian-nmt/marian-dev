@@ -43,7 +43,7 @@ public:
   virtual void swapParams(const std::vector<Tensor>& paramShards) const = 0;
 
   virtual void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const = 0;
-  virtual std::vector<float> gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const = 0;
+  virtual io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const = 0;
 };
 
 // Abstracts MPI operations, allowing alternative implementations (specifically fake (for debugging) and NCCL.
@@ -83,6 +83,15 @@ public:
     v.resize(vecLen);
     bCast(v.data(), v.size(), getDataType(v.data()), rootRank, comm);
   }
+
+  void bCast(io::Item& v, size_t rootRank = 0, MPI_Comm comm = MPI_COMM_WORLD) {
+    // unsigned long long vecLen = (unsigned long long)v.size(); // only value from rootRank is used here
+    // bCast(&vecLen, 1, getDataType(&vecLen), rootRank, comm);
+    // v.resize(vecLen);
+    // bCast(v.data(), v.size(), getDataType(v.data()), rootRank, comm);
+    ABORT("Not implemented");
+  }
+
   std::string idStr() const;
 };
 
@@ -230,13 +239,13 @@ public:
     }
   }
 
-  std::vector<float> gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const override {
-    std::vector<float> data; // we know the size here
-    for (size_t localDeviceIndex = 0; localDeviceIndex < graphs_.size(); localDeviceIndex++) {
-      std::vector<float> tmp = getFn(localDeviceIndex);
-      data.insert(data.end(), tmp.begin(), tmp.end());
-    }
-    ABORT_IF(data.size() != graphs_[0]->params()->vals()->size(), "gathering wrong amount of data??");
+  io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const override {
+    io::Item data = getFn(0);
+    for (size_t localDeviceIndex = 1; localDeviceIndex < graphs_.size(); localDeviceIndex++)
+      data.append(getFn(localDeviceIndex));
+
+    size_t elements = data.bytes.size() / sizeOf(data.type);
+    ABORT_IF(elements != graphs_[0]->params()->vals()->size(), "gathering wrong amount of data??");
     return data;
   }
 };

@@ -11,10 +11,12 @@ void SingletonGraph::setScheduler(Ptr<Scheduler> scheduler) {
 
 void SingletonGraph::execute(Ptr<data::Batch> batch) {
   auto costNode = builder_->build(graph_, batch);
-  costNode = costNode * costScale_;
+
+  float costScaleFactor = opt_->getCostScaleFactor();
+  costNode = costNode * costScaleFactor;
 
   graph_->forward();
-  float cost = costNode->scalar() / costScale_;
+  float cost = costNode->scalar() / costScaleFactor;
   graph_->backward();
 
   // Get batch stats

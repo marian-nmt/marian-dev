@@ -71,13 +71,10 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
      "Suppress logging for translation");
   cli.add<size_t>("--seed",
      "Seed for all random number generators. 0 means initialize randomly");
-  cli.add<float>("--clip-gemm",
-     "If not 0 clip GEMM input values to +/- arg");
-  cli.add<std::vector<std::string>>("--precision",
-      "Precision for forward/backward pass and optimizaton",
-      {"float32", "float32"});
   cli.add<bool>("--check-nan",
       "Check for NaNs or Infs in forward and backward pass. Will abort when found.");
+  cli.add<float>("--clip-gemm",
+     "If not 0 clip GEMM input values to +/- arg");
   cli.add<bool>("--interpolate-env-vars",
      "allow the use of environment variables in paths, of the form ${VAR_NAME}");
   cli.add<bool>("--relative-paths",
@@ -247,8 +244,6 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // clang-format off
   cli.add<std::string>("--cost-type",
       "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");
-  cli.add<float>("--cost-scaling",
-      "Scale cost to scale gradients. No scaling with 1.f", 1.f);
   cli.add<bool>("--overwrite",
       "Do not create model checkpoints, only overwrite main model file with last checkpoint. "
       "Reduces disk usage");
@@ -392,6 +387,13 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Fix source embeddings. Affects all encoders");
   cli.add<bool>("--embedding-fix-trg",
      "Fix target embeddings. Affects all decoders");
+
+  // mixed precision training
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision training for forward/backward pass and optimizaton",
+      {"float32", "float32"});
+  cli.add_nondefault<std::vector<std::string>>("--cost-scaling",
+      "Dynamic cost scaling for mixed precision training")->implicit_val("8.f 2000 2.f");
 
   cli.add<bool>("--multi-node",
      "Enable asynchronous multi-node training through MPI (and legacy sync if combined with --sync-sgd)");

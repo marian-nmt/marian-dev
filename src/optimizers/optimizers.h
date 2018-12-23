@@ -26,8 +26,21 @@ public:
   : ExponentialSmoothing(options),
     options_(options),
     eta_(options_->get<float>("learn-rate")),
-    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")),
-    costScale_(options_->get<float>("cost-scaling", 1.f)) {
+    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")) {
+
+    if(options_->has("cost-scaling")) {
+      auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
+      costScale_ = true;
+      costScaleFactor_ = std::stof(vcs[0]);
+      costScaleFreq_ = std::stoul(vcs[1]);
+      costScaleMultiplier_ = std::stof(vcs[2]);
+
+      LOG_ONCE(info,
+               "Training with cost scaling - factor: {}, frequency: {}, multiplier: {}",
+               costScaleFactor_,
+               costScaleFreq_,
+               costScaleMultiplier_);
+    }
 
     auto precisions = options_->get<std::vector<std::string>>("precision");
     optimizerType_ = typeFromString(precisions[1]);
@@ -81,13 +94,15 @@ public:
 
   virtual void setParams(const std::vector<float>& params) = 0;
 
+  virtual void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
+
   typedef std::function<void(size_t /*localDeviceIndex*/,
                              std::vector<float>::const_iterator /*begin*/,
                              std::vector<float>::const_iterator /*end*/)> ScatterStateSetFunc;
-  typedef std::function<std::vector<float>(size_t /*localDeviceIndex*/)> GatherStateGetFunc;
+  typedef std::function<io::Item(size_t /*localDeviceIndex*/)> GatherStateGetFunc;
 
   typedef std::function<void(const std::vector<float>& /*data*/, const ScatterStateSetFunc& /*setFn*/)> ScatterStateFunc;
-  typedef std::function<std::vector<float>(const GatherStateGetFunc& /*getFn*/)> GatherStateFunc;
+  typedef std::function<io::Item(const GatherStateGetFunc& /*getFn*/)> GatherStateFunc;
 
   virtual void load(const std::string& /*name*/,
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
@@ -97,6 +112,8 @@ public:
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
                     const GatherStateFunc& /*gatherFn*/,
                     bool /*isMainProcess*/ = true) {}
+
+  float getCostScaleFactor() { return costScaleFactor_; }
 
 protected:
   virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
@@ -113,7 +130,10 @@ protected:
   // Reference MB size. This enables automatic adjustment of optimizer hyper-parameters to MB size.
   size_t refMBWordsParam_{0}; // 0 means no adjustment
   // Cost scaling factor
-  float costScale_{1.f};
+  bool costScale_{false};
+  float costScaleFactor_{1.f};
+  size_t costScaleFreq_{2000};
+  float costScaleMultiplier_{2.f};
   // Seen updates so far
   size_t batchesSeen_{0};
 
@@ -123,6 +143,7 @@ protected:
     // Clip gradient norm
   Ptr<ClipperBase> clipper_;
 
+  Ptr<Allocator> allocator_;
   Ptr<TensorAllocator> optAlloc_;
 
   Tensor avg_;
@@ -190,7 +211,7 @@ private:
  */
 class Adam : public OptimizerBase {
 public:
-  Adam(Ptr<Options> options) : OptimizerBase(options), t_{0} {}
+  Adam(Ptr<Options> options) : OptimizerBase(options) {}
 
   void load(const std::string& name,
             const std::vector<Ptr<OptimizerBase>>& opts,
@@ -229,7 +250,6 @@ private:
   float beta2_ = 0.999f;
   float eps_ = 1e-8f;
   float w_ = 0.0f;
-  size_t t_;
 
   // CPU-side running accumulators
   double denom1_ = 0;
@@ -241,5 +261,5 @@ private:
   Tensor vt_;
 };
 
-Ptr<OptimizerBase> Optimizer(Ptr<Options> options);
+Ptr<OptimizerBase> Optimizer(Ptr<Options> options, Ptr<Allocator> allocator = nullptr);
 }  // namespace marian

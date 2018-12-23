@@ -209,14 +209,15 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     }
 
     auto costNode = builder->build(graph, batch);
-    costNode = costNode * costScale_;
+    float costScaleFactor = shardOpt_[t_id]->getCostScaleFactor();
+    costNode = costNode * costScaleFactor;
 
     if(t % optimizerDelay_ == 0) {
       fetchParams(graph->params()->vals(), params_, t_id);
     }
 
     graph->forward();
-    cost += costNode->scalar() / costScale_; // divide for reporting
+    cost += costNode->scalar() / costScaleFactor; // divide for reporting
     graph->backward();
 
     Tensor gradients;
@@ -392,11 +393,9 @@ void AsyncGraphGroup::save(Ptr<ExpressionGraph> graph, bool final /*=false*/) {
 
   shardOpt_[idx]->save(name + ".optimizer.npz", shardOpt_,
     /*gatherStateFn=*/[&](const OptimizerBase::GatherStateGetFunc& getFn) {
-      std::vector<float> data;
-      for (size_t i = 0; i < graphs_.size(); i++) {
-        auto tmp = getFn(i);
-        data.insert(data.end(), tmp.begin(), tmp.end());
-      }
+      io::Item data = getFn(0);
+      for (size_t i = 1; i < graphs_.size(); i++)
+        data.append(getFn(i));
       return data;
     });
 }

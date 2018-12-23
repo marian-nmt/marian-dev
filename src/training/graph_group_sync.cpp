@@ -23,7 +23,7 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> config)
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
 
     graphs_.push_back(graph);
-    shardOpt_.push_back(Optimizer(options_));
+    shardOpt_.push_back(Optimizer(options_, graph->allocator()));
     builders_.push_back(models::from_options(options_, models::usage::training));
   }
 
@@ -357,11 +357,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       if (!subBatch)
         break;
 
+      float costScaleFactor = shardOpt_[localDeviceIndex]->getCostScaleFactor();
       auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
-      costNode = costNode * costScale_;
+      costNode = costNode * costScaleFactor;
 
       graph->forward();
-      localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScale_ * (float)overstuff);
+      localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor * (float)overstuff);
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
   });

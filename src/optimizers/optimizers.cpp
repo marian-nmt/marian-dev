@@ -54,28 +54,45 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
     gd_ = grads;
   }
 
-  using namespace functional;
-  // reverse cost scaling when used
-  if(costScale_ != 1.f) {
-    Element(_1 = _1 / costScale_, gd_);
+  bool hasNanOrInf = false;
+  if(costScale_) {
+    bool hasNan = false, hasInf = false;
+    IsNan(grads, allocator_, hasNan, hasInf); // what about padded space? Make sure it's set to 0!
+    hasNanOrInf = hasNan || hasInf;
   }
 
-  // clip gradiens when used
-  // @TODO, also check for nan?
-  if(clipper_)
-    clipper_->clip(grads);
+  if(!hasNanOrInf) {
+    using namespace functional;
+    // reverse cost scaling when used
+    if(costScaleFactor_ != 1.f)
+      Element(_1 = _1 / costScaleFactor_, gd_);
 
-  // perform update on master copy with cast gradients
-  // if a type cast has been performed. Otherwise the
-  // original tensors are used.
-  updateImpl(pm_, gd_, mbSize, refMBWords);
+    // clip gradients when used
+    if(clipper_)
+      clipper_->clip(grads);
 
-  if(mvAvg_)
-    updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
+    // perform update on master copy with cast gradients
+    // if a type cast has been performed. Otherwise the
+    // original tensors are used.
+    updateImpl(pm_, gd_, mbSize, refMBWords);
 
-  // undo paramter type cast if required
-  if(castOptimizerType_) {
-    CopyCast(params, pm_);
+    if(mvAvg_)
+      updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
+
+    // undo paramter type cast if required
+    if(castOptimizerType_)
+      CopyCast(params, pm_);
+
+    if(costScale_ && batchesSeen_ > 0 && batchesSeen_ % costScaleFreq_ == 0) {
+      costScaleFactor_ *= costScaleMultiplier_;
+      LOG(info, "Increasing cost-scaling to {}", costScaleFactor_);
+    }
+  } else if(costScale_) {
+    costScaleFactor_ /= costScaleMultiplier_;
+    LOG(warn, "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling to {}", costScaleFactor_);
+  } else {
+    // actually we should not be NaN checking without scaling, abort.
+    ABORT("Seen NaN/Inf, but not cost-scaling. Don't know what to do.");
   }
 
   params->getBackend()->synchronize();
@@ -86,24 +103,22 @@ void OptimizerBase::save(std::vector<io::Item>& items,
                          const GatherStateFunc& gatherFn) {
   if(castOptimizerType_) {
     // fetch and concatenate state vectors for high precision copy
-    auto vPm = gatherFn([&](size_t localDeviceIndex) {
+    io::Item pm = gatherFn([&](size_t localDeviceIndex) {
         auto opt = opts[localDeviceIndex];
-        std::vector<float> data;
-        opt->pm_->get(data);
-        return data;
+        return opt->pm_->toItem("master_parameters");
       });
-    items.emplace_back(std::move(io::fromVector(vPm, "master_parameters")));
+    items.emplace_back(std::move(pm));
   }
   if(mvAvg_) {
     // fetch and concatenate state vectors for smoothed parameters
-    auto vAvg = gatherFn([&](size_t localDeviceIndex) {
+    io::Item avg = gatherFn([&](size_t localDeviceIndex) {
         auto opt = opts[localDeviceIndex];
-        std::vector<float> data;
-        opt->avg_->get(data);
-        return data;
+        return opt->avg_->toItem("exp_smoothing");
       });
-    items.emplace_back(std::move(io::fromVector(vAvg, "exp_smoothing")));
+    items.emplace_back(std::move(avg));
   }
+  std::vector<float> vCostScale{costScaleFactor_};
+  items.emplace_back(std::move(io::fromVector(vCostScale, "cost_scale")));
 }
 
 void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
@@ -182,16 +197,12 @@ void Adagrad::load(const std::string& name,
 void Adagrad::save(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
                    const GatherStateFunc& gatherFn) {
-
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
-  auto vGt = gatherFn([&](size_t localDeviceIndex) {
+  io::Item gt = gatherFn([&](size_t localDeviceIndex) {
       auto opt = std::dynamic_pointer_cast<Adagrad>(opts[localDeviceIndex]);
-      std::vector<float> data;
-      opt->gt_->get(data);
-      return data;
+      return opt->gt_->toItem("adagrad_gt");
     });
-
-  items.emplace_back(std::move(io::fromVector(vGt, "adagrad_gt")));
+  items.emplace_back(std::move(gt));
 }
 
 void Adagrad::save(const std::string& name,
@@ -343,24 +354,20 @@ void Adam::save(std::vector<io::Item>& items,
   // @TODO: switch to bytes
 
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
-  auto vMt = gatherFn([&](size_t localDeviceIndex) {
+  io::Item mt = gatherFn([&](size_t localDeviceIndex) {
     auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
-    std::vector<float> data;
-    opt->mt_->get(data);
-    return data;
+    return opt->mt_->toItem("adam_mt");
   });
-  items.emplace_back(std::move(io::fromVector(vMt, "adam_mt")));
+  items.emplace_back(std::move(mt));
 
-  auto vVt = gatherFn([&](size_t localDeviceIndex) {
+  io::Item vt = gatherFn([&](size_t localDeviceIndex) {
     auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
-    std::vector<float> data;
-    opt->vt_->get(data);
-    return data;
+    return opt->vt_->toItem("adam_vt");
   });
-  items.emplace_back(std::move(io::fromVector(vVt, "adam_vt")));
+  items.emplace_back(std::move(vt));
 
   std::vector<double> vDenoms{denom1_, denom2_};
-  items.emplace_back(std::move(io::fromVector(vVt, "adam_denoms")));
+  items.emplace_back(std::move(io::fromVector(vDenoms, "adam_denoms")));
 }
 
 void Adam::save(const std::string& name,
@@ -390,7 +397,7 @@ void Adam::resetStats() {
   denom2_ = 0;
 }
 
-Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
+Ptr<OptimizerBase> Optimizer(Ptr<Options> options, Ptr<Allocator> allocator) {
   auto optType = options->get<std::string>("optimizer");
   auto params = options->has("optimizer-params")
                      ? options->get<std::vector<float>>("optimizer-params")
@@ -407,6 +414,7 @@ Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
   }
 
   opt->setParams(params);
+  opt->setAllocator(allocator);
   return opt;
 }
 }  // namespace marian

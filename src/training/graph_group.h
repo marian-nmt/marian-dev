@@ -21,13 +21,10 @@ protected:
   Ptr<OptimizerBase> opt_;   // the optimizer
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
-  float costScale_{1.f};
   size_t typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
 
 public:
-  GraphGroup(Ptr<Options> options) : options_(options), opt_(Optimizer(options)) {
-    costScale_ = options_->get<float>("cost-scaling", 1.f);
-  }
+  GraphGroup(Ptr<Options> options) : options_(options), opt_(Optimizer(options)) {}
 
   virtual ~GraphGroup() {}
 

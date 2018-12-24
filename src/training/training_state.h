@@ -13,6 +13,8 @@ class TrainingState;
 
 class TrainingObserver {
 public:
+  virtual ~TrainingObserver() {}
+
   virtual void init(TrainingState&) {}
   virtual void actAfterEpoch(TrainingState&) {}
   virtual void actAfterBatches(TrainingState&) {}
@@ -118,16 +120,16 @@ public:
 
   void registerObserver(Ptr<TrainingObserver> observer) {
     observers_.push_back(observer);
-    observers_.back().lock()->init(*this);
+    observer->init(*this);
   }
 
   // return the totals count that corresponds to the given unit (batches, labels, or epochs)
   size_t getProgressIn(SchedulingUnit u) const {
     switch (u) {
-    case SchedulingUnit::trgLabels: return labelsTotal;
-    case SchedulingUnit::updates  : return batches;
-    case SchedulingUnit::epochs   : return epochs;
-    default: ABORT("corrupt enum value");
+      case SchedulingUnit::trgLabels: return labelsTotal;
+      case SchedulingUnit::updates  : return batches;
+      case SchedulingUnit::epochs   : return epochs;
+      default: ABORT("corrupt enum value");
     }
   }
 
@@ -141,10 +143,10 @@ public:
 
   size_t getPreviousProgressIn(SchedulingUnit u) const {
     switch (u) {
-    case SchedulingUnit::trgLabels: return prevLabelsTotal;
-    case SchedulingUnit::updates  : return prevBatches;
-    case SchedulingUnit::epochs   : return prevEpochs;
-    default: ABORT("corrupt enum value");
+      case SchedulingUnit::trgLabels: return prevLabelsTotal;
+      case SchedulingUnit::updates  : return prevBatches;
+      case SchedulingUnit::epochs   : return prevEpochs;
+      default: ABORT("corrupt enum value");
     }
   }
 
@@ -169,8 +171,11 @@ public:
 
   void newEpoch() {
     ++epochs;
-    for(auto observer : observers_)
-      observer.lock()->actAfterEpoch(*this);
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
+      observer->actAfterEpoch(*this);
+    }
     samplesEpoch = 0;
     batchesEpoch = 0;
   }
@@ -180,22 +185,31 @@ public:
     batchesEpoch += batchesInUpdate;
     loaded = false;
     validated = false;
-    for(auto observer : observers_)
-      observer.lock()->actAfterBatches(*this);
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
+      observer->actAfterBatches(*this);
+    }
   }
 
   void newStalled(size_t num) {
     stalled = num;
     if(num > maxStalled)
       ++maxStalled;
-    for(auto observer : observers_)
-      observer.lock()->actAfterStalled(*this);
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
+      observer->actAfterStalled(*this);
+    }
   }
 
   void newLoad() {
     loaded = true;
-    for(auto observer : observers_)
-      observer.lock()->actAfterLoaded(*this);
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
+      observer->actAfterLoaded(*this);
+    }
   }
 
   void load(const std::string& name) {
@@ -270,7 +284,8 @@ public:
   }
 
 private:
-  // this needs to be a vector of weak pointers, otherwise circular dependencies
+  // this needs to be a vector of weak pointers, otherwise
+  // it is likely to cause circular dependencies.
   std::vector<Weak<TrainingObserver>> observers_;
 };
 }  // namespace marian

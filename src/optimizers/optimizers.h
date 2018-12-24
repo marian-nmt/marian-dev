@@ -17,10 +17,7 @@ namespace marian {
 /**
  * Base class for optimizers.
  */
-class OptimizerBase
-  : public TrainingObserver,
-    public ExponentialSmoothing
-{
+class OptimizerBase : public TrainingObserver, public ExponentialSmoothing {
 public:
   OptimizerBase(Ptr<Options> options)
   : ExponentialSmoothing(options),

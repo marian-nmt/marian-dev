@@ -10,7 +10,7 @@ namespace marian {
 class Scheduler : public TrainingObserver {
 private:
   Ptr<Options> options_;
-  std::vector<Ptr<ValidatorBase>> validators_;
+  std::vector<Ptr<ValidatorBase>> validators_; // @TODO: Weak pointers?
 
   bool first_{true};
 

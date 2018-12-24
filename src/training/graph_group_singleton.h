@@ -15,7 +15,6 @@ public:
   virtual void setScheduler(Ptr<Scheduler> scheduler) override;
 
 private:
-  Ptr<OptimizerBase> opt_;
   Ptr<models::ModelBase> builder_;
   Ptr<ExpressionGraph> graph_;
 

@@ -15,9 +15,9 @@ public:
   virtual void setScheduler(Ptr<Scheduler> scheduler) override;
 
 private:
+  Ptr<OptimizerBase> opt_;
   Ptr<models::ModelBase> builder_;
   Ptr<ExpressionGraph> graph_;
-  Ptr<ExpressionGraph> graphAvg_;
 
   void execute(Ptr<data::Batch> batch);
 
@@ -32,13 +32,16 @@ public:
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
 
-    if(options_->get<bool>("fp16"))
-      graph_->setParameterType(Type::float16);
+    auto precisions = options_->get<std::vector<std::string>>("precision");
+    graph_->setParameterType(typeFromString(precisions[0]));
+
+    if(options_->get<bool>("check-nan"))
+      graph_->setThrowNan(true);
 
     graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 
-    opt_ = Optimizer(options_);
+    opt_ = Optimizer(options_, graph_->allocator());
     builder_ = models::from_options(options_, models::usage::training);
   }
 

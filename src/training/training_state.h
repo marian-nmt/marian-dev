@@ -118,7 +118,7 @@ public:
 
   void registerObserver(Ptr<TrainingObserver> observer) {
     observers_.push_back(observer);
-    observers_.back()->init(*this);
+    observers_.back().lock()->init(*this);
   }
 
   // return the totals count that corresponds to the given unit (batches, labels, or epochs)
@@ -170,7 +170,7 @@ public:
   void newEpoch() {
     ++epochs;
     for(auto observer : observers_)
-      observer->actAfterEpoch(*this);
+      observer.lock()->actAfterEpoch(*this);
     samplesEpoch = 0;
     batchesEpoch = 0;
   }
@@ -181,7 +181,7 @@ public:
     loaded = false;
     validated = false;
     for(auto observer : observers_)
-      observer->actAfterBatches(*this);
+      observer.lock()->actAfterBatches(*this);
   }
 
   void newStalled(size_t num) {
@@ -189,13 +189,13 @@ public:
     if(num > maxStalled)
       ++maxStalled;
     for(auto observer : observers_)
-      observer->actAfterStalled(*this);
+      observer.lock()->actAfterStalled(*this);
   }
 
   void newLoad() {
     loaded = true;
     for(auto observer : observers_)
-      observer->actAfterLoaded(*this);
+      observer.lock()->actAfterLoaded(*this);
   }
 
   void load(const std::string& name) {
@@ -270,6 +270,7 @@ public:
   }
 
 private:
-  std::vector<Ptr<TrainingObserver>> observers_;
+  // this needs to be a vector of weak pointers, otherwise circular dependencies
+  std::vector<Weak<TrainingObserver>> observers_;
 };
 }  // namespace marian

@@ -33,6 +33,7 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
     optAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
   }
 
+
   if(mvAvg_ && !avg_)
     // allocate exp smooth shard tensor
     optAlloc_->allocate(avg_, {1, elements}, optimizerType_);
@@ -46,30 +47,35 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
       // keep parameter master copy around and initialize once, converting types
       CopyCast(pm_, params);
     }
-    // overwrite temporary gradients with every update
-    CopyCast(gd_, grads);
   } else {
     // no conversion, just assign at each update
     pm_ = params;
-    gd_ = grads;
   }
 
   bool hasNanOrInf = false;
   if(costScale_) {
     bool hasNan = false, hasInf = false;
+    // perform NaN/Inf check on original gradients
     IsNan(grads, allocator_, hasNan, hasInf); // what about padded space? Make sure it's set to 0!
     hasNanOrInf = hasNan || hasInf;
   }
 
   if(!hasNanOrInf) {
+    noNanSeen_++;
+
     using namespace functional;
+    if(castOptimizerType_)
+      CopyCast(gd_, grads);
+    else
+      gd_ = grads;
+
     // reverse cost scaling when used
     if(costScaleFactor_ != 1.f)
       Element(_1 = _1 / costScaleFactor_, gd_);
 
     // clip gradients when used
     if(clipper_)
-      clipper_->clip(grads);
+      clipper_->clip(gd_);
 
     // perform update on master copy with cast gradients
     // if a type cast has been performed. Otherwise the
@@ -83,16 +89,18 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
     if(castOptimizerType_)
       CopyCast(params, pm_);
 
-    if(costScale_ && batchesSeen_ > 0 && batchesSeen_ % costScaleFreq_ == 0) {
+    if(costScale_ && noNanSeen_ > 0 && noNanSeen_ % costScaleFreq_ == 0) {
       costScaleFactor_ *= costScaleMultiplier_;
-      LOG(info, "Increasing cost-scaling to {}", costScaleFactor_);
+      LOG(info, "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}", noNanSeen_, costScaleFactor_);
     }
   } else if(costScale_) {
     costScaleFactor_ /= costScaleMultiplier_;
-    LOG(warn, "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling to {}", costScaleFactor_);
+    LOG(warn, "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}", costScaleFactor_);
+    noNanSeen_ = 0;
   } else {
     // actually we should not be NaN checking without scaling, abort.
     ABORT("Seen NaN/Inf, but not cost-scaling. Don't know what to do.");
+    noNanSeen_ = 0;
   }
 
   params->getBackend()->synchronize();

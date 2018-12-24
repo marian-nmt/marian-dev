@@ -6,7 +6,7 @@
 
 namespace marian {
 
-void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
+void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float costScaleFactor) {
   size_t refMBWords = refMBWordsParam_;
   if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
     refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
@@ -52,56 +52,31 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize) {
     pm_ = params;
   }
 
-  bool hasNanOrInf = false;
-  if(costScale_) {
-    bool hasNan = false, hasInf = false;
-    // perform NaN/Inf check on original gradients
-    IsNan(grads, allocator_, hasNan, hasInf); // what about padded space? Make sure it's set to 0!
-    hasNanOrInf = hasNan || hasInf;
-  }
+  using namespace functional;
+  if(castOptimizerType_)
+    CopyCast(gd_, grads);
+  else
+    gd_ = grads;
 
-  if(!hasNanOrInf) {
-    noNanSeen_++;
+  // reverse cost scaling when used
+  if(costScaleFactor != 1.f)
+    Element(_1 = _1 / costScaleFactor, gd_);
 
-    using namespace functional;
-    if(castOptimizerType_)
-      CopyCast(gd_, grads);
-    else
-      gd_ = grads;
+  // clip gradients when used
+  if(clipper_)
+    clipper_->clip(gd_);
 
-    // reverse cost scaling when used
-    if(costScaleFactor_ != 1.f)
-      Element(_1 = _1 / costScaleFactor_, gd_);
+  // perform update on master copy with cast gradients
+  // if a type cast has been performed. Otherwise the
+  // original tensors are used.
+  updateImpl(pm_, gd_, mbSize, refMBWords);
 
-    // clip gradients when used
-    if(clipper_)
-      clipper_->clip(gd_);
+  if(mvAvg_)
+    updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
 
-    // perform update on master copy with cast gradients
-    // if a type cast has been performed. Otherwise the
-    // original tensors are used.
-    updateImpl(pm_, gd_, mbSize, refMBWords);
-
-    if(mvAvg_)
-      updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
-
-    // undo paramter type cast if required
-    if(castOptimizerType_)
-      CopyCast(params, pm_);
-
-    if(costScale_ && noNanSeen_ > 0 && noNanSeen_ % costScaleFreq_ == 0) {
-      costScaleFactor_ *= costScaleMultiplier_;
-      LOG(info, "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}", noNanSeen_, costScaleFactor_);
-    }
-  } else if(costScale_) {
-    costScaleFactor_ /= costScaleMultiplier_;
-    LOG(warn, "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}", costScaleFactor_);
-    noNanSeen_ = 0;
-  } else {
-    // actually we should not be NaN checking without scaling, abort.
-    ABORT("Seen NaN/Inf, but not cost-scaling. Don't know what to do.");
-    noNanSeen_ = 0;
-  }
+  // undo paramter type cast if required
+  if(castOptimizerType_)
+    CopyCast(params, pm_);
 
   params->getBackend()->synchronize();
 }
@@ -125,8 +100,6 @@ void OptimizerBase::save(std::vector<io::Item>& items,
       });
     items.emplace_back(std::move(avg));
   }
-  std::vector<float> vCostScale{costScaleFactor_};
-  items.emplace_back(std::move(io::fromVector(vCostScale, "cost_scale")));
 }
 
 void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {

@@ -208,16 +208,19 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
       builder = builders_[i++];
     }
 
+    ABORT_IF(costScale_ ,"Cost-scaling not implemented for AsyncSGD");
+
     auto costNode = builder->build(graph, batch);
-    float costScaleFactor = shardOpt_[t_id]->getCostScaleFactor();
-    costNode = costNode * costScaleFactor;
+    if(costScaleFactor_ != 1.f) {
+      costNode = costNode * costScaleFactor_;
+    }
 
     if(t % optimizerDelay_ == 0) {
       fetchParams(graph->params()->vals(), params_, t_id);
     }
 
     graph->forward();
-    cost += costNode->scalar() / costScaleFactor; // divide for reporting
+    cost += costNode->scalar() / costScaleFactor_;
     graph->backward();
 
     Tensor gradients;

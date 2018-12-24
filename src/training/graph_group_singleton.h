@@ -17,12 +17,14 @@ public:
 private:
   Ptr<models::ModelBase> builder_;
   Ptr<ExpressionGraph> graph_;
+  bool mvAvg_{false};
 
   void execute(Ptr<data::Batch> batch);
 
 public:
-  SingletonGraph(Ptr<Options> config)
-    : GraphGroup(config) {
+  SingletonGraph(Ptr<Options> options)
+    : GraphGroup(options),
+      mvAvg_(options->get<float>("exponential-smoothing") > 0) {
     // Get device ID
     auto devices = Config::getDevices(options_);
     ABORT_IF(devices.size() != 1, "Only one device ID should be provided for singleton training");

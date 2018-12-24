@@ -23,8 +23,28 @@ protected:
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
   size_t typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
 
+  bool costScale_{false};
+  float costScaleFactor_{1.f};
+  size_t costScaleFreq_{2000};
+  float costScaleMultiplier_{2.f};
+  size_t noNanSeen_{0};
+
 public:
-  GraphGroup(Ptr<Options> options) : options_(options) {}
+  GraphGroup(Ptr<Options> options) : options_(options) {
+    if(options_->has("cost-scaling")) {
+      auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
+      costScale_ = true;
+      costScaleFactor_ = std::stof(vcs[0]);
+      costScaleFreq_ = std::stoul(vcs[1]);
+      costScaleMultiplier_ = std::stof(vcs[2]);
+
+      LOG_ONCE(info,
+               "Training with cost scaling - factor: {}, frequency: {}, multiplier: {}",
+               costScaleFactor_,
+               costScaleFreq_,
+               costScaleMultiplier_);
+    }
+  }
 
   virtual ~GraphGroup() {}
 

@@ -357,12 +357,14 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       if (!subBatch)
         break;
 
-      float costScaleFactor = shardOpt_[localDeviceIndex]->getCostScaleFactor();
+      ABORT_IF(costScale_, "Cost-scaling not implemented");
+
       auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
-      costNode = costNode * costScaleFactor;
+      if(costScaleFactor_ != 1.f)
+        costNode = costNode * costScaleFactor_;
 
       graph->forward();
-      localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor * (float)overstuff);
+      localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
   });

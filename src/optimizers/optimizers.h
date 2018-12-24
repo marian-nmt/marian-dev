@@ -25,20 +25,6 @@ public:
     eta_(options_->get<float>("learn-rate")),
     refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")) {
 
-    if(options_->has("cost-scaling")) {
-      auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
-      costScale_ = true;
-      costScaleFactor_ = std::stof(vcs[0]);
-      costScaleFreq_ = std::stoul(vcs[1]);
-      costScaleMultiplier_ = std::stof(vcs[2]);
-
-      LOG_ONCE(info,
-               "Training with cost scaling - factor: {}, frequency: {}, multiplier: {}",
-               costScaleFactor_,
-               costScaleFreq_,
-               costScaleMultiplier_);
-    }
-
     auto precisions = options_->get<std::vector<std::string>>("precision");
     optimizerType_ = typeFromString(precisions[1]);
 
@@ -58,14 +44,14 @@ public:
 
   static constexpr size_t mbSizeNotProvided = SIZE_MAX;
 
-  void update(Ptr<ExpressionGraph> graph, size_t mbSize = mbSizeNotProvided) {
+  void update(Ptr<ExpressionGraph> graph, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f) {
     Tensor p = graph->params()->vals();
     Tensor g = graph->params()->grads();
 
     update(p, g, mbSize);
   }
 
-  void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided);
+  void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f);
 
   virtual void init(TrainingState& state) override {
     eta_ = state.eta;
@@ -112,8 +98,6 @@ public:
                     const GatherStateFunc& /*gatherFn*/,
                     bool /*isMainProcess*/ = true) {}
 
-  float getCostScaleFactor() { return costScaleFactor_; }
-
 protected:
   virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
   virtual void resetStats() = 0;
@@ -128,12 +112,6 @@ protected:
   float eta_;
   // Reference MB size. This enables automatic adjustment of optimizer hyper-parameters to MB size.
   size_t refMBWordsParam_{0}; // 0 means no adjustment
-  // Cost scaling factor
-  bool costScale_{false};
-  float costScaleFactor_{1.f};
-  size_t costScaleFreq_{2000};
-  float costScaleMultiplier_{2.f};
-  size_t noNanSeen_{0};
   // Seen updates so far
   size_t batchesSeen_{0};
 

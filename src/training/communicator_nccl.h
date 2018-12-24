@@ -29,7 +29,7 @@ private:
   std::vector<int> devices_;          // [device index]
   Ptr<IMPIWrapper> mpi_; // (may be null)
   mutable ThreadPool threadPool_;
-  mutable std::vector<std::future<void>> threadResults_; // [device index]
+  mutable std::vector<std::future<bool>> threadResults_; // [device index]
 
   void groupStart() const { NCCL_CHECK(ncclGroupStart()); } // helpers to make sure we check the error
   void groupEnd()   const { NCCL_CHECK(ncclGroupEnd());   }
@@ -203,9 +203,10 @@ public:
     }
   }
 
-  void foreach(const ForeachFunc& func, bool parallel = true) const override {
+  bool foreach(const ForeachFunc& func, bool parallel = true) const override {
     parallel &= graphs_.size() > 1;
 
+    bool allGood = true;
     for(size_t i = 0; i < graphs_.size(); ++i) {
       size_t begin, end;
       std::tie
@@ -213,11 +214,16 @@ public:
       if (parallel)
         threadResults_[i] = threadPool_.enqueue(func, i, begin, end);
       else
-        func(i, begin, end);
+        allGood = allGood && func(i, begin, end);
     }
-    if (parallel)
-      for(size_t i = 0; i < graphs_.size(); ++i)
+    if (parallel) {
+      for(size_t i = 0; i < graphs_.size(); ++i) {
         threadResults_[i].wait();
+        allGood = allGood && threadResults_[i].get();
+      }
+    }
+
+    return allGood;
   }
 
   void scatterReduceAndResetGrads() const override {
@@ -253,6 +259,8 @@ public:
         grads->subtensor(0, begin)->set(0.f);
       if (end < size)
         grads->subtensor(end, size - end)->set(0.f);
+
+      return true; // dummy success
     };
     foreach(resetGrads);
   }

@@ -17,6 +17,8 @@
 #endif
 // clang-format on
 
+#include <future>
+
 namespace marian {
 
 struct/*interface*/ IMPIWrapper; // @TODO: Should we use a separate header, or move this declaration up here?
@@ -33,8 +35,8 @@ public:
   virtual ~ICommunicator() {}
 
   // helper to apply a function to each local graph, in parallel threads
-  typedef std::function<void(size_t, size_t /*shardBegin*/, size_t /*shardEnd*/)> ForeachFunc;
-  virtual void foreach(const ForeachFunc& func, bool parallel = true) const = 0;
+  typedef std::function<bool(size_t, size_t /*shardBegin*/, size_t /*shardEnd*/)> ForeachFunc;
+  virtual bool foreach(const ForeachFunc& func, bool parallel = true) const = 0;
   // @TODO: We probably can still share foreach() between the two implementations. Just need to move some helper functions from the .cu file.
 
   virtual void scatterReduceAndResetGrads() const = 0; // reduce param gradients and scatter into gradient shards
@@ -138,28 +140,34 @@ public:
 
   ~DefaultCommunicator() override {}
 
-  void foreach(const ForeachFunc& func, bool parallel = true) const override {
+  bool foreach(const ForeachFunc& func, bool parallel = true) const override {
+    bool allGood = true;
+
     parallel &= graphs_.size() > 1;
 
     size_t totalSize = graphs_[0]->params()->vals()->size();
     size_t shardSize = (size_t)ceil(totalSize / (float)graphs_.size());
 
     size_t pos = 0;
-    std::vector<std::thread> group;
+    std::vector<std::future<bool>> group;
     // iterate over all shards
     for(size_t idx = 0; idx < graphs_.size(); ++idx) {
       size_t size = std::min(shardSize, totalSize);
 
-      if (parallel)
-        group.emplace_back(func, idx, pos, pos+size);
+      if(parallel)
+        group.emplace_back(std::move(std::async(func, idx, pos, pos+size)));
       else
-        func(idx, pos, pos+size);
+        allGood = allGood && func(idx, pos, pos+size);
 
       pos += size;
       totalSize -= size;
     }
-    for(auto& t : group) // (note: group is empty is not parallel)
-      t.join();
+    for(auto& task : group) { // (note: group is empty if not parallel)
+      task.wait();
+      allGood = allGood && task.get();
+    }
+
+    return allGood;
   }
 
   void scatterReduceAndResetGrads() const override {
@@ -182,6 +190,8 @@ public:
           Element(_1 = _1 + _2, curGrad, tmpTensors_[idx]);
         }
       }
+
+      return true; // dummy success
     };
 
     foreach(scatter);
@@ -205,6 +215,8 @@ public:
           subShard->copyFrom(curShard);
         }
       }
+
+      return true; // dummy success
     };
 
     foreach(gather);
@@ -223,6 +235,8 @@ public:
       // Swap shard with corresponding share from last graph
       auto subParamLast = graphs_.back()->params()->vals()->subtensor(begin, paramShards[idx]->size());
       paramShards[idx]->swap(subParamLast);
+
+      return true; // dummy success
     };
     // Execute for each shard
     foreach(gather);

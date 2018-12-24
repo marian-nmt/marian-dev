@@ -24,10 +24,10 @@ protected:
   size_t typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
 
   bool costScale_{false};
-  float costScaleFactor_{1.f};
+  float costScaleFactor_{1.f}; // @TODO, add current costScaleFactor_ to trainingState for serialization
   size_t costScaleFreq_{2000};
   float costScaleMultiplier_{2.f};
-  size_t noNanSeen_{0};
+  size_t noNanSeen_{0}; // @TODO, add current noNanSeen_ to trainingState for serialization
 
 public:
   GraphGroup(Ptr<Options> options) : options_(options) {

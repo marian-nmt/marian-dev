@@ -58,6 +58,7 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
     graphs_[i]->forward();
     graphs_[i]->params()->allocateBackward();
     graphs_[i]->params()->set_zero_adjoint();
+    return true; // dummy success
   });
 
   // Copy weights from 0-th graph to all other graphs
@@ -65,6 +66,7 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
   comm_->foreach([&](size_t i, size_t /*begin*/, size_t /*end*/) {
     if (i > 0)
       graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
+    return true; // dummy success
   });
   //ThreadPool pool(graphs_.size() - 1, graphs_.size() - 1);
   //for(size_t i = 1; i < graphs_.size(); ++i) {
@@ -105,6 +107,7 @@ void SyncGraphGroup::initializeAvg() {
 
     // note: for multi-node, graphAvg and graphs_[0] contain a complete copy, from which
     // each MPI process copies only part into its respective shard(s)
+    return true; // dummy success
   };
 
   paramsAllocs_.resize(graphs_.size()); // allocators
@@ -345,7 +348,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   // This happens in multiple steps in case of delay > 1.
   std::vector<float> localDeviceCosts(devices_.size(), 0.f); // [local device index] aggregate cost for each local device
 
-  comm_->foreach([&](size_t localDeviceIndex, size_t /*begin*/, size_t /*end*/) { // parallel across devices. Aggregate for warp > 1.
+  bool noNanOrInf = comm_->foreach([&](size_t localDeviceIndex, size_t /*begin*/, size_t /*end*/) { // parallel across devices. Aggregate for warp > 1.
     auto graph = graphs_[localDeviceIndex];
     // reset gradient  --presently done outside
     //graph->params()->allocateBackward();
@@ -357,8 +360,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       if (!subBatch)
         break;
 
-      ABORT_IF(costScale_, "Cost-scaling not implemented");
-
       auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
       if(costScaleFactor_ != 1.f)
         costNode = costNode * costScaleFactor_;
@@ -367,42 +368,67 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
+
+    bool noNanOrInf = true;
+    if(costScale_) {
+      bool hasNan = false, hasInf = false;
+      IsNan(graph->params()->grads(), graph->allocator(), hasNan, hasInf);
+      noNanOrInf = !(hasNan || hasInf);
+    }
+
+    if(!noNanOrInf) { // There was a Nan/Inf no update will be performed, reset accumulated gradients here
+      graph->params()->grads()->set(0.f);
+    }
+
+    return noNanOrInf;
   });
 
   // At this point, each device on each MPI process has a gradient aggregated over a subset of the sub-batches.
 
-  // If individual gradients were averages, then need to average again over all subBatches
-  float div = (float)subBatches.size();
-  if (options_->get<std::string>("cost-type") == "ce-sum")
-    div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
+  if(noNanOrInf) {
+    noNanSeen_++;
 
-  // Update parameter shard with gradient shard
-  auto update = [&](size_t i, size_t begin, size_t end) {
-    auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
-    auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
+    // If individual gradients were averages, then need to average again over all subBatches
+    float div = (float)subBatches.size();
+    if (options_->get<std::string>("cost-type") == "ce-sum")
+      div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
 
-    if(div != 1) {
-      using namespace functional;
-      Element(_1 = _1 / div, curGrad);   // average once again for ce-mean*, or scale down if overstuffed for ce-sum
-    }
+    // Update parameter shard with gradient shard
+    auto update = [&](size_t i, size_t begin, size_t end) {
+      auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
+      auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
 
-    // actual model update
-    auto updateTrgWords =
-        /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
-          effectiveBatchTrgWords // if overstuffing then bring the count back to the original value
-        /*else*/:
-          OptimizerBase::mbSizeNotProvided;
-    shardOpt_[i]->update(curParam, curGrad, updateTrgWords);
-    curGrad->set(0.f);
+      if(div != 1) {
+        using namespace functional;
+        Element(_1 = _1 / div, curGrad);   // average once again for ce-mean*, or scale down if overstuffed for ce-sum
+      }
 
-    // if(mvAvg_)
-    //   updateAvgParams(
-    //       paramsAvg_[i], curParam, scheduler_->numberOfBatches(), updateTrgWords);
-  };
+      // actual model update
+      auto updateTrgWords =
+          /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
+            effectiveBatchTrgWords // if overstuffing then bring the count back to the original value
+          /*else*/:
+            OptimizerBase::mbSizeNotProvided;
 
-  comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices (globally) into shards
-  comm_->foreach(update);              // per-shard model-update
-  comm_->allGatherParams();            // distribute param value shards back
+      shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_);
+      curGrad->set(0.f);
+
+      // if(mvAvg_)
+      //   updateAvgParams(
+      //       paramsAvg_[i], curParam, scheduler_->numberOfBatches(), updateTrgWords);
+      return true; // dummy success
+    };
+
+    comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices (globally) into shards
+    comm_->foreach(update);              // per-shard model-update
+    comm_->allGatherParams();            // distribute param value shards back
+  } else {
+    costScaleFactor_ /= costScaleMultiplier_;
+    LOG(warn,
+        "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",
+        costScaleFactor_);
+    noNanSeen_ = 0;
+  }
 
   // cost across all local devices (scheduler will aggregate cross-process)
   float localCost = 0;
@@ -429,6 +455,14 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         scheduler_->validate(graphs_);
       swapParamsAvg();
     }
+  }
+
+  if(costScale_ && noNanOrInf && noNanSeen_ % costScaleFreq_ == 0) {
+    costScaleFactor_ *= costScaleMultiplier_;
+    LOG(info,
+        "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}",
+        noNanSeen_,
+        costScaleFactor_);
   }
 }
 

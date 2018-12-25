@@ -190,11 +190,25 @@ public:
           Element(_1 = _1 + _2, curGrad, tmpTensors_[idx]);
         }
       }
-
       return true; // dummy success
     };
 
     foreach(scatter);
+
+    // reset gradients
+    // @TODO: all the different places where gradients get reset are confusing
+    auto resetGrads = [&](size_t i, size_t begin, size_t end) {
+      auto grads = graphs_[i]->params()->grads();
+      auto size = grads->size();
+      // reset everything outside the shard that we reduce in
+      if (begin > 0)
+        grads->subtensor(0, begin)->set(0.f);
+      if (end < size)
+        grads->subtensor(end, size - end)->set(0.f);
+
+      return true; // dummy success
+    };
+    foreach(resetGrads);
   }
 
   void allGatherParams() const override {

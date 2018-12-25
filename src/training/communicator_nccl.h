@@ -251,6 +251,7 @@ public:
 
     // reset gradients
     // In the future, we can keep quantization residuals here straight in the grads themselves.
+    // @TODO: all the different places where gradients get reset are confusing
     auto resetGrads = [&](size_t i, size_t begin, size_t end) {
       auto grads = graphs_[i]->params()->grads();
       auto size = grads->size();

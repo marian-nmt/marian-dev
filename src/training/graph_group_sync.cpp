@@ -348,7 +348,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   // This happens in multiple steps in case of delay > 1.
   std::vector<float> localDeviceCosts(devices_.size(), 0.f); // [local device index] aggregate cost for each local device
 
-  bool noNanOrInf = comm_->foreach([&](size_t localDeviceIndex, size_t /*begin*/, size_t /*end*/) { // parallel across devices. Aggregate for warp > 1.
+  comm_->foreach([&](size_t localDeviceIndex, size_t /*begin*/, size_t /*end*/) { // parallel across devices. Aggregate for warp > 1.
     auto graph = graphs_[localDeviceIndex];
     // reset gradient  --presently done outside
     //graph->params()->allocateBackward();
@@ -368,61 +368,63 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
-
-    bool noNanOrInf = true;
-    if(costScale_) {
-      bool hasNan = false, hasInf = false;
-      IsNan(graph->params()->grads(), graph->allocator(), hasNan, hasInf);
-      noNanOrInf = !(hasNan || hasInf);
-    }
-
-    if(!noNanOrInf) { // There was a Nan/Inf no update will be performed, reset accumulated gradients here
-      graph->params()->grads()->set(0.f);
-    }
-
-    return noNanOrInf;
+    return true; // dummy success
   });
 
   // At this point, each device on each MPI process has a gradient aggregated over a subset of the sub-batches.
 
+  // If individual gradients were averages, then need to average again over all subBatches
+  float div = (float)subBatches.size();
+  if (options_->get<std::string>("cost-type") == "ce-sum")
+    div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
+
+  // check for Nan or Inf in all summed up shards
+  auto checkNan = [&](size_t i, size_t begin, size_t end) {
+    auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
+
+    bool hasNan = false, hasInf = false;
+    IsNan(graphs_[i]->params()->grads(), graphs_[i]->allocator(), hasNan, hasInf);
+    return !(hasNan || hasInf);
+  };
+
+  // Update parameter shard with gradient shard
+  auto update = [&](size_t i, size_t begin, size_t end) {
+    auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
+    auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
+
+    if(div != 1) {
+      using namespace functional;
+      Element(_1 = _1 / div, curGrad);   // average once again for ce-mean*, or scale down if overstuffed for ce-sum
+    }
+
+    // actual model update
+    auto updateTrgWords =
+        /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
+          effectiveBatchTrgWords // if overstuffing then bring the count back to the original value
+        /*else*/:
+          OptimizerBase::mbSizeNotProvided;
+
+    shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_);
+    curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
+
+    return true; // dummy success
+  };
+
+  // Reset gradient shard when no update was done
+  auto reset = [&](size_t i, size_t begin, size_t end) {
+    auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
+    curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
+    return true; // dummy success
+  };
+
+  comm_->scatterReduceAndResetGrads();      // reduce gradients across all devices (globally) into shards
+  bool noNanOrInf = costScale_ ? comm_->foreach(checkNan) : true; // @TODO: does this work with MPI?
   if(noNanOrInf) {
+    comm_->foreach(update);   // per-shard model-update
+    comm_->allGatherParams(); // distribute param value shards back
     noNanSeen_++;
-
-    // If individual gradients were averages, then need to average again over all subBatches
-    float div = (float)subBatches.size();
-    if (options_->get<std::string>("cost-type") == "ce-sum")
-      div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
-
-    // Update parameter shard with gradient shard
-    auto update = [&](size_t i, size_t begin, size_t end) {
-      auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
-      auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
-
-      if(div != 1) {
-        using namespace functional;
-        Element(_1 = _1 / div, curGrad);   // average once again for ce-mean*, or scale down if overstuffed for ce-sum
-      }
-
-      // actual model update
-      auto updateTrgWords =
-          /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
-            effectiveBatchTrgWords // if overstuffing then bring the count back to the original value
-          /*else*/:
-            OptimizerBase::mbSizeNotProvided;
-
-      shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_);
-      curGrad->set(0.f);
-
-      // if(mvAvg_)
-      //   updateAvgParams(
-      //       paramsAvg_[i], curParam, scheduler_->numberOfBatches(), updateTrgWords);
-      return true; // dummy success
-    };
-
-    comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices (globally) into shards
-    comm_->foreach(update);              // per-shard model-update
-    comm_->allGatherParams();            // distribute param value shards back
   } else {
+    comm_->foreach(reset);   // per-shard model-update
     costScaleFactor_ /= costScaleMultiplier_;
     LOG(warn,
         "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",

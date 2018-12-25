@@ -381,9 +381,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   // check for Nan or Inf in all summed up shards
   auto checkNan = [&](size_t i, size_t begin, size_t end) {
     auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
-
     bool hasNan = false, hasInf = false;
-    IsNan(graphs_[i]->params()->grads(), graphs_[i]->allocator(), hasNan, hasInf);
+    IsNan(curGrad, graphs_[i]->allocator(), hasNan, hasInf);
     return !(hasNan || hasInf);
   };
 

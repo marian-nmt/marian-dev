@@ -24,15 +24,9 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
     bool hasNan = false, hasInf = false;
     IsNan(graph_->params()->grads(), graph_->allocator(), hasNan, hasInf);
     noNanOrInf = !(hasNan || hasInf);
-    if(noNanOrInf) {
-      noNanSeen_++;
-    } else {
-      costScaleFactor_ /= costScaleMultiplier_;
-      LOG(warn,
-          "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",
-          costScaleFactor_);
-      noNanSeen_ = 0;
-    }
+
+    if(!noNanOrInf)
+      GraphGroup::decreaseCostScaleFactor();
   }
 
   if(noNanOrInf)
@@ -58,13 +52,8 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
       this->save();
   }
 
-  if(costScale_ && noNanOrInf && noNanSeen_ % costScaleFreq_ == 0) {
-    costScaleFactor_ *= costScaleMultiplier_;
-    LOG(info,
-        "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}",
-        noNanSeen_,
-        costScaleFactor_);
-  }
+  if(noNanOrInf)
+    GraphGroup::increaseCostScaleFactor();
 }
 
 }  // namespace marian

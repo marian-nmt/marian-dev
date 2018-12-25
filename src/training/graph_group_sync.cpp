@@ -421,14 +421,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   if(noNanOrInf) {
     comm_->foreach(update);   // per-shard model-update
     comm_->allGatherParams(); // distribute param value shards back
-    noNanSeen_++;
   } else {
     comm_->foreach(reset);   // per-shard model-update
-    costScaleFactor_ /= costScaleMultiplier_;
-    LOG(warn,
-        "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",
-        costScaleFactor_);
-    noNanSeen_ = 0;
+    GraphGroup::decreaseCostScaleFactor();
   }
 
   // cost across all local devices (scheduler will aggregate cross-process)
@@ -458,13 +453,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     }
   }
 
-  if(costScale_ && noNanOrInf && noNanSeen_ % costScaleFreq_ == 0) {
-    costScaleFactor_ *= costScaleMultiplier_;
-    LOG(info,
-        "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}",
-        noNanSeen_,
-        costScaleFactor_);
-  }
+  if(noNanOrInf)
+    GraphGroup::increaseCostScaleFactor();
 }
 
 void SyncGraphGroup::load() /*override*/ {

@@ -50,6 +50,25 @@ public:
 
   virtual void update(Ptr<data::Batch> batch) = 0;
 
+  void increaseCostScaleFactor() {
+    noNanSeen_++;
+    if(costScale_ && noNanSeen_ % costScaleFreq_ == 0) {
+      costScaleFactor_ *= costScaleMultiplier_;
+      LOG(info,
+          "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}",
+          noNanSeen_,
+          costScaleFactor_);
+    }
+  }
+
+  void decreaseCostScaleFactor() {
+    costScaleFactor_ /= costScaleMultiplier_;
+    LOG(warn,
+        "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",
+        costScaleFactor_);
+    noNanSeen_ = 0;
+  }
+
   virtual void load() = 0;
 
   virtual void save(bool isFinal = false) = 0;

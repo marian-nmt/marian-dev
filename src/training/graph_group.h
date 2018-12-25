@@ -50,9 +50,15 @@ public:
 
   virtual void update(Ptr<data::Batch> batch) = 0;
 
+  // increase cost-scaling factor if no NaN has been detected for a
+  // given number of iterations. Usually we increase by 2 which adds
+  // one more bit for precision.
   void increaseCostScaleFactor() {
+    if(!costScale_)
+      return;
+
     noNanSeen_++;
-    if(costScale_ && noNanSeen_ % costScaleFreq_ == 0) {
+    if(noNanSeen_ % costScaleFreq_ == 0) {
       costScaleFactor_ *= costScaleMultiplier_;
       LOG(info,
           "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}",
@@ -61,7 +67,11 @@ public:
     }
   }
 
+  // call when a NaN was seen to decrease cost-scaling factor
   void decreaseCostScaleFactor() {
+    if(!costScale_)
+      return;
+
     costScaleFactor_ /= costScaleMultiplier_;
     LOG(warn,
         "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",

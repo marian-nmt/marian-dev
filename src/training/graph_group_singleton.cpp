@@ -11,25 +11,26 @@ void SingletonGraph::setScheduler(Ptr<Scheduler> scheduler) {
 
 void SingletonGraph::execute(Ptr<data::Batch> batch) {
   auto costNode = builder_->build(graph_, batch);
-
   if(costScaleFactor_ != 1.f)
     costNode = costNode * costScaleFactor_;
 
+  // @TODO: missing delay, or use only --sync-sgd
   graph_->forward();
   float cost = costNode->scalar() / costScaleFactor_;
   graph_->backward();
 
   bool noNanOrInf = true;
   if(costScale_) {
+    // Are there NaNs in the gradient?
     bool hasNan = false, hasInf = false;
     IsNan(graph_->params()->grads(), graph_->allocator(), hasNan, hasInf);
     noNanOrInf = !(hasNan || hasInf);
 
-    if(!noNanOrInf)
+    if(!noNanOrInf) // there was a NaN, decrease cost-scaling
       GraphGroup::decreaseCostScaleFactor();
   }
 
-  if(noNanOrInf)
+  if(noNanOrInf) // skip update if NaN was seen @TODO: repeat instead with smaller factor?
     opt_->update(graph_->params()->vals(),
                  graph_->params()->grads(),
                  OptimizerBase::mbSizeNotProvided,

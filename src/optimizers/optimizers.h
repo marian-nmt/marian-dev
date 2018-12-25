@@ -48,7 +48,7 @@ public:
     Tensor p = graph->params()->vals();
     Tensor g = graph->params()->grads();
 
-    update(p, g, mbSize);
+    update(p, g, mbSize, costScaleFactor);
   }
 
   void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f);

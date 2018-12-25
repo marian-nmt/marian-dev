@@ -14,7 +14,6 @@ namespace marian {
 
 namespace gpu {
 
-
 namespace atomics {
 
 static inline  __device__ void atomicAdd(float *address, float val) {
@@ -23,6 +22,9 @@ static inline  __device__ void atomicAdd(float *address, float val) {
 
 // @TODO: copied from CuTorch, adapt this better, give credit.
 static inline  __device__ void atomicAdd(half *address, half val) {
+#if __CUDA_ARCH__ >= 700 && CUDA_VERSION >= 10000 // compute capability 70 and higher with CUDA 10
+  ::atomicAdd(address, val);
+#else // __CUDA_ARCH__ < 700
   unsigned int * address_as_ui =
       (unsigned int *) ((char *)address - ((size_t)address & 2));
   unsigned int old = *address_as_ui;
@@ -30,19 +32,20 @@ static inline  __device__ void atomicAdd(half *address, half val) {
 
   do {
     assumed = old;
-#if CUDA_VERSION < 9000
+  #if CUDA_VERSION < 9000
     half hsum;
     hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
     hsum = hsum + val;
-#else
+  #else
     __half_raw hsum;
     hsum.x = (size_t)address & 2 ? (old >> 16) : (old & 0xffff);
     half tmpres = hsum + val;
     hsum = __half_raw(tmpres);
-#endif
+  #endif
     old = (size_t)address & 2 ? (old & 0xffff) | (hsum.x << 16) : (old & 0xffff0000) | hsum.x;
     old = atomicCAS(address_as_ui, assumed, old);
-   } while (assumed != old);
+    } while (assumed != old);
+#endif // __CUDA_ARCH__
 }
 
 }

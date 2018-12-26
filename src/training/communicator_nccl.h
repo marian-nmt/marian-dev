@@ -353,11 +353,15 @@ public:
       // push one rank's data at a time using broadcast
       for(size_t mpiRank = 0; mpiRank < mpi_->numMPIProcesses(); mpiRank++) {
         // broadcast mpiRank's localData to all
-        if(mpiRank == mpi_->myMPIRank())
+        if(mpiRank == mpi_->myMPIRank()) {
           tmp = localData;
+        }
         mpi_->bCast(tmp, /*rootRank=*/mpiRank);
         // now all ranks have the same slice: concatenate (we will end up with the same on all MPI processes)
-        data.append(tmp);
+        if(mpiRank == 0)
+          data = tmp;
+        else
+          data.append(tmp);
       }
     }
     else { // no MPI: localData is the complete result already

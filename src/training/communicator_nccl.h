@@ -208,17 +208,15 @@ public:
 
     bool allGood = true;
     for(size_t i = 0; i < graphs_.size(); ++i) {
-      size_t begin, end;
-      std::tie
+      size_t begin, end; std::tie
       (begin, end) = localShardRange(i);
       if (parallel)
         threadResults_[i] = threadPool_.enqueue(func, i, begin, end);
       else
         allGood = allGood && func(i, begin, end);
     }
-    if (parallel) {
+    if(parallel) {
       for(size_t i = 0; i < graphs_.size(); ++i) {
-        threadResults_[i].wait();
         allGood = allGood && threadResults_[i].get();
       }
     }

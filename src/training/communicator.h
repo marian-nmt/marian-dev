@@ -172,9 +172,8 @@ public:
       pos += size;
       totalSize -= size;
     }
-    for(auto& task : group) { // (note: group is empty if not parallel)
+    for(auto& task : group) // (note: group is empty if not parallel)
       allGood = allGood && task.get();
-    }
 
     return allGood;
   }

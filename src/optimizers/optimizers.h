@@ -93,19 +93,25 @@ public:
   virtual void load(const std::string& /*name*/,
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
                     const std::vector<Ptr<Backend>>& /*backends*/,
-                    const ScatterStateFunc& /*scatterFn*/) {}
+                    const ScatterStateFunc& /*scatterFn*/) = 0;
+
   virtual void save(const std::string& /*name*/,
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
                     const GatherStateFunc& /*gatherFn*/,
-                    bool /*isMainProcess*/ = true) {}
+                    bool /*isMainProcess*/ = true) = 0;
 
 protected:
   virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
   virtual void resetStats() = 0;
 
-  virtual void save(std::vector<io::Item>& items,
-                    const std::vector<Ptr<OptimizerBase>>& opts,
-                    const GatherStateFunc& gatherFn);
+  virtual void load(std::vector<io::Item>& /*items*/,
+                    const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+                    const std::vector<Ptr<Backend>>& /*backends*/,
+                    const ScatterStateFunc& /*scatterFn*/);
+
+  virtual void save(std::vector<io::Item>& /*items*/,
+                    const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+                    const GatherStateFunc& /*gatherFn*/);
 
   Ptr<Options> options_;
 
@@ -138,9 +144,27 @@ class Sgd : public OptimizerBase {
 public:
   Sgd(Ptr<Options> options) : OptimizerBase(options) {}
 
+  void load(const std::string& name,
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const std::vector<Ptr<Backend>>& backends,
+            const ScatterStateFunc& scatterFn) override;
+  void save(const std::string& name,
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const GatherStateFunc& gatherFn,
+            bool /*isMainProcess*/ = true) override;
+
   virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+
+  void load(std::vector<io::Item>& /*items*/,
+            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+            const std::vector<Ptr<Backend>>& /*backends*/,
+            const ScatterStateFunc& /*scatterFn*/) override;
+
+  void save(std::vector<io::Item>& items,
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const GatherStateFunc& gatherFn) override;
 
   virtual void resetStats() override {}
 };
@@ -171,6 +195,11 @@ public:
 private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
   void resetStats() override;
+
+  void load(std::vector<io::Item>& /*items*/,
+            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+            const std::vector<Ptr<Backend>>& /*backends*/,
+            const ScatterStateFunc& /*scatterFn*/) override;
 
   void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
@@ -205,9 +234,14 @@ private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
   void resetStats() override;
 
+  void load(std::vector<io::Item>& /*items*/,
+            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+            const std::vector<Ptr<Backend>>& /*backends*/,
+            const ScatterStateFunc& /*scatterFn*/) override;
+
   void save(std::vector<io::Item>& items,
-          const std::vector<Ptr<OptimizerBase>>& opts,
-          const GatherStateFunc& gatherFn) override;
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const GatherStateFunc& gatherFn) override;
 
   // Adam parameters:
   // [beta1, beta2, eps, w, refMBWords]

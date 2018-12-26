@@ -81,6 +81,80 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float cos
   params->getBackend()->synchronize();
 }
 
+void OptimizerBase::load(std::vector<io::Item>& items,
+                    const std::vector<Ptr<OptimizerBase>>& opts,
+                    const std::vector<Ptr<Backend>>& backends,
+                    const ScatterStateFunc& scatterFn) {
+  ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
+
+  size_t numShards = 0;
+  if(mvAvg_) numShards += 1;
+  if(castOptimizerType_) numShards += 2;
+
+  if(castOptimizerType_) {
+    io::Item iParams;
+    for(auto item : items)
+      if(item.name == "master_parameters")
+        iParams = std::move(item);
+
+    if(iParams.bytes.empty()) {
+      LOG(warn, "[warn] Parameters not found in .npz file");
+      return;
+    }
+
+    scatterFn(iParams,
+      [&](size_t localDeviceIndex, const char* begin, const char* end) {
+        auto opt = opts[localDeviceIndex];
+        if(!opt->pm_) { // lazily allocate
+
+          size_t size = end - begin;  // this is size in bytes now
+          if(!opt->optAlloc_) {
+            opt->optAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
+            opt->optAlloc_->reserveExact(numShards * size);
+          }
+
+          int elements = (int)size / (int)sizeOf(iParams.type);
+
+          opt->optAlloc_->allocate(opt->pm_, {1, elements}, iParams.type);
+          opt->optAlloc_->allocate(opt->gd_, {1, elements}, iParams.type);
+        }
+
+        opt->pm_->set(begin, end, iParams.type); // set the value
+      });
+  }
+
+  if(mvAvg_) {
+    io::Item iAvg;
+    for(auto item : items)
+      if(item.name == "exp_smoothing")
+        iAvg = std::move(item);
+
+    if(iAvg.bytes.empty()) {
+      LOG(warn, "[warn] Average not found in .npz file");
+      return;
+    }
+
+    scatterFn(iAvg,
+      [&](size_t localDeviceIndex, const char* begin, const char* end) {
+        auto opt = opts[localDeviceIndex];
+        if(!opt->avg_) { // lazily allocate
+
+          size_t size = end - begin;  // this is size in bytes now
+          if(!opt->optAlloc_) {
+            opt->optAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
+            opt->optAlloc_->reserveExact(numShards * size);
+          }
+
+          int elements = (int)size / (int)sizeOf(iAvg.type);
+
+          opt->optAlloc_->allocate(opt->avg_, {1, elements}, iAvg.type);
+        }
+
+        opt->avg_->set(begin, end, iAvg.type); // set the value
+      });
+  }
+}
+
 void OptimizerBase::save(std::vector<io::Item>& items,
                          const std::vector<Ptr<OptimizerBase>>& opts,
                          const GatherStateFunc& gatherFn) {
@@ -112,6 +186,34 @@ void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t re
   Element(_1 -= eta_ * _2, params, grads);
 }
 
+void Sgd::load(const std::string& name,
+               const std::vector<Ptr<OptimizerBase>>& opts,
+               const std::vector<Ptr<Backend>>& backends,
+               const ScatterStateFunc& scatterFn) {
+
+  if(!filesystem::exists(name))
+    return;
+
+  auto items = io::loadItems(name);
+
+  OptimizerBase::load(items, opts, backends, scatterFn);
+}
+
+void Sgd::save(const std::string& name,
+               const std::vector<Ptr<OptimizerBase>>& opts,
+               const GatherStateFunc& gatherFn,
+               bool isMainProcess /*= true*/) {
+  // if not main MPI process then we have done our duty
+  if (!isMainProcess)
+    return;
+
+  std::vector<io::Item> items;
+  OptimizerBase::save(items, opts, gatherFn); // collect parameters base optimizer class
+  // SGD has no parameters
+  io::saveItems(name, items); // save all to file
+}
+
+
 // Adagrad update rule
 void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
   ABORT_IF(actualMBSize != refMBWords, "Adagrad does not support rational hyper-parameter adjustment");
@@ -137,19 +239,13 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
   Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, params, gt_, grads);
 }
 
-void Adagrad::load(const std::string& name,
+void Adagrad::load(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
                    const std::vector<Ptr<Backend>>& backends,
                    const ScatterStateFunc& scatterFn) {
   ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
 
-  if(!filesystem::exists(name))
-    return;
-
-  LOG(info, "Loading Adagrad parameters from {}", name);
-
   io::Item iGt;
-  auto items = io::loadItems(name);
   for(auto item : items)
     // extract data into vectors
     if(item.name == "adagrad_gt")
@@ -177,6 +273,22 @@ void Adagrad::load(const std::string& name,
     });
 }
 
+void Adagrad::load(const std::string& name,
+                   const std::vector<Ptr<OptimizerBase>>& opts,
+                   const std::vector<Ptr<Backend>>& backends,
+                   const ScatterStateFunc& scatterFn) {
+
+  if(!filesystem::exists(name))
+    return;
+
+  auto items = io::loadItems(name);
+
+  OptimizerBase::load(items, opts, backends, scatterFn);
+
+  LOG(info, "Loading Adagrad parameters from {}", name);
+  load(items, opts, backends, scatterFn);
+}
+
 void Adagrad::save(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
                    const GatherStateFunc& gatherFn) {
@@ -198,10 +310,10 @@ void Adagrad::save(const std::string& name,
   if (!isMainProcess)
     return;
 
-  LOG(info, "Saving Adagrad parameters to {}", name);
-
   std::vector<io::Item> items;
   OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+
+  LOG(info, "Saving Adagrad parameters to {}", name);
   save(items, opts, gatherFn); // collect parameters for this optimizer class
   io::saveItems(name, items); // save all to file
 }
@@ -266,22 +378,16 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
           );
 }
 
-void Adam::load(const std::string& name,
+void Adam::load(std::vector<io::Item>& items,
                 const std::vector<Ptr<OptimizerBase>>& opts,
                 const std::vector<Ptr<Backend>>& backends,
                 const ScatterStateFunc& scatterFn) {
   ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
 
-  if(!filesystem::exists(name))
-    return;
-
-  LOG(info, "Loading Adam parameters from {}", name);
-
   io::Item iMt;
   io::Item iVt;
   std::array<double, 2> vDenoms;
 
-  auto items = io::loadItems(name);
   for(auto item : items) {
     // extract data into vectors
     if(item.name == "adam_mt") {
@@ -329,6 +435,22 @@ void Adam::load(const std::string& name,
   //LOG(info, "done loading Adam params");
 }
 
+void Adam::load(const std::string& name,
+                const std::vector<Ptr<OptimizerBase>>& opts,
+                const std::vector<Ptr<Backend>>& backends,
+                const ScatterStateFunc& scatterFn) {
+
+  if(!filesystem::exists(name))
+    return;
+
+  auto items = io::loadItems(name);
+
+  OptimizerBase::load(items, opts, backends, scatterFn);
+
+  LOG(info, "Loading Adam parameters from {}", name);
+  load(items, opts, backends, scatterFn);
+}
+
 void Adam::save(std::vector<io::Item>& items,
                 const std::vector<Ptr<OptimizerBase>>& opts,
                 const GatherStateFunc& gatherFn) {
@@ -363,10 +485,10 @@ void Adam::save(const std::string& name,
   if (!isMainProcess)
     return;
 
-  LOG(info, "Saving Adam parameters to {}", name);
-
   std::vector<io::Item> items;
   OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+
+  LOG(info, "Saving Adam parameters to {}", name);
   save(items, opts, gatherFn); // collect parameters for this optimizer class
   io::saveItems(name, items); // save all to file
 }

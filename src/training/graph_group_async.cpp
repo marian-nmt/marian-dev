@@ -324,14 +324,14 @@ void AsyncGraphGroup::load() {
       for(auto graph : graphs_)
         backends.push_back(graph->getBackend());
       shardOpt_[0]->load(name + ".optimizer.npz", shardOpt_, backends,
-        /*scatterStateFn=*/[&](const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
+        /*scatterStateFn=*/[&](const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
           size_t dataSize = data.size();
           size_t numLocalDevices = graphs_.size();
           size_t shardSize = (dataSize + numLocalDevices - 1) / numLocalDevices;// (size_t)(ceil(dataSize / (float)numLocalDevices));
           for (size_t i = 0; i < numLocalDevices; i++) {
             size_t begin = i * shardSize;
             size_t end = std::min(begin + shardSize, dataSize);
-            setFn(i, data.begin() + begin, data.begin() + end);
+            setFn(i, data.bytes.data() + begin, data.bytes.data() + end);
           }
         });
     } else if(options_->has("pretrained-model")) {

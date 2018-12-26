@@ -44,7 +44,7 @@ public:
 
   virtual void swapParams(const std::vector<Tensor>& paramShards) const = 0;
 
-  virtual void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const = 0;
+  virtual void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const = 0;
   virtual io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const = 0;
 };
 
@@ -256,14 +256,14 @@ public:
     foreach(gather);
   }
 
-  void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
+  void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
     size_t dataSize = data.size();
     size_t numLocalDevices = graphs_.size();
     size_t shardSize = (dataSize + numLocalDevices - 1) / numLocalDevices;// (size_t)(ceil(dataSize / (float)numLocalDevices));
     for(size_t localDeviceIndex = 0; localDeviceIndex < numLocalDevices; localDeviceIndex++) {
       size_t begin = localDeviceIndex * shardSize;
       size_t end   = std::min(begin + shardSize, dataSize);
-      setFn(localDeviceIndex, data.begin() + begin, data.begin() + end);
+      setFn(localDeviceIndex, data.bytes.data() + begin, data.bytes.data() + end);
     }
   }
 

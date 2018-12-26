@@ -485,8 +485,8 @@ void SyncGraphGroup::load() /*override*/ {
       for(auto graph : graphs_)
         backends.push_back(graph->getBackend());
       shardOpt_[0]->load(name + ".optimizer.npz", shardOpt_, backends,
-        [&](const std::vector<float>& optimizerStateVector, const OptimizerBase::ScatterStateSetFunc& setShardFn) {
-          comm_->scatterState(optimizerStateVector, setShardFn);
+        [&](const io::Item& optimizerState, const OptimizerBase::ScatterStateSetFunc& setShardFn) {
+          comm_->scatterState(optimizerState, setShardFn);
         });
       LOG(info, "[training] Model reloaded from {}", name);
     } else if(options_->has("pretrained-model")) {

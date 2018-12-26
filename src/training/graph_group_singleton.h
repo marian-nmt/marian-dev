@@ -73,8 +73,8 @@ public:
         // }
 
         opt_->load(name + ".optimizer.npz", {opt_}, {graph_->getBackend()},
-          /*scatterStateFn=*/[&](const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
-            setFn(/*localDeviceIndex=*/0, data.begin(), data.end());
+          /*scatterStateFn=*/[&](const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
+            setFn(/*localDeviceIndex=*/0, data.bytes.data(), data.bytes.data() + data.size());
           });
       } else if(options_->has("pretrained-model")) {
         std::string init = options_->get<std::string>("pretrained-model");

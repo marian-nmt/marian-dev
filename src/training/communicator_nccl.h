@@ -324,7 +324,7 @@ public:
   // Distribute a single CPU-side vector to shards across multiple devices and MPI processes.
   // This is used when restoring optimizer state, which is sharded, and as part of swapParams().
   // It is assumed that all MPI processes get the same data() passed. Hence, no MPI transfers are needed here.
-  void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
+  void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
     size_t dataSize = data.size();
     size_t numShards = numNcclRanks();
     size_t shardSize = (dataSize + numShards - 1) / numShards;
@@ -333,7 +333,7 @@ public:
       auto ncclRank = myNcclRank(localDeviceIndex);
       size_t begin = ncclRank * shardSize;
       size_t end   = std::min(begin + shardSize, dataSize);
-      setFn(localDeviceIndex, data.begin() + begin, data.begin() + end);
+      setFn(localDeviceIndex, data.bytes.data() + begin, data.bytes.data() + end);
     }
   }
 

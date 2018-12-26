@@ -82,11 +82,12 @@ public:
   virtual void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
 
   typedef std::function<void(size_t /*localDeviceIndex*/,
-                             std::vector<float>::const_iterator /*begin*/,
-                             std::vector<float>::const_iterator /*end*/)> ScatterStateSetFunc;
+                             const char* /*begin*/,
+                             const char* /*end*/)> ScatterStateSetFunc;
   typedef std::function<io::Item(size_t /*localDeviceIndex*/)> GatherStateGetFunc;
 
-  typedef std::function<void(const std::vector<float>& /*data*/, const ScatterStateSetFunc& /*setFn*/)> ScatterStateFunc;
+  typedef std::function<void(const io::Item& /*data*/, const ScatterStateSetFunc& /*setFn*/)> ScatterStateFunc;
+
   typedef std::function<io::Item(const GatherStateGetFunc& /*getFn*/)> GatherStateFunc;
 
   virtual void load(const std::string& /*name*/,

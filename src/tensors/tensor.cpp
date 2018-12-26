@@ -103,41 +103,16 @@ template std::string TensorBase::debug<int16_t>(int, int);
 template std::string TensorBase::debug<int32_t>(int, int);
 template std::string TensorBase::debug<int64_t>(int, int);
 
-const io::Item TensorBase::toItem(const std::string& name) {
-  std::vector<char> bytes(memory_->size());
+void TensorBase::get(io::Item& item, const std::string& name) {
+  item.name = name;
+  item.shape = shape_;
+  item.type = type_;
+  item.bytes.resize(memory_->size());
+
   copy(backend_,
        memory_->data<char>(),
        memory_->data<char>() + memory_->size(),
-       bytes.data());
-
-  io::Item item;
-  item.name = name;
-  item.shape = shape_;
-
-  // Model files are saved as tensors of float. Other floating point
-  // types will be converted first.
-  if(type_ == Type::float32) {
-    item.type = type_;
-    // Use the actual memory as this will be aligned and padded.
-    // When memory mapping this is required. Shape keeps track of
-    // tensor size. Saving to *.npz will cut to size.
-    item.bytes.swap(bytes);
-  } else if(type_ == Type::float16) {
-    // converting to float
-    item.type = Type::float32;
-    item.bytes.resize(size() * sizeOf(item.type));
-
-    const float16* beg16 = (const float16*)bytes.data();
-    const float16* end16 = beg16 + size();
-    float* beg32 = (float*)item.bytes.data();
-
-    // This performs a conversion due to different pointer type
-    std::copy(beg16, end16, beg32);
-  } else {
-    ABORT("Other types are currently not supported for saving");
-  }
-
-  return item;
+       item.bytes.data());
 }
 
 }  // namespace marian

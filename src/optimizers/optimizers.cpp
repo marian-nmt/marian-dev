@@ -88,7 +88,9 @@ void OptimizerBase::save(std::vector<io::Item>& items,
     // fetch and concatenate state vectors for high precision copy
     io::Item pm = gatherFn([&](size_t localDeviceIndex) {
         auto opt = opts[localDeviceIndex];
-        return opt->pm_->toItem("master_parameters");
+        io::Item item;
+        opt->pm_->get(item, "master_parameters");
+        return item;
       });
     items.emplace_back(std::move(pm));
   }
@@ -96,7 +98,9 @@ void OptimizerBase::save(std::vector<io::Item>& items,
     // fetch and concatenate state vectors for smoothed parameters
     io::Item avg = gatherFn([&](size_t localDeviceIndex) {
         auto opt = opts[localDeviceIndex];
-        return opt->avg_->toItem("exp_smoothing");
+        io::Item item;
+        opt->avg_->get(item, "exp_smoothing");
+        return item;
       });
     items.emplace_back(std::move(avg));
   }
@@ -144,35 +148,33 @@ void Adagrad::load(const std::string& name,
 
   LOG(info, "Loading Adagrad parameters from {}", name);
 
-  std::vector<float> vGt;
+  io::Item iGt;
   auto items = io::loadItems(name);
-  for(auto item : items) {
+  for(auto item : items)
     // extract data into vectors
-    if(item.name == "adagrad_gt") {
-      // get the size of gt_
-      auto totalSize = item.shape.elements();
-      vGt.resize(totalSize);
-      std::copy((float*)item.data(), ((float*)item.data()) + totalSize, vGt.begin());
-    }
-  }
+    if(item.name == "adagrad_gt")
+      iGt = std::move(item);
 
-  if(vGt.empty()) {
+  if(iGt.bytes.empty()) {
     LOG(warn, "[warn] Adagrad parameters not found in .npz file");
     return;
   }
 
-  scatterFn(vGt,
-    [&](size_t localDeviceIndex, std::vector<float>::const_iterator begin, std::vector<float>::const_iterator end) {
-    auto opt = std::dynamic_pointer_cast<Adagrad>(opts[localDeviceIndex]);
-    if(!opt->gt_) {
-      if(!opt->alloc_)
-        opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
-      auto size = end-begin;
-      opt->alloc_->reserveExact(sizeof(float) * size);
-      opt->alloc_->allocate(opt->gt_, {1, (int)size});
-    }
-    opt->gt_->set(std::vector<float>(begin, end));
-  });
+  scatterFn(iGt,
+    [&](size_t localDeviceIndex, const char* begin, const char* end) {
+      auto opt = std::dynamic_pointer_cast<Adagrad>(opts[localDeviceIndex]);
+      if(!opt->gt_) {
+        if(!opt->alloc_)
+          opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
+
+        size_t size = end - begin; // this is size in bytes now
+        int elements = (int)size / (int)sizeOf(iGt.type);
+        opt->alloc_->reserveExact(size);
+        opt->alloc_->allocate(opt->gt_, {1, elements}, iGt.type);
+      }
+
+      opt->gt_->set(begin, end, iGt.type);
+    });
 }
 
 void Adagrad::save(std::vector<io::Item>& items,
@@ -181,7 +183,9 @@ void Adagrad::save(std::vector<io::Item>& items,
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   io::Item gt = gatherFn([&](size_t localDeviceIndex) {
       auto opt = std::dynamic_pointer_cast<Adagrad>(opts[localDeviceIndex]);
-      return opt->gt_->toItem("adagrad_gt");
+      io::Item item;
+      opt->gt_->get(item, "adagrad_gt");
+      return item;
     });
   items.emplace_back(std::move(gt));
 }
@@ -273,56 +277,52 @@ void Adam::load(const std::string& name,
 
   LOG(info, "Loading Adam parameters from {}", name);
 
-  std::vector<float> vMt;
-  std::vector<float> vVt;
+  io::Item iMt;
+  io::Item iVt;
   std::array<double, 2> vDenoms;
 
   auto items = io::loadItems(name);
   for(auto item : items) {
-    // get the size of mt_ and vt_, they are the same
-    auto totalSize = item.shape.elements();
-
     // extract data into vectors
     if(item.name == "adam_mt") {
-      vMt.resize(totalSize);
-      std::copy((float*)item.data(), ((float*)item.data()) + totalSize, vMt.begin());
-    }
-    else if(item.name == "adam_vt") {
-      vVt.resize(totalSize);
-      std::copy((float*)item.data(), ((float*)item.data()) + totalSize, vVt.begin());
-    }
-    else if(item.name == "adam_denoms") {
-      ABORT_IF(totalSize != 2, "adam_denoms should have 2 entries");
-      std::copy((double*)item.data(), ((double*)item.data()) + totalSize, vDenoms.begin());
+      iMt = std::move(item);
+    } else if(item.name == "adam_vt") {
+      iVt = std::move(item);
+    } else if(item.name == "adam_denoms") {
+      ABORT_IF(item.size() != 2 * sizeof(double), "adam_denoms should have 2 entries");
+      std::copy((double*)item.data(), ((double*)item.data()) + 2, vDenoms.begin());
       // Back compat note: Old files lacked "adam_denoms". For those, vDenoms will remain 0, which reproduces the old behavior.
     }
   }
-  if(vMt.empty() || vVt.empty()) {
+
+  if(iMt.bytes.empty() || iVt.bytes.empty()) {
     LOG(warn, "[warn] Adam parameters not found in .npz file");
     return;
   }
-  ABORT_IF(vMt.size() != vVt.size(), "mt and vt have different sizes??");
+
+  ABORT_IF(iMt.size() != iVt.size(), "mt and vt have different sizes??");
 
   //LOG(info, "loading Adam params");
-  scatterFn(vMt,
-    [&](size_t localDeviceIndex, std::vector<float>::const_iterator begin, std::vector<float>::const_iterator end) {
-    auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
-    if(!opt->mt_ || !opt->vt_) { // lazily allocate
-      if(!opt->alloc_)
-        opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
-      auto size = end-begin;
-      opt->alloc_->reserveExact(2 * sizeof(float) * size);
-      opt->alloc_->allocate(opt->mt_, {1, (int)size});
-      opt->alloc_->allocate(opt->vt_, {1, (int)size});
-    }
-    opt->mt_->set(std::vector<float>(begin, end)); // set the value
-  });
+  scatterFn(iMt,
+    [&](size_t localDeviceIndex, const char* begin, const char* end) {
+      auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
+      if(!opt->mt_ || !opt->vt_) { // lazily allocate
+        if(!opt->alloc_)
+          opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
+        size_t size = end - begin;  // this is size in bytes now
+        int elements = (int)size / (int)sizeOf(iMt.type);
+        opt->alloc_->reserveExact(2 * size);
+        opt->alloc_->allocate(opt->mt_, {1, elements}, iMt.type);
+        opt->alloc_->allocate(opt->vt_, {1, elements}, iMt.type);
+      }
+      opt->mt_->set(begin, end, iMt.type); // set the value
+    });
 
-  scatterFn(vVt,
-    [&](size_t id, std::vector<float>::const_iterator begin, std::vector<float>::const_iterator end) {
-    auto opt = std::dynamic_pointer_cast<Adam>(opts[id]);
-    opt->vt_->set(std::vector<float>(begin, end));
-  });
+  scatterFn(iVt,
+    [&](size_t id, const char* begin, const char* end) {
+      auto opt = std::dynamic_pointer_cast<Adam>(opts[id]);
+      opt->vt_->set(begin, end, iVt.type);
+    });
 
   denom1_ = vDenoms[0];
   denom2_ = vDenoms[1];
@@ -337,13 +337,17 @@ void Adam::save(std::vector<io::Item>& items,
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   io::Item mt = gatherFn([&](size_t localDeviceIndex) {
     auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
-    return opt->mt_->toItem("adam_mt");
+    io::Item item;
+    opt->mt_->get(item, "adam_mt");
+    return item;
   });
   items.emplace_back(std::move(mt));
 
   io::Item vt = gatherFn([&](size_t localDeviceIndex) {
     auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
-    return opt->vt_->toItem("adam_vt");
+    io::Item item;
+    opt->vt_->get(item, "adam_vt");
+    return item;
   });
   items.emplace_back(std::move(vt));
 

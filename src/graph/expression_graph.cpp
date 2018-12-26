@@ -43,8 +43,9 @@ void ExpressionGraph::save(std::vector<io::Item>& ioItems) {
         pName = pName.substr(namespace_.size() + 2);
     }
 
-    Tensor val = p.second->val();    
-    ioItems.emplace_back(std::move(val->toItem(pName)));
+    Tensor val = p.second->val();
+    ioItems.emplace_back();
+    val->get(ioItems.back(), pName);
   }
 }
 

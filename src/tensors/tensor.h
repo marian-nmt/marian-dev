@@ -126,6 +126,8 @@ public:
 #endif
   }
 
+  void get(io::Item& item, const std::string& name);
+
   template <typename T>
   void set(size_t i, T value) {
     matchOrAbort<T>(type_);
@@ -157,6 +159,37 @@ public:
   template <typename T>
   void set(const std::vector<T>& v) {
     set(v.data(), v.data() + v.size());
+  }
+
+  // a binary copy with type checking
+  void set(const char* begin, const char* end, Type type) {
+    ABORT_IF(type_ != type,
+             "Tensor type ({}) and data type ({}) do not match",
+             type_,
+             type);
+
+    size_t dataSize = (end - begin) / sizeOf(type);
+    ABORT_IF(size() != dataSize,
+             "Tensor size ({}) and mapped size ({}) do not match",
+             size(),
+             dataSize);
+
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
+      std::copy(begin, end, data<char>());
+    }
+#ifdef CUDA_FOUND
+    else {
+      gpu::copy(backend_, begin, end, data<char>());
+    }
+#endif
+  }
+
+  void set(const std::vector<char>& v, Type type) {
+    set(v.data(), v.data() + v.size(), type);
+  }
+
+  void set(const io::Item& item) {
+    set(item.bytes.data(), item.bytes.data() + item.bytes.size(), item.type);
   }
 
   // For single values enable conversion to other numeric formats if possible
@@ -258,8 +291,6 @@ public:
   std::string debug(int precision = 8, int dispCols = 5) {
     DISPATCH_BY_TYPE2(type_, debug, precision, dispCols);
   }
-
-  const io::Item toItem(const std::string& name);
 
 };
 

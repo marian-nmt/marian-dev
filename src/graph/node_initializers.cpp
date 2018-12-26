@@ -170,22 +170,24 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
 
 Ptr<NodeInitializer> fromItem(const io::Item& item) {
   if(item.mapped) {
-    return New<LambdaInit>([item](Tensor t) {
+    return New<LambdaInit>([item](Tensor tensor) {
       // @TODO: implement other types, for now croak loudly.
-      ABORT_IF(t->getBackend()->getDeviceId().type != DeviceType::cpu,
+      ABORT_IF(tensor->getBackend()->getDeviceId().type != DeviceType::cpu,
                "Memory mapping only works for CPU tensors");
-      ABORT_IF(!matchType<float>(t->type()),
-               "Tensor type and type for mapping do not match");
-      auto mp = MemoryPiece::New((uint8_t*)item.ptr, t->size() * sizeof(float));
-      t->reset(mp);
+      ABORT_IF(tensor->type() != item.type,
+               "Tensor type ({}) and type for mapping ({}) do not match",
+               tensor->type(),
+               item.type);
+      ABORT_IF(tensor->size() != item.size() / sizeOf(item.type),
+               "Tensor size ({}) and mapped size ({}) do not match",
+               tensor->size(),
+               item.size() / sizeOf(item.type));
+      auto mp = MemoryPiece::New((uint8_t*)item.ptr, tensor->size() * sizeOf(item.type));
+      tensor->reset(mp);
     });
   } else {
-    return New<LambdaInitConvert>([item](Tensor t) {
-      // @TODO: implement other types, for now croak loudly.
-      ABORT_IF(!matchType<float>(t->type()),
-               "Tensor type and type for loading do not match");
-      t->set((const float*)item.bytes.data(),
-             (const float*)item.bytes.data() + t->size());
+    return New<LambdaInitConvert>([item](Tensor tensor) {
+      tensor->set(item);
     });
   }
 }

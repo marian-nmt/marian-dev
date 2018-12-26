@@ -129,7 +129,7 @@ protected:
   Ptr<ClipperBase> clipper_;
 
   Ptr<Allocator> allocator_;
-  Ptr<TensorAllocator> optAlloc_;
+  Ptr<TensorAllocator> baseAlloc_;
 
   Tensor avg_;
 
@@ -156,15 +156,6 @@ public:
   virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
-
-  void load(std::vector<io::Item>& /*items*/,
-            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
-            const std::vector<Ptr<Backend>>& /*backends*/,
-            const ScatterStateFunc& /*scatterFn*/) override;
-
-  void save(std::vector<io::Item>& items,
-            const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn) override;
 
   virtual void resetStats() override {}
 };

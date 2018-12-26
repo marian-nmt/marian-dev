@@ -27,22 +27,22 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float cos
   if(castOptimizerType_) numAllocateShards += 2; // two shards for conversion
 
   // allocate storage for shards
-  if(numAllocateShards > 0 && !optAlloc_) {
+  if(numAllocateShards > 0 && !baseAlloc_) {
     LOG_ONCE(info, "Allocating memory for general optimizer shards");
-    optAlloc_ = New<TensorAllocator>(params->getBackend());
-    optAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
+    baseAlloc_ = New<TensorAllocator>(params->getBackend());
+    baseAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
   }
 
 
   if(mvAvg_ && !avg_)
     // allocate exp smooth shard tensor
-    optAlloc_->allocate(avg_, {1, elements}, optimizerType_);
+    baseAlloc_->allocate(avg_, {1, elements}, optimizerType_);
 
   if(castOptimizerType_) {
     if(!pm_) {
       // create parameter master copy and temporary gradient shard
-      optAlloc_->allocate(pm_, {1, elements}, optimizerType_);
-      optAlloc_->allocate(gd_, {1, elements}, optimizerType_);
+      baseAlloc_->allocate(pm_, {1, elements}, optimizerType_);
+      baseAlloc_->allocate(gd_, {1, elements}, optimizerType_);
 
       // keep parameter master copy around and initialize once, converting types
       CopyCast(pm_, params);
@@ -99,28 +99,23 @@ void OptimizerBase::load(std::vector<io::Item>& items,
 
     if(iParams.bytes.empty()) {
       LOG(warn, "[warn] Parameters not found in .npz file");
-      return;
-    }
-
-    scatterFn(iParams,
-      [&](size_t localDeviceIndex, const char* begin, const char* end) {
-        auto opt = opts[localDeviceIndex];
-        if(!opt->pm_) { // lazily allocate
-
-          size_t size = end - begin;  // this is size in bytes now
-          if(!opt->optAlloc_) {
-            opt->optAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
-            opt->optAlloc_->reserveExact(numShards * size);
+    } else {
+      scatterFn(iParams,
+        [&](size_t localDeviceIndex, const char* begin, const char* end) {
+          auto opt = opts[localDeviceIndex];
+          if(!opt->pm_) { // lazily allocate
+            size_t size = end - begin;  // this is size in bytes now
+            if(!opt->baseAlloc_) {
+              opt->baseAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
+              opt->baseAlloc_->reserveExact(numShards * size);
+            }
+            int elements = (int)size / (int)sizeOf(iParams.type);
+            opt->baseAlloc_->allocate(opt->pm_, {1, elements}, iParams.type);
+            opt->baseAlloc_->allocate(opt->gd_, {1, elements}, iParams.type);
           }
-
-          int elements = (int)size / (int)sizeOf(iParams.type);
-
-          opt->optAlloc_->allocate(opt->pm_, {1, elements}, iParams.type);
-          opt->optAlloc_->allocate(opt->gd_, {1, elements}, iParams.type);
-        }
-
-        opt->pm_->set(begin, end, iParams.type); // set the value
-      });
+          opt->pm_->set(begin, end, iParams.type); // set the value
+        });
+    }
   }
 
   if(mvAvg_) {
@@ -131,27 +126,22 @@ void OptimizerBase::load(std::vector<io::Item>& items,
 
     if(iAvg.bytes.empty()) {
       LOG(warn, "[warn] Average not found in .npz file");
-      return;
-    }
-
-    scatterFn(iAvg,
-      [&](size_t localDeviceIndex, const char* begin, const char* end) {
-        auto opt = opts[localDeviceIndex];
-        if(!opt->avg_) { // lazily allocate
-
-          size_t size = end - begin;  // this is size in bytes now
-          if(!opt->optAlloc_) {
-            opt->optAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
-            opt->optAlloc_->reserveExact(numShards * size);
+    } else {
+      scatterFn(iAvg,
+        [&](size_t localDeviceIndex, const char* begin, const char* end) {
+          auto opt = opts[localDeviceIndex];
+          if(!opt->avg_) { // lazily allocate
+            size_t size = end - begin;  // this is size in bytes now
+            if(!opt->baseAlloc_) {
+              opt->baseAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
+              opt->baseAlloc_->reserveExact(numShards * size);
+            }
+            int elements = (int)size / (int)sizeOf(iAvg.type);
+            opt->baseAlloc_->allocate(opt->avg_, {1, elements}, iAvg.type);
           }
-
-          int elements = (int)size / (int)sizeOf(iAvg.type);
-
-          opt->optAlloc_->allocate(opt->avg_, {1, elements}, iAvg.type);
-        }
-
-        opt->avg_->set(begin, end, iAvg.type); // set the value
-      });
+          opt->avg_->set(begin, end, iAvg.type); // set the value
+        });
+    }
   }
 }
 

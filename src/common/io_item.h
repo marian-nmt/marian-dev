@@ -37,8 +37,8 @@ struct Item {
 
     // abort if any of the shapes is not a flat array, i.e. the number of elements in the
     // last dimension has to correspond to the number of bytes.
-    ABORT_IF(shape[-1] * sizeOf(type) != bytes.size(), "Only flat items can be appended");
-    ABORT_IF(other.shape[-1] * sizeOf(type) != other.bytes.size(), "Only flat items can be appended");
+    ABORT_IF(shape[-1] * sizeOf(type) != bytes.size(), "Only flat items can be appended : {}", shape);
+    ABORT_IF(other.shape[-1] * sizeOf(type) != other.bytes.size(), "Only flat items can be appended: {}", other.shape);
 
     shape.set(-1, shape[-1] + other.shape[-1]);
     bytes.insert(bytes.end(), other.bytes.begin(), other.bytes.end());

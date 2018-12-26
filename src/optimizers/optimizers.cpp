@@ -100,6 +100,11 @@ void OptimizerBase::load(std::vector<io::Item>& items,
     if(iParams.bytes.empty()) {
       LOG(warn, "[warn] Parameters not found in .npz file");
     } else {
+      ABORT_IF(optimizerType_ != iParams.type,
+               "Current ({}) and previous ({}) optimization type do not match",
+               optimizerType_,
+               iParams.type);
+
       scatterFn(iParams,
         [&](size_t localDeviceIndex, const char* begin, const char* end) {
           auto opt = opts[localDeviceIndex];
@@ -127,6 +132,11 @@ void OptimizerBase::load(std::vector<io::Item>& items,
     if(iAvg.bytes.empty()) {
       LOG(warn, "[warn] Average not found in .npz file");
     } else {
+      ABORT_IF(optimizerType_ != iAvg.type,
+          "Current ({}) and previous ({}) optimization type do not match",
+          optimizerType_,
+          iAvg.type);
+
       scatterFn(iAvg,
         [&](size_t localDeviceIndex, const char* begin, const char* end) {
           auto opt = opts[localDeviceIndex];
@@ -245,6 +255,11 @@ void Adagrad::load(std::vector<io::Item>& items,
     LOG(warn, "[warn] Adagrad parameters not found in .npz file");
     return;
   }
+
+  ABORT_IF(optimizerType_ != iGt.type,
+          "Current ({}) and previous ({}) optimization type do not match",
+          optimizerType_,
+          iGt.type);
 
   scatterFn(iGt,
     [&](size_t localDeviceIndex, const char* begin, const char* end) {
@@ -395,6 +410,11 @@ void Adam::load(std::vector<io::Item>& items,
     LOG(warn, "[warn] Adam parameters not found in .npz file");
     return;
   }
+
+  ABORT_IF(optimizerType_ != iMt.type,
+          "Current ({}) and previous ({}) optimization type do not match",
+          optimizerType_,
+          iMt.type);
 
   ABORT_IF(iMt.size() != iVt.size(), "mt and vt have different sizes??");
 

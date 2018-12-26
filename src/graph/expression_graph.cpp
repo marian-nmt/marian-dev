@@ -25,12 +25,12 @@ void ExpressionGraph::setDevice(DeviceId deviceId, Ptr<Device> device) {
 Expr ExpressionGraph::dropout(float prob, const Shape& shape, Type valueType) {
   return constant(shape, inits::dropout(prob), valueType);
 }
+
 Expr ExpressionGraph::dropout(float prob, const Shape& shape) {
   return constant(shape, inits::dropout(prob), parameterType_);
 }
 
 void ExpressionGraph::checkNan(Tensor t, bool& isNan, bool& isInf) {
-  //ABORT_IF(throwNaN_, "Not implemented"); t;
   IsNan(t, allocator(), isNan, isInf);
 }
 
@@ -44,8 +44,11 @@ void ExpressionGraph::save(std::vector<io::Item>& ioItems) {
     }
 
     Tensor val = p.second->val();
-    ioItems.emplace_back();
-    val->get(ioItems.back(), pName);
+    io::Item item;
+    // item.name = pName;
+    // item.type = float32; // @TODO: handle conversion
+    val->get(item, pName);
+    ioItems.emplace_back(std::move(item));
   }
 }
 

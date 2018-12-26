@@ -215,11 +215,9 @@ public:
       else
         allGood = allGood && func(i, begin, end);
     }
-    if(parallel) {
-      for(size_t i = 0; i < graphs_.size(); ++i) {
+    if(parallel)
+      for(size_t i = 0; i < graphs_.size(); ++i)
         allGood = allGood && threadResults_[i].get();
-      }
-    }
 
     return allGood;
   }

@@ -186,9 +186,9 @@ Ptr<NodeInitializer> fromItem(const io::Item& item) {
       tensor->reset(mp);
     });
   } else {
-    return New<LambdaInitConvert>([item](Tensor tensor) {
-      tensor->set(item);
-    });
+    return New<LambdaInitConvert>(
+      [item](Tensor tensor) { tensor->set(item); },
+      item.type);
   }
 }
 

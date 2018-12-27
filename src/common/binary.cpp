@@ -142,6 +142,8 @@ void saveItems(const std::string& fileName,
 
   // Write out all values
   for(const auto& item : items) {
+    // We assume that all tensors are aligned to 256 bytes boundaries. This will include padding
+    ABORT_IF(item.size() % 256 != 0, "Size of item '{}' is not multiple of 256 bytes", item.name);
     pos += out.write(item.data(), item.size());
   }
 }

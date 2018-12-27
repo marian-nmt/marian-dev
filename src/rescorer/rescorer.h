@@ -70,6 +70,8 @@ public:
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
       graph->setDevice(device);
+      auto prec = options_->get<std::vector<std::string>>("precision");
+        graph->setParameterType(typeFromString(prec[0]));
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
     }
@@ -126,7 +128,7 @@ public:
 
           // @TODO: normalize by length as in normalize
           // Once we have Frank's concept of ce-sum with sample size by words we will return a pair
-          // here which will make it trivial to report all variants. 
+          // here which will make it trivial to report all variants.
           auto costNode = builder->build(graph, batch);
 
           graph->forward();

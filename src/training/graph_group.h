@@ -258,4 +258,10 @@ public:
     Base::finalize();
   }
 };
+
+static Ptr<ExpressionGraph> graphFromOptimizer(Ptr<ExpressionGraph> graph, const std::vector<Ptr<OptimizerBase>>& /*opts*/, bool /*getAverage*/ = true) {
+  // @TODO: implement function that creates a temporary graph from input graph and shared optimizers
+  return graph;
+}
+
 }  // namespace marian

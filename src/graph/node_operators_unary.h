@@ -811,7 +811,7 @@ public:
 
   Tensor& grad() override {
     auto childGrad = stepNode_->grad();
-    size_t offset = step_ * shape().elements() * sizeof(float);
+    size_t offset = step_ * shape().elements() * sizeof(float); // TODO: make type safe
     auto mem = MemoryPiece::New(childGrad->memory()->data() + offset,
                                 childGrad->memory()->size());
     auto temp = TensorBase::New(mem, shape(), childGrad->getBackend());

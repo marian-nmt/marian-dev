@@ -339,8 +339,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     LOG(info, "[training] Batches are processed as {} process(es) x {} devices/process",
         mpi_->numMPIProcesses(), devices_.size());
     initialize(subBatches.front());
-    // if(mvAvg_ && paramsAvg_.empty())
-    //   initializeAvg();
     first_ = false;
   }
 
@@ -446,10 +444,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     // process valid data set
     // This may save a model as well.
     if(scheduler_->validating()) {
-      swapParamsAvg();
-      if (isMainProcess())
-        scheduler_->validate(graphs_);
-      swapParamsAvg();
+      if(isMainProcess()) {
+        std::vector<Ptr<ExpressionGraph>> tempGraphs;
+        for(auto graph : graphs_)
+          tempGraphs.push_back(graphFromOptimizer(graph, shardOpt_));
+        scheduler_->validate(tempGraphs);
+      }
     }
   }
 
@@ -461,8 +461,6 @@ void SyncGraphGroup::load() /*override*/ {
   validate();
 
   // This function loads the main parameters in the graphs.
-  // In case of exponential smoothing, we also need to restore paramsAvg_.
-  // That is done lazily inside initializeAvg(), see there.
 
   if(!options_->get<bool>("no-reload")) {
     std::string name = options_->get<std::string>("model");
@@ -472,9 +470,6 @@ void SyncGraphGroup::load() /*override*/ {
         scheduler_->load(name);
 
       std::string nameGraph = name;
-      // if(mvAvg_ && filesystem::exists(name + ".orig.npz"))
-      //   // Load the original parameters from model.npz.orig.npz
-      //   nameGraph += ".orig.npz";
 
       size_t i = 0;
       for(auto graph : graphs_)
@@ -510,44 +505,39 @@ void SyncGraphGroup::save(bool final) /*override*/ {
     // bring the smoothed model in
     // Note that it is sharded. For multi-node, it is sharded over multiple machines, so this is a network access.
     // Also note that the swap must run on all MPI processes concurrently, although only one actually validates.
-    swapParamsAvg();
-    if (isMainProcess()) // in multi-node, only first MPI process saves the model (they are all identical)
-      scheduler_->validate(graphs_, true);
-    swapParamsAvg();
+
+    if (isMainProcess()) { // in multi-node, only first MPI process saves the model (they are all identical)
+      std::vector<Ptr<ExpressionGraph>> tempGraphs;
+      for(auto graph : graphs_)
+        tempGraphs.push_back(graphFromOptimizer(graph, shardOpt_));
+      scheduler_->validate(tempGraphs, true);
+    }
+
   }
 
   std::string name = options_->get<std::string>("model");
 
   barrier(); // (for better grouping of log messages)
-  // if smoothing then save original (unsmoothed) parameters as well
-  // if(mvAvg_ && paramsAvg_.size() > 0 && isMainProcess()) // only save from one MPI process
-  //   // Save the original parameters in model.npz.orig.npz
-  //   builders_[0]->save(graphs_[0], name + ".orig.npz", true);
-
-  // Temporarily switch to the averaged parameters
-  // Note: the smoothed model is sharded across GPUs, and across MPI processes if applicable. This brings it into MPI process[*].device[*]
-  swapParamsAvg();
 
   // save main model file
   if (isMainProcess()) { // only save from one MPI process
     // if not overwrite then save a copy with number of updates in the model pathname
+    auto tempGraph = graphFromOptimizer(graphs_[0], shardOpt_);
+
     if(!options_->get<bool>("overwrite") && !final) {
       std::string numberOfBatches
           = scheduler_ ? std::to_string(scheduler_->numberOfBatches())
                        : "unknown";
       std::string nameOverwrite = name;
       nameOverwrite.replace(name.size() - 4, 4, ".iter" + numberOfBatches + ".npz"); // @TODO: use insert?
-      builders_[0]->save(graphs_[0], nameOverwrite);
+      builders_[0]->save(tempGraph, nameOverwrite);
     }
     // save main model file
-    builders_[0]->save(graphs_[0], name, true);
+    builders_[0]->save(tempGraph, name, true);
     // save scheduler-related state
     if (scheduler_)
       scheduler_->save(name);
   }
-
-  // Switch back to the original parameters
-  swapParamsAvg();
 
   barrier(); // (for better grouping of log messages)
 

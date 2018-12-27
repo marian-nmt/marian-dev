@@ -40,13 +40,8 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
     scheduler_->update(cost, batch);
 
     if(scheduler_->validating()) {
-      if(mvAvg_) {
-        ABORT("Not implemented");
-         //graphAvg_->reuseWorkspace(graph_);
-         //scheduler_->validate({graphAvg_});
-      } else {
-        scheduler_->validate({graph_});
-      }
+      auto tempGraph = graphFromOptimizer(graph_, {opt_});
+      scheduler_->validate({tempGraph});
     }
 
     if(scheduler_->saving())

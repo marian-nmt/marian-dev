@@ -37,11 +37,21 @@ struct Item {
 
     // abort if any of the shapes is not a flat array, i.e. the number of elements in the
     // last dimension has to correspond to the number of bytes.
-    ABORT_IF(shape[-1] * sizeOf(type) != bytes.size(), "Only flat items can be appended : {}", shape);
-    ABORT_IF(other.shape[-1] * sizeOf(type) != other.bytes.size(), "Only flat items can be appended: {}", other.shape);
+    ABORT_IF(shape[-1] != shape.elements(), "1 - Only flat items can be appended : {}", shape);
+    ABORT_IF(other.shape[-1] != other.shape.elements(), "2 - Only flat items can be appended: {}", other.shape);
 
-    shape.set(-1, shape[-1] + other.shape[-1]);
-    bytes.insert(bytes.end(), other.bytes.begin(), other.bytes.end());
+    // cut to size (get rid of padding if any) to make append operation work correctly
+    size_t bytesWithoutPadding = shape.elements() * sizeOf(type);
+    bytes.resize(bytesWithoutPadding);
+
+    shape.set(-1, shape.elements() + other.shape.elements());
+
+    size_t addbytesWithoutPadding = other.shape.elements() * sizeOf(other.type); // ignore padding if any
+    bytes.insert(bytes.end(), other.bytes.begin(), other.bytes.begin() + addbytesWithoutPadding);
+
+    // grow to align to 256 bytes boundary (will be undone when more pieces are appended)
+    size_t multiplier = (size_t)ceil((float)bytes.size() / (float)256);
+    bytes.resize(multiplier * 256);
   }
 };
 

@@ -501,6 +501,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
+  // mixed precision training
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision training for forward/backward pass and optimizaton",
+      {"float32", "float32"});
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
 
@@ -556,6 +560,10 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision training for forward/backward pass and optimizaton",
+      {"float32", "float32"});
+
   // clang-format on
 }
 

@@ -369,7 +369,7 @@ public:
 
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)
-      output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
+      output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb); // @TODO: for fp16 training, NaNs appear here...
     output = dense(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
 
     auto opsPost = opt<std::string>("transformer-postprocess");

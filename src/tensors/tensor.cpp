@@ -104,14 +104,15 @@ template std::string TensorBase::debug<int32_t>(int, int);
 template std::string TensorBase::debug<int64_t>(int, int);
 
 void TensorBase::get(io::Item& item, const std::string& name) {
-  item.name = name;
+  item.name  = name;
   item.shape = shape_;
-  item.type = type_;
-  item.bytes.resize(memory_->size());
+  item.type  = type_;
 
+  size_t bytesWithoutPadding = shape_.elements() * sizeOf(type_);
+  item.bytes.resize(bytesWithoutPadding);
   copy(backend_,
        memory_->data<char>(),
-       memory_->data<char>() + memory_->size(),
+       memory_->data<char>() + bytesWithoutPadding,
        item.bytes.data());
 }
 

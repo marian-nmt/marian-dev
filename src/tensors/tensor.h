@@ -90,18 +90,20 @@ public:
 
   template <typename T>
   T get(size_t i) {
-    matchOrAbort<T>(type_);
-
-    T temp = 0;
-    if(backend_->getDeviceId().type == DeviceType::cpu) {
-      std::copy(data<T>() + i, data<T>() + i + 1, &temp);
+    if(!matchType<T>(type_)) {
+      DISPATCH_BY_TYPE1(type_, get, i);
+    } else {
+      T temp = 0;
+      if(backend_->getDeviceId().type == DeviceType::cpu) {
+        std::copy(data<T>() + i, data<T>() + i + 1, &temp);
+      }
+  #ifdef CUDA_FOUND
+      else {
+        gpu::copy(backend_, data<T>() + i, data<T>() + i + 1, &temp);
+      }
+  #endif
+      return temp;
     }
-#ifdef CUDA_FOUND
-    else {
-      gpu::copy(backend_, data<T>() + i, data<T>() + i + 1, &temp);
-    }
-#endif
-    return temp;
   }
 
   float get(size_t i) {
@@ -130,16 +132,18 @@ public:
 
   template <typename T>
   void set(size_t i, T value) {
-    matchOrAbort<T>(type_);
-
-    if(backend_->getDeviceId().type == DeviceType::cpu) {
-      std::copy(&value, &value + 1, data<T>() + i);
-    }
+    if(!matchType<T>(type_)) {
+      DISPATCH_BY_TYPE2(type_, set, i, value);
+    } else {
+      if(backend_->getDeviceId().type == DeviceType::cpu) {
+        std::copy(&value, &value + 1, data<T>() + i);
+      }
 #ifdef CUDA_FOUND
-    else {
-      gpu::copy(backend_, &value, &value + 1, data<T>() + i);
-    }
+      else {
+        gpu::copy(backend_, &value, &value + 1, data<T>() + i);
+      }
 #endif
+    }
   }
 
   template <typename T>

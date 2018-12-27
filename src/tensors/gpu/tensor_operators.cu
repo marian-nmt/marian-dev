@@ -1821,7 +1821,7 @@ void LayerNormalization(Tensor out,
                                                  eps);
 
   } else {
-    ABORT("LayerNormaliztion not implemented for type {}", out->type());
+    ABORT("LayerNormalization not implemented for type {}", out->type());
   }
 }
 

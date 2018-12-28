@@ -1918,12 +1918,11 @@ __global__ void gLayerNormalizationGrad(T* gradX,
 
       // Jacobian of layer norm
       // J = [ \frac{1}{N\sigma} (N\delta_{ij} - l_i l_j - 1) ]_{ij}
-      // J * a = dJ/dx_i = ( N v_i - l_i \sum_j l_j a_j - \sum_j a_j ) / (N \sigma)
+      // J * a = dC/dx_i = ( N v_i - l_i \sum_j l_j a_j - \sum_j a_j ) / (N \sigma)
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          AccType grad_x = (AccType)0.0f;
 
           AccType yv     = yRow[id];
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
@@ -1931,27 +1930,25 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType adjv   = adjRow[id];
           AccType lv     = (yv - betav) / (gammav + eps);
 
-          grad_x += N * adjv - lv * sum_adj_x[0] - sum_adj[0];
-          grad_x /= N * sigma + eps;
+          AccType gradLv = N * adjv - lv * sum_adj_x[0] - sum_adj[0];
+          gradLv        /= N * sigma + eps;
 
-          AccType valX = gammav * grad_x;
+          AccType gradXv = gammav * gradLv;
 
-          // cutoff LN gradient
-          AccType sign = functional::Ops<AccType>::sgn(valX);
+          // Keep LN gradient between [-10, 10]
+          AccType sign = functional::Ops<AccType>::sgn(gradXv);
           AccType cutoff = (AccType)10.f;
-          valX = functional::Ops<AccType>::abs(valX) > cutoff ? sign * cutoff : valX;
+          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv;
 
-          T* gradXRow     = gradX     + j * cols;
-          T* gradGammaRow = gradGamma + j * cols;
+          T* gradXRow      = gradX     + j * cols;
+          gradXRow[id]    += (T)(gradXv);
 
-          gradXRow[id]    += (T)(valX);
-
+          T* gradGammaRow  = gradGamma + j * cols;
           // assignment is correct here as this gets summed up
           // in the next kernel via matrix product
           gradGammaRow[id] = (T)(adjv * lv);
         }
       }
-
     }
   }
 }
@@ -2015,7 +2012,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
   // This is much faster for fp16 which seems to have a broken atomicAdd implementation
   gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1); // beta set to one to add
-  if(gradBeta)
+  if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
     gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1); // beta set to one to add
 
   allocator->free(tempGradGammaMemory);

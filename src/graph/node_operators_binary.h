@@ -128,7 +128,7 @@ public:
                         scalar_))};
   }
 
-  const std::string type() override { return "•"; }
+  const std::string type() override { return "dot"; }
 
   const std::string color() override { return "orange"; }
 };

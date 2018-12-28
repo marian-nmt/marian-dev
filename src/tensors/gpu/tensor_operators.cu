@@ -1717,26 +1717,28 @@ void AttBack(Tensor gVa,
 template <typename T, typename AccType = float>
 __global__ void gLNormalization(T* out,
                                 const T* in,
-                                const T* alpha,
+                                const T* gamma,
                                 const T* beta,
                                 int rows,
                                 int cols,
                                 AccType eps = 1e-9) {
   extern __shared__ uint8_t _sharedBytes[];
-  AccType* _shareFloat = (AccType*)_sharedBytes;
+  AccType* _shareAccType = (AccType*)_sharedBytes;
+
+  AccType N = cols;
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      T* so = out + j * cols;
-      const T* sp = in + j * cols;
+      T* yRow       = out + j * cols;
+      const T* xRow =  in + j * cols;
 
-      AccType* _sum = _shareFloat + blockDim.x; // accumulate into floats
-      _sum[threadIdx.x] = 0.0f;
+      AccType* _sum = _shareAccType + blockDim.x; // accumulate into floats
+      _sum[threadIdx.x] = (AccType)0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          _sum[threadIdx.x] += (AccType)sp[id];
+          _sum[threadIdx.x] += (AccType)xRow[id];
         }
       }
       __syncthreads();
@@ -1750,16 +1752,17 @@ __global__ void gLNormalization(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      AccType mean = (T)(_sum[0] / (AccType)cols);
+      AccType mean = _sum[0] / N;
       __syncthreads();
 
-      AccType* _sqSum = _shareFloat + blockDim.x;
+      AccType* _sqSum = _shareAccType + blockDim.x;
 
-      _sqSum[threadIdx.x] = 0.0f;
+      _sqSum[threadIdx.x] = (AccType)0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          AccType ex = ((AccType)sp[id]) - mean;
+          AccType xv = (AccType)xRow[id];
+          AccType ex = xv - mean;
           _sqSum[threadIdx.x] += ex * ex;
         }
       }
@@ -1773,16 +1776,18 @@ __global__ void gLNormalization(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      AccType sigma = functional::Ops<AccType>::sqrt((AccType)eps + (_sqSum[0] / (AccType)cols)); // all AccType
+      AccType sigma = functional::Ops<AccType>::sqrt(_sqSum[0] / N); // all AccType
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          AccType t = (AccType)alpha[id] * ((AccType)sp[id] - mean) / sigma;
-          if(beta != nullptr)
-            t += (AccType)beta[id];
-          so[id] = (T)t;
+          AccType gammav = (AccType)gamma[id];
+          AccType xv     = (AccType)xRow[id];
+          AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType lv     = (xv - mean) / (sigma + eps);
+          AccType y      = gammav * lv + betav;
+          yRow[id]       = (T)y;
         }
       }
     }
@@ -1839,30 +1844,38 @@ __global__ void gLayerNormalizationGrad(T* gradX,
   extern __shared__ uint8_t sharedBytes[];
   AccType* shared = (AccType*)sharedBytes;
 
+  AccType N = cols;
+
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      AccType* sum_adj = shared;
-      AccType* sum_adj_x = shared + blockDim.x;
-      AccType* sum_x = shared + 2 * blockDim.x;
-      AccType* sum_sqr = shared + 3 * blockDim.x;
+      AccType* sum_adj   = shared;
+      AccType* sum_adj_x = shared +     blockDim.x;
+      AccType* sum_x     = shared + 2 * blockDim.x;
+      AccType* sum_sqr   = shared + 3 * blockDim.x;
 
-      const T* xRow = x + j * cols;
-      const T* yRow = y + j * cols;
+      const T* xRow   =   x + j * cols;
+      const T* yRow   =   y + j * cols;
       const T* adjRow = adj + j * cols;
 
-      sum_x[threadIdx.x] = (AccType)0.0f;
-      sum_adj[threadIdx.x] = (AccType)0.0f;
+      sum_x[threadIdx.x]     = (AccType)0.0f;
+      sum_adj[threadIdx.x]   = (AccType)0.0f;
       sum_adj_x[threadIdx.x] = (AccType)0.0f;
-      sum_sqr[threadIdx.x] = (AccType)0.0f;
+      sum_sqr[threadIdx.x]   = (AccType)0.0f;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          sum_x[threadIdx.x] += (AccType)xRow[id];
-          sum_adj_x[threadIdx.x]
-              += (AccType)(adjRow[id] * (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id]);
-          sum_adj[threadIdx.x] += (AccType)adjRow[id];
+          AccType xv     = xRow[id];
+          AccType yv     = yRow[id];
+          AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType gammav = (AccType)gamma[id];
+          AccType adjv   = adjRow[id];
+          AccType lv     = (yv - betav) / (gammav + eps);
+
+          sum_x[threadIdx.x]     += xv;
+          sum_adj_x[threadIdx.x] += adjv * lv;
+          sum_adj[threadIdx.x]   += adjv;
         }
       }
       __syncthreads();
@@ -1871,20 +1884,21 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         __syncthreads();
         int skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
-          sum_x[threadIdx.x] += sum_x[threadIdx.x + skip]; // Accumulates in AccType
-          sum_adj[threadIdx.x] += sum_adj[threadIdx.x + skip]; // Accumulates in AccType
+          sum_x[threadIdx.x]     += sum_x[threadIdx.x     + skip]; // Accumulates in AccType
+          sum_adj[threadIdx.x]   += sum_adj[threadIdx.x   + skip]; // Accumulates in AccType
           sum_adj_x[threadIdx.x] += sum_adj_x[threadIdx.x + skip]; // Accumulates in AccType
         }
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      AccType mean = sum_x[0] / (AccType)cols;
+      AccType mean = sum_x[0] / N;
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          AccType ex = (AccType)xRow[id] - mean;
+          AccType xv = xRow[id];
+          AccType ex = xv - mean;
           sum_sqr[threadIdx.x] += ex * ex;
         }
       }
@@ -1899,32 +1913,42 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      AccType sigma = functional::Ops<AccType>::sqrt(eps + (sum_sqr[0] / (AccType)cols));
+      AccType sigma = functional::Ops<AccType>::sqrt(sum_sqr[0] / N);
       __syncthreads();
+
+      // Jacobian of layer norm
+      // J = [ \frac{1}{N\sigma} (N\delta_{ij} - l_i l_j - 1) ]_{ij}
+      // J * a = dJ/dx_i = ( N v_i - l_i \sum_j l_j a_j - \sum_j a_j ) / (N \sigma)
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
           AccType grad_x = (AccType)0.0f;
-          AccType x_hat = (yRow[id] - ((beta) ? beta[id] : (T)0.f)) / gamma[id];
 
-          grad_x += (AccType)cols * (AccType)adjRow[id];
-          grad_x -= sum_adj[0];
-          grad_x -= sum_adj_x[0] * x_hat;
-          grad_x /= ((AccType)cols * sigma);
+          AccType yv     = yRow[id];
+          AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType gammav = (AccType)gamma[id];
+          AccType adjv   = adjRow[id];
+          AccType lv     = (yv - betav) / (gammav + eps);
 
+          grad_x += N * adjv - lv * sum_adj_x[0] - sum_adj[0];
+          grad_x /= N * sigma + eps;
 
-          AccType valX = (AccType)gamma[id] * grad_x;
+          AccType valX = gammav * grad_x;
 
-          // @TODO: Some kind of clipping? Did I add this?
+          // cutoff LN gradient
           AccType sign = functional::Ops<AccType>::sgn(valX);
-          valX = functional::Ops<AccType>::abs(valX) > (AccType)1000.f ? sign * (AccType)1000.f : valX;
+          AccType cutoff = (AccType)10.f;
+          valX = functional::Ops<AccType>::abs(valX) > cutoff ? sign * cutoff : valX;
 
-          T* gradXRow = gradX + j * cols;
+          T* gradXRow     = gradX     + j * cols;
           T* gradGammaRow = gradGamma + j * cols;
 
-          gradXRow[id] += (T)valX;
-          gradGammaRow[id] = adjRow[id] * (T)x_hat; // assignment is correct, this gets summed up later
+          gradXRow[id]    += (T)(valX);
+
+          // assignment is correct here as this gets summed up
+          // in the next kernel via matrix product
+          gradGammaRow[id] = (T)(adjv * lv);
         }
       }
 
@@ -1948,7 +1972,6 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
 
   int threads = std::min(MAX_THREADS, cols);
   int blocks = std::min(MAX_BLOCKS, rows);
-  int shared = sizeof(float) * threads * 4;
 
   IPtr<MemoryPiece> tempGradGammaMemory = allocator->alloc(adj->memory()->size(), adj->type());
   Tensor tempGradGamma = TensorBase::New(tempGradGammaMemory, adj->shape(), adj->type(), adj->getBackend());
@@ -1959,6 +1982,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   tempOnes->set(1.f);
 
   if(gradX->type() == Type::float32) {
+    int shared = sizeof(float) * threads * 4;
     gLayerNormalizationGrad<float, float><<<blocks, threads, shared>>>(
       gradX->data<float>(),
       tempGradGamma->data<float>(),
@@ -1972,6 +1996,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
       eps);
   } else if (gradX->type() == Type::float16) {
     // accumulate in float
+    int shared = sizeof(float) * threads * 4;
     gLayerNormalizationGrad<half, float><<<blocks, threads, shared>>>(
       gradX->data<half>(),
       tempGradGamma->data<half>(),

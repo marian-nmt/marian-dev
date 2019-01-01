@@ -364,7 +364,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
       graph->forward();
       localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
-      graph->backward(/*zero=*/false); // (gradients are reset before we get here)
+      float clipNorm = options_->get<float>("clip-norm");
+      graph->backward(/*zero=*/false, /*clipValue=*/ clipNorm * costScaleFactor_); // (gradients are reset before we get here)
     }
     return true; // dummy success
   });

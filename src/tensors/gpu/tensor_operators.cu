@@ -50,6 +50,17 @@ static inline  __device__ void atomicAdd(half *address, half val) {
 
 }
 
+__device__ bool isinf2(float value) {
+  return isinf(value);
+}
+
+__device__ bool isinf2(half value) {
+   bool found = isinf((float)value) || value > (half)((float)65536/(float)4);
+   if(found)
+    printf("Inf: %.f\n", (float)value);
+   return found;
+}
+
 template <typename T>
 __global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
@@ -57,6 +68,7 @@ __global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
     if(index < length) {
       if(isnan((float)in[index])) *isNan = true;
       if(isinf((float)in[index])) *isInf = true;
+      //if(isinf2(in[index])) *isInf = true;
     }
   }
 }
@@ -1567,15 +1579,23 @@ float L2Norm(Tensor in) {
   int blocks = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
 
   uint8_t* data;
-  cudaMalloc(&data, blocks * sizeof(float));
-  auto out = TensorBase::New(MemoryPiece::New(data, blocks * sizeof(float)),
+  cudaMalloc(&data, blocks * sizeof(float)); // accumulate into float
+  auto blockMem = TensorBase::New(MemoryPiece::New(data, blocks * sizeof(float)),
                              Shape({1, blocks}),
+                             Type::float32,
                              in->getBackend());
 
   using namespace functional;
-  ReduceAll(_1 * _1, out, in);
-  float dataCpu = sqrtf(out->get(0));
-  out.reset();
+  if(in->type() == Type::float32) {
+    ReduceAll<float, float>(_1 * _1, blockMem, in);
+  } else if(in->type() == Type::float16) {
+    ReduceAll<half, float>(_1 * _1, blockMem, in);
+  } else {
+    ABORT("L2Norm not implemented for type {}", in->type());
+  }
+  float dataCpu = sqrtf(blockMem->get<float>(0));
+
+  blockMem.reset();
   cudaFree(data);
   return dataCpu;
 }
@@ -1871,7 +1891,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
           AccType gammav = (AccType)gamma[id];
           AccType adjv   = adjRow[id];
-          AccType lv     = (yv - betav) / (gammav + eps);
+          AccType lv     = (yv - betav) / (gammav + eps); // go back to LN(x) from scaled and shifted version for accumulation
 
           sum_x[threadIdx.x]     += xv;
           sum_adj_x[threadIdx.x] += adjv * lv;
@@ -1924,21 +1944,22 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         int id = tid + threadIdx.x;
         if(id < cols) {
 
-          AccType yv     = yRow[id];
-          AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType xv     = xRow[id];
+          //AccType yv     = yRow[id];
+          //AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
           AccType gammav = (AccType)gamma[id];
           AccType adjv   = adjRow[id];
-          AccType lv     = (yv - betav) / (gammav + eps);
+          AccType lv     = (xv - mean) / (sigma + eps);
 
           AccType gradLv = N * adjv - lv * sum_adj_x[0] - sum_adj[0];
-          gradLv        /= N * sigma + eps;
+          gradLv        /= N * (sigma + eps); // eps has to be inside parentheses for correct gradient
 
           AccType gradXv = gammav * gradLv;
 
           // Keep LN gradient between [-10, 10]
-          AccType sign = functional::Ops<AccType>::sgn(gradXv);
-          AccType cutoff = (AccType)10.f;
-          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv;
+          // AccType sign = functional::Ops<AccType>::sgn(gradXv);
+          // AccType cutoff = (AccType)10.f;
+          // gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv;
 
           T* gradXRow      = gradX     + j * cols;
           gradXRow[id]    += (T)(gradXv);
@@ -2012,6 +2033,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
   // This is much faster for fp16 which seems to have a broken atomicAdd implementation
   gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1); // beta set to one to add
+
   if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
     gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1); // beta set to one to add
 

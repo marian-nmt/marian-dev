@@ -240,14 +240,19 @@ public:
           LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
               v->type(), v->shape(), v->name(), v->getId(), v->hash());
           LOG(critical, "Value debug {}", v->val()->debug());
+          LOG(critical, "Children: {}", v->children().size());
+          for(auto&& child : v->children()) {
+            LOG(critical, "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
+              child->type(), child->shape(), child->name(), child->getId(), child->hash());
+            LOG(critical, "Value debug {}", child->val()->debug());
+          }
           ABORT("Aborting");
         }
       }
 
       if(v->marked_for_debug()) {
-        std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
-                  << std::endl;
-        std::cerr << v->val()->debug() << std::endl;
+        LOG(info, "Debug: {} op={}", v->debug_message(), v->type());
+        LOG(info, v->val()->debug());
       }
 
       if(inferenceOnly_)
@@ -317,8 +322,8 @@ public:
       }
 
       if(v->trainable() && v->marked_for_debug()) {
-        std::cerr << "Debug Grad: " << v->debug_message() << std::endl;
-        std::cerr << v->grad()->debug() << std::endl;
+        LOG(info, "Debug Grad: {} op={}", v->debug_message(), v->type());
+        LOG(info, v->grad()->debug());
       }
 
       v->children().clear();
@@ -523,6 +528,7 @@ public:
   void setReloaded(bool reloaded) { reloaded_ = reloaded; }
 
   void setThrowNan(bool throwNan) { throwNan_ = throwNan; }
+  bool getThrowNan() { return throwNan_; }
 
 public:
   // loading from array of io::Items

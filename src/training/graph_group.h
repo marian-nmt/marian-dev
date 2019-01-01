@@ -106,6 +106,10 @@ public:
   virtual Ptr<data::BatchStats> collectStats(Ptr<ExpressionGraph> graph,
                                              Ptr<models::ModelBase> model,
                                              double multiplier = 1.) {
+    // this runs with fake values, we do not care for overflow/underflow
+    bool throwNan = graph->getThrowNan();
+    graph->setThrowNan(false);
+
     auto stats = New<data::BatchStats>();
 
     size_t numFiles
@@ -154,6 +158,9 @@ public:
 
       maxBatch = start;
     }
+
+    // set back to original value for aborting on NaN or Inf
+    graph->setThrowNan(throwNan);
     return stats;
   }
 

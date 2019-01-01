@@ -15,7 +15,7 @@ namespace marian {
 
 class ClipperBase {
 public:
-  virtual void clip(Tensor) = 0;
+  virtual void clip(Tensor, float /*costScalingFactor*/ = 1.f) = 0;
 };
 
 typedef std::shared_ptr<ClipperBase> ClipperPtr;
@@ -24,7 +24,7 @@ class Elementwise : public ClipperBase {
 public:
   Elementwise(float c = 10.0) : c_(c) {}
 
-  void clip(Tensor t) override;
+  void clip(Tensor t, float costScalingFactor = 1.f) override;
 
 private:
   float c_;
@@ -34,7 +34,7 @@ class Norm : public ClipperBase {
 public:
   Norm(float c = 1.0) : c_(c) {}
 
-  void clip(Tensor t) override;
+  void clip(Tensor t, float costScalingFactor = 1.f) override;
 
 private:
   float c_;

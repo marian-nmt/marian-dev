@@ -20,7 +20,7 @@ private:
   };
 
 public:
-  History(size_t lineNo, float alpha = 1.f, float wp_ = 0.f);
+  History(size_t lineNo, float alpha = 1.f, float wp = 0.f, float xmlPenalty = 1.f);
 
   float LengthPenalty(size_t length) { return std::pow((float)length, alpha_); }
   float WordPenalty(size_t length) { return wp_ * (float)length; }
@@ -31,10 +31,11 @@ public:
         if(beam[j]->GetWord() == trgEosId || last) {
           float pathScore = (beam[j]->GetPathScore() - WordPenalty(history_.size()))
                             / LengthPenalty(history_.size());
-          // TODO: refactorize and use 'xml-violation-penalty' instead of 10.0 (?)
-          pathScore += 10.0 * beam[j]->GetXmlStatus();
+          // TODO: refactorize and make sure 'xml-violation-penalty' is not used unless --xml-input
+          // is specified
+          pathScore += xmlPenalty_ * beam[j]->GetXmlStatus();
           std::cerr << "Add " << history_.size() << " " << j << " " << pathScore
-                    << std::endl;
+                    << " (penalty= " << xmlPenalty_ << ")" << std::endl;
           topHyps_.push({history_.size(), j, pathScore});
         }
     }
@@ -73,6 +74,7 @@ private:
   size_t lineNo_;
   float alpha_;
   float wp_;
+  float xmlPenalty_;
 };
 
 typedef std::vector<Ptr<History>> Histories;

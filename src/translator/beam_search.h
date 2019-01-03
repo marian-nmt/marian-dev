@@ -201,9 +201,11 @@ public:
 
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
+      float xmlPenalty = options_->has("xml-input") ? options_->get<float>("xml-violation-penalty") : 0.f;
       auto history = New<History>(sentId,
                                   options_->get<float>("normalize"),
-                                  options_->get<float>("word-penalty"));
+                                  options_->get<float>("word-penalty"),
+                                  xmlPenalty);
       histories.push_back(history);
     }
 

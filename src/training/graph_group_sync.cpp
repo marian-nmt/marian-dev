@@ -368,13 +368,13 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     }
 
     // Handle local gradient explosion but only clip to largest possible value
-    // given number of GPUs, cost-scaling and type. Should clip very rarely.
+    // given number of GPUs and type. Should clip rarely.
     // We do another L2-norm-based clipping/rescaling after summation.
     auto gradType = graph->params()->grads()->type();
     if(sizeOf(gradType) < sizeOf(Type::float32)) {
       using namespace functional;
       float numGpus = mpi_->numMPIProcesses() * devices_.size();
-      float clipValue = NumericLimits<float>(gradType).max / (numGpus * costScaleFactor_);
+      float clipValue = NumericLimits<float>(gradType).max / numGpus;
       Element(_1 = clip(_1, clipValue), graph->params()->grads());
     }
 

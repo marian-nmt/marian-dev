@@ -261,7 +261,7 @@ public:
     }
   }
 
-  void backward(bool zero = true, float clipValue = 0.0f);
+  void backward(bool zero = true);
 
   std::string graphviz() {
     std::stringstream ss;

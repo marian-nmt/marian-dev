@@ -294,16 +294,13 @@ public:
   NthElementGPU() = delete;
   NthElementGPU(const NthElementGPU& copy) = delete;
 
-  NthElementGPU(size_t maxBeamSize,
-                size_t maxBatchSize,
-                DeviceId deviceId)
+  NthElementGPU(size_t maxBeamSize, size_t maxBatchSize, DeviceId deviceId)
       : deviceId_(deviceId),
-        NUM_BLOCKS(std::min(
-            500,
-            int(maxBeamSize* MAX_VOCAB_SIZE / (2 * BLOCK_SIZE))
-                + int(maxBeamSize* MAX_VOCAB_SIZE % (2 * BLOCK_SIZE) != 0))) {
-    // std::cerr << "NthElement::NthElement" << std::endl;
-
+        NUM_BLOCKS(std::min(500,
+                            int(maxBeamSize* MAX_VOCAB_SIZE / (2 * BLOCK_SIZE))
+                                + int(maxBeamSize* MAX_VOCAB_SIZE % (2 * BLOCK_SIZE) != 0))),
+        useHypMask_(false),
+        vocabSize_{0} {
     cudaSetDevice(deviceId_.no);
 
     CUDA_CHECK(cudaMalloc((void**)&d_ind, maxBatchSize * NUM_BLOCKS * sizeof(int)));
@@ -338,19 +335,19 @@ public:
     CUDA_CHECK(cudaFree(d_hypMask));
   }
 
-  void setHypMask(const std::vector<char>& hypMask, int vocabSizeArg) {
+  void setHypMask(const std::vector<char>& hypMask, int vocabSize) {
     cudaSetDevice(deviceId_.no);
     CUDA_CHECK(cudaMemcpyAsync(d_hypMask,
                                hypMask.data(),
                                hypMask.size() * sizeof(char),
                                cudaMemcpyHostToDevice,
                                /* stream_ */ 0));
-    useHypMask = true;
-    vocabSize = vocabSizeArg;
+    useHypMask_ = true;
+    vocabSize_ = vocabSize;
   }
 
   void clearHypMask() {
-    useHypMask = false;
+    useHypMask_ = false;
   }
 
 private:
@@ -376,7 +373,7 @@ private:
                   BLOCK_SIZE * sizeof(float),
                   /* stream_ */ 0>>>(
         d_out, d_ind, probs, numBatches, d_batchPosition,
-        useHypMask, d_hypMask, vocabSize);
+        useHypMask_, d_hypMask, vocabSize_);
 
     gMaxElementUpdate<<<numBatches,
                         BLOCK_SIZE,
@@ -389,9 +386,9 @@ private:
                                            d_res_idx,
                                            d_cumBeamSizes,
                                            NUM_BLOCKS,
-                                           useHypMask,
+                                           useHypMask_,
                                            d_hypMask,
-                                           vocabSize);
+                                           vocabSize_);
   }
 
 public:
@@ -478,8 +475,8 @@ private:
   size_t lastN;
 
   char* d_hypMask;
-  bool useHypMask;
-  int vocabSize;
+  bool useHypMask_;
+  int vocabSize_;
 };
 
 // factory function
@@ -490,15 +487,15 @@ GetNBestListFn createGetNBestListGPUFn(size_t beamSize,
                                        bool xmlInput /* =false */) {
   auto nth = New<NthElementGPU>(beamSize, dimBatch, deviceId);
   return [nth, xmlInput](const std::vector<size_t>& beamSizes,
-      Tensor logProbs,
-      std::vector<float>& outCosts,
-      std::vector<unsigned>& outKeys,
-      const bool isFirst,
-      const std::vector<char>& hypMask,
-      size_t vocabSizeArg) {
-      if(xmlInput)
-        nth->setHypMask(hypMask, vocabSizeArg);
-      return nth->getNBestList(beamSizes, logProbs, outCosts, outKeys, isFirst);
+                         Tensor logProbs,
+                         std::vector<float>& outCosts,
+                         std::vector<unsigned>& outKeys,
+                         const bool isFirst,
+                         const std::vector<char>& hypMask,
+                         size_t vocabSizeArg) {
+    if(xmlInput)
+      nth->setHypMask(hypMask, vocabSizeArg);
+    return nth->getNBestList(beamSizes, logProbs, outCosts, outKeys, isFirst);
   };
 }
 

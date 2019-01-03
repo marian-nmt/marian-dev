@@ -28,7 +28,6 @@ add_library(marian STATIC
   data/text_input.cpp
 
   3rd_party/cnpy/cnpy.cpp
-  3rd_party/svd/svd.cpp
   3rd_party/ExceptionWithCallStack.cpp
 
   tensors/backend.cpp
@@ -59,6 +58,7 @@ add_library(marian STATIC
 
   models/model_factory.cpp
   models/encoder_decoder.cpp
+  models/transformer_stub.cpp
 
   rescorer/score_collector.cpp
 
@@ -84,6 +84,7 @@ add_library(marian STATIC
   $<TARGET_OBJECTS:libyaml-cpp>
   $<TARGET_OBJECTS:SQLiteCpp>
   $<TARGET_OBJECTS:pathie-cpp>
+  $<TARGET_OBJECTS:zlib>
 )
 target_compile_options(marian PUBLIC ${ALL_WARNINGS})
 
@@ -112,7 +113,7 @@ cuda_add_library(marian_cuda
   training/gradient_dropping/gpu/dropper.cu
   training/gradient_dropping/gpu/sparse_algorithm.cu
   STATIC)
-  
+
   target_compile_options(marian_cuda PUBLIC ${ALL_WARNINGS})
 endif(CUDA_FOUND)
 
@@ -173,9 +174,8 @@ if(USE_STATIC_LIBS)
                 "marian-adaptive"
     DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
-
   add_custom_target(philly DEPENDS marian_tgz marian_zip)
-endif()
+endif(USE_STATIC_LIBS)
 
 if(COMPILE_SERVER)
   add_executable(marian_server command/marian_server.cpp)
@@ -188,7 +188,6 @@ foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   if(CUDA_FOUND)
     target_link_libraries(${exec} marian marian_cuda ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
-    cuda_add_cublas_to_target(${exec})
   endif(CUDA_FOUND)
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endforeach(exec)

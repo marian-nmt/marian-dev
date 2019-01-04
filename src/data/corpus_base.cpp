@@ -144,7 +144,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
 
       vocabs_.emplace_back(vocab);
     }
-    if(options_->get<bool>("xml-input")) {
+    if(options_->has("xml-input")) {
       size_t id = vocabPaths.size() - 1;
       target_vocab_ = New<Vocab>(options_, id);
       int vocSize = target_vocab_->load(vocabPaths[id], maxVocabs[id]);

@@ -120,7 +120,8 @@ SentenceTuple CorpusSQLite::next() {
       } else if(i > 0 && i == weightFileIdx_) {
         addWeightsToSentenceTuple(line, tup);
       } else {
-        if(options_->get<bool>("xml-input")) {
+        // TODO: check if xml-input is needed in SQlite data management.
+        if(options_->has("xml-input")) {
           std::string stripped_line;
           processXml(line, stripped_line, target_vocab_, tup);
           addWordsToSentenceTuple(stripped_line, i, tup);

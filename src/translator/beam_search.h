@@ -120,7 +120,7 @@ public:
               getAlignmentsForHypothesis(align, batch, (int)beamHypIdx, (int)beamIdx));
         }
 
-        if (options_->get<bool>("xml-input")) {
+        if (options_->has("xml-input")) {
           hyp->SetXml(xmls[i]);
         }
 
@@ -212,12 +212,12 @@ public:
     size_t localBeamSize = beamSize_; // max over beam sizes of active sentence hypotheses
 
     auto getNBestList = createGetNBestListFn(
-        localBeamSize, dimBatch, graph->getDeviceId(), options_->get<bool>("xml-input"));
+        localBeamSize, dimBatch, graph->getDeviceId(), options_->has("xml-input"));
 
-    const data::XmlOptionsList *xmlOptionsList = options_->get<bool>("xml-input")
+    const data::XmlOptionsList *xmlOptionsList = options_->has("xml-input")
                                                ? batch->getXmlOptionsList()
                                                : NULL;
-    if(options_->get<bool>("xml-input")) {
+    if(options_->has("xml-input")) {
       std::cerr << "pulling xmlOptionsList " << batch->getXmlOptionsList() << "\n";
       std::cerr << "xmlOptions " << xmlOptionsList->at(0) << "\n";
     }
@@ -226,7 +226,7 @@ public:
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(int i = 0; i < dimBatch; ++i) {
       auto& beam = beams[i];
-      if(options_->get<bool>("xml-input"))
+      if(options_->has("xml-input"))
         beam.resize(localBeamSize, New<Hypothesis>( xmlOptionsList->at(i) ));
       else
         beam.resize(localBeamSize, New<Hypothesis>());
@@ -269,7 +269,7 @@ public:
           if(i < beam.size()) {
             auto hyp = beam[i];
             std::cerr << "beam=" << j << " i=" << i;
-            if (options_->get<bool>("xml-input")) {
+            if (options_->has("xml-input")) {
               std::cerr << " xml status=" << hyp->GetXmlStatus() << "/"
                         << hyp->GetXmlOptionCovered()->size();
             }
@@ -362,7 +362,7 @@ public:
 
       std::vector<data::XmlOptionCoveredList *> outXmls;
 
-      if (options_->get<bool>("xml-input")) {
+      if (options_->has("xml-input")) {
         xmlSearch(getNBestList,
                   beams,
                   localBeamSize,

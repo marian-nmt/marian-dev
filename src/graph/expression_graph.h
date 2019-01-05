@@ -156,12 +156,12 @@ public:
   void setInference(bool inference) { inferenceOnly_ = inference; }
   bool isInference() { return inferenceOnly_; }
 
-  ~ExpressionGraph() {
+  virtual ~ExpressionGraph() {
     clear();
     params_->clear();
   }
 
-  void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
+  virtual void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
                  Ptr<Device> device = nullptr);
 
   DeviceId getDeviceId() { return backend_->getDeviceId(); }
@@ -175,9 +175,9 @@ public:
     namespace_ = newNamespace;
   }
 
-  void copyParams(Ptr<ExpressionGraph> graph) {
+  virtual void copyParams(Ptr<ExpressionGraph> graph) {
     for(auto p : *graph->params())
-      param(p->name(), p->shape(), inits::dummy());
+      param(p->name(), p->shape(), inits::dummy(), p->value_type());
     params()->allocateForward();
     params()->vals()->copyFrom(graph->params()->vals());
   }
@@ -261,7 +261,7 @@ public:
     }
   }
 
-  void backward(bool zero = true);
+  void backward(bool zero = true, float clipValue = 0.f);
 
   std::string graphviz() {
     std::stringstream ss;

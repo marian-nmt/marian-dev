@@ -266,9 +266,53 @@ public:
   }
 };
 
+class TempExpressionGraph : public ExpressionGraph {
+private:
+  Ptr<Allocator> allocator_;
+  MemoryPiece::PtrType memory_;
+
+  // this is private, should only be used within copyParams()
+  void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
+                 Ptr<Device> device = nullptr) override {
+    ExpressionGraph::setDevice(deviceId, device);
+  }
+
+public:
+  TempExpressionGraph(Ptr<Allocator> allocator)
+    : ExpressionGraph(/*inference=*/true, /*optimize=*/false), 
+      allocator_(allocator) {
+  }
+
+  void copyParams(Ptr<ExpressionGraph> graph) override {
+    if(memory_)
+      allocator_->free(memory_);
+
+    Type   graphType = graph->params()->vals()->type();
+    size_t graphSize = graph->params()->vals()->size();
+    
+    auto tempDevice = New<cpu::WrappedDevice>(allocator_->getDeviceId()); // @TODO: move out of namespace cpu
+    memory_ = allocator_->alloc(graphSize, graphType);
+    tempDevice->set(memory_->data(), memory_->size());
+    this->setDevice(allocator_->getDeviceId(), tempDevice);
+    this->setParameterType(graphType);
+  
+    ExpressionGraph::copyParams(graph);
+  }
+
+  ~TempExpressionGraph() {
+    if(memory_)
+      allocator_->free(memory_);
+  }
+};
+
 static Ptr<ExpressionGraph> graphFromOptimizer(Ptr<ExpressionGraph> graph, const std::vector<Ptr<OptimizerBase>>& /*opts*/, bool /*getAverage*/ = true) {
   // @TODO: implement function that creates a temporary graph from input graph and shared optimizers
-  return graph;
+  auto tempGraph = New<TempExpressionGraph>(graph->allocator());
+  
+  tempGraph->copyParams(graph);
+  tempGraph->reuseWorkspace(graph);
+  
+  return tempGraph;
 }
 
 }  // namespace marian

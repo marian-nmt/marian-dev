@@ -22,7 +22,7 @@ void ExpressionGraph::setDevice(DeviceId deviceId, Ptr<Device> device) {
   }
 }
 
-void ExpressionGraph::backward(bool zero) {
+void ExpressionGraph::backward(bool zero, float clipValue) {
   if(topNodes_.size() > 1) {
     LOG(critical, "There are more ({}) than one top most nodes for backward pass:", topNodes_.size());
     for(auto node : topNodes_) {
@@ -58,8 +58,14 @@ void ExpressionGraph::backward(bool zero) {
         child->set_zero_adjoint();
     }
 
-    if(v->trainable())
+    if(v->trainable()) {
       v->backward();
+      if(clipValue != 0) {
+        using namespace functional;
+        Element(_1 = clip(_1, clipValue), v->grad());
+      }
+    }
+      
 
     if(throwNan_) {
       for(auto&& child : v->children()) {

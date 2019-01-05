@@ -123,7 +123,7 @@ SentenceTuple CorpusSQLite::next() {
         // TODO: check if xml-input is needed in SQlite data management.
         if(options_->has("xml-input")) {
           std::string stripped_line;
-          processXml(line, stripped_line, target_vocab_, tup);
+          xml::processXml(line, stripped_line, target_vocab_, tup);
           addWordsToSentenceTuple(stripped_line, i, tup);
         } else {
           addWordsToSentenceTuple(line, i, tup);

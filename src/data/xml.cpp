@@ -2,15 +2,13 @@
 
 namespace marian {
 namespace data {
+namespace xml {
 
-// TODO: refactorize
 void processXml(const std::string& line,
-                      std::string& stripped_line,
-                      const Ptr<Vocab> target_vocab,
-                      SentenceTuple& tup) {
-  std::cerr << "called processXml\n";
-
-  XmlOptions *xmlOptions = new XmlOptions();
+                std::string& stripped_line,
+                const Ptr<Vocab> target_vocab,
+                SentenceTuple& tup) {
+  Ptr<XmlOptions> xmlOptions = New<XmlOptions>();
   tup.setXmlOptions( xmlOptions );
 
   // no xml tag? we're done.
@@ -166,9 +164,9 @@ void processXml(const std::string& line,
 
           std::cerr << "encoded size " << translation_words.size() << "\n";
           std::cerr << "word id = " << translation_words[0] << "\n";
-          XmlOption *xmlOption = new XmlOption(startPos, endPos, translation_words);
+          Ptr<XmlOption> xmlOption = New<XmlOption>(startPos, endPos, translation_words);
           xmlOptions->push_back( xmlOption );
-          XmlOption *option = xmlOption;
+          Ptr<XmlOption> option = xmlOption;
           const Words &output = option->GetOutput();
           std::cerr << "created XmlOption " << option << ": " << option->GetStart() << "-"
                     << option->GetEnd() << ", output length " << output.size() << "\n";
@@ -272,10 +270,6 @@ std::vector<std::string> tokenizeXml(const std::string& line) {
   return tokens;
 }
 
-
-//    bool isXmlTag(const std::string& tag);
-//    std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName);
-//    std::string TrimXml(const std::string& str);
-
-}
-}
+}  // namespace xml
+}  // namespace data
+}  // namespace marian

@@ -35,10 +35,10 @@ public:
 
   void mergeIntoSortedKeysCosts(std::vector<uint> &keys,
                                 std::vector<float> &costs,
-                                std::vector<data::XmlOptionCoveredList *> &xmls,
+                                std::vector<Ptr<data::XmlOptionCoveredList> > &xmls,
                                 uint key,
                                 float cost,
-                                data::XmlOptionCoveredList *xml) {
+                                Ptr<data::XmlOptionCoveredList> xml) {
     auto k=keys.begin();
     auto c=costs.begin();
     auto x=xmls.begin();
@@ -52,7 +52,7 @@ public:
 
   Beams toHyps(const std::vector<unsigned int> keys,
                const std::vector<float> pathScores,
-               const std::vector<data::XmlOptionCoveredList *> &xmls,
+               const std::vector<Ptr<data::XmlOptionCoveredList> > &xmls,
                size_t vocabSize,
                const Beams& beams,
                std::vector<Ptr<ScorerState>>& states,
@@ -214,9 +214,9 @@ public:
     auto getNBestList = createGetNBestListFn(
         localBeamSize, dimBatch, graph->getDeviceId(), options_->has("xml-input"));
 
-    const data::XmlOptionsList *xmlOptionsList = options_->has("xml-input")
-                                               ? batch->getXmlOptionsList()
-                                               : NULL;
+    const Ptr<data::XmlOptionsList> xmlOptionsList = options_->has("xml-input")
+                                                   ? batch->getXmlOptionsList()
+                                                   : NULL;
     if(options_->has("xml-input")) {
       std::cerr << "pulling xmlOptionsList " << batch->getXmlOptionsList() << "\n";
       std::cerr << "xmlOptions " << xmlOptionsList->at(0) << "\n";
@@ -360,7 +360,7 @@ public:
       }
       std::cerr << "\n";
 
-      std::vector<data::XmlOptionCoveredList *> outXmls;
+      std::vector<Ptr<data::XmlOptionCoveredList> > outXmls;
 
       if (options_->has("xml-input")) {
         xmlSearch(getNBestList,
@@ -496,7 +496,7 @@ public:
                  Expr &totalCosts,
                  std::vector<float> &outCosts,
                  std::vector<unsigned> &outKeys,
-                 std::vector<data::XmlOptionCoveredList *> &outXmls,
+                 std::vector<Ptr<data::XmlOptionCoveredList> > &outXmls,
                  bool first,
                  Ptr<Vocab> targetVocab,
                  Ptr<data::CorpusBatch> batch);

@@ -29,7 +29,7 @@ private:
   std::vector<Words> tuple_;    // [stream index][step index]
   std::vector<float> weights_;  // [stream index]
   WordAlignment alignment_;
-  XmlOptions *xmlOptions_;
+  Ptr<XmlOptions> xmlOptions_;
 
 public:
   typedef Words value_type;
@@ -109,9 +109,10 @@ public:
   /**
    * @brief  Get XML Options for this sentence
    */
-  const XmlOptions* getXmlOptions() const { return xmlOptions_; }
+  // TODO: refactorize!
+  const Ptr<XmlOptions> getXmlOptions() const { return xmlOptions_; }
   bool hasXmlOptions() const { return xmlOptions_ != NULL && xmlOptions_->size() > 0; }
-  void setXmlOptions( XmlOptions *opts ) { xmlOptions_ = opts; }
+  void setXmlOptions(Ptr<XmlOptions> opts) { xmlOptions_ = opts; }
 };
 
 /**
@@ -560,19 +561,6 @@ protected:
    */
   void addWeightsToSentenceTuple(const std::string& line,
                                  SentenceTuple& tup) const;
-
-  /**
-   * @brief Helper function parsing a line with XML tags, stripping them out
-   * and adding XML Options to the sentence tuple
-  void processXml(const std::string& line,
-                  std::string& stripped_line,
-                  SentenceTuple& tup) const;
-
-  std::vector<std::string> tokenizeXml(const std::string& line) const;
-  std::string TrimXml(const std::string& str) const;
-  bool isXmlTag(const std::string& tag) const;
-  std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName) const;
-   */
 
   void addAlignmentsToBatch(Ptr<CorpusBatch> batch,
                             const std::vector<Sample>& batchVector);

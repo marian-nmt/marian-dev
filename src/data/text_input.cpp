@@ -60,7 +60,7 @@ SentenceTuple TextInput::next() {
           std::cerr << "process xml for " << line << std::endl;
           std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
           std::string stripped_line;
-          processXml(line, stripped_line, target_vocab_, tup);
+          xml::processXml(line, stripped_line, target_vocab_, tup);
           //Words words = (*vocabs_[i])(stripped_line);
           Words words = vocabs_[i]->encode(stripped_line, /*addEOS =*/ true, inference_);
 

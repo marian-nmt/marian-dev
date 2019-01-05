@@ -7,11 +7,10 @@ namespace data {
 
 class SentenceTuple;
 
-/**
- * @brief data structure to support specification of translation
- * constraints for decoding
- */
+namespace xml {
 
+// Helper function parsing a line with XML tags, stripping them out and adding XML Options to the
+// sentence tuple.
 void processXml(const std::string& line,
                 std::string& stripped_line,
                 const Ptr<Vocab> target_vocab,
@@ -22,6 +21,9 @@ std::string TrimXml(const std::string& str);
 bool isXmlTag(const std::string& tag);
 std::string parseXmlTagAttribute(const std::string& tag, const std::string& attributeName);
 
+/**
+ * @brief Data structure to support specification of translation constraints for decoding
+ */
 class XmlOption {
   private:
     size_t start_;
@@ -53,18 +55,18 @@ class XmlOptionCovered {
     bool started_;
     bool covered_;
     float alignmentCost_;
-    const XmlOption *option_;
+    const Ptr<XmlOption> option_;
     size_t position_;
 
   public:
-    XmlOptionCovered(const XmlOption *option)
+    XmlOptionCovered(const Ptr<XmlOption> option)
       : started_(false),
         covered_(false),
         alignmentCost_(0.0),
         option_(option) {
       const Words &output = option->GetOutput();
       std::cerr << "created XmlOptionCovered from option " << option << ": " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
-    } 
+    }
 
     XmlOptionCovered(const XmlOptionCovered &covered)
       : started_(covered.GetStarted()),
@@ -72,7 +74,7 @@ class XmlOptionCovered {
         alignmentCost_(covered.GetAlignmentCost()),
         option_(covered.GetOption()),
         position_(covered.GetPosition()) {
-      const XmlOption *option = covered.GetOption();
+      const Ptr<XmlOption> option = covered.GetOption();
       const Words &output = option->GetOutput();
       std::cerr << "created XmlOptionCovered from covered " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
     }
@@ -93,13 +95,13 @@ class XmlOptionCovered {
       return position_;
     }
 
-    const XmlOption* GetOption() const {
+    const Ptr<XmlOption> GetOption() const {
       return option_;
     }
 
     void Start() {
       position_ = 1;
-      if (option_->GetOutput().size() == 1) { 
+      if (option_->GetOutput().size() == 1) {
         // single word, already done
         covered_ = true;
         started_ = false;
@@ -137,10 +139,13 @@ class XmlOptionCovered {
     }
 };
 
-typedef std::vector< XmlOption* > XmlOptions;
-typedef std::vector< const XmlOptions* > XmlOptionsList;
-typedef std::vector< XmlOptionCovered > XmlOptionCoveredList;
+}  // namespace xml
 
-// end data / marian
-}
-}
+using namespace xml;
+
+typedef std::vector<Ptr<XmlOption> >  XmlOptions;
+typedef std::vector<Ptr<XmlOptions> > XmlOptionsList;
+typedef std::vector<XmlOptionCovered> XmlOptionCoveredList;
+
+}  // namespace data
+}  // namespace marian

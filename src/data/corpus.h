@@ -62,7 +62,7 @@ public:
     size_t batchSize = batchVector.size();
 
     std::vector<size_t> sentenceIds;
-    XmlOptionsList *xmlOptionsList = new XmlOptionsList();
+    Ptr<XmlOptionsList> xmlOptionsList = New<XmlOptionsList>();
     std::cerr << "list is " << xmlOptionsList << "\n";
 
     std::vector<int> maxDims;
@@ -75,7 +75,7 @@ public:
       }
       sentenceIds.push_back(ex.getId());
       if (options_->has("xml-input")) {
-        const XmlOptions *xops = ex.getXmlOptions();
+        const Ptr<XmlOptions> xops = ex.getXmlOptions();
         if ((*xops).size()>0) {
           std::cerr << "xml options from tuple ... size " << xops->size() << " first value " << (*xops)[0] << ": " << (*xops)[0]->GetStart() << "\n";
         }

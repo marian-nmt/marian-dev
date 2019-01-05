@@ -8,7 +8,7 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
                            Expr &totalCosts,
                            std::vector<float> &outCosts,
                            std::vector<unsigned> &outKeys,
-                           std::vector<data::XmlOptionCoveredList *> &outXmls,
+                           std::vector<Ptr<data::XmlOptionCoveredList> > &outXmls,
                            bool first,
                            Ptr<Vocab> targetVocab,
                            Ptr<data::CorpusBatch> batch) {
@@ -17,7 +17,7 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
 
   std::vector<std::vector<std::vector<unsigned> > > collectedKeys;
   std::vector<std::vector<std::vector<float> > > collectedCosts;
-  std::vector<std::vector<std::vector<data::XmlOptionCoveredList *> > > collectedXmls;
+  std::vector<std::vector<std::vector<Ptr<data::XmlOptionCoveredList> > > > collectedXmls;
   // get maximum number of xml options per sentence
   // (-> plus 1 = number of subbeams)
   std::vector<size_t> xmlCount;
@@ -43,14 +43,14 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
   for(int j = 0; j < beams.size(); j++) {
     std::vector<std::vector<unsigned> > keysVector;
     std::vector<std::vector<float> > costsVector;
-    std::vector<std::vector<data::XmlOptionCoveredList *> > xmlVector;
+    std::vector<std::vector<Ptr<data::XmlOptionCoveredList> > > xmlVector;
     collectedKeys.push_back(keysVector);
     collectedCosts.push_back(costsVector);
     collectedXmls.push_back(xmlVector);
     for(int subbeam = 0; subbeam < subbeamCount; subbeam++) {
       std::vector<unsigned> keys;
       std::vector<float> costs;
-      std::vector<data::XmlOptionCoveredList *> xml;
+      std::vector<Ptr<data::XmlOptionCoveredList> > xml;
       collectedKeys[j].push_back(keys);
       collectedCosts[j].push_back(costs);
       collectedXmls[j].push_back(xml);
@@ -83,7 +83,7 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
           std::cerr << "already started\n";
         }
         std::cerr << "proceeding at wordPos " << wordPos << "\n";
-        const data::XmlOption *xmlOption = xmlCovered.GetOption();
+        const Ptr<data::XmlOption> xmlOption = xmlCovered.GetOption();
         const Words &output = xmlOption->GetOutput();
         std::cerr << "xmlCovered = " << xmlOption->GetStart() << "-" << xmlOption->GetEnd()
                   << ", output length " << output.size();
@@ -107,7 +107,7 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
         int subbeam = hyp->GetXmlStatus();
         // update xmlCoveredList
         std::cerr << "build new XmlOptionCoveredList\n";
-        auto newXmlCoveredList = new data::XmlOptionCoveredList;
+        auto newXmlCoveredList = New<data::XmlOptionCoveredList>();
         for(int kk = 0; kk < xmlCoveredList->size(); kk++) {
           data::XmlOptionCovered newXmlCovered = xmlCoveredList->at(kk);  // copy
           std::cerr << "option " << kk << "\n";
@@ -222,12 +222,12 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
         std::cerr << "build new XmlOptionCoveredList for beam " << beamNo << " hyp " << hypIdx
                   << "\tcost " << subCosts[i] << "\t " << (*targetVocab)[embIdx] << ":" << embIdx
                   << " ...";
-        auto newXmlCoveredList = new data::XmlOptionCoveredList;
+        auto newXmlCoveredList = New<data::XmlOptionCoveredList>();
         for(int k = 0; k < xmlCoveredList->size(); k++) {
           data::XmlOptionCovered newXmlCovered = xmlCoveredList->at(k);  // copy
           std::cerr << "option " << k << "\n";
           if(newXmlCovered.GetStarted()) {
-            const data::XmlOption *xmlOption = newXmlCovered.GetOption();
+            const Ptr<data::XmlOption> xmlOption = newXmlCovered.GetOption();
             const Words &output = xmlOption->GetOutput();
             size_t wordPos = newXmlCovered.GetPosition();
             std::cerr << "next word at position " << wordPos << " is " << output[wordPos]

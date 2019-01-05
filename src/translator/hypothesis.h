@@ -14,14 +14,15 @@ public:
 
   Hypothesis(const Ptr<Hypothesis> prevHyp, Word word, IndexType prevIndex, float pathScore)
       : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore) {
+  // TODO: refactorize; assign earlier?
     xmlOptionCovered_ = prevHyp->GetXmlOptionCovered();
   }
 
   // TODO: refactorize; what data::XmlOptions is for? do we need it?
-  Hypothesis(const data::XmlOptions* xmlOptions)
+  Hypothesis(const Ptr<data::XmlOptions> xmlOptions)
       : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {
     // create XmlOptionCovered objects
-    xmlOptionCovered_ = new data::XmlOptionCoveredList;
+    xmlOptionCovered_ = New<data::XmlOptionCoveredList>();
     std::cerr << "Hypothesis xmlOptions " << xmlOptions << "\n";
     for(size_t i = 0; i < xmlOptions->size(); i++) {
       std::cerr << "Hypothesis xmlOption " << (*xmlOptions)[i] << "\n";
@@ -41,7 +42,8 @@ public:
   std::vector<float>& GetScoreBreakdown() { return scoreBreakdown_; }
   std::vector<float>& GetAlignment() { return alignment_; }
 
-  std::vector<data::XmlOptionCovered>* GetXmlOptionCovered() { return xmlOptionCovered_; }
+  // TODO: refactorize; use XMLOptionCoveredList?
+  Ptr<std::vector<data::XmlOptionCovered>> GetXmlOptionCovered() { return xmlOptionCovered_; }
 
   // how many Xml constraints already satisfied or started
   size_t GetXmlStatus() {
@@ -83,7 +85,7 @@ public:
       return align;
   }
 
-  void SetXml(data::XmlOptionCoveredList* xmlOptionCovered) {
+  void SetXml(Ptr<data::XmlOptionCoveredList> xmlOptionCovered) {
     xmlOptionCovered_ = xmlOptionCovered;
   }
 
@@ -97,7 +99,7 @@ private:
   std::vector<float> alignment_;
 
   // TODO: refactorize and do not use bare pointers
-  data::XmlOptionCoveredList *xmlOptionCovered_;
+  Ptr<data::XmlOptionCoveredList> xmlOptionCovered_;
 };
 
 typedef std::vector<Ptr<Hypothesis>> Beam;                // Beam = vector of hypotheses

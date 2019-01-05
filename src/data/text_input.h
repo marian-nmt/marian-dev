@@ -20,6 +20,7 @@ private:
 
   const SentenceTuple& dereference() const override;
 
+  // TODO: refactorize; why bare pointer?
   TextInput* corpus_;
 
   long long int pos_;
@@ -58,9 +59,9 @@ public:
     size_t batchSize = batchVector.size();
 
     std::vector<size_t> sentenceIds;
-    XmlOptionsList *xmlOptionsList;
+    Ptr<XmlOptionsList> xmlOptionsList;
     if(options_->has("xml-input")) {
-      xmlOptionsList = new XmlOptionsList();
+      xmlOptionsList = New<XmlOptionsList>();
     }
 
     std::vector<int> maxDims;
@@ -73,7 +74,7 @@ public:
       }
       sentenceIds.push_back(ex.getId());
       if(options_->has("xml-input")) {
-        const XmlOptions *xops = ex.getXmlOptions();
+        const Ptr<XmlOptions> xops = ex.getXmlOptions();
         std::cerr << "*xops = " << xops << "\n";
         std::cerr << "number of options: " << xops->size() << "\n";
         xmlOptionsList->push_back(xops);

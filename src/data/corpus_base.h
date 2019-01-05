@@ -240,6 +240,7 @@ private:
   std::vector<Ptr<SubBatch>> subBatches_;
   std::vector<float> guidedAlignment_;
   std::vector<float> dataWeights_;
+  Ptr<XmlOptionsList> xmlOptionsList_;
 
 public:
   CorpusBatch(const std::vector<Ptr<SubBatch>>& subBatches)
@@ -461,6 +462,19 @@ public:
   std::vector<float>& getDataWeights() { return dataWeights_; }
   void setDataWeights(const std::vector<float>& weights) override {
     dataWeights_ = weights;
+  }
+
+  // XML TODO: consider returning a reference as method above
+  const Ptr<XmlOptionsList> getXmlOptionsList() const { return xmlOptionsList_; }
+  void setXmlOptionsList(Ptr<XmlOptionsList> xopsl) {
+    xmlOptionsList_ = xopsl;
+    // XML TODO: remove debugs
+    std::cerr << "setXmlOptionsList " << xopsl << "\n";
+    std::cerr << "xopsl->size() = " << xopsl->size() << ", " << (*xopsl)[0] << "\n";
+    const Ptr<XmlOptions> xops = (*xopsl)[0];
+    std::cerr << "xops->size() = " << xops->size();
+    if (xops->size() > 0) std::cerr << ", " << (*xops)[0];
+    std::cerr << "\n";
   }
 
   /**

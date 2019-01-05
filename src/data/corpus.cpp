@@ -55,7 +55,7 @@ SentenceTuple Corpus::next() {
         addWeightsToSentenceTuple(line, tup);
       } else {
         // TODO: refactorize
-        if(options_->has("xml-input")) {
+        if(options_->get<bool>("xml-input", false)) {
           std::cerr << "process xml for " << line << std::endl;
           std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
           std::string stripped_line;

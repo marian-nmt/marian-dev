@@ -120,7 +120,7 @@ public:
               getAlignmentsForHypothesis(align, batch, (int)beamHypIdx, (int)beamIdx));
         }
 
-        if (options_->has("xml-input")) {
+        if(options_->get<bool>("xml-input", false)) {
           hyp->SetXml(xmls[i]);
         }
 
@@ -201,7 +201,9 @@ public:
 
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
-      float xmlPenalty = options_->has("xml-input") ? options_->get<float>("xml-violation-penalty") : 0.f;
+      float xmlPenalty = options_->get<bool>("xml-input", false)
+                             ? options_->get<float>("xml-violation-penalty")
+                             : 0.f;
       auto history = New<History>(sentId,
                                   options_->get<float>("normalize"),
                                   options_->get<float>("word-penalty"),
@@ -212,12 +214,12 @@ public:
     size_t localBeamSize = beamSize_; // max over beam sizes of active sentence hypotheses
 
     auto getNBestList = createGetNBestListFn(
-        localBeamSize, dimBatch, graph->getDeviceId(), options_->has("xml-input"));
+        localBeamSize, dimBatch, graph->getDeviceId(), options_->get<bool>("xml-input", false));
 
-    const Ptr<data::XmlOptionsList> xmlOptionsList = options_->has("xml-input")
+    const Ptr<data::XmlOptionsList> xmlOptionsList = options_->get<bool>("xml-input", false)
                                                    ? batch->getXmlOptionsList()
                                                    : NULL;
-    if(options_->has("xml-input")) {
+    if(options_->get<bool>("xml-input", false)) {
       std::cerr << "pulling xmlOptionsList " << batch->getXmlOptionsList() << "\n";
       std::cerr << "xmlOptions " << xmlOptionsList->at(0) << "\n";
     }
@@ -226,7 +228,7 @@ public:
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(int i = 0; i < dimBatch; ++i) {
       auto& beam = beams[i];
-      if(options_->has("xml-input"))
+      if(options_->get<bool>("xml-input", false))
         beam.resize(localBeamSize, New<Hypothesis>( xmlOptionsList->at(i) ));
       else
         beam.resize(localBeamSize, New<Hypothesis>());
@@ -269,7 +271,7 @@ public:
           if(i < beam.size()) {
             auto hyp = beam[i];
             std::cerr << "beam=" << j << " i=" << i;
-            if (options_->has("xml-input")) {
+            if (options_->get<bool>("xml-input", false)) {
               std::cerr << " xml status=" << hyp->GetXmlStatus() << "/"
                         << hyp->GetXmlOptionCovered()->size();
             }
@@ -362,7 +364,7 @@ public:
 
       std::vector<Ptr<data::XmlOptionCoveredList> > outXmls;
 
-      if (options_->has("xml-input")) {
+      if(options_->get<bool>("xml-input", false)) {
         xmlSearch(getNBestList,
                   beams,
                   localBeamSize,

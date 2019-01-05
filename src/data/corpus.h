@@ -74,10 +74,12 @@ public:
           maxDims[i] = (int)ex[i].size();
       }
       sentenceIds.push_back(ex.getId());
-      if (options_->has("xml-input")) {
+      if(options_->get<bool>("xml-input", false)) {
+        // XML TODO: remove debugs
         const Ptr<XmlOptions> xops = ex.getXmlOptions();
         if ((*xops).size()>0) {
-          std::cerr << "xml options from tuple ... size " << xops->size() << " first value " << (*xops)[0] << ": " << (*xops)[0]->GetStart() << "\n";
+          std::cerr << "xml options from tuple ... size " << xops->size() << " first value "
+                    << (*xops)[0] << ": " << (*xops)[0]->GetStart() << "\n";
         }
         xmlOptionsList->push_back(xops);
       }
@@ -105,7 +107,7 @@ public:
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);
     std::cerr << "batch->setXmlOptionsList(xmlOptionsList);\n";
-    if (options_->has("xml-input")) {
+    if(options_->get<bool>("xml-input", false)) {
       batch->setXmlOptionsList(xmlOptionsList);
     }
     std::cerr << "batch->setXmlOptionsList(xmlOptionsList); OK\n";

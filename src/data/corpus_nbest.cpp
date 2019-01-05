@@ -61,7 +61,8 @@ SentenceTuple CorpusNBest::next() {
                    "Too few lines in input {}",
                    i);
         }
-        if(options_->has("xml-input")) {
+        if(options_->get<bool>("xml-input", false)) {
+          // XML TODO: remove debugs
           std::cerr << "process xml for " << lastLines_[i] << std::endl;
           std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
           std::string stripped_line;
@@ -71,7 +72,8 @@ SentenceTuple CorpusNBest::next() {
           addWordsToSentenceTuple(lastLines_[i], i, tup);
         }
       }
-      if(options_->has("xml-input")) {
+      if(options_->get<bool>("xml-input", false)) {
+        // XML TODO: remove debugs
         std::cerr << "process xml for " << curr_text << std::endl;
         std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;
         std::string stripped_line;

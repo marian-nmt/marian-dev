@@ -60,7 +60,7 @@ public:
 
     std::vector<size_t> sentenceIds;
     Ptr<XmlOptionsList> xmlOptionsList;
-    if(options_->has("xml-input")) {
+    if(options_->get<bool>("xml-input", false)) {
       xmlOptionsList = New<XmlOptionsList>();
     }
 
@@ -73,7 +73,7 @@ public:
           maxDims[i] = (int)ex[i].size();
       }
       sentenceIds.push_back(ex.getId());
-      if(options_->has("xml-input")) {
+      if(options_->get<bool>("xml-input", false)) {
         const Ptr<XmlOptions> xops = ex.getXmlOptions();
         std::cerr << "*xops = " << xops << "\n";
         std::cerr << "number of options: " << xops->size() << "\n";

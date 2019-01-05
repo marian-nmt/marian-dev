@@ -55,7 +55,7 @@ SentenceTuple TextInput::next() {
       std::string line;
       io::InputFileStream dummyStream(*files_[i]);
       if(io::getline(dummyStream, line)) {
-        if(options_->has("xml-input")) {
+        if(options_->get<bool>("xml-input", false)) {
           // TODO: refactorize
           std::cerr << "process xml for " << line << std::endl;
           std::cerr << "vocabs_.size() = " << vocabs_.size() << std::endl;

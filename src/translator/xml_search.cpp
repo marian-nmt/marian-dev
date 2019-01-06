@@ -84,8 +84,8 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
         }
         std::cerr << "proceeding at wordPos " << wordPos << "\n";
         const Ptr<data::XmlOption> xmlOption = xmlCovered.GetOption();
-        const Words &output = xmlOption->GetOutput();
-        std::cerr << "xmlCovered = " << xmlOption->GetStart() << "-" << xmlOption->GetEnd()
+        const Words &output = xmlOption->getOutput();
+        std::cerr << "xmlCovered = " << xmlOption->getStart() << "-" << xmlOption->getEnd()
                   << ", output length " << output.size();
         for(size_t o = 0; o < output.size(); o++) {
           std::cerr << " " << (*targetVocab)[output[o]];
@@ -228,7 +228,7 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
           std::cerr << "option " << k << "\n";
           if(newXmlCovered.GetStarted()) {
             const Ptr<data::XmlOption> xmlOption = newXmlCovered.GetOption();
-            const Words &output = xmlOption->GetOutput();
+            const Words &output = xmlOption->getOutput();
             size_t wordPos = newXmlCovered.GetPosition();
             std::cerr << "next word at position " << wordPos << " is " << output[wordPos]
                       << ", while we predict " << embIdx << "\n";

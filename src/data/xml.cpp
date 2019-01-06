@@ -167,9 +167,9 @@ void processXml(const std::string& line,
           Ptr<XmlOption> xmlOption = New<XmlOption>(startPos, endPos, translation_words);
           xmlOptions->push_back( xmlOption );
           Ptr<XmlOption> option = xmlOption;
-          const Words &output = option->GetOutput();
-          std::cerr << "created XmlOption " << option << ": " << option->GetStart() << "-"
-                    << option->GetEnd() << ", output length " << output.size() << "\n";
+          const Words &output = option->getOutput();
+          std::cerr << "created XmlOption " << option << ": " << option->getStart() << "-"
+                    << option->getEnd() << ", output length " << output.size() << "\n";
         }
       }
     }

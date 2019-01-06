@@ -25,29 +25,18 @@ std::string parseXmlTagAttribute(const std::string& tag, const std::string& attr
  * @brief Data structure to support specification of translation constraints for decoding
  */
 class XmlOption {
-  private:
-    size_t start_;
-    size_t end_;
+private:
+  size_t start_;
+  size_t end_;
+  Words output_;
 
-  public:
-    XmlOption(size_t start, size_t end, Words output)
-      : start_(start),
-        end_(end),
-       output_(output) {
-    }
+public:
+  XmlOption(size_t start, size_t end, Words output) : start_(start), end_(end), output_(output) {}
 
-    size_t GetStart() const {
-      return start_;
-    }
+  size_t getStart() const { return start_; }
+  size_t getEnd() const { return end_; }
 
-    size_t GetEnd() const {
-      return end_;
-    }
-
-    const Words& GetOutput() const {
-      return output_;
-    }
-    Words output_;
+  const Words& getOutput() const { return output_; }
 };
 
 class XmlOptionCovered {
@@ -64,8 +53,8 @@ class XmlOptionCovered {
         covered_(false),
         alignmentCost_(0.0),
         option_(option) {
-      const Words &output = option->GetOutput();
-      std::cerr << "created XmlOptionCovered from option " << option << ": " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
+      const Words &output = option->getOutput();
+      std::cerr << "created XmlOptionCovered from option " << option << ": " << option->getStart() << "-" << option->getEnd() << ", output length " << output.size() << "\n";
     }
 
     XmlOptionCovered(const XmlOptionCovered &covered)
@@ -75,8 +64,8 @@ class XmlOptionCovered {
         option_(covered.GetOption()),
         position_(covered.GetPosition()) {
       const Ptr<XmlOption> option = covered.GetOption();
-      const Words &output = option->GetOutput();
-      std::cerr << "created XmlOptionCovered from covered " << option->GetStart() << "-" << option->GetEnd() << ", output length " << output.size() << "\n";
+      const Words &output = option->getOutput();
+      std::cerr << "created XmlOptionCovered from covered " << option->getStart() << "-" << option->getEnd() << ", output length " << output.size() << "\n";
     }
 
     bool GetStarted() const {
@@ -101,7 +90,7 @@ class XmlOptionCovered {
 
     void Start() {
       position_ = 1;
-      if (option_->GetOutput().size() == 1) {
+      if(option_->getOutput().size() == 1) {
         // single word, already done
         covered_ = true;
         started_ = false;
@@ -110,12 +99,11 @@ class XmlOptionCovered {
         started_ = true;
       }
       alignmentCost_ = 0.0;
-      // std::cerr << "option" << option_->GetOutput().size();
     }
 
     void Proceed() {
       position_++;
-      if (option_->GetOutput().size() == position_) {
+      if(option_->getOutput().size() == position_) {
         covered_ = true;
         started_ = false;
       }
@@ -128,8 +116,8 @@ class XmlOptionCovered {
 
     void AddAlignmentCost(const std::vector<float> &alignments) {
       float sum = 0;
-      std::cerr << "alignment cost for span " << option_->GetStart() << "-" << option_->GetEnd() << ":";
-      for(size_t i=option_->GetStart(); i<option_->GetEnd(); i++) {
+      std::cerr << "alignment cost for span " << option_->getStart() << "-" << option_->getEnd() << ":";
+      for(size_t i=option_->getStart(); i<option_->getEnd(); i++) {
         std::cerr << " " << alignments[i];
         sum += alignments[i];
       }

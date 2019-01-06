@@ -79,7 +79,7 @@ public:
         const Ptr<XmlOptions> xops = ex.getXmlOptions();
         if ((*xops).size()>0) {
           std::cerr << "xml options from tuple ... size " << xops->size() << " first value "
-                    << (*xops)[0] << ": " << (*xops)[0]->GetStart() << "\n";
+                    << (*xops)[0] << ": " << (*xops)[0]->getStart() << "\n";
         }
         xmlOptionsList->push_back(xops);
       }

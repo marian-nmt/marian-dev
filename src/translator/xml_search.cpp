@@ -72,18 +72,18 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
         std::cerr << "checking xml option " << k << "\n";
         const data::XmlOptionCovered &xmlCovered = xmlCoveredList->at(k);
         // already handled, move on
-        if(xmlCovered.GetCovered()) {
+        if(xmlCovered.getCovered()) {
           std::cerr << "already covered\n";
           continue;
         }
         // check what word needs to be generated
         size_t wordPos = 0;
-        if(xmlCovered.GetStarted()) {
-          wordPos = xmlCovered.GetPosition();
+        if(xmlCovered.getStarted()) {
+          wordPos = xmlCovered.getPosition();
           std::cerr << "already started\n";
         }
         std::cerr << "proceeding at wordPos " << wordPos << "\n";
-        const Ptr<data::XmlOption> xmlOption = xmlCovered.GetOption();
+        const Ptr<data::XmlOption> xmlOption = xmlCovered.getOption();
         const Words &output = xmlOption->getOutput();
         std::cerr << "xmlCovered = " << xmlOption->getStart() << "-" << xmlOption->getEnd()
                   << ", output length " << output.size();
@@ -113,13 +113,13 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
           std::cerr << "option " << kk << "\n";
           if(kk == k) {
             // the one we are currently processing
-            if(newXmlCovered.GetStarted()) {
+            if(newXmlCovered.getStarted()) {
               // already started
               std::cerr << "newXmlCovered.Proceed();\n";
-              newXmlCovered.Proceed();
+              newXmlCovered.proceed();
             } else {
               std::cerr << "newXmlCovered.Start();\n";
-              newXmlCovered.Start();
+              newXmlCovered.start();
               subbeam++;  // resulting hyp will be in next subbeam
             }
             auto alignments = scorers_[0]->getAlignment();
@@ -130,17 +130,17 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
               // getHardAlignments()
               auto align = getAlignmentsForHypothesis(alignments, batch, i, j);
               std::cerr << "ALIGN: align.size() = " << align.size() << "\n";
-              cost -= weight * newXmlCovered.GetAlignmentCost();
-              newXmlCovered.AddAlignmentCost(align);
-              cost += weight * newXmlCovered.GetAlignmentCost();
+              cost -= weight * newXmlCovered.getAlignmentCost();
+              newXmlCovered.addAlignmentCost(align);
+              cost += weight * newXmlCovered.getAlignmentCost();
             }
           } else {
             // other xml options
-            if(newXmlCovered.GetStarted()) {
+            if(newXmlCovered.getStarted()) {
               std::cerr << "newXmlCovered.Abandon();\n";
               float weight = options_->get<float>("xml-alignment-weight");
-              cost -= weight * newXmlCovered.GetAlignmentCost();
-              newXmlCovered.Abandon();
+              cost -= weight * newXmlCovered.getAlignmentCost();
+              newXmlCovered.abandon();
               subbeam--;  // resulting hyp will be one subbeam lower
             } else {
               std::cerr << "just copy\n";
@@ -226,15 +226,15 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
         for(int k = 0; k < xmlCoveredList->size(); k++) {
           data::XmlOptionCovered newXmlCovered = xmlCoveredList->at(k);  // copy
           std::cerr << "option " << k << "\n";
-          if(newXmlCovered.GetStarted()) {
-            const Ptr<data::XmlOption> xmlOption = newXmlCovered.GetOption();
+          if(newXmlCovered.getStarted()) {
+            const Ptr<data::XmlOption> xmlOption = newXmlCovered.getOption();
             const Words &output = xmlOption->getOutput();
-            size_t wordPos = newXmlCovered.GetPosition();
+            size_t wordPos = newXmlCovered.getPosition();
             std::cerr << "next word at position " << wordPos << " is " << output[wordPos]
                       << ", while we predict " << embIdx << "\n";
             if(output[wordPos] == embIdx) {
               std::cerr << "newXmlCovered.Proceed();\n";
-              newXmlCovered.Proceed();
+              newXmlCovered.proceed();
               auto alignments = scorers_[0]->getAlignment();
               float weight = options_->get<float>("xml-alignment-weight");
               if(!alignments.empty() && weight != 0.0) {
@@ -242,15 +242,15 @@ void BeamSearch::xmlSearch(GetNBestListFn getNBestList,
                 // getHardAlignments()
                 auto align = getAlignmentsForHypothesis(alignments, batch, hypIdx, beamNo);
                 std::cerr << "ALIGN2: align.size() = " << align.size() << "\n";
-                subCosts[i] -= weight * newXmlCovered.GetAlignmentCost();
-                newXmlCovered.AddAlignmentCost(align);
-                subCosts[i] += weight * newXmlCovered.GetAlignmentCost();
+                subCosts[i] -= weight * newXmlCovered.getAlignmentCost();
+                newXmlCovered.addAlignmentCost(align);
+                subCosts[i] += weight * newXmlCovered.getAlignmentCost();
               }
             } else {
               std::cerr << "newXmlCovered.Abandon();\n";
               float weight = options_->get<float>("xml-alignment-weight");
-              subCosts[i] -= weight * newXmlCovered.GetAlignmentCost();
-              newXmlCovered.Abandon();
+              subCosts[i] -= weight * newXmlCovered.getAlignmentCost();
+              newXmlCovered.abandon();
               newSubbeam--;
             }
           } else {

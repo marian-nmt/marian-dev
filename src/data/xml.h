@@ -40,98 +40,89 @@ public:
 };
 
 class XmlOptionCovered {
-  private:
-    bool started_;
-    bool covered_;
-    float alignmentCost_;
-    const Ptr<XmlOption> option_;
-    size_t position_;
+private:
+  bool started_;
+  bool covered_;
+  float alignmentCost_;
+  size_t position_;
 
-  public:
-    XmlOptionCovered(const Ptr<XmlOption> option)
-      : started_(false),
-        covered_(false),
-        alignmentCost_(0.0),
-        option_(option) {
-      const Words &output = option->getOutput();
-      std::cerr << "created XmlOptionCovered from option " << option << ": " << option->getStart() << "-" << option->getEnd() << ", output length " << output.size() << "\n";
-    }
+  const Ptr<XmlOption> option_;
 
-    XmlOptionCovered(const XmlOptionCovered &covered)
-      : started_(covered.GetStarted()),
-        covered_(covered.GetCovered()),
-        alignmentCost_(covered.GetAlignmentCost()),
-        option_(covered.GetOption()),
-        position_(covered.GetPosition()) {
-      const Ptr<XmlOption> option = covered.GetOption();
-      const Words &output = option->getOutput();
-      std::cerr << "created XmlOptionCovered from covered " << option->getStart() << "-" << option->getEnd() << ", output length " << output.size() << "\n";
-    }
+public:
+  XmlOptionCovered(const Ptr<XmlOption> option)
+      : started_(false), covered_(false), alignmentCost_(0.0f), position_(0), option_(option) {
+    // XML TODO: debugs
+    const Words& output = option->getOutput();
+    std::cerr << "created XmlOptionCovered from option " << option << ": " << option->getStart()
+              << "-" << option->getEnd() << ", output length " << output.size() << "\n";
+  }
 
-    bool GetStarted() const {
-      return started_;
-    }
+  XmlOptionCovered(const XmlOptionCovered& covered)
+      : started_(covered.getStarted()),
+        covered_(covered.getCovered()),
+        alignmentCost_(covered.getAlignmentCost()),
+        position_(covered.getPosition()),
+        option_(covered.getOption()) {
+    // XML TODO: debugs
+    const Ptr<XmlOption> option = covered.getOption();
+    const Words& output = option->getOutput();
+    std::cerr << "created XmlOptionCovered from covered " << option->getStart() << "-"
+              << option->getEnd() << ", output length " << output.size() << "\n";
+  }
 
-    bool GetCovered() const {
-      return covered_;
-    }
+  bool getStarted() const { return started_; }
+  bool getCovered() const { return covered_; }
+  float getAlignmentCost() const { return alignmentCost_; }
+  size_t getPosition() const { return position_; }
 
-    float GetAlignmentCost() const {
-      return alignmentCost_;
-    }
+  const Ptr<XmlOption> getOption() const { return option_; }
 
-    size_t GetPosition() const {
-      return position_;
-    }
-
-    const Ptr<XmlOption> GetOption() const {
-      return option_;
-    }
-
-    void Start() {
-      position_ = 1;
-      if(option_->getOutput().size() == 1) {
-        // single word, already done
-        covered_ = true;
-        started_ = false;
-      }
-      else {
-        started_ = true;
-      }
-      alignmentCost_ = 0.0;
-    }
-
-    void Proceed() {
-      position_++;
-      if(option_->getOutput().size() == position_) {
-        covered_ = true;
-        started_ = false;
-      }
-    }
-
-    void Abandon() {
+  void start() {
+    position_ = 1;
+    if(option_->getOutput().size() == 1) {
+      // single word, already done
+      covered_ = true;
       started_ = false;
-      alignmentCost_ = 0.0;
+    } else {
+      started_ = true;
     }
+    alignmentCost_ = 0.0f;
+  }
 
-    void AddAlignmentCost(const std::vector<float> &alignments) {
-      float sum = 0;
-      std::cerr << "alignment cost for span " << option_->getStart() << "-" << option_->getEnd() << ":";
-      for(size_t i=option_->getStart(); i<option_->getEnd(); i++) {
-        std::cerr << " " << alignments[i];
-        sum += alignments[i];
-      }
-      if (sum < 0.001) sum = 0.001; // floor
-      alignmentCost_ += std::log(sum);
-      std::cerr << " --log--> " << std::log(sum) << ", alignmentCost_ " << alignmentCost_ << "\n";
+  void proceed() {
+    position_++;
+    if(option_->getOutput().size() == position_) {
+      covered_ = true;
+      started_ = false;
     }
+  }
+
+  void abandon() {
+    started_ = false;
+    alignmentCost_ = 0.0f;
+  }
+
+  void addAlignmentCost(const std::vector<float>& alignments) {
+    // XML TODO: debugs
+    std::cerr << "alignment cost for span " << option_->getStart() << "-" << option_->getEnd()
+              << ":";
+    float sum = 0.0f;
+    for(size_t i = option_->getStart(); i < option_->getEnd(); i++) {
+      std::cerr << " " << alignments[i];
+      sum += alignments[i];
+    }
+    if(sum < 0.001)
+      sum = 0.001;  // floor
+    alignmentCost_ += std::log(sum);
+    std::cerr << " --log--> " << std::log(sum) << ", alignmentCost_ " << alignmentCost_ << "\n";
+  }
 };
 
 }  // namespace xml
 
 using namespace xml;
 
-typedef std::vector<Ptr<XmlOption> >  XmlOptions;
+typedef std::vector<Ptr<XmlOption> > XmlOptions;
 typedef std::vector<Ptr<XmlOptions> > XmlOptionsList;
 typedef std::vector<XmlOptionCovered> XmlOptionCoveredList;
 

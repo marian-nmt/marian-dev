@@ -52,7 +52,7 @@ public:
     }
     size_t status=0;
     for(data::XmlOptionCovered &covered : *xmlOptionCovered_) {
-      if(covered.GetCovered() || covered.GetStarted()) {
+      if(covered.getCovered() || covered.getStarted()) {
         status++;
       }
     }

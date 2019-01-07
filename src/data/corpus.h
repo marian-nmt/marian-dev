@@ -106,16 +106,14 @@ public:
 
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);
-    std::cerr << "batch->setXmlOptionsList(xmlOptionsList);\n";
-    if(options_->get<bool>("xml-input", false)) {
-      batch->setXmlOptionsList(xmlOptionsList);
-    }
-    std::cerr << "batch->setXmlOptionsList(xmlOptionsList); OK\n";
 
     if(options_->get("guided-alignment", std::string("none")) != "none" && alignFileIdx_)
       addAlignmentsToBatch(batch, batchVector);
     if(options_->has("data-weighting") && weightFileIdx_)
       addWeightsToBatch(batch, batchVector);
+
+    if(options_->get<bool>("xml-input", false))
+      batch->setXmlOptionsList(xmlOptionsList);
 
     return batch;
   }

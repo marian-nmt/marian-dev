@@ -36,7 +36,7 @@ private:
     VocabFreqOrderer(const std::unordered_map<std::string, size_t>& counter)
             : counter_(counter) {}
 
-    // order first by decreasing frequency, 
+    // order first by decreasing frequency,
     // if frequencies are the same order lexicographically by vocabulary string
     bool operator()(const std::string& a, const std::string& b) const {
       return counter_.at(a) > counter_.at(b) || (counter_.at(a) == counter_.at(b) && a < b);
@@ -205,7 +205,7 @@ public:
               "Vocabulary file '{}' exists. Not overwriting",
               path.string());
     }
-    
+
     std::unordered_map<std::string, size_t> counter;
     for(const auto& trainPath : trainPaths)
       addCounts(counter, trainPath);

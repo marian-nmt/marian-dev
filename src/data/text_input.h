@@ -31,7 +31,7 @@ class TextInput : public DatasetBase<SentenceTuple, TextIterator, CorpusBatch> {
 private:
   std::vector<UPtr<std::istringstream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
-  Ptr<Vocab> target_vocab_;
+  Ptr<Vocab> targetVocab_;
 
   size_t pos_{0};
 
@@ -40,11 +40,6 @@ public:
 
   TextInput(std::vector<std::string> inputs, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
 
-  TextInput(std::vector<std::string> inputs,
-            std::vector<Ptr<Vocab>> vocabs,
-            Ptr<Vocab> targetVocab,
-            Ptr<Options> options);
-
   Sample next() override;
 
   void shuffle() override {}
@@ -52,6 +47,8 @@ public:
 
   iterator begin() override { return iterator(*this); }
   iterator end() override { return iterator(); }
+
+  void setTargetVocab(Ptr<Vocab> vocab) { targetVocab_ = vocab; }
 
   // TODO: There are half dozen functions called toBatch(), which are very
   // similar. Factor them.
@@ -102,11 +99,9 @@ public:
 
     auto batch = batch_ptr(new batch_type(subBatches));
     batch->setSentenceIds(sentenceIds);
-    if (options_->get<bool>("xml-input")) {
-      std::cerr << "batch->setXmlOptionsList(xmlOptionsList);;\n";
+
+    if(options_->get<bool>("xml-input"))
       batch->setXmlOptionsList(xmlOptionsList);
-      std::cerr << "batch->setXmlOptionsList(xmlOptionsList);; OK\n";
-    }
 
     return batch;
   }

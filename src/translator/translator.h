@@ -154,12 +154,14 @@ public:
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
 
+    // load source vocabularies
     for(size_t i = 0; i < vocabPaths.size() - 1; ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);
       vocab->load(vocabPaths[i], maxVocabs[i]);
       srcVocabs_.emplace_back(vocab);
     }
 
+    // load target vocabulary
     trgVocab_ = New<Vocab>(options_, vocabPaths.size() - 1);
     trgVocab_->load(vocabPaths.back());
 
@@ -184,6 +186,8 @@ public:
 
   std::string run(const std::string& input) override {
     auto corpus_ = New<data::TextInput>(std::vector<std::string>({input}), srcVocabs_, options_);
+    if(options_->get<bool>("xml-input", false))
+      corpus_->setTargetVocab(trgVocab_);
     data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_);
 
     auto collector = New<StringCollector>();

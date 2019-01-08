@@ -7,6 +7,7 @@ namespace data {
 
 CorpusSQLite::CorpusSQLite(Ptr<Options> options, bool translate /*= false*/)
     : CorpusBase(options, translate), seed_(Config::seed) {
+  ABORT_IF(options->get<bool>("xml-input", false), "Corpus SQLite does not support XML input yet");
   fillSQLite();
 }
 
@@ -14,6 +15,7 @@ CorpusSQLite::CorpusSQLite(const std::vector<std::string>& paths,
                            const std::vector<Ptr<Vocab>>& vocabs,
                            Ptr<Options> options)
     : CorpusBase(paths, vocabs, options), seed_(Config::seed) {
+  ABORT_IF(options->get<bool>("xml-input", false), "Corpus SQLite does not support XML input yet");
   fillSQLite();
 }
 
@@ -120,14 +122,7 @@ SentenceTuple CorpusSQLite::next() {
       } else if(i > 0 && i == weightFileIdx_) {
         addWeightsToSentenceTuple(line, tup);
       } else {
-        // XML TODO: check if xml-input is needed in SQlite data management.
-        if(options_->get<bool>("xml-input", false)) {
-          std::string stripped_line;
-          xml::processXml(line, stripped_line, target_vocab_, tup);
-          addWordsToSentenceTuple(stripped_line, i, tup);
-        } else {
-          addWordsToSentenceTuple(line, i, tup);
-        }
+        addWordsToSentenceTuple(line, i, tup);
       }
     }
 

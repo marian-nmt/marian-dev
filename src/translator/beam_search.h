@@ -188,13 +188,13 @@ public:
     // initialize data structure for the search graph
     Histories histories;
 
-    // TODO: refactorize and remove debugs!
     // XML TODO - this is just for debugging, remove it afterwards
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
     std::vector<std::string> vocabPaths = options_->get<std::vector<std::string>>("vocabs");
 
     size_t id = vocabPaths.size()-1;
     auto targetVocab = New<Vocab>(options_, id);
+    std::cerr << ">>> this vocabulary is loaded only for debugging and will be removed" << std::endl;
     int vocSize = targetVocab->load(vocabPaths[id], maxVocabs[id]);
     std::cerr << "targetVocab-vocSize: " << vocSize << std::endl;
     // XML TODO ----/
@@ -288,7 +288,7 @@ public:
 
         dimBatch = (int)batch->size();
 
-        // TODO: remove debugs
+        // XML TODO: remove debugs
         std::cerr << "starting beam sizes";
         for(int j = 0; j < beams.size(); ++j) {
           std::cerr << " " << beams[j].size();

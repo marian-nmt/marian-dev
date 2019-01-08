@@ -45,6 +45,9 @@ public:
       shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
           options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
 
+    if(options_->get<bool>("xml-input", false))
+      corpus_->setTargetVocab(trgVocab_);
+
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
 

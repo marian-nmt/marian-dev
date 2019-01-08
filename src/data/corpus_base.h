@@ -533,10 +533,12 @@ public:
 
   virtual std::vector<Ptr<Vocab>>& getVocabs() = 0;
 
+  void setTargetVocab(Ptr<Vocab> vocab) { targetVocab_ = vocab; }
+
 protected:
   std::vector<UPtr<io::InputFileStream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
-  Ptr<Vocab> target_vocab_;
+  Ptr<Vocab> targetVocab_;
 
   size_t pos_{0};
 

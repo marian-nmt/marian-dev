@@ -111,7 +111,6 @@ public:
    */
   // TODO: refactorize!
   const Ptr<XmlOptions> getXmlOptions() const { return xmlOptions_; }
-  bool hasXmlOptions() const { return xmlOptions_ != NULL && xmlOptions_->size() > 0; }
   void setXmlOptions(Ptr<XmlOptions> opts) { xmlOptions_ = opts; }
 };
 

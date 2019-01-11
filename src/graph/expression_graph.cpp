@@ -65,7 +65,7 @@ void ExpressionGraph::backward(bool zero, float clipValue) {
         Element(_1 = clip(_1, clipValue), v->grad());
       }
     }
-      
+
 
     if(throwNan_) {
       for(auto&& child : v->children()) {

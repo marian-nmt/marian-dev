@@ -70,6 +70,7 @@ public:
 
   // doesn't allocate anything, just checks size.
   void reserve(size_t size) override {
+    LOG(info, "Fake reservering {}", size);
     ABORT_IF(size > size_,
              "Requested size {} is larger than pre-allocated size {}",
              size,

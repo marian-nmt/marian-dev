@@ -65,6 +65,11 @@ public:
     grads_ = New<TensorAllocator>(backend);
   }
 
+  virtual void init(Ptr<Backend> backend, Ptr<Device> device) {
+    vals_ = New<TensorAllocator>(backend, device);
+    grads_ = New<TensorAllocator>(backend, device);
+  }
+
   virtual void allocateForward() {
     if(!params_.empty() && vals_->size() == 0) {
       vals_->reserveExact(totalCapacity(vals_));
@@ -106,6 +111,7 @@ private:
 
 public:
   virtual void init(Ptr<Backend> backend) override { backend_ = backend; }
+  virtual void init(Ptr<Backend> backend, Ptr<Device>) override { init(backend); }
 
   virtual void allocateForward() override {
     if(!params_.empty()) {

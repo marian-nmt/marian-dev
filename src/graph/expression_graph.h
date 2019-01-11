@@ -113,16 +113,12 @@ public:
 };
 
 class ExpressionGraph : public std::enable_shared_from_this<ExpressionGraph> {
-private:
   size_t count_{0};
 
   std::list<Expr> nodesForward_;
   std::list<Expr> nodesBackward_;
 
   std::unordered_set<Expr> topNodes_; // current set of roots. In the end, all but one must have been consumed.
-
-  // Holds memory and expressions that correspond to graph parameters
-  Ptr<Parameters> params_;
 
   // Holds memory and expressions that correspond to temporary expressions.
   // This gets cleared before a new graph is built.
@@ -134,7 +130,6 @@ private:
 
   bool inferenceOnly_{false};
   bool optimized_{false};
-  Ptr<Backend> backend_;
 
   bool reloaded_{false};
   std::string namespace_;
@@ -145,6 +140,10 @@ protected:
   // Delete, copy and move constructors
   ExpressionGraph(const ExpressionGraph&) = delete;
   ExpressionGraph(ExpressionGraph&&) = delete;
+
+  // Holds memory and expressions that correspond to graph parameters
+  Ptr<Parameters> params_;
+  Ptr<Backend> backend_;
 
 public:
   /** @brief Constructs a new expression graph

@@ -209,8 +209,9 @@ void Sgd::save(const std::string& name,
 
   std::vector<io::Item> items;
   OptimizerBase::save(items, opts, gatherFn); // collect parameters base optimizer class
-  // SGD has no parameters
-  io::saveItems(name, items); // save all to file
+  // SGD has no parameters, but check if base optimizer has
+  if(!items.empty())
+    io::saveItems(name, items); // save all to file
 }
 
 
@@ -320,7 +321,7 @@ void Adagrad::save(const std::string& name,
 
   LOG(info, "Saving Adagrad parameters to {}", name);
   save(items, opts, gatherFn); // collect parameters for this optimizer class
-  io::saveItems(name, items); // save all to file
+  io::saveItems(name, items);  // save all to file
 }
 
 void Adagrad::resetStats() {

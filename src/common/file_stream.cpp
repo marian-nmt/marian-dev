@@ -32,7 +32,6 @@ const char *HandleStrerror(const char *ret, const char * /*buf*/) {
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
-} // namespace
 
 std::string StrError() {
   char buf[200];
@@ -42,6 +41,11 @@ std::string StrError() {
 #else
   return HandleStrerror(strerror_r(errno, buf, 200), buf);
 #endif
+}
+} // namespace
+
+void RewindFile(int fd) {
+  ABORT_IF((off_t)-1 == lseek(fd, 0, SEEK_SET), "lseek to 0 failed in fd {}", fd);
 }
 
 ReadFDBuf::ReadFDBuf(int fd, std::size_t buffer_size)

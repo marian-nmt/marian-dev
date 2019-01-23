@@ -184,6 +184,9 @@ class WriteFDBuf : public std::streambuf {
     WriteFDBuf &operator=(const WriteFDBuf &) = delete;
 };
 
+// lseek(fd, 0, SEEK_SET) but with error checking.
+void RewindFile(int fd);
+
 
 class InputFileStream {
 public:
@@ -200,7 +203,7 @@ public:
 
   InputFileStream(TemporaryFile& tempfile)
       : fds_(tempfile.getFileDescriptor(), boost::iostreams::never_close_handle) {
-    lseek(tempfile.getFileDescriptor(), 0, SEEK_SET);
+    RewindFile(tempfile.getFileDescriptor());
 
     namespace bio = boost::iostreams;
     fdsBuffer_.reset(new bio::stream_buffer<bio::file_descriptor_source>(fds_));
@@ -300,7 +303,7 @@ public:
 
   OutputFileStream(TemporaryFile& tempfile)
       : fds_(tempfile.getFileDescriptor(), boost::iostreams::never_close_handle) {
-    lseek(tempfile.getFileDescriptor(), 0, SEEK_SET);
+    RewindFile(tempfile.getFileDescriptor());
 
     namespace bio = boost::iostreams;
     fdsBuffer_.reset(new bio::stream_buffer<bio::file_descriptor_sink>(fds_));

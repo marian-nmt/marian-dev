@@ -17,6 +17,7 @@
 
 #include <iostream>
 #include <memory>
+#include <vector>
 
 #ifdef _MSC_VER
 #include <fcntl.h>
@@ -131,6 +132,58 @@ public:
 
   std::string getFileName() { return name_; }
 };
+
+// A streambuf to read from a file descriptor.
+class ReadFDBuf : public std::streambuf {
+  public:
+    // Does not take ownership of file.
+    explicit ReadFDBuf(int fd, std::size_t buffer_size = 4096);
+
+  private:
+    int_type underflow() override;
+
+    // If the putback goes below the buffer, try to seek backwards.
+    int_type pbackfail(int c = EOF) override;
+
+    // Read some amount into [Begin(), End()), returning the amount read.
+    ssize_t Read();
+
+    char *Begin() { return &mem_.front(); }
+    char *End() { return &mem_.back() + 1; }
+
+    int fd_;
+    std::vector<char> mem_;
+
+    ReadFDBuf(const ReadFDBuf &) = delete;
+    ReadFDBuf &operator=(const ReadFDBuf &) = delete;
+};
+
+// A streambuf to Write to a file descriptor.
+class WriteFDBuf : public std::streambuf {
+  public:
+    explicit WriteFDBuf(int fd, std::size_t buffer_size = 4096);
+
+    ~WriteFDBuf();
+
+  private:
+    int_type overflow(int c = EOF) override;
+
+    // Write everything in the buffer to the file.
+    int sync() override;
+
+    // Write part of the buffer, returning the amount written.
+    ssize_t WriteSome(const char *from, const char *to);
+
+    char *Begin() { return &mem_.front(); }
+    char *End() { return &mem_.back() + 1; }
+
+    int fd_;
+    std::vector<char> mem_;
+
+    WriteFDBuf(const WriteFDBuf &) = delete;
+    WriteFDBuf &operator=(const WriteFDBuf &) = delete;
+};
+
 
 class InputFileStream {
 public:

@@ -2,8 +2,14 @@
 
 #include <streambuf>
 #include <string>
-#include <unistd.h>
 #include <vector>
+#ifdef _MSC_VER
+#include <windows.h>
+#include <io.h>
+#else
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 namespace marian {
 namespace io {

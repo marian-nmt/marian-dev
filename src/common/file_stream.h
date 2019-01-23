@@ -9,8 +9,6 @@
 #pragma GCC diagnostic ignored "-Wsuggest-override"
 #endif
 #include "3rd_party/zstr/zstr.hpp"
-#include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/iostreams/stream_buffer.hpp>
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -145,6 +143,8 @@ class ReadFDBuf : public std::streambuf {
     // If the putback goes below the buffer, try to seek backwards.
     int_type pbackfail(int c = EOF) override;
 
+    // TODO: override setbuf.
+
     // Read some amount into [Begin(), End()), returning the amount read.
     ssize_t Read();
 
@@ -187,10 +187,9 @@ class WriteFDBuf : public std::streambuf {
 // lseek(fd, 0, SEEK_SET) but with error checking.
 void RewindFile(int fd);
 
-
 class InputFileStream {
 public:
-  InputFileStream(const std::string& file)
+  explicit InputFileStream(const std::string& file)
   : file_(file) {
     ABORT_IF(!marian::filesystem::exists(file_), "File '{}' does not exist", file);
 
@@ -201,16 +200,13 @@ public:
       istream_.reset(new std::ifstream(file_.string()));
   }
 
-  InputFileStream(TemporaryFile& tempfile)
-      : fds_(tempfile.getFileDescriptor(), boost::iostreams::never_close_handle) {
+  explicit InputFileStream(TemporaryFile& tempfile) {
     RewindFile(tempfile.getFileDescriptor());
-
-    namespace bio = boost::iostreams;
-    fdsBuffer_.reset(new bio::stream_buffer<bio::file_descriptor_source>(fds_));
-    istream_.reset(new std::istream(fdsBuffer_.get()));
+    temporary_reader_.reset(new ReadFDBuf(tempfile.getFileDescriptor()));
+    istream_.reset(new std::istream(temporary_reader_.get()));
   }
 
-  InputFileStream(std::istream& strm)
+  explicit InputFileStream(std::istream& strm)
   : istream_(new std::istream(strm.rdbuf())) {}
 
   operator std::istream&() { return *istream_; }
@@ -259,11 +255,9 @@ private:
   marian::filesystem::Path file_;
   std::unique_ptr<std::istream> istream_;
 
-  boost::iostreams::file_descriptor_source fds_;
   mutable std::vector<char> readBuf_; // for setbuf()
-  std::unique_ptr<boost::iostreams::stream_buffer<boost::iostreams::file_descriptor_source>> fdsBuffer_;
 
-
+  std::unique_ptr<ReadFDBuf> temporary_reader_;
 };
 
 // wrapper around std::getline() that handles Windows input files with extra CR
@@ -280,6 +274,7 @@ static inline InputFileStream& getline(InputFileStream& in, std::string& line) {
 
 // wrapper around std::getline() that handles Windows input files with extra CR
 // chars at the line end
+// To be pedantic, shouldn't this require delim == '\n' to consume a '\r'?
 static inline InputFileStream& getline(InputFileStream& in, std::string& line, char delim) {
   std::getline((std::istream&)in, line, delim);
   // bad() seems to be correct here. Should not abort on EOF.
@@ -301,13 +296,10 @@ public:
     ABORT_IF(!marian::filesystem::exists(file_), "File '{}' could not be opened", file);
   }
 
-  OutputFileStream(TemporaryFile& tempfile)
-      : fds_(tempfile.getFileDescriptor(), boost::iostreams::never_close_handle) {
+  OutputFileStream(TemporaryFile& tempfile) {
     RewindFile(tempfile.getFileDescriptor());
-
-    namespace bio = boost::iostreams;
-    fdsBuffer_.reset(new bio::stream_buffer<bio::file_descriptor_sink>(fds_));
-    ostream_.reset(new std::ostream(fdsBuffer_.get()));
+    temporary_writer_.reset(new WriteFDBuf(tempfile.getFileDescriptor()));
+    ostream_.reset(new std::ostream(temporary_writer_.get()));
   }
 
   OutputFileStream(std::ostream& strm) {
@@ -357,8 +349,7 @@ private:
   std::unique_ptr<std::ostream> ostream_;
 
 
-  boost::iostreams::file_descriptor_sink fds_;
-  std::unique_ptr<boost::iostreams::stream_buffer<boost::iostreams::file_descriptor_sink>> fdsBuffer_;
+  std::unique_ptr<WriteFDBuf> temporary_writer_;
 };
 
 }

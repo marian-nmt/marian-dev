@@ -1,7 +1,5 @@
 #include "common/file_stream.h"
 
-#include <iostream>
-#include <istream>
 #include <streambuf>
 #include <string>
 #include <unistd.h>
@@ -9,6 +7,42 @@
 
 namespace marian {
 namespace io {
+
+// Get error strings out of errno.
+namespace {
+#ifdef __GNUC__
+const char *HandleStrerror(int ret, const char *buf) __attribute__ ((unused));
+const char *HandleStrerror(const char *ret, const char * /*buf*/) __attribute__ ((unused));
+#endif
+// At least one of these functions will not be called.
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#endif
+// The XOPEN version.
+const char *HandleStrerror(int ret, const char *buf) {
+  if (!ret) return buf;
+  return NULL;
+}
+
+// The GNU version.
+const char *HandleStrerror(const char *ret, const char * /*buf*/) {
+  return ret;
+}
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+} // namespace
+
+std::string StrError() {
+  char buf[200];
+  buf[0] = 0;
+#if defined(sun) || defined(_WIN32) || defined(_WIN64)
+  return strerror(errno);
+#else
+  return HandleStrerror(strerror_r(errno, buf, 200), buf);
+#endif
+}
 
 ReadFDBuf::ReadFDBuf(int fd, std::size_t buffer_size)
 : fd_(fd), mem_(buffer_size) {
@@ -66,10 +100,7 @@ ssize_t ReadFDBuf::Read() {
 #endif
       (fd_, Begin(), End() - Begin());
   } while (got == -1 && errno == EINTR);
-  if (got < 0) {
-    std::cerr << "Error" << std::endl;
-    abort(); // TODO
-  }
+  ABORT_IF(got < 0, "Error reading fd {}: {}", fd_, StrError());
   return got;
 }
 
@@ -121,11 +152,7 @@ ssize_t WriteFDBuf::WriteSome(const char *from, const char *to) {
 #endif
       (fd_, from, to - from);
   } while (put == -1 && errno == EINTR);
-  if (put == -1) {
-    // TODO
-    std::cerr << "Error writing" << std::endl;
-    abort();
-  }
+  ABORT_IF(put < 0, "Error writing to fd {}: {}", fd_, StrError());
   return put;
 }
 

@@ -168,6 +168,9 @@ struct NaryNodeOp : public Node {
     return type;
   }
 
+  NaryNodeOp(const std::vector<Expr>& nodes)
+  : NaryNodeOp(nodes, nodes[0]->shape()) {}
+
   NaryNodeOp(const std::vector<Expr>& nodes, Shape shape)
   : NaryNodeOp(nodes, shape, commonType(nodes)) {}
 
@@ -187,9 +190,6 @@ struct NaryNodeOp : public Node {
     setMemoize(std::all_of(
         nodes.begin(), nodes.end(), [](Expr a) { return a->memoize(); }));
   }
-
-  NaryNodeOp(const std::vector<Expr>& nodes)
-      : NaryNodeOp(nodes, nodes[0]->shape()) {}
 
   virtual ~NaryNodeOp() {}
 

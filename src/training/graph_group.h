@@ -315,12 +315,13 @@ public:
 
 static Ptr<ExpressionGraph> graphFromOptimizer(Ptr<ExpressionGraph> graph, const std::vector<Ptr<OptimizerBase>>& /*opts*/, bool /*getAverage*/ = true) {
   // @TODO: implement function that creates a temporary graph from input graph and shared optimizers
-  auto tempGraph = New<TempExpressionGraph>(graph->allocator());
+  //auto tempGraph = New<TempExpressionGraph>(graph->allocator());
 
-  tempGraph->reuseWorkspace(graph);
-  tempGraph->copyParams(graph);
+  //tempGraph->reuseWorkspace(graph);
+  //tempGraph->copyParams(graph);
 
-  return tempGraph;
+  //return tempGraph;
+  return graph;
 }
 
 }  // namespace marian

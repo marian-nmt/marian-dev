@@ -365,20 +365,20 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->forward();
       localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
 
-      float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
-      graph->backward(/*zero=*/false, clipValue); // (gradients are reset before we get here)
+      //float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
+      graph->backward(/*zero=*/false, 0); // (gradients are reset before we get here)
     }
 
     // Handle local gradient explosion but only clip to largest possible value
     // given number of GPUs and type. Should clip rarely.
     // We do another L2-norm-based clipping/rescaling after summation.
-    // auto gradType = graph->params()->grads()->type();
-    // if(sizeOf(gradType) < sizeOf(Type::float32)) {
-    //   using namespace functional;
-    //   float numGpus = mpi_->numMPIProcesses() * devices_.size();
-    //   float clipValue = NumericLimits<float>(gradType).max / numGpus;
-    //   Element(_1 = clip(_1, clipValue), graph->params()->grads());
-    // }
+    auto gradType = graph->params()->grads()->type();
+    if(sizeOf(gradType) < sizeOf(Type::float32)) {
+       using namespace functional;
+       float numGpus = mpi_->numMPIProcesses() * devices_.size();
+       float clipValue = NumericLimits<float>(gradType).max / numGpus;
+       Element(_1 = clip(_1, clipValue), graph->params()->grads());
+    }
 
     return true; // dummy success
   });

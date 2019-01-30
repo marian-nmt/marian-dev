@@ -109,8 +109,8 @@ Ptr<NodeInitializer> uniform(float a = 0.f, float b = 1.f);
 
 
 Ptr<NodeInitializer> bernoulli(float p, float scale = 1.f);
-Ptr<NodeInitializer> glorotUniform();
-Ptr<NodeInitializer> glorotNormal();
+Ptr<NodeInitializer> glorotUniform(bool fanIn = false, bool fanOut = false);
+Ptr<NodeInitializer> glorotNormal(bool fanIn = false, bool fanOut = false);
 
 
 Ptr<NodeInitializer> dropout(float dropoutProbabilty);

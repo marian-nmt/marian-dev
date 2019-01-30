@@ -94,16 +94,26 @@ Ptr<NodeInitializer> normal(float mean, float stddev) {
   });
 }
 
-Ptr<NodeInitializer> glorotUniform() {
-  return New<LambdaInitConvert>([](Tensor t) {
+Ptr<NodeInitializer> glorotUniform(bool fanIn, bool fanOut) {
+  return New<LambdaInitConvert>([fanIn, fanOut](Tensor t) {
     float scale = sqrtf(6.0f / (t->shape()[-2] + t->shape()[-1]));
+    if(fanIn && !fanOut)
+      scale = sqrtf(3.0f / t->shape()[-2]);
+    if(!fanIn && fanOut)
+      scale = sqrtf(3.0f / t->shape()[-1]);
+
     t->getBackend()->getRandomGenerator()->uniform(t, -scale, scale);
   });
 }
 
-Ptr<NodeInitializer> glorotNormal() {
-  return New<LambdaInitConvert>([](Tensor t) {
+Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
+  return New<LambdaInitConvert>([fanIn, fanOut](Tensor t) {
     float scale = sqrtf(2.0f / (t->shape()[-2] + t->shape()[-1]));
+    if(fanIn && !fanOut)
+      scale = sqrtf(1.0f / t->shape()[-2]);
+    if(!fanIn && fanOut)
+      scale = sqrtf(1.0f / t->shape()[-1]);
+
     t->getBackend()->getRandomGenerator()->normal(t, 0.f, scale);
   });
 }

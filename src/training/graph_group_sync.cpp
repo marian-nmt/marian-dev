@@ -367,6 +367,19 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
       //float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
       graph->backward(/*zero=*/false, 0); // (gradients are reset before we get here)
+
+      if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
+        Logger log = spdlog::get("norms");
+        if(!log)
+          createStderrLogger("norms", "%v", {"norms.txt"}, false);
+
+        if(scheduler_->numberOfBatches() % 100 == 0) {
+          for(auto p : *graph->params()) {
+            float norm = L2Norm(p->grad(), graph->allocator());
+            LOG(norms, "{}\t{}\t{}", scheduler_->numberOfBatches(), p->name(), norm);
+          }
+        }
+      }
     }
 
     // Handle local gradient explosion but only clip to largest possible value

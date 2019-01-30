@@ -1574,19 +1574,15 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) 
   }
 }
 
-float L2Norm(Tensor in) {
+float L2Norm(Tensor in, Ptr<Allocator> allocator) {
   cudaSetDevice(in->getDeviceId().no);
 
   int size = in->shape().elements();
   int threads = std::min(MAX_THREADS, size);
   int blocks = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
 
-  uint8_t* data;
-  cudaMalloc(&data, blocks * sizeof(float)); // accumulate into float
-  auto blockMem = TensorBase::New(MemoryPiece::New(data, blocks * sizeof(float)),
-                             Shape({1, blocks}),
-                             Type::float32,
-                             in->getBackend());
+  auto memoryPiece = allocator->alloc<float>(blocks);
+  auto blockMem = TensorBase::New(memoryPiece, Shape({1, blocks}), Type::float32, in->getBackend());
 
   using namespace functional;
   if(in->type() == Type::float32) {
@@ -1598,8 +1594,7 @@ float L2Norm(Tensor in) {
   }
   float dataCpu = sqrtf(blockMem->get<float>(0));
 
-  blockMem.reset();
-  cudaFree(data);
+  allocator->free(memoryPiece);
   return dataCpu;
 }
 

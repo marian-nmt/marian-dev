@@ -11,7 +11,7 @@ void Elementwise::clip(Tensor t, float costScalingFactor) {
 
 void Norm::clip(Tensor t, float costScalingFactor) {
   using namespace functional;
-  float l2Norm = L2Norm(t);
+  float l2Norm = L2Norm(t, allocator_);
   float clipValue = c_ * costScalingFactor;
   if(l2Norm > clipValue) {
     Element(_1 = (clipValue / l2Norm) * _1, t);

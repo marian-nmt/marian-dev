@@ -79,7 +79,11 @@ public:
 
   virtual void setParams(const std::vector<float>& params) = 0;
 
-  virtual void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
+  virtual void setAllocator(Ptr<Allocator> allocator) { 
+    allocator_ = allocator; 
+    if(clipper_)
+      clipper_->setAllocator(allocator);
+  }
 
   typedef std::function<void(size_t /*localDeviceIndex*/,
                              const char* /*begin*/,

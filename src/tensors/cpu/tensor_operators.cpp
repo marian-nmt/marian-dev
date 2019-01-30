@@ -803,7 +803,7 @@ void CrossEntropyPickBackward(Tensor out_,
   }
 }
 
-float L2Norm(Tensor in) {
+float L2Norm(Tensor in, Ptr<Allocator> /*not used*/) {
   float sum = 0.f;
   size_t size = in->size();
   const float* data = in->data();

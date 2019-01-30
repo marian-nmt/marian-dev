@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "tensors/tensor.h"
+#include "tensors/allocator.h"
 
 namespace marian {
 
@@ -14,8 +15,12 @@ namespace marian {
 // are as many updates as different parameters.
 
 class ClipperBase {
+protected:
+  Ptr<Allocator> allocator_;
+
 public:
   virtual void clip(Tensor, float /*costScalingFactor*/ = 1.f) = 0;
+  virtual void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
 };
 
 typedef std::shared_ptr<ClipperBase> ClipperPtr;

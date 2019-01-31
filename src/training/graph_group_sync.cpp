@@ -368,15 +368,16 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       //float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
       graph->backward(/*zero=*/false, 0); // (gradients are reset before we get here)
 
+      // @TODO: remove again, only for debugging.
       if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
         Logger logger = spdlog::get("norms");
         if(!logger)
-          logger = createStderrLogger("norms", "%v", {"norms.txt"}, false);
+          logger = createStderrLogger("norms", "%v", { options_->get<std::string>("log") + ".norms"}, true);
 
         if(scheduler_->numberOfBatches() % 100 == 0) {
           for(auto p : *graph->params()) {
             float norm = L2Norm(p->grad(), graph->allocator());
-            logger->trace("{}\t{}\t{}", scheduler_->numberOfBatches(), p->name(), norm);
+            logger->info("{}\t{}\t{}", scheduler_->numberOfBatches(), p->name(), norm);
           }
         }
       }

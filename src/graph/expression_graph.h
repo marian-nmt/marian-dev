@@ -250,8 +250,15 @@ public:
       }
 
       if(v->marked_for_debug()) {
-        LOG(info, "Debug: {} op={}", v->debug_message(), v->type());
-        LOG(info, v->val()->debug());
+        Logger log = spdlog::get("general");
+        if(log) {
+          LOG(info, "Debug: {} op={}", v->debug_message(), v->type());
+          LOG(info, v->val()->debug());
+        }
+        else {
+          std::cerr << "Debug: " << v->debug_message() << " op=" << v->type() << std::endl;
+          std::cerr << v->val()->debug() << std::endl;
+        }
       }
 
       if(inferenceOnly_)
@@ -419,8 +426,10 @@ public:
         nodesBackward_.push_back(node);
         topNodes_.insert(node); // opportunistically record all new nodes as roots (gets removed once consumed)
       }
-      for(auto child : node->children())
-        topNodes_.erase(child); // this child is consumed and therefore not a root
+      
+      if(topNodes_.count(node)) // only erase children of nodes with are themselves in the topNodes list
+        for(auto child : node->children())
+          topNodes_.erase(child); // this child is consumed and therefore not a root
 
       return node;
     }

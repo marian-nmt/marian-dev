@@ -175,6 +175,10 @@ Expr reshape(Expr a, Shape shape) {
   return Expression<ReshapeNodeOp>(a, shape);
 }
 
+Expr clipGradient(Expr a, float clipValue) {
+  return Expression<ClipGradientNodeOp>(a, clipValue);
+}
+
 Expr atleast_1d(Expr a) {
   return atleast_nd(a, 1);
 }

@@ -577,6 +577,11 @@ public:
     // to make RNN-based decoders and beam search work with this. We are looking
     // into making this more natural.
     auto context = transposeTimeBatch(layer); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
+    
+    
+    // @TODO: get rid of this. This clips all incoming gradients from the decoder. Forward pass does nothing.
+    float clipValue = opt<float>("clip-norm");
+    context = clipGradient(context, clipValue);
 
     return New<EncoderState>(context, batchMask, batch);
   }

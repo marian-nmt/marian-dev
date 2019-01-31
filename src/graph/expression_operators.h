@@ -101,6 +101,8 @@ Expr repeat(Expr a, size_t repeats, int ax = 0);
 
 Expr reshape(Expr a, Shape shape);
 
+Expr clipGradient(Expr a, float clipValue);
+
 Expr atleast_1d(Expr a);
 Expr atleast_2d(Expr a);
 Expr atleast_3d(Expr a);

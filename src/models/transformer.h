@@ -824,6 +824,9 @@ public:
     }
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
+    
+    float clipValue = opt<float>("clip-norm");
+    decoderContext = clipGradient(decoderContext, clipValue);
 
     //************************************************************************//
 

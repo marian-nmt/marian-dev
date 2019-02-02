@@ -176,7 +176,8 @@ Expr reshape(Expr a, Shape shape) {
 }
 
 Expr clipGradient(Expr a, float clipValue) {
-  return Expression<ClipGradientNodeOp>(a, clipValue);
+  // don't create node if no clipping
+  return clipValue != 0.f ? Expression<ClipGradientNodeOp>(a, clipValue) : a;
 }
 
 Expr atleast_1d(Expr a) {

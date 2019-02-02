@@ -531,13 +531,12 @@ public:
       auto embeddings = ULREmbeddings(); // embedding uses ULR
       std::tie(batchEmbeddings, batchMask)
         = EncoderBase::ulrLookup(graph_, embeddings, batch);
-    }
-    else
-    {
+    } else {
       auto embeddings = wordEmbeddings(batchIndex_);
       std::tie(batchEmbeddings, batchMask)
         = EncoderBase::lookup(graph_, embeddings, batch);
     }
+
     // apply dropout over source words
     float dropoutSrc = inference_ ? 0 : opt<float>("dropout-src");
     if(dropoutSrc) {
@@ -577,10 +576,9 @@ public:
     // to make RNN-based decoders and beam search work with this. We are looking
     // into making this more natural.
     auto context = transposeTimeBatch(layer); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
-    
-    
+
+
     // @TODO: get rid of this. This clips all incoming gradients from the decoder. Forward pass does nothing.
-    float clipValue = opt<float>("clip-norm");
     context = clipGradient(context, clipValue);
 
     return New<EncoderState>(context, batchMask, batch);
@@ -824,15 +822,6 @@ public:
     }
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
-    
-    // Similar as in the encoder, we clip gradients that flow into the decoder after the output layer. Currently this is done
-    // to facilitate fp16 training which seems to suffer from an exploding gradient problem. 
-    // @TODO: take into account cost scaling
-    // @TODO: check if this can be fixed by other means
-    float clipValue = opt<float>("clip-norm");
-    decoderContext = clipGradient(decoderContext, clipValue);
-
-    //************************************************************************//
 
     // final feed-forward layer (output)
     Expr logits = output_->apply(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab dim]

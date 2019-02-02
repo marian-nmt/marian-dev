@@ -47,9 +47,12 @@ cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
                                const float* B, int ldb,
                                const float* beta,
                                float* C, int ldc) {
-  return cublasSgemm(handle, transa, transb, 
+  return cublasGemmEx(handle, transa, transb, 
                      m, n, k, alpha, 
-                     A, lda, B, ldb, beta, C, ldc);
+                     A, CUDA_R_32F, lda, 
+                     B, CUDA_R_32F, ldb, beta, 
+                     C, CUDA_R_32F, ldc,
+                     CUDA_R_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP); // @TODO: review algorithm
 }
 
 cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
@@ -61,9 +64,15 @@ cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
                                const half* B, int ldb,
                                const half* beta,
                                half* C, int ldc) {
-  return cublasHgemm(handle, transa, transb, 
+  //float alphaf = __half2float(*alpha); // has to match computeType
+  //float betaf = __half2float(*beta);   // has to match computeType
+
+  return cublasGemmEx(handle, transa, transb, 
                      m, n, k, alpha, 
-                     A, lda, B, ldb, beta, C, ldc);
+                     A, CUDA_R_16F, lda, 
+                     B, CUDA_R_16F, ldb, beta, 
+                     C, CUDA_R_16F, ldc,
+                     CUDA_R_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP); // @TODO: review algorithm
 }
 
 template <typename T>
@@ -104,7 +113,7 @@ void ProdTyped(marian::Tensor C,
   setTensorMode(cublasHandle);
   //cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
-  cublasGemmTyped(cublasHandle,
+  CUBLAS_CHECK(cublasGemmTyped(cublasHandle,
                   opB,
                   opA,
                   n,
@@ -117,7 +126,7 @@ void ProdTyped(marian::Tensor C,
                   lda,
                   &beta,
                   C->data<T>(),
-                  ldc);
+                  ldc));
 
 #if CUDA_VERSION >= 9000
   cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
@@ -151,10 +160,12 @@ cublasStatus_t cublasGemmBatchedTyped(cublasHandle_t handle,
                                       float *Carray[], int ldc, 
                                       int batchCount) {
   return
-  cublasSgemmBatched(handle, transa, transb, 
-                     m, n, k, alpha, 
-                     Aarray, lda, Barray, ldb, beta,
-                     Carray, ldc, batchCount);
+  cublasGemmBatchedEx(handle, transa, transb, 
+                      m, n, k, alpha, 
+                      (void* const*)Aarray, CUDA_R_32F, lda, 
+                      (void* const*)Barray, CUDA_R_32F, ldb, beta,
+                      (void**)Carray, CUDA_R_32F, ldc, batchCount,
+                      CUDA_R_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
 cublasStatus_t cublasGemmBatchedTyped(cublasHandle_t handle,
@@ -167,11 +178,16 @@ cublasStatus_t cublasGemmBatchedTyped(cublasHandle_t handle,
                                       const half *beta,
                                       half *Carray[], int ldc, 
                                       int batchCount) {
+  //float alphaf = __half2float(*alpha); // has to match computeType
+  //float betaf = __half2float(*beta);   // has to match computeType
+
   return
-  cublasHgemmBatched(handle, transa, transb, 
-                     m, n, k, alpha, 
-                     Aarray, lda, Barray, ldb, beta,
-                     Carray, ldc, batchCount);
+  cublasGemmBatchedEx(handle, transa, transb, 
+                      m, n, k, alpha, 
+                      (void* const*)Aarray, CUDA_R_16F, lda, 
+                      (void* const*)Barray, CUDA_R_16F, ldb, beta,
+                      (void**)Carray, CUDA_R_16F, ldc, batchCount,
+                      CUDA_R_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP); // @TODO: to 16, this is testing
 }
 
 template <typename T>
@@ -242,7 +258,7 @@ void ProdBatchedTyped(marian::Tensor C,
   setTensorMode(cublasHandle);
   //cublasSetMathMode(cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
-  cublasGemmBatchedTyped(cublasHandle,
+  CUBLAS_CHECK(cublasGemmBatchedTyped(cublasHandle,
                          opB,
                          opA,
                          n,
@@ -256,7 +272,7 @@ void ProdBatchedTyped(marian::Tensor C,
                          &beta,
                          mp_cptr->data<T*>(),
                          ldc,
-                         batchC);
+                         batchC));
 #if CUDA_VERSION >= 9000
   cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH);
 #endif

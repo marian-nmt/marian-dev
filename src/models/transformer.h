@@ -531,13 +531,15 @@ public:
       auto embeddings = ULREmbeddings(); // embedding uses ULR
       std::tie(batchEmbeddings, batchMask)
         = EncoderBase::ulrLookup(graph_, embeddings, batch);
-    }
-    else
-    {
+    } else {
       auto embeddings = wordEmbeddings(batchIndex_);
       std::tie(batchEmbeddings, batchMask)
         = EncoderBase::lookup(graph_, embeddings, batch);
     }
+
+    float clipValue = opt<float>("clip-norm", 0);
+    batchEmbeddings = clipGradient(batchEmbeddings, clipValue);
+
     // apply dropout over source words
     float dropoutSrc = inference_ ? 0 : opt<float>("dropout-src");
     if(dropoutSrc) {
@@ -580,7 +582,6 @@ public:
     
     
     // @TODO: get rid of this. This clips all incoming gradients from the decoder. Forward pass does nothing.
-    float clipValue = opt<float>("clip-norm");
     context = clipGradient(context, clipValue);
 
     return New<EncoderState>(context, batchMask, batch);
@@ -825,13 +826,14 @@ public:
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
     
-    float clipValue = opt<float>("clip-norm");
-    decoderContext = clipGradient(decoderContext, clipValue);
 
     //************************************************************************//
 
     // final feed-forward layer (output)
     Expr logits = output_->apply(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab dim]
+
+    float clipValue = opt<float>("clip-norm", 0);
+    logits = clipGradient(logits, clipValue);
 
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;

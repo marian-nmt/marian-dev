@@ -825,6 +825,10 @@ public:
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
     
+    // Similar as in the encoder, we clip gradients that flow into the decoder after the output layer. Currently this is done
+    // to facilitate fp16 training which seems to suffer from an exploding gradient problem. 
+    // @TODO: take into account cost scaling
+    // @TODO: check if this can be fixed by other means
     float clipValue = opt<float>("clip-norm");
     decoderContext = clipGradient(decoderContext, clipValue);
 

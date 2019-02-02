@@ -127,6 +127,7 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
                                   bool normalize = false);
 
 Ptr<NodeInitializer> fromItem(const io::Item& item);
+Ptr<NodeInitializer> fromTensor(Tensor tensor);
 
 }  // namespace inits
 

@@ -768,7 +768,7 @@ private:
   float clipValue_{0};
 
 public:
-  ClipGradientNodeOp(Expr a, float clipValue) 
+  ClipGradientNodeOp(Expr a, float clipValue)
    : UnaryNodeOp(a), clipee_(a), clipValue_(clipValue) {
     Node::destroy_ = false;
   }

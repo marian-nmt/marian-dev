@@ -4,192 +4,141 @@
 
 using namespace marian;
 
-template <typename T>
 void tests(DeviceType device, Type floatType = Type::float32) {
-
-  auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.1); };
 
   Config::seed = 1234;
   auto graph = New<ExpressionGraph>();
-  graph->setParameterType(floatType);
+  graph->setParameterType(Type::float32); // use float32 unless specified differently
   graph->setDevice({0, device});
   graph->reserveWorkspaceMB(16);
 
-  std::vector<T> values;
+  float eps = 1e-6; // smaller does not work with fp16
+  auto diffQuot = [eps](std::function<Expr(Expr)> f, Expr x) {
 
-  float eps = 1e-7; // smaller does not work with fp16
+    // this only works if graph->backward() has been called!
+    auto xGrad  = constant_like(x, inits::fromTensor(x->grad()));
+    auto h      = constant_like(x, inits::uniform(eps, 10.f * eps));
 
-  // random noise is OK for elementwise functions
-  auto randomNoise = [eps](Expr x) {
-    return constant_like(x, inits::uniform(eps, 10.f * eps));
+    auto diff   = sum(flatten(f(x + h) - f(x))) - sum(flatten(xGrad * h));
+
+    return diff;
   };
 
-  // only noise one column, ok for softmax and layerNorm and similar row-wise
-  // gradients
-  auto colNoise = [randomNoise](Expr x) {
-    auto noise = randomNoise(x);
+  struct FunArg1 {
+    std::string name;
+    float eps{0.001};
+    std::function<Expr(Expr)> f;
 
-    auto graph = x->graph();
-    int cols = x->shape()[-1];
-    std::vector<float> vMask(cols, 0.f);
-    // @TODO: choose column randomly
-    vMask[2] = 1.f;
-    auto colMask  = graph->constant({1, cols}, inits::fromVector(vMask));
-    return colMask * noise;
-  };
+    FunArg1(const std::string& nameArg, std::function<Expr(Expr)> fArg)
+    : name(nameArg), eps(0.001), f(fArg) {}
 
-  // only noise one element, ok for matrix product
-  // gradients
-  auto elemNoise = [eps,colNoise](Expr x) {
-    auto graph = x->graph();
-    int rows = x->shape()[-2];
-    
-    auto noise = colNoise(x);
-    
-    std::vector<float> vMask(rows, 0.f);
-    vMask[0] = 1.f;
-    auto rowMask  = graph->constant({rows, 1}, inits::fromVector(vMask));
-    return rowMask * noise;
-  };
+    FunArg1(const std::string& nameArg, float epsArg, std::function<Expr(Expr)> fArg)
+    : name(nameArg), eps(epsArg), f(fArg) {}
 
-  auto diffQuot = [](std::function<Expr(Expr)> f, Expr x, 
-                     std::function<Expr(Expr)> noise) {
-    auto fx = f(x);
-    auto h = noise(x);
-    
-    auto graph = x->graph();
-    graph->setInference(true);
-    auto fxh = f(x + h);
-    auto dq  = (fxh - fx) / h;
-    graph->setInference(false);
-    
-    return dq;
-  };
-
-  auto diffQuotAll = [diffQuot, randomNoise](std::function<Expr(Expr)> f, Expr x) {
-    return diffQuot(f, x, randomNoise);
-  };
-
-
-  // auto diffQuotCol = [diffQuot, colNoise](std::function<Expr(Expr)> f, Expr x) {
-  //   return diffQuot(f, x, colNoise);
-  // };
-
-  auto diffQuotElem = [diffQuot, elemNoise](std::function<Expr(Expr)> f, Expr x) {
-    return diffQuot(f, x, elemNoise);
+    Expr operator()(Expr x) const { return f(x); }
   };
 
   SECTION("Unary operators and functions") {
 
-    std::vector<std::function<Expr(Expr)>> unaryFunctions;
+    std::vector<FunArg1> unaryFunctions;
 
-    unaryFunctions.push_back([](Expr x) { return x * 0.5f; });
-    unaryFunctions.push_back([](Expr x) { return x + 2.71f; });
-    unaryFunctions.push_back([](Expr x) { return x / 0.5f; });
-    unaryFunctions.push_back([](Expr x) { return x - 2.71f; });
-    unaryFunctions.push_back([](Expr x) { return x * x; });
-    unaryFunctions.push_back([](Expr x) { return x + x; });
-    unaryFunctions.push_back([](Expr x) { return x - x; });
-    unaryFunctions.push_back([](Expr x) { return exp(x); });
-    unaryFunctions.push_back([](Expr x) { return sqrt(x); });
-    unaryFunctions.push_back([](Expr x) { return square(x); });
-    unaryFunctions.push_back([](Expr x) { return transpose(x); });
-    unaryFunctions.push_back([](Expr x) { return sigmoid(x); });
-    unaryFunctions.push_back([](Expr x) { return tanh(x); });
-    //unaryFunctions.push_back([](Expr x) { return relu(x); });
-    
-    unaryFunctions.push_back([](Expr x) { return swish(x); });
-    unaryFunctions.push_back([](Expr x) { return x * sigmoid(x); });
+    unaryFunctions.emplace_back("scalar mult", [](Expr x) { return x * 10.f; });
+    unaryFunctions.emplace_back("scalar add", [](Expr x) { return x + 2.71f; });
+    unaryFunctions.emplace_back("scalar div", [](Expr x) { return x / 0.5f; });
+    unaryFunctions.emplace_back("scalar sub", [](Expr x) { return x - 2.71f; });
+    unaryFunctions.emplace_back("x * x", [](Expr x) { return x * x; });
+    unaryFunctions.emplace_back("x + x", [](Expr x) { return x + x; });
+    unaryFunctions.emplace_back("x - x", [](Expr x) { return x - x; });
+    //unaryFunctions.emplace_back("scalar mult", [](Expr x) { return x / x; }); // fails for fp16
+    unaryFunctions.emplace_back("exp(x)", [](Expr x) { return exp(x); });
+    unaryFunctions.emplace_back("sqrt(relu(x) + 1e-3)", [](Expr x) { return sqrt(relu(x) + 1e-3); });
+    unaryFunctions.emplace_back("square(x)", [](Expr x) { return square(x); });
+    unaryFunctions.emplace_back("transpose(x)", [](Expr x) { return transpose(x); });
+    unaryFunctions.emplace_back("sigmoid(x)", [](Expr x) { return sigmoid(x); });
+    unaryFunctions.emplace_back("tanh(x)", [](Expr x) { return tanh(x); });
+    unaryFunctions.emplace_back("relu(x)", [](Expr x) { return relu(x); });
 
-    unaryFunctions.push_back([](Expr x) { return softmax(x); });
-    unaryFunctions.push_back([](Expr x) { return logsoftmax(x); });
-    unaryFunctions.push_back([](Expr x) { return exp(x) / sum(exp(x), -1); });
+    unaryFunctions.emplace_back("swish(x)", [](Expr x) { return swish(x); });
+    unaryFunctions.emplace_back("x * sigmoid(x)", [](Expr x) { return x * sigmoid(x); });
+
+    unaryFunctions.emplace_back("softmax(x)", [](Expr x) { return softmax(x); });
+    unaryFunctions.emplace_back("logsoftmax(x)", [](Expr x) { return logsoftmax(x); });
+    unaryFunctions.emplace_back("exp(x) / sum(exp(x), -1)", [](Expr x) { return exp(x) / sum(exp(x), -1); });
 
     for(auto f : unaryFunctions) {
+      std::cerr << f.name << " " << floatType << " " << DeviceId({0, device}) << std::endl;
 
       graph->clear();
-      auto x = graph->param("x", {128, 128}, inits::uniform(-1.f, 1.f));
-      
-      auto fx = f(x);
-      auto dq = diffQuotAll(f, x);
+      auto x = graph->param("x", {128, 128}, inits::uniform(-5.f, 5.f), Type::float32);
+
+      auto fx = sum(flatten(f(cast(x, floatType))));
 
       graph->forward();
       graph->backward();
 
-      std::vector<T> grad1;
-      x->grad()->get(grad1);
+      auto diff = diffQuot(f, x);
 
-      std::vector<T> grad2;
-      dq->val()->get(grad2);
+      graph->forwardNext();
 
-      // std::cerr << fx->type() << std::endl;
-      //  std::cerr << fx->val()->debug(4, 32) << std::endl;
-      //  std::cerr << x->grad()->debug(4, 32) << std::endl;
-      //  std::cerr << dq->val()->debug(4, 32) << std::endl;
-
-      CHECK( std::equal(grad1.begin(), grad1.end(),
-                        grad2.begin(), floatApprox) );
-
+      CHECK( diff->scalar() == Approx(0.f).epsilon(f.eps) );
     }
   }
 
+  struct FunArg2 {
+    std::string name;
+    float eps{0.001};
+    std::function<Expr(Expr, Expr)> f;
+
+    FunArg2(const std::string& nameArg, std::function<Expr(Expr, Expr)> fArg)
+    : name(nameArg), eps(0.001), f(fArg) {}
+
+    FunArg2(const std::string& nameArg, float epsArg, std::function<Expr(Expr, Expr)> fArg)
+    : name(nameArg), eps(epsArg), f(fArg) {}
+
+    Expr operator()(Expr x, Expr y) const { return f(x, y); }
+  };
+
   SECTION("Binary operators and functions") {
 
-    std::vector<std::function<Expr(Expr, Expr)>> binaryFunctions;
+    std::vector<FunArg2> binaryFunctions;
 
-    binaryFunctions.push_back([](Expr x, Expr y) { return x + y; });
-    binaryFunctions.push_back([](Expr x, Expr y) { return x * y; });
-    binaryFunctions.push_back([](Expr x, Expr y) { return exp(sigmoid(x) - 5.2 * y); });
-    // binaryFunctions.push_back([](Expr x, Expr y) { return x / y; }); // this fails, numeric issues.
-    
-    binaryFunctions.push_back([](Expr x, Expr y) { return dot(x, y, false, false); });
-    // binaryFunctions.push_back([](Expr x, Expr y) { return dot(x, y, true, false); });
-    // binaryFunctions.push_back([](Expr x, Expr y) { return dot(x, y, false, true); });
-    // binaryFunctions.push_back([](Expr x, Expr y) { return dot(x, y, true, true); });
-    
+    binaryFunctions.emplace_back("x + y", [](Expr x, Expr y) { return x + y; });
+    binaryFunctions.emplace_back("x * y", [](Expr x, Expr y) { return x * y; });
+    binaryFunctions.emplace_back("exp(sigmoid(x) - 0.2 * y)", 0.02, [](Expr x, Expr y) { return exp(sigmoid(x) - 0.2 * y); });
+    binaryFunctions.emplace_back("x / (relu(y) + 0.001)", [](Expr x, Expr y) { return x / (relu(y) + 0.01); });
+    binaryFunctions.emplace_back("dot(x, y, false, false)", 0.02, [](Expr x, Expr y) { return dot(x, y, false, false);});
+    binaryFunctions.emplace_back("dot(x, y, true, false)", 0.02, [](Expr x, Expr y) { return dot(x, y, true, false); });
+    binaryFunctions.emplace_back("dot(x, y, false, true)", 0.02, [](Expr x, Expr y) { return dot(x, y, false, true); });
+    binaryFunctions.emplace_back("dot(x, y, true, true)", 0.02, [](Expr x, Expr y) { return dot(x, y, true, true); });
+
     for(auto f : binaryFunctions) {
+      std::cerr << f.name << " " << floatType << " " << DeviceId({0, device}) << std::endl;
 
       graph->clear();
-      auto x = graph->param("x", {5, 5}, inits::uniform(-1.f, 1.f));
-      auto y = graph->param("y", {5, 5}, inits::uniform(-1.f, 1.f));
-      
-      auto fxy = f(x, y);
+      auto x = graph->param("x", {128, 128}, inits::uniform(-5.f, 5.f));
+      auto y = graph->param("y", {128, 128}, inits::uniform(-5.f, 5.f));
 
-      auto f_x = [f,y](Expr x) { return f(x, y); };
-      auto f_y = [f,x](Expr y) { return f(x, y); };
+      auto fxy = f(cast(x, floatType), cast(y, floatType));
 
-      auto dq_x = diffQuotElem(f_x, x);
-      auto dq_y = diffQuotElem(f_y, y);
+      auto fx = [f,y](Expr x) { return f(x, y); };
+      auto fy = [f,x](Expr y) { return f(x, y); };
 
       graph->forward();
-      graph->backward();
+      graph->backward(); // required to compute gradient of x
 
-      std::vector<T> grad1x;
-      x->grad()->get(grad1x);
+      auto diffx = diffQuot(fx, x);
+      auto diffy = diffQuot(fy, y);
 
-      std::vector<T> grad1y;
-      y->grad()->get(grad1y);
+      graph->forwardNext();
 
-      std::vector<T> grad2x;
-      dq_x->val()->get(grad2x);
+      std::vector<float> vDiffx;
+      diffx->val()->get(vDiffx); // this should be zero mostly
 
-      std::vector<T> grad2y;
-      dq_y->val()->get(grad2y);
+      std::vector<float> vDiffy;
+      diffy->val()->get(vDiffy); // this should be zero mostly
 
-      std::cerr << fxy->type() << std::endl;
-      std::cerr << fxy->val()->debug(4, 5) << std::endl;
-      std::cerr << x->val()->debug(4, 5) << std::endl;
-      std::cerr << x->grad()->debug(4, 5) << std::endl;
-      std::cerr << dq_x->val()->debug(4, 5) << std::endl;
-      std::cerr << y->val()->debug(4, 5) << std::endl;
-      std::cerr << y->grad()->debug(4, 5) << std::endl;
-      std::cerr << dq_y->val()->debug(4, 5) << std::endl;
-      
-      CHECK( std::equal(grad1x.begin(), grad1x.end(),
-                        grad2x.begin(), floatApprox) );
-
-      CHECK( std::equal(grad1y.begin(), grad1y.end(),
-                        grad2y.begin(), floatApprox) );
+      CHECK( diffx->scalar() == Approx(0.f).epsilon(f.eps) );
+      CHECK( diffy->scalar() == Approx(0.f).epsilon(f.eps) );
 
     }
   }
@@ -197,16 +146,16 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
 #ifdef CUDA_FOUND
 TEST_CASE("Expression graph supports basic math operations (gpu)", "[operator]") {
-  tests<float>(DeviceType::gpu);
+  tests(DeviceType::gpu);
 }
 
 TEST_CASE("Expression graph supports basic math operations (gpu fp16)", "[operator]") {
-  tests<float16>(DeviceType::gpu, Type::float16);
+  tests(DeviceType::gpu, Type::float16);
 }
 #endif
 
 #ifdef BLAS_FOUND
 TEST_CASE("Expression graph supports basic math operations (cpu)", "[operator]") {
-  tests<float>(DeviceType::cpu);
+  tests(DeviceType::cpu);
 }
 #endif

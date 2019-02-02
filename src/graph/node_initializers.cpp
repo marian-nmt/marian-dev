@@ -202,6 +202,12 @@ Ptr<NodeInitializer> fromItem(const io::Item& item) {
   }
 }
 
+Ptr<NodeInitializer> fromTensor(Tensor externalTensor) {
+  return New<LambdaInitConvert>([externalTensor](Tensor t) {
+    t->copyFrom(externalTensor);
+  }, externalTensor->type());
+}
+
 Ptr<NodeInitializer> dummy() {
   return New<LambdaInit>([](Tensor /*t*/) { });
 }

@@ -51,14 +51,19 @@ private:
 // @TODO: in this file review the use of naked pointers. We use Ptr<Type> anywhere else,
 // what's up with that?
 
-/**
- * The helper structure storing an option object, the associated variable and creation index.
- */
+// The helper structure storing an option object, the associated variable and creation index
 struct CLIOptionTuple {
   CLI::Option *opt;
   Ptr<any_type> var;
   size_t idx{0};
   bool modified{false};
+};
+
+// Helper structure used for aliases and storing an option key, value, and YAML node
+struct CLIAliasTuple {
+  std::string key;
+  std::string value;
+  YAML::Node config;
 };
 
 /**
@@ -82,6 +87,8 @@ private:
   std::unordered_map<std::string, CLIOptionTuple> options_;
   // Counter for created options
   size_t counter_{0};
+  // List of alias tuples
+  std::vector<CLIAliasTuple> aliases_;
   // Command-line argument parser
   Ptr<CLI::App> app_;
 
@@ -193,6 +200,25 @@ public:
   }
 
   /**
+   * @brief Define an alias that is a shortcut for a set of options
+   *
+   * Option values are compared as std::string.
+   *
+   * @param key Option name
+   * @param value Option value that trigger the alias
+   * @param fun Function initializing options
+   */
+  void alias(const std::string &key,
+             const std::string &value,
+             const std::function<void(YAML::Node &config)> &fun) {
+    ABORT_IF(!options_.count(key), "Option '{}' is not defined so alias can not be created", key);
+    aliases_.resize(aliases_.size() + 1);
+    aliases_.back().key = key;
+    aliases_.back().value = value;
+    fun(aliases_.back().config);
+  }
+
+  /**
    * Switch to different option group or to the default group if argument is empty.
    *
    * @param name Header of the option group
@@ -201,6 +227,15 @@ public:
 
   // Parse command-line arguments. Handles --help and --version options
   void parse(int argc, char **argv);
+
+  /**
+   * @brief Expand aliases based on arguments parsed with parse(int, char**)
+   *
+   * Should be called after parse(int, char**) to take an effect.
+   *
+   * All options defined as aliases are removed from the config object.
+   */
+  void parseAliases();
 
   /*
    * @brief Overwrite values for unparsed options
@@ -212,7 +247,7 @@ public:
    *
    * @param config YAML config with new default values for options
    * @param errorMsg error message printed if config contains undefined keys. The message is
-   *   appended with ": * <comma-separated list of invalid options>"
+   *   appended with ": <comma-separated list of invalid options>"
    */
   void updateConfig(const YAML::Node &config, const std::string &errorMsg);
 

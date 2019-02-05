@@ -79,7 +79,8 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<bool>("--relative-paths",
     "All paths are relative to the config file location");
   cli.add<std::string>("--dump-config",
-    "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal")
+     "Dump current (modified) configuration to stdout and exit. "
+     "Possible values: full, minimal, explain")
     ->implicit_val("full");
   // clang-format on
 }
@@ -415,8 +416,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+
   // add ULR settings
   addSuboptionsULR(cli);
+
+  cli.add<std::vector<std::string>>("--task",
+     "Use predefined set of options. Possible values: transformer, transformer-big");
   // clang-format on
 }
 
@@ -689,11 +694,10 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
-void ConfigParser::expandAliases(cli::CLIWrapper& cli) {
-  YAML::Node config;
+void ConfigParser::addAliases(cli::CLIWrapper& cli) {
   // The order of aliases does matter as later options overwrite earlier
 
-  if(config_["best-deep"].as<bool>()) {
+  cli.alias("best-deep", "true", [](YAML::Node& config) {
     config["layer-normalization"] = true;
     config["tied-embeddings"] = true;
     config["enc-type"] = "alternating";
@@ -703,11 +707,42 @@ void ConfigParser::expandAliases(cli::CLIWrapper& cli) {
     config["dec-cell-high-depth"] = 2;
     config["dec-depth"] = 4;
     config["skip"] = true;
-  }
+  });
 
-  if(config) {
-    cli.updateConfig(config, "Unknown option(s) in aliases");
-  }
+  cli.alias("task", "transformer", [](YAML::Node& config) {
+    config["type"] = "transformer";
+    config["enc-depth"] = 6;
+    config["dec-depth"] = 6;
+    config["transformer-heads"] = 8;
+    config["learn-rate"] = 0.0003;
+    config["cost-type"] = "ce-mean-words";
+    config["lr-warmup"] = 16000;
+    config["lr-decay-inv-sqrt"] = 16000;
+    config["transformer-dropout"] = 0.1;
+    config["label-smoothing"] = 0.1;
+    config["clip-norm"] = 5;
+  });
+
+  cli.alias("task", "transformer-big", [](YAML::Node& config) {
+    config["type"] = "transformer";
+    config["enc-depth"] = 6;
+    config["dec-depth"] = 6;
+    config["dim-emb"] = 1024;
+    config["transformer-dim-ffn"] = 4096;
+    config["transformer-heads"] = 16;
+    config["transformer-postprocess"] = "dan";
+    config["transformer-preprocess"] = "d";
+    config["transformer-ffn-activation"] = "relu";
+    config["learn-rate"] = 0.0002;
+    config["cost-type"] = "ce-mean-words";
+    config["lr-warmup"] = 8000;
+    config["lr-decay-inv-sqrt"] = 8000;
+    config["transformer-dropout"] = 0.1;
+    config["transformer-dropout-attention"] = 0.1;
+    config["transformer-dropout-ffn"] = 0.1;
+    config["label-smoothing"] = 0.1;
+    config["clip-norm"] = 5;
+  });
 }
 
 void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
@@ -727,6 +762,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     case cli::mode::training:
       addOptionsTraining(cli);
       addOptionsValidation(cli);
+      addAliases(cli);
       break;
     case cli::mode::translation:
       addOptionsTranslation(cli);
@@ -755,6 +791,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   }
 
   if(doValidate) {
+    // TODO: Do not check some constraints if --dump-config, e.g. -t
     // this aborts the program on first validation error
     ConfigValidator(config_).validateOptions(mode_);
   }
@@ -763,13 +800,19 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   config_.remove("config");
 
   if(!get<std::string>("dump-config").empty() && get<std::string>("dump-config") != "false") {
-    bool skipDefault = get<std::string>("dump-config") == "minimal";
+    auto dumpMode = get<std::string>("dump-config");
     config_.remove("dump-config");
-    std::cout << cli.dumpConfig(skipDefault) << std::endl;
+
+    if(dumpMode == "explain") {
+      cli.parseAliases();
+    }
+
+    bool minimal = (dumpMode == "minimal" || dumpMode == "explain");
+    std::cout << cli.dumpConfig(minimal) << std::endl;
     exit(0);
   }
 
-  expandAliases(cli);
+  cli.parseAliases();
 }
 
 std::vector<std::string> ConfigParser::findConfigPaths() {

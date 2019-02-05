@@ -128,6 +128,38 @@ void CLIWrapper::parse(int argc, char **argv) {
   }
 }
 
+void CLIWrapper::parseAliases() {
+  if(aliases_.empty())
+    return;
+
+  std::set<std::string> aliasKeys;
+  for(const auto& alias : aliases_) {
+    if(config_[alias.key]) {
+      bool expand = false;
+      if(config_[alias.key].IsSequence()) {
+        // Note: options values are always extracted as vectors and compared as strings
+        auto aliasOpts = config_[alias.key].as<std::vector<std::string>>();
+        expand = std::find(aliasOpts.begin(), aliasOpts.end(), alias.value) != aliasOpts.end();
+      } else {
+        // Note: options values are always compared as strings
+        expand = config_[alias.key].as<std::string>() == alias.value;
+      }
+
+      if(expand) {
+        updateConfig(alias.config,
+                     "Unknown option(s) in alias '" + alias.key + ": " + alias.value + "'");
+      }
+      aliasKeys.insert(alias.key);
+    }
+  }
+
+  // Remove aliases from the config
+  for(const auto& key : aliasKeys) {
+    config_.remove(key);
+  }
+}
+
+
 std::string CLIWrapper::failureMessage(const CLI::App *app, const CLI::Error &e) {
   std::string header = "Error: " + std::string(e.what()) + "\n";
   if(app->get_help_ptr() != nullptr)

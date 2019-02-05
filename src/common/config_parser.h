@@ -77,6 +77,7 @@ private:
   void addOptionsTranslation(cli::CLIWrapper&);
   void addOptionsScoring(cli::CLIWrapper&);
 
+  // defined in common/aliases.cpp
   void addAliases(cli::CLIWrapper&);
 
   void addSuboptionsDevices(cli::CLIWrapper&);

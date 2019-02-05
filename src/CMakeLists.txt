@@ -12,6 +12,7 @@ add_library(marian STATIC
   common/logging.cpp
   common/cli_helper.cpp
   common/cli_wrapper.cpp
+  common/aliases.cpp
   common/config.cpp
   common/config_parser.cpp
   common/config_validator.cpp

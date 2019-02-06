@@ -50,17 +50,6 @@ static inline  __device__ void atomicAdd(half *address, half val) {
 
 }
 
-__device__ bool isinf2(float value) {
-  return isinf(value);
-}
-
-__device__ bool isinf2(half value) {
-   bool found = isinf((float)value) || value > (half)((float)65536/(float)4);
-   if(found)
-    printf("Inf: %.f\n", (float)value);
-   return found;
-}
-
 template <typename T>
 __global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
@@ -68,7 +57,6 @@ __global__ void gIsNan(const T* in, int length, bool* isNan, bool* isInf) {
     if(index < length) {
       if(isnan((float)in[index])) *isNan = true;
       if(isinf((float)in[index])) *isInf = true;
-      //if(isinf2(in[index])) *isInf = true;
     }
   }
 }

@@ -544,8 +544,12 @@ public:
       batchEmbeddings = dropout(batchEmbeddings, dropoutSrc, {srcWords, 1, 1});
     }
     // according to paper embeddings are scaled up by \sqrt(d_m)
-    auto scaledEmbeddings = std::sqrt((float)dimEmb) * batchEmbeddings;
+
+    float scale = std::sqrt((float)dimEmb);
+    auto scaledEmbeddings = scale * batchEmbeddings;
+
     scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings);
+
     // reorganize batch and timestep
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
     batchMask = atleast_nd(batchMask, 4);
@@ -576,10 +580,6 @@ public:
     // to make RNN-based decoders and beam search work with this. We are looking
     // into making this more natural.
     auto context = transposeTimeBatch(layer); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
-
-
-    // @TODO: get rid of this. This clips all incoming gradients from the decoder. Forward pass does nothing.
-    context = clipGradient(context, clipValue);
 
     return New<EncoderState>(context, batchMask, batch);
   }
@@ -693,7 +693,9 @@ public:
       dimBeam = embeddings->shape()[-4];
 
     // according to paper embeddings are scaled by \sqrt(d_m)
-    auto scaledEmbeddings = std::sqrt((float)dimEmb) * embeddings;
+
+    float scale = std::sqrt((float)dimEmb);
+    auto scaledEmbeddings = scale * embeddings;
 
     // set current target token position during decoding or training. At training
     // this should be 0. During translation the current length of the translation.

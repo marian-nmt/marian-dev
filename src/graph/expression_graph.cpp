@@ -49,6 +49,9 @@ void ExpressionGraph::backward(bool zero, float clipValue) {
 
   tensors_->clearShorttermMemory();
 
+  std::unordered_set<size_t> clipMe;
+
+  bool firstNan = true;
   while(!nodesBackward_.empty()) {
     auto v = nodesBackward_.back();
     nodesBackward_.pop_back();
@@ -56,33 +59,36 @@ void ExpressionGraph::backward(bool zero, float clipValue) {
     for(auto&& child : v->children()) {
       if(child->trainable() && child->type() != "param")
         child->set_zero_adjoint();
+      /*if(v->type() == "dot" || v->type() == "bdot")
+        clipMe.insert(child->getId());*/
     }
 
     if(v->trainable()) {
       v->backward();
-      if(clipValue != 0) {
+      if(clipValue != 0 /*&& clipMe.count(v->getId()) > 0*/) {
         using namespace functional;
         Element(_1 = clip(_1, clipValue), v->grad());
       }
     }
 
 
-    if(throwNan_) {
+    if(throwNan_ && firstNan) {
       for(auto&& child : v->children()) {
         if(child->trainable()) {
           bool isNan = false, isInf = false;
           checkNan(child->grad(), isNan, isInf);
-          if(isNan || isInf) {
+          if(isNan) {
             LOG(critical, "Detected NaN ({}) or Inf ({}) in gradient (backward pass) of child node", isNan, isInf);
             LOG(critical, "Child - Type: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
                 child->type(), child->shape(), child->name(), child->getId(), child->hash());
-            LOG(critical, "Value debug: {}", child->val()->debug());
-            LOG(critical, "Grad debug: {}", child->grad()->debug());
+            //LOG(critical, "Value debug: {}", child->val()->debug());
+            //LOG(critical, "Grad debug: {}", child->grad()->debug());
             LOG(critical, "Parent - Type: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
                 v->type(), v->shape(), v->name(), v->getId(), v->hash());
-            LOG(critical, "Value debug: {}", v->val()->debug());
-            LOG(critical, "Grad debug: {}", v->grad()->debug());
-            ABORT("Aborting");
+            //LOG(critical, "Value debug: {}", v->val()->debug());
+            //LOG(critical, "Grad debug: {}", v->grad()->debug());
+            //ABORT("Aborting");
+            firstNan = false;
           }
         }
       }

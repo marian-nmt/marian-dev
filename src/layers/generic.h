@@ -142,7 +142,7 @@ public:
       } else {
         W_ = graph_->param(name + "_" + nameW,
                            {input->shape()[-1], dim},
-                           inits::glorotUniform());
+                           inits::glorotUniform(/*fanIn=*/true, /*fanOut=*/false));
         if(shortlist_)
           W_ = cols(W_, shortlist_->indices());
       }

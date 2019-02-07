@@ -437,7 +437,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         /*else*/:
           OptimizerBase::mbSizeNotProvided;
 
-    float l2norm = shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_ / (div / updateTrgWords));
+    float gradFactor = costScaleFactor_;
+    if(options_->get<bool>("normalize-gradient")) {
+      float worldSize = (float)subBatches.size();
+      gradFactor /= (worldSize / updateTrgWords);
+    }
+    float l2norm = shardOpt_[i]->update(curParam, curGrad, updateTrgWords, gradFactor);
     curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
 
     return l2norm; // return partial norm

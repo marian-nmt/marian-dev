@@ -393,8 +393,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Mixed precision training for forward/backward pass and optimizaton",
       {"float32", "float32"});
   cli.add_nondefault<std::vector<std::string>>("--cost-scaling",
-      "Dynamic cost scaling for mixed precision training")->implicit_val("8.f 2000 2.f");
-
+      "Dynamic cost scaling for mixed precision training: "
+      "power of 2, scaling window, scaling factor, tolerance")->implicit_val("8.f 2000 2.f 0.05f");
+  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with worldsize / total labels");
   cli.add<bool>("--multi-node",
      "Enable asynchronous multi-node training through MPI (and legacy sync if combined with --sync-sgd)");
   cli.add<bool>("--multi-node-overlap",

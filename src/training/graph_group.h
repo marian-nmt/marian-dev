@@ -70,7 +70,7 @@ public:
     if(noNanSeen_ % costScaleFreq_ == 0) {
       costScaleFactor_ *= costScaleMultiplier_;
       LOG(info,
-          "NaN/Inf percentage {:2f} after {} updates. Increasing cost-scaling factor to {}",
+          "NaN/Inf percentage {:.2f} after {} updates. Increasing cost-scaling factor to {}",
           nanPercent,
           noNanSeen_,
           costScaleFactor_);
@@ -87,7 +87,7 @@ public:
     if(nanPercent > nanTolerance_) {
       costScaleFactor_ /= costScaleMultiplier_;
       LOG(warn,
-          "NaN/Inf percentage {:2f} in gradients, skipping update, reducing cost-scaling factor to {}",
+          "NaN/Inf percentage {:.2f} in gradients, skipping update, reducing cost-scaling factor to {}",
           nanPercent,
           costScaleFactor_);
 

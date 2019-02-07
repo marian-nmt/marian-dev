@@ -217,8 +217,8 @@ public:
         acc(retValue, func(i, begin, end));
     }
     if(parallel)
-      for(size_t i = 0; i < graphs_.size(); ++i)
-        acc(retValue, threadResults[i].get());
+       for(auto& task : threadResults)
+          acc(retValue, task.get());
 
     return retValue;
   }

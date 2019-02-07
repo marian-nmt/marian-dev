@@ -30,7 +30,9 @@ public:
 
     float clipNorm = options->get<float>("clip-norm");
     if(clipNorm > 0)
-      clipper_ = Clipper<Norm>(clipNorm);
+      clipper_ = New<NormClipper>(clipNorm);
+    else
+      clipper_ = New<ReportNormClipper>(clipNorm); // don't clip, just report
 
     // automatic learning-rate adjustment
     // If users provide, in addition to the hyper-parameters, a reference minibatch size,
@@ -130,7 +132,7 @@ protected:
   bool castOptimizerType_{false};
 
     // Clip gradient norm
-  Ptr<ClipperBase> clipper_;
+  Ptr<Clipper> clipper_;
 
   Ptr<Allocator> allocator_;
   Ptr<TensorAllocator> baseAlloc_;

@@ -4,13 +4,13 @@
 #include "tensors/tensor_operators.h"
 
 namespace marian {
-float Elementwise::clip(Tensor t, float costScalingFactor) {
+float ElementwiseClipper::clip(Tensor t, float costScalingFactor) {
   using namespace functional;
   Element(_1 = functional::clip(_1, c_ * costScalingFactor), t);
   return 0.f; // dummy
 }
 
-float Norm::clip(Tensor t, float costScalingFactor) {
+float NormClipper::clip(Tensor t, float costScalingFactor) {
   using namespace functional;
   float l2Norm = L2Norm(t, allocator_);
   float clipValue = c_ * costScalingFactor;
@@ -19,4 +19,11 @@ float Norm::clip(Tensor t, float costScalingFactor) {
   }
   return l2Norm;
 }
+
+// don't clip, just report L2Norm
+float ReportNormClipper::clip(Tensor t, float /*costScalingFactor*/) {
+  using namespace functional;
+  return L2Norm(t, allocator_);
+}
+
 }  // namespace marian

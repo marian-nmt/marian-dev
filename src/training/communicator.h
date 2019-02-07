@@ -5,6 +5,7 @@
 #include "functional/functional.h"
 #include "tensors/tensor_operators.h"
 #include "optimizers/optimizers.h"
+#include "3rd_party/threadpool.h"
 #if MPI_FOUND
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -121,6 +122,7 @@ class DefaultCommunicator : public ICommunicator {
 private:
   std::vector<Ptr<TensorAllocator>> paramsAllocs_;
   std::vector<Tensor> tmpTensors_;
+  mutable ThreadPool threadPool_;
 
   void lazyInit() {
     if(tmpTensors_.size() == 0) {
@@ -150,37 +152,56 @@ private:
 
 public:
   DefaultCommunicator(const std::vector<Ptr<ExpressionGraph>>& graphs, Ptr<IMPIWrapper> mpi)
-      : ICommunicator(graphs) {
+      : ICommunicator(graphs),
+        threadPool_(graphs.size(), graphs.size()) {
     ABORT_IF(mpi && mpi->numMPIProcesses() != 1, "DefaultCommunicator does not support multi-process MPI");
   }
 
   ~DefaultCommunicator() override {}
 
+  size_t dataSize() const { // total number of floats that comprise the concatenated parameter and gradient vector
+    return graphs_[0]->params()->vals()->size();
+  }
+
+  // determine the (max) shard size
+  // All shards except the last one have this size.
+  // Presently, even all shards must have identical size, due to a limitation in NCCL we have not yet worked around.
+  size_t shardSize() const {
+    size_t numShards = graphs_.size();
+    size_t size = (dataSize() + numShards - 1) / numShards;
+#if 1 // for now, all shards must have the same size, since NCCL does not allow a sub-slice for the last shard
+    ABORT_IF(size * numShards != dataSize(), "presently, all shards must have the same size");
+#endif
+    return size;
+  }
+
+  // determine the index range (begin, end) of a shard
+  std::pair<size_t, size_t> localShardRange(size_t localDeviceIndex) const {
+    size_t size = shardSize();
+    size_t begin = localDeviceIndex * size;
+    size_t end = begin + size;
+    end = std::min(end, dataSize()); // clip last shard. Note: Presently this never happens, since shardSize() enforces uniform shard size.
+    return { begin, end };
+  }
+
+  // @TODO: function is now the same is in NCCLCommunicator, move up to base class if possible
   template <typename Ret>
   Ret foreachAcc(const ForeachFunc<Ret>& func, const AccFunc<Ret>& acc, Ret init, bool parallel = true) const {
-    Ret retValue = init;
-
     parallel &= graphs_.size() > 1;
 
-    size_t totalSize = graphs_[0]->params()->vals()->size();
-    size_t shardSize = (size_t)ceil(totalSize / (float)graphs_.size());
-
-    size_t pos = 0;
-    std::vector<std::future<Ret>> group;
-    // iterate over all shards
-    for(size_t idx = 0; idx < graphs_.size(); ++idx) {
-      size_t size = std::min(shardSize, totalSize);
-
+    Ret retValue = init;
+    std::vector<std::future<Ret>> threadResults(graphs_.size()); // [device index]
+    for(size_t i = 0; i < graphs_.size(); ++i) {
+      size_t begin, end; std::tie
+      (begin, end) = localShardRange(i);
       if(parallel)
-        group.emplace_back(std::move(std::async(std::launch::async, func, idx, pos, pos+size)));
+        threadResults[i] = threadPool_.enqueue(func, i, begin, end);
       else
-        acc(retValue, func(idx, pos, pos+size));
-
-      pos += size;
-      totalSize -= size;
+        acc(retValue, func(i, begin, end));
     }
-    for(auto& task : group) // (note: group is empty if not parallel)
-      acc(retValue, task.get());
+    if(parallel)
+      for(auto& task : threadResults)
+        acc(retValue, task.get());
 
     return retValue;
   }

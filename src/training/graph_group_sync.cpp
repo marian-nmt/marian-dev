@@ -410,10 +410,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     bool hasNan = false, hasInf = false;
     IsNan(curGrad, graphs_[i]->allocator(), hasNan, hasInf);
 
+    /*
     if(hasNan)
       LOG(warn, "Seen NaN");
     if(hasInf)
       LOG(warn, "Seen Inf");
+    */
 
     return !(hasNan || hasInf);
   };

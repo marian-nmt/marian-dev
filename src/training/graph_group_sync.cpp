@@ -365,11 +365,11 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->forward();
       localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
 
-      float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
-      graph->backward(/*zero=*/false, clipValue); // (gradients are reset before we get here)
+      //float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
+      graph->backward(/*zero=*/false, 0); // (gradients are reset before we get here)
 
       // @TODO: remove again, only for debugging.
-      if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
+      /*if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
         Logger logger = spdlog::get("norms");
         if(!logger)
           logger = createStderrLogger("norms", "%v", { options_->get<std::string>("log") + ".norms"}, true);
@@ -380,19 +380,19 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
             logger->info("{}\t{}\t{}", scheduler_->numberOfBatches(), p->name(), norm);
           }
         }
-      }
+      }*/
     }
 
     // Handle local gradient explosion but only clip to largest possible value
     // given number of GPUs and type. Should clip rarely. Also clips inf
     // We do another clipping/rescaling after summation.
-    /* auto gradType = graph->params()->grads()->type();
+    auto gradType = graph->params()->grads()->type();
     if(sizeOf(gradType) < sizeOf(Type::float32)) {
        using namespace functional;
        float numGpus = mpi_->numMPIProcesses() * devices_.size();
        float clipValue = NumericLimits<float>(gradType).max / numGpus;
        Element(_1 = clip(_1, clipValue), graph->params()->grads());
-    }*/
+    }
 
     return true; // dummy success
   });
@@ -435,7 +435,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         /*else*/:
           OptimizerBase::mbSizeNotProvided;
 
-    shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_);
+    std::cerr << div << " " << updateTrgWords << std::endl;
+    shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_ / (div / updateTrgWords));
     curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
 
     return true; // dummy success

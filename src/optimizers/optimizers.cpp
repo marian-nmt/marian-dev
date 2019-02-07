@@ -63,8 +63,12 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float cos
     Element(_1 = _1 / costScaleFactor, gd_);
 
   // clip gradients when used
-  if(clipper_)
+  if(clipper_) {
     clipper_->clip(gd_);
+  } else {
+    float l2norm = L2Norm(gd_, allocator_);
+    std::cerr << l2norm << std::endl;
+  }
 
   // perform update on master copy with cast gradients
   // if a type cast has been performed. Otherwise the

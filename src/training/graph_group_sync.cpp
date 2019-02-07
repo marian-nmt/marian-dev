@@ -369,7 +369,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->backward(/*zero=*/false, clipValue); // (gradients are reset before we get here)
 
       // @TODO: remove again, only for debugging.
-      if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
+      /*if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
         Logger logger = spdlog::get("norms");
         if(!logger)
           logger = createStderrLogger("norms", "%v", { options_->get<std::string>("log") + ".norms"}, true);
@@ -380,7 +380,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
             logger->info("{}\t{}\t{}", scheduler_->numberOfBatches(), p->name(), norm);
           }
         }
-      }
+      }*/
     }
 
     // Handle local gradient explosion but only clip to largest possible value
@@ -410,10 +410,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     bool hasNan = false, hasInf = false;
     IsNan(curGrad, graphs_[i]->allocator(), hasNan, hasInf);
 
+    /*
     if(hasNan)
       LOG(warn, "Seen NaN");
     if(hasInf)
       LOG(warn, "Seen Inf");
+    */
 
     return !(hasNan || hasInf);
   };

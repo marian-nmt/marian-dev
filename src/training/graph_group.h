@@ -27,22 +27,28 @@ protected:
   float costScaleFactor_{1.f}; // @TODO, add current costScaleFactor_ to trainingState for serialization
   size_t costScaleFreq_{2000};
   float costScaleMultiplier_{2.f};
+  float nanTolerance_{0.f};
   size_t noNanSeen_{0}; // @TODO, add current noNanSeen_ to trainingState for serialization
+  size_t nanSeen_{0};
 
 public:
   GraphGroup(Ptr<Options> options) : options_(options) {
     if(options_->has("cost-scaling")) {
       auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
       costScale_ = true;
-      costScaleFactor_ = std::stof(vcs[0]);
+      float costExponent = std::stof(vcs[0]);
+      costScaleFactor_ = std::pow(2.0f, costExponent);
       costScaleFreq_ = std::stoul(vcs[1]);
       costScaleMultiplier_ = std::stof(vcs[2]);
+      nanTolerance_ = std::stof(vcs[3]);
 
       LOG_ONCE(info,
-               "Training with cost scaling - factor: {}, frequency: {}, multiplier: {}",
+               "Training with cost scaling - factor: 2^{} = {}, frequency: {}, multiplier: {}, tolerance: {}",
+               costExponent,
                costScaleFactor_,
                costScaleFreq_,
-               costScaleMultiplier_);
+               costScaleMultiplier_,
+               nanTolerance_);
     }
   }
 
@@ -58,10 +64,14 @@ public:
       return;
 
     noNanSeen_++;
+
+    float nanPercent = noNanSeen_ == 0 ? 1.f : (float)nanSeen_ / (float)noNanSeen_;
+
     if(noNanSeen_ % costScaleFreq_ == 0) {
       costScaleFactor_ *= costScaleMultiplier_;
       LOG(info,
-          "No NaN/Inf seen for {} updates. Increasing cost-scaling factor to {}",
+          "NaN/Inf percentage {:2f} after {} updates. Increasing cost-scaling factor to {}",
+          nanPercent,
           noNanSeen_,
           costScaleFactor_);
     }
@@ -72,11 +82,18 @@ public:
     if(!costScale_)
       return;
 
-    costScaleFactor_ /= costScaleMultiplier_;
-    LOG(warn,
-        "Seen NaN/Inf in gradient, skipping update, reducing cost-scaling factor to {}",
-        costScaleFactor_);
-    noNanSeen_ = 0;
+    nanSeen_++;
+    float nanPercent = noNanSeen_ == 0 ? 1.f : (float)nanSeen_ / (float)noNanSeen_;
+    if(nanPercent > nanTolerance_) {
+      costScaleFactor_ /= costScaleMultiplier_;
+      LOG(warn,
+          "NaN/Inf percentage {:2f} in gradients, skipping update, reducing cost-scaling factor to {}",
+          nanPercent,
+          costScaleFactor_);
+
+      noNanSeen_ = 0;
+      nanSeen_ = 0;
+    }
   }
 
   virtual void load() = 0;

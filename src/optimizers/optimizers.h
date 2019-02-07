@@ -44,14 +44,14 @@ public:
 
   static constexpr size_t mbSizeNotProvided = SIZE_MAX;
 
-  void update(Ptr<ExpressionGraph> graph, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f) {
+  float update(Ptr<ExpressionGraph> graph, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f) {
     Tensor p = graph->params()->vals();
     Tensor g = graph->params()->grads();
 
-    update(p, g, mbSize, costScaleFactor);
+    return update(p, g, mbSize, costScaleFactor);
   }
 
-  void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f);
+  float update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided, float costScaleFactor = 1.f);
 
   virtual void init(TrainingState& state) override {
     eta_ = state.eta;

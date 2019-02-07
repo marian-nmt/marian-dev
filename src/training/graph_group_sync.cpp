@@ -421,7 +421,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   };
 
   // Update parameter shard with gradient shard
-  auto update = [&](size_t i, size_t begin, size_t end) {
+  auto update = [&](size_t i, size_t begin, size_t end) -> float {
     auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
     auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
 
@@ -437,11 +437,10 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         /*else*/:
           OptimizerBase::mbSizeNotProvided;
 
-    std::cerr << div << " " << updateTrgWords << std::endl;
-    shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_ / (div / updateTrgWords));
+    float l2norm = shardOpt_[i]->update(curParam, curGrad, updateTrgWords, costScaleFactor_ / (div / updateTrgWords));
     curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
 
-    return true; // dummy success
+    return l2norm; // return partial norm
   };
 
   // Reset gradient shard when no update was done
@@ -453,8 +452,13 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   comm_->scatterReduceAndResetGrads();      // reduce gradients across all devices (globally) into shards
   bool noNanOrInf = costScale_ ? comm_->foreach(checkNan) : true; // @TODO: does this work with MPI?
+  float gradNorm = 0.f;
   if(noNanOrInf) {
-    comm_->foreach(update);   // per-shard model-update
+    auto accNorms = [](float& lhs, float rhs) {
+      lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, apply sqrt.
+    };
+
+    gradNorm = comm_->foreach(update, accNorms, 0.f); // per-shard model-update
     comm_->allGatherParams(); // distribute param value shards back
   } else {
     comm_->foreach(reset);   // per-shard model-update
@@ -472,7 +476,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   if(scheduler_) {
     // track and log localCost
-    scheduler_->update(localCost, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
+    scheduler_->update(localCost, gradNorm, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())

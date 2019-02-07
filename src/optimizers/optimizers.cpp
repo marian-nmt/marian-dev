@@ -6,7 +6,7 @@
 
 namespace marian {
 
-void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float costScaleFactor) {
+float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float costScaleFactor) {
   size_t refMBWords = refMBWordsParam_;
   if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
     refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
@@ -63,11 +63,11 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float cos
     Element(_1 = _1 / costScaleFactor, gd_);
 
   // clip gradients when used
+  float gNorm;
   if(clipper_) {
-    clipper_->clip(gd_);
+    gNorm = clipper_->clip(gd_);
   } else {
-    float l2norm = L2Norm(gd_, allocator_);
-    std::cerr << l2norm << std::endl;
+    gNorm = L2Norm(gd_, allocator_);
   }
 
   // perform update on master copy with cast gradients
@@ -83,6 +83,8 @@ void OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float cos
     CopyCast(params, pm_);
 
   params->getBackend()->synchronize();
+
+  return gNorm;
 }
 
 void OptimizerBase::load(std::vector<io::Item>& items,

@@ -35,8 +35,14 @@ public:
   virtual ~ICommunicator() {}
 
   // helper to apply a function to each local graph, in parallel threads
-  typedef std::function<bool(size_t, size_t /*shardBegin*/, size_t /*shardEnd*/)> ForeachFunc;
-  virtual bool foreach(const ForeachFunc& func, bool parallel = true) const = 0;
+  template <typename ReturnType>
+  using ForeachFunc = std::function<ReturnType(size_t, size_t /*shardBegin*/, size_t /*shardEnd*/)>;
+
+  template <typename ReturnType>
+  using AccFunc = std::function<void(ReturnType&, ReturnType)>;
+
+  virtual bool foreach(const ForeachFunc<bool>& func, bool parallel = true) const = 0;
+  virtual float foreach(const ForeachFunc<float>& func, AccFunc<float> acc, float init, bool parallel = true) const = 0;
   // @TODO: We probably can still share foreach() between the two implementations. Just need to move some helper functions from the .cu file.
 
   virtual void scatterReduceAndResetGrads() const = 0; // reduce param gradients and scatter into gradient shards
@@ -150,8 +156,9 @@ public:
 
   ~DefaultCommunicator() override {}
 
-  bool foreach(const ForeachFunc& func, bool parallel = true) const override {
-    bool allGood = true;
+  template <typename Ret>
+  Ret foreachAcc(const ForeachFunc<Ret>& func, const AccFunc<Ret>& acc, Ret init, bool parallel = true) const {
+    Ret retValue = init;
 
     parallel &= graphs_.size() > 1;
 
@@ -159,7 +166,7 @@ public:
     size_t shardSize = (size_t)ceil(totalSize / (float)graphs_.size());
 
     size_t pos = 0;
-    std::vector<std::future<bool>> group;
+    std::vector<std::future<Ret>> group;
     // iterate over all shards
     for(size_t idx = 0; idx < graphs_.size(); ++idx) {
       size_t size = std::min(shardSize, totalSize);
@@ -167,15 +174,24 @@ public:
       if(parallel)
         group.emplace_back(std::move(std::async(std::launch::async, func, idx, pos, pos+size)));
       else
-        allGood = allGood && func(idx, pos, pos+size);
+        acc(retValue, func(idx, pos, pos+size));
 
       pos += size;
       totalSize -= size;
     }
     for(auto& task : group) // (note: group is empty if not parallel)
-      allGood = allGood && task.get();
+      acc(retValue, task.get());
 
-    return allGood;
+    return retValue;
+  }
+
+  float foreach(const ForeachFunc<float>& func, AccFunc<float> acc, float init, bool parallel = true) const override {
+    return foreachAcc(func, acc, init, parallel);
+  }
+
+  bool foreach(const ForeachFunc<bool>& func, bool parallel = true) const override {
+    AccFunc<bool> allTrue = [](bool& x, bool y) { x = x && y; };
+    return foreachAcc(func, allTrue, true, parallel);
   }
 
   void scatterReduceAndResetGrads() const override {

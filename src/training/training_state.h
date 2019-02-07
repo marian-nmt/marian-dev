@@ -101,6 +101,9 @@ public:
   float costSum{0};
   // Number of words/labels/samples (depending on cost-type) aggregated in
   // costSum since last display
+
+  float gradNorm{}; // Sum over gradient norms
+
   size_t costCount{0};
   // Number of words seen since last display, for speed measurement
   size_t wordsDisp{0};
@@ -228,6 +231,8 @@ public:
     prevLabelsTotal = config["prev-labels-total"] ? config["prev-labels-total"].as<size_t>() : 0;
     prevBatches     = config["prev-batches"]      ? config["prev-batches"].as<size_t>()      : 0;
     prevEpochs      = config["prev-epochs"]       ? config["prev-epochs"].as<size_t>()       : 0;
+
+    // @TODO: add gradNorm
 
     stalled = config["stalled"].as<size_t>();
     maxStalled = config["stalled-max"].as<size_t>();

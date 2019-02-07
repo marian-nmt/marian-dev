@@ -4,17 +4,19 @@
 #include "tensors/tensor_operators.h"
 
 namespace marian {
-void Elementwise::clip(Tensor t, float costScalingFactor) {
+float Elementwise::clip(Tensor t, float costScalingFactor) {
   using namespace functional;
   Element(_1 = functional::clip(_1, c_ * costScalingFactor), t);
+  return 0.f; // dummy
 }
 
-void Norm::clip(Tensor t, float costScalingFactor) {
+float Norm::clip(Tensor t, float costScalingFactor) {
   using namespace functional;
   float l2Norm = L2Norm(t, allocator_);
   float clipValue = c_ * costScalingFactor;
   if(l2Norm > clipValue) {
     Element(_1 = (clipValue / l2Norm) * _1, t);
   }
+  return l2Norm;
 }
 }  // namespace marian

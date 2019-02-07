@@ -13,6 +13,7 @@ private:
   std::vector<Ptr<ValidatorBase>> validators_; // @TODO: Weak pointers?
 
   bool first_{true};
+  size_t updatesSinceLastDisp_{0};
 
   Ptr<TrainingState> state_;
 
@@ -222,6 +223,18 @@ public:
               size_t batchSize,      // total number of sentences in batch
               size_t batchLabels,    // total number of target words in batch
               Ptr<IMPIWrapper> mpi = nullptr) {
+    update(cost, 0.f, numReadBatches, batchSize, batchLabels, mpi);
+  }
+
+  void update(float cost,
+              float gradNorm,
+              size_t numReadBatches, // number of batches read by the reader (for seeking in case of restart)
+              size_t batchSize,      // total number of sentences in batch
+              size_t batchLabels,    // total number of target words in batch
+              Ptr<IMPIWrapper> mpi = nullptr) {
+
+    updatesSinceLastDisp_++;
+
     state_->rememberPreviousProgress(); // note: epoch increases happen at the wrong place, hence -freq parameters do not support epoch units
     state_->validated = false;
 
@@ -249,6 +262,7 @@ public:
       state_->costSum   += cost * batchSize;
       state_->costCount += batchSize;
     }
+    state_->gradNorm     += gradNorm;    // gradient norm
     state_->wordsDisp    += batchLabels; // target words processed since last display, for speed display
     state_->samplesEpoch += batchSize;   // sentences processed in this epoch
     state_->labelsTotal  += batchLabels; // total labels processed
@@ -267,7 +281,7 @@ public:
       else if(dispLabelCounts) {
         if(options_->get<bool>("lr-report")) {  // if true then show the learning rate
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Time {:.2f}s : {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} "
               "words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
@@ -276,12 +290,13 @@ public:
               utils::withCommas(state_->costCount),  // show cost as "av * count"
               batchLabels,
               utils::withCommas(state_->labelsTotal),
+              state_->gradNorm / updatesSinceLastDisp_,
               timer_.elapsed(),
               state_->wordsDisp / timer_.elapsed(),
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Time {:.2f}s : {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} "
               "words/s",
               state_->epochs,
               state_->batches,
@@ -290,27 +305,30 @@ public:
               utils::withCommas(state_->costCount),
               batchLabels,
               utils::withCommas(state_->labelsTotal),
+              state_->gradNorm / updatesSinceLastDisp_,
               timer_.elapsed(),
               state_->wordsDisp / timer_.elapsed());
         }
       } else {
         if(options_->get<bool>("lr-report")) {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
               utils::withCommas(state_->samplesEpoch),
               state_->costSum / state_->costCount,
+              state_->gradNorm,
               timer_.elapsed(),
               state_->wordsDisp / timer_.elapsed(),
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Time {:.2f}s : {:.2f} words/s",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} words/s",
               state_->epochs,
               state_->batches,
               utils::withCommas(state_->samplesEpoch),
               state_->costSum / state_->costCount,
+              state_->gradNorm / updatesSinceLastDisp_,
               timer_.elapsed(),
               state_->wordsDisp / timer_.elapsed());
         }
@@ -319,6 +337,8 @@ public:
       state_->costSum = 0;
       state_->costCount = 0;
       state_->wordsDisp = 0;
+      state_->gradNorm  = 0;
+      updatesSinceLastDisp_ = 0;
     }
     // progress heartbeat for MS-internal Philly compute cluster
     // This environment variable exists when running on the cluster.
@@ -344,6 +364,7 @@ public:
       state_->costSum = 0;
       state_->costCount = 0;
       state_->wordsDisp = 0;
+      state_->gradNorm  = 0;
     }
 
     state_->newLoad();

@@ -29,7 +29,6 @@ private:
   std::vector<int> devices_;          // [device index]
   Ptr<IMPIWrapper> mpi_; // (may be null)
   mutable ThreadPool threadPool_;
-  mutable std::vector<std::future<bool>> threadResults_; // [device index]
 
   void groupStart() const { NCCL_CHECK(ncclGroupStart()); } // helpers to make sure we check the error
   void groupEnd()   const { NCCL_CHECK(ncclGroupEnd());   }
@@ -140,7 +139,7 @@ public:
         streams_(graphs.size()),
         devices_(graphs.size()),
         mpi_(mpi),
-        threadPool_(graphs.size(), graphs.size()), threadResults_(graphs.size()) {
+        threadPool_(graphs.size(), graphs.size()) {
     mpiBarrier(); // barrier to group the multiple log messages from MPI processes
     LOG(info, "[comm] Using NCCL {} {}for GPU communication",
         ncclVersionString(),
@@ -203,23 +202,34 @@ public:
     }
   }
 
-  bool foreach(const ForeachFunc& func, bool parallel = true) const override {
+  template <typename Ret>
+  Ret foreachAcc(const ForeachFunc<Ret>& func, const AccFunc<Ret>& acc, Ret init, bool parallel = true) const {
     parallel &= graphs_.size() > 1;
 
-    bool allGood = true;
+    Ret retValue = init;
+    std::vector<std::future<Ret>> threadResults(graphs_.size()); // [device index]
     for(size_t i = 0; i < graphs_.size(); ++i) {
       size_t begin, end; std::tie
       (begin, end) = localShardRange(i);
       if (parallel)
-        threadResults_[i] = threadPool_.enqueue(func, i, begin, end);
+        threadResults[i] = threadPool_.enqueue(func, i, begin, end);
       else
-        allGood = allGood && func(i, begin, end);
+        acc(retValue, func(i, begin, end));
     }
     if(parallel)
       for(size_t i = 0; i < graphs_.size(); ++i)
-        allGood = allGood && threadResults_[i].get();
+        acc(retValue, threadResults[i].get());
 
-    return allGood;
+    return retValue;
+  }
+
+  float foreach(const ForeachFunc<float>& func, AccFunc<float> acc, float init, bool parallel = true) const override {
+    return foreachAcc(func, acc, init, parallel);
+  }
+
+  bool foreach(const ForeachFunc<bool>& func, bool parallel = true) const override {
+    AccFunc<bool> allTrue = [](bool& x, bool y) { x = x && y; };
+    return foreachAcc(func, allTrue, true, parallel);
   }
 
   void scatterReduceAndResetGrads() const override {

@@ -14,12 +14,12 @@ class ExpressionGraph; // Forward declaration
 namespace inits {
 
 /**
- * Base class for specialized NodeInitializers. 
- * 
+ * Base class for specialized NodeInitializers.
+ *
  * A NodeInitializer is a functor that can be invoked on a tensor
  * during node intialization. You need to override operator()(Tensor)
- * with your own functionality. 
- * 
+ * with your own functionality.
+ *
  * See node_initializers.cpp for examples.
  */
 class NodeInitializer {
@@ -29,6 +29,18 @@ protected:
 public:
   virtual void operator()(Tensor t) = 0;
   void setGraph(Ptr<ExpressionGraph> graph) { graph_ = graph; }
+};
+
+class LambdaInit : public NodeInitializer {
+  private:
+    std::function<void(Tensor)> lambda_;
+
+  public:
+    LambdaInit(std::function<void(Tensor)>&& lambda) : lambda_(std::move(lambda)) {}
+
+    void operator()(Tensor tensor) override {
+      lambda_(tensor);
+    }
 };
 
 /**
@@ -63,7 +75,7 @@ Ptr<NodeInitializer> ones();
 
 /**
  * Set diagonal of two dimensional quadratic tensor to `value`.
- * 
+ *
  * Sets all values of the tensor to 0 and fills the diagonal with
  * the given `value`. If no value is specified `1` is used by default.
  *
@@ -73,36 +85,36 @@ Ptr<NodeInitializer> eye(float value = 1.f);
 
 /**
  * Fill tensor with normally distributed random numbers
- * 
- * Be default this generates floating point numbers from the 
- * normal distribution N(0, 1) unless specified differently. 
+ *
+ * Be default this generates floating point numbers from the
+ * normal distribution N(0, 1) unless specified differently.
  *
  * If compiled with `CUDA`, `marian` will use the `cuRand` library
  * for both, GPU and CPU computation. The random sequences generated
  * are the same on both devices.
- * 
+ *
  * If `marian` is compiled without `CUDA`, a random generator
  * from the C++ standard library is used. These random generators
  * do not have the same random sequences.
- * 
+ *
  * @return A NodeInitializer which can be called on any tensor
  */
 Ptr<NodeInitializer> normal(float mean = 0.f, float stddev = 1.f);
 
 /**
  * Fill tensor with uniformly distributed random numbers
- * 
- * Be default this generates floating point numbers from the 
- * uniform distribution U(0, 1) unless specified differently. 
+ *
+ * Be default this generates floating point numbers from the
+ * uniform distribution U(0, 1) unless specified differently.
  *
  * If compiled with `CUDA`, `marian` will use the `cuRand` library
  * for both, GPU and CPU computation. The random sequences generated
  * are the same on both devices.
- * 
+ *
  * If `marian` is compiled without `CUDA`, a random generator
  * from the C++ standard library is used. These random generators
  * do not have the same random sequences.
- * 
+ *
  * @return A NodeInitializer which can be called on any tensor
  */
 Ptr<NodeInitializer> uniform(float a = 0.f, float b = 1.f);

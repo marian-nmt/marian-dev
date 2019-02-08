@@ -48,24 +48,36 @@ public:
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
 
   Expr addPositionalEmbeddings(Expr input, int start = 0) const {
-    int dimEmb   = input->shape()[-1];
+    int dimMax = opt<int>("max-length");
+    int dimEmb = input->shape()[-1];
     int dimWords = input->shape()[-3];
 
-    float num_timescales = (float)dimEmb / 2;
-    float log_timescale_increment = std::log(10000.f) / (num_timescales - 1.f);
+    auto posEmb = [dimMax](Tensor t) {
+      int dimEmb = t->shape()[-1];
 
-    std::vector<float> vPos(dimEmb * dimWords, 0);
-    for(int p = start; p < dimWords + start; ++p) {
-      for(int i = 0; i < num_timescales; ++i) {
-        float v = p * std::exp(i * -log_timescale_increment);
-        vPos[(p - start) * dimEmb + i] = std::sin(v);
-        vPos[(p - start) * dimEmb + (int)num_timescales + i] = std::cos(v); // @TODO: is int vs. float correct for num_timescales?
+      //int dimWords = input->shape()[-3];
+
+      int num_timescales = dimEmb / 2;
+      float log_timescale_increment = std::log(10000.f) / (num_timescales - 1.f);
+
+      std::vector<float> vPos(dimEmb * dimMax, 0.f);
+      for(int p = 0; p < dimMax; ++p) {
+        for(int i = 0; i < num_timescales; ++i) {
+          float v = p * std::exp(i * -log_timescale_increment);
+          vPos[p * dimEmb                  + i] = std::sin(v);
+          vPos[p * dimEmb + num_timescales + i] = std::cos(v);
+        }
       }
-    }
+      t->set(vPos);
+    };
+    auto posEmbInit = New<inits::LambdaInit>(posEmb);
+    auto Wpos = graph_->param("Wpos", {dimMax, dimEmb}, posEmbInit, /*fixed=*/true);
 
-    // shared across batch entries
-    auto signal
-        = graph_->constant({dimWords, 1, dimEmb}, inits::fromVector(vPos));
+    std::vector<IndexType> positions(dimWords);
+    std::iota(positions.begin(), positions.end(), start);
+
+    auto signal = reshape(rows(Wpos, positions), {dimWords, 1, dimEmb});
+
     return input + signal;
   }
 
@@ -544,7 +556,6 @@ public:
       batchEmbeddings = dropout(batchEmbeddings, dropoutSrc, {srcWords, 1, 1});
     }
     // according to paper embeddings are scaled up by \sqrt(d_m)
-
     float scale = std::sqrt((float)dimEmb);
     auto scaledEmbeddings = scale * batchEmbeddings;
 

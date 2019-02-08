@@ -233,8 +233,7 @@ public:
               size_t batchLabels,    // total number of target words in batch
               Ptr<IMPIWrapper> mpi = nullptr) {
 
-    updatesSinceLastDisp_ = state_->batches + 1;
-    //updatesSinceLastDisp_++;
+    updatesSinceLastDisp_++;
 
     state_->rememberPreviousProgress(); // note: epoch increases happen at the wrong place, hence -freq parameters do not support epoch units
     state_->validated = false;
@@ -282,7 +281,7 @@ public:
       else if(dispLabelCounts) {
         if(options_->get<bool>("lr-report")) {  // if true then show the learning rate
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Gnorm {:.3f} : Time {:.2f}s : {:.2f} "
               "words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
@@ -297,7 +296,7 @@ public:
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} "
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} * {} @ {} after {} : Gnorm {:.3f} : Time {:.2f}s : {:.2f} "
               "words/s",
               state_->epochs,
               state_->batches,
@@ -313,7 +312,7 @@ public:
       } else {
         if(options_->get<bool>("lr-report")) {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Gnorm {:.3f} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
               state_->epochs,
               state_->batches,
               utils::withCommas(state_->samplesEpoch),
@@ -324,7 +323,7 @@ public:
               state_->eta);
         } else {
           LOG(info,
-              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Gnorm {:.2f} : Time {:.2f}s : {:.2f} words/s",
+              "Ep. {} : Up. {} : Sen. {} : Cost {:.8f} : Gnorm {:.3f} : Time {:.2f}s : {:.2f} words/s",
               state_->epochs,
               state_->batches,
               utils::withCommas(state_->samplesEpoch),
@@ -335,12 +334,11 @@ public:
         }
       }
       timer_.start();
-      // BIG @TODO: undo this later, currently used for comparison with fairseq
-      //state_->costSum = 0; 
-      //state_->costCount = 0;
+      state_->costSum = 0;
+      state_->costCount = 0;
       state_->wordsDisp = 0;
-      //state_->gradNorm  = 0;
-      //updatesSinceLastDisp_ = 0;
+      state_->gradNorm  = 0;
+      updatesSinceLastDisp_ = 0;
     }
     // progress heartbeat for MS-internal Philly compute cluster
     // This environment variable exists when running on the cluster.

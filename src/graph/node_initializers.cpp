@@ -11,18 +11,6 @@ namespace marian {
 
 namespace inits {
 
-class LambdaInit : public NodeInitializer {
-  private:
-    std::function<void(Tensor)> lambda_;
-
-  public:
-    LambdaInit(std::function<void(Tensor)>&& lambda) : lambda_(std::move(lambda)) {}
-
-    void operator()(Tensor tensor) override {
-      lambda_(tensor);
-    }
-};
-
 class LambdaInitConvert : public NodeInitializer {
   private:
     std::function<void(Tensor)> lambda_;

@@ -472,8 +472,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   if(scheduler_) {
     // track and log localCost
-    scheduler_->update(localCost / /* @TODO: remove again, just for comparison with fairseq */ logf(2.f), 
-                       gradNorm, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
+    scheduler_->update(localCost, gradNorm, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())

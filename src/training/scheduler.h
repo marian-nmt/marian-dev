@@ -233,7 +233,8 @@ public:
               size_t batchLabels,    // total number of target words in batch
               Ptr<IMPIWrapper> mpi = nullptr) {
 
-    updatesSinceLastDisp_++;
+    updatesSinceLastDisp_ = state_->batches + 1;
+    //updatesSinceLastDisp_++;
 
     state_->rememberPreviousProgress(); // note: epoch increases happen at the wrong place, hence -freq parameters do not support epoch units
     state_->validated = false;
@@ -334,11 +335,12 @@ public:
         }
       }
       timer_.start();
-      state_->costSum = 0;
-      state_->costCount = 0;
+      // BIG @TODO: undo this later, currently used for comparison with fairseq
+      //state_->costSum = 0; 
+      //state_->costCount = 0;
       state_->wordsDisp = 0;
-      state_->gradNorm  = 0;
-      updatesSinceLastDisp_ = 0;
+      //state_->gradNorm  = 0;
+      //updatesSinceLastDisp_ = 0;
     }
     // progress heartbeat for MS-internal Philly compute cluster
     // This environment variable exists when running on the cluster.

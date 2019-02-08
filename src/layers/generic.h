@@ -172,6 +172,7 @@ struct EmbeddingFactory : public Factory {
 
     bool fixed = opt<bool>("fixed", false);
 
+    // @TODO: remember to change back to glorotUniform
     auto initFunc = inits::glorotNormal(/*fanIn=*/false, /*fanOut=*/true);
 
     if (options_->has("embFile")) {

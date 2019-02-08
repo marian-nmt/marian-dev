@@ -410,13 +410,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     bool hasNan = false, hasInf = false;
     IsNan(curGrad, graphs_[i]->allocator(), hasNan, hasInf);
 
-    /*
-    if(hasNan)
-      LOG(warn, "Seen NaN");
-    if(hasInf)
-      LOG(warn, "Seen Inf");
-    */
-
     return !(hasNan || hasInf);
   };
 
@@ -438,10 +431,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
           OptimizerBase::mbSizeNotProvided;
 
     float gradFactor = costScaleFactor_;
-    if(options_->get<bool>("normalize-gradient")) {
-      float worldSize = (float)subBatches.size();
-      gradFactor /= (worldSize / updateTrgWords);
-    }
+    if(options_->get<bool>("normalize-gradient"))
+      gradFactor *= updateTrgWords;
     float l2norm = shardOpt_[i]->update(curParam, curGrad, updateTrgWords, gradFactor);
     curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
 
@@ -481,7 +472,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   if(scheduler_) {
     // track and log localCost
-    scheduler_->update(localCost, gradNorm, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
+    scheduler_->update(localCost / /* @TODO: remove again, just for comparison with fairseq */ logf(2.f), 
+                       gradNorm, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())

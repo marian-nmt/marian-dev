@@ -134,7 +134,7 @@ public:
     int dimModel = x->shape()[-1];
     auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
     auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
-    return marian::layerNorm(x, scale, bias, 1e-6f);
+    return marian::layerNorm(x, scale, bias, 1e-5f);
   }
 
   Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
@@ -369,7 +369,7 @@ public:
 
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)
-      output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb); // @TODO: for fp16 training, NaNs appear here...
+      output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
     output = dense(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
 
     auto opsPost = opt<std::string>("transformer-postprocess");

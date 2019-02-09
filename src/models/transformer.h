@@ -52,10 +52,9 @@ public:
     int dimEmb = input->shape()[-1];
     int dimWords = input->shape()[-3];
 
-    auto posEmb = [dimMax](Tensor t) {
+    auto posEmb = [](Tensor t) {
       int dimEmb = t->shape()[-1];
-
-      //int dimWords = input->shape()[-3];
+      int dimMax = t->shape()[-2];
 
       int num_timescales = dimEmb / 2;
       float log_timescale_increment = std::log(10000.f) / (num_timescales - 1.f);
@@ -70,11 +69,13 @@ public:
       }
       t->set(vPos);
     };
-    auto posEmbInit = New<inits::LambdaInit>(posEmb);
-    auto Wpos = graph_->param("Wpos", {dimMax, dimEmb}, posEmbInit, /*fixed=*/true);
+    auto posEmbInit = New<inits::LambdaInitConvert>(posEmb);
+
+    // @TODO: understand the +2 based on pytorch
+    auto Wpos = graph_->param("Wpos", {dimMax + 2, dimEmb}, posEmbInit, /*fixed=*/true);
 
     std::vector<IndexType> positions(dimWords);
-    std::iota(positions.begin(), positions.end(), start);
+    std::iota(positions.begin(), positions.end(), start + 2);
 
     auto signal = reshape(rows(Wpos, positions), {dimWords, 1, dimEmb});
 

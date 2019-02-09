@@ -3,6 +3,7 @@
 
 #include "common/config.h"
 #include "tensors/tensor.h"
+#include "tensors/tensor_operators.h"
 
 #include <functional>
 #include <random>
@@ -41,6 +42,19 @@ class LambdaInit : public NodeInitializer {
     void operator()(Tensor tensor) override {
       lambda_(tensor);
     }
+};
+
+class LambdaInitConvert : public NodeInitializer {
+  private:
+    std::function<void(Tensor)> lambda_;
+    Type intermediateType_;
+
+  public:
+    LambdaInitConvert(std::function<void(Tensor)>&& lambda,
+                      Type intermediateType = Type::float32)
+      : lambda_(std::move(lambda)), intermediateType_(intermediateType) {}
+
+    void operator()(Tensor tensor) override;
 };
 
 /**

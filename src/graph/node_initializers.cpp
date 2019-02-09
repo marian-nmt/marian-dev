@@ -11,17 +11,7 @@ namespace marian {
 
 namespace inits {
 
-class LambdaInitConvert : public NodeInitializer {
-  private:
-    std::function<void(Tensor)> lambda_;
-    Type intermediateType_;
-
-  public:
-    LambdaInitConvert(std::function<void(Tensor)>&& lambda,
-                      Type intermediateType = Type::float32)
-      : lambda_(std::move(lambda)), intermediateType_(intermediateType) {}
-
-    void operator()(Tensor tensor) override {
+void LambdaInitConvert::operator()(Tensor tensor) {
       if(tensor->type() != intermediateType_) {
         auto allocator = graph_->allocator();
         auto memory = allocator->alloc(tensor->size(), intermediateType_);
@@ -36,9 +26,7 @@ class LambdaInitConvert : public NodeInitializer {
       else {
         lambda_(tensor);
       }
-    }
-};
-
+}
 
 Ptr<NodeInitializer> zeros() {
   return fromValue(0.0f);

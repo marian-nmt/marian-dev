@@ -238,8 +238,7 @@ public:
       collectOneHead(weights, dimBeam);
 
     // optional dropout for attention weights
-    float dropProb
-        = inference_ ? 0 : opt<float>("transformer-dropout-attention");
+    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout-attention");
     weights = dropout(weights, dropProb);
 
     // apply attention weights to values

@@ -227,6 +227,7 @@ public:
 
     // multiplicative attention with flattened softmax
     float scale = 1.0f / std::sqrt((float)dk); // scaling to avoid extreme values due to matrix multiplication
+
     auto z = bdot(q, k, false, true, scale); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
 
     // mask out garbage beyond end of sequences
@@ -244,6 +245,7 @@ public:
 
     // apply attention weights to values
     auto output = bdot(weights, v);   // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
+
     return output;
   }
 
@@ -558,7 +560,6 @@ public:
     // according to paper embeddings are scaled up by \sqrt(d_m)
     float scale = std::sqrt((float)dimEmb);
     auto scaledEmbeddings = scale * batchEmbeddings;
-
     scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings);
 
     // reorganize batch and timestep
@@ -713,8 +714,7 @@ public:
     // Used for position embeddings and creating new decoder states.
     int startPos = (int)state->getPosition();
 
-    scaledEmbeddings
-      = addPositionalEmbeddings(scaledEmbeddings, startPos);
+    scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings, startPos);
 
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
 

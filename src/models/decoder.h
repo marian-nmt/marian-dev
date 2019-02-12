@@ -24,6 +24,8 @@ public:
         inference_(options->get<bool>("inference", false)),
         batchIndex_(options->get<size_t>("index", 1)) {}
 
+  virtual ~DecoderBase() {}
+
   virtual Ptr<DecoderState> startState(Ptr<ExpressionGraph>,
                                        Ptr<data::CorpusBatch> batch,
                                        std::vector<Ptr<EncoderState>>&)
@@ -38,8 +40,8 @@ public:
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
     int dimEmb = opt<int>("dim-emb");
 
-    auto yEmbFactory = embedding(graph)  //
-        ("dimVocab", dimVoc)             //
+    auto yEmbFactory = embedding()  //
+        ("dimVocab", dimVoc)        //
         ("dimEmb", dimEmb);
 
     if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
@@ -50,32 +52,19 @@ public:
     if(options_->has("embedding-fix-trg"))
       yEmbFactory("fixed", opt<bool>("embedding-fix-trg"));
 
-    if(options_->has("embedding-vectors")) {
+    if(options_->hasAndNotEmpty("embedding-vectors")) {
       auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
       yEmbFactory("embFile", embFiles[batchIndex_])  //
           ("normalization", opt<bool>("embedding-normalization"));
     }
 
-    auto yEmb = yEmbFactory.construct();
+    auto yEmb = yEmbFactory.construct(graph);
 
     auto subBatch = (*batch)[batchIndex_];
-    int dimBatch = (int)subBatch->batchSize();
-    int dimWords = (int)subBatch->batchWidth();
 
-    // // Do a manual shift and put eos at beginning
-    // auto vTemp = subBatch->data();
-    // for(int i = 1; i < dimWords; ++i)
-    //   for(int j = 0; j < dimBatch; ++j)
-    //     vTemp[i * dimBatch + j] = vTemp[(i - 1) * dimBatch + j];
-    // for(int j = 0; j < dimBatch; ++j)
-    //   vTemp[j] = 2; // @TODO: EOS symbol at beginning
-    // auto chosenEmbeddings = rows(yEmb, vTemp);
-
-    auto chosenEmbeddings = rows(yEmb, subBatch->data());
-    auto y = reshape(chosenEmbeddings, {dimWords, dimBatch, opt<int>("dim-emb")});
-
-    auto yMask = graph->constant({dimWords, dimBatch, 1},
-                                 inits::fromVector(subBatch->mask()));
+    // @TODO: review potential application of padding symbol
+    Expr y, yMask; std::tie
+    (y, yMask) = yEmb->apply(subBatch);
 
     Expr yData;
     if(shortlist_) {
@@ -91,64 +80,6 @@ public:
     state->setTargetIndices(yData);
   }
 
-  // virtual void embeddingsFromBatch(Ptr<ExpressionGraph> graph,
-  //                                  Ptr<DecoderState> state,
-  //                                  Ptr<data::CorpusBatch> batch) {
-
-  //   int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
-  //   int dimEmb = opt<int>("dim-emb");
-
-  //   auto yEmbFactory = embedding(graph)  //
-  //       ("dimVocab", dimVoc)             //
-  //       ("dimEmb", dimEmb);
-
-  //   if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
-  //     yEmbFactory("prefix", "Wemb");
-  //   else
-  //     yEmbFactory("prefix", prefix_ + "_Wemb");
-
-  //   if(options_->has("embedding-fix-trg"))
-  //     yEmbFactory("fixed", opt<bool>("embedding-fix-trg"));
-
-  //   if(options_->has("embedding-vectors")) {
-  //     auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
-  //     yEmbFactory("embFile", embFiles[batchIndex_])  //
-  //         ("normalization", opt<bool>("embedding-normalization"));
-  //   }
-
-  //   auto yEmb = yEmbFactory.construct();
-
-  //   auto subBatch = (*batch)[batchIndex_];
-  //   int dimBatch = (int)subBatch->batchSize();
-  //   int dimWords = (int)subBatch->batchWidth();
-
-  //   // Do a manual shift and put eos at beginning
-  //   auto vTemp = subBatch->data();
-  //   for(int i = dimWords - 1; i > 0; --i)
-  //     for(int j = 0; j < dimBatch; ++j)
-  //       vTemp[i * dimBatch + j] = vTemp[(i - 1) * dimBatch + j];
-  //   for(int j = 0; j < dimBatch; ++j)
-  //     vTemp[j] = 1; // @TODO: EOS symbol at beginning
-
-  //   auto chosenEmbeddings = rows(yEmb, vTemp);
-
-  //   auto y = reshape(chosenEmbeddings, {dimWords, dimBatch, opt<int>("dim-emb")});
-
-  //   auto yMask = graph->constant({dimWords, dimBatch, 1},
-  //                                inits::fromVector(subBatch->mask()));
-
-  //   Expr yData;
-  //   if(shortlist_) {
-  //     yData = graph->indices(shortlist_->mappedIndices());
-  //   } else {
-  //     yData = graph->indices(subBatch->data());
-  //   }
-
-  //   state->setTargetEmbeddings(y);
-  //   state->setTargetMask(yMask);
-  //   state->setTargetIndices(yData);
-  // }
-
   virtual void embeddingsFromPrediction(Ptr<ExpressionGraph> graph,
                                         Ptr<DecoderState> state,
                                         const std::vector<IndexType>& embIdx,
@@ -157,25 +88,24 @@ public:
     int dimTrgEmb = opt<int>("dim-emb");
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
-    // embeddings are loaded from model during translation, no fixing required
-    auto yEmbFactory = embedding(graph)  //
-        ("dimVocab", dimTrgVoc)          //
-        ("dimEmb", dimTrgEmb);
-
-    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
-      yEmbFactory("prefix", "Wemb");
-    else
-      yEmbFactory("prefix", prefix_ + "_Wemb");
-
-    auto yEmb = yEmbFactory.construct();
-
     Expr selectedEmbs;
     if(embIdx.empty()) { // @TODO: use EOS symbol
       selectedEmbs = // reshape(rows(yEmb, std::vector<IndexType>(dimBatch, 1)), {1, 1, dimBatch, dimTrgEmb});
         graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros());
     } else {
-      selectedEmbs = rows(yEmb, embIdx);
-      selectedEmbs = reshape(selectedEmbs, {dimBeam, 1, dimBatch, dimTrgEmb});
+      // embeddings are loaded from model during translation, no fixing required
+      auto yEmbFactory = embedding()  //
+          ("dimVocab", dimTrgVoc)     //
+          ("dimEmb", dimTrgEmb);
+
+      if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+        yEmbFactory("prefix", "Wemb");
+      else
+        yEmbFactory("prefix", prefix_ + "_Wemb");
+
+      auto yEmb = yEmbFactory.construct(graph);
+
+      selectedEmbs = yEmb->apply(embIdx, {dimBeam, 1, dimBatch, dimTrgEmb});
     }
     state->setTargetEmbeddings(selectedEmbs);
   }

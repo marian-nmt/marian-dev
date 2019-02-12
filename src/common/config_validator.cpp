@@ -10,7 +10,10 @@ bool ConfigValidator::has(const std::string& key) const {
   return config_[key];
 }
 
-ConfigValidator::ConfigValidator(const YAML::Node& config) : config_(config) {}
+ConfigValidator::ConfigValidator(const YAML::Node& config)
+    : config_(config),
+      dumpConfigOnly_(config["dump-config"] && !config["dump-config"].as<std::string>().empty()
+                      && config["dump-config"].as<std::string>() != "false") {}
 
 ConfigValidator::~ConfigValidator() {}
 
@@ -27,6 +30,9 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
     case cli::mode::training:
       validateOptionsParallelData();
       validateOptionsTraining();
+      break;
+    default:
+      ABORT("wrong CLI mode");
       break;
   }
   // clang-format on
@@ -52,6 +58,10 @@ void ConfigValidator::validateOptionsTranslation() const {
 }
 
 void ConfigValidator::validateOptionsParallelData() const {
+  // Do not check these constraints if only goal is to dump config
+  if(dumpConfigOnly_)
+    return;
+
   auto trainSets = get<std::vector<std::string>>("train-sets");
   ABORT_IF(trainSets.empty(), "No train sets given in config file or on command line");
 
@@ -72,7 +82,8 @@ void ConfigValidator::validateOptionsTraining() const {
   auto trainSets = get<std::vector<std::string>>("train-sets");
 
   ABORT_IF(has("embedding-vectors")
-               && get<std::vector<std::string>>("embedding-vectors").size() != trainSets.size(),
+               && get<std::vector<std::string>>("embedding-vectors").size() != trainSets.size()
+               && !get<std::vector<std::string>>("embedding-vectors").empty(),
            "There should be as many embedding vector files as training sets");
 
   filesystem::Path modelPath(get<std::string>("model"));
@@ -84,12 +95,13 @@ void ConfigValidator::validateOptionsTraining() const {
   ABORT_IF(!modelDir.empty() && !filesystem::isDirectory(modelDir),
            "Model directory does not exist");
 
-  ABORT_IF(
-      has("valid-sets") && get<std::vector<std::string>>("valid-sets").size() != trainSets.size(),
-      "There should be as many validation sets as training sets");
+  ABORT_IF(has("valid-sets")
+               && get<std::vector<std::string>>("valid-sets").size() != trainSets.size()
+               && !get<std::vector<std::string>>("valid-sets").empty(),
+           "There should be as many validation sets as training sets");
 
   // validations for learning rate decaying
-  ABORT_IF(get<double>("lr-decay") > 1.0, "Learning rate decay factor greater than 1.0 is unusual");
+  ABORT_IF(get<float>("lr-decay") > 1.f, "Learning rate decay factor greater than 1.0 is unusual");
 
   auto strategy = get<std::string>("lr-decay-strategy");
 

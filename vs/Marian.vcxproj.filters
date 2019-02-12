@@ -439,13 +439,52 @@
     <ClCompile Include="..\src\3rd_party\pathie-cpp\src\temp.cpp">
       <Filter>3rd_party\pathie-cpp\src</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\tests\attention_tests.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\cli_test.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\dropout_test.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\graph_tests.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\logger_test.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\operator_tests.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\pooling_test.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\prod.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\rnn_tests.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\run_tests.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tests\sqlite_test.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\examples\mnist\mnist_ffnn.cpp">
+      <Filter>examples\mnist</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\examples\iris\helper.cpp">
+      <Filter>examples\iris</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\examples\iris\iris.cpp">
+      <Filter>examples\iris</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\marian.h" />
     <ClInclude Include="..\src\3rd_party\catch.hpp">
-      <Filter>3rd_party</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\3rd_party\exception.h">
       <Filter>3rd_party</Filter>
     </ClInclude>
     <ClInclude Include="..\src\3rd_party\reduce_all.h">
@@ -1463,6 +1502,21 @@
     <ClInclude Include="..\src\3rd_party\pathie-cpp\include\temp.hpp">
       <Filter>3rd_party\pathie-cpp\include</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\examples\mnist\dataset.h">
+      <Filter>examples\mnist</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\examples\mnist\model.h">
+      <Filter>examples\mnist</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\examples\mnist\model_lenet.h">
+      <Filter>examples\mnist</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\examples\mnist\training.h">
+      <Filter>examples\mnist</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\examples\mnist\validator.h">
+      <Filter>examples\mnist</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="3rd_party">
@@ -1627,6 +1681,9 @@
     <Filter Include="3rd_party\pathie-cpp\src">
       <UniqueIdentifier>{5d5ee615-192f-4b7f-bdfd-fb8316ceabc8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="tests">
+      <UniqueIdentifier>{a86d650a-2268-43d9-9d74-cb17cd6b534b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include=".editorConfig" />
@@ -1652,9 +1709,6 @@
       <Filter>tensors\gpu</Filter>
     </None>
     <None Include="..\src\tensors\gpu\element.inc">
-      <Filter>tensors\gpu</Filter>
-    </None>
-    <None Include="..\src\tensors\gpu\prod.cu">
       <Filter>tensors\gpu</Filter>
     </None>
     <None Include="..\src\tensors\gpu\sparse.cu">
@@ -1765,6 +1819,36 @@
     <None Include="..\src\3rd_party\pathie-cpp\README.md">
       <Filter>3rd_party\pathie-cpp</Filter>
     </None>
+    <None Include="..\src\tests\conv_char_test.cu">
+      <Filter>tests</Filter>
+    </None>
+    <None Include="..\src\tests\conv_test.cu">
+      <Filter>tests</Filter>
+    </None>
+    <None Include="..\src\tests\README.md">
+      <Filter>tests</Filter>
+    </None>
+    <None Include="..\src\tests\tensor_test.cu">
+      <Filter>tests</Filter>
+    </None>
+    <None Include="..\src\examples\mnist\download.sh">
+      <Filter>examples\mnist</Filter>
+    </None>
+    <None Include="..\src\examples\iris\iris.data">
+      <Filter>examples\iris</Filter>
+    </None>
+    <None Include="..\src\examples\cmake_install.cmake">
+      <Filter>examples</Filter>
+    </None>
+    <None Include="..\src\examples\Makefile">
+      <Filter>examples</Filter>
+    </None>
+    <None Include="..\src\examples\README.md">
+      <Filter>examples</Filter>
+    </None>
+    <None Include="..\src\tensors\gpu\prod.cpp">
+      <Filter>tensors\gpu</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\src\3rd_party\sentencepiece\src\CMakeLists.txt">
@@ -1772,6 +1856,12 @@
     </Text>
     <Text Include="..\src\3rd_party\pathie-cpp\CMakeLists.txt">
       <Filter>3rd_party\pathie-cpp</Filter>
+    </Text>
+    <Text Include="..\src\tests\CMakeLists.txt">
+      <Filter>tests</Filter>
+    </Text>
+    <Text Include="..\src\examples\CMakeLists.txt">
+      <Filter>examples</Filter>
     </Text>
   </ItemGroup>
 </Project>

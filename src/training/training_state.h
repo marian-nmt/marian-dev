@@ -28,20 +28,22 @@ enum class SchedulingUnit {
   updates,   // "u": number of updates so far (batches)
   epochs     // "e": number of epochs begun so far (very first epoch is 1)
 };
+
 struct SchedulingParameter {
   size_t n{0};                                  // number of steps measured in 'unit'
   SchedulingUnit unit{SchedulingUnit::updates}; // unit of value
 
   // parses scheduling parameters of the form NU where N=unsigned int and U=unit
-  // Examples of valid inputs: "16000u" (16000 updates), "32000000t" (32 million target labels), "100e" (100 epochs).
+  // Examples of valid inputs: "16000u" (16000 updates), "32000000t" (32 million target labels),
+  // "100e" (100 epochs).
   static SchedulingParameter parse(std::string param) {
     SchedulingParameter res;
-    if (!param.empty() && param.back() >= 'a') {
-      switch (param.back()) {
-      case 't': res.unit = SchedulingUnit::trgLabels; break;
-      case 'u': res.unit = SchedulingUnit::updates;   break;
-      case 'e': res.unit = SchedulingUnit::epochs;    break;
-      default: ABORT("invalid unit '{}' in {}", param.back(), param);
+    if(!param.empty() && param.back() >= 'a') {
+      switch(param.back()) {
+        case 't': res.unit = SchedulingUnit::trgLabels; break;
+        case 'u': res.unit = SchedulingUnit::updates;   break;
+        case 'e': res.unit = SchedulingUnit::epochs;    break;
+        default: ABORT("invalid unit '{}' in {}", param.back(), param);
       }
       param.pop_back();
     }
@@ -54,11 +56,11 @@ struct SchedulingParameter {
   operator bool() const { return n > 0; } // check whether it is specified
 
   operator std::string() const { // convert back for storing in config
-    switch (unit) {
-    case SchedulingUnit::trgLabels: return std::to_string(n) + "t";
-    case SchedulingUnit::updates  : return std::to_string(n) + "u";
-    case SchedulingUnit::epochs   : return std::to_string(n) + "e";
-    default: ABORT("corrupt enum value");
+    switch(unit) {
+      case SchedulingUnit::trgLabels: return std::to_string(n) + "t";
+      case SchedulingUnit::updates  : return std::to_string(n) + "u";
+      case SchedulingUnit::epochs   : return std::to_string(n) + "e";
+      default: ABORT("corrupt enum value for scheduling unit");
     }
   }
 };
@@ -91,22 +93,30 @@ public:
   // Reset optimizer parameters
   bool reset{false};
 
-  // Learning rate
+  // Current learning rate, representing all adjustment processes and factors
   float eta;
-  // Multiplication factor for learning rate
+  void updateEta(float dynamicBaseLR) { // note: no other function may write to 'eta' (besides load())
+    eta = dynamicBaseLR * factor;
+  }
+  // State-based multiplication factor for learning rate
   float factor{1.f};
   SchedulingParameter warmupStart; // has same unit as lr-warmup
 
   // Sum of costs since last display
   float costSum{0};
-  // Number of words/labels/samples (depending on cost-type) aggregated in
+  // Number of labels aggregated in
   // costSum since last display
 
   float gradNorm{}; // Sum over gradient norms
 
   size_t costCount{0};
-  // Number of words seen since last display, for speed measurement
+
+  // Number of words seen since last display
   size_t wordsDisp{0};
+  // Number of samples/sentences seen since last display
+  size_t samplesDisp{0};
+  // Number of updates seen since last display
+  size_t updatesDisp{0};
 
   // The state of the random number generator from a batch generator
   std::string seedBatch;
@@ -119,7 +129,9 @@ public:
   // Set flag if the model was validated in the current batch
   bool validated{false};
 
-  TrainingState(float learnRate) : eta(learnRate) {}
+  TrainingState(float learnRate) {
+    updateEta(learnRate);
+  }
 
   void registerObserver(Ptr<TrainingObserver> observer) {
     observers_.push_back(observer);
@@ -128,7 +140,7 @@ public:
 
   // return the totals count that corresponds to the given unit (batches, labels, or epochs)
   size_t getProgressIn(SchedulingUnit u) const {
-    switch (u) {
+    switch(u) {
       case SchedulingUnit::trgLabels: return labelsTotal;
       case SchedulingUnit::updates  : return batches;
       case SchedulingUnit::epochs   : return epochs;
@@ -145,7 +157,7 @@ public:
   }
 
   size_t getPreviousProgressIn(SchedulingUnit u) const {
-    switch (u) {
+    switch(u) {
       case SchedulingUnit::trgLabels: return prevLabelsTotal;
       case SchedulingUnit::updates  : return prevBatches;
       case SchedulingUnit::epochs   : return prevEpochs;
@@ -157,6 +169,7 @@ public:
   // unit in which that parameter is given. There are a few edge cases:
   //  - this function will be called many times within the same epoch
   //  - labelsTotal does not increment by 1, so simple modulus does not work
+  //
   // So instead of modulus==0, this function compares the previous progress/period
   // to the current, and triggers if they differ (i.e. the border between two
   // periods was crossed). This requires that rememberPreviousProgress() is called
@@ -166,7 +179,8 @@ public:
   bool enteredNewPeriodOf(std::string schedulingParam) const {
     auto period = SchedulingParameter::parse(schedulingParam);
     ABORT_IF(period.unit == SchedulingUnit::epochs,
-        "Unit {} is not supported for frequency parameters (the one(s) with value {})", schedulingParam);
+             "Unit {} is not supported for frequency parameters (the one(s) with value {})",
+             schedulingParam);
     auto previousProgress = getPreviousProgressIn(period.unit);
     auto progress = getProgressIn(period.unit);
     return period && progress / period.n != previousProgress / period.n;
@@ -224,13 +238,16 @@ public:
     epochs = config["epochs"].as<size_t>();
     batches = config["batches"].as<size_t>();
     batchesEpoch = config["batches-epoch"].as<size_t>();
-    // (different serialization name for back compat)
+    // different serialization name for backward compatibility
     samplesEpoch = config["samples"].as<size_t>();
-    // (optional for back compat)
+
+    // clang-format off
+    // optional for backward compatibility
     labelsTotal     = config["labels-total"]      ? config["labels-total"].as<size_t>()      : 0;
     prevLabelsTotal = config["prev-labels-total"] ? config["prev-labels-total"].as<size_t>() : 0;
     prevBatches     = config["prev-batches"]      ? config["prev-batches"].as<size_t>()      : 0;
     prevEpochs      = config["prev-epochs"]       ? config["prev-epochs"].as<size_t>()       : 0;
+    // clang-format on
 
     // @TODO: add gradNorm
 
@@ -246,9 +263,11 @@ public:
     warmupStart = SchedulingParameter::parse(config["warmup-start"].as<std::string>());
 
     costSum = config["cost-sum"].as<float>();
-    // (different serialization name for back compat)
-    costCount = config["disp-samples"].as<size_t>();
+    costCount = config["cost-count"].as<size_t>();
+
     wordsDisp = config["disp-words"].as<size_t>();
+    samplesDisp = config["disp-samples"].as<size_t>();
+    updatesDisp = config["disp-updates"].as<size_t>();
 
     seedBatch = config["seed-batch"].as<std::string>();
     seedCorpus = config["seed-corpus"].as<std::string>();
@@ -279,7 +298,10 @@ public:
     config["warmup-start"] = std::string(warmupStart);
 
     config["cost-sum"] = costSum;
-    config["disp-samples"] = costCount;
+    config["cost-count"] = costCount;
+
+    config["disp-updates"] = updatesDisp;
+    config["disp-samples"] = samplesDisp;
     config["disp-words"] = wordsDisp;
 
     config["seed-batch"] = seedBatch;

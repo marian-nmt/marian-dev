@@ -535,6 +535,13 @@ void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   }
 }
 
+// Computes the softmax
+// in - input tensor
+// out - output tensor
+// we compute the softmax over the the cols (last dimension)
+// rows are time, batch or beam dimensions
+// number of threads is number of cols or MAX_THREADS
+// number of blocks is number of rows or MAX_BLOCKS
 // @TODO: handle __half2
 template <typename T, typename AccType = float>
 __global__ void gSoftmax(T* out,
@@ -545,10 +552,10 @@ __global__ void gSoftmax(T* out,
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
-    if(j < rows) {
-      T* so = out + j * cols;
+  for(int bid = 0; bid < rows; bid += gridDim.x) { // loop over blocks of rows
+    int j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
+    if(j < rows) { // compute softmax over one row, row elements distributed over threads
+      T* so = out + j * cols; // pointer to row input data
       const T* sp = in + j * cols;
 
       // CUDA complains if type or size of shared memory changes, keep size constant.
@@ -556,16 +563,20 @@ __global__ void gSoftmax(T* out,
       T* _share = (T*)_sharedBytes;
       AccType* _shareAccType = (AccType*)_sharedBytes;
 
+      // determine max (used below to improve numeric stability)
       T* _max = _share;
       _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
+      // find max over column indices that have the same relative column index (=threadIdx.x) across all blocks of columns
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          if(sp[id] > _max[threadIdx.x])
-            _max[threadIdx.x] = sp[id];
+        // threadIdx.x = column index within block of columns; we reduce over columns within a block, then over blocks
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          if(sp[i] > _max[threadIdx.x])
+            _max[threadIdx.x] = sp[i];
         }
       }
       __syncthreads();
+      // max over columns within a column block via tree reduction
       int len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -582,17 +593,20 @@ __global__ void gSoftmax(T* out,
       __syncthreads();
 
       AccType* _sum = _shareAccType; // accumulate into AccType
-
+      // compute denominator
+      float* _sum = _share;
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          T ex = Ops<T>::exp(sp[id] - max);
-          so[id] = (T)ex;
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          // @TODO: is it faster to cache the result of expf() in GPU RAM, or would it be faster to recompute it below?
+          T ex = Ops<T>::exp(sp[i] - max);
+          so[i] = (T)ex;
           _sum[threadIdx.x] += (AccType)ex; // accumulate into AccType
         }
       }
       __syncthreads();
+      // now reduce over all columns within the block
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -602,10 +616,13 @@ __global__ void gSoftmax(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
+
+      // produce final output data
+      float sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          so[id] = (T)((AccType)so[id] / _sum[0]); // divide as AccType then convert
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          so[i] = (T)((AccType)so[i] / _sum[0]); // divide as AccType then convert
         }
       }
     }
@@ -621,19 +638,18 @@ void Softmax(Tensor out, Tensor in) {
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
+  int shared = sizeof(float) * threads;  // accumulate into float
 
   if(in->type() == Type::float32) {
-    int shared = sizeof(float) * threads;
     gSoftmax<float, float><<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
   } else if (in->type() == Type::float16) {
-    int shared = sizeof(float) * threads; // keep size of shared memory
-    // accumulate into float
     gSoftmax<half, float><<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
   } else {
     ABORT("Softmax not implemented for type {}", in->type());
   }
 }
 
+// @TODO: refactor to reuse code from softmax, add comments
 template <typename T, typename AccType = float>
 __global__ void gLogSoftmax(T* out,
                             const functional::Shape outShape,
@@ -655,7 +671,7 @@ __global__ void gLogSoftmax(T* out,
       T* _share = (T*)_sharedBytes;
       AccType* _shareAccType = (AccType*)_sharedBytes;
 
-      T* _max = _share;
+      T* _max = _share; // 16-bit is ok for max if applicable
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -720,13 +736,11 @@ void LogSoftmax(Tensor out, Tensor in) {
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
+  int shared = sizeof(float) * threads; // use float32 as accumulation type
 
   if(in->type() == Type::float32) {
-    int shared = sizeof(float) * threads;
     gLogSoftmax<float, float><<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
   } else if (in->type() == Type::float16) {
-    int shared = sizeof(float) * threads; // keep size of shared memory
-    // accumulate in float
     gLogSoftmax<half, float><<<blocks, threads, shared>>>(out->data<__half>(), out->shape(), in->data<__half>());
   } else {
     ABORT("LogSoftmax not implemented for type {}", in->type());
@@ -744,10 +758,9 @@ __global__ void gSoftmaxGrad(T* grad,
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      extern __shared__ uint8_t _sharedBytes[];
-      AccType* _shareAccType = (AccType*)_sharedBytes;
 
-      AccType* _sum = _shareAccType;
+      extern __shared__ uint8_t _sharedBytes[];
+      AccType* _sum = (AccType*)_sharedBytes;
 
       T* gradRow = grad + j * cols;
       const T* adjRow = adj + j * cols;
@@ -778,9 +791,11 @@ __global__ void gSoftmaxGrad(T* grad,
         }
       }
     }
+    __syncthreads();
   }
 }
 
+// @TODO: refactor with logsoftmax, add math
 void SoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
   cudaSetDevice(adj->getDeviceId().no);
   // grad and val are both m-by-k matrices, passed as input.
@@ -816,9 +831,7 @@ __global__ void gLogSoftmaxGrad(T* grad,
     int j = bid + blockIdx.x;
     if(j < rows) {
       extern __shared__ uint8_t _sharedBytes[];
-      AccType* _share = (AccType*)_sharedBytes;
-
-      AccType* _sum = _share;
+      AccType* _sum = (AccType*)_sharedBytes;
 
       T* gradRow = grad + j * cols;
       const T* adjRow = adj + j * cols;
@@ -846,6 +859,7 @@ __global__ void gLogSoftmaxGrad(T* grad,
           gradRow[id] += (T)((AccType)adjRow[id] - (functional::Ops<AccType>::exp((AccType)valRow[id]) * _sum[0]));
       }
     }
+    __syncthreads();
   }
 }
 
@@ -861,7 +875,7 @@ void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
 
   int blocks = std::min(MAX_BLOCKS, m);
   int threads = std::min(MAX_THREADS, k);
-  int shared = sizeof(float) * threads;
+  int shared = sizeof(float) * threads; // Use float32 as accumulation type
 
   if(grad->type() == Type::float32) {
     gLogSoftmaxGrad<float, float><<<blocks, threads, shared>>>(
@@ -1382,7 +1396,6 @@ __global__ void gCrossEntropyPick(T* out,
       const T* sp = in + j * cols;
 
       T* _max = (T*)_sharedBytes;
-
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 1; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1409,6 +1422,7 @@ __global__ void gCrossEntropyPick(T* out,
 
       AccType* _sum = (AccType*)_sharedBytes;
       _sum[threadIdx.x] = (AccType)0.0f;
+
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
@@ -1452,7 +1466,7 @@ void CrossEntropyPick(Tensor out, Tensor in, Tensor indices) {
 
   int blocks = std::min(MAX_BLOCKS, (int)rows);
   int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = sizeof(float) * threads;
+  int shared = sizeof(float) * threads; // Use float32 as accumulation type
 
   if(out->type() == Type::float32) {
     gCrossEntropyPick<float, float><<<blocks, threads, shared>>>(
@@ -1481,7 +1495,6 @@ __global__ void gCrossEntropyPickBackward(T* out,
     if(j < rows) {
       const T* sp = in + j * cols;
       T* so = out + j * cols;
-
       T* _max = (T*)_sharedBytes;
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 1; tid < cols; tid += blockDim.x) {
@@ -1536,6 +1549,7 @@ __global__ void gCrossEntropyPickBackward(T* out,
         }
       }
     }
+    __syncthreads();
   }
 }
 
@@ -1549,7 +1563,7 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) 
 
   int blocks = std::min(MAX_BLOCKS, (int)rows);
   int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = sizeof(float) * threads;
+  int shared = sizeof(float) * threads; // use float as accumulation type
 
   if(out->type() == Type::float32) {
     gCrossEntropyPickBackward<float, float><<<blocks, threads, shared>>>(
@@ -1628,8 +1642,8 @@ __global__ void gAtt(float* out,
       }
       __syncthreads();
       out[j] = _sum[0];
-      __syncthreads();
     }
+    __syncthreads();
   }
 }
 
@@ -1815,6 +1829,7 @@ void LayerNormalization(Tensor out,
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = threads * sizeof(float);
 
+<<<<<<< HEAD
   if(out->type() == Type::float32) {
     gLNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
                                                  in->data<float>(),

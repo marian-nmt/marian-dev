@@ -1,86 +1,41 @@
-#pragma
+#pragma once
 
-#include "models/decoder.h"
+#include "marian.h"
+#include "models/states.h"
+#include "layers/constructors.h"
+#include "layers/factory.h"
 
 namespace marian {
 
-class Classifier : public DecoderBase {
+/**
+ * Simple base class for Classifiers to be used in EncoderClassifier framework
+ * Currently only implementations are in bert.h
+ */
+class ClassifierBase {
+protected:
+  Ptr<Options> options_;
+  std::string prefix_{"classifier"};
+  bool inference_{false};
+  size_t batchIndex_{0};
+
 public:
-  Classifier(Ptr<Options> options) : DecoderBase(options) {}
+  ClassifierBase(Ptr<Options> options)
+      : options_(options),
+        prefix_(options->get<std::string>("prefix", "classifier")),
+        inference_(options->get<bool>("inference", false)),
+        batchIndex_(options->get<size_t>("index", 1)) {} // assume that training input has batch index 0 and labels has 1
 
+  virtual ~ClassifierBase() {}
 
-  virtual Ptr<DecoderState> startState(
-      Ptr<ExpressionGraph> graph,
-      Ptr<data::CorpusBatch> batch,
-      std::vector<Ptr<EncoderState>>& encStates) override {
+  virtual Ptr<ClassifierState> apply(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>, const std::vector<Ptr<EncoderState>>&) = 0;
 
-    rnn::States startStates;
-    return New<DecoderState>(startStates, nullptr, encStates, batch);
-
+  template <typename T>
+  T opt(const std::string& key) const {
+    return options_->get<T>(key);
   }
 
-    virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
-                                   Ptr<DecoderState> state) override {
-    
-    ABORT_IF(state->getEncoderStates().size() != 1, "Currently only one encoder accepted");
-    auto encoderContext = state->getEncoderStates()[0]->getContext();
-    
-    auto firstWord = marian::step(encoderContext, 0, -3);
-
-    int classes = opt<int>("classes");
-
-    auto layerHidden = mlp::dense(graph)     //
-        ("prefix", prefix_ + "_ff_logit_l1")  //
-        ("dim", firstWord->shape()[-1])       //
-        ("activation", mlp::act::tanh);
-
-    auto layerOut = mlp::output(graph)       //
-        ("prefix", prefix_ + "_ff_logit_out") //
-        ("dim", classes);
-
-    auto output = mlp::mlp(graph)            //
-                  .push_back(layerHidden)     //
-                  .push_back(layerOut)        //
-                  .construct();
-
-    auto logits = output->apply(firstWord);
-
-    rnn::States decoderStates; // dummy
-    auto nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch());
-    return nextState;
-  }
-
-  virtual void embeddingsFromBatch(Ptr<ExpressionGraph> graph,
-                                   Ptr<DecoderState> state,
-                                   Ptr<data::CorpusBatch> batch) override {
-    int classes = options_->get<int>("classes");
-    int dimBatch = batch->size();
-
-    // @TODO: this creates fake ground truth, need to implement reader
-    // and the we can train a classifier on top of any encoder.
-    std::vector<IndexType> fakeOutputs(dimBatch, 0);
-    for(auto& out : fakeOutputs)
-        out = (int)rand() % classes;
-
-    std::vector<float> fakeMask(dimBatch, 1);
-    
-    auto yMask = graph->constant({1, dimBatch, 1},
-                                 inits::fromVector(fakeMask));
-    auto yData = graph->indices(fakeOutputs);
-
-    state->setTargetMask(yMask);
-    state->setTargetIndices(yData);
-  }
-
-  virtual void embeddingsFromPrediction(Ptr<ExpressionGraph> graph,
-                                        Ptr<DecoderState> state,
-                                        const std::vector<IndexType>& embIdx,
-                                        int dimBatch,
-                                        int dimBeam) override {}
-
-  virtual const std::vector<Expr> getAlignments(int /*i*/ = 0) override { return {}; };
-
-  virtual void clear() override {};
+  // Should be used to clear any batch-wise temporary objects if present
+  virtual void clear() = 0;
 };
 
 }

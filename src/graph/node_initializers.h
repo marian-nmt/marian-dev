@@ -133,7 +133,6 @@ Ptr<NodeInitializer> normal(float mean = 0.f, float stddev = 1.f);
  */
 Ptr<NodeInitializer> uniform(float a = 0.f, float b = 1.f);
 
-
 Ptr<NodeInitializer> bernoulli(float p, float scale = 1.f);
 Ptr<NodeInitializer> glorotUniform(bool fanIn = false, bool fanOut = false);
 Ptr<NodeInitializer> glorotNormal(bool fanIn = false, bool fanOut = false);
@@ -154,6 +153,8 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
 
 Ptr<NodeInitializer> fromItem(const io::Item& item);
 Ptr<NodeInitializer> fromTensor(Tensor tensor);
+
+Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start);
 
 }  // namespace inits
 

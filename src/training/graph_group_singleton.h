@@ -21,8 +21,9 @@ private:
   void execute(Ptr<data::Batch> batch);
 
 public:
-  SingletonGraph(Ptr<Options> options)
-    : GraphGroup(options) {
+  SingletonGraph(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
+      : GraphGroup(config) {
+    ABORT_IF(mpi->numMPIProcesses() != 1, "SingletonGraph does not support multiple MPI processes");
     // Get device ID
     auto devices = Config::getDevices(options_);
     ABORT_IF(devices.size() != 1, "Only one device ID should be provided for singleton training");
@@ -63,7 +64,7 @@ public:
           /*scatterStateFn=*/[&](const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
             setFn(/*localDeviceIndex=*/0, data.bytes.data(), data.bytes.data() + data.size());
           });
-      } else if(options_->has("pretrained-model")) {
+      } else if(options_->hasAndNotEmpty("pretrained-model")) {
         std::string init = options_->get<std::string>("pretrained-model");
         LOG(info,
             "Initialize model weights with the pre-trained model {}",
@@ -110,8 +111,8 @@ public:
       });
   }
 
-  Ptr<data::BatchStats> collectStats() {
-    return GraphGroup::collectStats(graph_, builder_);
+  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
+    return GraphGroup::collectStats(graph_, builder_, vocabs);
   }
 
   virtual void finalize() override { finalized_ = true; }

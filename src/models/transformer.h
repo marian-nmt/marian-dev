@@ -25,7 +25,7 @@ class Transformer : public EncoderOrDecoderBase {
   typedef EncoderOrDecoderBase Base;
 
 protected:
-  using Base::options_; using Base::inference_;
+  using Base::options_; using Base::inference_; using Base::batchIndex_;
   std::unordered_map<std::string, Expr> cache_;
 
   // attention weights produced by step()
@@ -47,39 +47,52 @@ public:
 
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
 
-  Expr addPositionalEmbeddings(Expr input, int start = 0) const {
-    int dimMax = opt<int>("max-length");
-    int dimEmb = input->shape()[-1];
+  Expr addPositionalEmbeddings(Expr input, int start = 0, bool trainPosEmbeddings = false) const {
+    int dimEmb   = input->shape()[-1];
     int dimWords = input->shape()[-3];
 
-    auto posEmb = [](Tensor t) {
-      int dimEmb = t->shape()[-1];
-      int dimMax = t->shape()[-2];
+    Expr embeddings = input;
 
-      int num_timescales = dimEmb / 2;
-      float log_timescale_increment = std::log(10000.f) / (num_timescales - 1.f);
+    if(trainPosEmbeddings) {
+      int maxLength = opt<int>("max-length");
 
-      std::vector<float> vPos(dimEmb * dimMax, 0.f);
-      for(int p = 0; p < dimMax; ++p) {
-        for(int i = 0; i < num_timescales; ++i) {
-          float v = p * std::exp(i * -log_timescale_increment);
-          vPos[p * dimEmb                  + i] = std::sin(v);
-          vPos[p * dimEmb + num_timescales + i] = std::cos(v);
-        }
-      }
-      t->set(vPos);
-    };
-    auto posEmbInit = New<inits::LambdaInitConvert>(posEmb);
+      // Hack for translating with length longer than trained embeddings
+      // We check if the embedding matrix "Wpos" already exist so we can
+      // check the number of positions in that loaded parameter.
+      // We then have to restict the maximum length to the maximum positon
+      // and positions beyond this will be the maximum position.
+      Expr seenEmb = graph_->get("Wpos");
+      int numPos = seenEmb ? seenEmb->shape()[-2] : maxLength;
 
-    // @TODO: understand the +2 based on pytorch
-    auto Wpos = graph_->param("Wpos", {dimMax + 2, dimEmb}, posEmbInit, /*fixed=*/true);
+      auto embeddingLayer = embedding()
+                            ("prefix", "Wpos") // share positional embeddings across all encoders/decorders
+                            ("dimVocab", numPos)
+                            ("dimEmb", dimEmb)
+                            .construct(graph_);
 
-    std::vector<IndexType> positions(dimWords);
-    std::iota(positions.begin(), positions.end(), start + 2);
+      // fill with increasing numbers until current length or maxPos
+      std::vector<IndexType> positions(dimWords, numPos - 1);
+      for(int i = 0; i < std::min(dimWords, numPos); ++i)
+        positions[i] = i;
 
-    auto signal = reshape(rows(Wpos, positions), {dimWords, 1, dimEmb});
+      auto signal = embeddingLayer->apply(positions, {dimWords, 1, dimEmb});
+      embeddings = embeddings + signal;
+    } else {
+      // @TODO : test if embeddings should be scaled when trainable
+      // according to paper embeddings are scaled up by \sqrt(d_m)
+      embeddings = std::sqrt((float)dimEmb) * embeddings;
 
-    return input + signal;
+      auto signal = graph_->constant({dimWords, 1, dimEmb},
+                                     inits::sinusoidalPositionEmbeddings(start)); // @TODO: review why Fairseq shifts this by 1 or 2
+      embeddings = embeddings + signal;
+    }
+
+    return embeddings;
+  }
+
+  virtual Expr addSpecialEmbeddings(Expr input, int start = 0, Ptr<data::CorpusBatch> /*batch*/ = nullptr) const {
+    bool trainPosEmbeddings = opt<bool>("transformer-train-positions", false);
+    return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }
 
   Expr triangleMask(int length) const {
@@ -191,7 +204,7 @@ public:
 
   void collectOneHead(Expr weights, int dimBeam) {
     // select first head, this is arbitrary as the choice does not really matter
-    auto head0 = select(weights, std::vector<IndexType>({0}), -3); // @TODO: implement an index() or slice() operator and use that
+    auto head0 = slice(weights, -3, 0);
 
     int dimBatchBeam = head0->shape()[-4];
     int srcWords = head0->shape()[-1];
@@ -207,7 +220,7 @@ public:
     // @TODO: make splitting obsolete
     alignments_.clear();
     for(int i = 0; i < trgWords; ++i) {
-      alignments_.push_back(select(head0, std::vector<IndexType>({(IndexType)i}), -1)); // [tgt index][-4: beam depth, -3: max src length, -2: batch size, -1: 1]
+      alignments_.push_back(slice(head0, -1, i)); // [tgt index][-4: beam depth, -3: max src length, -2: batch size, -1: 1]
     }
   }
 
@@ -363,6 +376,8 @@ public:
       return (ActivationFunction*)relu;
     else if (actName == "swish")
       return (ActivationFunction*)swish;
+    else if (actName == "gelu")
+      return (ActivationFunction*)gelu;
     ABORT("Invalid activation name '{}'", actName);
   }
 
@@ -462,15 +477,15 @@ public:
                        int /*startPos*/) const {
     float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
 
-    auto rnn = rnn::rnn(graph_)                                    //
+    auto rnn = rnn::rnn()                                          //
         ("type", opt<std::string>("dec-cell"))                     //
         ("prefix", prefix)                                         //
         ("dimInput", opt<int>("dim-emb"))                          //
         ("dimState", opt<int>("dim-emb"))                          //
         ("dropout", dropoutRnn)                                    //
         ("layer-normalization", opt<bool>("layer-normalization"))  //
-        .push_back(rnn::cell(graph_))                              //
-        .construct();
+        .push_back(rnn::cell())                                    //
+        .construct(graph_);
 
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     auto opsPre = opt<std::string>("transformer-preprocess");
@@ -491,65 +506,63 @@ public:
 class EncoderTransformer : public Transformer<EncoderBase> {
 public:
   EncoderTransformer(Ptr<Options> options) : Transformer(options) {}
+  virtual ~EncoderTransformer() {}
 
   // returns the embedding matrix based on options
   // and based on batchIndex_.
 
-  std::vector<Expr> ULREmbeddings() const {
+  Ptr<IEmbeddingLayer> createULREmbeddingLayer() const {
     // standard encoder word embeddings
     int dimSrcVoc = opt<std::vector<int>>("dim-vocabs")[0];  //ULR multi-lingual src
     int dimTgtVoc = opt<std::vector<int>>("dim-vocabs")[1];  //ULR monon tgt
     int dimEmb = opt<int>("dim-emb");
     int dimUlrEmb = opt<int>("ulr-dim-emb");
-    auto embFactory = ulr_embedding(graph_)("dimSrcVoc", dimSrcVoc)("dimTgtVoc", dimTgtVoc)
-                                           ("dimUlrEmb", dimUlrEmb)("dimEmb", dimEmb)
-                                           ("ulrTrainTransform", opt<bool>("ulr-trainable-transformation"))
-                                           ("ulrQueryFile", opt<std::string>("ulr-query-vectors"))
-                                           ("ulrKeysFile", opt<std::string>("ulr-keys-vectors"));
-    return embFactory.construct();
+    auto embFactory = ulr_embedding()("dimSrcVoc", dimSrcVoc)("dimTgtVoc", dimTgtVoc)
+                                     ("dimUlrEmb", dimUlrEmb)("dimEmb", dimEmb)
+                                     ("ulrTrainTransform", opt<bool>("ulr-trainable-transformation"))
+                                     ("ulrQueryFile", opt<std::string>("ulr-query-vectors"))
+                                     ("ulrKeysFile", opt<std::string>("ulr-keys-vectors"));
+    return embFactory.construct(graph_);
   }
 
-  Expr wordEmbeddings(size_t subBatchIndex) const {
+  Ptr<IEmbeddingLayer> createWordEmbeddingLayer(size_t subBatchIndex) const {
     // standard encoder word embeddings
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[subBatchIndex];
     int dimEmb = opt<int>("dim-emb");
-    auto embFactory = embedding(graph_)("dimVocab", dimVoc)("dimEmb", dimEmb);
-    if (opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+    auto embFactory = embedding()("dimVocab", dimVoc)("dimEmb", dimEmb);
+    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
       embFactory("prefix", "Wemb");
     else
       embFactory("prefix", prefix_ + "_Wemb");
-    if (options_->has("embedding-fix-src"))
+    if(options_->has("embedding-fix-src"))
       embFactory("fixed", opt<bool>("embedding-fix-src"));
-    if (options_->has("embedding-vectors")) {
+    if(options_->hasAndNotEmpty("embedding-vectors")) {
       auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
       embFactory("embFile", embFiles[subBatchIndex])
                 ("normalization", opt<bool>("embedding-normalization"));
     }
-    return embFactory.construct();
+    return embFactory.construct(graph_);
   }
 
-  Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
-                          Ptr<data::CorpusBatch> batch) override {
+  virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
+                                  Ptr<data::CorpusBatch> batch) override {
     graph_ = graph;
     return apply(batch);
   }
 
-  Ptr<EncoderState> apply(Ptr<data::CorpusBatch> batch) {
-    int dimEmb = opt<int>("dim-emb");
+  virtual Ptr<EncoderState> apply(Ptr<data::CorpusBatch> batch) {
     int dimBatch = (int)batch->size();
     int dimSrcWords = (int)(*batch)[batchIndex_]->batchWidth();
     // create the embedding matrix, considering tying and some other options
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
-    if (options_->has("ulr") && options_->get<bool>("ulr") == true) {
-      auto embeddings = ULREmbeddings(); // embedding uses ULR
-      std::tie(batchEmbeddings, batchMask)
-        = EncoderBase::ulrLookup(graph_, embeddings, batch);
-    } else {
-      auto embeddings = wordEmbeddings(batchIndex_);
-      std::tie(batchEmbeddings, batchMask)
-        = EncoderBase::lookup(graph_, embeddings, batch);
-    }
+
+    Ptr<IEmbeddingLayer> embedding;
+    if (options_->has("ulr") && options_->get<bool>("ulr") == true)
+      embedding = createULREmbeddingLayer(); // embedding uses ULR
+    else
+      embedding = createWordEmbeddingLayer(batchIndex_);
+    std::tie(batchEmbeddings, batchMask) = embedding->apply((*batch)[batchIndex_]);
 
     // apply dropout over source words
     float dropoutSrc = inference_ ? 0 : opt<float>("dropout-src");
@@ -557,15 +570,13 @@ public:
       int srcWords = batchEmbeddings->shape()[-3];
       batchEmbeddings = dropout(batchEmbeddings, dropoutSrc, {srcWords, 1, 1});
     }
-    // according to paper embeddings are scaled up by \sqrt(d_m)
-    float scale = std::sqrt((float)dimEmb);
-    auto scaledEmbeddings = scale * batchEmbeddings;
-    scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings);
+
+    batchEmbeddings = addSpecialEmbeddings(batchEmbeddings, /*start=*/0, batch);
 
     // reorganize batch and timestep
-    scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
+    batchEmbeddings = atleast_nd(batchEmbeddings, 4);
     batchMask = atleast_nd(batchMask, 4);
-    auto layer = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+    auto layer = transposeTimeBatch(batchEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
     auto layerMask
       = reshape(transposeTimeBatch(batchMask), {1, dimBatch, 1, dimSrcWords}); // [-4: beam depth=1, -3: batch size, -2: vector dim=1, -1: max length]
 
@@ -596,7 +607,7 @@ public:
     return New<EncoderState>(context, batchMask, batch);
   }
 
-  void clear() override {}
+  virtual void clear() override {}
 };
 
 class TransformerState : public DecoderState {
@@ -621,17 +632,17 @@ public:
 
 class DecoderTransformer : public Transformer<DecoderBase> {
 private:
-  Ptr<mlp::MLP> output_;
+  Ptr<mlp::Output> output_;
 
 private:
-  void LazyCreateOutputLayer()
+  void lazyCreateOutputLayer()
   {
     if(output_) // create it lazily
       return;
 
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
-    auto layerOut = mlp::output(graph_)        //
+    auto outputFactory = mlp::output()         //
         ("prefix", prefix_ + "_ff_logit_out")  //
         ("dim", dimTrgVoc);
 
@@ -639,18 +650,10 @@ private:
       std::string tiedPrefix = prefix_ + "_Wemb";
       if(opt<bool>("tied-embeddings-all") || opt<bool>("tied-embeddings-src"))
         tiedPrefix = "Wemb";
-      layerOut.tie_transposed("W", tiedPrefix);
+      outputFactory.tieTransposed(tiedPrefix);
     }
 
-    if(shortlist_)
-      layerOut.set_shortlist(shortlist_);
-
-    // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab dim]
-    // assemble layers into MLP and apply to embeddings, decoder context and
-    // aligned source context
-    output_ = mlp::mlp(graph_)      //
-                  .push_back(layerOut)  //
-                  .construct();
+    output_ = std::dynamic_pointer_cast<mlp::Output>(outputFactory.construct(graph_)); // (construct() returns only the underlying interface)
   }
 
 public:
@@ -682,7 +685,7 @@ public:
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
                                  Ptr<DecoderState> state) override {
     ABORT_IF(graph != graph_, "An inconsistent graph parameter was passed to step()");
-    LazyCreateOutputLayer();
+    lazyCreateOutputLayer();
     return step(state);
   }
 
@@ -699,23 +702,16 @@ public:
 
     //************************************************************************//
 
-    int dimEmb = embeddings->shape()[-1];
     int dimBeam = 1;
     if(embeddings->shape().size() > 3)
       dimBeam = embeddings->shape()[-4];
-
-    // according to paper embeddings are scaled by \sqrt(d_m)
-
-    float scale = std::sqrt((float)dimEmb);
-    auto scaledEmbeddings = scale * embeddings;
 
     // set current target token position during decoding or training. At training
     // this should be 0. During translation the current length of the translation.
     // Used for position embeddings and creating new decoder states.
     int startPos = (int)state->getPosition();
 
-    scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings, startPos);
-
+    auto scaledEmbeddings = addSpecialEmbeddings(embeddings, startPos);
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
 
     // reorganize batch and timestep
@@ -805,7 +801,7 @@ public:
           // decoding or scoring return the attention weights of one head of the last layer.
           // @TODO: maybe allow to return average or max over all heads?
           bool saveAttentionWeights = false;
-          if(j == 0 && (options_->get("guided-alignment", std::string("none")) != "none" || options_->has("alignment"))) {
+          if(j == 0 && (options_->get("guided-alignment", std::string("none")) != "none" || options_->hasAndNotEmpty("alignment"))) {
             size_t attLayer = decDepth - 1;
             std::string gaStr = options_->get<std::string>("transformer-guided-alignment-layer", "last");
             if(gaStr != "last")
@@ -837,7 +833,9 @@ public:
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
 
     // final feed-forward layer (output)
-    Expr logits = output_->apply(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab dim]
+    if(shortlist_)
+      output_->setShortlist(shortlist_);
+    Expr logits = output_->apply(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab or shortlist dim]
 
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
@@ -859,7 +857,8 @@ public:
   }
 
   void clear() override {
-    output_ = nullptr;
+    if (output_)
+      output_->clear();
     cache_.clear();
     alignments_.clear();
   }

@@ -5,11 +5,12 @@
 
 namespace marian {
 
-AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options)
-    : GraphGroup(options),
+AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
+    : GraphGroup(config),
       devices_{Config::getDevices(options_)},
       shardSync_(devices_.size()),
       optimizerDelay_((size_t)options_->get<double>("optimizer-delay")) {
+  ABORT_IF(mpi->numMPIProcesses() != 1, "AsyncGraphGroup presently does not support multiple MPI processes");
   ABORT_IF((double)optimizerDelay_ != options_->get<double>("optimizer-delay"), "AsyncGraphGroup presently does not implement fractional values for --optimizer-delay");
   pool_.reset(new ThreadPool(devices_.size(), devices_.size()));
 
@@ -17,6 +18,7 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options)
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
 
+    ABORT("fp16 support here is wrong")
     if(options_->get<bool>("fp16"))
       graph->setParameterType(Type::float16);
 
@@ -196,7 +198,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     thread_local size_t num_seen_words = 0;
     thread_local size_t num_seen_sentences = 0;
     thread_local int t_id = 0;
-    thread_local float cost = 0;
+    thread_local StaticLoss loss;
 
     thread_local Tensor accGradients;
     thread_local Ptr<TensorAllocator> accAlloc;
@@ -210,9 +212,10 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
 
     ABORT_IF(costScale_ ,"Cost-scaling not implemented for AsyncSGD");
 
-    auto costNode = builder->build(graph, batch);
+    Ptr<RationalLoss> dynamicLoss = builder->build(graph, batch);
     if(costScaleFactor_ != 1.f) {
-      costNode = costNode * costScaleFactor_;
+      // it's ok to go out of scope, this will still insert the new top node into the graph
+      auto costNode = dynamicLoss.loss() * costScaleFactor_;
     }
 
     if(t % optimizerDelay_ == 0) {
@@ -220,7 +223,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     }
 
     graph->forward();
-    cost += costNode->scalar() / costScaleFactor_;
+    loss += *dynamicLoss; // does not add scaledLoss but original loss
     graph->backward();
 
     Tensor gradients;
@@ -258,23 +261,21 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
       // Wait until the thread that wants to do validation is finished.
       pool_->wait_for_one(lock);
 
-      if(options_->get<std::string>("cost-type") != "ce-sum")
-        cost /= optimizerDelay_;
-
       if(optimizerDelay_ > 1) {
         std::vector<size_t> fakeLength = {1, 1};
-        auto fb = data::CorpusBatch::fakeBatch(
-            fakeLength, num_seen_sentences, NULL);
+        std::vector<Ptr<Vocab>> vocabs;
+        auto fb = data::CorpusBatch::fakeBatch(fakeLength, vocabs, num_seen_sentences, NULL);
         fb->front()->setWords(num_seen_words);
-        scheduler_->update(cost, fb);
+
+        scheduler_->update(loss, fb);
 
         num_seen_words = 0;
         num_seen_sentences = 0;
       } else {
-        scheduler_->update(cost, batch);
+        scheduler_->update(loss, batch);
       }
 
-      cost = 0;
+      loss.reset();
 
       if(scheduler_->saving() || scheduler_->validating()) {
         // Wait with validation or saving until all other threads are done with
@@ -334,7 +335,7 @@ void AsyncGraphGroup::load() {
             setFn(i, data.bytes.data() + begin, data.bytes.data() + end);
           }
         });
-    } else if(options_->has("pretrained-model")) {
+    } else if(options_->hasAndNotEmpty("pretrained-model")) {
       std::string nameInit = options_->get<std::string>("pretrained-model");
       LOG(info,
           "Initialize model weights with the pre-trained model {}",

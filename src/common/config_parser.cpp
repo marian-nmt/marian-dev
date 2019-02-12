@@ -79,8 +79,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<bool>("--relative-paths",
     "All paths are relative to the config file location");
   cli.add<std::string>("--dump-config",
-     "Dump current (modified) configuration to stdout and exit. "
-     "Possible values: full, minimal, explain")
+    "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal, expand")
     ->implicit_val("full");
   // clang-format on
 }
@@ -732,7 +731,9 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   auto configPaths = findConfigPaths();
   if(!configPaths.empty()) {
     auto config = loadConfigFiles(configPaths);
-    cli.updateConfig(config, "There are option(s) in a config file that are not expected");
+    cli.updateConfig(config,
+                     cli::Priority::ConfigFile,
+                     "There are option(s) in a config file that are not expected");
   }
 
   if(get<bool>("interpolate-env-vars")) {
@@ -740,8 +741,6 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   }
 
   if(doValidate) {
-    // TODO: Do not check some constraints if --dump-config, e.g. -t
-    // this aborts the program on first validation error
     ConfigValidator(config_).validateOptions(mode_);
   }
 
@@ -752,11 +751,11 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     auto dumpMode = get<std::string>("dump-config");
     config_.remove("dump-config");
 
-    if(dumpMode == "explain") {
+    if(dumpMode == "expand") {
       cli.parseAliases();
     }
 
-    bool minimal = (dumpMode == "minimal" || dumpMode == "explain");
+    bool minimal = (dumpMode == "minimal" || dumpMode == "expand");
     std::cout << cli.dumpConfig(minimal) << std::endl;
     exit(0);
   }

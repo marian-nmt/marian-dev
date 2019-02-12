@@ -1,10 +1,25 @@
 #include "common/config_parser.h"
+#include "common/definitions.h"
 
 namespace marian {
 
+/**
+ * Add all aliases
+ *
+ * An alias is a shortcut option for a predefined set of options. It is triggered if the option has
+ * the requested value. The alias option has to be first defined using cli.add<T>(). Defining
+ * multiple aliases for the same option name but with different value is allowed.
+ *
+ * Values are compared as std::string. If the alias option is a vector, the alias will be triggered
+ * if the requested value exists in that vector at least once.
+ *
+ * @see CLIWrapper::alias()
+ *
+ * The order of alias definitions *does* matter: options from later aliases override earlier
+ * regardless of its order in the command line or config file.
+ */
 void ConfigParser::addAliases(cli::CLIWrapper& cli) {
-  // The order of aliases does matter as later options overwrite earlier
-
+  // Options setting the BiDeep architecture proposed in http://www.aclweb.org/anthology/W17-4710
   cli.alias("best-deep", "true", [](YAML::Node& config) {
     // Model options
     config["layer-normalization"] = true;
@@ -17,7 +32,7 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["dec-depth"] = 4;
     config["skip"] = true;
 
-  // Training specific options
+    // Training specific options
     config["learn-rate"] = 0.0003;
     config["cost-type"] = "ce-mean-words";
     config["lr-decay-inv-sqrt"] = 16000;
@@ -28,10 +43,12 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["mini-batch-fit"] = true;
     config["mini-batch"] = 1000;
     config["maxi-batch"] = 1000;
-    config["workspace"] = 13000;
+    // config["workspace"] = 13000;
     // config["workspace"] = "max";
   });
 
+  // Architecture and proposed training settings for a Transformer "base" model introduced in
+  // https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
   cli.alias("task", "transformer-base", [](YAML::Node& config) {
     // Model options
     config["type"] = "transformer";
@@ -59,10 +76,12 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["mini-batch-fit"] = true;
     config["mini-batch"] = 1000;
     config["maxi-batch"] = 1000;
-    config["workspace"] = 13000;
+    // config["workspace"] = 13000;
     // config["workspace"] = "max";
   });
 
+  // Architecture and proposed training settings for a Transformer "big" model introduced in
+  // https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
   cli.alias("task", "transformer-big", [](YAML::Node& config) {
     // Model options
     config["type"] = "transformer";
@@ -76,8 +95,6 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["transformer-preprocess"] = "d";
     config["transformer-ffn-activation"] = "relu";
     config["transformer-dropout"] = 0.1;
-    config["transformer-dropout-attention"] = 0.1;
-    config["transformer-dropout-ffn"] = 0.1;
 
     // Training specific options
     config["learn-rate"] = 0.0002;
@@ -92,7 +109,7 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["mini-batch-fit"] = true;
     config["mini-batch"] = 1000;
     config["maxi-batch"] = 1000;
-    config["workspace"] = 13000;
+    // config["workspace"] = 13000;
     // config["workspace"] = "max";
   });
 
@@ -177,4 +194,4 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
   // });
 }
 
-}
+}  // namespace marian

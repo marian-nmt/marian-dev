@@ -2,8 +2,10 @@
 set(UNIT_TESTS
     graph_tests
     operator_tests
+    operator_grad_tests
     rnn_tests
     attention_tests
+    view_tests
 )
 
 foreach(test ${UNIT_TESTS})

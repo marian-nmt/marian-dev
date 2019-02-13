@@ -32,10 +32,10 @@ __global__ void gAggregateGeneric(Functor functor, AccType aggInit, AggFunctor a
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < outLength) {
       if(same) {
-        out[index] = aggFunctor(out[index], functional::apply(functor, ins, index) * scale);
+        out[index] = aggFunctor(out[index], functional::apply(functor, ins, index) * (T)scale);
       } else {
         out.shape().dims(index, dims);
-        out[index] = aggFunctor(out[index], functional::loops(functor, aggInit, aggFunctor, ins, len, dims) * (T)scale);
+        out[index] = aggFunctor(out[index], (T)(functional::loops(functor, aggInit, aggFunctor, ins, len, dims) * scale));
       }
     }
   }
@@ -121,7 +121,7 @@ __global__ void gAggregateReduce(Functor functor, AccType aggInit, AggFunctor ag
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      out[j] = aggFunctor(out[j], (T)_sum[0] * scale);
+      out[j] = aggFunctor(out[j], (T)(_sum[0] * scale));
     }
     __syncthreads();
   }
@@ -137,8 +137,8 @@ void AggregateTyped(Functor functor, AccType aggInit, AggFunctor aggFunctor, Acc
 
   constexpr size_t K = sizeof...(Tensors);
 
-  functional::Tensor<float> gOut = out;
-  functional::Array<functional::Tensor<float>, K> gIns = {tensors...};
+  functional::Tensor<T> gOut = out;
+  functional::Array<functional::Tensor<T>, K> gIns = {tensors...};
 
   if(full.back() != 1 && out->shape().back() == 1) {
     size_t m = full.elements() / length;
@@ -146,14 +146,13 @@ void AggregateTyped(Functor functor, AccType aggInit, AggFunctor aggFunctor, Acc
 
     int blocks = std::min(MAX_BLOCKS, (int)m);
     int threads = std::min(MAX_THREADS, (int)k);
-    int shared = sizeof(float) * threads;
+    int shared = sizeof(AccType) * threads; 
 
-    gAggregateReduce<<<blocks, threads, shared>>>(functor, aggInit, aggFunctor, full, gOut, gIns, scale);
+    gAggregateReduce<K, Functor, AggFunctor, T, AccType><<<blocks, threads, shared>>>(functor, aggInit, aggFunctor, full, gOut, gIns, scale);
 
   } else if(out->shape() == full) {
     int threads = std::min(MAX_THREADS, length);
-    int blocks
-        = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+    int blocks  = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     bool broadcast = false;
     for(int i = 0; i < K; ++i)
@@ -161,8 +160,7 @@ void AggregateTyped(Functor functor, AccType aggInit, AggFunctor aggFunctor, Acc
     gAggregateEqual<<<blocks, threads>>>(functor, aggFunctor, gOut, gIns, scale, broadcast);
   } else {
     int threads = std::min(MAX_THREADS, length);
-    int blocks
-        = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+    int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     gAggregateGeneric<<<blocks, threads>>>(functor, aggInit, aggFunctor, full, gOut, gIns, scale);
   }
@@ -181,16 +179,8 @@ void Aggregate(Functor functor, float aggInit, AggFunctor aggFunctor, float scal
 
 template <class Functor, class... Tensors>
 void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
-
   auto addFunctor = functional::_1 + functional::_2;
-
-  if(out->type() == Type::float32) {
-    AggregateTyped<float, float>(functor, 0.f, addFunctor, scale, out, tensors...);
-  } else if(out->type() == Type::float16) {
-    AggregateTyped<half,  float>(functor, 0.f, addFunctor, scale, out, tensors...);
-  } else {
-    ABORT("Type {} not yet supported", out->type());
-  }
+  Aggregate(functor, 0.f, addFunctor, scale, out, tensors...);
 }
 
 #include "tensors/gpu/add.inc"

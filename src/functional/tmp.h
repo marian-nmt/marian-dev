@@ -144,14 +144,14 @@ HOST_DEVICE_INLINE ElementType apply(Functor functor,
 // @TODO: Rename this. It is a reduction loop.
 template <size_t n, size_t N, size_t K>
 struct Loop {
-  template <class Functor, class AggFunctor, typename ElementType>
-  HOST_DEVICE_INLINE static ElementType result(
-      Functor functor, ElementType aggInit, AggFunctor aggFunctor,
+  template <class Functor, class AggFunctor, typename ElementType, typename AccType>
+  HOST_DEVICE_INLINE static AccType result(
+      Functor functor, AccType aggInit, AggFunctor aggFunctor,
       functional::Array<functional::Tensor<ElementType>, K>& in,
       const functional::Array<int, K>& pAcc,
       const functional::Array<int, N>& length,
       const functional::Array<int, N>& dim) {
-    ElementType agg = aggInit;
+    AccType agg = aggInit;
     functional::Array<int, K> acc;
     for(int i = 0; i < length[N - n]; ++i) {
       for(size_t j = 0; j < K; ++j) {
@@ -165,28 +165,28 @@ struct Loop {
 
 template <size_t N, size_t K>
 struct Loop<1, N, K> {
-  template <class Functor, class AggFunctor, typename ElementType>
-  HOST_DEVICE_INLINE static ElementType result(
-      Functor functor, ElementType aggInit, AggFunctor aggFunctor,
+  template <class Functor, class AggFunctor, typename ElementType, typename AccType>
+  HOST_DEVICE_INLINE static AccType result(
+      Functor functor, AccType aggInit, AggFunctor aggFunctor,
       functional::Array<functional::Tensor<ElementType>, K>& in,
       const functional::Array<int, K>& pAcc,
       const functional::Array<int, N>& length,
       const functional::Array<int, N>& dim) {
-    ElementType agg = aggInit;
+    AccType agg = aggInit;
     functional::Array<int, K> acc;
     for(int i = 0; i < length[N - 1]; ++i) {
       for(size_t j = 0; j < K; ++j) {
         acc[j] = pAcc[j] + (dim[N - 1] + i) * in[j].shape().bstride(N - 1);
       }
-      agg = aggFunctor(agg, apply<K>(functor, in, acc));
+      agg = aggFunctor(agg, (AccType)apply<K>(functor, in, acc));
     }
     return agg;
   }
 };
 
 
-template <size_t N, size_t K, class Functor, class AggFunctor, typename ElementType>
-HOST_DEVICE_INLINE ElementType loops(Functor functor, ElementType aggInit, AggFunctor aggFunctor,
+template <size_t N, size_t K, class Functor, class AggFunctor, typename ElementType, typename AccType>
+HOST_DEVICE_INLINE AccType loops(Functor functor, AccType aggInit, AggFunctor aggFunctor,
                                      functional::Array<functional::Tensor<ElementType>, K>& in,
                     const functional::Array<int, N>& length,
                     const functional::Array<int, N>& dim) {

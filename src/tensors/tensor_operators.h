@@ -24,19 +24,6 @@
 
 namespace marian {
 
-template <typename InIt, typename OutIt>
-void copy(Ptr<Backend> backend, const InIt beg, const InIt end, OutIt it) {
-#ifdef CUDA_FOUND
-  if(backend->getDeviceId().type == DeviceType::gpu)
-    gpu::copy(backend, beg, end, it);
-  else
-#endif
-    std::copy(beg, end, it);
-}
-
-DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor);
-DISPATCH4(IsNan, const Tensor, Ptr<Allocator>, bool&, bool&);
-
 template <class Functor, class... Tensors>
 void Element(Functor functor, marian::Tensor out, Tensors... tensors) {
 #ifdef CUDA_FOUND
@@ -47,11 +34,13 @@ void Element(Functor functor, marian::Tensor out, Tensors... tensors) {
     cpu::Element(functor, out, tensors...);
 }
 
+/* Reductions **********************************************************/
+
 template <class Functor, class... Tensors>
 void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
 #ifdef CUDA_FOUND
   if(out->getBackend()->getDeviceId().type == DeviceType::gpu)
-    gpu::Add(functor, scale, out, tensors...);
+    gpu::Add(functor, scale, out, tensors...); // avoid changing add.inc
   else
 #endif
     cpu::Aggregate(functor, 0.0f, functional::_1 + functional::_2, scale, out, tensors...);
@@ -82,7 +71,9 @@ void Reduce(Functor functor,
 }
 
 template <class Functor, class... Tensors>
-void Reduce(Functor functor, marian::Tensor out, Tensors... tensors) {
+void Reduce(Functor functor, 
+            marian::Tensor out, 
+            Tensors... tensors) {
   out->set(0.f);
   Add(functor, out, tensors...);
 }
@@ -94,6 +85,21 @@ void Reduce(Functor functor, AggFunctor aggFunctor, float aggInit,
   out->set(aggInit);
   Aggregate(functor, aggInit, aggFunctor, out, tensors...);
 }
+
+/***********************************************************************/
+
+template <typename InIt, typename OutIt>
+void copy(Ptr<Backend> backend, const InIt beg, const InIt end, OutIt it) {
+#ifdef CUDA_FOUND
+  if(backend->getDeviceId().type == DeviceType::gpu)
+    gpu::copy(backend, beg, end, it);
+  else
+#endif
+    std::copy(beg, end, it);
+}
+
+DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor);
+DISPATCH4(IsNan, const Tensor, Ptr<Allocator>, bool&, bool&);
 
 // clang-format off
 DISPATCH7(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float)

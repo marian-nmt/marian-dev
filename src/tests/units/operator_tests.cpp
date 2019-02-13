@@ -204,7 +204,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     values.clear();
 
     std::vector<T> vA({1, 6, 3, 8,
-                           5, 2, 7, 4});
+                       5, 2, 7, 4});
     // import numpy as np
     // a = np.array([[1, 6, 3, 8], [5, 2, 7, 4]])
     std::vector<T> vS1({6, 8, 10, 12});              // s1 = np.sum(a, axis=0)

@@ -87,6 +87,7 @@ int main() {
     options->set("learn-rate", 0.005);
 
     auto opt = New<Adam>(options);
+    opt->setAllocator(graph->allocator());
 
     for(size_t epoch = 1; epoch <= MAX_EPOCHS; ++epoch) {
       // Shuffle data in each epochs

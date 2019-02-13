@@ -48,37 +48,24 @@ public:
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
 
   Expr addPositionalEmbeddings(Expr input, int start = 0) const {
-    int dimMax = opt<int>("max-length");
-    int dimEmb = input->shape()[-1];
+    int dimEmb   = input->shape()[-1];
     int dimWords = input->shape()[-3];
 
-    auto posEmb = [](Tensor t) {
-      int dimEmb = t->shape()[-1];
-      int dimMax = t->shape()[-2];
+    float num_timescales = (float)dimEmb / 2;
+    float log_timescale_increment = std::log(10000.f) / (num_timescales - 1.f);
 
-      int num_timescales = dimEmb / 2;
-      float log_timescale_increment = std::log(10000.f) / (num_timescales - 1.f);
-
-      std::vector<float> vPos(dimEmb * dimMax, 0.f);
-      for(int p = 0; p < dimMax; ++p) {
-        for(int i = 0; i < num_timescales; ++i) {
-          float v = p * std::exp(i * -log_timescale_increment);
-          vPos[p * dimEmb                  + i] = std::sin(v);
-          vPos[p * dimEmb + num_timescales + i] = std::cos(v);
-        }
+    std::vector<float> vPos(dimEmb * dimWords, 0);
+    for(int p = start; p < dimWords + start; ++p) {
+      for(int i = 0; i < num_timescales; ++i) {
+        float v = p * std::exp(i * -log_timescale_increment);
+        vPos[(p - start) * dimEmb + i] = std::sin(v);
+        vPos[(p - start) * dimEmb + (int)num_timescales + i] = std::cos(v); // @TODO: is int vs. float correct for num_timescales?
       }
-      t->set(vPos);
-    };
-    auto posEmbInit = New<inits::LambdaInitConvert>(posEmb);
+    }
 
-    // @TODO: understand the +2 based on pytorch
-    auto Wpos = graph_->param("Wpos", {dimMax + 2, dimEmb}, posEmbInit, /*fixed=*/true);
-
-    std::vector<IndexType> positions(dimWords);
-    std::iota(positions.begin(), positions.end(), start + 2);
-
-    auto signal = reshape(rows(Wpos, positions), {dimWords, 1, dimEmb});
-
+    // shared across batch entries
+    auto signal
+        = graph_->constant({dimWords, 1, dimEmb}, inits::fromVector(vPos));
     return input + signal;
   }
 
@@ -147,7 +134,7 @@ public:
     int dimModel = x->shape()[-1];
     auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
     auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
-    return marian::layerNorm(x, scale, bias, 1e-5f);
+    return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
   Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
@@ -227,7 +214,6 @@ public:
 
     // multiplicative attention with flattened softmax
     float scale = 1.0f / std::sqrt((float)dk); // scaling to avoid extreme values due to matrix multiplication
-
     auto z = bdot(q, k, false, true, scale); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
 
     // mask out garbage beyond end of sequences
@@ -240,12 +226,12 @@ public:
       collectOneHead(weights, dimBeam);
 
     // optional dropout for attention weights
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout-attention");
+    float dropProb
+        = inference_ ? 0 : opt<float>("transformer-dropout-attention");
     weights = dropout(weights, dropProb);
 
     // apply attention weights to values
     auto output = bdot(weights, v);   // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
-
     return output;
   }
 
@@ -383,7 +369,7 @@ public:
 
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)
-      output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
+      output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb); // @TODO: for fp16 training, NaNs appear here...
     output = dense(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
 
     auto opsPost = opt<std::string>("transformer-postprocess");
@@ -558,8 +544,10 @@ public:
       batchEmbeddings = dropout(batchEmbeddings, dropoutSrc, {srcWords, 1, 1});
     }
     // according to paper embeddings are scaled up by \sqrt(d_m)
+
     float scale = std::sqrt((float)dimEmb);
     auto scaledEmbeddings = scale * batchEmbeddings;
+
     scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings);
 
     // reorganize batch and timestep
@@ -714,7 +702,8 @@ public:
     // Used for position embeddings and creating new decoder states.
     int startPos = (int)state->getPosition();
 
-    scaledEmbeddings = addPositionalEmbeddings(scaledEmbeddings, startPos);
+    scaledEmbeddings
+      = addPositionalEmbeddings(scaledEmbeddings, startPos);
 
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
 

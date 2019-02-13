@@ -23,12 +23,12 @@ public:
   : ExponentialSmoothing(options),
     options_(options),
     eta_(options_->get<float>("learn-rate")),
-    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")) {
+    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref", 0)) {
 
-    auto precisions = options_->get<std::vector<std::string>>("precision");
+    auto precisions = options_->get<std::vector<std::string>>("precision", {"float32", "float32"});
     optimizerType_ = typeFromString(precisions[1]);
 
-    float clipNorm = options->get<float>("clip-norm");
+    float clipNorm = options->get<float>("clip-norm", 0.f);
     if(clipNorm > 0)
       clipper_ = New<NormClipper>(clipNorm);
     else

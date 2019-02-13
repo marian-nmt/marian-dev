@@ -18,14 +18,14 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
 
-    ABORT("fp16 support here is wrong");
-    if(options_->get<bool>("fp16"))
-      graph->setParameterType(Type::float16);
+    auto precisions = options_->get<std::vector<std::string>>("precision");
+    graph->setParameterType(typeFromString(precisions[0]));
 
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graphs_.push_back(graph);
     shardOpt_.push_back(Optimizer(options_));
+    shardOpt_.back()->setAllocator(graph->allocator());
 
     builders_.push_back(models::from_options(options_, models::usage::training));
   }

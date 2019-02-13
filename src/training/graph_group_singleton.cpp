@@ -14,7 +14,7 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
   auto loss = builder_->build(graph_, batch);
   if(costScaleFactor_ != 1.f) {
     // for fp16 training, it's ok to go out of scope, we do not use the scaled version for anything
-    auto costNode = loss.loss() * costScaleFactor_;
+    auto costNode = loss->loss() * costScaleFactor_;
   }
 
   graph_->forward();

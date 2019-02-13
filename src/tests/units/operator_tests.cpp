@@ -360,9 +360,9 @@ void tests(DeviceType device, Type floatType = Type::float32) {
                             4, 5, 6, 2.3, 6.7,
                             7, 8, 9, 3.4, 7.8,
                             1, 1, 2, 4.5, 8.9});
-      auto S  = graph->param("S",  { 2, 4 }, inits::from_vector(vS));
-      auto D  = graph->param("D",  { 4, 5 }, inits::from_vector(vD));
-      auto DT = graph->param("DT", { 5, 4 }, inits::from_vector(vD)); // example matrix with transposed dimensions
+      auto S  = graph->param("S",  { 2, 4 }, inits::fromVector(vS));
+      auto D  = graph->param("D",  { 4, 5 }, inits::fromVector(vD));
+      auto DT = graph->param("DT", { 5, 4 }, inits::fromVector(vD)); // example matrix with transposed dimensions
       std::vector<float> SV;    // create CSR version of S
       std::vector<IndexType> SI, SO;
       SO.push_back((IndexType)SI.size());
@@ -381,15 +381,15 @@ void tests(DeviceType device, Type floatType = Type::float32) {
       auto STxSxDd = dot(S, SxDd, /*transA=*/true);
       auto SxDs = csr_dot( // sparse x dense
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), Type::float32),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             D);
       auto STxSxDs = csr_dot(   // transpose(sparse) x dense; we use result of previous since dimensions match
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), Type::float32),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             SxDd, /*transS=*/true);
 
       auto DTxSTd   = dot(DT,     S, /*transA=*/false, /*transB=*/true);
@@ -397,16 +397,16 @@ void tests(DeviceType device, Type floatType = Type::float32) {
       auto DTxSTs = dot_csr( // dense x sparse
             DT,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), Type::float32),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             /*transS=*/true);
       auto DTxSTxSs = dot_csr( // dense x transpose(sparse)
             DTxSTd,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32));
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), Type::float32),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32));
 
       CHECK(SxDs->shape() == SxDd->shape());
       CHECK(STxSxDs->shape() == STxSxDd->shape());
@@ -699,7 +699,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(D2->type() == "gather");
     // enable this once gather() supports batched indices:
     //auto D4 = gather(C, 1, graph->constant({2, 2, 1}, // [C[0,(2,1),:],C[1,(0,2),:]]
-    //                                       inits::from_vector(std::vector<IndexType>{
+    //                                       inits::fromVector(std::vector<IndexType>{
     //                                         2, 1,
     //                                         0, 2 }),
     //                                       Type::uint32));
@@ -736,7 +736,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     std::vector<T> vA({0, .3333, -.2, -.3, 0, 4.5, 5.2, -10, 101.45, -100.05, 0, 1.05e-5});
     std::vector<IndexType> indices({0, 2});
 
-    auto A = graph->param("4x3", {4, 3}, inits::from_vector(vA));
+    auto A = graph->param("4x3", {4, 3}, inits::fromVector(vA));
     auto B1 = rows(A, indices);
     auto B2 = gather(A, 0, graph->indices(indices, A, 0));
     auto C1 = cols(A, indices);

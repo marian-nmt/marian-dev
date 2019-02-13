@@ -41,7 +41,7 @@ __global__ void gAggregateGeneric(Functor functor, AccType aggInit, AggFunctor a
   }
 }
 
-template <size_t K, class Functor, class AggFunctor, typename T>
+template <size_t K, class Functor, class AggFunctor, typename T, typename AccType>
 __global__ void gAggregateEqual(Functor functor, AggFunctor aggFunctor,
                                 functional::Tensor<T> out,
                                 functional::Array<functional::Tensor<T>, K> ins,
@@ -185,9 +185,9 @@ void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
   auto addFunctor = functional::_1 + functional::_2;
 
   if(out->type() == Type::float32) {
-    AggregateTyped<float, float>(functor, (AccType)0.f, addFunctor, (AccType)scale, out, tensors...);
+    AggregateTyped<float, float>(functor, 0.f, addFunctor, scale, out, tensors...);
   } else if(out->type() == Type::float16) {
-    AggregateTyped<half,  float>(functor, (AccType)0.f, addFunctor, (AccType)scale, out, tensors...);
+    AggregateTyped<half,  float>(functor, 0.f, addFunctor, scale, out, tensors...);
   } else {
     ABORT("Type {} not yet supported", out->type());
   }

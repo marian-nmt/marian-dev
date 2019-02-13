@@ -592,9 +592,8 @@ __global__ void gSoftmax(T* out,
       T max = _max[0];
       __syncthreads();
 
-      AccType* _sum = _shareAccType; // accumulate into AccType
       // compute denominator
-      float* _sum = _share;
+      AccType* _sum = _shareAccType; // accumulate into AccType
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
@@ -618,11 +617,11 @@ __global__ void gSoftmax(T* out,
       __syncthreads();
 
       // produce final output data
-      float sum = _sum[0];
+      AccType sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          so[i] = (T)((AccType)so[i] / _sum[0]); // divide as AccType then convert
+          so[i] = (T)((AccType)so[i] / sum); // divide as AccType then convert
         }
       }
     }
@@ -718,10 +717,11 @@ __global__ void gLogSoftmax(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
+      AccType sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols)
-          so[id] -= (T)Ops<AccType>::log(_sum[0]); // take log at the end and convert
+          so[id] -= (T)Ops<AccType>::log(sum); // take log at the end and convert
       }
     }
     __syncthreads();
@@ -1829,7 +1829,6 @@ void LayerNormalization(Tensor out,
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = threads * sizeof(float);
 
-<<<<<<< HEAD
   if(out->type() == Type::float32) {
     gLNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
                                                  in->data<float>(),

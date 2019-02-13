@@ -83,7 +83,10 @@ int main() {
     graph->reserveWorkspaceMB(128);
 
     // Choose optimizer (Sgd, Adagrad, Adam) and initial learning rate
-    auto opt = Optimizer<Adam>(0.005, 1.f);
+    auto options = New<Options>();
+    options->set("learn-rate", 0.005);
+
+    auto opt = New<Adam>(options);
 
     for(size_t epoch = 1; epoch <= MAX_EPOCHS; ++epoch) {
       // Shuffle data in each epochs

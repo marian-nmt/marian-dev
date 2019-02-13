@@ -2,8 +2,8 @@
 
 namespace marian {
 
-SyncGraphGroup::SyncGraphGroup(Ptr<Options> config, Ptr<IMPIWrapper> mpi)
-    : GraphGroup(config), ExponentialSmoothing(config),
+SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
+    : GraphGroup(options),
       delay_{options_->get<double>("optimizer-delay")}, mpi_(mpi) { // @TODO: rename delay_ to something else; delay means delayed updated, not accumulation
 
   devices_ = Config::getDevices(options_, mpi_->myMPIRank(), mpi_->numMPIProcesses());
@@ -358,7 +358,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
       auto rationalLoss = builders_[localDeviceIndex]->build(graph, subBatch);
       if(costScaleFactor_ != 1.f)
-        rationalLoss.loss() * costScaleFactor_;
+        rationalLoss->loss() * costScaleFactor_;
       graph->forward();
 
       StaticLoss tempLoss = *rationalLoss; // needed for overstuff
@@ -431,7 +431,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   comm_->scatterReduceAndResetGrads();      // reduce gradients across all devices (globally) into shards
   bool noNanOrInf = costScale_ ? comm_->foreach(checkNan) : true; // @TODO: does this work with MPI?
-  float gradNorm = 0.f;
+  float gradNorm = 0.f; gradNorm; // @TODO: add gradnorm to scheduler
   if(noNanOrInf) {
     auto accNorms = [](float& lhs, float rhs) {
       lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, apply sqrt.

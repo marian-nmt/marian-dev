@@ -33,7 +33,7 @@ protected:
 
 public:
   GraphGroup(Ptr<Options> options) : options_(options) {
-    if(options_->has("cost-scaling")) {
+    if(options_->hasAndNotEmpty("cost-scaling")) {
       auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
       costScale_ = true;
       float costExponent = std::stof(vcs[0]);

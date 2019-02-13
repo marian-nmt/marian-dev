@@ -133,7 +133,6 @@ void ProdTyped(marian::Tensor C,
 #endif
 }
 
-<<<<<<< HEAD:src/tensors/gpu/prod.cu
 void Prod(marian::Tensor C,
           const marian::Tensor& A,
           const marian::Tensor& B,
@@ -339,7 +338,7 @@ void CSRProd(marian::Tensor C,
   ABORT_IF(numOffsets != rowsS, "Unexpected number of rows in CSR argument");
   ABORT_IF(S_values->shape() != S_indices->shape(), "CSR values and indices must have the same size");
   float alpha = 1;
-  Ptr<MemoryPiece> St_values, St_indices, St_offsets;
+  IPtr<MemoryPiece> St_values, St_indices, St_offsets;
   if (transS != swapOperands) {
     // Cusparse gemmi() does not support this specific version of transpose, and csrmm() is non-deterministic.
     // Hence, we transpose the matrix explicitly.

@@ -73,7 +73,7 @@ public:
                      bool /*clean*/ = false) override {
     
     auto loss   = construct(graph, batch, inference_); // @TODO: unify nomenclature, e.g. rather use apply
-    auto count = graph->constant({(int)batch->size(), 1}, inits::from_value(1.f));
+    auto count = graph->constant({(int)batch->size(), 1}, inits::fromValue(1.f));
 
     return New<RationalLoss>(loss, count);
   }

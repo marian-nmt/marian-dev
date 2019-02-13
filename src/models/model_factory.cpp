@@ -51,9 +51,6 @@ Ptr<DecoderBase> DecoderFactory::construct(Ptr<ExpressionGraph> graph) {
     return New<DecoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return NewDecoderTransformer(options_);
-  if(options_->get<std::string>("type") == "classifier") {
-    return New<Classifier>(options_);
-  }
   ABORT("Unknown decoder type");
 }
 
@@ -264,28 +261,7 @@ Ptr<ModelBase> by_type(std::string type, usage use, Ptr<Options> options) {
         .construct(graph);
   }
 
-  if(type == "transformer-classifier") {
-    auto idx = options->has("index") ? options->get<size_t>("index") : 0;
-    std::vector<int> dimVocabs = options->get<std::vector<int>>("dim-vocabs");
-    int vocab = dimVocabs[0];
-    dimVocabs.resize(idx + 1);
-    std::fill(dimVocabs.begin(), dimVocabs.end(), vocab);
-
-    return models::encoder_decoder()(options)
-        ("usage", use)
-        ("type", "transformer")
-        ("original-type", type)
-            .push_back(models::encoder()
-                       ("index", idx)
-                       ("dim-vocabs", dimVocabs))
-            .push_back(models::decoder()
-                       ("type", "classifier")
-                       ("classes", 2))
-            .construct();
-  }
-
 #ifdef COMPILE_EXAMPLES
-  // @TODO: examples should be compiled optionally
   if(type == "mnist-ffnn") {
     auto mnist = New<MnistFeedForwardNet>(options);
     if(use == usage::scoring)

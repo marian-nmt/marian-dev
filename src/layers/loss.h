@@ -29,7 +29,7 @@ public:
 
   RationalLoss(Expr loss, float count)
   : loss_(loss),
-    count_(constant_like(loss, inits::from_value(count))) {}
+    count_(constant_like(loss, inits::fromValue(count))) {}
 
   RationalLoss(const RationalLoss& other)
   : loss_(other.loss_), count_(other.count_) {}
@@ -345,7 +345,8 @@ protected:
       // and H(u,p) penalizes deviation of p from u, u being uniform distribution over vocab V => u_v = 1/|V|.
       // H(u,p) = - \sum_{v \in V} u_v * \log p_v = - 1/|V| \sum_{v \in V} \log \softmax_v => -mean(logsoftmax(logits))
       // ceq = -H(u,p) - avoid one kernel call by negating in the interpolation below
-      Expr ceq = mean(cast(logsoftmax(logits), /*axis=*/ -1), Type::float32);
+      
+      Expr ceq = mean(cast(logsoftmax(logits), Type::float32), /*axis=*/ -1); // @TODO: this is expensive for float32! Integrate with CE
 
       // H(q',p) = (1 - eps) * H(q,p) - eps * -H(u,p)
       ce = (1 - labelSmoothing_) * ce - labelSmoothing_ * ceq;

@@ -406,7 +406,7 @@ struct SwishNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SwishNodeOp> cnode = std::dynamic_pointer_cast<SwishNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SwishNodeOp>(node);
     if(!cnode)
       return false;
     if(b_ != cnode->b_)
@@ -566,7 +566,7 @@ struct ReduceNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ReduceNodeOp> cnode = std::dynamic_pointer_cast<ReduceNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ReduceNodeOp>(node);
     if(!cnode)
       return false;
     if(axis_ != cnode->axis_ || opCode_ != cnode->opCode_)
@@ -917,7 +917,6 @@ public:
 
   Tensor& grad() override {
     auto childGrad = viewedNode_->grad();
-    size_t offset = step_ * shape().elements() * sizeof(float); // TODO: make type safe
     auto mem = MemoryPiece::New(childGrad->memory()->data() + byteOffset_, byteSize_);
     auto temp = TensorBase::New(mem, shape(), childGrad->type(), childGrad->getBackend());
     adj_.swap(temp);
@@ -942,7 +941,7 @@ public:
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SliceViewNodeOp> cnode = std::dynamic_pointer_cast<SliceViewNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SliceViewNodeOp>(node);
     if(!cnode)
       return false;
     if(slice_ != cnode->slice_)

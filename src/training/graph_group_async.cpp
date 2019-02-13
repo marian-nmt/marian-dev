@@ -6,7 +6,7 @@
 namespace marian {
 
 AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
-    : GraphGroup(config),
+    : GraphGroup(options),
       devices_{Config::getDevices(options_)},
       shardSync_(devices_.size()),
       optimizerDelay_((size_t)options_->get<double>("optimizer-delay")) {
@@ -18,7 +18,7 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
 
-    ABORT("fp16 support here is wrong")
+    ABORT("fp16 support here is wrong");
     if(options_->get<bool>("fp16"))
       graph->setParameterType(Type::float16);
 
@@ -215,7 +215,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     Ptr<RationalLoss> dynamicLoss = builder->build(graph, batch);
     if(costScaleFactor_ != 1.f) {
       // it's ok to go out of scope, this will still insert the new top node into the graph
-      auto costNode = dynamicLoss.loss() * costScaleFactor_;
+      auto costNode = dynamicLoss->loss() * costScaleFactor_;
     }
 
     if(t % optimizerDelay_ == 0) {

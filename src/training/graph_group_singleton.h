@@ -22,7 +22,7 @@ private:
 
 public:
   SingletonGraph(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
-      : GraphGroup(config) {
+      : GraphGroup(options) {
     ABORT_IF(mpi->numMPIProcesses() != 1, "SingletonGraph does not support multiple MPI processes");
     // Get device ID
     auto devices = Config::getDevices(options_);

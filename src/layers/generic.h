@@ -234,7 +234,7 @@ public:
 
     auto batchEmbeddings = apply(subBatch->data(), { dimWords, dimBatch, dimEmb });
     auto batchMask = graph->constant({ dimWords, dimBatch, 1 },
-                                     inits::from_vector(subBatch->mask()));
+                                     inits::fromVector(subBatch->mask()));
     return std::make_tuple(batchEmbeddings, batchMask);
   }
 
@@ -344,7 +344,7 @@ public:
     auto batchEmbeddings = reshape(chosenEmbeddings_mix, { dimWords, dimBatch, dimEmb });
     auto graph = ulrEmbeddings_.front()->graph();
     auto batchMask = graph->constant({ dimWords, dimBatch, 1 },
-                                     inits::from_vector(subBatch->mask()));
+                                     inits::fromVector(subBatch->mask()));
     return std::make_tuple(batchEmbeddings, batchMask);
   }
 

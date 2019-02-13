@@ -58,7 +58,8 @@ void fill(Ptr<Backend> backend, T* begin, T* end, T value) {
   CUDA_CHECK(cudaStreamSynchronize(0));
 }
 
-void fill(Ptr<Backend> backend, float16* begin, float16* end, float16 value) {
+template <>
+void fill<float16>(Ptr<Backend> backend, float16* begin, float16* end, float16 value) {
   int size = end - begin;
   if (size == 0)
     return;

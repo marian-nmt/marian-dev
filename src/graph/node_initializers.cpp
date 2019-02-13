@@ -206,7 +206,7 @@ Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
       }
     }
 
-    fromVector(vPos)(t);
+    (*fromVector(vPos))(t);
   });
 }
 

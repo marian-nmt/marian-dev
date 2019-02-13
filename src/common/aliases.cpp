@@ -19,6 +19,11 @@ namespace marian {
  * regardless of its order in the command line or config file.
  */
 void ConfigParser::addAliases(cli::CLIWrapper& cli) {
+  cli.alias("fp16", "true", [](YAML::Node& config) {
+    config["precision"] = std::vector<std::string>({"float16", "float32"});
+    config["cost-scaling"] = std::vector<std::string>({"7", "2000", "2", "0.05"});
+  });
+
   // Options setting the BiDeep architecture proposed in http://www.aclweb.org/anthology/W17-4710
   cli.alias("best-deep", "true", [](YAML::Node& config) {
     // Model options

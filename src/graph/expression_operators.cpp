@@ -618,24 +618,9 @@ Expr highway(const std::string prefix, Expr x) {
   // clang-format on
 }
 
-// Expr batch_norm(Expr x, Expr gamma, Expr beta) {
-//  auto mju = mean(x, keywords::axis=0);
-//  auto xmmju = x - mju;
-//  auto std = sqrt(mean(square(xmmju), keywords::axis=0), 1e-9);
-//
-//  if(beta)
-//    return gamma * (xmmju / std) + beta;
-//  else
-//    return gamma * (xmmju / std);
-//}
-
 Expr shift(Expr a, Shape shift, float padValue) {
   return Expression<ShiftNodeOp>(a, shift, padValue);
 }
-
-// Expr lexical_bias(Expr logits, Expr att, float eps, Ptr<sparse::CSR> lf) {
-//  return Expression<LexicalProbNodeOp>(logits, att, eps, lf);
-//}
 
 #ifdef CUDA_FOUND
 #ifdef CUDNN

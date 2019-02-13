@@ -213,7 +213,7 @@ public:
 
     bool fixed = opt<bool>("fixed", false);
 
-    auto initFunc = inits::glorotNormal(/*fanIn=*/false, /*fanOut=*/true);
+    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true);
 
     if (options_->has("embFile")) {
       std::string file = opt<std::string>("embFile");

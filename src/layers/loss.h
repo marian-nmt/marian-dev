@@ -243,7 +243,7 @@ private:
     if(count_)
       return count_; // keep the existing '1'
     else
-      return current.count()->graph()->ones({1}); // just '1' as labels are factored into loss_
+      return current.count()->graph()->ones({1}, current.loss()->value_type()); // just '1' as labels are factored into loss_
   }
 
 public:
@@ -276,7 +276,7 @@ protected:
     ABORT_IF(!labels, "Labels have not been computed");
 
     Expr lossSum   = cast(loss, Type::float32); // accumulate in float32
-    Expr labelsSum = labels;
+    Expr labelsSum = cast(labels, Type::float32);
     for(int i = 0; i < axes_.size(); ++i) {
       lossSum   = sum(lossSum, axes_[i]);
       labelsSum = sum(labelsSum, axes_[i]);
@@ -345,7 +345,7 @@ protected:
       // and H(u,p) penalizes deviation of p from u, u being uniform distribution over vocab V => u_v = 1/|V|.
       // H(u,p) = - \sum_{v \in V} u_v * \log p_v = - 1/|V| \sum_{v \in V} \log \softmax_v => -mean(logsoftmax(logits))
       // ceq = -H(u,p) - avoid one kernel call by negating in the interpolation below
-      
+
       Expr ceq = mean(cast(logsoftmax(logits), Type::float32), /*axis=*/ -1); // @TODO: this is expensive for float32! Integrate with CE
 
       // H(q',p) = (1 - eps) * H(q,p) - eps * -H(u,p)

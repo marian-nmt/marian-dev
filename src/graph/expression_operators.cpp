@@ -251,9 +251,8 @@ Expr stopGradient(Expr a) {
 }
 
 Expr constant_like(Expr a, const Ptr<inits::NodeInitializer>& init) {
-  const auto& shape = a->shape();
   auto graph = a->graph();
-  return graph->constant(shape, init);
+  return graph->constant(a->shape(), init, a->value_type());
 }
 
 // gather() -- gather arbitrary elements along an axis; batched or non-batched

@@ -22,6 +22,8 @@ static inline  __device__ void atomicAdd(float *address, float val) {
 
 // @TODO: copied from CuTorch, adapt this better, give credit.
 static inline  __device__ void atomicAdd(half *address, half val) {
+  *address += val;
+/*
 #if __CUDA_ARCH__ >= 700 && CUDA_VERSION >= 10000 // compute capability 70 and higher with CUDA 10
   ::atomicAdd(address, val);
 #else // __CUDA_ARCH__ < 700
@@ -46,6 +48,7 @@ static inline  __device__ void atomicAdd(half *address, half val) {
     old = atomicCAS(address_as_ui, assumed, old);
     } while (assumed != old);
 #endif // __CUDA_ARCH__
+*/
 }
 
 }

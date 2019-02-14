@@ -363,13 +363,14 @@ protected:
 
           builder->clear(graph);
           auto classifierStates = std::dynamic_pointer_cast<BertEncoderClassifier>(builder)->apply(graph, bertBatch, true);
-          graph->forward();
 
-          auto maskedLMLogits = classifierStates[0]->getLogProbs();
+          auto maskedLMLogits = cast(classifierStates[0]->getLogProbs(), Type::float32);
           const auto& maskedLMLabels = bertBatch->bertMaskedWords();
 
-          auto sentenceLogits = classifierStates[1]->getLogProbs();
+          auto sentenceLogits = cast(classifierStates[1]->getLogProbs(), Type::float32);
           const auto& sentenceLabels = bertBatch->back()->data();
+
+          graph->forward();
 
           auto count = [=, &correct, &totalLabels](Expr logits, const std::vector<IndexType>& labels) {
             IndexType cols = logits->shape()[-1];

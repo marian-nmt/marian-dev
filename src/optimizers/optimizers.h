@@ -23,12 +23,12 @@ public:
   : ExponentialSmoothing(options),
     options_(options),
     eta_(options_->get<float>("learn-rate")),
-    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref")) {
+    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref", 0)) {
 
-    auto precisions = options_->get<std::vector<std::string>>("precision");
+    auto precisions = options_->get<std::vector<std::string>>("precision", {"float32", "float32"});
     optimizerType_ = typeFromString(precisions[1]);
 
-    float clipNorm = options->get<float>("clip-norm");
+    float clipNorm = options->get<float>("clip-norm", 0.f);
     if(clipNorm > 0)
       clipper_ = New<NormClipper>(clipNorm);
     else
@@ -39,7 +39,7 @@ public:
     // that these hyper-parameters were originally tuned for, then the learning-rate gets
     // adjusted accordingly. Note: Requires user to also use ce-sum criterion.
     if (refMBWordsParam_ != 0)
-      LOG(info, "Note: Learning rate gets automatically adjusted as if minibatch size was {}", refMBWordsParam_);
+      LOG(info, "[optimizers] Learning rate gets automatically adjusted as if minibatch size was {}", refMBWordsParam_);
   }
 
   virtual ~OptimizerBase() {}
@@ -81,8 +81,8 @@ public:
 
   virtual void setParams(const std::vector<float>& params) = 0;
 
-  virtual void setAllocator(Ptr<Allocator> allocator) { 
-    allocator_ = allocator; 
+  virtual void setAllocator(Ptr<Allocator> allocator) {
+    allocator_ = allocator;
     if(clipper_)
       clipper_->setAllocator(allocator);
   }

@@ -99,7 +99,7 @@ struct TernaryFunctor {
   namespace elem {                                                         \
   struct name {                                                            \
     template <typename ElementType>                                        \
-    HOST_DEVICE_INLINE static ElementType apply(ElementType x,                        \
+    HOST_DEVICE_INLINE static ElementType apply(ElementType x,             \
                                      ElementType y,                        \
                                      ElementType z)                        \
     { return func; }                                                       \

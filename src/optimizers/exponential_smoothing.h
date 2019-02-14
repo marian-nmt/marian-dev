@@ -14,8 +14,8 @@ namespace marian {
 class ExponentialSmoothing {
 public:
     ExponentialSmoothing(Ptr<Options> options) {
-      mvDecayBy_ = options->get<float>("exponential-smoothing");
-      refBatchTrgWords_ = options->get<size_t>("mini-batch-words-ref"); // adjust as if our MB size (in target labels) was this value
+      mvDecayBy_ = options->get<float>("exponential-smoothing", 0);
+      refBatchTrgWords_ = options->get<size_t>("mini-batch-words-ref", 0); // adjust as if our MB size (in target labels) was this value
       mvAvg_ = (mvDecayBy_ > 0);
     }
 

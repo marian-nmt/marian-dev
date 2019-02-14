@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
   {
     auto w = New<CLIWrapper>(options);
     w->add<int>("-i,--int", "help message")->implicit_val("555")->default_val("123");
-    w->add<std::string>("-s,--str", "help message")->default_val("foo");
+    w->add<std::string>("-s,--str", "help message");
     w->add<std::vector<float>>("-v,--vec", "help message")->expected(-2);
     w->switchGroup("My group");
     w->add<std::vector<std::string>>("--defvec,-d", "help message")->default_val("foo");
@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     w->add<bool>("-x,--xbool", "false boolean option", true);
     w->add<std::string>("--a-very-long-option-name-for-testing-purposes", "A very long text a very long text a very long text a very long text a very long text a very long text");
     w->switchGroup();
-    w->add<std::string>("-f,--file", "help message")->check(validators::file_exists);
+    //w->add<std::string>("-f,--file", "help message")->check(validators::file_exists);
     //w.add<color>("-e,--enum", "help message for enum");
 
     w->parse(argc, argv);
@@ -61,11 +61,16 @@ int main(int argc, char** argv) {
   options->get<std::vector<std::string>>("defvec");
   options->get<bool>("bool");
   //w.get<std::string>("long");
-  options->get<std::string>("file");
+  //options->get<std::string>("file");
   //w.get<color>("enum");
 
   YAML::Emitter emit;
   OutputYaml(options->getYaml(), emit);
   std::cout << emit.c_str() << std::endl;
+
+  std::cout << "===" << std::endl;
+  std::cout << "vec/str.hasAndNotEmpty? " << options->hasAndNotEmpty("vec") << " " << options->hasAndNotEmpty("str") << std::endl;
+  std::cout << "vec/str.has?      " << options->has("vec") << " " << options->has("str") << std::endl;
+
   return 0;
 }

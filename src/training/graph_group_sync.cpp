@@ -2,11 +2,9 @@
 
 namespace marian {
 
-SyncGraphGroup::SyncGraphGroup(Ptr<Options> config)
-    : GraphGroup(config),
-      delay_{options_->get<double>("optimizer-delay")} { // @TODO: rename to something else; delay means delayed updated, not accumulation
-
-  mpi_ = initMPI(/*multiThreaded=*/false); // when not running under MPI, this will be a fake object that represents a one-MPI-process setup
+SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
+    : GraphGroup(options),
+      delay_{options_->get<double>("optimizer-delay")}, mpi_(mpi) { // @TODO: rename delay_ to something else; delay means delayed updated, not accumulation
 
   devices_ = Config::getDevices(options_, mpi_->myMPIRank(), mpi_->numMPIProcesses());
   for(auto device : devices_) {
@@ -114,7 +112,7 @@ void SyncGraphGroup::initializeAvg() {
   comm_->foreach(init, /*parallel=*/false); // @TODO: is sequential operation necessary here? (is the allocation stuff sufficiently reentrant or thread-separated?)
 }
 
-Ptr<data::BatchStats> SyncGraphGroup::collectStats() {
+Ptr<data::BatchStats> SyncGraphGroup::collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
   // This function determines the granularity in which the reader provides data.
   // If no mini-batch-fit, then user provides a constant number. It reads that much. We won't get into this function.
   // If mini-batch-fit, then we get here and set miniBatchFitMultiplier_. Then...
@@ -125,7 +123,7 @@ Ptr<data::BatchStats> SyncGraphGroup::collectStats() {
   bool isDynamic = scheduler_->isDynamicMBSizeScaling();
   double readerMultiplier = isDynamic ? 1. : multiplier; // multiplier applied already by reader
   updateMultiplier_ = isDynamic ? multiplier : 1.;       // multiplier applied later in update()
-  return GraphGroup::collectStats(graphs_[0], builders_[0], readerMultiplier);
+  return GraphGroup::collectStats(graphs_[0], builders_[0], vocabs, readerMultiplier);
 }
 
 // helper for MB scaling: quantize the ratio with a given error margin
@@ -344,65 +342,50 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   // Compute gradients
   // This happens in multiple steps in case of delay > 1.
-  std::vector<float> localDeviceCosts(devices_.size(), 0.f); // [local device index] aggregate cost for each local device
+  std::vector<StaticLoss> localDeviceLosses(devices_.size()); // [local device index] aggregate cost for each local device
 
   comm_->foreach([&](size_t localDeviceIndex, size_t /*begin*/, size_t /*end*/) { // parallel across devices. Aggregate for warp > 1.
     auto graph = graphs_[localDeviceIndex];
     // reset gradient  --presently done outside
     //graph->params()->allocateBackward();
-    //if (warp == 0) // these have already been sized
-    //  graph->params()->set_zero_adjoint();
+    //graph->params()->set_zero_adjoint();
+    // This happens in multiple steps if there are more subbatches than devices.
     for (size_t warp = 0; ; warp++) {
       // Execute single forward/backward step
       auto subBatch = getSubBatch(warp, localDeviceIndex, mpi_->myMPIRank());
       if (!subBatch)
         break;
 
-      auto costNode = builders_[localDeviceIndex]->build(graph, subBatch);
+      auto rationalLoss = builders_[localDeviceIndex]->build(graph, subBatch);
       if(costScaleFactor_ != 1.f)
-        costNode = costNode * costScaleFactor_;
-
+        rationalLoss->loss() * costScaleFactor_;
       graph->forward();
-      localDeviceCosts[localDeviceIndex] += costNode->scalar() / (costScaleFactor_ * (float)overstuff);
 
-      //float clipValue = options_->get<float>("clip-norm") * costScaleFactor_;
-      graph->backward(/*zero=*/false, 0); // (gradients are reset before we get here)
+      StaticLoss tempLoss = *rationalLoss; // needed for overstuff
+      tempLoss.loss /= (float)overstuff; // @TODO: @fseide: scale only loss? should this scale labels too?
 
-      // @TODO: remove again, only for debugging.
-      /*if(localDeviceIndex == 0 && mpi_->myMPIRank() == 0) {
-        Logger logger = spdlog::get("norms");
-        if(!logger)
-          logger = createStderrLogger("norms", "%v", { options_->get<std::string>("log") + ".norms"}, true);
-
-        if(scheduler_->numberOfBatches() % 100 == 0) {
-          for(auto p : *graph->params()) {
-            float norm = L2Norm(p->grad(), graph->allocator());
-            logger->info("{}\t{}\t{}", scheduler_->numberOfBatches(), p->name(), norm);
-          }
-        }
-      }*/
+      localDeviceLosses[localDeviceIndex] += tempLoss;
+      graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
 
-    // Handle local gradient explosion but only clip to largest possible value
-    // given number of GPUs and type. Should clip rarely. Also clips inf
-    // We do another clipping/rescaling after summation.
-    auto gradType = graph->params()->grads()->type();
-    if(sizeOf(gradType) < sizeOf(Type::float32)) {
-       using namespace functional;
-       float numGpus = mpi_->numMPIProcesses() * devices_.size();
-       float clipValue = NumericLimits<float>(gradType).max / numGpus;
-       Element(_1 = clip(_1, clipValue), graph->params()->grads());
-    }
+    // // Handle local gradient explosion but only clip to largest possible value
+    // // given number of GPUs and type. Should clip rarely. Also clips inf
+    // // We do another clipping/rescaling after summation.
+    // auto gradType = graph->params()->grads()->type();
+    // if(sizeOf(gradType) < sizeOf(Type::float32)) {
+    //    using namespace functional;
+    //    float numGpus = mpi_->numMPIProcesses() * devices_.size();
+    //    float clipValue = NumericLimits<float>(gradType).max / numGpus;
+    //    Element(_1 = clip(_1, clipValue), graph->params()->grads());
+    // }
 
     return true; // dummy success
   });
 
   // At this point, each device on each MPI process has a gradient aggregated over a subset of the sub-batches.
 
-  // If individual gradients were averages, then need to average again over all subBatches
-  float div = (float)subBatches.size();
-  if (options_->get<std::string>("cost-type") == "ce-sum")
-    div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
+  // only needed for overstuff now
+  float div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
 
   // check for Nan or Inf in all summed up shards
   auto checkNan = [&](size_t i, size_t begin, size_t end) {
@@ -418,9 +401,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
     auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
 
-    if(div != 1) {
+    if(div != 1.f) {
       using namespace functional;
-      Element(_1 = _1 / div, curGrad);   // average once again for ce-mean*, or scale down if overstuffed for ce-sum
+      Element(_1 = _1 / div, curGrad);   // average if overstuffed
     }
 
     // actual model update
@@ -448,12 +431,13 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   comm_->scatterReduceAndResetGrads();      // reduce gradients across all devices (globally) into shards
   bool noNanOrInf = costScale_ ? comm_->foreach(checkNan) : true; // @TODO: does this work with MPI?
-  float gradNorm = 0.f;
+  float gradNorm = 0.f; gradNorm; // @TODO: add gradnorm to scheduler
   if(noNanOrInf) {
     auto accNorms = [](float& lhs, float rhs) {
       lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, apply sqrt.
     };
 
+    // @TODO: log gradNorm
     gradNorm = comm_->foreach(update, accNorms, 0.f); // per-shard model-update
     comm_->allGatherParams(); // distribute param value shards back
   } else {
@@ -462,17 +446,13 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   }
 
   // cost across all local devices (scheduler will aggregate cross-process)
-  float localCost = 0;
-  for(auto& c : localDeviceCosts) // localDeviceCosts is already summed up over delay steps
-    localCost += c;
-
-  // if localCost is average-based, we need to turn the sum over devices into an average as well
-  if(options_->get<std::string>("cost-type") != "ce-sum")
-    localCost /= subBatches.size();
+  StaticLoss localLoss;
+  for(auto& l : localDeviceLosses) // localDeviceLosses is already summed up over delay steps
+    localLoss += l;
 
   if(scheduler_) {
-    // track and log localCost
-    scheduler_->update(localCost, gradNorm, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
+    // track and log localLoss
+    scheduler_->update(localLoss, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())
@@ -521,7 +501,7 @@ void SyncGraphGroup::load() /*override*/ {
           comm_->scatterState(optimizerState, setShardFn);
         });
       LOG(info, "[training] Model reloaded from {}", name);
-    } else if(options_->has("pretrained-model")) {
+    } else if(options_->hasAndNotEmpty("pretrained-model")) {
       std::string nameInit = options_->get<std::string>("pretrained-model");
       LOG(info,
           "[training] Initializing model weights with the pre-trained model {}",
@@ -591,11 +571,6 @@ void SyncGraphGroup::save(bool final) /*override*/ {
 void SyncGraphGroup::finalize() /*override*/ {
   validate();
   Base::finalize();
-}
-
-SyncGraphGroup::~SyncGraphGroup() /*override*/ {
-  comm_ = nullptr;
-  finalizeMPI(std::move(mpi_));
 }
 
 }  // namespace marian

@@ -175,41 +175,11 @@ endif(USE_STATIC_LIBS)
     list(APPEND CUDA_NVCC_FLAGS -DBOOST_PP_VARIADICS=0; )
   endif()
 
-  # We compile NCCL ourselves, using the NVidia Makefile rather than CMake, this requires to pass a couple of parameters from
-  # Cmake. This is also fairly untested, let's hope it does not explode.
-  # @TODO: Make sure it does not use pre-installed NCCL headers
   if(USE_NCCL)
-    # define and set the include dir for the generated nccl.h header
-    set(NCCL_HEADER_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/nccl/include")
-    include_directories(${NCCL_HEADER_LOCATION})
-
-    # set the path for the generated static lib
-    set(NCCL_LIB_STATIC "${CMAKE_CURRENT_BINARY_DIR}/nccl/lib/libnccl_static.a")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_NCCL")
-
-    LIST(APPEND CUDA_NVCC_FLAGS -DUSE_NCCL; )
-
-    # disables compilation for sm_30 to avoid ptxas warning... that's general Kepler support. But K80s are supported for instance by sm_35
-    set(GENCODE "-gencode=arch=compute_35,code=sm_35 -gencode=arch=compute_50,code=sm_50 -gencode=arch=compute_60,code=sm_60 -gencode=arch=compute_61,code=sm_61")
-
-    # We build using NVidia's custom makefile, for that we pass a number of variables from CMake.
-    # Sets output to the chosen build folder, i.e. where the binaries and objects are generated.
-    # Also passes CUDA location from FindCUDA, sets c++ compiler to the same one CMake uses.
-    add_custom_command(OUTPUT ${NCCL_LIB_STATIC}
-                       COMMAND ${CMAKE_MAKE_PROGRAM} -j8 src.build
-                       BUILDDIR=${CMAKE_CURRENT_BINARY_DIR}/nccl
-                       CUDA_HOME=${CUDA_TOOLKIT_ROOT_DIR}
-                       CUDA8_GENCODE=${GENCODE}
-                       CXX=${CMAKE_CXX_COMPILER}
-                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/3rd_party/nccl)
-    add_custom_target(nccl_target DEPENDS ${NCCL_LIB_STATIC})
     add_library(nccl STATIC IMPORTED)
-    set_target_properties(nccl PROPERTIES IMPORTED_LOCATION ${NCCL_LIB_STATIC})
-    add_dependencies(nccl nccl_target)
     set(EXT_LIBS ${EXT_LIBS} nccl)
-
-    # adds the resulting files to be removed by `make clean`
-    set_directory_properties(PROPERTY ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_CURRENT_BINARY_DIR}/nccl)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_NCCL")
+    LIST(APPEND CUDA_NVCC_FLAGS -DUSE_NCCL; )
   endif(USE_NCCL)
 
 if(USE_STATIC_LIBS)
@@ -231,7 +201,7 @@ else(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
   # @TODO: add warnings here too
-  list(APPEND CUDA_NVCC_FLAGS -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
+  list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
   list(APPEND CUDA_NVCC_FLAGS ${INTRINSICS_NVCC})
 else()
   list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; )

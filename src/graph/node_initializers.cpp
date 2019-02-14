@@ -188,6 +188,28 @@ Ptr<NodeInitializer> dummy() {
   return New<LambdaInit>([](Tensor /*t*/) { });
 }
 
+// Computes Google's sinusoidal position embeddings
+Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
+  return New<LambdaInitConvert>([start](Tensor t) {
+    int dimEmb   = t->shape()[-1];
+    int dimWords = (int)t->size() / dimEmb;
+
+    float numTimescales = (float)dimEmb / 2;
+    float logTimescaleIncrement = std::log(10000.f) / (numTimescales - 1.f);
+
+    std::vector<float> vPos(dimEmb * dimWords, 0);
+    for(int p = start; p < dimWords + start; ++p) {
+      for(int i = 0; i < numTimescales; ++i) {
+        float v = p * std::exp(i * -logTimescaleIncrement);
+        vPos[(p - start) * dimEmb + i                     ] = std::sin(v);
+        vPos[(p - start) * dimEmb + (int)numTimescales + i] = std::cos(v); // @TODO: is int vs. float correct for num_timescales?
+      }
+    }
+
+    (*fromVector(vPos))(t);
+  });
+}
+
 }  // namespace inits
 
 }  // namespace marian

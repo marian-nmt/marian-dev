@@ -10,13 +10,14 @@ void SingletonGraph::setScheduler(Ptr<Scheduler> scheduler) {
 }
 
 void SingletonGraph::execute(Ptr<data::Batch> batch) {
-  auto costNode = builder_->build(graph_, batch);
-  if(costScaleFactor_ != 1.f)
-    costNode = costNode * costScaleFactor_;
 
-  // @TODO: missing delay, or use only --sync-sgd
+  auto loss = builder_->build(graph_, batch);
+  if(costScaleFactor_ != 1.f) {
+    // for fp16 training, it's ok to go out of scope, we do not use the scaled version for anything
+    auto costNode = loss->loss() * costScaleFactor_;
+  }
+
   graph_->forward();
-  float cost = costNode->scalar() / costScaleFactor_;
   graph_->backward();
 
   bool noNanOrInf = true;
@@ -37,7 +38,7 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
                  costScaleFactor_);
 
   if(scheduler_) {
-    scheduler_->update(cost, batch);
+    scheduler_->update(*loss, batch);
 
     if(scheduler_->validating()) {
       auto tempGraph = graphFromOptimizer(graph_, {opt_});

@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <iostream>
+#include "common/logging.h"
 
 // Smart pointer class for small objects with reference counting but no thread-safety.
 // Inspired by boost::intrusive_ptr<T>.
@@ -101,12 +102,12 @@ public:
   }
 
   T& operator*() const {
-    assert(ptr_ != 0);
+    ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
     return *ptr_;
   }
 
   T* operator->() const {
-    assert(ptr_ != 0);
+    ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
     return ptr_;
   }
 

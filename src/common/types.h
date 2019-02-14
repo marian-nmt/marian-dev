@@ -174,10 +174,10 @@ template <typename T>
 inline bool matchType(Type type);
 
 // clang-format off
-template <> inline bool matchType<int8_t>(Type type)  { return type == Type::int8; }
-template <> inline bool matchType<int16_t>(Type type) { return type == Type::int16; }
-template <> inline bool matchType<int32_t>(Type type) { return type == Type::int32; }
-template <> inline bool matchType<int64_t>(Type type) { return type == Type::int64; }
+template <> inline bool matchType<int8_t>(Type type)   { return type == Type::int8; }
+template <> inline bool matchType<int16_t>(Type type)  { return type == Type::int16; }
+template <> inline bool matchType<int32_t>(Type type)  { return type == Type::int32; }
+template <> inline bool matchType<int64_t>(Type type)  { return type == Type::int64; }
 
 template <> inline bool matchType<uint8_t>(Type type)  { return type == Type::uint8; }
 template <> inline bool matchType<uint16_t>(Type type) { return type == Type::uint16; }
@@ -185,8 +185,8 @@ template <> inline bool matchType<uint32_t>(Type type) { return type == Type::ui
 template <> inline bool matchType<uint64_t>(Type type) { return type == Type::uint64; }
 
 template <> inline bool matchType<float16>(Type type)  { return type == Type::float16; }
-template <> inline bool matchType<float>(Type type)  { return type == Type::float32; }
-template <> inline bool matchType<double>(Type type) { return type == Type::float64; }
+template <> inline bool matchType<float>(Type type)    { return type == Type::float32; }
+template <> inline bool matchType<double>(Type type)   { return type == Type::float64; }
 // clang-format on
 
 static inline std::ostream& operator<<(std::ostream& out, Type type) {
@@ -222,9 +222,9 @@ template <> inline std::string request<uint16_t>() { return "uint16"; }
 template <> inline std::string request<uint32_t>() { return "uint32"; }
 template <> inline std::string request<uint64_t>() { return "uint64"; }
 
-template <> inline std::string request<float16>() { return "float16"; }
-template <> inline std::string request<float>()   { return "float32"; }
-template <> inline std::string request<double>()  { return "float64"; }
+template <> inline std::string request<float16>()  { return "float16"; }
+template <> inline std::string request<float>()    { return "float32"; }
+template <> inline std::string request<double>()   { return "float64"; }
 // clang-format on
 
 static Type inline typeFromString(const std::string& str) {
@@ -259,19 +259,19 @@ static Type inline typeFromString(const std::string& str) {
 template <typename T>
 inline Type typeId();
 
-template <> inline Type typeId<int8_t>()  { return Type::int8; }
-template <> inline Type typeId<int16_t>() { return Type::int16; }
-template <> inline Type typeId<int32_t>() { return Type::int32; }
-template <> inline Type typeId<int64_t>() { return Type::int64; }
+template <> inline Type typeId<int8_t>()   { return Type::int8; }
+template <> inline Type typeId<int16_t>()  { return Type::int16; }
+template <> inline Type typeId<int32_t>()  { return Type::int32; }
+template <> inline Type typeId<int64_t>()  { return Type::int64; }
 
 template <> inline Type typeId<uint8_t>()  { return Type::uint8; }
 template <> inline Type typeId<uint16_t>() { return Type::uint16; }
 template <> inline Type typeId<uint32_t>() { return Type::uint32; }
 template <> inline Type typeId<uint64_t>() { return Type::uint64; }
 
-template <> inline Type typeId<float16>() { return Type::float16; }
-template <> inline Type typeId<float>()   { return Type::float32; }
-template <> inline Type typeId<double>()  { return Type::float64; }
+template <> inline Type typeId<float16>()  { return Type::float16; }
+template <> inline Type typeId<float>()    { return Type::float32; }
+template <> inline Type typeId<double>()   { return Type::float64; }
 
 // Abort if given C++ does not correspond to runtime type
 template <typename T>

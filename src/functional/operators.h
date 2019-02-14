@@ -432,14 +432,6 @@ struct Ops<float32x8> {
 template <>
 struct Ops<half> {
 
-  static DEVICE_INLINE half tanh(const half& x) {
-    // tanh(x) = ( e^x - e^-x )/( e^x + e^-x ) = (e^2x - 1) / (e^2x + 1)
-    half one = 1.f;
-    half two = 2.f;
-    half e2x = hexp(two * x);
-    return (e2x - one) / (e2x + one);
-  }
-
   static DEVICE_INLINE half sin(const half& x)  { return hsin(x); }
   static DEVICE_INLINE half cos(const half& x)  { return hcos(x); }
   static DEVICE_INLINE half tan(const half& x)  { return hsin(x) / hcos(x); }
@@ -471,9 +463,16 @@ struct Ops<half> {
 
   // Neural Networks specific functions
   static DEVICE_INLINE half sigmoid(const half& x) {
-    half zero = 0.f;
-    half one  = 1.f;
+    const half zero = 0.f;
+    const half one  = 1.f;
     return x > zero ? (one / (one + exp(-x))) : (exp(x) / (one + exp(x))); // safe sigmoid
+  }
+
+  static DEVICE_INLINE half tanh(const half& x) {
+    // tanh(x) = 2 * sigmoid(2 * x) - 1
+    const half one = 1.f;
+    const half two = 2.f;
+    return two * sigmoid(two * x) - one; // safe sigmoid => safe tanh
   }
 
   static DEVICE_INLINE half log1p(const half& x) {
@@ -486,29 +485,31 @@ struct Ops<half> {
   }
 
   static DEVICE_INLINE half clip(const half& x, const half& y)  { return abs(x) >= y ? sgn(x) * y : x; }
+
   // derivative of Clip, cut-off function
   static DEVICE_INLINE half bump(const half& x, const half& y)  {
-    half zero = 0.f;
-    half one =  1.f;
+    const half zero = 0.f;
+    const half one =  1.f;
     return abs(x) >= y ? zero : one;
   }
   static DEVICE_INLINE half relu(const half& x) {
-    half zero = 0.f;
+    const half zero = 0.f;
     return x > zero ? x : zero;
   }
   static DEVICE_INLINE half reluBack(const half& x) {
-    half zero = 0.f;
-    half one =  1.f;
+    const half zero = 0.f;
+    const half one =  1.f;
     return x > zero ? one : zero;
   }
 
   static DEVICE_INLINE half prelu(const half& x, const half& y)     {
-    half zero = 0.f;
+    const half zero = 0.f;
     return x > zero ? x : x * y;
   }
+
   static DEVICE_INLINE half preluBack(const half& x, const half& y) {
-    half zero = 0.f;
-    half one =  1.f;
+    const half zero = 0.f;
+    const half one =  1.f;
     return x > zero ? one : y;
   }
 

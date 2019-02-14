@@ -31,8 +31,8 @@ public:
     float clipNorm = options->get<float>("clip-norm", 0.f);
     if(clipNorm > 0)
       clipper_ = New<NormClipper>(clipNorm);
-    // else
-    //   clipper_ = New<ReportNormClipper>(clipNorm); // don't clip, just report
+    else
+      clipper_ = New<ReportNormClipper>(clipNorm); // don't clip, just report
 
     // automatic learning-rate adjustment
     // If users provide, in addition to the hyper-parameters, a reference minibatch size,

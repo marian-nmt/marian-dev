@@ -41,8 +41,9 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
     scheduler_->update(*loss, batch);
 
     if(scheduler_->validating()) {
-      auto tempGraph = graphFromOptimizer(graph_, {opt_});
-      scheduler_->validate({tempGraph});
+      swapWithSmoothed({graph_}, {opt_});
+      scheduler_->validate({graph_});
+      swapWithOriginal({graph_}, {opt_});
     }
 
     if(scheduler_->saving())

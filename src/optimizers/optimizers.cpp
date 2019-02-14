@@ -70,6 +70,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
   // original tensors are used.
   updateImpl(pm_, gd_, mbSize, refMBWords);
 
+  // if exponential smoothing is used update the average
   if(mvAvg_)
     updateAvgParams(avg_, pm_, batchesSeen_, mbSize);
 
@@ -80,6 +81,40 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
   params->getBackend()->synchronize();
 
   return gNorm;
+}
+
+void OptimizerBase::swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_t n, bool swapAvg) {
+  if(!mvAvg_) // no smoothing, don't do anything
+    return;
+
+  // since we are here, that means we are smoothing parameters, so let's get to work
+
+  // get the shard size. this needs to be divisible by n, right?
+  size_t size = std::ceil(graph->params()->vals()->size() / (float)n);
+  
+  ABORT_IF(size != avg_->size(), "Graph shard size has to match smoothed parameter size ({} != {})", size, avg_->size());
+
+  // get the offset
+  size_t offset = i * size;
+
+  // Get the parameter subtensor of the graph that is being updated by this shard.
+  // should this be handed in from the outside?
+  auto subtensor = graph->params()->vals()->subtensor(offset, size);
+
+  if(castOptimizerType_) { 
+    // If true then optimizer type is different from the graph type, 
+    // hence a parameter master copy exists and we do not need to swap.
+    // We can just overwrite the current parameters with the smoothed 
+    // version avg_ and then restore from the master copy pm_.
+    // We also cast from optimizer parameter type to graph parameter type
+    CopyCast(subtensor, swapAvg ? avg_ : pm_);
+  } else {
+    // Types are equal hence there is no parameter master copy. This means
+    // we need to do a proper swap between the graph params and the smoothed
+    // version. We will then swap again with the next call restoring original 
+    // parameters. This assumes that two swaps are going to happen eventually.
+    subtensor->swap(avg_);
+  }
 }
 
 void OptimizerBase::load(std::vector<io::Item>& items,

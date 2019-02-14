@@ -434,7 +434,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   float gradNorm = 0.f; gradNorm; // @TODO: add gradnorm to scheduler
   if(noNanOrInf) {
     auto accNorms = [](float& lhs, float rhs) {
-      lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, apply sqrt.
+      lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, re-apply sqrt.
     };
 
     // @TODO: log gradNorm
@@ -462,10 +462,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     // This may save a model as well.
     if(scheduler_->validating()) {
       if(isMainProcess()) {
-        std::vector<Ptr<ExpressionGraph>> tempGraphs;
-        for(auto graph : graphs_)
-          tempGraphs.push_back(graphFromOptimizer(graph, shardOpt_));
-        scheduler_->validate(tempGraphs);
+        swapWithSmoothed(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
+        scheduler_->validate(graphs_);
+        swapWithOriginal(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
       }
     }
   }
@@ -524,10 +523,9 @@ void SyncGraphGroup::save(bool final) /*override*/ {
     // Also note that the swap must run on all MPI processes concurrently, although only one actually validates.
 
     if (isMainProcess()) { // in multi-node, only first MPI process saves the model (they are all identical)
-      std::vector<Ptr<ExpressionGraph>> tempGraphs;
-      for(auto graph : graphs_)
-        tempGraphs.push_back(graphFromOptimizer(graph, shardOpt_));
-      scheduler_->validate(tempGraphs, true);
+      swapWithSmoothed(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
+      scheduler_->validate(graphs_, true);
+      swapWithOriginal(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
     }
 
   }
@@ -539,7 +537,7 @@ void SyncGraphGroup::save(bool final) /*override*/ {
   // save main model file
   if (isMainProcess()) { // only save from one MPI process
     // if not overwrite then save a copy with number of updates in the model pathname
-    auto tempGraph = graphFromOptimizer(graphs_[0], shardOpt_);
+    swapWithSmoothed(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
 
     if(!options_->get<bool>("overwrite") && !final) {
       std::string numberOfBatches
@@ -547,13 +545,15 @@ void SyncGraphGroup::save(bool final) /*override*/ {
                        : "unknown";
       std::string nameOverwrite = name;
       nameOverwrite.replace(name.size() - 4, 4, ".iter" + numberOfBatches + ".npz"); // @TODO: use insert?
-      builders_[0]->save(tempGraph, nameOverwrite);
+      builders_[0]->save(graphs_[0], nameOverwrite);
     }
     // save main model file
-    builders_[0]->save(tempGraph, name, true);
+    builders_[0]->save(graphs_[0], name, true);
     // save scheduler-related state
     if (scheduler_)
       scheduler_->save(name);
+
+    swapWithOriginal(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
   }
 
   barrier(); // (for better grouping of log messages)

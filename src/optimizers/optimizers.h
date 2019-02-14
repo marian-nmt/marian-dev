@@ -106,6 +106,8 @@ public:
                     const GatherStateFunc& /*gatherFn*/,
                     bool /*isMainProcess*/ = true) = 0;
 
+  void swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_t n, bool swapAvg);
+
 protected:
   virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
   virtual void resetStats() = 0;

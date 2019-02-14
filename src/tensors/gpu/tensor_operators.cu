@@ -17,7 +17,8 @@ namespace gpu {
 namespace atomics {
 
 static inline  __device__ void atomicAdd(float *address, float val) {
-  ::atomicAdd(address, val);
+  *address += val;
+  //::atomicAdd(address, val);
 }
 
 // @TODO: copied from CuTorch, adapt this better, give credit.

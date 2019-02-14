@@ -75,11 +75,11 @@ public:
   }
 
   void save(bool final = false) override {
-    auto saveGraph = graphFromOptimizer(graph_, {opt_});
+    swapWithSmoothed({graph_}, {opt_});
     if(final && scheduler_)
-      scheduler_->validate({saveGraph}, true);
-
-    save(saveGraph, final);
+      scheduler_->validate({graph_}, true);
+    save(graph_, final);
+    swapWithOriginal({graph_}, {opt_});
   }
 
   void save(Ptr<ExpressionGraph> graph, bool final = false) {

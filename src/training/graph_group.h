@@ -335,15 +335,22 @@ public:
   }
 };
 
-static Ptr<ExpressionGraph> graphFromOptimizer(Ptr<ExpressionGraph> graph, const std::vector<Ptr<OptimizerBase>>& /*opts*/, bool /*getAverage*/ = true) {
-  // @TODO: implement function that creates a temporary graph from input graph and shared optimizers
-  //auto tempGraph = New<TempExpressionGraph>(graph->allocator());
+static void swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs, 
+                             const std::vector<Ptr<OptimizerBase>>& opts, 
+                             const std::function<void()> distribute = [](){}) {
+  ABORT_IF(graphs.size() != opts.size(), "Number of graphs and optimizers has to be equal ({} != {})", graphs.size() != opts.size());
+  for(size_t i = 0; i < graphs.size(); ++i)
+    opts[i]->swapWithSmoothed(graphs[i], i, graphs.size(), /*swapAvg=*/true);
+  distribute();
+}
 
-  //tempGraph->reuseWorkspace(graph);
-  //tempGraph->copyParams(graph);
-
-  //return tempGraph;
-  return graph;
+static void swapWithOriginal(const std::vector<Ptr<ExpressionGraph>>& graphs, 
+                             const std::vector<Ptr<OptimizerBase>>& opts,
+                             const std::function<void()> distribute = [](){}) {
+  ABORT_IF(graphs.size() != opts.size(), "Number of graphs and optimizers has to be equal ({} != {})", graphs.size() != opts.size());
+  for(size_t i = 0; i < graphs.size(); ++i)
+    opts[i]->swapWithSmoothed(graphs[i], i, graphs.size(), /*swapAvg=*/false);
+  distribute();
 }
 
 }  // namespace marian

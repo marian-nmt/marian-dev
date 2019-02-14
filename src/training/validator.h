@@ -364,9 +364,11 @@ protected:
           builder->clear(graph);
           auto classifierStates = std::dynamic_pointer_cast<BertEncoderClassifier>(builder)->apply(graph, bertBatch, true);
 
+          // Cast to float32 to make get to std::vector<float> easier
           auto maskedLMLogits = cast(classifierStates[0]->getLogProbs(), Type::float32);
           const auto& maskedLMLabels = bertBatch->bertMaskedWords();
 
+          // Cast to float32 to make get to std::vector<float> easier
           auto sentenceLogits = cast(classifierStates[1]->getLogProbs(), Type::float32);
           const auto& sentenceLabels = bertBatch->back()->data();
 

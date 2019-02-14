@@ -368,16 +368,16 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
 
-    // Handle local gradient explosion but only clip to largest possible value
-    // given number of GPUs and type. Should clip rarely. Also clips inf
-    // We do another clipping/rescaling after summation.
-    auto gradType = graph->params()->grads()->type();
-    if(sizeOf(gradType) < sizeOf(Type::float32)) {
-       using namespace functional;
-       float numGpus = mpi_->numMPIProcesses() * devices_.size();
-       float clipValue = NumericLimits<float>(gradType).max / numGpus;
-       Element(_1 = clip(_1, clipValue), graph->params()->grads());
-    }
+    // // Handle local gradient explosion but only clip to largest possible value
+    // // given number of GPUs and type. Should clip rarely. Also clips inf
+    // // We do another clipping/rescaling after summation.
+    // auto gradType = graph->params()->grads()->type();
+    // if(sizeOf(gradType) < sizeOf(Type::float32)) {
+    //    using namespace functional;
+    //    float numGpus = mpi_->numMPIProcesses() * devices_.size();
+    //    float clipValue = NumericLimits<float>(gradType).max / numGpus;
+    //    Element(_1 = clip(_1, clipValue), graph->params()->grads());
+    // }
 
     return true; // dummy success
   });

@@ -63,7 +63,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
     Element(_1 = _1 / costScaleFactor, gd_);
 
   // clip gradients when used
-  float gNorm = clipper_->clip(gd_); // clip and rescale, report norm before clipping
+  float gNorm = clipper_ ? clipper_->clip(gd_) : 0.f; // clip and rescale, report norm before clipping
 
   // perform update on master copy with cast gradients
   // if a type cast has been performed. Otherwise the

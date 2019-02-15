@@ -87,14 +87,14 @@ void OptimizerBase::swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_
   if(!mvAvg_) // no smoothing, don't do anything
     return;
 
-  // since we are here, that means we are smoothing parameters, so let's get to work
+  // since we are here that means we are smoothing parameters, so let's get to work
 
-  // get the shard size. this needs to be divisible by n, right?
+  // Get the shard size. This needs to be divisible by n, right?
   size_t size = std::ceil(graph->params()->vals()->size() / (float)n);
   
   ABORT_IF(size != avg_->size(), "Graph shard size has to match smoothed parameter size ({} != {})", size, avg_->size());
 
-  // get the offset
+  // Get the offset
   size_t offset = i * size;
 
   // Get the parameter subtensor of the graph that is being updated by this shard.

@@ -288,53 +288,6 @@ public:
   }
 };
 
-class TempExpressionGraph : public ExpressionGraph {
-private:
-  Ptr<Allocator> allocator_;
-  MemoryPiece::PtrType memory_;
-
-  // this is private, should only be used within copyParams()
-  void setDevice(DeviceId deviceId = {0, DeviceType::gpu},
-                 Ptr<Device> device = nullptr) override {
-    if(!backend_) {
-      backend_ = BackendByDeviceId(deviceId, Config::seed);
-      params_ = New<Parameters>();
-      params_->init(backend_, device);
-    }
-  }
-
-public:
-  TempExpressionGraph(Ptr<Allocator> allocator)
-    : ExpressionGraph(/*inference=*/true, /*optimize=*/false),
-      allocator_(allocator) {
-  }
-
-  void copyParams(Ptr<ExpressionGraph> graph) override {
-    if(memory_)
-      allocator_->free(memory_);
-
-    Type   graphType = graph->params()->vals()->type();
-    size_t graphSize = graph->params()->vals()->size();
-
-    auto tempDevice = New<cpu::WrappedDevice>(allocator_->getDeviceId()); // @TODO: move out of namespace cpu
-    memory_ = allocator_->alloc(graphSize, graphType);
-    tempDevice->set(memory_->data(), memory_->size());
-    setDevice(allocator_->getDeviceId(), tempDevice);
-    setParameterType(graphType);
-
-    for(auto p : *graph->params())
-      param(p->name(), p->shape(), inits::dummy(), p->value_type());
-
-    params()->allocateForward();
-    params()->vals()->copyFrom(graph->params()->vals());
-  }
-
-  ~TempExpressionGraph() {
-    if(memory_)
-      allocator_->free(memory_);
-  }
-};
-
 static void swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs, 
                              const std::vector<Ptr<OptimizerBase>>& opts, 
                              const std::function<void()> distribute = [](){}) {

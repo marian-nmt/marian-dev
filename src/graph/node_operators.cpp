@@ -5,6 +5,17 @@
 
 namespace marian {
 
+ConstantNode::ConstantNode(Ptr<ExpressionGraph> graph,
+                          const Shape& shape,
+                          const Ptr<inits::NodeInitializer>& init,
+                          Type value_type)
+    : Node(graph, shape, value_type),
+      init_(init),
+      initialized_(false) {
+  init_->setAllocator(graph->allocator());
+  setTrainable(false);
+}
+
 size_t ConstantNode::allocate() {
   size_t elements = 0;
   if(!val_) {
@@ -36,7 +47,7 @@ ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
     : Node(graph, shape, valueType),
       init_(init),
       initialized_(false) {
-  init_->setGraph(graph);
+  init_->setAllocator(graph->allocator());
   setTrainable(!fixed);
   setMemoize(graph->isInference());
 }

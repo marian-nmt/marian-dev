@@ -91,7 +91,7 @@ void OptimizerBase::swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_
 
   // Get the shard size. This needs to be divisible by n, right?
   size_t size = std::ceil(graph->params()->vals()->size() / (float)n);
-  
+
   ABORT_IF(size != avg_->size(), "Graph shard size has to match smoothed parameter size ({} != {})", size, avg_->size());
 
   // Get the offset
@@ -101,17 +101,17 @@ void OptimizerBase::swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_
   // should this be handed in from the outside?
   auto subtensor = graph->params()->vals()->subtensor(offset, size);
 
-  if(castOptimizerType_) { 
-    // If true then optimizer type is different from the graph type, 
+  if(castOptimizerType_) {
+    // If true then optimizer type is different from the graph type,
     // hence a parameter master copy exists and we do not need to swap.
-    // We can just overwrite the current parameters with the smoothed 
+    // We can just overwrite the current parameters with the smoothed
     // version avg_ and then restore from the master copy pm_.
     // We also cast from optimizer parameter type to graph parameter type
     CopyCast(subtensor, swapAvg ? avg_ : pm_);
   } else {
     // Types are equal hence there is no parameter master copy. This means
     // we need to do a proper swap between the graph params and the smoothed
-    // version. We will then swap again with the next call restoring original 
+    // version. We will then swap again with the next call restoring original
     // parameters. This assumes that two swaps are going to happen eventually.
     subtensor->swap(avg_);
   }

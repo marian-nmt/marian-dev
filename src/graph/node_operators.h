@@ -10,13 +10,7 @@ struct ConstantNode : public Node {
   ConstantNode(Ptr<ExpressionGraph> graph,
                const Shape& shape,
                const Ptr<inits::NodeInitializer>& init,
-               Type value_type = Type::float32)
-      : Node(graph, shape, value_type),
-        init_(init),
-        initialized_(false) {
-    init_->setGraph(graph);
-    setTrainable(false);
-  }
+               Type value_type = Type::float32);
 
   ~ConstantNode() {}
 

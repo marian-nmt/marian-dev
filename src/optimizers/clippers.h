@@ -10,7 +10,7 @@ namespace marian {
 
 class Clipper {
 protected:
-  Ptr<Allocator> allocator_;
+  Weak<Allocator> allocator_;
 
 public:
   virtual float clip(Tensor, float /*costScalingFactor*/ = 1.f) = 0;

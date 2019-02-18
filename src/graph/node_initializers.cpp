@@ -35,17 +35,17 @@ class LambdaInitConvert : public NodeInitializer {
 
     void apply(Tensor tensor) override {
       if(tensor->type() != intermediateType_) {
-        ABORT_IF(!graph_.lock(), "Expression graph in LambdaInitConvert has not been set or expired");
+        auto sharedAllocator = allocator_.lock();
+        ABORT_IF(!sharedAllocator, "Allocator in LambdaInitConvert has not been set or is expired");
 
-        auto allocator = graph_.lock()->allocator();
-        auto memory = allocator->alloc(tensor->size(), intermediateType_);
+        auto memory = sharedAllocator->alloc(tensor->size(), intermediateType_);
         auto temp = TensorBase::New(memory,
                                     tensor->shape(),
                                     intermediateType_,
                                     tensor->getBackend());
         lambda_(temp);
         CopyCast(tensor, temp); // Casting from temp to tensor
-        allocator->free(memory);
+        sharedAllocator->free(memory);
       }
       else {
         lambda_(tensor);

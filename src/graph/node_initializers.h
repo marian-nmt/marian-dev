@@ -25,11 +25,11 @@ namespace inits {
  */
 class NodeInitializer {
 protected:
-  Weak<ExpressionGraph> graph_;
+  Weak<Allocator> allocator_;
 
 public:
   virtual void apply(Tensor t) = 0;
-  void setGraph(Ptr<ExpressionGraph> graph) { graph_ = graph; }
+  void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
 };
 
 /**

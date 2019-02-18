@@ -11,23 +11,58 @@ namespace marian {
 
 namespace inits {
 
-void LambdaInitConvert::apply(Tensor tensor) {
-  if(tensor->type() != intermediateType_) {
-    ABORT_IF(!graph_.lock(), "Expression graph in LambdaInitConvert has not been set or expired");
-    
-    auto allocator = graph_.lock()->allocator();
-    auto memory = allocator->alloc(tensor->size(), intermediateType_);
-    auto temp = TensorBase::New(memory,
-                                tensor->shape(),
-                                intermediateType_,
-                                tensor->getBackend());
-    lambda_(temp);
-    CopyCast(tensor, temp); // Casting from temp to tensor
-    allocator->free(memory);
-  }
-  else {
-    lambda_(tensor);
-  }
+class LambdaInit : public NodeInitializer {
+  private:
+    std::function<void(Tensor)> lambda_;
+
+  public:
+    LambdaInit(std::function<void(Tensor)>&& lambda) : lambda_(std::move(lambda)) {}
+
+    void apply(Tensor tensor) override {
+      lambda_(tensor);
+    }
+};
+
+class LambdaInitConvert : public NodeInitializer {
+  private:
+    std::function<void(Tensor)> lambda_;
+    Type intermediateType_;
+
+  public:
+    LambdaInitConvert(std::function<void(Tensor)>&& lambda,
+                      Type intermediateType)
+      : lambda_(std::move(lambda)), intermediateType_(intermediateType) {}
+
+    void apply(Tensor tensor) override {
+      if(tensor->type() != intermediateType_) {
+        ABORT_IF(!graph_.lock(), "Expression graph in LambdaInitConvert has not been set or expired");
+        
+        auto allocator = graph_.lock()->allocator();
+        auto memory = allocator->alloc(tensor->size(), intermediateType_);
+        auto temp = TensorBase::New(memory,
+                                    tensor->shape(),
+                                    intermediateType_,
+                                    tensor->getBackend());
+        lambda_(temp);
+        CopyCast(tensor, temp); // Casting from temp to tensor
+        allocator->free(memory);
+      }
+      else {
+        lambda_(tensor);
+      }
+    }
+};
+
+Ptr<NodeInitializer> lambda(std::function<void(Tensor)>&& func) {
+  return New<LambdaInit>(std::move(func));
+}
+
+Ptr<NodeInitializer> lambda(std::function<void(Tensor)>&& func, Type intermediateType) {
+  return New<LambdaInitConvert>(std::move(func), intermediateType);
+}
+
+Ptr<NodeInitializer> fromValue(float v) {
+  return lambda([v](Tensor t){ t->set(v); });
 }
 
 Ptr<NodeInitializer> zeros() {
@@ -38,13 +73,8 @@ Ptr<NodeInitializer> ones() {
   return fromValue(1.0f);
 }
 
-Ptr<NodeInitializer> fromValue(float v) {
-  return New<LambdaInit>([v](Tensor t){ t->set(v); });
-}
-
 // diagonal matrix with value val along diagonal
 Ptr<NodeInitializer> eye(float val) {
-
   auto eyeLambda = [val](Tensor t) {
     ABORT_IF(t->shape().size() != 2 || t->shape()[-1] != t->shape()[-2],
               "eye(val) is defined only for quadratic tensors, shape is {}",
@@ -54,26 +84,25 @@ Ptr<NodeInitializer> eye(float val) {
     std::vector<float> vec(t->size(), 0);
     for(int i = 0; i < t->shape()[-1]; ++i)
       vec[i * t->shape()[0] + i] = val;
-    t->set(vec);
+
+    fromVector(vec)->apply(t);
   };
 
-  return New<LambdaInitConvert>(eyeLambda);
+  return lambda(eyeLambda);
 }
 
 Ptr<NodeInitializer> uniform(float a, float b) {
-  return New<LambdaInitConvert>([a, b](Tensor t) {
-    t->getBackend()->getRandomGenerator()->uniform(t, a, b);
-  });
+  // only works for float, hence the conversion through intermedia type Type::float32
+  return lambda([a, b](Tensor t) { t->getBackend()->getRandomGenerator()->uniform(t, a, b); }, Type::float32);
 }
 
 Ptr<NodeInitializer> normal(float mean, float stddev) {
-  return New<LambdaInitConvert>([mean, stddev](Tensor t) {
-    t->getBackend()->getRandomGenerator()->normal(t, mean, stddev);
-  });
+  // only works for float, hence the conversion through intermedia type Type::float32
+  return lambda([mean, stddev](Tensor t) { t->getBackend()->getRandomGenerator()->normal(t, mean, stddev); }, Type::float32);
 }
 
 Ptr<NodeInitializer> glorotUniform(bool fanIn, bool fanOut) {
-  return New<LambdaInitConvert>([fanIn, fanOut](Tensor t) {
+  return lambda([fanIn, fanOut](Tensor t) {
     float scale = sqrtf(6.0f / (t->shape()[-2] + t->shape()[-1]));
     if(fanIn && !fanOut)
       scale = sqrtf(3.0f / t->shape()[-2]);
@@ -85,7 +114,7 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn, bool fanOut) {
 }
 
 Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
-  return New<LambdaInitConvert>([fanIn, fanOut](Tensor t) {
+  return lambda([fanIn, fanOut](Tensor t) {
     float scale = sqrtf(2.0f / (t->shape()[-2] + t->shape()[-1]));
     if(fanIn && !fanOut)
       scale = sqrtf(1.0f / t->shape()[-2]);
@@ -97,19 +126,17 @@ Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
 }
 
 Ptr<NodeInitializer> bernoulli(float prob, float scale) {
-  return New<LambdaInitConvert>([prob, scale](Tensor t) { Bernoulli(t, prob, scale); });
+  return lambda([prob, scale](Tensor t) { Bernoulli(t, prob, scale); }, Type::float32);
 }
 
 Ptr<NodeInitializer> dropout(float dropProb) {
-  return New<LambdaInitConvert>([dropProb](Tensor t) { Dropout(t, dropProb); });
+  return lambda([dropProb](Tensor t) { Dropout(t, dropProb); }, Type::float32);
 }
 
 // gumbel noise:
 // -log(-log(uniform(0.f + eps, 1.f - eps)));
-Ptr<NodeInitializer> gumbel() {
+Ptr<NodeInitializer> gumbel(float eps) {
   using namespace functional;
-  float eps = 1e-05f; // @TODO: make eps a parameter? Seems to influence amplitude quite heavily
-
   return composed(
     uniform(0.f + eps, 1.f - eps), 
     elementwise(_1 = -log(-log(_1)))
@@ -118,10 +145,7 @@ Ptr<NodeInitializer> gumbel() {
 
 template <typename T>
 Ptr<NodeInitializer> fromVector(const std::vector<T>& v) {
-  auto vPtr = New<std::vector<T>>(v.begin(), v.end());
-  return New<LambdaInitConvert>([vPtr](Tensor t) {
-    t->set(vPtr->data(), vPtr->data() + vPtr->size());
-  }, typeId<T>());
+  return lambda([v](Tensor t) { t->set(v.data(), v.data() + v.size()); }, typeId<T>());
 }
 
 template Ptr<NodeInitializer> fromVector<float16>(const std::vector<float16>& v);
@@ -129,10 +153,7 @@ template Ptr<NodeInitializer> fromVector<float>(const std::vector<float>& v);
 template Ptr<NodeInitializer> fromVector<IndexType>(const std::vector<IndexType>& v);
 
 Ptr<NodeInitializer> fromSparseVector(std::pair<std::vector<size_t>, std::vector<float>>& v) {
-  return New<LambdaInit>([v](Tensor t) {
-    t->set(1e-6);
-    t->setSparse(v.first, v.second);
-  });
+  return lambda([v](Tensor t) { t->set(1e-6); t->setSparse(v.first, v.second); });
 }
 
 // move this somewhere else
@@ -140,7 +161,7 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
                               int dimVoc,
                               int dimEmb,
                               bool normalize /*= false*/) {
-  return New<LambdaInit>([file, dimVoc, dimEmb, normalize](Tensor t) {
+  return lambda([file, dimVoc, dimEmb, normalize](Tensor t) {
     auto embs = Word2VecReader().read(file, dimVoc, dimEmb);
     if(normalize) {
       float norm = 0;
@@ -157,7 +178,7 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
 
 Ptr<NodeInitializer> fromItem(const io::Item& item) {
   if(item.mapped) {
-    return New<LambdaInit>([item](Tensor tensor) {
+    return lambda([item](Tensor tensor) {
       // @TODO: implement other types, for now croak loudly.
       ABORT_IF(tensor->getBackend()->getDeviceId().type != DeviceType::cpu,
                "Memory mapping only works for CPU tensors");
@@ -173,25 +194,23 @@ Ptr<NodeInitializer> fromItem(const io::Item& item) {
       tensor->reset(mp);
     });
   } else {
-    return New<LambdaInitConvert>(
+    return lambda(
       [item](Tensor tensor) { tensor->set(item); },
       item.type);
   }
 }
 
 Ptr<NodeInitializer> fromTensor(Tensor externalTensor) {
-  return New<LambdaInitConvert>([externalTensor](Tensor t) {
-    t->copyFrom(externalTensor);
-  }, externalTensor->type());
+  return lambda([externalTensor](Tensor t) { t->copyFrom(externalTensor); }, externalTensor->type());
 }
 
 Ptr<NodeInitializer> dummy() {
-  return New<LambdaInit>([](Tensor /*t*/) { });
+  return lambda([](Tensor /*t*/) { });
 }
 
 // Computes Google's sinusoidal position embeddings
 Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
-  return New<LambdaInitConvert>([start](Tensor t) {
+  return lambda([start](Tensor t) {
     int dimEmb   = t->shape()[-1];
     int dimWords = (int)t->size() / dimEmb;
 

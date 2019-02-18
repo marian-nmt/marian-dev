@@ -32,30 +32,17 @@ public:
   void setGraph(Ptr<ExpressionGraph> graph) { graph_ = graph; }
 };
 
-class LambdaInit : public NodeInitializer {
-  private:
-    std::function<void(Tensor)> lambda_;
+/**
+ * Use a lambda function of form [](Tensor t) { do something with t } to initalize tensor
+ */
+Ptr<NodeInitializer> lambda(std::function<void(Tensor)>&& func);
 
-  public:
-    LambdaInit(std::function<void(Tensor)>&& lambda) : lambda_(std::move(lambda)) {}
-
-    void apply(Tensor tensor) override {
-      lambda_(tensor);
-    }
-};
-
-class LambdaInitConvert : public NodeInitializer {
-  private:
-    std::function<void(Tensor)> lambda_;
-    Type intermediateType_;
-
-  public:
-    LambdaInitConvert(std::function<void(Tensor)>&& lambda,
-                      Type intermediateType = Type::float32)
-      : lambda_(std::move(lambda)), intermediateType_(intermediateType) {}
-
-    void apply(Tensor tensor) override;
-};
+/**
+ * Use a lambda function of form [](Tensor t) { do something with t } to initalize tensor
+ * Create temporary tensor of Type intermediateType first, initialize and then copy/convert to actual Tensor
+ * Useful for functions that can only operator on a specific type of tensor
+ */
+Ptr<NodeInitializer> lambda(std::function<void(Tensor)>&& func, Type intermediateType);
 
 /**
  * Fill tensor with given value
@@ -137,9 +124,8 @@ Ptr<NodeInitializer> bernoulli(float p, float scale = 1.f);
 Ptr<NodeInitializer> glorotUniform(bool fanIn = false, bool fanOut = false);
 Ptr<NodeInitializer> glorotNormal(bool fanIn = false, bool fanOut = false);
 
-
 Ptr<NodeInitializer> dropout(float dropoutProbabilty);
-Ptr<NodeInitializer> gumbel();
+Ptr<NodeInitializer> gumbel(float eps = 1e-5f);
 Ptr<NodeInitializer> dummy();
 
 template <typename T>
@@ -159,19 +145,19 @@ Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start);
 // See gumbel() for usage example
 template <class Functor>
 Ptr<NodeInitializer> elementwise(Functor functor) {
-  return New<LambdaInit>([functor](Tensor tensor) { 
+  return lambda([functor](Tensor tensor) {
     Element(functor, tensor);
   });
 }
 
 // See gumbel() for usage example
-template <typename T, typename ... Inits>
-Ptr<NodeInitializer> composed(T init1, Inits... inits) {
-  return New<LambdaInit>([init1, inits...](Tensor tensor) {
-    init1->apply(tensor);
-    std::vector<T> vInits({inits...});
+template <typename ... Inits>
+Ptr<NodeInitializer> composed(Ptr<NodeInitializer> init1, Inits... inits) {
+  return lambda([init1, inits...](Tensor tensor) {
+    init1->apply(tensor); // first initializer
+    std::vector<Ptr<NodeInitializer>> vInits({inits...});
     for(auto init : vInits)
-      init->apply(tensor);
+      init->apply(tensor); // remaining initializers
   });
 }
 

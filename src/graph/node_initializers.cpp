@@ -107,12 +107,13 @@ Ptr<NodeInitializer> dropout(float dropProb) {
 // gumbel noise:
 // -log(-log(uniform(0.f + eps, 1.f - eps)));
 Ptr<NodeInitializer> gumbel() {
-  return New<LambdaInitConvert>([](Tensor t) {
-    using namespace functional;
-    float eps = 1e-05f; // @TODO: make eps a parameter? Seems to influence amplitude quite heavily
-    uniform(0.f + eps, 1.f - eps)->apply(t);
-    Element(_1 = -log(-log(_1)), t);
-  });
+  using namespace functional;
+  float eps = 1e-05f; // @TODO: make eps a parameter? Seems to influence amplitude quite heavily
+
+  return composed(
+    uniform(0.f + eps, 1.f - eps), 
+    elementwise(_1 = -log(-log(_1)))
+  );
 }
 
 template <typename T>

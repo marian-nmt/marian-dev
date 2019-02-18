@@ -125,8 +125,8 @@ Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
   }, Type::float32);
 }
 
-Ptr<NodeInitializer> bernoulli(float prob, float scale) {
-  return lambda([prob, scale](Tensor t) { Bernoulli(t, prob, scale); }, Type::float32);
+Ptr<NodeInitializer> bernoulli(float prob, float scale, float shift) {
+  return lambda([prob, scale, shift](Tensor t) { Bernoulli(t, prob, scale, shift); }, Type::float32);
 }
 
 Ptr<NodeInitializer> dropout(float dropProb) {

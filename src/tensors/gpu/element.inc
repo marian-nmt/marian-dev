@@ -59,10 +59,13 @@ template void marian::gpu::Element<marian::functional::Assign<marian::functional
 template void marian::gpu::Element<marian::functional::Assign<marian::functional::Var<1>, marian::functional::UnaryFunctor<marian::functional::elem::Sqrt, marian::functional::Assignee<1> > >>(marian::functional::Assign<marian::functional::Var<1>, marian::functional::UnaryFunctor<marian::functional::elem::Sqrt, marian::functional::Assignee<1> > >, marian::Tensor);
 template void marian::gpu::Element<marian::functional::Assign<marian::functional::Var<1>, marian::functional::BinaryFunctor<marian::functional::elem::Mult, marian::functional::Assignee<2>, marian::functional::UnaryFunctor<marian::functional::elem::Sigmoid, marian::functional::BinaryFunctor<marian::functional::elem::Mult, marian::functional::Capture, marian::functional::Assignee<2> > > > >, marian::Tensor >(marian::functional::Assign<marian::functional::Var<1>, marian::functional::BinaryFunctor<marian::functional::elem::Mult, marian::functional::Assignee<2>, marian::functional::UnaryFunctor<marian::functional::elem::Sigmoid, marian::functional::BinaryFunctor<marian::functional::elem::Mult, marian::functional::Capture, marian::functional::Assignee<2> > > > >, marian::Tensor, marian::Tensor);
 
+template void marian::gpu::Element<marian::functional::Assign<marian::functional::Var<1>, marian::functional::BinaryFunctor<marian::functional::elem::Plus, marian::functional::BinaryFunctor<marian::functional::elem::Mult, marian::functional::BinaryFunctor<marian::functional::elem::Lt, marian::functional::Assignee<1>, marian::functional::Capture>, marian::functional::Capture>, marian::functional::Capture> >>(marian::functional::Assign<marian::functional::Var<1>, marian::functional::BinaryFunctor<marian::functional::elem::Plus, marian::functional::BinaryFunctor<marian::functional::elem::Mult, marian::functional::BinaryFunctor<marian::functional::elem::Lt, marian::functional::Assignee<1>, marian::functional::Capture>, marian::functional::Capture>, marian::functional::Capture> >, marian::Tensor);
+
 // How to add new specializations:
 // When you use a new specialization, it will cause a link error of this form (example):
 //   .../src/tensors/tensor_operators.h:41: undefined reference to `void marian::gpu::Element<marian::functional::Assign< ... > ( ... )'
 // To fix this, copy the line with the error message in here and:
 //   - replace up to including "undefined reference to `" by "template"
 //   - replace final ' by a semicolon
+//   - replace 'IntrusivePtr<marian::TensorBase>' with 'marian::Tensor'
 

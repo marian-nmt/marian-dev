@@ -142,25 +142,6 @@ Ptr<NodeInitializer> fromTensor(Tensor tensor);
 
 Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start);
 
-// See gumbel() for usage example
-template <class Functor>
-Ptr<NodeInitializer> elementwise(Functor functor) {
-  return lambda([functor](Tensor tensor) {
-    Element(functor, tensor);
-  });
-}
-
-// See gumbel() for usage example
-template <typename ... Inits>
-Ptr<NodeInitializer> composed(Ptr<NodeInitializer> init1, Inits... inits) {
-  return lambda([init1, inits...](Tensor tensor) {
-    init1->apply(tensor); // first initializer
-    std::vector<Ptr<NodeInitializer>> vInits({inits...});
-    for(auto init : vInits)
-      init->apply(tensor); // remaining initializers
-  });
-}
-
 }  // namespace inits
 
 }  // namespace marian

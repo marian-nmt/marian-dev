@@ -36,7 +36,7 @@ class LambdaInitConvert : public NodeInitializer {
     void apply(Tensor tensor) override {
       if(tensor->type() != intermediateType_) {
         ABORT_IF(!graph_.lock(), "Expression graph in LambdaInitConvert has not been set or expired");
-        
+
         auto allocator = graph_.lock()->allocator();
         auto memory = allocator->alloc(tensor->size(), intermediateType_);
         auto temp = TensorBase::New(memory,
@@ -85,10 +85,10 @@ Ptr<NodeInitializer> eye(float val) {
     for(int i = 0; i < t->shape()[-1]; ++i)
       vec[i * t->shape()[0] + i] = val;
 
-    fromVector(vec)->apply(t);
+    t->set(vec);
   };
 
-  return lambda(eyeLambda);
+  return lambda(eyeLambda, Type::float32);
 }
 
 Ptr<NodeInitializer> uniform(float a, float b) {
@@ -109,8 +109,8 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn, bool fanOut) {
     if(!fanIn && fanOut)
       scale = sqrtf(3.0f / t->shape()[-1]);
 
-    uniform(-scale, scale)->apply(t);
-  });
+    t->getBackend()->getRandomGenerator()->uniform(t, -scale, scale);
+  }, Type::float32);
 }
 
 Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
@@ -121,8 +121,8 @@ Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
     if(!fanIn && fanOut)
       scale = sqrtf(1.0f / t->shape()[-1]);
 
-    normal(0.f, scale)->apply(t);
-  });
+    t->getBackend()->getRandomGenerator()->normal(t, 0.f, scale);
+  }, Type::float32);
 }
 
 Ptr<NodeInitializer> bernoulli(float prob, float scale) {
@@ -136,11 +136,11 @@ Ptr<NodeInitializer> dropout(float dropProb) {
 // gumbel noise:
 // -log(-log(uniform(0.f + eps, 1.f - eps)));
 Ptr<NodeInitializer> gumbel(float eps) {
-  using namespace functional;
-  return composed(
-    uniform(0.f + eps, 1.f - eps), 
-    elementwise(_1 = -log(-log(_1)))
-  );
+  return lambda([eps](Tensor tensor) {
+    tensor->getBackend()->getRandomGenerator()->uniform(tensor, 0.f + eps, 1.f - eps);
+    using namespace functional;
+    Element(_1 = -log(-log(_1)), tensor);
+  }, Type::float32);
 }
 
 template <typename T>
@@ -226,8 +226,8 @@ Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
       }
     }
 
-    fromVector(vPos)->apply(t);
-  });
+    t->set(vPos);
+  }, Type::float32);
 }
 
 }  // namespace inits

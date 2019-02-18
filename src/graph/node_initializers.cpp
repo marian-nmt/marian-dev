@@ -12,20 +12,22 @@ namespace marian {
 namespace inits {
 
 void LambdaInitConvert::operator()(Tensor tensor) {
-      if(tensor->type() != intermediateType_) {
-        auto allocator = graph_->allocator();
-        auto memory = allocator->alloc(tensor->size(), intermediateType_);
-        auto temp = TensorBase::New(memory,
-                                    tensor->shape(),
-                                    intermediateType_,
-                                    tensor->getBackend());
-        lambda_(temp);
-        CopyCast(tensor, temp); // Casting from temp to tensor
-        allocator->free(memory);
-      }
-      else {
-        lambda_(tensor);
-      }
+  if(tensor->type() != intermediateType_) {
+    ABORT_IF(!graph_.lock(), "Expression graph in LambdaInitConvert has not been set or expired");
+    
+    auto allocator = graph_.lock()->allocator();
+    auto memory = allocator->alloc(tensor->size(), intermediateType_);
+    auto temp = TensorBase::New(memory,
+                                tensor->shape(),
+                                intermediateType_,
+                                tensor->getBackend());
+    lambda_(temp);
+    CopyCast(tensor, temp); // Casting from temp to tensor
+    allocator->free(memory);
+  }
+  else {
+    lambda_(tensor);
+  }
 }
 
 Ptr<NodeInitializer> zeros() {

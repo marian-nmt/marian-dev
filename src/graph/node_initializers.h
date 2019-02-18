@@ -25,7 +25,7 @@ namespace inits {
  */
 class NodeInitializer {
 protected:
-  Ptr<ExpressionGraph> graph_;
+  Weak<ExpressionGraph> graph_;
 
 public:
   virtual void operator()(Tensor t) = 0;

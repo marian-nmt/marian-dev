@@ -11,7 +11,7 @@ namespace marian {
 
 namespace inits {
 
-void LambdaInitConvert::operator()(Tensor tensor) {
+void LambdaInitConvert::apply(Tensor tensor) {
   if(tensor->type() != intermediateType_) {
     ABORT_IF(!graph_.lock(), "Expression graph in LambdaInitConvert has not been set or expired");
     
@@ -80,7 +80,7 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn, bool fanOut) {
     if(!fanIn && fanOut)
       scale = sqrtf(3.0f / t->shape()[-1]);
 
-    t->getBackend()->getRandomGenerator()->uniform(t, -scale, scale);
+    uniform(-scale, scale)->apply(t);
   });
 }
 
@@ -92,7 +92,7 @@ Ptr<NodeInitializer> glorotNormal(bool fanIn, bool fanOut) {
     if(!fanIn && fanOut)
       scale = sqrtf(1.0f / t->shape()[-1]);
 
-    t->getBackend()->getRandomGenerator()->normal(t, 0.f, scale);
+    normal(0.f, scale)->apply(t);
   });
 }
 
@@ -110,9 +110,7 @@ Ptr<NodeInitializer> gumbel() {
   return New<LambdaInitConvert>([](Tensor t) {
     using namespace functional;
     float eps = 1e-05f; // @TODO: make eps a parameter? Seems to influence amplitude quite heavily
-    auto rng = t->getBackend()->getRandomGenerator();
-
-    rng->uniform(t, 0.f + eps, 1.f - eps);
+    uniform(0.f + eps, 1.f - eps)->apply(t);
     Element(_1 = -log(-log(_1)), t);
   });
 }
@@ -208,7 +206,7 @@ Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
       }
     }
 
-    (*fromVector(vPos))(t);
+    fromVector(vPos)->apply(t);
   });
 }
 

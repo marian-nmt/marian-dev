@@ -180,13 +180,15 @@ public:
         auto loss = model->build(graph, batch);
         fits = graph->fits();
 
+        LOG(debug, "[batching] length: {} - size: {} - fits: {}", lengths[0], current, fits);
+
         if(fits) {
           stats->add(batch, multiplier);
           start = current + 1;
         } else {
           end = current - 1;
         }
-      } while(end - start > step);
+      } while(end > start);
 
       maxBatch = start;
     }
@@ -198,93 +200,6 @@ public:
 
   void setTypicalTrgBatchWords(size_t typicalTrgBatchWords) { // needed for dynamic MB scaling
     typicalTrgBatchWords_ = typicalTrgBatchWords;
-  }
-};
-
-/**
- *  Base class for multi-node versions of GraphGroups.
- */
-class MultiNodeGraphGroupBase : public GraphGroup {
-  using Base = GraphGroup;
-
-protected:
-  Ptr<IMPIWrapper> mpi_; // all MPI-like communication goes through this
-
-  /** Devices (GPUs) on this node. */
-  std::vector<size_t> devices_; // [num local GPUs]
-
-  /** Graph builders for clients (which run forward and backward passes). */
-  std::vector<Ptr<models::ModelBase>> clientBuilders_;
-
-  /** Graphs of clients. One entry per GPU on this node. */
-  std::vector<Ptr<ExpressionGraph>> clientGraphs_; // [num local GPUs]
-
-public:
-  MultiNodeGraphGroupBase(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
-    : Base(options), mpi_(mpi) {
-
-    // Set up devices for this node
-    std::vector<size_t> devices; // set of GPU device ids for this MPI process
-    for (auto& d : Config::getDevices(options_))
-      devices.push_back(d.no);
-    loadDeviceConfig(devices); // set up numberClientsOfNodes_[] and devices_[]
-
-    // Create builders and graphs for clients; that is, for each GPU we use on this node.
-    for (size_t i = 0; i < devices_.size(); i++) {
-      clientGraphs_.push_back(New<ExpressionGraph>());
-
-      if(options_->get<bool>("fp16"))
-          clientGraphs_[i]->setParameterType(Type::float16);
-
-      clientGraphs_[i]->setDevice({ devices_[i], DeviceType::gpu });
-      clientGraphs_[i]->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-      clientBuilders_.push_back(models::from_options(options_, models::usage::training));
-    }
-  }
-
-  /**
-   * Load the GPU configuration of this node (i.e. which GPUs to use) and the
-   * number of GPUs on the other nodes.
-   */
-  // deviceConfig has this format
-  //  - for each node
-  //     - number of GPUs on that node
-  //     - GPU ids for that node
-  // e.g. 0:0 1 1: 2 3 -> (2, (0, 1)) (2, (2,3))
-  void loadDeviceConfig(std::vector<size_t> deviceConfig) {
-    // parse device config array
-    size_t index = 0; // cursor for next()
-    auto next = [&]() { // helper function to get the next item
-      ABORT_IF(index == deviceConfig.size(), "mal-formed device config array??");
-      return deviceConfig[index++];
-    };
-    std::vector<std::vector<size_t>> allDevices(mpi_->numMPIProcesses());
-    for (auto& devices : allDevices) {
-      devices.resize(next());
-      for (auto& device : devices)
-        device = next();
-    }
-    ABORT_IF(index != deviceConfig.size(), "mal-formed device config array??");
-
-    // validate
-    ABORT_IF(allDevices.front().size() == 0, "no devices specified??");
-    for (auto& devices : allDevices) {
-      ABORT_IF(devices.size() != allDevices.front().size(), "all MPI nodes must use the same number of devices");
-    }
-
-    // get our own config
-    devices_ = allDevices[mpi_->myMPIRank()];
-
-    // log
-    LOG(info, "[mpi rank {}] device configuration", mpi_->myMPIRank());
-    for (auto& device : devices_)
-      LOG(info, "[mpi rank {}]  - {}", mpi_->myMPIRank(), device);
-  }
-
-  virtual void finalize() override {
-    if (mpi_)
-      finalizeMPI(std::move(mpi_));
-    Base::finalize();
   }
 };
 

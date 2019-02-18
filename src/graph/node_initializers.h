@@ -28,7 +28,7 @@ protected:
   Weak<ExpressionGraph> graph_;
 
 public:
-  virtual void operator()(Tensor t) = 0;
+  virtual void apply(Tensor t) = 0;
   void setGraph(Ptr<ExpressionGraph> graph) { graph_ = graph; }
 };
 
@@ -39,7 +39,7 @@ class LambdaInit : public NodeInitializer {
   public:
     LambdaInit(std::function<void(Tensor)>&& lambda) : lambda_(std::move(lambda)) {}
 
-    void operator()(Tensor tensor) override {
+    void apply(Tensor tensor) override {
       lambda_(tensor);
     }
 };
@@ -54,7 +54,7 @@ class LambdaInitConvert : public NodeInitializer {
                       Type intermediateType = Type::float32)
       : lambda_(std::move(lambda)), intermediateType_(intermediateType) {}
 
-    void operator()(Tensor tensor) override;
+    void apply(Tensor tensor) override;
 };
 
 /**

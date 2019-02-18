@@ -16,7 +16,7 @@ size_t ConstantNode::allocate() {
 
 void ConstantNode::init() {
   if(!initialized_) {
-    (*init_)(val_);
+    init_->apply(val_);
     initialized_ = true;
   }
   init_.reset();
@@ -43,7 +43,7 @@ ParamNode::ParamNode(Ptr<ExpressionGraph> graph,
 
 void ParamNode::init() {
   if(!initialized_) {
-    (*init_)(val_);
+    init_->apply(val_);
     initialized_ = true;
   }
   init_.reset();

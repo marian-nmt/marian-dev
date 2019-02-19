@@ -133,11 +133,6 @@ public:
     updateEta(learnRate);
   }
 
-  void registerObserver(Ptr<TrainingObserver> observer) {
-    observers_.push_back(observer);
-    observer->init(*this);
-  }
-
   // return the totals count that corresponds to the given unit (batches, labels, or epochs)
   size_t getProgressIn(SchedulingUnit u) const {
     switch(u) {
@@ -188,7 +183,8 @@ public:
 
   void newEpoch() {
     ++epochs;
-    for(auto observer : observers_) {
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterEpoch(*this);
     }
@@ -201,7 +197,8 @@ public:
     batchesEpoch += batchesInUpdate;
     loaded = false;
     validated = false;
-    for(auto observer : observers_) {
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterBatches(*this);
     }
@@ -211,7 +208,8 @@ public:
     stalled = num;
     if(num > maxStalled)
       ++maxStalled;
-    for(auto observer : observers_) {
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterStalled(*this);
     }
@@ -219,7 +217,8 @@ public:
 
   void newLoad() {
     loaded = true;
-    for(auto observer : observers_) {
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterLoaded(*this);
     }
@@ -306,9 +305,15 @@ public:
     fout << config;
   }
 
+  // @TODO: make this private and only accesible by scheduler
+  void registerObserver(Ptr<TrainingObserver> observer) {
+    observers_.push_back(observer);
+    observer->init(*this);
+  }
+
 private:
   // this needs to be a vector of weak pointers, otherwise
   // it is likely to cause circular dependencies.
-  std::vector<Ptr<TrainingObserver>> observers_;
+  std::vector<Weak<TrainingObserver>> observers_;
 };
 }  // namespace marian

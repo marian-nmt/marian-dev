@@ -8,11 +8,13 @@
 
 namespace marian {
 
-class Scheduler : public TrainingObserver {
+class Scheduler : public TrainingObserver,
+                  public std::enable_shared_from_this<Scheduler> {
 private:
   Ptr<Options> options_;
   Ptr<TrainingState> state_;
   std::vector<Ptr<ValidatorBase>> validators_;
+  std::vector<Ptr<TrainingObserver>> observers_; // we own these, while TrainingState only holds std::weak_ptr<...> to these elements
 
   bool first_{true};
 
@@ -380,7 +382,9 @@ public:
   size_t numberOfBatches() { return state_->batches; }
 
   void registerTrainingObserver(Ptr<TrainingObserver> observer) {
-    state_->registerObserver(observer);
+    if(observer != shared_from_this())  // don't add yourself when calling scheduler->registerTrainingObserver()
+      observers_.push_back(observer);   // this would cause a circular reference.
+    state_->registerObserver(observer); // This is OK. State only holds weak references; and needs to know scheduler
   }
 
   void actAfterEpoch(TrainingState& state) override {

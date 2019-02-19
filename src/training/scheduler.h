@@ -12,6 +12,8 @@ class Scheduler : public TrainingObserver,
                   public std::enable_shared_from_this<Scheduler> {
 private:
   Ptr<Options> options_;
+
+  // @TODO: disentagle shared and weak references in this code.
   Ptr<TrainingState> state_;
   std::vector<Ptr<ValidatorBase>> validators_;
   std::vector<Ptr<TrainingObserver>> observers_; // we own these, while TrainingState only holds std::weak_ptr<...> to these elements

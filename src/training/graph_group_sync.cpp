@@ -41,7 +41,6 @@ void SyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) /*override*/ {
   validate();
   scheduler_ = scheduler;
   // optimizer has to be registered last to see changes of learning rate
-  // @TODO: ^^Fix this comment. Either it refers to the scheduler, or it should be moved. Which one?
   scheduler_->registerTrainingObserver(scheduler_);
 
   for(auto opt : shardOpt_)

@@ -16,7 +16,6 @@ private:
   // @TODO: disentagle shared and weak references in this code.
   Ptr<TrainingState> state_;
   std::vector<Ptr<ValidatorBase>> validators_;
-  std::vector<Ptr<TrainingObserver>> observers_; // we own these, while TrainingState only holds std::weak_ptr<...> to these elements
 
   bool first_{true};
 
@@ -183,12 +182,11 @@ public:
 
   void addValidator(Ptr<ValidatorBase> validator) {
     validators_.push_back(validator);
+    registerTrainingObserver(validator);
 
-    registerTrainingObserver(validators_.back());
     if(!state_->loaded) {
-      state_->validators[validator->type()]["last-best"]
-          = validator->initScore();
-      state_->validators[validator->type()]["stalled"] = 0;
+      state_->validators[validator->type()]["last-best"] = validator->initScore();
+      state_->validators[validator->type()]["stalled"]   = 0;
     }
     if(validators_.size() == 1)
       state_->validator = validator->type();
@@ -384,8 +382,6 @@ public:
   size_t numberOfBatches() { return state_->batches; }
 
   void registerTrainingObserver(Ptr<TrainingObserver> observer) {
-    if(observer != shared_from_this())  // don't add yourself when calling scheduler->registerTrainingObserver()
-      observers_.push_back(observer);   // this would cause a circular reference.
     state_->registerObserver(observer); // This is OK. State only holds weak references; and needs to know scheduler
   }
 

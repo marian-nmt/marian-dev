@@ -123,7 +123,6 @@ public:
 protected:
   std::vector<Ptr<Vocab>> vocabs_;
   Ptr<Options> options_;
-  Ptr<models::ModelBase> builder_;
   Ptr<data::BatchGenerator<DataSet>> batchGenerator_;
 
   virtual float validateBG(const std::vector<Ptr<ExpressionGraph>>&)
@@ -144,7 +143,8 @@ protected:
 
   virtual void keepBest(const std::vector<Ptr<ExpressionGraph>>& graphs) {
     auto model = options_->get<std::string>("model");
-    builder_->save(graphs[0], model + ".best-" + type() + ".npz", true);
+    auto builder = models::from_options(options_, models::usage::scoring);
+    builder->save(graphs[0], model + ".best-" + type() + ".npz", true);
   }
 };
 
@@ -153,13 +153,6 @@ public:
   CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
       : Validator(vocabs, options) {
     createBatchGenerator(/*isTranslating=*/false);
-
-    // @TODO: check if this is required.
-    Ptr<Options> opts = New<Options>();
-    opts->merge(options);
-    opts->set("inference", true);
-    opts->set("cost-type", "ce-sum");
-    builder_ = models::from_options(opts, models::usage::scoring);
   }
 
   std::string type() override { return options_->get<std::string>("cost-type"); }
@@ -179,12 +172,8 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &loss, &samples](size_t id) {
-          thread_local Ptr<ExpressionGraph> graph;
-          thread_local auto builder = models::from_options(options_, models::usage::scoring);
-
-          if(!graph) {
-            graph = graphs[id % graphs.size()];
-          }
+          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          auto builder = models::from_options(options_, models::usage::scoring);
 
           builder->clear(graph);
           auto dynamicLoss = builder->build(graph, batch);
@@ -221,12 +210,6 @@ public:
   AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
       : Validator(vocabs, options, /*lowerIsBetter=*/false) {
     createBatchGenerator(/*isTranslating=*/false);
-
-    // @TODO: check if this is required.
-    Ptr<Options> opts = New<Options>();
-    opts->merge(options);
-    opts->set("inference", true);
-    builder_ = models::from_options(opts, models::usage::raw);
   }
 
   std::string type() override { return "accuracy"; }
@@ -244,12 +227,8 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &correct, &totalLabels](size_t id) {
-          thread_local Ptr<ExpressionGraph> graph;
-          thread_local auto builder = models::from_options(options_, models::usage::raw);
-
-          if(!graph) {
-            graph = graphs[id % graphs.size()];
-          }
+          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          auto builder = models::from_options(options_, models::usage::raw);
 
           // @TODO: requires argmax implementation and integer arithmetics
           // builder->clear(graph);
@@ -314,12 +293,6 @@ public:
       : Validator(vocabs, options, /*lowerIsBetter=*/false),
         evalMaskedLM_(evalMaskedLM) {
     createBatchGenerator(/*isTranslating=*/false);
-
-    // @TODO: check if this is required.
-    Ptr<Options> opts = New<Options>();
-    opts->merge(options);
-    opts->set("inference", true);
-    builder_ = models::from_options(opts, models::usage::raw);
   }
 
   std::string type() override {
@@ -342,14 +315,11 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &correct, &totalLabels](size_t id) {
-          thread_local Ptr<ExpressionGraph> graph;
-          thread_local auto builder = models::from_options(options_, models::usage::raw);
+          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          auto builder = models::from_options(options_, models::usage::raw);
+
+          // each thread gets its own persistent random engine
           thread_local std::unique_ptr<std::mt19937> engine;
-
-          if(!graph) {
-            graph = graphs[id % graphs.size()];
-          }
-
           if(!engine)
             engine.reset(new std::mt19937((unsigned int)(Config::seed + id)));
 
@@ -422,8 +392,6 @@ class ScriptValidator : public Validator<data::Corpus> {
 public:
   ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
       : Validator(vocabs, options, false) {
-    builder_ = models::from_options(options_, models::usage::raw);
-
     ABORT_IF(!options_->hasAndNotEmpty("valid-script-path"),
              "valid-script metric but no script given");
   }
@@ -431,7 +399,8 @@ public:
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
     using namespace data;
     auto model = options_->get<std::string>("model");
-    builder_->save(graphs[0], model + ".dev.npz", true);
+    auto builder = models::from_options(options_, models::usage::raw);
+    builder->save(graphs[0], model + ".dev.npz", true);
 
     auto command = options_->get<std::string>("valid-script-path");
     auto valStr = utils::exec(command);
@@ -454,7 +423,6 @@ public:
   TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
       : Validator(vocabs, options, false),
         quiet_(options_->get<bool>("quiet-translation")) {
-    builder_ = models::from_options(options_, models::usage::translation);
 
     if(!options_->hasAndNotEmpty("valid-script-path"))
       LOG_VALID(warn, "No post-processing script given for validating translator");
@@ -520,13 +488,8 @@ public:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=](size_t id) {
-          thread_local Ptr<ExpressionGraph> graph;
-          thread_local Ptr<Scorer> scorer;
-
-          if(!graph) {
-            graph = graphs[id % graphs.size()];
-            scorer = scorers[id % graphs.size()];
-          }
+          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          Ptr<Scorer> scorer = scorers[id % graphs.size()];
 
           auto search = New<BeamSearch>(options_,
                                         std::vector<Ptr<Scorer>>{scorer},
@@ -590,7 +553,6 @@ public:
       : Validator(vocabs, options, false),
         detok_(detok),
         quiet_(options_->get<bool>("quiet-translation")) {
-    builder_ = models::from_options(options_, models::usage::translation);
 
 #ifdef USE_SENTENCEPIECE
     auto vocab = vocabs_.back();
@@ -663,13 +625,8 @@ public:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &stats](size_t id) {
-          thread_local Ptr<ExpressionGraph> graph;
-          thread_local Ptr<Scorer> scorer;
-
-          if(!graph) {
-            graph = graphs[id % graphs.size()];
-            scorer = scorers[id % graphs.size()];
-          }
+          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          Ptr<Scorer> scorer = scorers[id % graphs.size()];
 
           auto search = New<BeamSearch>(options_,
                                         std::vector<Ptr<Scorer>>{scorer},

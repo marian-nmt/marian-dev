@@ -188,8 +188,7 @@ public:
 
   void newEpoch() {
     ++epochs;
-    for(auto wObserver : observers_) {
-      auto observer = wObserver.lock();
+    for(auto observer : observers_) {
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterEpoch(*this);
     }
@@ -202,8 +201,7 @@ public:
     batchesEpoch += batchesInUpdate;
     loaded = false;
     validated = false;
-    for(auto wObserver : observers_) {
-      auto observer = wObserver.lock();
+    for(auto observer : observers_) {
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterBatches(*this);
     }
@@ -213,8 +211,7 @@ public:
     stalled = num;
     if(num > maxStalled)
       ++maxStalled;
-    for(auto wObserver : observers_) {
-      auto observer = wObserver.lock();
+    for(auto observer : observers_) {
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterStalled(*this);
     }
@@ -222,8 +219,7 @@ public:
 
   void newLoad() {
     loaded = true;
-    for(auto wObserver : observers_) {
-      auto observer = wObserver.lock();
+    for(auto observer : observers_) {
       ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterLoaded(*this);
     }
@@ -313,6 +309,6 @@ public:
 private:
   // this needs to be a vector of weak pointers, otherwise
   // it is likely to cause circular dependencies.
-  std::vector<Weak<TrainingObserver>> observers_;
+  std::vector<Ptr<TrainingObserver>> observers_;
 };
 }  // namespace marian

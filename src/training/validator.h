@@ -168,11 +168,22 @@ protected:
 
     {
       threadPool_.reserve(graphs.size());
-
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &loss, &samples](size_t id) {
-          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          // don't let the thread hold on to graphs, we want them to be thread local,
+          thread_local Weak<ExpressionGraph> weakGraph;
+          auto graph = weakGraph.lock();
+          
+          // If the weak reference has not been set or it has expired, set it based on graphs.
+          // Also if the current graph is not in the set of graph arguments, reset the graph.
+          if(!graph || std::find(graphs.begin(), graphs.end(), graph) == graphs.end()) {
+            weakGraph = graphs[id % graphs.size()];
+            graph = weakGraph.lock();
+          }
+
+          ABORT_IF(!graph, "It seems the graph has expired");
+
           auto builder = models::from_options(options_, models::usage::scoring);
 
           builder->clear(graph);
@@ -227,7 +238,14 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &correct, &totalLabels](size_t id) {
-          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          thread_local Weak<ExpressionGraph> weakGraph; 
+          auto graph = weakGraph.lock();
+          if(!graph || std::find(graphs.begin(), graphs.end(), graph) == graphs.end()) {
+            weakGraph = graphs[id % graphs.size()];
+            graph = weakGraph.lock();
+          }  
+          ABORT_IF(!graph, "It seems the graph has expired");
+
           auto builder = models::from_options(options_, models::usage::raw);
 
           // @TODO: requires argmax implementation and integer arithmetics
@@ -315,7 +333,14 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &correct, &totalLabels](size_t id) {
-          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
+          thread_local Weak<ExpressionGraph> weakGraph; 
+          auto graph = weakGraph.lock();
+          if(!graph || std::find(graphs.begin(), graphs.end(), graph) == graphs.end()) {
+            weakGraph = graphs[id % graphs.size()];
+            graph = weakGraph.lock();
+          }  
+          ABORT_IF(!graph, "It seems the graph has expired");
+
           auto builder = models::from_options(options_, models::usage::raw);
 
           // each thread gets its own persistent random engine
@@ -488,8 +513,20 @@ public:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=](size_t id) {
-          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
-          Ptr<Scorer> scorer = scorers[id % graphs.size()];
+          thread_local Weak<ExpressionGraph> weakGraph; 
+          thread_local Weak<Scorer> weakScorer;
+
+          auto graph = weakGraph.lock();
+          auto scorer = weakScorer.lock();
+          
+          if(!graph || std::find(graphs.begin(), graphs.end(), graph) == graphs.end()) {
+            weakGraph = graphs[id % graphs.size()];
+            weakScorer = scorers[id % graphs.size()];
+
+            graph = weakGraph.lock();
+            scorer = weakScorer.lock();
+          }  
+          ABORT_IF(!graph, "It seems the graph has expired");
 
           auto search = New<BeamSearch>(options_,
                                         std::vector<Ptr<Scorer>>{scorer},
@@ -625,8 +662,20 @@ public:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &stats](size_t id) {
-          Ptr<ExpressionGraph> graph = graphs[id % graphs.size()];
-          Ptr<Scorer> scorer = scorers[id % graphs.size()];
+          thread_local Weak<ExpressionGraph> weakGraph; 
+          thread_local Weak<Scorer> weakScorer;
+
+          auto graph = weakGraph.lock();
+          auto scorer = weakScorer.lock();
+          
+          if(!graph || std::find(graphs.begin(), graphs.end(), graph) == graphs.end()) {
+            weakGraph = graphs[id % graphs.size()];
+            weakScorer = scorers[id % graphs.size()];
+
+            graph = weakGraph.lock();
+            scorer = weakScorer.lock();
+          }  
+          ABORT_IF(!graph, "It seems the graph has expired");
 
           auto search = New<BeamSearch>(options_,
                                         std::vector<Ptr<Scorer>>{scorer},

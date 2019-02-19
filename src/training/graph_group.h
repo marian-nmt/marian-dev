@@ -147,7 +147,7 @@ public:
     for(int i = 0; i < inputTypes.size(); ++i)
       if(inputTypes[i] == "class")
         localMaxes[i] = 1;
- 
+
     size_t maxBatch = 512;
     bool fits = true;
     while(fits) {
@@ -163,8 +163,8 @@ public:
         maxBatch *= 2;
     }
 
-    // Do a binary search for maxmimum batch size that fits into given workspace memory 
-    // for a tested sentence length. 
+    // Do a binary search for maxmimum batch size that fits into given workspace memory
+    // for a tested sentence length.
     for(size_t i = step; i <= maxLength; i += step) {
       size_t start = 1;
       size_t end = maxBatch;
@@ -188,7 +188,7 @@ public:
         } else {
           end = current - 1;
         }
-      } while(end > start);
+      } while(end >= start);
 
       maxBatch = start;
     }
@@ -203,8 +203,8 @@ public:
   }
 };
 
-static void swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs, 
-                             const std::vector<Ptr<OptimizerBase>>& opts, 
+static void swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                             const std::vector<Ptr<OptimizerBase>>& opts,
                              const std::function<void()> distribute = [](){}) {
   ABORT_IF(graphs.size() != opts.size(), "Number of graphs and optimizers has to be equal ({} != {})", graphs.size() != opts.size());
   for(size_t i = 0; i < graphs.size(); ++i)
@@ -212,7 +212,7 @@ static void swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs,
   distribute();
 }
 
-static void swapWithOriginal(const std::vector<Ptr<ExpressionGraph>>& graphs, 
+static void swapWithOriginal(const std::vector<Ptr<ExpressionGraph>>& graphs,
                              const std::vector<Ptr<OptimizerBase>>& opts,
                              const std::function<void()> distribute = [](){}) {
   ABORT_IF(graphs.size() != opts.size(), "Number of graphs and optimizers has to be equal ({} != {})", graphs.size() != opts.size());

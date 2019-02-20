@@ -48,6 +48,8 @@ protected:
   virtual void init(Ptr<data::Batch> batch);
   void execute(Ptr<data::Batch> batch);
 
+  void barrier() const override {} // dummy barrier
+
 public:
   AsyncGraphGroup(Ptr<Options> config, Ptr<IMPIWrapper> mpi);
 
@@ -58,7 +60,6 @@ public:
 
   void load() override;
   void save(bool final = false) override;
-  void save(Ptr<ExpressionGraph>, bool final = false);
 
   // @TODO: give it a fake batch generator which own vocabs instead of passing vocabs
   Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) {

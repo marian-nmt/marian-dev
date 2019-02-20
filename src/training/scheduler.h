@@ -203,11 +203,11 @@ public:
   }
 
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                bool final = false) {
+                bool isFinal = false) {
     // Do not validate if already validated (for instance, after the model is
     // loaded) or if validation is scheduled for another update
     if(state_->validated
-       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !final))
+       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !isFinal))
       return;
 
     bool firstValidator = true;

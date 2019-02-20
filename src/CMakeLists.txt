@@ -74,6 +74,7 @@ add_library(marian STATIC
   translator/helpers.cpp
   translator/scorers.cpp
 
+  training/graph_group.cpp
   training/graph_group_async.cpp
   training/graph_group_sync.cpp
   training/graph_group_singleton.cpp

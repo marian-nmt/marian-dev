@@ -12,12 +12,6 @@ class SyncGraphGroup : public GraphGroup {
   Ptr<ICommunicator> comm_; // [not null] communicator, e.g. NCCLCommunicator
   Ptr<IMPIWrapper> mpi_;    // [not null] all MPI-like communication goes through this (this is a dummy implementation if no MPI run)
 
-  std::vector<DeviceId> devices_;                  // [deviceIndex]
-  std::vector<Ptr<models::ModelBase>> builders_;   // [deviceIndex]
-  std::vector<Ptr<ExpressionGraph>> graphs_;       // [deviceIndex]
-
-  std::vector<Ptr<OptimizerBase>> shardOpt_;       // [deviceIndex]
-
   // @TODO: instead, create an array of ExponentialSmoothing objects, and don't use ExponentialSmoothing as a base class
   std::vector<Ptr<TensorAllocator>> paramsAllocs_; // [deviceIndex] we must hold a reference to the memory until this class dies
 
@@ -31,7 +25,7 @@ class SyncGraphGroup : public GraphGroup {
   void initializeAvg();
 
   bool isMainProcess() const { return mpi_->myMPIRank() == 0; } // (we need this test a few times)
-  void barrier() const { mpi_->barrier(); } // (we need this several times)
+  void barrier() const override { mpi_->barrier(); } // (we need this several times)
 
   bool tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuff, std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches);
   void update(std::vector<Ptr<data::Batch>> subBatches, size_t numReadBatches);

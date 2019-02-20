@@ -3,10 +3,9 @@
 namespace marian {
 
 SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
-    : GraphGroup(options),
+    : GraphGroup(options, Config::getDevices(options, mpi->myMPIRank(), mpi->numMPIProcesses())),
       delay_{options_->get<double>("optimizer-delay")}, mpi_(mpi) { // @TODO: rename delay_ to something else; delay means delayed updated, not accumulation
 
-  devices_ = Config::getDevices(options_, mpi_->myMPIRank(), mpi_->numMPIProcesses());
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
@@ -21,8 +20,8 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
 
     graphs_.push_back(graph);
-    shardOpt_.push_back(Optimizer(options_, graph->allocator()));
-    builders_.push_back(models::from_options(options_, models::usage::training));
+    optimizerShards_.push_back(Optimizer(options_, graph->allocator()));
+    models_.push_back(models::from_options(options_, models::usage::training));
   }
 
   // Note: We may well end up with only one MPI process or only one graph per worker.
@@ -40,10 +39,10 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
 void SyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) /*override*/ {
   validate();
   scheduler_ = scheduler;
-  // optimizer has to be registered last to see changes of learning rate
   scheduler_->registerTrainingObserver(scheduler_);
 
-  for(auto opt : shardOpt_)
+  // optimizer has to be registered last to see changes of learning rate
+  for(auto opt : optimizerShards_)
     scheduler_->registerTrainingObserver(opt);
 }
 
@@ -51,7 +50,7 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
   // Initialize graphs with random weights in one forward step
   // Also allocate and clear the gradients
   comm_->foreach([&](size_t i, size_t /*begin*/, size_t /*end*/) {
-    builders_[i]->build(graphs_[i], exampleBatch);
+    models_[i]->build(graphs_[i], exampleBatch);
     graphs_[i]->forward();
     graphs_[i]->params()->allocateBackward();
     graphs_[i]->params()->set_zero_adjoint();
@@ -69,7 +68,7 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
   //for(size_t i = 1; i < graphs_.size(); ++i) {
   //  auto init = [&](size_t i) {
   //    // initialize i-th graph and weights
-  //    builders_[i]->build(graphs_[i], exampleBatch);
+  //    models_[i]->build(graphs_[i], exampleBatch);
   //    graphs_[i]->forward();
   //    // overwrite weights of i-th graph with weights from 0-th graph
   //    graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
@@ -122,7 +121,7 @@ Ptr<data::BatchStats> SyncGraphGroup::collectStats(const std::vector<Ptr<Vocab>>
   bool isDynamic = scheduler_->isDynamicMBSizeScaling();
   double readerMultiplier = isDynamic ? 1. : multiplier; // multiplier applied already by reader
   updateMultiplier_ = isDynamic ? multiplier : 1.;       // multiplier applied later in update()
-  return GraphGroup::collectStats(graphs_[0], builders_[0], vocabs, readerMultiplier);
+  return GraphGroup::collectStats(graphs_[0], models_[0], vocabs, readerMultiplier);
 }
 
 // helper for MB scaling: quantize the ratio with a given error margin
@@ -355,7 +354,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       if (!subBatch)
         break;
 
-      auto rationalLoss = builders_[localDeviceIndex]->build(graph, subBatch);
+      auto rationalLoss = models_[localDeviceIndex]->build(graph, subBatch);
       if(costScaleFactor_ != 1.f)
         rationalLoss->loss() * costScaleFactor_;
       graph->forward();
@@ -415,7 +414,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     float gradFactor = costScaleFactor_;
     if(options_->get<bool>("normalize-gradient"))
       gradFactor *= updateTrgWords;
-    float l2norm = shardOpt_[i]->update(curParam, curGrad, updateTrgWords, gradFactor);
+    float l2norm = optimizerShards_[i]->update(curParam, curGrad, updateTrgWords, gradFactor);
     curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
 
     return l2norm; // return partial norm
@@ -461,9 +460,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     // This may save a model as well.
     if(scheduler_->validating()) {
       if(isMainProcess()) {
-        swapWithSmoothed(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
+        swapWithSmoothed(graphs_, optimizerShards_, [this]() { comm_->allGatherParams(); });
         scheduler_->validate(graphs_);
-        swapWithOriginal(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
+        swapWithOriginal(graphs_, optimizerShards_, [this]() { comm_->allGatherParams(); });
       }
     }
   }
@@ -475,96 +474,24 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 void SyncGraphGroup::load() /*override*/ {
   validate();
 
+  auto scatterFn = [&](const io::Item& optimizerState, const OptimizerBase::ScatterStateSetFunc& setShardFn) {
+    comm_->scatterState(optimizerState, setShardFn);
+  };
+
   // This function loads the main parameters in the graphs.
-
-  if(!options_->get<bool>("no-reload")) {
-    std::string name = options_->get<std::string>("model");
-
-    if(filesystem::exists(name)) {
-      if(scheduler_)
-        scheduler_->load(name);
-
-      std::string nameGraph = name;
-
-      size_t i = 0;
-      for(auto graph : graphs_)
-        builders_[i++]->load(graph, nameGraph); // we just load it N times from disk (it'll be in disk cache after the first)
-
-      // @TODO: probably we want to have the list of DeviceIds as an attribute
-      std::vector<Ptr<Backend>> backends;
-      for(auto graph : graphs_)
-        backends.push_back(graph->getBackend());
-      shardOpt_[0]->load(name + ".optimizer.npz", shardOpt_, backends,
-        [&](const io::Item& optimizerState, const OptimizerBase::ScatterStateSetFunc& setShardFn) {
-          comm_->scatterState(optimizerState, setShardFn);
-        });
-      LOG(info, "[training] Model reloaded from {}", name);
-    } else if(options_->hasAndNotEmpty("pretrained-model")) {
-      std::string nameInit = options_->get<std::string>("pretrained-model");
-      LOG(info,
-          "[training] Initializing model weights with the pre-trained model {}",
-          nameInit);
-
-      size_t i = 0;
-      for(auto graph : graphs_)
-        builders_[i++]->load(graph, nameInit, false);
-    }
-  }
+  GraphGroup::load(scatterFn);
 }
 
-void SyncGraphGroup::save(bool final) /*override*/ {
-  // validate(); @TODO: get rid of this everywhere (SyncGraphGroup)
-  barrier(); // (for better grouping of log messages)
-  // do final validation
-  if(final && scheduler_) {
-    // bring the smoothed model in
-    // Note that it is sharded. For multi-node, it is sharded over multiple machines, so this is a network access.
-    // Also note that the swap must run on all MPI processes concurrently, although only one actually validates.
-
-    if (isMainProcess()) { // in multi-node, only first MPI process saves the model (they are all identical)
-      swapWithSmoothed(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
-      scheduler_->validate(graphs_, true);
-      swapWithOriginal(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
-    }
-
-  }
-
-  std::string name = options_->get<std::string>("model");
-
-  barrier(); // (for better grouping of log messages)
-
-  // save main model file
-  if (isMainProcess()) { // only save from one MPI process
-    // if not overwrite then save a copy with number of updates in the model pathname
-    swapWithSmoothed(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
-
-    if(!options_->get<bool>("overwrite") && !final) {
-      std::string numberOfBatches
-          = scheduler_ ? std::to_string(scheduler_->numberOfBatches())
-                       : "unknown";
-      std::string nameOverwrite = name;
-      nameOverwrite.replace(name.size() - 4, 4, ".iter" + numberOfBatches + ".npz"); // @TODO: use insert?
-      builders_[0]->save(graphs_[0], nameOverwrite);
-    }
-    // save main model file
-    builders_[0]->save(graphs_[0], name, true);
-    // save scheduler-related state
-    if (scheduler_)
-      scheduler_->save(name);
-
-    swapWithOriginal(graphs_, shardOpt_, [this]() { comm_->allGatherParams(); });
-  }
-
-  barrier(); // (for better grouping of log messages)
-
-  // persist optimizer state
-  shardOpt_[0]->save(name + ".optimizer.npz", shardOpt_,
-    [&](const OptimizerBase::GatherStateGetFunc& getShardFn) {
-      return comm_->gatherState(getShardFn);
-    },
-    isMainProcess());
-
-  barrier(); // (for better grouping of log messages)
+void SyncGraphGroup::save(bool isFinal) /*override*/ {
+  auto distParams = [this]() { 
+    comm_->allGatherParams(); 
+  };
+  
+  auto gatherOpt  = [&](const OptimizerBase::GatherStateGetFunc& getShardFn) { 
+    return comm_->gatherState(getShardFn); 
+  };
+  
+  GraphGroup::save(isFinal, distParams, gatherOpt, isMainProcess());
 }
 
 void SyncGraphGroup::finalize() /*override*/ {

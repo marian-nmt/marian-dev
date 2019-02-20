@@ -172,8 +172,10 @@ protected:
       for(auto batch : *batchGenerator_) {
         auto task = [=, &loss, &samples](size_t id) {
           thread_local size_t workerNo = (size_t)-1; // set to something silly
-          if(workerNo == (size_t)-1)
-            workerNo = id % graphs.size();
+          if(workerNo == (size_t)-1) // if silly, set to actual worker id
+            workerNo = id % graphs.size(); // @TODO: this is not really safe, only works because processing a
+                                           // batch takes a long time and id % graph.size() is unlikely to occur 
+                                           // again before cycling through all threads.
 
           auto graph  = graphs[workerNo];
           auto builder = models::from_options(options_, models::usage::scoring);

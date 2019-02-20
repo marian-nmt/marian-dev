@@ -501,8 +501,8 @@ public:
       for(auto batch : *batchGenerator_) {
         auto task = [=](size_t id) {
           thread_local size_t workerNo = (size_t)-1; // set to something silly
-          if(workerNo == (size_t)-1)
-            workerNo = id % graphs.size();
+          if(workerNo == (size_t)-1) // if silly, set to a now permanent worker id
+            workerNo = id % graphs.size(); // @TODO: this is not really safe, only works because batch processing is a lot slower than assignment
 
           auto graph  = graphs[workerNo];
           auto scorer = scorers[workerNo];

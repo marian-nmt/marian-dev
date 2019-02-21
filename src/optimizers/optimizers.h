@@ -28,12 +28,6 @@ public:
     auto precisions = options_->get<std::vector<std::string>>("precision", {"float32", "float32"});
     optimizerType_ = typeFromString(precisions[1]);
 
-    float clipNorm = options->get<float>("clip-norm", 0.f);
-    if(clipNorm > 0)
-      clipper_ = New<NormClipper>(clipNorm);
-    else
-      clipper_ = New<ReportNormClipper>(clipNorm); // don't clip, just report
-
     // automatic learning-rate adjustment
     // If users provide, in addition to the hyper-parameters, a reference minibatch size,
     // that these hyper-parameters were originally tuned for, then the learning-rate gets
@@ -91,12 +85,6 @@ public:
 
   virtual void setParams(const std::vector<float>& params) = 0;
 
-  virtual void setAllocator(Ptr<Allocator> allocator) {
-    allocator_ = allocator;
-    if(clipper_)
-      clipper_->setAllocator(allocator);
-  }
-
   typedef std::function<void(size_t /*localDeviceIndex*/,
                              const char* /*begin*/,
                              const char* /*end*/)> ScatterStateSetFunc;
@@ -136,7 +124,6 @@ protected:
     // Clip gradient norm
   Ptr<Clipper> clipper_;
 
-  Ptr<Allocator> allocator_;
   Ptr<TensorAllocator> baseAlloc_;
 
   Tensor avg_;
@@ -255,5 +242,5 @@ private:
   Tensor vt_;
 };
 
-Ptr<OptimizerBase> Optimizer(Ptr<Options> options, Ptr<Allocator> allocator = nullptr);
+Ptr<OptimizerBase> Optimizer(Ptr<Options> options);
 }  // namespace marian

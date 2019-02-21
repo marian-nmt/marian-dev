@@ -24,8 +24,6 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graphs_.push_back(graph);
     optimizerShards_.push_back(Optimizer(options_));
-    optimizerShards_.back()->setAllocator(graph->allocator());
-
     models_.push_back(models::from_options(options_, models::usage::training));
   }
 }
@@ -34,7 +32,6 @@ void AsyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) {
   scheduler_ = scheduler;
   // optimizer has to be registered last to see changes of learning rate
   scheduler_->registerTrainingObserver(scheduler_);
-
   for(auto opt : optimizerShards_)
     scheduler_->registerTrainingObserver(opt);
 }
@@ -44,42 +41,34 @@ void AsyncGraphGroup::fetchParams(Tensor oldParams,
                                   int /*device_id*/) {
   // @TODO read guard on parameters
   int pos = 0;
+  auto fetch = [&](int idx, int pos) {
+    // individual mutex per-shard
+    std::lock_guard<std::mutex> guard(shardSync_[idx]);
+    oldParams->subtensor((int)pos, (int)params[idx]->size())->copyFrom(params[idx]);
+  };
 
   std::vector<std::thread> threads;
   for(int idx = 0; idx < devices_.size(); idx++) {
-    threads.emplace_back(std::thread(
-        [&](int idx, int pos) {
-          // individual mutex per-shard
-          std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          oldParams->subtensor((int)pos, (int)params[idx]->size())->copyFrom(params[idx]);
-        },
-        idx,
-        pos));
-
+    threads.emplace_back(std::thread(fetch, idx, pos));
     pos += shardSize_;
   }
-  for(auto&& t : threads) {
+  for(auto&& t : threads)
     t.join();
-  }
 }
 
 void AsyncGraphGroup::pushGradients(Tensor newGrads,
                                     int /*device_id*/) {
-  // add instead of copy?
   std::vector<std::thread> threads;
   int pos = 0;
   for(int idx = 0; idx < devices_.size(); idx++) {
-    threads.emplace_back(std::thread(
-        [&](int idx, int pos) {
-          // individual mutex per-shard
-          std::lock_guard<std::mutex> guard(shardSync_[idx]);
-          grads_[idx]->copyFrom(newGrads->subtensor(pos, (int)grads_[idx]->size()));
+    auto push = [&](int idx, int pos) {
+      // individual mutex per-shard
+      std::lock_guard<std::mutex> guard(shardSync_[idx]);
+      grads_[idx]->copyFrom(newGrads->subtensor(pos, (int)grads_[idx]->size()));
+      optimizerShards_[idx]->update(params_[idx], grads_[idx]);
+    };
 
-          optimizerShards_[idx]->update(params_[idx], grads_[idx]);
-        },
-        idx,
-        pos));
-
+    threads.emplace_back(std::thread(push, idx, pos));
     pos += shardSize_;
   }
   for(auto&& t : threads)
@@ -134,10 +123,16 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
 
       allocator->reserveExact(__size__ * sizeOf(graph->getParameterType()));
       allocator->allocate(grad, {1, __size__}, graph->getParameterType());
+      grad->set(0.f);
+
       gradsAlloc_.push_back(allocator);
       grads_.push_back(grad);
     }
   }
+
+  // Initialize optimizers with empty gradient
+  for(int i = 0; i < params_.size(); ++i)
+    optimizerShards_[i]->update(params_[i], grads_[i]);
 }
 
 void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
@@ -146,36 +141,33 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     first_ = false;
   }
 
-  auto task = [this](Ptr<data::Batch> batch) {
-    static size_t i = 0;
-    thread_local Ptr<ExpressionGraph> graph;
-    thread_local Ptr<models::ModelBase> builder;
+  size_t workers = devices_.size();
+  auto task = [this, workers](Ptr<data::Batch> batch) {
+    // assign thread id safely via atomic increment
+    static std::atomic<int> i{0};
+    thread_local int tid = -1;
+    if(tid == -1)
+      tid = i++;
+
     thread_local size_t t = 0;
     thread_local size_t num_seen_words = 0;
     thread_local size_t num_seen_sentences = 0;
-    thread_local int t_id = 0;
     thread_local StaticLoss loss;
 
     thread_local Tensor accGradients;
     thread_local Ptr<TensorAllocator> accAlloc;
 
-    if(!graph) {
-      std::lock_guard<std::mutex> lock(sync_);
-      t_id = (int)i;
-      graph = graphs_[i];
-      builder = models_[i++];
-    }
-
     ABORT_IF(costScale_ ,"Cost-scaling not implemented for AsyncSGD");
 
-    Ptr<RationalLoss> dynamicLoss = builder->build(graph, batch);
+    auto graph = graphs_[tid];
+    Ptr<RationalLoss> dynamicLoss = models_[tid]->build(graph, batch);
     if(costScaleFactor_ != 1.f) {
       // it's ok to go out of scope, this will still insert the new top node into the graph
       auto costNode = dynamicLoss->loss() * costScaleFactor_;
     }
 
     if(t % optimizerDelay_ == 0) {
-      fetchParams(graph->params()->vals(), params_, t_id);
+      fetchParams(graph->params()->vals(), params_, tid);
     }
 
     graph->forward();
@@ -205,7 +197,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     t++;
 
     if(t % optimizerDelay_ == 0) {
-      pushGradients(gradients, t_id);
+      pushGradients(gradients, tid);
       // Reset the counter of seen target words after gradient update
       if(optimizerDelay_ > 1)
         gradients->set(0);

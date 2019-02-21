@@ -20,7 +20,7 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
 
     graphs_.push_back(graph);
-    optimizerShards_.push_back(Optimizer(options_, graph->allocator()));
+    optimizerShards_.push_back(Optimizer(options_));
     models_.push_back(models::from_options(options_, models::usage::training));
   }
 
@@ -483,14 +483,14 @@ void SyncGraphGroup::load() /*override*/ {
 }
 
 void SyncGraphGroup::save(bool isFinal) /*override*/ {
-  auto distParams = [this]() { 
-    comm_->allGatherParams(); 
+  auto distParams = [this]() {
+    comm_->allGatherParams();
   };
-  
-  auto gatherOpt  = [&](const OptimizerBase::GatherStateGetFunc& getShardFn) { 
-    return comm_->gatherState(getShardFn); 
+
+  auto gatherOpt  = [&](const OptimizerBase::GatherStateGetFunc& getShardFn) {
+    return comm_->gatherState(getShardFn);
   };
-  
+
   GraphGroup::save(isFinal, distParams, gatherOpt, isMainProcess());
 }
 

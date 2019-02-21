@@ -25,7 +25,7 @@ public:
     ABORT_IF(devices_.size() != 1, "Only one device ID should be provided for singleton training");
     auto deviceId = devices_[0];
     // Initialize graph
-    
+
     graphs_.push_back(New<ExpressionGraph>());
 
     auto graph = graphs_[0]; // only one graph
@@ -40,7 +40,7 @@ public:
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 
-    optimizerShards_.push_back(Optimizer(options_, graph->allocator()));
+    optimizerShards_.push_back(Optimizer(options_));
     models_.push_back(models::from_options(options_, models::usage::training));
   }
 
@@ -61,7 +61,7 @@ public:
   void save(bool isFinal = false) override {
     auto distParams = [](){}; // do nothing, only one process and GPU
 
-    auto gatherOpt  = [&](const OptimizerBase::GatherStateGetFunc& getFn) { 
+    auto gatherOpt  = [&](const OptimizerBase::GatherStateGetFunc& getFn) {
       return getFn(/*localDeviceIndex=*/0); // dummy
     };
 

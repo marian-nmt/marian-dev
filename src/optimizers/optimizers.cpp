@@ -33,7 +33,6 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
     baseAlloc_->reserveExact(numAllocateShards * elements * sizeOf(optimizerType_));
   }
 
-
   if(mvAvg_ && !avg_)
     // allocate exp smooth shard tensor
     baseAlloc_->allocate(avg_, {1, elements}, optimizerType_);
@@ -52,7 +51,6 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
     pm_ = params;
   }
 
-  using namespace functional;
   if(castOptimizerType_)
     CopyCast(gd_, grads);
   else
@@ -60,10 +58,19 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
 
   // reverse cost scaling when used
   if(costScaleFactor != 1.f)
-    Element(_1 = _1 / costScaleFactor, gd_);
+    Element(functional::_1 = functional::_1 / costScaleFactor, gd_);
 
   // clip gradients when used
-  float gNorm = clipper_->clip(gd_); // clip and rescale, report norm before clipping
+  if(!clipper_) {
+    float clipNorm = options_->get<float>("clip-norm", 0.f);
+    if(clipNorm > 0)
+      clipper_ = New<NormClipper>(clipNorm);
+    else
+      clipper_ = New<ReportNormClipper>(clipNorm); // don't clip, just report
+    clipper_->setAllocator(New<Allocator>(pm_->getBackend()->getDeviceId(), 1024, 1024));
+  }
+
+  float gNorm = clipper_->clip(gd_); // clip and rescale, report norm from before clipping
 
   // perform update on master copy with cast gradients
   // if a type cast has been performed. Otherwise the
@@ -489,7 +496,7 @@ void Adam::resetStats() {
   denom2_ = 0;
 }
 
-Ptr<OptimizerBase> Optimizer(Ptr<Options> options, Ptr<Allocator> allocator) {
+Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
   auto optType = options->get<std::string>("optimizer");
   auto params = options->has("optimizer-params")
                      ? options->get<std::vector<float>>("optimizer-params")
@@ -506,7 +513,6 @@ Ptr<OptimizerBase> Optimizer(Ptr<Options> options, Ptr<Allocator> allocator) {
   }
 
   opt->setParams(params);
-  opt->setAllocator(allocator);
   return opt;
 }
 }  // namespace marian

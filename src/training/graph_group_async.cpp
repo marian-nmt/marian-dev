@@ -142,12 +142,12 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
   }
 
   size_t workers = devices_.size();
-  auto task = [this, workers](Ptr<data::Batch> batch) {
-    // assign thread id safely via atomic increment
-    static std::atomic<int> i{0};
+  auto task = [this, &threadCount, workers](Ptr<data::Batch> batch) {
+    // assign thread id safely via atomic increment  
+    static std::atomic<int> threadCount{0};
     thread_local int tid = -1;
     if(tid == -1)
-      tid = i++;
+      tid = threadCount++;
 
     thread_local size_t t = 0;
     thread_local size_t num_seen_words = 0;

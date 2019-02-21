@@ -171,11 +171,11 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &loss, &samples](size_t id) {
-          // safely assign thread id
-          static std::atomic<int> i{0};
-          thread_local int workerNo = -1;
-          if(workerNo == -1)
-            workerNo = i++;
+          thread_local size_t workerNo = (size_t)-1; // set to something silly
+          if(workerNo == (size_t)-1) // if silly, set to actual worker id
+            workerNo = id % graphs.size(); // @TODO: this is not really safe, only works because processing a
+                                           // batch takes a long time and id % graph.size() is unlikely to occur 
+                                           // again before cycling through all threads.
 
           auto graph  = graphs[workerNo];
           auto builder = models::from_options(options_, models::usage::scoring);
@@ -227,17 +227,15 @@ protected:
     size_t batchId     = 0;
 
     {
-      threadPool_.reserve(graphs.size());
+      size_t workers = graphs.size();
+      threadPool_.reserve(workers);
 
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &correct, &totalLabels](size_t id) {
-
-          // safely assign thread id
-          static std::atomic<int> i{0};
-          thread_local int workerNo = -1;
-          if(workerNo == -1)
-            workerNo = i++;
+          thread_local size_t workerNo = (size_t)-1; // set to something silly
+          if(workerNo == (size_t)-1)
+            workerNo = id % workers;
 
           auto graph  = graphs[workerNo];
           auto builder = models::from_options(options_, models::usage::raw);
@@ -327,11 +325,9 @@ protected:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &correct, &totalLabels](size_t id) {
-          // safely assign thread id
-          static std::atomic<int> i{0};
-          thread_local int workerNo = -1;
-          if(workerNo == -1)
-            workerNo = i++;
+          thread_local size_t workerNo = (size_t)-1; // set to something silly
+          if(workerNo == (size_t)-1)
+            workerNo = id % graphs.size();
 
           auto graph  = graphs[workerNo];
 
@@ -507,11 +503,9 @@ public:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=](size_t id) {
-          // safely assign thread id
-          static std::atomic<int> i{0};
-          thread_local int workerNo = -1;
-          if(workerNo == -1)
-            workerNo = i++;
+          thread_local size_t workerNo = (size_t)-1; // set to something silly
+          if(workerNo == (size_t)-1) // if silly, set to a now permanent worker id
+            workerNo = id % graphs.size(); // @TODO: this is not really safe, only works because batch processing is a lot slower than assignment
 
           auto graph  = graphs[workerNo];
           auto scorer = scorers[workerNo];
@@ -650,15 +644,13 @@ public:
       TaskBarrier taskBarrier;
       for(auto batch : *batchGenerator_) {
         auto task = [=, &stats](size_t id) {
-          // safely assign thread id
-          static std::atomic<int> i{0};
-          thread_local int workerNo = -1;
-          if(workerNo == -1)
-            workerNo = i++;
+          thread_local size_t workerNo = (size_t)-1; // set to something silly
+          if(workerNo == (size_t)-1)
+            workerNo = id % graphs.size();
 
           auto graph  = graphs[workerNo];
           auto scorer = scorers[workerNo];
-
+          
           auto search = New<BeamSearch>(options_,
                                         std::vector<Ptr<Scorer>>{scorer},
                                         vocabs_.back()->getEosId(),

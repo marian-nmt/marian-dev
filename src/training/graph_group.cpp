@@ -142,7 +142,9 @@ void GraphGroup::restoreFromCheckpoint(const OptimizerBase::ScatterStateFunc& sc
 
   auto& masterParameters = *found;
   for(auto graph : graphs_) {
-    graph->params()->allocateForward(); // allocate graph parameter memory and initialize paramters from inference model
+    graph->forward(); // allocate graph parameter memory and initialize paramters from inference model. This needs to 
+    // run a full forward pass over the paramters to allocato the parameters values in order (by parameter name). 
+    // Just doint graph->params()->allocateForward() is not sufficient.
     ABORT_IF(graph->params()->vals()->shape() != masterParameters.shape,
              "Graph parameter sizes and master copy parameter sizes in checkpoint do not match");
 

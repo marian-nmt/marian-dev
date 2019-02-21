@@ -116,6 +116,7 @@ void ExpressionGraph::checkNan(Tensor t, bool& isNan, bool& isInf) {
 }
 
 void ExpressionGraph::save(std::vector<io::Item>& ioItems) {
+  // sorted by name in std::map
   for(auto p : params()->getMap()) {
     std::string pName = p.first;
 

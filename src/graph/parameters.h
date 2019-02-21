@@ -73,6 +73,10 @@ public:
   virtual void allocateForward() {
     if(!params_.empty() && vals_->size() == 0) {
       vals_->reserveExact(totalCapacity(vals_));
+
+      // sort parameters by name before allocation to make sure the memory layout after allocation is always the same
+      std::sort(params_.begin(), params_.end(), [](Expr n1, Expr n2){ return n1->name() < n2->name(); });
+
       for(auto p : params_) {
         if(!p->val()) {
           vals_->allocate(p->val(), p->shape(), p->value_type());
@@ -83,6 +87,10 @@ public:
 
   virtual void allocateBackward() {
     if(!params_.empty() && grads_->size() == 0) {
+
+      // sort parameters by name before allocation to make sure the memory layout after allocation is always the same
+      std::sort(params_.begin(), params_.end(), [](Expr n1, Expr n2){ return n1->name() < n2->name(); });
+
       grads_->reserveExact(totalCapacity(grads_));
       for(auto p : params_)
         if(!p->grad())

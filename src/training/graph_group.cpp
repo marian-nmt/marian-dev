@@ -24,7 +24,7 @@ GraphGroup::GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices
   }
 }
 
-GraphGroup::GraphGroup(Ptr<Options> options) 
+GraphGroup::GraphGroup(Ptr<Options> options)
   : GraphGroup(options, Config::getDevices(options)) {}
 
 // increase cost-scaling factor if no NaN has been detected for a
@@ -68,6 +68,19 @@ void GraphGroup::decreaseCostScaleFactor() {
 }
 
 void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
+  /*
+  if not no-reload (=> i.e. do reload):
+    restore scheduler
+    if checkpoint is available or not no-reload-checkpoint:
+      reload from checkpoint
+    else if model is available:
+      reload from model, but warn that no checkpoint was used and the model could be smoothed
+  else if pretrained-model path given:
+    initialize matching weights from pretrained model
+  else:
+    (implicitly) don't do anything => initialize randomly later
+  */
+
   if(!options_->get<bool>("no-reload")) {
     std::string name = options_->get<std::string>("model");
 
@@ -80,15 +93,14 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
       for(auto graph : graphs_)
         models_[i++]->load(graph, nameGraph); // we just load it N times from disk (it'll be in disk cache after the first)
 
-      restoreCheckpoint(scatterFn);
+      restoreFromCheckpoint(scatterFn);
 
-      LOG(info, "[training] Model reloaded from {}", name);
     } else if(options_->hasAndNotEmpty("pretrained-model")) {
       std::string nameInit = options_->get<std::string>("pretrained-model");
       LOG(info,
           "[training] Initializing model weights with pre-trained model {}",
           nameInit);
-    
+
       size_t i = 0;
       for(auto graph : graphs_)
         models_[i++]->load(graph, nameInit, false);
@@ -96,51 +108,83 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
   }
 }
 
-void GraphGroup::restoreCheckpoint(const OptimizerBase::ScatterStateFunc& scatterFn) {
+void GraphGroup::restoreFromCheckpoint(const OptimizerBase::ScatterStateFunc& scatterFn) {
+  /*
+  if model checkpoint is available:
+    - load model from checkpoint, not from model.npz
+    - abort if checkpoint model and graph size do not match, probably due to different model or precision
+  */
+
   std::string name = options_->get<std::string>("model");
-  
+  std::string checkpointName = name + ".optimizer.npz"; // @TODO: change to .checkpoint.npz, would break backwards compat
+
+  if(!filesystem::exists(checkpointName)) {
+    LOG(warn, "No checkpoint found, parameters reloaded from last inference model");
+    return;
+  }
+
+  auto items = io::loadItems(checkpointName);
+
   // @TODO: probably we want to have the list of DeviceIds as an attribute
   std::vector<Ptr<Backend>> backends;
   for(auto graph : graphs_)
-    backends.push_back(graph->getBackend());        
-  optimizerShards_[0]->load(name + ".optimizer.npz", optimizerShards_, backends, scatterFn);
+    backends.push_back(graph->getBackend());
+  optimizerShards_[0]->load(items, optimizerShards_, backends, scatterFn);
+
+  // restore the graph parameters from the checkpoint master copy.
+  auto found = std::find_if(items.begin(), items.end(),
+    [](const io::Item& item) { return item.name == "master_parameters"; });
+
+  if(found == items.end()) {
+    LOG(warn, "No master parameters found in checkpoint, parameters reloaded from last inference model");
+    return;
+  }
+
+  auto& masterParameters = *found;
+  for(auto graph : graphs_) {
+    // graph->params()->allocateForward(); // allocate graph parameter memory and initialize paramters from inference model
+    // graph->params()->vals()->set(0.f);
+    graph->forward(); // allocate graph parameter memory and initialize paramters from inference model
+    ABORT_IF(graph->params()->vals()->shape() != masterParameters.shape,
+             "Graph parameter sizes and master copy parameter sizes in checkpoint do not match");
+
+    graph->params()->vals()->set(masterParameters); // @TODO: make this work for fp16
+    graph->clear();
+  }
+
+  LOG(info, "[training] Master parameters and optimizers restored from training checkpoint {} and {}", name, checkpointName);
 }
 
 void GraphGroup::save(bool isFinal,
                       const std::function<void()>& distributeParamtersFn,
                       const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn,
-                      bool isMainProcess) { 
-  
+                      bool isMainProcess) {
   barrier(); // (for better grouping of log messages)
-  
   if(isMainProcess) { // only save from one MPI process
     // bring the smoothed model in
     // Note that it is sharded. For multi-node, it is sharded over multiple machines, so this is a network access.
     // Also note that the swap must run on all MPI processes concurrently, although only one actually validates.
+
     swapWithSmoothed(graphs_, optimizerShards_, distributeParamtersFn);
-    
+
     // do final validation
     if(isFinal && scheduler_)
       scheduler_->validate(graphs_, isFinal);
-    
-    barrier();// (for better grouping of log messages)
 
+    barrier();// (for better grouping of log messages)
     // save main model file
     saveModel(isFinal);  // if not overwrite then save a copy with number of updates in the model pathname
 
-
     swapWithOriginal(graphs_, optimizerShards_, distributeParamtersFn);
+
+    saveCheckpoint(gatherOptimizerStateFn);
   }
-  barrier(); // (for better grouping of log messages)
-
-  saveCheckpoint(gatherOptimizerStateFn, isMainProcess);
-
   barrier(); // (for better grouping of log messages)
 }
 
 void GraphGroup::saveModel(bool isFinal) {
   std::string name = options_->get<std::string>("model");
-  
+
   if(options_->get<bool>("overwrite")) {
     models_[0]->save(graphs_[0], name, /*saveTranslatorConfig=*/true);
     // save scheduler-related state
@@ -157,26 +201,37 @@ void GraphGroup::saveModel(bool isFinal) {
     }
 
     models_[0]->save(graphs_[0], name, /*saveTranslatorConfig=*/true);
-    
+
     // save scheduler-related state
     if(scheduler_)
       scheduler_->save(name);
   }
 }
 
-void GraphGroup::saveCheckpoint(const OptimizerBase::GatherStateFunc& gatherFn, 
-                                bool isMainProcess) {
-  // @TODO: this should do more, also numer checkpoints,
-  // contain full model copy etc.
-  // We might consider making GraphGroup the main checkpointer 
-  // instead of OptimizerBase as it is now. 
-  // This should be easy with the IoItem interface
+void GraphGroup::saveCheckpoint(const OptimizerBase::GatherStateFunc& gatherFn) {
   std::string name = options_->get<std::string>("model");
+  std::string checkpointName = name + ".optimizer.npz"; // @TODO: change to .checkpoint.npz, would break backwards compat
 
-  optimizerShards_[0]->save(name + ".optimizer.npz", 
-                            optimizerShards_, 
-                            gatherFn, 
-                            isMainProcess);
+  std::vector<io::Item> items;
+  optimizerShards_[0]->save(items,
+                            optimizerShards_,
+                            gatherFn);
+
+  auto found = std::find_if(items.begin(), items.end(),
+    [](const io::Item& item) { return item.name == "master_parameters"; });
+
+  if(found == items.end()) {
+    // if the optimizer does not provide a master parameters copy (the default when training with full precision)
+    // then dump the parameters of graphs_[0] into the checkpoint. This should be called when the original parameters
+    // are in the graph, not the smoothed version. Here we are getting called after a double swap, so that should be
+    // the case.
+    io::Item masterParameters;
+    graphs_[0]->params()->vals()->get(masterParameters, "master_parameters");
+    items.push_back(masterParameters);
+  }
+
+  LOG(info, "[training] Saving training checkpoint to {} and {}", name, checkpointName);
+  io::saveItems(checkpointName, items);
 }
 
 void GraphGroup::swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs,

@@ -59,7 +59,7 @@ public:
 
   void load(const OptimizerBase::ScatterStateFunc& scatterFn);
 
-  void restoreCheckpoint(const OptimizerBase::ScatterStateFunc& scatterFn);
+  void restoreFromCheckpoint(const OptimizerBase::ScatterStateFunc& scatterFn);
 
   virtual void save(bool isFinal = false) = 0;
 
@@ -72,8 +72,7 @@ public:
 
   void saveModel(bool isFinal = false);
 
-  void saveCheckpoint(const OptimizerBase::GatherStateFunc& gatherFn, 
-                      bool isMainProcess);
+  void saveCheckpoint(const OptimizerBase::GatherStateFunc& gatherFn);
 
   void swapWithSmoothed(const std::vector<Ptr<ExpressionGraph>>& graphs,
                         const std::vector<Ptr<OptimizerBase>>& opts,

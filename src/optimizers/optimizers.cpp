@@ -147,6 +147,7 @@ void OptimizerBase::load(std::vector<io::Item>& items,
           if(!opt->pm_) { // lazily allocate
             size_t size = end - begin;  // this is size in bytes now
             if(!opt->baseAlloc_) {
+              LOG_ONCE(info, "Allocating memory for general optimizer shards");
               opt->baseAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
               opt->baseAlloc_->reserveExact(numShards * size);
             }
@@ -179,6 +180,7 @@ void OptimizerBase::load(std::vector<io::Item>& items,
           if(!opt->avg_) { // lazily allocate
             size_t size = end - begin;  // this is size in bytes now
             if(!opt->baseAlloc_) {
+              LOG_ONCE(info, "Allocating memory for general optimizer shards");
               opt->baseAlloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
               opt->baseAlloc_->reserveExact(numShards * size);
             }
@@ -222,32 +224,17 @@ void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t re
   Element(_1 -= eta_ * _2, params, grads);
 }
 
-void Sgd::load(const std::string& name,
+void Sgd::load(std::vector<io::Item>& items,
                const std::vector<Ptr<OptimizerBase>>& opts,
                const std::vector<Ptr<Backend>>& backends,
                const ScatterStateFunc& scatterFn) {
-
-  if(!filesystem::exists(name))
-    return;
-
-  auto items = io::loadItems(name);
-
   OptimizerBase::load(items, opts, backends, scatterFn);
 }
 
-void Sgd::save(const std::string& name,
+void Sgd::save(std::vector<io::Item>& items,
                const std::vector<Ptr<OptimizerBase>>& opts,
-               const GatherStateFunc& gatherFn,
-               bool isMainProcess /*= true*/) {
-  // if not main MPI process then we have done our duty
-  if (!isMainProcess)
-    return;
-
-  std::vector<io::Item> items;
-  OptimizerBase::save(items, opts, gatherFn); // collect parameters base optimizer class
-  // SGD has no parameters, but check if base optimizer has
-  if(!items.empty())
-    io::saveItems(name, items); // save all to file
+               const GatherStateFunc& gatherFn) {
+  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
 }
 
 
@@ -282,6 +269,11 @@ void Adagrad::load(std::vector<io::Item>& items,
                    const ScatterStateFunc& scatterFn) {
   ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
 
+
+  OptimizerBase::load(items, opts, backends, scatterFn);
+
+  LOG(info, "Loading Adagrad parameters");
+
   io::Item iGt;
   for(auto item : items)
     // extract data into vectors
@@ -289,7 +281,7 @@ void Adagrad::load(std::vector<io::Item>& items,
       iGt = std::move(item);
 
   if(iGt.bytes.empty()) {
-    LOG(warn, "[warn] Adagrad parameters not found in .npz file");
+    LOG(warn, "[warn] Adagrad parameters not found in checkpoint");
     return;
   }
 
@@ -315,25 +307,13 @@ void Adagrad::load(std::vector<io::Item>& items,
     });
 }
 
-void Adagrad::load(const std::string& name,
-                   const std::vector<Ptr<OptimizerBase>>& opts,
-                   const std::vector<Ptr<Backend>>& backends,
-                   const ScatterStateFunc& scatterFn) {
-
-  if(!filesystem::exists(name))
-    return;
-
-  auto items = io::loadItems(name);
-
-  OptimizerBase::load(items, opts, backends, scatterFn);
-
-  LOG(info, "Loading Adagrad parameters from {}", name);
-  load(items, opts, backends, scatterFn);
-}
-
 void Adagrad::save(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
                    const GatherStateFunc& gatherFn) {
+
+  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+
+  LOG(info, "Saving Adagrad parameters");
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   io::Item gt = gatherFn([&](size_t localDeviceIndex) {
       auto opt = std::dynamic_pointer_cast<Adagrad>(opts[localDeviceIndex]);
@@ -342,22 +322,6 @@ void Adagrad::save(std::vector<io::Item>& items,
       return item;
     });
   items.emplace_back(std::move(gt));
-}
-
-void Adagrad::save(const std::string& name,
-                   const std::vector<Ptr<OptimizerBase>>& opts,
-                   const GatherStateFunc& gatherFn,
-                   bool isMainProcess /*= true*/) {
-  // if not main MPI process then we have done our duty
-  if (!isMainProcess)
-    return;
-
-  std::vector<io::Item> items;
-  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
-
-  LOG(info, "Saving Adagrad parameters to {}", name);
-  save(items, opts, gatherFn); // collect parameters for this optimizer class
-  io::saveItems(name, items);  // save all to file
 }
 
 void Adagrad::resetStats() {
@@ -424,6 +388,10 @@ void Adam::load(std::vector<io::Item>& items,
                 const ScatterStateFunc& scatterFn) {
   ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
 
+  OptimizerBase::load(items, opts, backends, scatterFn);
+
+  LOG(info, "Loading Adam parameters");
+
   io::Item iMt;
   io::Item iVt;
   std::array<double, 2> vDenoms;
@@ -480,26 +448,14 @@ void Adam::load(std::vector<io::Item>& items,
   //LOG(info, "done loading Adam params");
 }
 
-void Adam::load(const std::string& name,
-                const std::vector<Ptr<OptimizerBase>>& opts,
-                const std::vector<Ptr<Backend>>& backends,
-                const ScatterStateFunc& scatterFn) {
-
-  if(!filesystem::exists(name))
-    return;
-
-  auto items = io::loadItems(name);
-
-  OptimizerBase::load(items, opts, backends, scatterFn);
-
-  LOG(info, "Loading Adam parameters from {}", name);
-  load(items, opts, backends, scatterFn);
-}
-
 void Adam::save(std::vector<io::Item>& items,
                 const std::vector<Ptr<OptimizerBase>>& opts,
                 const GatherStateFunc& gatherFn) {
-  // @TODO: switch to bytes
+
+
+  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+
+  LOG(info, "Saving Adam parameters");
 
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   io::Item mt = gatherFn([&](size_t localDeviceIndex) {
@@ -520,22 +476,6 @@ void Adam::save(std::vector<io::Item>& items,
 
   std::vector<double> vDenoms{denom1_, denom2_};
   items.emplace_back(std::move(io::fromVector(vDenoms, "adam_denoms")));
-}
-
-void Adam::save(const std::string& name,
-                const std::vector<Ptr<OptimizerBase>>& opts,
-                const GatherStateFunc& gatherFn,
-                bool isMainProcess /*= true*/) {
-  // if not main MPI process then we have done our duty
-  if (!isMainProcess)
-    return;
-
-  std::vector<io::Item> items;
-  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
-
-  LOG(info, "Saving Adam parameters to {}", name);
-  save(items, opts, gatherFn); // collect parameters for this optimizer class
-  io::saveItems(name, items); // save all to file
 }
 
 void Adam::resetStats() {

@@ -6,8 +6,7 @@
 namespace marian {
 
 AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
-    : GraphGroup(options),
-      devices_{Config::getDevices(options_)},
+    : GraphGroup(options, Config::getDevices(options)),
       shardSync_(devices_.size()),
       optimizerDelay_((size_t)options_->get<double>("optimizer-delay")) {
   ABORT_IF(mpi->numMPIProcesses() != 1, "AsyncGraphGroup presently does not support multiple MPI processes");
@@ -24,10 +23,10 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graphs_.push_back(graph);
-    shardOpt_.push_back(Optimizer(options_));
-    shardOpt_.back()->setAllocator(graph->allocator());
+    optimizerShards_.push_back(Optimizer(options_));
+    optimizerShards_.back()->setAllocator(graph->allocator());
 
-    builders_.push_back(models::from_options(options_, models::usage::training));
+    models_.push_back(models::from_options(options_, models::usage::training));
   }
 }
 
@@ -36,7 +35,7 @@ void AsyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) {
   // optimizer has to be registered last to see changes of learning rate
   scheduler_->registerTrainingObserver(scheduler_);
 
-  for(auto opt : shardOpt_)
+  for(auto opt : optimizerShards_)
     scheduler_->registerTrainingObserver(opt);
 }
 
@@ -76,7 +75,7 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
           std::lock_guard<std::mutex> guard(shardSync_[idx]);
           grads_[idx]->copyFrom(newGrads->subtensor(pos, (int)grads_[idx]->size()));
 
-          shardOpt_[idx]->update(params_[idx], grads_[idx]);
+          optimizerShards_[idx]->update(params_[idx], grads_[idx]);
         },
         idx,
         pos));
@@ -93,7 +92,7 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
     ThreadPool pool(graphs_.size(), graphs_.size());
     for(size_t i = 0; i < graphs_.size(); ++i) {
       auto init = [&](size_t i) {
-        builders_[i]->build(graphs_[i], batch);
+        models_[i]->build(graphs_[i], batch);
         graphs_[i]->forward();
       };
       pool.enqueue(init, i);
@@ -164,7 +163,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
       std::lock_guard<std::mutex> lock(sync_);
       t_id = (int)i;
       graph = graphs_[i];
-      builder = builders_[i++];
+      builder = models_[i++];
     }
 
     ABORT_IF(costScale_ ,"Cost-scaling not implemented for AsyncSGD");
@@ -279,7 +278,7 @@ void AsyncGraphGroup::save(bool isFinal /* = false */) {
     auto comm = New<DefaultCommunicator>(graphs_, /*mpi = */nullptr);
     comm->allGatherParams();
   };
-  
+
   auto gatherOpt = [&](const OptimizerBase::GatherStateGetFunc& getFn) {
     io::Item data = getFn(0);
     for (size_t i = 1; i < graphs_.size(); i++)

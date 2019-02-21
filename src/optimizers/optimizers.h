@@ -57,15 +57,22 @@ public:
 
   virtual void init(TrainingState& state) override {
     eta_ = state.eta;
+    batchesSeen_ = state.batches;
   }
+
   virtual void actAfterLoaded(TrainingState& state) override {
     eta_ = state.eta;
+    batchesSeen_ = state.batches;
   }
+
   virtual void actAfterEpoch(TrainingState& state) override {
     eta_ = state.eta;
+    batchesSeen_ = state.batches;
+
     if(state.reset)
       resetStats();
   }
+
   virtual void actAfterBatches(TrainingState& state) override {
     eta_ = state.eta;
     batchesSeen_ = state.batches;
@@ -73,8 +80,11 @@ public:
     if(state.reset)
       resetStats();
   }
+
   virtual void actAfterStalled(TrainingState& state) override {
     eta_ = state.eta;
+    batchesSeen_ = state.batches;
+
     if(state.reset)
       resetStats();
   }
@@ -96,22 +106,6 @@ public:
 
   typedef std::function<io::Item(const GatherStateGetFunc& /*getFn*/)> GatherStateFunc;
 
-  virtual void load(const std::string& /*name*/,
-                    const std::vector<Ptr<OptimizerBase>>& /*opts*/,
-                    const std::vector<Ptr<Backend>>& /*backends*/,
-                    const ScatterStateFunc& /*scatterFn*/) = 0;
-
-  virtual void save(const std::string& /*name*/,
-                    const std::vector<Ptr<OptimizerBase>>& /*opts*/,
-                    const GatherStateFunc& /*gatherFn*/,
-                    bool /*isMainProcess*/ = true) = 0;
-
-  void swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_t n, bool swapAvg);
-
-protected:
-  virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
-  virtual void resetStats() = 0;
-
   virtual void load(std::vector<io::Item>& /*items*/,
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
                     const std::vector<Ptr<Backend>>& /*backends*/,
@@ -120,6 +114,12 @@ protected:
   virtual void save(std::vector<io::Item>& /*items*/,
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
                     const GatherStateFunc& /*gatherFn*/);
+
+  void swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_t n, bool swapAvg);
+
+protected:
+  virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
+  virtual void resetStats() = 0;
 
   Ptr<Options> options_;
 
@@ -152,14 +152,14 @@ class Sgd : public OptimizerBase {
 public:
   Sgd(Ptr<Options> options) : OptimizerBase(options) {}
 
-  void load(const std::string& name,
+  void load(std::vector<io::Item>& /*items*/,
+            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+            const std::vector<Ptr<Backend>>& /*backends*/,
+            const ScatterStateFunc& /*scatterFn*/) override;
+
+  void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
-            const std::vector<Ptr<Backend>>& backends,
-            const ScatterStateFunc& scatterFn) override;
-  void save(const std::string& name,
-            const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn,
-            bool /*isMainProcess*/ = true) override;
+            const GatherStateFunc& gatherFn) override;
 
   virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
@@ -177,14 +177,14 @@ class Adagrad : public OptimizerBase {
 public:
   Adagrad(Ptr<Options> options) : OptimizerBase(options) {}
 
-  void load(const std::string& name,
+  void load(std::vector<io::Item>& /*items*/,
+            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+            const std::vector<Ptr<Backend>>& /*backends*/,
+            const ScatterStateFunc& /*scatterFn*/) override;
+
+  void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
-            const std::vector<Ptr<Backend>>& backends,
-            const ScatterStateFunc& scatterFn) override;
-  void save(const std::string& name,
-            const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn,
-            bool /*isMainProcess*/ = true) override;
+            const GatherStateFunc& gatherFn) override;
 
   void setParams(const std::vector<float>& params) override {
     if(params.size() > 0)
@@ -194,15 +194,6 @@ public:
 private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
   void resetStats() override;
-
-  void load(std::vector<io::Item>& /*items*/,
-            const std::vector<Ptr<OptimizerBase>>& /*opts*/,
-            const std::vector<Ptr<Backend>>& /*backends*/,
-            const ScatterStateFunc& /*scatterFn*/) override;
-
-  void save(std::vector<io::Item>& items,
-            const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn) override;
 
   float eps_ = 1e-8f;
   Ptr<TensorAllocator> alloc_;
@@ -220,19 +211,6 @@ class Adam : public OptimizerBase {
 public:
   Adam(Ptr<Options> options) : OptimizerBase(options) {}
 
-  void load(const std::string& name,
-            const std::vector<Ptr<OptimizerBase>>& opts,
-            const std::vector<Ptr<Backend>>& backends,
-            const ScatterStateFunc& scatterFn) override;
-  void save(const std::string& name,
-            const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn,
-            bool isMainProcess = true) override;
-
-private:
-  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
-  void resetStats() override;
-
   void load(std::vector<io::Item>& /*items*/,
             const std::vector<Ptr<OptimizerBase>>& /*opts*/,
             const std::vector<Ptr<Backend>>& /*backends*/,
@@ -241,6 +219,10 @@ private:
   void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
             const GatherStateFunc& gatherFn) override;
+
+private:
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+  void resetStats() override;
 
   // Adam parameters:
   // [beta1, beta2, eps, w, refMBWords]

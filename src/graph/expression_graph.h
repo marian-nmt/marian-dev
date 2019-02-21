@@ -473,7 +473,7 @@ public:
 
 public:
   // loading from array of io::Items
-  void load(const std::vector<io::Item>& ioItems, bool markReloaded = true) {
+  void load(std::vector<io::Item>& ioItems, bool markReloaded = true) {
     setReloaded(false);
     for(auto& item : ioItems) {
       std::string pName = item.name;
@@ -488,12 +488,14 @@ public:
 
   void load(const std::string& name, bool markReloaded = true) {
     LOG(info, "Loading model from {}", name);
-    load(io::loadItems(name), markReloaded);
+    auto items = io::loadItems(name);
+    load(items, markReloaded);
   }
 
   void load(const void* ptr, bool markReloaded = true) {
     LOG(info, "Loading model from buffer at {}", ptr);
-    load(io::loadItems(ptr), markReloaded);
+    auto items = io::loadItems(ptr);
+    load(items, markReloaded);
   }
 
   void mmap(const void* ptr, bool markReloaded = true) {
@@ -504,7 +506,8 @@ public:
     params_->init(backend_);
 
     LOG(info, "Memory mapping model at {}", ptr);
-    load(io::mmapItems(ptr), markReloaded);
+    auto items = io::mmapItems(ptr);
+    load(items, markReloaded);
   }
 
 public:

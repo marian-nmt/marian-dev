@@ -1198,43 +1198,44 @@ void Insert(Tensor out,
   }
 }
 
-__global__ void gGRUFastForward(float* out,
-                                const float* state,
-                                const float* xW,
-                                const float* sU,
-                                const float* b,
-                                const float* mask,
+template <typename T>
+__global__ void gGRUFastForward(T* out,
+                                const T* state,
+                                const T* xW,
+                                const T* sU,
+                                const T* b,
+                                const T* mask,
                                 size_t rows,
                                 size_t cols,
                                 bool final) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float m = !mask || mask[j];
-      float* rowOut = out + j * cols;
-      const float* rowState = state + j * cols;
+      T m = !mask || mask[j];
+      T* rowOut = out + j * cols;
+      const T* rowState = state + j * cols;
 
-      const float* xWrow = xW + j * cols * 3;
-      const float* sUrow = sU + j * cols * 3;
+      const T* xWrow = xW + j * cols * 3;
+      const T* sUrow = sU + j * cols * 3;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float r = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
+          T r = functional::Ops<T>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
 
-          float z = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+          T z = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
-          float h;
+          T h;
           if(final)
-            h = tanhf(xWrow[l] + (sUrow[l] + b[l]) * r);
+            h = functional::Ops<T>::tanh(xWrow[l] + (sUrow[l] + b[l]) * r);
           else
-            h = tanhf(xWrow[l] + sUrow[l] * r + b[l]);
+            h = functional::Ops<T>::tanh(xWrow[l] + sUrow[l] * r + b[l]);
 
-          float out = (1.0f - z) * h + z * rowState[i];
-          rowOut[i] = m * out + (1 - m) * rowState[i];
+          T out = ((T)1.f - z) * h + z * rowState[i];
+          rowOut[i] = m * out + ((T)1.f - m) * rowState[i];
         }
       }
     }
@@ -1242,7 +1243,6 @@ __global__ void gGRUFastForward(float* out,
 }
 
 void GRUFastForward(Tensor out, std::vector<Tensor> inputs, bool final) {
-  matchOrAbort<float>(out->type());
   cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
@@ -1251,44 +1251,60 @@ void GRUFastForward(Tensor out, std::vector<Tensor> inputs, bool final) {
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  gGRUFastForward<<<blocks, threads>>>(
-      out->data(),                                // output
-      inputs[0]->data(),                          // state
-      inputs[1]->data(),                          // xW
-      inputs[2]->data(),                          // sU
-      inputs[3]->data(),                          // b
-      inputs.size() > 4 ? inputs[4]->data() : 0,  // mask
-      rows,
-      cols,
-      final);
+  if(out->type() == Type::float32) {
+    gGRUFastForward<<<blocks, threads>>>(
+        out->data<float>(),                                // output
+        inputs[0]->data<float>(),                          // state
+        inputs[1]->data<float>(),                          // xW
+        inputs[2]->data<float>(),                          // sU
+        inputs[3]->data<float>(),                          // b
+        inputs.size() > 4 ? inputs[4]->data<float>() : 0,  // mask
+        rows,
+        cols,
+        final);
+  } else if (out->type() == Type::float16) {
+    gGRUFastForward<<<blocks, threads>>>(
+        out->data<half>(),                                // output
+        inputs[0]->data<half>(),                          // state
+        inputs[1]->data<half>(),                          // xW
+        inputs[2]->data<half>(),                          // sU
+        inputs[3]->data<half>(),                          // b
+        inputs.size() > 4 ? inputs[4]->data<half>() : 0,  // mask
+        rows,
+        cols,
+        final);
+  } else {
+    ABORT("GRUFastForward not implemented for type {}", out->type());
+  }
 }
 
-__global__ void gGRUFastBackward(float* outState,
-                                 float* outXW,
-                                 float* outSU,
-                                 float* outB,
-                                 const float* state,
-                                 const float* xW,
-                                 const float* sU,
-                                 const float* b,
-                                 const float* mask,
-                                 const float* adj,
+template <typename T>
+__global__ void gGRUFastBackward(T* outState,
+                                 T* outXW,
+                                 T* outSU,
+                                 T* outB,
+                                 const T* state,
+                                 const T* xW,
+                                 const T* sU,
+                                 const T* b,
+                                 const T* mask,
+                                 const T* adj,
                                  size_t rows,
                                  size_t cols,
                                  bool final) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float m = !mask || mask[j];
+      T m = !mask || mask[j];
 
-      float* rowOutState = outState + j * cols;
-      float* rowOutXW = outXW + j * cols * 3;
-      float* rowOutSU = outSU + j * cols * 3;
+      T* rowOutState = outState + j * cols;
+      T* rowOutXW = outXW + j * cols * 3;
+      T* rowOutSU = outSU + j * cols * 3;
 
-      const float* rowState = state + j * cols;
-      const float* rowXW = xW + j * cols * 3;
-      const float* rowSU = sU + j * cols * 3;
-      const float* rowAdj = adj + j * cols;
+      const T* rowState = state + j * cols;
+      const T* rowXW = xW + j * cols * 3;
+      const T* rowSU = sU + j * cols * 3;
+      const T* rowAdj = adj + j * cols;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
@@ -1296,25 +1312,25 @@ __global__ void gGRUFastBackward(float* outState,
           int k = i + cols;
           int l = i + 2 * cols;
 
-          float r = functional::Ops<float>::sigmoid(rowXW[i] + rowSU[i] + b[i]);
-          float z = functional::Ops<float>::sigmoid(rowXW[k] + rowSU[k] + b[k]);
+          T r = functional::Ops<T>::sigmoid(rowXW[i] + rowSU[i] + b[i]);
+          T z = functional::Ops<T>::sigmoid(rowXW[k] + rowSU[k] + b[k]);
 
-          float h;
+          T h;
           if(final)
-            h = tanhf(rowXW[l] + (rowSU[l] + b[l]) * r);
+            h = functional::Ops<T>::tanh(rowXW[l] + (rowSU[l] + b[l]) * r);
           else
-            h = tanhf(rowXW[l] + rowSU[l] * r + b[l]);
+            h = functional::Ops<T>::tanh(rowXW[l] + rowSU[l] * r + b[l]);
 
-          float adj = rowAdj[i];
+          T adj = rowAdj[i];
 
-          float t = (1 - z) * (1 - h * h);
+          T t = ((T)1.f - z) * ((T)1.f - h * h);
 
           // df/ds
           if(outState)
-            rowOutState[i] += (m * z - m + 1) * adj;
+            rowOutState[i] += (m * z - m + (T)1.f) * adj;
 
           // df/d(xW_r) ...
-          float dfdxW_r = m * r * (1 - r) * t * adj;
+          T dfdxW_r = m * r * ((T)1.f - r) * t * adj;
           if(final)
             dfdxW_r *= rowSU[l] + b[l];
           else
@@ -1324,10 +1340,10 @@ __global__ void gGRUFastBackward(float* outState,
           if(outSU)
             rowOutSU[i] += dfdxW_r;
           if(outB)
-            atomics::atomicAdd(outB + i, dfdxW_r);
+            atomics::atomicAdd(outB + i, dfdxW_r); // @TODO: get rid of atomicAdd everywhere
 
           // df/d(xW_z) ...
-          float dfdxW_z = m * (1 - z) * z * (rowState[i] - h) * adj;
+          T dfdxW_z = m * ((T)1.f - z) * z * (rowState[i] - h) * adj;
           if(outXW)
             rowOutXW[k] += dfdxW_z;
           if(outSU)
@@ -1336,7 +1352,7 @@ __global__ void gGRUFastBackward(float* outState,
             atomics::atomicAdd(outB + k, dfdxW_z);
 
           // df/d(xW_x) ...
-          float dfdxW_x = m * t * adj;
+          T dfdxW_x = m * t * adj;
           if(outXW)
             rowOutXW[l] += dfdxW_x;
           if(outSU)
@@ -1356,7 +1372,6 @@ void GRUFastBackward(std::vector<Tensor> outputs,
                      std::vector<Tensor> inputs,
                      Tensor adj,
                      bool final) {
-  matchOrAbort<float>(adj->type());
   cudaSetDevice(adj->getDeviceId().no);
 
   int rows = adj->shape().elements() / adj->shape().back();
@@ -1365,20 +1380,39 @@ void GRUFastBackward(std::vector<Tensor> outputs,
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  gGRUFastBackward<<<blocks, threads>>>(
-      outputs[0] ? outputs[0]->data() : 0,        // state - adj
-      outputs[1] ? outputs[1]->data() : 0,        // xW - adj
-      outputs[2] ? outputs[2]->data() : 0,        // sU - adj
-      outputs[3] ? outputs[3]->data() : 0,        // b - adj
-      inputs[0]->data(),                          // state
-      inputs[1]->data(),                          // xW
-      inputs[2]->data(),                          // sU
-      inputs[3]->data(),                          // b
-      inputs.size() > 4 ? inputs[4]->data() : 0,  // mask
-      adj->data(),
-      rows,
-      cols,
-      final);
+  if(adj->type() == Type::float32) {
+    gGRUFastBackward<<<blocks, threads>>>(
+        outputs[0] ? outputs[0]->data<float>() : 0,        // state - adj
+        outputs[1] ? outputs[1]->data<float>() : 0,        // xW - adj
+        outputs[2] ? outputs[2]->data<float>() : 0,        // sU - adj
+        outputs[3] ? outputs[3]->data<float>() : 0,        // b - adj
+        inputs[0]->data<float>(),                          // state
+        inputs[1]->data<float>(),                          // xW
+        inputs[2]->data<float>(),                          // sU
+        inputs[3]->data<float>(),                          // b
+        inputs.size() > 4 ? inputs[4]->data<float>() : 0,  // mask
+        adj->data<float>(),
+        rows,
+        cols,
+        final);
+  } else if (adj->type() == Type::float16) {
+    gGRUFastBackward<<<blocks, threads>>>(
+        outputs[0] ? outputs[0]->data<half>() : 0,        // state - adj
+        outputs[1] ? outputs[1]->data<half>() : 0,        // xW - adj
+        outputs[2] ? outputs[2]->data<half>() : 0,        // sU - adj
+        outputs[3] ? outputs[3]->data<half>() : 0,        // b - adj
+        inputs[0]->data<half>(),                          // state
+        inputs[1]->data<half>(),                          // xW
+        inputs[2]->data<half>(),                          // sU
+        inputs[3]->data<half>(),                          // b
+        inputs.size() > 4 ? inputs[4]->data<half>() : 0,  // mask
+        adj->data<half>(),
+        rows,
+        cols,
+        final);
+  } else {
+    ABORT("gGRUFastBackward not implemented for type {}", adj->type());
+  }
 }
 
 template <typename T, typename AccType = float>
@@ -1602,10 +1636,11 @@ float L2Norm(Tensor in, Ptr<Allocator> allocator) {
   return dataCpu;
 }
 
-__global__ void gAtt(float* out,
-                     const float* va,
-                     const float* ctx,
-                     const float* state,
+template <typename T, typename AccType = float>
+__global__ void gAtt(T* out,
+                     const T* va,
+                     const T* ctx,
+                     const T* state,
                      int m,  // total rows (batch x time x beam)
                      int k,  // depth
                      int b,  // batch size
@@ -1617,19 +1652,19 @@ __global__ void gAtt(float* out,
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      const float* vaRow = va;
-      const float* ctxRow = ctx + (j % (b * t)) * cols;
-      const float* stateRow = state + ((j / (b * t)) * b + j % b) * cols;
+      const T* vaRow = va;
+      const T* ctxRow = ctx + (j % (b * t)) * cols;
+      const T* stateRow = state + ((j / (b * t)) * b + j % b) * cols;
 
-      extern __shared__ float _share[];
-      float* _sum = _share;
+      extern __shared__ AccType _share[];
+      AccType* _sum = _share;
 
-      _sum[threadIdx.x] = 0.0;
+      _sum[threadIdx.x] = 0.f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float z = ctxRow[id] + stateRow[id];
-          float ex = tanhf(z) * vaRow[id];
+          AccType z = (AccType)ctxRow[id] + (AccType)stateRow[id];
+          AccType ex = functional::Ops<AccType>::tanh(z) * (AccType)vaRow[id];
           _sum[threadIdx.x] += ex;
         }
       }
@@ -1643,14 +1678,13 @@ __global__ void gAtt(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      out[j] = _sum[0];
+      out[j] = (T)_sum[0];
     }
     __syncthreads();
   }
 }
 
 void Att(Tensor out, Tensor va, Tensor context, Tensor state) {
-  matchOrAbort<float>(out->type());
   cudaSetDevice(out->getDeviceId().no);
 
   size_t m = out->shape().elements() / out->shape().back();
@@ -1662,17 +1696,25 @@ void Att(Tensor out, Tensor va, Tensor context, Tensor state) {
   int threads = std::min(MAX_THREADS, (int)k);
   int shared = sizeof(float) * threads;
 
-  gAtt<<<blocks, threads, shared>>>(
-      out->data(), va->data(), context->data(), state->data(), m, k, b, t);
+  if(out->type() == Type::float32) {
+    gAtt<float, float><<<blocks, threads, shared>>>(
+      out->data<float>(), va->data<float>(), context->data<float>(), state->data<float>(), m, k, b, t);
+  } else if (out->type() == Type::float16) {
+    gAtt<half, float><<<blocks, threads, shared>>>(
+      out->data<half>(), va->data<half>(), context->data<half>(), state->data<half>(), m, k, b, t);
+  } else {
+    ABORT("gAtt not implemented for type {}", out->type());
+  }
 }
 
-__global__ void gAttBack(float* gVa,
-                         float* gContext,
-                         float* gState,
-                         const float* va,
-                         const float* context,
-                         const float* state,
-                         const float* adj,
+template <typename T>
+__global__ void gAttBack(T* gVa,
+                         T* gContext,
+                         T* gState,
+                         const T* va,
+                         const T* context,
+                         const T* state,
+                         const T* adj,
                          int m,  // rows
                          int k,  // cols
                          int n   // batch size
@@ -1682,23 +1724,23 @@ __global__ void gAttBack(float* gVa,
   for(int bid = 0; bid < m; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* gcRow = gContext + j * cols;
-      float* gsRow = gState + (j % n) * cols;
+      T* gcRow = gContext + j * cols;
+      T* gsRow = gState + (j % n) * cols;
 
-      const float* cRow = context + j * cols;
-      const float* sRow = state + (j % n) * cols;
+      const T* cRow = context + j * cols;
+      const T* sRow = state + (j % n) * cols;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          float z = cRow[id] + sRow[id];
+          T z = cRow[id] + sRow[id];
 
-          float t = tanhf(z);
-          float r = va[id] * (1.f - t * t);
+          T t = functional::Ops<T>::tanh(z);
+          T r = va[id] * ((T)1.f - t * t);
 
-          gcRow[id] += r * adj[j];
+          gcRow[id] += r * adj[j]; // atomicAdd? reasons for instabilities?
           gsRow[id] += r * adj[j];
-          atomics::atomicAdd(gVa + id, t * adj[j]);
+          atomics::atomicAdd(gVa + id, t * adj[j]); // @TODO: get rid of atomicAdd via Matmul
         }
       }
     }
@@ -1712,7 +1754,6 @@ void AttBack(Tensor gVa,
              Tensor context,
              Tensor state,
              Tensor adj) {
-  matchOrAbort<float>(gVa->type());
   cudaSetDevice(adj->getDeviceId().no);
 
   size_t m = adj->shape().elements() / adj->shape()[-1];
@@ -1722,18 +1763,31 @@ void AttBack(Tensor gVa,
   int blocks = std::min(MAX_BLOCKS, (int)n);
   int threads = std::min(MAX_THREADS, (int)k);
 
-  gAttBack<<<blocks, threads>>>(gVa->data(),
-                                gContext->data(),
-                                gState->data(),
-
-                                va->data(),
-                                context->data(),
-                                state->data(),
-
-                                adj->data(),
-                                m,
-                                k,
-                                n);
+  if(gVa->type() == Type::float32) {
+    gAttBack<<<blocks, threads>>>(gVa->data<float>(),
+                                  gContext->data<float>(),
+                                  gState->data<float>(),
+                                  va->data<float>(),
+                                  context->data<float>(),
+                                  state->data<float>(),
+                                  adj->data<float>(),
+                                  m,
+                                  k,
+                                  n);
+  } else if (gVa->type() == Type::float16) {
+    gAttBack<<<blocks, threads>>>(gVa->data<half>(),
+                                  gContext->data<half>(),
+                                  gState->data<half>(),
+                                  va->data<half>(),
+                                  context->data<half>(),
+                                  state->data<half>(),
+                                  adj->data<half>(),
+                                  m,
+                                  k,
+                                  n);
+  } else {
+    ABORT("gAttBack not implemented for type {}", gVa->type());
+  }
 }
 
 template <typename T, typename AccType = float>
@@ -2171,38 +2225,39 @@ void SetSparse(float* out,
 
 /******************************************************************************/
 
-__global__ void gLSTMCellForward(float* out,
-                                 const float* cell,
-                                 const float* xW,
-                                 const float* sU,
-                                 const float* b,
-                                 const float* mask,
+template <typename T>
+__global__ void gLSTMCellForward(T* out,
+                                 const T* cell,
+                                 const T* xW,
+                                 const T* sU,
+                                 const T* b,
+                                 const T* mask,
                                  size_t rows,
                                  size_t cols) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float m = !mask || mask[j];
+      T m = !mask || mask[j];
 
-      float* rowOut = out + j * cols;
-      const float* rowCell = cell + j * cols;
+      T* rowOut = out + j * cols;
+      const T* rowCell = cell + j * cols;
 
-      const float* xWrow = xW + j * cols * 4;
-      const float* sUrow = sU + j * cols * 4;
+      const T* xWrow = xW + j * cols * 4;
+      const T* sUrow = sU + j * cols * 4;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
+          T gf = functional::Ops<T>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
-          float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+          T gi = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
-          float gc = tanhf(xWrow[l] + sUrow[l] + b[l]);
+          T gc = functional::Ops<T>::tanh(xWrow[l] + sUrow[l] + b[l]);
 
-          float cout = gf * rowCell[i] + gi * gc;
-          rowOut[i] = m * cout + (1 - m) * rowCell[i];
+          T cout = gf * rowCell[i] + gi * gc;
+          rowOut[i] = m * cout + ((T)1.f - m) * rowCell[i];
         }
       }
     }
@@ -2210,7 +2265,6 @@ __global__ void gLSTMCellForward(float* out,
 }
 
 void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
-  matchOrAbort<float>(out->type());
   cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
@@ -2219,40 +2273,54 @@ void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  gLSTMCellForward<<<blocks, threads>>>(
-      out->data(),                                // output
-      inputs[0]->data(),                          // cell state
-      inputs[1]->data(),                          // xW
-      inputs[2]->data(),                          // sU
-      inputs[3]->data(),                          // b
-      inputs.size() > 4 ? inputs[4]->data() : 0,  // mask
+  if(out->type() == Type::float32) {
+   gLSTMCellForward<<<blocks, threads>>>(
+      out->data<float>(),                                // output
+      inputs[0]->data<float>(),                          // cell state
+      inputs[1]->data<float>(),                          // xW
+      inputs[2]->data<float>(),                          // sU
+      inputs[3]->data<float>(),                          // b
+      inputs.size() > 4 ? inputs[4]->data<float>() : 0,  // mask
       rows,
       cols);
+  } else if (out->type() == Type::float16) {
+    gLSTMCellForward<<<blocks, threads>>>(
+      out->data<half>(),                                // output
+      inputs[0]->data<half>(),                          // cell state
+      inputs[1]->data<half>(),                          // xW
+      inputs[2]->data<half>(),                          // sU
+      inputs[3]->data<half>(),                          // b
+      inputs.size() > 4 ? inputs[4]->data<half>() : 0,  // mask
+      rows,
+      cols);
+  } else {
+    ABORT("LSTMCellForward not implemented for type {}", out->type());
+  }
 }
 
-__global__ void gLSTMOutputForward(float* out,
-                                   const float* cell,
-                                   const float* xW,
-                                   const float* sU,
-                                   const float* b,
+template <typename T>
+__global__ void gLSTMOutputForward(T* out,
+                                   const T* cell,
+                                   const T* xW,
+                                   const T* sU,
+                                   const T* b,
                                    size_t rows,
                                    size_t cols) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* rowOut = out + j * cols;
-      const float* rowCell = cell + j * cols;
+      T* rowOut = out + j * cols;
+      const T* rowCell = cell + j * cols;
 
-      const float* xWrow = xW + j * cols * 4;
-      const float* sUrow = sU + j * cols * 4;
+      const T* xWrow = xW + j * cols * 4;
+      const T* sUrow = sU + j * cols * 4;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
           int k = i + 3 * cols;
-          float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
-
-          rowOut[i] = go * tanhf(rowCell[i]);
+          T go = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+          rowOut[i] = go * functional::Ops<T>::tanh(rowCell[i]);
         }
       }
     }
@@ -2260,7 +2328,6 @@ __global__ void gLSTMOutputForward(float* out,
 }
 
 void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
-  matchOrAbort<float>(out->type());
   cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
@@ -2269,70 +2336,83 @@ void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  gLSTMOutputForward<<<blocks, threads>>>(out->data(),        // output
-                                          inputs[0]->data(),  // cell state
-                                          inputs[1]->data(),  // xW
-                                          inputs[2]->data(),  // sU
-                                          inputs[3]->data(),  // b
-                                          rows,
-                                          cols);
+  if(out->type() == Type::float32) {
+    gLSTMOutputForward<<<blocks, threads>>>(out->data<float>(),        // output
+                                            inputs[0]->data<float>(),  // cell state
+                                            inputs[1]->data<float>(),  // xW
+                                            inputs[2]->data<float>(),  // sU
+                                            inputs[3]->data<float>(),  // b
+                                            rows,
+                                            cols);
+  } else if (out->type() == Type::float16) {
+    gLSTMOutputForward<<<blocks, threads>>>(out->data<half>(),        // output
+                                            inputs[0]->data<half>(),  // cell state
+                                            inputs[1]->data<half>(),  // xW
+                                            inputs[2]->data<half>(),  // sU
+                                            inputs[3]->data<half>(),  // b
+                                            rows,
+                                            cols);
+  } else {
+    ABORT("gLSTMOutputForward not implemented for type {}", out->type());
+  }
 }
 
-__global__ void gLSTMCellBackward(float* outCell,
-                                  float* outXW,
-                                  float* outSU,
-                                  float* outB,
-                                  const float* cell,
-                                  const float* xW,
-                                  const float* sU,
-                                  const float* b,
-                                  const float* mask,
-                                  const float* adj,
+template <typename T>
+__global__ void gLSTMCellBackward(T* outCell,
+                                  T* outXW,
+                                  T* outSU,
+                                  T* outB,
+                                  const T* cell,
+                                  const T* xW,
+                                  const T* sU,
+                                  const T* b,
+                                  const T* mask,
+                                  const T* adj,
                                   size_t rows,
                                   size_t cols) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float m = !mask || mask[j];
+      T m = !mask || mask[j];
 
-      float* rowOutCell = outCell + j * cols;
-      float* rowOutXW = outXW + j * cols * 4;
-      float* rowOutSU = outSU + j * cols * 4;
+      T* rowOutCell = outCell + j * cols;
+      T* rowOutXW = outXW + j * cols * 4;
+      T* rowOutSU = outSU + j * cols * 4;
 
-      const float* rowCell = cell + j * cols;
-      const float* xWrow = xW + j * cols * 4;
-      const float* sUrow = sU + j * cols * 4;
+      const T* rowCell = cell + j * cols;
+      const T* xWrow = xW + j * cols * 4;
+      const T* sUrow = sU + j * cols * 4;
 
-      const float* rowAdj = adj + j * cols;
+      const T* rowAdj = adj + j * cols;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
+          T gf = functional::Ops<T>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
-          float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+          T gi = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
-          float gc = tanhf(xWrow[l] + sUrow[l] + b[l]);
+          T gc = functional::Ops<T>::tanh(xWrow[l] + sUrow[l] + b[l]);
 
-          float adj = rowAdj[i];
+          T adj = rowAdj[i];
 
           // dc/dc_{t-1}
           if(outCell)
-            rowOutCell[i] += (m * gf - m + 1) * adj;
+            rowOutCell[i] += (m * gf - m + (T)1.f) * adj;
 
           // dc/d(b_f) = dc/d(xW_f) ...
-          float dcdxf = m * rowCell[i] * gf * (1 - gf) * adj;
+          T dcdxf = m * rowCell[i] * gf * ((T)1.f - gf) * adj;
           if(outXW)
             rowOutXW[i] += dcdxf;
           if(outSU)
             rowOutSU[i] += dcdxf;
           if(outB)
-            atomics::atomicAdd(outB + i, dcdxf);
+            atomics::atomicAdd(outB + i, dcdxf); // @TODO: get rid of atomicAdd everywhere!
 
           // dc/d(b_i) ...
-          float dcdb_i = m * gc * gi * (1 - gi) * adj;
+          T dcdb_i = m * gc * gi * ((T)1.f - gi) * adj;
           if(outXW)
             rowOutXW[k] += dcdb_i;
           if(outSU)
@@ -2341,7 +2421,7 @@ __global__ void gLSTMCellBackward(float* outCell,
             atomics::atomicAdd(outB + k, dcdb_i);
 
           // dc/d(b_c) ...
-          float dcdxc = m * gi * (1 - gc * gc) * adj;
+          T dcdxc = m * gi * ((T)1.f - gc * gc) * adj;
           if(outXW)
             rowOutXW[l] += dcdxc;
           if(outSU)
@@ -2357,7 +2437,6 @@ __global__ void gLSTMCellBackward(float* outCell,
 void LSTMCellBackward(std::vector<Tensor> outputs,
                       std::vector<Tensor> inputs,
                       Tensor adj) {
-  matchOrAbort<float>(adj->type());
   cudaSetDevice(adj->getDeviceId().no);
 
   int rows = adj->shape().elements() / adj->shape().back();
@@ -2366,67 +2445,87 @@ void LSTMCellBackward(std::vector<Tensor> outputs,
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  gLSTMCellBackward<<<blocks, threads>>>(
-      outputs[0] ? outputs[0]->data() : 0,        // state - adj
-      outputs[1] ? outputs[1]->data() : 0,        // xW - adj
-      outputs[2] ? outputs[2]->data() : 0,        // sU - adj
-      outputs[3] ? outputs[3]->data() : 0,        // b - adj
-      inputs[0]->data(),                          // state
-      inputs[1]->data(),                          // xW
-      inputs[2]->data(),                          // sU
-      inputs[3]->data(),                          // b
-      inputs.size() > 4 ? inputs[4]->data() : 0,  // mask
-      adj->data(),
+  if(adj->type() == Type::float32) {
+    gLSTMCellBackward<<<blocks, threads>>>(
+      outputs[0] ? outputs[0]->data<float>() : 0,        // state - adj
+      outputs[1] ? outputs[1]->data<float>() : 0,        // xW - adj
+      outputs[2] ? outputs[2]->data<float>() : 0,        // sU - adj
+      outputs[3] ? outputs[3]->data<float>() : 0,        // b - adj
+      inputs[0]->data<float>(),                          // state
+      inputs[1]->data<float>(),                          // xW
+      inputs[2]->data<float>(),                          // sU
+      inputs[3]->data<float>(),                          // b
+      inputs.size() > 4 ? inputs[4]->data<float>() : 0,  // mask
+      adj->data<float>(),
       rows,
       cols);
+  } else if (adj->type() == Type::float16) {
+    gLSTMCellBackward<<<blocks, threads>>>(
+      outputs[0] ? outputs[0]->data<half>() : 0,        // state - adj
+      outputs[1] ? outputs[1]->data<half>() : 0,        // xW - adj
+      outputs[2] ? outputs[2]->data<half>() : 0,        // sU - adj
+      outputs[3] ? outputs[3]->data<half>() : 0,        // b - adj
+      inputs[0]->data<half>(),                          // state
+      inputs[1]->data<half>(),                          // xW
+      inputs[2]->data<half>(),                          // sU
+      inputs[3]->data<half>(),                          // b
+      inputs.size() > 4 ? inputs[4]->data<half>() : 0,  // mask
+      adj->data<half>(),
+      rows,
+      cols);
+  } else {
+    ABORT("gLSTMCellBackward not implemented for type {}", adj->type());
+  }
+
 }
 
-__global__ void gLSTMOutputBackward(float* outCell,
-                                    float* outXW,
-                                    float* outSU,
-                                    float* outB,
-                                    const float* cell,
-                                    const float* xW,
-                                    const float* sU,
-                                    const float* b,
-                                    const float* adj,
+template <typename T>
+__global__ void gLSTMOutputBackward(T* outCell,
+                                    T* outXW,
+                                    T* outSU,
+                                    T* outB,
+                                    const T* cell,
+                                    const T* xW,
+                                    const T* sU,
+                                    const T* b,
+                                    const T* adj,
                                     size_t rows,
                                     size_t cols) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-      float* rowOutCell = outCell + j * cols;
-      float* rowOutXW = outXW + j * cols * 4;
-      float* rowOutSU = outSU + j * cols * 4;
+      T* rowOutCell = outCell + j * cols;
+      T* rowOutXW = outXW + j * cols * 4;
+      T* rowOutSU = outSU + j * cols * 4;
 
-      const float* rowCell = cell + j * cols;
-      const float* xWrow = xW + j * cols * 4;
-      const float* sUrow = sU + j * cols * 4;
+      const T* rowCell = cell + j * cols;
+      const T* xWrow = xW + j * cols * 4;
+      const T* sUrow = sU + j * cols * 4;
 
-      const float* rowAdj = adj + j * cols;
+      const T* rowAdj = adj + j * cols;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
           int k = i + 3 * cols;
-          float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+          T go = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
-          float t = tanhf(rowCell[i]);
+          T t = functional::Ops<T>::tanh(rowCell[i]);
 
-          float adj = rowAdj[i];
+          T adj = rowAdj[i];
 
           // dc/dc_{t-1}
           if(outCell)
-            rowOutCell[i] += go * (1 - t * t) * adj;
+            rowOutCell[i] += go * ((T)1.f - t * t) * adj;
 
           // dc/d(b_o) = dc/d(xW_f) ...
-          float dcdxo = t * go * (1 - go) * adj;
+          float dcdxo = t * go * ((T)1.f - go) * adj;
           if(outXW)
             rowOutXW[k] += dcdxo;
           if(outSU)
             rowOutSU[k] += dcdxo;
           if(outB)
-            atomics::atomicAdd(outB + k, dcdxo);
+            atomics::atomicAdd(outB + k, dcdxo); // @TODO: get rid of atomicAdd
         }
       }
     }
@@ -2436,7 +2535,6 @@ __global__ void gLSTMOutputBackward(float* outCell,
 void LSTMOutputBackward(std::vector<Tensor> outputs,
                         std::vector<Tensor> inputs,
                         Tensor adj) {
-  matchOrAbort<float>(adj->type());
   cudaSetDevice(adj->getDeviceId().no);
 
   int rows = adj->shape().elements() / adj->shape().back();
@@ -2445,18 +2543,35 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  gLSTMOutputBackward<<<blocks, threads>>>(
-      outputs[0] ? outputs[0]->data() : 0,  // state - adj
-      outputs[1] ? outputs[1]->data() : 0,  // xW - adj
-      outputs[2] ? outputs[2]->data() : 0,  // sU - adj
-      outputs[3] ? outputs[3]->data() : 0,  // b - adj
-      inputs[0]->data(),                    // state
-      inputs[1]->data(),                    // xW
-      inputs[2]->data(),                    // sU
-      inputs[3]->data(),                    // b
-      adj->data(),
-      rows,
-      cols);
+  if(adj->type() == Type::float32) {
+    gLSTMOutputBackward<<<blocks, threads>>>(
+        outputs[0] ? outputs[0]->data<float>() : 0,  // state - adj
+        outputs[1] ? outputs[1]->data<float>() : 0,  // xW - adj
+        outputs[2] ? outputs[2]->data<float>() : 0,  // sU - adj
+        outputs[3] ? outputs[3]->data<float>() : 0,  // b - adj
+        inputs[0]->data<float>(),                    // state
+        inputs[1]->data<float>(),                    // xW
+        inputs[2]->data<float>(),                    // sU
+        inputs[3]->data<float>(),                    // b
+        adj->data<float>(),
+        rows,
+        cols);
+  } else if (adj->type() == Type::float16) {
+    gLSTMOutputBackward<<<blocks, threads>>>(
+        outputs[0] ? outputs[0]->data<half>() : 0,  // state - adj
+        outputs[1] ? outputs[1]->data<half>() : 0,  // xW - adj
+        outputs[2] ? outputs[2]->data<half>() : 0,  // sU - adj
+        outputs[3] ? outputs[3]->data<half>() : 0,  // b - adj
+        inputs[0]->data<half>(),                    // state
+        inputs[1]->data<half>(),                    // xW
+        inputs[2]->data<half>(),                    // sU
+        inputs[3]->data<half>(),                    // b
+        adj->data<half>(),
+        rows,
+        cols);
+  } else {
+    ABORT("gLSTMOutputBackward not implemented for type {}", adj->type());
+  }
 }
 
 template <typename T>

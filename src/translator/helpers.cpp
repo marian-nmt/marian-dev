@@ -19,39 +19,24 @@ void SetColumn(Tensor in_, size_t col, float value) {
 
   float* in = in_->data();
   for(int rowNumber = 0; rowNumber < nRows; ++rowNumber) {
-    int index = col + rowNumber * nColumns;
+    auto index = col + rowNumber * nColumns;
     in[index] = value;
   }
 }
 
-void suppressUnk(Expr probs) {
-  SetColumn(probs->val(), UNK_ID, std::numeric_limits<float>::lowest());
+void suppressWord(Expr logProbs, Word id) {
+  SetColumn(logProbs->val(), id, std::numeric_limits<float>::lowest());
 }
+}  // namespace cpu
 
-void suppressWord(Expr probs, Word id) {
-  SetColumn(probs->val(), id, std::numeric_limits<float>::lowest());
-}
-}
-
-void suppressUnk(Expr probs) {
-  if(probs->val()->getBackend()->getDevice().type == DeviceType::cpu) {
-    cpu::suppressUnk(probs);
+void suppressWord(Expr logProbs, Word id) {
+  if(logProbs->val()->getBackend()->getDeviceId().type == DeviceType::cpu) {
+    cpu::suppressWord(logProbs, id);
   }
 #ifdef CUDA_FOUND
   else {
-    gpu::suppressUnk(probs);
+    gpu::suppressWord(logProbs, id);
   }
 #endif
 }
-
-void suppressWord(Expr probs, Word id) {
-  if(probs->val()->getBackend()->getDevice().type == DeviceType::cpu) {
-    cpu::suppressWord(probs, id);
-  }
-#ifdef CUDA_FOUND
-  else {
-    gpu::suppressWord(probs, id);
-  }
-#endif
-}
-}
+}  // namespace marian

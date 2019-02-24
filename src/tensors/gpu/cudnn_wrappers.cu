@@ -74,7 +74,7 @@ void ConvolutionWrapper::forward(Tensor x,
                                  Tensor kernels,
                                  Tensor bias,
                                  Tensor y) {
-  cudaSetDevice(x->getDevice().no);
+  cudaSetDevice(x->getDeviceId().no);
 
   cudnnTensorDescriptor_t xDesc, yDesc;
   setCudnnTensor(xDesc, x);
@@ -108,7 +108,7 @@ void ConvolutionWrapper::backward(Tensor x,
                                   Tensor kernelGrad,
                                   Tensor biasGrad,
                                   Tensor yGrad) {
-  cudaSetDevice(xGrad->getDevice().no);
+  cudaSetDevice(xGrad->getDeviceId().no);
 
   cudnnTensorDescriptor_t xDesc, yDesc;
   setCudnnTensor(xDesc, xGrad);
@@ -170,6 +170,7 @@ void ConvolutionWrapper::setConvDescriptor(int hPad,
                                            int wStride) {
   CUDNN_CALL(cudnnCreateConvolutionDescriptor(&convDesc_));
 
+#if CUDNN_MAJOR > 5
   CUDNN_CALL(cudnnSetConvolution2dDescriptor(convDesc_,
                                              hPad,
                                              wPad,
@@ -177,10 +178,16 @@ void ConvolutionWrapper::setConvDescriptor(int hPad,
                                              wStride,
                                              1,
                                              1,  // upscales
-#if CUDNN_MAJOR > 5
                                              CUDNN_CROSS_CORRELATION,
                                              CUDNN_DATA_FLOAT));
 #else
+  CUDNN_CALL(cudnnSetConvolution2dDescriptor(convDesc_,
+                                             hPad,
+                                             wPad,
+                                             hStride,
+                                             wStride,
+                                             1,
+                                             1,  // upscales
                                              CUDNN_CROSS_CORRELATION));
 #endif
 }
@@ -242,7 +249,7 @@ void PoolingWrapper::getOutputShape(const Shape& xShape, Shape& shape) {
 }
 
 void PoolingWrapper::forward(Tensor x, Tensor y) {
-  cudaSetDevice(x->getDevice().no);
+  cudaSetDevice(x->getDeviceId().no);
 
   cudnnTensorDescriptor_t xDesc, yDesc;
   setCudnnTensor(xDesc, x);
@@ -264,7 +271,7 @@ void PoolingWrapper::forward(Tensor x, Tensor y) {
 }
 
 void PoolingWrapper::backward(Tensor x, Tensor xGrad, Tensor y, Tensor yGrad) {
-  cudaSetDevice(x->getDevice().no);
+  cudaSetDevice(x->getDeviceId().no);
 
   cudnnTensorDescriptor_t xDesc, yDesc;
   setCudnnTensor(xDesc, x);
@@ -320,11 +327,7 @@ CUDNNWrapper::CUDNNWrapper() {
       "-DUSE_CUDNN=on)");
 }
 
-CUDNNWrapper::~CUDNNWrapper() {
-  ABORT(
-      "To use convolution and pooling, recompile with CUDNN (cmake flag "
-      "-DUSE_CUDNN=on)");
-}
+CUDNNWrapper::~CUDNNWrapper() {}
 
 ConvolutionWrapper::ConvolutionWrapper(const Shape&,
                                        const Shape&,
@@ -360,11 +363,7 @@ void ConvolutionWrapper::backward(Tensor,
       "-DUSE_CUDNN=on)");
 }
 
-ConvolutionWrapper::~ConvolutionWrapper() {
-  ABORT(
-      "To use convolution and pooling, recompile with CUDNN (cmake flag "
-      "-DUSE_CUDNN=on)");
-}
+ConvolutionWrapper::~ConvolutionWrapper() {}
 
 PoolingWrapper::PoolingWrapper(int, int, int, int, int, int, std::string) {
   ABORT(
@@ -390,11 +389,7 @@ void PoolingWrapper::backward(Tensor, Tensor, Tensor, Tensor) {
       "-DUSE_CUDNN=on)");
 }
 
-PoolingWrapper::~PoolingWrapper() {
-  ABORT(
-      "To use convolution and pooling, recompile with CUDNN (cmake flag "
-      "-DUSE_CUDNN=on)");
-}
+PoolingWrapper::~PoolingWrapper() {}
 
 #endif
-}
+}  // namespace marian

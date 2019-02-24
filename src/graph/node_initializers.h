@@ -1,7 +1,6 @@
 // TODO: move to backend, into graph/
 #pragma once
 
-#include "cnpy/cnpy.h"
 #include "common/config.h"
 #include "tensors/tensor.h"
 
@@ -14,65 +13,61 @@ typedef std::function<void(Tensor)> NodeInitializer;
 
 namespace inits {
 
-float xor128();
-
-// Use a constant seed for deterministic behaviour.
-// std::default_random_engine engine(42);
-
 void zeros(Tensor t);
 
 void ones(Tensor t);
 
 NodeInitializer from_value(float v);
 
-NodeInitializer diag(float val);
+NodeInitializer eye(float val = 1.f);
 
-template <class Distribution, class Iterator>
-void distribution(Iterator begin, Iterator end, float a, float b) {
-  std::default_random_engine engine(Config::seed++);
-  Distribution dist(a, b);
-  auto gen = std::bind(dist, engine);
-  std::generate(begin, end, gen);
-}
+NodeInitializer normal(float mean = 0.f, float stddev = 1.f);
 
-template <class Distribution>
-void distribution(std::vector<float>& vals, float a, float b) {
-  distribution<Distribution>(vals.begin(), vals.end(), a, b);
-}
-
-template <class Distribution>
-void distribution(Tensor t, float a, float b) {
-  std::vector<float> vals(t->size());
-  distribution<Distribution>(vals.begin(), vals.end(), a, b);
-  t->set(vals);
-}
-
-NodeInitializer normal(float scale = 0.1, bool ortho = true);
-
-NodeInitializer uniform(float scale = 0.1);
-
-static inline void dummy(Tensor t) {}
-
-void ortho(Tensor t);
+NodeInitializer uniform(float a = 0.f, float b = 1.f);
 
 void glorot_uniform(Tensor t);
-
-void xorshift(Tensor t);
+NodeInitializer glorot_uniform2(bool fanIn = true, bool fanOut = true);
 
 void glorot_normal(Tensor t);
+NodeInitializer glorot_normal2(bool fanIn = true, bool fanOut = true);
+
+NodeInitializer bernoulli(float p, float scale = 1.f);
+
+NodeInitializer dropout(float dropProb);
+
+void gumbel(Tensor t);
+
+static inline void dummy(Tensor) {}
 
 NodeInitializer from_vector(const std::vector<float>& v);
-NodeInitializer from_vector(const std::vector<size_t>& v);
+NodeInitializer from_vector(const std::vector<IndexType>& v);
+
+NodeInitializer from_item(const io::Item& item);
 
 NodeInitializer from_sparse_vector(
     std::pair<std::vector<size_t>, std::vector<float>>& v);
 
-NodeInitializer from_numpy(const cnpy::NpyArrayPtr& np);
+// NodeInitializer from_numpy(const cnpy::NpyArrayPtr& np);
 
 NodeInitializer from_word2vec(const std::string& file,
                               int dimVoc,
                               int dimEmb,
                               bool normalize = false);
-}
+
+/**
+ * Computes Google's sinusoidal position embeddings
+ * starting from position 'start' taking into account
+ * batch and time dimensions of the tensor.
+ *
+ * Expected tensor layout {-2: time, -1: model}
+ *
+ * Usually gets later reshaped to {time, 1, model} and
+ * added with a broadcast to learned embeddings. Positional
+ * embeddings are the same for each batch entry and change
+ * over time.
+ */
+NodeInitializer sinusoidalPositionEmbeddings(int start);
+
+}  // namespace inits
 
 }  // namespace marian

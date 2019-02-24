@@ -1,39 +1,63 @@
 #pragma once
 
-#include <boost/algorithm/string.hpp>
+#include <sstream>
+#include <vector>
 
 namespace marian {
 namespace data {
 
 class WordAlignment {
+  struct Point
+  {
+      size_t srcPos;
+      size_t tgtPos;
+      float prob;
+  };
 private:
-  typedef std::pair<int, int> Point;
   std::vector<Point> data_;
-
 public:
-  WordAlignment() {}
+  WordAlignment();
 
   /**
-   * @brief Constructs the word alignment from its textual representation.
+   * @brief Constructs word alignments from a vector of pairs of two integers.
+   *
+   * @param align Vector of pairs of two unsigned integers
+   */
+private:
+  WordAlignment(const std::vector<Point>& align);
+public:
+
+  /**
+   * @brief Constructs word alignments from textual representation.
    *
    * @param line String in the form of "0-0 1-1 1-2", etc.
    */
-  WordAlignment(const std::string& line) {
-    std::vector<std::string> atok = split(line, " -");
-    for(size_t i = 0; i < atok.size(); i += 2)
-      data_.emplace_back(std::stoi(atok[i]), std::stoi(atok[i + 1]));
-  }
+  WordAlignment(const std::string& line);
 
   auto begin() const -> decltype(data_.begin()) { return data_.begin(); }
-  auto end() const -> decltype(data_.end()) { return data_.end(); }
+  auto end()   const -> decltype(data_.end())   { return data_.end(); }
 
-private:
-  std::vector<std::string> split(const std::string& input,
-                                 const std::string& chars) {
-    std::vector<std::string> output;
-    boost::split(output, input, boost::is_any_of(chars));
-    return output;
-  }
+  void push_back(size_t s, size_t t, float p) { data_.emplace_back(Point{ s, t, p }); }
+
+  size_t size() const { return data_.size(); }
+
+  /**
+   * @brief Sorts alignments in place by source indices in ascending order.
+   */
+  void sort();
+
+  /**
+   * @brief Returns textual representation.
+   */
+  std::string toString() const;
 };
-}
-}
+
+typedef std::vector<std::vector<float>> SoftAlignment;
+
+WordAlignment ConvertSoftAlignToHardAlign(SoftAlignment alignSoft,
+                                          float threshold = 1.f);
+
+std::string SoftAlignToString(SoftAlignment align);
+
+}  // namespace data
+}  // namespace marian

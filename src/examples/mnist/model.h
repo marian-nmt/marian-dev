@@ -4,37 +4,42 @@
 #include <iostream>
 #include <memory>
 
-#include <boost/timer/timer.hpp>
-
 #include "common/definitions.h"
-#include "common/keywords.h"
 #include "graph/expression_graph.h"
-#include "models/model_base.h"
 #include "models/costs.h"
+#include "models/model_base.h"
+#include "layers/loss.h"
 
 #include "examples/mnist/dataset.h"
 
-
 namespace marian {
 namespace models {
+
+// @TODO: looking at this file, simplify the new RationalLoss idea. Here it gets too complicated
 
 class MNISTCrossEntropyCost : public CostBase {
 public:
   MNISTCrossEntropyCost() {}
 
-  Expr apply(Ptr<ModelBase> model,
-             Ptr<ExpressionGraph> graph,
-             Ptr<data::Batch> batch,
-             bool clearGraph = true) {
-
+  Ptr<MultiRationalLoss> apply(Ptr<ModelBase> model,
+                               Ptr<ExpressionGraph> graph,
+                               Ptr<data::Batch> batch,
+                               bool clearGraph = true) override {
     auto top = model->build(graph, batch, clearGraph);
 
-    auto vLabels = std::static_pointer_cast<data::DataBatch>(batch)->labels();
-    auto labels = graph->constant({(int)batch->size(), 1},
-                                  inits::from_vector(vLabels));
+    auto vfLabels = std::static_pointer_cast<data::DataBatch>(batch)->labels();
+
+    // convert float to IndexType
+    std::vector<IndexType> vLabels(vfLabels.begin(), vfLabels.end());
+    auto labels = graph->indices(vLabels);
 
     // Define a top-level node for training
-    return mean(cross_entropy(top, labels), keywords::axis = 0);
+    // use CE loss
+
+    auto loss = sum(cross_entropy(top->loss(), labels), /*axis =*/ 0);
+    auto multiLoss = New<SumMultiRationalLoss>();
+    multiLoss->push_back({loss, (float)vLabels.size()});
+    return multiLoss;
   }
 };
 
@@ -42,16 +47,18 @@ class MNISTLogsoftmax : public CostBase {
 public:
   MNISTLogsoftmax() {}
 
-  Expr apply(Ptr<ModelBase> model,
+  Ptr<MultiRationalLoss> apply(Ptr<ModelBase> model,
              Ptr<ExpressionGraph> graph,
              Ptr<data::Batch> batch,
-             bool clearGraph = true) {
-
+             bool clearGraph = true) override {
     auto top = model->build(graph, batch, clearGraph);
-    return logsoftmax(top);
+    
+    // @TODO: simplify this
+    auto multiLoss = New<SumMultiRationalLoss>();
+    multiLoss->push_back({logsoftmax(top->loss()), top->count()});
+    return multiLoss;
   }
 };
-
 
 class MnistFeedForwardNet : public ModelBase {
 public:
@@ -61,31 +68,35 @@ public:
   MnistFeedForwardNet(Ptr<Options> options, Args... args)
       : options_(options), inference_(options->get<bool>("inference", false)) {}
 
-  virtual Expr build(Ptr<ExpressionGraph> graph,
+  virtual Ptr<RationalLoss> build(Ptr<ExpressionGraph> graph,
                      Ptr<data::Batch> batch,
-                     bool clean = false) {
-    return construct(graph, batch, inference_);
+                     bool /*clean*/ = false) override {
+    
+    auto loss   = construct(graph, batch, inference_); // @TODO: unify nomenclature, e.g. rather use apply
+    auto count = graph->constant({(int)batch->size(), 1}, inits::from_value(1.f));
+
+    return New<RationalLoss>(loss, count);
   }
 
-  void load(Ptr<ExpressionGraph> graph, const std::string& name, bool) {
+  void load(Ptr<ExpressionGraph> /*graph*/, const std::string& /*name*/, bool) override {
     LOG(critical, "Loading MNIST model is not supported");
   }
 
-  void save(Ptr<ExpressionGraph> graph, const std::string& name, bool) {
+  void save(Ptr<ExpressionGraph> /*graph*/, const std::string& /*name*/, bool) override {
     LOG(critical, "Saving MNIST model is not supported");
   }
 
-  void save(Ptr<ExpressionGraph> graph, const std::string& name) {
+  void save(Ptr<ExpressionGraph> /*graph*/, const std::string& /*name*/) {
     LOG(critical, "Saving MNIST model is not supported");
   }
 
-  Ptr<data::BatchStats> collectStats(Ptr<ExpressionGraph> graph,
-                                     size_t multiplier) {
+  Ptr<data::BatchStats> collectStats(Ptr<ExpressionGraph> /*graph*/,
+                                     size_t /*multiplier*/) {
     LOG(critical, "Collecting stats in MNIST model is not supported");
     return nullptr;
   }
 
-  virtual void clear(Ptr<ExpressionGraph> graph) { graph->clear(); };
+  virtual void clear(Ptr<ExpressionGraph> graph) override { graph->clear(); };
 
 protected:
   Ptr<Options> options_;
@@ -103,8 +114,7 @@ protected:
    */
   virtual Expr construct(Ptr<ExpressionGraph> g,
                          Ptr<data::Batch> batch,
-                         bool inference = false) {
-    using namespace keywords;
+                         bool /*inference*/ = false) {
     const std::vector<int> dims = {784, 2048, 2048, 10};
 
     // Start with an empty expression graph
@@ -134,12 +144,12 @@ protected:
         // Wrap the result in rectified linear activation function,
         // and finally wrap that in a dropout node
         layers.emplace_back(dropout(
-            relu(affine(layers.back(), weights.back(), biases.back())), 0.5));
+            relu(affine(layers.back(), weights.back(), biases.back())), 0.2));
       }
 
       // Construct a weight node for the outgoing connections from layer i
       weights.emplace_back(
-          g->param("W" + std::to_string(i), {in, out}, inits::uniform()));
+          g->param("W" + std::to_string(i), {in, out}, inits::glorot_uniform));
 
       // Construct a bias node. These weights are initialized to zero
       biases.emplace_back(
@@ -151,5 +161,5 @@ protected:
     return last;
   }
 };
-}
-}
+}  // namespace models
+}  // namespace marian

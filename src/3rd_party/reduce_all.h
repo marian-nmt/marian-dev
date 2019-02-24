@@ -11,8 +11,9 @@
 
 #pragma once
 
-#include <device_functions.h>
 #include "tensors/tensor.h"
+
+#include <cuda_runtime.h>
 
 namespace marian {
 
@@ -212,7 +213,7 @@ bool isPow2(unsigned int x)
 template <class Functor>
 void ReduceAll(Functor f, Tensor out, Tensor in)
 {
-    cudaSetDevice(out->getDevice().no);
+    cudaSetDevice(out->getDeviceId().no);
     int size = in->shape().elements();
     int threads = std::min(MAX_THREADS, size);
     int blocks  = std::min(MAX_BLOCKS, size / threads  + (size % threads != 0));

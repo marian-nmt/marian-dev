@@ -13,7 +13,8 @@
 
 char cnpy::BigEndianTest() {
     unsigned char x[] = {1,0};
-    short y = *(short*) x;
+    short y;
+    memcpy(&y, x, sizeof(y));
     return y == 1 ? '<' : '>';
 }
 
@@ -70,19 +71,19 @@ void cnpy::parse_npy_header(FILE* fp, unsigned int& word_size, unsigned int*& sh
     int loc1, loc2;
 
     //fortran order
-    loc1 = header.find("fortran_order")+16;
+    loc1 = (int)header.find("fortran_order")+16;
     fortran_order = (header.substr(loc1,5) == "True" ? true : false);
 
     //shape
-    loc1 = header.find("(");
-    loc2 = header.find(")");
+    loc1 = (int)header.find("(");
+    loc2 = (int)header.find(")");
     std::string str_shape = header.substr(loc1+1,loc2-loc1-1);
     if(str_shape.length() == 0) ndims = 0;
     else if(str_shape[str_shape.size()-1] == ',') ndims = 1;
-    else ndims = std::count(str_shape.begin(),str_shape.end(),',')+1;
+    else ndims = (unsigned int)std::count(str_shape.begin(),str_shape.end(),',')+1;
     shape = new unsigned int[ndims];
     for(unsigned int i = 0;i < ndims;i++) {
-        loc1 = str_shape.find(",");
+        loc1 = (int)str_shape.find(",");
         shape[i] = atoi(str_shape.substr(0,loc1).c_str());
         str_shape = str_shape.substr(loc1+1);
     }
@@ -90,17 +91,20 @@ void cnpy::parse_npy_header(FILE* fp, unsigned int& word_size, unsigned int*& sh
     //endian, word size, data type
     //byte order code | stands for not applicable.
     //not sure when this applies except for byte array
-    loc1 = header.find("descr")+9;
+    loc1 = (int)header.find("descr")+9;
     bool littleEndian = (header[loc1] == '<' || header[loc1] == '|' ? true : false);
-    assert(littleEndian);
+    assert(littleEndian); littleEndian;
 
     //char type = header[loc1+1];
     //assert(type == map_type(T));
 
     std::string str_ws = header.substr(loc1+2);
-    loc2 = str_ws.find("'");
+    loc2 = (int)str_ws.find("'");
     word_size = atoi(str_ws.substr(0,loc2).c_str());
 }
+
+// make compiler happy, otherwise warns with "variable set but not used"
+#define _unused(x) ((void)(x))
 
 void cnpy::parse_zip_footer(FILE* fp, unsigned short& nrecs, unsigned int& global_header_size, unsigned int& global_header_offset)
 {
@@ -123,6 +127,13 @@ void cnpy::parse_zip_footer(FILE* fp, unsigned short& nrecs, unsigned int& globa
     assert(disk_start == 0);
     assert(nrecs_on_disk == nrecs);
     assert(comment_len == 0);
+
+    // make compiler happy, otherwise warns with "variable set but not used"
+    // on the other hand it seems having the asserts in here is useful. 
+    _unused(disk_no);
+    _unused(disk_start);
+    _unused(nrecs_on_disk);
+    _unused(comment_len);
 }
 
 cnpy::NpyArrayPtr load_the_npy_file(FILE* fp) {

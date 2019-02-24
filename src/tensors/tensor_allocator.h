@@ -22,7 +22,11 @@ private:
 public:
   TensorAllocator(Ptr<Backend> backend)
       : backend_(backend),
-        allocator_(New<Allocator>(backend_->getDevice(), 0, GROW, ALIGN)) {}
+        allocator_(New<Allocator>(backend_->getDeviceId(), 0, GROW, ALIGN)) {}
+
+  TensorAllocator(Ptr<Backend> backend, Ptr<Device> device)
+      : backend_(backend),
+        allocator_(New<Allocator>(backend_->getDeviceId(), device, 0, GROW, ALIGN)) {}
 
   ~TensorAllocator() { clear(); }
 
@@ -31,11 +35,11 @@ public:
   }
 
   void reserve(size_t bytes = 0) {
-    float mult = bytes / GROW + 1;
+    auto mult = bytes / GROW + 1;
     LOG(info,
         "[memory] Extending reserved space to {} MB (device {})",
         mult * CHUNK,
-        allocator_->getDevice());
+        allocator_->getDeviceId());
 
     allocator_->reserve(mult * GROW);
   }
@@ -46,12 +50,12 @@ public:
       LOG(info,
           "[memory] Reserving {} B, device {}",
           bytes,
-          allocator_->getDevice());
+          allocator_->getDeviceId());
     } else {
       LOG(info,
           "[memory] Reserving {} MB, device {}",
           mbytes,
-          allocator_->getDevice());
+          allocator_->getDeviceId());
     }
     allocator_->reserve(bytes);
   }
@@ -70,16 +74,16 @@ public:
     }
   }
 
-  void free(Tensor& t) { allocator_->free(t->memory()); }
+  void free(const Tensor& t) { allocator_->free(t->memory()); }
 
   Tensor asTensor() {
     auto mem = allocator_->memory();
-    int size = mem->size() / sizeof(float);
-    return Tensor(new TensorBase(mem, {1, size}, backend_));
+    auto size = mem->size() / sizeof(float);
+    return Tensor(new TensorBase(mem, {1, (int)size}, backend_));
   }
 
   size_t size() { return allocator_->size() / sizeof(float); }
 
   Ptr<Allocator> allocator() { return allocator_; }
 };
-}
+}  // namespace marian

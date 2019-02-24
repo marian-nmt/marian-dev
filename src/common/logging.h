@@ -1,6 +1,13 @@
 #pragma once
 
+#include <iostream>
+
 #include "spdlog/spdlog.h"
+
+namespace marian {
+  void logCallStack(size_t skipLevels);
+  std::string getCallStack(size_t skipLevels);
+}
 
 /**
  * Prints logging message into stderr and a file specified with `--log` option.
@@ -13,6 +20,16 @@
  * @param ... Message text and variables
  */
 #define LOG(level, ...) checkedLog("general", #level, __VA_ARGS__)
+
+// variant that prints the log message only upon the first time the call site is executed
+#define LOG_ONCE(level, ...) do { \
+  static bool logged = false;     \
+  if (!logged)                    \
+  {                               \
+    logged = true;                \
+    LOG(level, __VA_ARGS__);      \
+  }                               \
+} while(0)
 
 /**
  * Prints logging message regarding validation into stderr and a file specified
@@ -40,12 +57,19 @@
  *
  * @param ... Message text and variables
  */
-#define ABORT(...)                                                      \
-  do {                                                                  \
-    checkedLog("general", "critical", __VA_ARGS__);                     \
-    std::cerr << "Aborted from " << FUNCTION_NAME << " in " << __FILE__ \
-              << ": " << __LINE__ << std::endl;                         \
-    std::abort();                                                       \
+#define ABORT(...)                                                             \
+  do {                                                                         \
+    auto logger = spdlog::get("general");                                      \
+    if(logger == nullptr)                                                      \
+      logger = createStderrLogger("general", "[%Y-%m-%d %T] Error: %v");       \
+    else                                                                       \
+      logger->set_pattern("[%Y-%m-%d %T] Error: %v");                          \
+    checkedLog("general", "critical", __VA_ARGS__);                            \
+    checkedLog("general", "critical", "Aborted from {} in {}:{}",              \
+               FUNCTION_NAME, __FILE__, __LINE__);                             \
+    logger->set_pattern("%v");                                                 \
+    checkedLog("general", "critical", marian::getCallStack(/*skipLevels=*/0)); \
+    std::abort();                                                              \
   } while(0)
 
 /**
@@ -65,10 +89,10 @@
   } while(0)
 
 typedef std::shared_ptr<spdlog::logger> Logger;
-Logger stderrLogger(const std::string&,
-                    const std::string&,
-                    const std::vector<std::string>& = {},
-                    bool quiet = false);
+Logger createStderrLogger(const std::string&,
+                          const std::string&,
+                          const std::vector<std::string>& = {},
+                          bool quiet = false);
 
 namespace marian {
 class Config;
@@ -78,10 +102,6 @@ template <class... Args>
 void checkedLog(std::string logger, std::string level, Args... args) {
   Logger log = spdlog::get(logger);
   if(!log) {
-    if(level == "critical") {
-      auto errlog = stderrLogger("error", "Error: %v - aborting");
-      errlog->critical(args...);
-    }
     return;
   }
 
@@ -103,3 +123,4 @@ void checkedLog(std::string logger, std::string level, Args... args) {
 }
 
 void createLoggers(const marian::Config* options = nullptr);
+void switchtoMultinodeLogging(std::string nodeIdStr);

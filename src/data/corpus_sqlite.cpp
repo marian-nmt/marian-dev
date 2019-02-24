@@ -5,14 +5,14 @@
 namespace marian {
 namespace data {
 
-CorpusSQLite::CorpusSQLite(Ptr<Config> options, bool translate /*= false*/)
+CorpusSQLite::CorpusSQLite(Ptr<Options> options, bool translate /*= false*/)
     : CorpusBase(options, translate), seed_(Config::seed) {
   fillSQLite();
 }
 
-CorpusSQLite::CorpusSQLite(std::vector<std::string> paths,
-                           std::vector<Ptr<Vocab>> vocabs,
-                           Ptr<Config> options)
+CorpusSQLite::CorpusSQLite(const std::vector<std::string>& paths,
+                           const std::vector<Ptr<Vocab>>& vocabs,
+                           Ptr<Options> options)
     : CorpusBase(paths, vocabs, options), seed_(Config::seed) {
   fillSQLite();
 }
@@ -25,15 +25,14 @@ void CorpusSQLite::fillSQLite() {
   if(options_->get<std::string>("sqlite") == "temporary") {
     LOG(info, "[sqlite] Creating temporary database in {}", tempDir);
 
-    db_.reset(
-        new SQLite::Database("", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
+    db_.reset(new SQLite::Database("", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
     db_->exec("PRAGMA temp_store_directory = '" + tempDir + "';");
 
     fill = true;
   } else {
     auto path = options_->get<std::string>("sqlite");
 
-    if(boost::filesystem::exists(path)) {
+    if(filesystem::exists(path)) {
       LOG(info, "[sqlite] Reusing persistent database {}", path);
 
       db_.reset(new SQLite::Database(path, SQLite::OPEN_READWRITE));
@@ -47,8 +46,7 @@ void CorpusSQLite::fillSQLite() {
     } else {
       LOG(info, "[sqlite] Creating persistent database {}", path);
 
-      db_.reset(new SQLite::Database(
-          path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
+      db_.reset(new SQLite::Database(path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
       db_->exec("PRAGMA temp_store_directory = '" + tempDir + "';");
 
       fill = true;
@@ -59,7 +57,7 @@ void CorpusSQLite::fillSQLite() {
   if(fill) {
     std::string createStr = "create table lines (_id integer";
     std::string insertStr = "insert into lines values (?";
-    for(int i = 0; i < files_.size(); ++i) {
+    for(size_t i = 0; i < files_.size(); ++i) {
       createStr += ", line" + std::to_string(i) + " text";
       insertStr += ", ?";
     }
@@ -79,10 +77,10 @@ void CorpusSQLite::fillSQLite() {
       ps.bind(1, (int)lines);
 
       std::string line;
-      for(int i = 0; i < files_.size(); ++i) {
-        cont = cont && std::getline((std::istream&)*files_[i], line);
+      for(size_t i = 0; i < files_.size(); ++i) {
+        cont = cont && io::getline(*files_[i], line);
         if(cont)
-          ps.bind(i + 2, line);
+          ps.bind((int)(i + 2), line);
       }
 
       if(cont) {
@@ -99,7 +97,7 @@ void CorpusSQLite::fillSQLite() {
       }
     }
     db_->exec("commit;");
-    LOG(info, "[sqlite] Inserted {} lines", lines);
+    LOG(info, "[sqlite] Inserted {} lines", lines - 1);
     LOG(info, "[sqlite] Creating primary index");
     db_->exec("create unique index idx_line on lines (_id);");
   }
@@ -114,7 +112,7 @@ SentenceTuple CorpusSQLite::next() {
     SentenceTuple tup(curId);
 
     for(size_t i = 0; i < files_.size(); ++i) {
-      auto line = select_->getColumn(i + 1);
+      auto line = select_->getColumn((int)(i + 1));
 
       if(i > 0 && i == alignFileIdx_) {
         addAlignmentToSentenceTuple(line, tup);
@@ -136,9 +134,7 @@ SentenceTuple CorpusSQLite::next() {
 void CorpusSQLite::shuffle() {
   LOG(info, "[sqlite] Selecting shuffled data");
   select_.reset(new SQLite::Statement(
-      *db_,
-      "select * from lines order by random_seed(" + std::to_string(seed_)
-          + ");"));
+      *db_, "select * from lines order by random_seed(" + std::to_string(seed_) + ");"));
 }
 
 void CorpusSQLite::reset() {
@@ -149,12 +145,10 @@ void CorpusSQLite::reset() {
 void CorpusSQLite::restore(Ptr<TrainingState> ts) {
   for(size_t i = 0; i < ts->epochs - 1; ++i) {
     select_.reset(new SQLite::Statement(
-        *db_,
-        "select _id from lines order by random_seed(" + std::to_string(seed_)
-            + ");"));
+        *db_, "select _id from lines order by random_seed(" + std::to_string(seed_) + ");"));
     select_->executeStep();
     reset();
   }
 }
-}
-}
+}  // namespace data
+}  // namespace marian

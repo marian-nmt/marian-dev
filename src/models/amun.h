@@ -37,13 +37,7 @@ public:
 
   void load(Ptr<ExpressionGraph> graph,
             const std::string& name,
-            bool markedReloaded = true) {
-    using namespace keywords;
-
-    LOG(info, "Loading model from {}", name);
-
-    auto numpy = cnpy::npz_load(name);
-
+            bool /*markedReloaded*/ = true) override {
     std::map<std::string, std::string> nameMap
         = {{"decoder_U", "decoder_cell1_U"},
            {"decoder_Ux", "decoder_cell1_Ux"},
@@ -95,40 +89,26 @@ public:
     if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
       nameMap["Wemb"] = "Wemb";
 
-    graph->setReloaded(false);
-
-    for(auto it : numpy) {
-      auto name = it.first;
-
-      if(name == "decoder_c_tt")
-        continue;
-      if(name.substr(0, 8) == "special:")
-        continue;
-
-      Shape shape;
-      if(numpy[name]->shape.size() == 2) {
-        shape.resize(2);
-        shape.set(0, numpy[name]->shape[0]);
-        shape.set(1, numpy[name]->shape[1]);
-      } else if(numpy[name]->shape.size() == 1) {
-        shape.resize(2);
-        shape.set(0, 1);
-        shape.set(1, numpy[name]->shape[0]);
+    LOG(info, "Loading model from {}", name);
+    // load items from .npz file
+    auto ioItems = io::loadItems(name);
+    // map names and remove a dummy matrix 'decoder_c_tt' from items to avoid creating isolated node
+    for(auto it = ioItems.begin(); it != ioItems.end();) {
+      if(it->name == "decoder_c_tt") {
+        it = ioItems.erase(it);
       }
-
-      std::string pName = name;
-      if(nameMap.count(name))
-        pName = nameMap[name];
-
-      graph->param(pName, shape, inits::from_numpy(numpy[name]));
+      auto pair = nameMap.find(it->name);
+      if(pair != nameMap.end())
+        it->name = pair->second;
+      ++it;
     }
-
-    graph->setReloaded(true);
+    // load items into the graph
+    graph->load(ioItems);
   }
 
   void save(Ptr<ExpressionGraph> graph,
             const std::string& name,
-            bool saveTranslatorConfig = false) {
+            bool saveTranslatorConfig = false) override {
     LOG(info, "Saving model to {}", name);
 
     std::map<std::string, std::string> nameMap
@@ -177,36 +157,23 @@ public:
            {"encoder_bi_r_gamma1", "encoder_r_gamma1"},
            {"encoder_bi_r_gamma2", "encoder_r_gamma2"}};
 
-    unsigned shape[2];
-    std::string mode = "w";
-
-    for(auto p : graph->params()->getMap()) {
-      std::vector<float> v;
-      p.second->val()->get(v);
-
-      unsigned dim;
-      if(p.second->shape()[0] == 1) {
-        shape[0] = p.second->shape()[1];
-        dim = 1;
-      } else {
-        shape[0] = p.second->shape()[0];
-        shape[1] = p.second->shape()[1];
-        dim = 2;
-      }
-
-      std::string pName = p.first;
-      if(nameMap.count(pName))
-        pName = nameMap[pName];
-
-      cnpy::npz_save(name, pName, v.data(), shape, dim, mode);
-      mode = "a";
+    // get parameters from the graph to items
+    std::vector<io::Item> ioItems;
+    graph->save(ioItems);
+    // replace names to be compatible with Nematus
+    for(auto& item : ioItems) {
+      auto newItemName = nameMap.find(item.name);
+      if(newItemName != nameMap.end())
+        item.name = newItemName->second;
     }
+    // add a dummy matrix 'decoder_c_tt' required for Amun and Nematus
+    ioItems.emplace_back();
+    ioItems.back().name = "decoder_c_tt";
+    ioItems.back().shape = Shape({1, 0});
+    ioItems.back().bytes.emplace_back((char)0);
 
-    float ctt = 0;
-    shape[0] = 1;
-    cnpy::npz_save(name, "decoder_c_tt", &ctt, shape, 1, mode);
-
-    saveModelParameters(name);
+    io::addMetaToItems(getModelParametersAsString(), "special:model.yml", ioItems);
+    io::saveItems(name, ioItems);
 
     if(saveTranslatorConfig) {
       createAmunConfig(name);
@@ -229,8 +196,8 @@ private:
     amun["scorers"]["F0"]["type"] = "Nematus";
     amun["weights"]["F0"] = 1.0f;
 
-    OutputFileStream out(name + ".amun.yml");
-    (std::ostream&)out << amun;
+    io::OutputFileStream out(name + ".amun.yml");
+    out << amun;
   }
 };
-}
+}  // namespace marian

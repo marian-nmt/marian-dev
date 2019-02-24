@@ -8,6 +8,9 @@
 #include <vector>
 
 #include "common/config.h"
+#include "common/utils.h"
+
+using namespace marian;
 
 // Constants for Iris example
 const int NUM_FEATURES = 4;
@@ -15,8 +18,8 @@ const int NUM_LABELS = 3;
 
 void readIrisData(const std::string fileName,
                   std::vector<float>& features,
-                  std::vector<float>& labels) {
-  std::map<std::string, int> CLASSES
+                  std::vector<IndexType>& labels) {
+  std::map<std::string, IndexType> CLASSES
       = {{"Iris-setosa", 0}, {"Iris-versicolor", 1}, {"Iris-virginica", 2}};
 
   std::ifstream in(fileName);
@@ -37,25 +40,25 @@ void readIrisData(const std::string fileName,
   }
 }
 
-void shuffleData(std::vector<float>& features, std::vector<float>& labels) {
-  // Create a list of indeces 0...K
-  std::vector<int> indeces;
-  indeces.reserve(labels.size());
-  for(int i = 0; i < labels.size(); ++i)
-    indeces.push_back(i);
+void shuffleData(std::vector<float>& features, std::vector<IndexType>& labels) {
+  // Create a list of indices 0...K
+  std::vector<size_t> indices;
+  indices.reserve(labels.size());
+  for(size_t i = 0; i < labels.size(); ++i)
+    indices.push_back(i);
 
-  // Shuffle indeces
+  // Shuffle indices
   static std::mt19937 urng(marian::Config::seed);
-  std::shuffle(indeces.begin(), indeces.end(), urng);
+  std::shuffle(indices.begin(), indices.end(), urng);
 
   std::vector<float> featuresTemp;
   featuresTemp.reserve(features.size());
-  std::vector<float> labelsTemp;
+  std::vector<IndexType> labelsTemp;
   labelsTemp.reserve(labels.size());
 
   // Get shuffled features and labels
-  for(auto i = 0; i < indeces.size(); ++i) {
-    auto idx = indeces[i];
+  for(size_t i = 0; i < indices.size(); ++i) {
+    auto idx = indices[i];
     labelsTemp.push_back(labels[idx]);
     featuresTemp.insert(featuresTemp.end(),
                         features.begin() + (idx * NUM_FEATURES),
@@ -67,7 +70,7 @@ void shuffleData(std::vector<float>& features, std::vector<float>& labels) {
 }
 
 float calculateAccuracy(const std::vector<float> probs,
-                        const std::vector<float> labels) {
+                        const std::vector<IndexType> labels) {
   size_t numCorrect = 0;
   for(size_t i = 0; i < probs.size(); i += NUM_LABELS) {
     auto pred = std::distance(

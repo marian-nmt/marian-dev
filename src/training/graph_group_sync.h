@@ -1,159 +1,58 @@
 #pragma once
 
-#include <thread>
-
-#include "3rd_party/threadpool.h"
 #include "training/graph_group.h"
+#include "training/communicator.h"
+#include "training/exponential_smoothing.h"
 
 namespace marian {
 
-class SyncGraphGroup : public GraphGroup {
+class SyncGraphGroup : public GraphGroup, public ExponentialSmoothing {
+  using Base = GraphGroup;
+  const double delay_{1.}; // optimizer-delay parameter. Fractional means to use a fraction of whatever the MB size is
+
+  Ptr<ICommunicator> comm_; // [not null] communicator, e.g. NCCLCommunicator
+  Ptr<IMPIWrapper> mpi_;    // [not null] all MPI-like communication goes through this (this is a dummy implementation if no MPI run)
+
+  std::vector<DeviceId> devices_;                  // [deviceIndex]
+  std::vector<Ptr<models::ModelBase>> builders_;   // [deviceIndex]
+  std::vector<Ptr<ExpressionGraph>> graphs_;       // [deviceIndex]
+
+  std::vector<Ptr<OptimizerBase>> shardOpt_;       // [deviceIndex]
+
+  std::vector<Tensor> paramsAvg_;                  // [deviceIndex] exponentially smoothed parameters, sharded
+  // @TODO: instead, create an array of ExponentialSmoothing objects, and don't use ExponentialSmoothing as a base class
+  std::vector<Ptr<TensorAllocator>> paramsAllocs_; // [deviceIndex] we must hold a reference to the memory until this class dies
+  // @TODO: move this nto ExponentialSmoothing, together with paramsAvg_?
+
+  // state for update()
+  bool first_{ true };                           // gets interpreted and cleared by update()
+  std::vector<Ptr<data::Batch>> pendingBatches_; // in case of dynamic MB-size scaling, we temporarly buffer up batches across update() calls until enough
+  size_t typicalTrgWords_{};                     // typical batch size in words (labels), 0 if unknown (e.g. specified in sentences)
+  double updateMultiplier_{1};                  // multiplier not applied in collectStats() (no multiplier if not mini-batch-fit)
+
+  void initialize(const Ptr<data::Batch>& exampleBatch);
+  void initializeAvg();
+
+  bool isMainProcess() const { return mpi_->myMPIRank() == 0; } // (we need this test a few times)
+  void barrier() const { mpi_->barrier(); } // (we need this several times)
+  void swapParamsAvg() { if (mvAvg_ && paramsAvg_.size() > 0) comm_->swapParams(paramsAvg_); } // note: must call this on all MPI ranks in parallel
+
+  bool tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuff, std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches);
+  void update(std::vector<Ptr<data::Batch>> subBatches, size_t numReadBatches);
+
 public:
-  virtual void setScheduler(Ptr<Scheduler> scheduler);
+  SyncGraphGroup(Ptr<Options> config, Ptr<IMPIWrapper> mpi);
 
-private:
-  std::vector<Ptr<models::ModelBase>> builders_;
-  std::vector<Ptr<ExpressionGraph>> graphs_;
-  std::vector<DeviceId> devices_;
+  void setScheduler(Ptr<Scheduler> scheduler) override;
 
-  std::vector<Tensor> params_;
-  std::vector<Tensor> grads_;
-  std::vector<Tensor> tmpTensors_;
-  std::vector<Ptr<TensorAllocator>> paramsAllocs_;
+  void update(Ptr<data::Batch> batch) override;
 
-  std::vector<Ptr<OptimizerBase>> shardOpt_;
+  void load() override;
+  void save(bool final = false) override;
 
-  int shardSize_;
-  bool first_{true};
+  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>&);
+  void finalize() override;
 
-  std::vector<Tensor> paramsAvg_;
-  std::vector<Ptr<TensorAllocator>> paramsAllocAvg_;
-  bool movingAvg_{false};
-  float mvDecay_{1e-4};
-  size_t delay_{1};
-
-  void updateMovingAverage(Tensor paramsAvg, Tensor params, size_t batches);
-
-  void fetchParams(Tensor oldParams, const std::vector<Tensor>& params);
-
-  void execute(Ptr<data::Batch> batch);
-
-public:
-  SyncGraphGroup(Ptr<Config> config)
-      : GraphGroup(config),
-        devices_{options_->getDevices()},
-        movingAvg_{options_->get<float>("exponential-smoothing") > 0},
-        mvDecay_{options_->get<float>("exponential-smoothing")},
-        delay_{options_->get<size_t>("optimizer-delay")} {
-    for(auto device : devices_) {
-      auto graph = New<ExpressionGraph>();
-      graph->setDevice(device);
-      graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-      graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-
-      graphs_.push_back(graph);
-      shardOpt_.push_back(Optimizer(options_));
-      builders_.push_back(models::from_config(options_, models::usage::training));
-    }
-  }
-
-  void update(Ptr<data::Batch> batch) {
-    ABORT_IF(finalized_, "Training has already finished.");
-    execute(batch);
-  }
-
-  void load() {
-    if(!options_->get<bool>("no-reload")) {
-      std::string name = options_->get<std::string>("model");
-
-      if(boost::filesystem::exists(name)) {
-        size_t i = 0;
-        if(scheduler_)
-          scheduler_->load(name);
-        for(auto graph : graphs_)
-          builders_[i++]->load(graph, name);
-
-        // @TODO: probably we want to have the list of DeviceIds as an attribute
-        std::vector<Ptr<Backend>> backends;
-        for(auto graph : graphs_)
-          backends.push_back(graph->getBackend());
-        shardOpt_[0]->load(name + ".optimizer.npz", shardOpt_, backends);
-
-      } else if(options_->has("pretrained-model")) {
-        std::string init = options_->get<std::string>("pretrained-model");
-        LOG(info,
-            "Initialize model weights with the pre-trained model {}",
-            init);
-        size_t i = 0;
-        for(auto graph : graphs_)
-          builders_[i++]->load(graph, init, false);
-      }
-    }
-  }
-
-  void save(bool final = false) {
-    if(final && scheduler_) {
-      if(movingAvg_ && paramsAvg_.size() > 0)
-        for(auto graph : graphs_)
-          fetchParams(graph->params()->vals(), paramsAvg_);
-
-      scheduler_->validate(graphs_, true);
-
-      if(movingAvg_ && paramsAvg_.size() > 0)
-        for(auto graph : graphs_)
-          fetchParams(graph->params()->vals(), params_);
-    }
-
-    save(graphs_[0], final);
-  }
-
-  void save(Ptr<ExpressionGraph> graph, bool final = false) {
-    int idx = 0;
-    for(int i = 0; i < graphs_.size(); ++i) {
-      if(graph == graphs_[i]) {
-        idx = i;
-        break;
-      }
-    }
-
-    if(movingAvg_ && paramsAvg_.size() > 0)
-      fetchParams(graphs_[idx]->params()->vals(), paramsAvg_);
-
-    std::string name = options_->get<std::string>("model");
-
-    if(options_->get<bool>("overwrite")) {
-      builders_[idx]->save(graphs_[idx], name, true);
-      if(scheduler_)
-        scheduler_->save(name);
-    } else {
-      if(!final) {
-        std::string numberOfBatches
-            = scheduler_ ? std::to_string(scheduler_->numberOfBatches())
-                         : "unknown";
-        std::string nameOverwrite = name;
-        nameOverwrite.replace(
-            name.size() - 4, 4, ".iter" + numberOfBatches + ".npz");
-        builders_[idx]->save(graphs_[idx], nameOverwrite);
-      }
-
-      builders_[idx]->save(graphs_[idx], name, true);
-      if(scheduler_)
-        scheduler_->save(name);
-    }
-
-    if(movingAvg_ && paramsAvg_.size() > 0)
-      fetchParams(graphs_[idx]->params()->vals(), params_);
-
-    size_t totalSize = graphs_[idx]->params()->vals()->size();
-    shardOpt_[idx]->save(name + ".optimizer.npz", shardOpt_, totalSize);
-  }
-
-  Ptr<data::BatchStats> collectStats() {
-    return GraphGroup::collectStats(graphs_[0], builders_[0], devices_.size() * delay_);
-  }
-
-  virtual void finalize() {
-    finalized_ = true;
-  }
+  // @TODO: consider to make this a virtual as well? Currently it is a template dispatch
 };
-}
+}  // namespace marian

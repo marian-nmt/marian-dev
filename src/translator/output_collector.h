@@ -1,12 +1,11 @@
 #pragma once
 
-#include <boost/thread/mutex.hpp>
-#include <boost/unordered_map.hpp>
-#include <iostream>
-#include <map>
-
 #include "common/definitions.h"
 #include "common/file_stream.h"
+
+#include <mutex>
+#include <iostream>
+#include <map>
 
 namespace marian {
 
@@ -17,19 +16,19 @@ public:
 
 class DefaultPrinting : public PrintingStrategy {
 public:
-  bool shouldBePrinted(long) { return true; }
+  bool shouldBePrinted(long) override { return true; }
 };
 
 class QuietPrinting : public PrintingStrategy {
 public:
-  bool shouldBePrinted(long) { return false; }
+  bool shouldBePrinted(long) override { return false; }
 };
 
 class GeometricPrinting : public PrintingStrategy {
 public:
-  bool shouldBePrinted(long id) {
+  bool shouldBePrinted(long id) override {
     if(id == 0)
-      next_ = start_;
+      next_ = (long)start_;
     if(id <= 5)
       return true;
     if(next_ == id) {
@@ -47,9 +46,10 @@ private:
 class OutputCollector {
 public:
   OutputCollector();
+  OutputCollector(std::string outFile);
 
   template <class T>
-  OutputCollector(T&& arg) : nextId_(0), outStrm_(new OutputFileStream(arg)) {}
+  OutputCollector(T&& arg) : nextId_(0), outStrm_(new io::OutputFileStream(arg)) {}
 
   OutputCollector(const OutputCollector&) = delete;
 
@@ -63,14 +63,12 @@ public:
   }
 
 protected:
-  UPtr<OutputFileStream> outStrm_;
-  boost::mutex mutex_;
-  long nextId_;
-
   typedef std::map<long, std::pair<std::string, std::string>> Outputs;
   Outputs outputs_;
-
+  long nextId_;
+  UPtr<io::OutputFileStream> outStrm_;
   Ptr<PrintingStrategy> printing_;
+  std::mutex mutex_;
 };
 
 class StringCollector {
@@ -83,9 +81,9 @@ public:
 
 protected:
   long maxId_;
-  boost::mutex mutex_;
+  std::mutex mutex_;
 
   typedef std::map<long, std::pair<std::string, std::string>> Outputs;
   Outputs outputs_;
 };
-}
+}  // namespace marian

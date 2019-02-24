@@ -14,9 +14,9 @@ public:
   virtual Expr getWeights(Ptr<ExpressionGraph> graph,
                           Ptr<data::CorpusBatch> batch)
       = 0;
-  virtual void debugWeighting(std::vector<float> weightedMask,
-                              std::vector<float> freqMask,
-                              Ptr<data::CorpusBatch> batch){};
+  virtual void debugWeighting(std::vector<float> /*weightedMask*/,
+                              std::vector<float> /*freqMask*/,
+                              Ptr<data::CorpusBatch> /*batch*/){};
 };
 
 class DataWeighting : public WeightingBase {
@@ -26,8 +26,8 @@ protected:
 public:
   DataWeighting(std::string weightingType)
       : WeightingBase(), weightingType_(weightingType){};
-  Expr getWeights(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch);
+  Expr getWeights(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) override;
 };
 
 Ptr<WeightingBase> WeightingFactory(Ptr<Options> options);
-}
+}  // namespace marian

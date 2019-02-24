@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/config.h"
+#include "common/options.h"
 #include "models/model_task.h"
 #include "training/scheduler.h"
 
@@ -12,41 +12,46 @@ namespace marian {
 template <class ModelWrapper>
 class TrainMNIST : public ModelTask {
 private:
-  Ptr<Config> options_;
+  Ptr<Options> options_;
 
 public:
-  TrainMNIST(Ptr<Config> options) : options_(options) {}
+  TrainMNIST(Ptr<Options> options) : options_(options) {}
 
-  void run() {
+  void run() override {
     using namespace data;
 
     // Prepare data set
     auto paths = options_->get<std::vector<std::string>>("train-sets");
     auto dataset = New<data::MNISTData>(paths);
-    auto batchGenerator
-        = New<BatchGenerator<data::MNISTData>>(dataset, options_, nullptr);
+    auto batchGenerator = New<BatchGenerator<data::MNISTData>>(dataset, options_, nullptr);
 
     // Prepare scheduler with validators
     auto trainState = New<TrainingState>(options_->get<float>("learn-rate"));
     auto scheduler = New<Scheduler>(options_, trainState);
-    scheduler->addValidator(New<AccuracyValidator>(options_));
+    scheduler->addValidator(New<MNISTAccuracyValidator>(options_));
+
+    // Multi-node training
+    auto mpi = initMPI(/*multiThreaded=*/false);
 
     // Prepare model
-    auto model = New<ModelWrapper>(options_);
+    auto model = New<ModelWrapper>(options_, mpi);
     model->setScheduler(scheduler);
     model->load();
 
     // Run training
     while(scheduler->keepGoing()) {
       batchGenerator->prepare(!options_->get<bool>("no-shuffle"));
-      while(*batchGenerator && scheduler->keepGoing()) {
-        auto batch = batchGenerator->next();
+      for(auto batch : *batchGenerator) {
+        if(!scheduler->keepGoing())
+           break;
         model->update(batch);
       }
       if(scheduler->keepGoing())
         scheduler->increaseEpoch();
     }
     scheduler->finished();
+    model = nullptr;
+    finalizeMPI(std::move(mpi));
   }
 };
-}
+}  // namespace marian

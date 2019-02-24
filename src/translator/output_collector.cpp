@@ -1,28 +1,38 @@
 #include "output_collector.h"
-#include <cassert>
 #include "common/file_stream.h"
 #include "common/logging.h"
+
+#include <cassert>
 
 namespace marian {
 
 OutputCollector::OutputCollector()
-    : nextId_(0),
-      outStrm_(new OutputFileStream(std::cout)),
-      printing_(new DefaultPrinting()) {}
+  : nextId_(0),
+    printing_(new DefaultPrinting()) {}
+
+OutputCollector::OutputCollector(std::string outFile)
+  : nextId_(0),
+    outStrm_(new io::OutputFileStream(std::cout)),
+    printing_(new DefaultPrinting()) {
+  if (outFile != "stdout")
+    outStrm_.reset(new io::OutputFileStream(outFile));
+}
 
 void OutputCollector::Write(long sourceId,
                             const std::string& best1,
                             const std::string& bestn,
                             bool nbest) {
-  boost::mutex::scoped_lock lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   if(sourceId == nextId_) {
     if(printing_->shouldBePrinted(sourceId))
       LOG(info, "Best translation {} : {}", sourceId, best1);
 
-    if(nbest)
-      ((std::ostream&)*outStrm_) << bestn << std::endl;
-    else
-      ((std::ostream&)*outStrm_) << best1 << std::endl;
+    if(outStrm_) {
+      if(nbest)
+        *outStrm_ << bestn << std::endl;
+      else
+        *outStrm_ << best1 << std::endl;
+    }
 
     ++nextId_;
 
@@ -36,10 +46,13 @@ void OutputCollector::Write(long sourceId,
         const auto& currOutput = iter->second;
         if(printing_->shouldBePrinted(currId))
           LOG(info, "Best translation {} : {}", currId, currOutput.first);
-        if(nbest)
-          ((std::ostream&)*outStrm_) << currOutput.second << std::endl;
-        else
-          ((std::ostream&)*outStrm_) << currOutput.first << std::endl;
+
+        if(outStrm_) {
+          if(nbest)
+            *outStrm_ << currOutput.second << std::endl;
+          else
+            *outStrm_ << currOutput.first << std::endl;
+        }
 
         ++nextId_;
 
@@ -55,6 +68,11 @@ void OutputCollector::Write(long sourceId,
       }
     }
 
+    // for 1-best, flush stdout so that we can consume this immediately from an
+    // external process
+    if(outStrm_ && !nbest)
+      *outStrm_ << std::flush;
+
   } else {
     // save for later
     outputs_[sourceId] = std::make_pair(best1, bestn);
@@ -66,7 +84,7 @@ StringCollector::StringCollector() : maxId_(-1) {}
 void StringCollector::add(long sourceId,
                           const std::string& best1,
                           const std::string& bestn) {
-  boost::mutex::scoped_lock lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   LOG(info, "Best translation {} : {}", sourceId, best1);
   outputs_[sourceId] = std::make_pair(best1, bestn);
   if(maxId_ <= sourceId)
@@ -79,4 +97,4 @@ std::vector<std::string> StringCollector::collect(bool nbest) {
     outputs.emplace_back(nbest ? outputs_[id].second : outputs_[id].first);
   return outputs;
 }
-}
+}  // namespace marian

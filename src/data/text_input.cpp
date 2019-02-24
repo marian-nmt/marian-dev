@@ -1,12 +1,11 @@
 #include "data/text_input.h"
+#include "common/utils.h"
 
 namespace marian {
 namespace data {
 
 TextIterator::TextIterator() : pos_(-1), tup_(0) {}
-
-TextIterator::TextIterator(TextInput& corpus)
-    : corpus_(&corpus), pos_(0), tup_(corpus_->next()) {}
+TextIterator::TextIterator(TextInput& corpus) : corpus_(&corpus), pos_(0), tup_(corpus_->next()) {}
 
 void TextIterator::increment() {
   tup_ = corpus_->next();
@@ -21,38 +20,40 @@ const SentenceTuple& TextIterator::dereference() const {
   return tup_;
 }
 
-TextInput::TextInput(std::vector<std::string> paths,
+TextInput::TextInput(std::vector<std::string> inputs,
                      std::vector<Ptr<Vocab>> vocabs,
-                     Ptr<Config> options)
-    : DatasetBase(paths), vocabs_(vocabs), options_(options) {
-  for(auto path : paths_)
-    files_.emplace_back(new std::istringstream(path));
+                     Ptr<Options> options)
+    : DatasetBase(inputs, options), vocabs_(vocabs) {
+  // note: inputs are automatically stored in the inherited variable named paths_, but these are
+  // texts not paths!
+  for(const auto& text : paths_)
+    files_.emplace_back(new std::istringstream(text));
 }
 
+// TextInput is mainly used for inference in the server mode, not for training, so skipping too long
+// or ill-formed inputs is not necessary here
 SentenceTuple TextInput::next() {
-  bool cont = true;
-  while(cont) {
-    // get index of the current sentence
-    size_t curId = pos_++;
+  // get index of the current sentence
+  size_t curId = pos_++;
 
-    // fill up the sentence tuple with sentences from all input files
-    SentenceTuple tup(curId);
-    for(size_t i = 0; i < files_.size(); ++i) {
-      std::string line;
-      if(std::getline(*files_[i], line)) {
-        Words words = (*vocabs_[i])(line);
-        if(words.empty())
-          words.push_back(0);
-        tup.push_back(words);
-      }
+  // fill up the sentence tuple with source and/or target sentences
+  SentenceTuple tup(curId);
+  for(size_t i = 0; i < files_.size(); ++i) {
+    io::InputFileStream dummyStream(*files_[i]);
+    std::string line;
+    if(io::getline(dummyStream, line)) {
+      Words words = vocabs_[i]->encode(line, /*addEOS =*/ true, /*inference =*/ inference_);
+      if(words.empty())
+        words.push_back(DEFAULT_EOS_ID);
+      tup.push_back(words);
     }
-
-    // continue only if each input file has provided an example
-    cont = tup.size() == files_.size();
-    if(cont)
-      return tup;
   }
+
+  // check if each input file provided an example
+  if(tup.size() == files_.size())
+    return tup;
   return SentenceTuple(0);
 }
-}
-}
+
+}  // namespace data
+}  // namespace marian

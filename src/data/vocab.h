@@ -1,48 +1,73 @@
 #pragma once
 
-#include <map>
-#include <string>
-#include <vector>
-
-#include "common/file_stream.h"
+#include "common/definitions.h"
 #include "data/types.h"
+#include "common/options.h"
+#include "common/file_stream.h"
 
 namespace marian {
 
+class VocabBase;
+
+// Wrapper around vocabulary types. Can choose underlying
+// vocabulary implementation (vImpl_) based on speficied path
+// and suffix.
+// Vocabulary implementations can currently be:
+// * DefaultVocabulary for YAML (*.yml and *.yaml) and TXT (any other non-specific ending)
+// * SentencePiece with suffix *.spm (works, but has to be created outside Marian)
 class Vocab {
+private:
+  Ptr<VocabBase> vImpl_;
+  Ptr<Options> options_;
+  size_t batchIndex_;
+
 public:
-  Vocab();
+  Vocab(Ptr<Options> options, size_t batchIndex)
+  : options_(options), batchIndex_(batchIndex) {}
 
-  size_t operator[](const std::string& word) const;
+  size_t loadOrCreate(const std::string& vocabPath,
+                      const std::vector<std::string>& trainPaths,
+                      size_t maxSize = 0);
 
-  Words operator()(const std::vector<std::string>& lineTokens,
-                   bool addEOS = true) const;
+  size_t load(const std::string& vocabPath, size_t maxSize = 0);
 
-  Words operator()(const std::string& line, bool addEOS = true) const;
+  void create(const std::string& vocabPath,
+              const std::vector<std::string>& trainPaths,
+              size_t maxSize);
 
-  std::vector<std::string> operator()(const Words& sentence,
-                                      bool ignoreEOS = true) const;
+  void create(const std::string& vocabPath,
+              const std::string& trainPath,
+              size_t maxSize);
 
-  const std::string& operator[](size_t id) const;
+  // string token to token id
+  Word operator[](const std::string& word) const;
 
+  // token id to string token
+  const std::string& operator[](Word id) const;
+
+  // line of text to list of token ids, can perform tokenization
+  Words encode(const std::string& line,
+               bool addEOS = true,
+               bool inference = false) const;
+
+  // list of token ids to single line, can perform detokenization
+  std::string decode(const Words& sentence,
+                     bool ignoreEOS = true) const;
+
+  // number of vocabulary items
   size_t size() const;
 
-  int loadOrCreate(const std::string& vocabPath,
-                   const std::string& textPath,
-                   int max = 0);
-  int load(const std::string& vocabPath, int max = 0);
-  void create(const std::string& vocabPath, const std::string& trainPath);
-  void create(InputFileStream& trainStrm,
-              OutputFileStream& vocabStrm,
-              size_t maxSize = 0);
+  // number of vocabulary items
+  std::string type() const;
 
-private:
-  typedef std::map<std::string, size_t> Str2Id;
-  Str2Id str2id_;
+  // return EOS symbol id
+  Word getEosId() const;
 
-  typedef std::vector<std::string> Id2Str;
-  Id2Str id2str_;
+  // return UNK symbol id
+  Word getUnkId() const;
 
-  class VocabFreqOrderer;
+  // create fake vocabulary for collecting batch statistics
+  void createFake();
 };
-}
+
+}  // namespace marian

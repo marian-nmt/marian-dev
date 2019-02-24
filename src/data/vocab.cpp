@@ -1,236 +1,124 @@
-#include "3rd_party/exception.h"
-#include "3rd_party/yaml-cpp/yaml.h"
-#include "common/logging.h"
-#include "common/utils.h"
 #include "data/vocab.h"
-#include "common/regex.h"
-
-#include <algorithm>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <unordered_map>
-#include <unordered_set>
+#include "data/vocab_base.h"
 
 namespace marian {
 
-Vocab::Vocab() {}
+Ptr<VocabBase> createDefaultVocab();
+Ptr<VocabBase> createClassVocab();
+Ptr<VocabBase> createSentencePieceVocab(const std::string& /*vocabPath*/, Ptr<Options>, size_t /*batchIndex*/);
 
-size_t Vocab::operator[](const std::string& word) const {
-  auto it = str2id_.find(word);
-  if(it != str2id_.end())
-    return it->second;
-  else
-    return UNK_ID;
-}
-
-Words Vocab::operator()(const std::vector<std::string>& lineTokens,
-                        bool addEOS) const {
-  Words words(lineTokens.size());
-  std::transform(lineTokens.begin(),
-                 lineTokens.end(),
-                 words.begin(),
-                 [&](const std::string& w) { return (*this)[w]; });
-  if(addEOS)
-    words.push_back(EOS_ID);
-  return words;
-}
-
-Words Vocab::operator()(const std::string& line, bool addEOS) const {
-  std::vector<std::string> lineTokens;
-  Split(line, lineTokens, " ");
-  return (*this)(lineTokens, addEOS);
-}
-
-std::vector<std::string> Vocab::operator()(const Words& sentence,
-                                           bool ignoreEOS) const {
-  std::vector<std::string> decoded;
-  for(size_t i = 0; i < sentence.size(); ++i) {
-    if((sentence[i] != EOS_ID || !ignoreEOS)) {
-      decoded.push_back((*this)[sentence[i]]);
-    }
-  }
-  return decoded;
-}
-
-const std::string& Vocab::operator[](size_t id) const {
-  ABORT_IF(id >= id2str_.size(), "Unknown word id: ", id);
-  return id2str_[id];
-}
-
-size_t Vocab::size() const {
-  return id2str_.size();
-}
-
-int Vocab::loadOrCreate(const std::string& vocabPath,
-                        const std::string& trainPath,
-                        int max) {
-  if(vocabPath.empty()) {
-    if(boost::filesystem::exists(trainPath + ".json")) {
-      return load(trainPath + ".json", max);
-    }
-    if(boost::filesystem::exists(trainPath + ".yml")) {
-      return load(trainPath + ".yml", max);
-    }
-    create(trainPath + ".yml", trainPath);
-    return load(trainPath + ".yml", max);
+// @TODO: make each vocab peek on type
+Ptr<VocabBase> createVocab(const std::string& vocabPath, Ptr<Options> options, size_t batchIndex) {
+  auto vocab = createSentencePieceVocab(vocabPath, options, batchIndex);
+  if(vocab) {
+    return vocab; // this is defined which means that a sentencepiece vocabulary could be created, so return it
   } else {
-    if(!boost::filesystem::exists(vocabPath))
-      create(vocabPath, trainPath);
-    return load(vocabPath, max);
+    // check type of input, if not given, assume "sequence"
+    auto inputTypes = options->get<std::vector<std::string>>("input-types", {});
+    std::string inputType = inputTypes.size() > batchIndex ? inputTypes[batchIndex] : "sequence";
+    return inputType == "class" ? createClassVocab() : createDefaultVocab();
   }
 }
 
-int Vocab::load(const std::string& vocabPath, int max) {
-  bool isYaml = regex::regex_search(vocabPath, regex::regex("\\.(yml|json)$"));
-  LOG(info, "[data] Loading vocabulary from {} file {}", isYaml ? "Yaml/JSON" : "text", vocabPath);
-  ABORT_IF(!boost::filesystem::exists(vocabPath),
-           "Vocabulary file {} does not exits",
-           vocabPath);
+size_t Vocab::loadOrCreate(const std::string& vocabPath,
+                           const std::vector<std::string>& trainPaths,
+                           size_t maxSize) {
+  size_t size = 0;
+  if(vocabPath.empty()) {
+    // No vocabulary path was given, attempt to first find a vocabulary
+    // for trainPaths[0] + possible suffixes. If not found attempt to create
+    // as trainPaths[0] + canonical suffix.
+    // Only search based on first path, maybe disable this at all?
 
-  std::map<std::string,Word> vocab;
-  if (isYaml) // read from Yaml (or JSON) file
-  {
-    YAML::Node vocabNode = YAML::Load(InputFileStream(vocabPath));
-    for(auto&& pair : vocabNode)
-      vocab.insert({ pair.first.as<std::string>(), pair.second.as<Word>() });
-  }
-  else // read from flat text file
-  {
-    std::ifstream in(vocabPath);
-    std::string line;
-    while (std::getline(in, line))
-      vocab.insert({ line, vocab.size() });
-    ABORT_IF(in.bad(), "Vocabulary file {} could not be read", vocabPath);
-  }
+    LOG(info,
+        "No vocabulary path given; "
+        "trying to find default vocabulary based on data path {}",
+        trainPaths[0]);
 
-  std::unordered_set<Word> seenSpecial;
+    vImpl_ = createDefaultVocab();
+    size = vImpl_->findAndLoad(trainPaths[0], maxSize);
 
-  for(auto&& pair : vocab) {
-    auto str = pair.first;
-    auto id = pair.second;
-
-    if(SPEC2SYM.count(str)) {
-      seenSpecial.insert(id);
+    if(size == 0) {
+      auto newVocabPath = trainPaths[0] + vImpl_->canonicalExtension();
+      LOG(info,
+          "No vocabulary path given; "
+          "trying to create vocabulary based on data paths {}",
+          utils::join(trainPaths, ", "));
+      create(newVocabPath, trainPaths, maxSize);
+      size = load(newVocabPath, maxSize);
     }
-
-    if(!max || id < (Word)max) { // note: this requires ids to be sorted by frequency
-      str2id_[str] = id;
-      if(id >= id2str_.size())
-        id2str_.resize(id + 1);
-      id2str_[id] = str;
+  } else {
+    if(!filesystem::exists(vocabPath)) {
+      // Vocabulary path was given, but no vocabulary present,
+      // attempt to create in specified location.
+      create(vocabPath, trainPaths, maxSize);
     }
+    // Vocabulary path exists, attempting to load
+    size = load(vocabPath, maxSize);
   }
-  ABORT_IF(id2str_.empty(), "Empty vocabulary: ", vocabPath);
-
-  // </s> and <unk> are expected at specific positions
-  auto requireWord = [&](Word id, const std::string& str)
-  {
-    auto iter = str2id_.find(str);
-    if (iter != str2id_.end()) // word already in vocab: must be at right index, else fail
-      ABORT_IF(iter->second != id, "vocabulary entry '{}' is expected to have id {}", str, id);
-    str2id_[str] = id;
-    id2str_[id] = str;
-  };
-  requireWord(EOS_ID, EOS_STR);
-  requireWord(UNK_ID, UNK_STR);
-  for(auto id : seenSpecial)
-    requireWord(id, SYM2SPEC.at(id));
-
-  return std::max((int)id2str_.size(), max);
+  LOG(info, "[data] Setting vocabulary size for input {} to {}", batchIndex_, size);
+  return size;
 }
 
-class Vocab::VocabFreqOrderer {
-private:
-  std::unordered_map<std::string, size_t>& counter_;
-
-public:
-  VocabFreqOrderer(std::unordered_map<std::string, size_t>& counter)
-      : counter_(counter) {}
-
-  bool operator()(const std::string& a, const std::string& b) const {
-    return counter_[a] > counter_[b] || (counter_[a] == counter_[b] && a < b);
-  }
-};
-
-void Vocab::create(const std::string& vocabPath, const std::string& trainPath) {
-  LOG(info, "[data] Creating vocabulary {} from {}", vocabPath, trainPath);
-
-  boost::filesystem::path path(vocabPath);
-  auto dir = path.parent_path();
-  if(dir.empty())
-    dir = boost::filesystem::current_path();
-
-  ABORT_IF(!dir.empty() && !boost::filesystem::is_directory(dir),
-           "Specified vocab directory {} does not exist",
-           dir);
-
-  ABORT_IF(!dir.empty()
-               && !(boost::filesystem::status(dir).permissions()
-                    & boost::filesystem::owner_write),
-           "No write permission in vocab directory {}",
-           dir);
-
-  ABORT_IF(boost::filesystem::exists(vocabPath),
-           "Vocab file '{}' exists. Not overwriting",
-           vocabPath);
-
-  InputFileStream trainStrm(trainPath);
-  OutputFileStream vocabStrm(vocabPath);
-  create(trainStrm, vocabStrm);
+size_t Vocab::load(const std::string& vocabPath, size_t maxSize) {
+  if(!vImpl_)
+    vImpl_ = createVocab(vocabPath, options_, batchIndex_);
+  return vImpl_->load(vocabPath, (int)maxSize);
 }
 
-void Vocab::create(InputFileStream& trainStrm,
-                   OutputFileStream& vocabStrm,
+void Vocab::create(const std::string& vocabPath,
+                   const std::vector<std::string>& trainPaths,
                    size_t maxSize) {
-  std::string line;
-  std::unordered_map<std::string, size_t> counter;
-
-  std::unordered_set<Word> seenSpecial;
-
-  while(getline((std::istream&)trainStrm, line)) {
-    std::vector<std::string> toks;
-    Split(line, toks);
-
-    for(const std::string& tok : toks) {
-      if(SPEC2SYM.count(tok)) {
-        seenSpecial.insert(SPEC2SYM.at(tok));
-        continue;
-      }
-
-      auto iter = counter.find(tok);
-      if(iter == counter.end())
-        counter[tok] = 1;
-      else
-        iter->second++;
-    }
-  }
-
-  std::vector<std::string> vocabVec;
-  for(auto& p : counter)
-    vocabVec.push_back(p.first);
-
-  std::sort(vocabVec.begin(), vocabVec.end(), VocabFreqOrderer(counter));
-
-  YAML::Node vocabYaml;
-  vocabYaml.force_insert(EOS_STR, EOS_ID);
-  vocabYaml.force_insert(UNK_STR, UNK_ID);
-
-  for(auto word : seenSpecial)
-    vocabYaml.force_insert(SYM2SPEC.at(word), word);
-
-  Word maxSpec = 1;
-  for(auto i : seenSpecial)
-    if(i > maxSpec)
-      maxSpec = i;
-
-  auto vocabSize = vocabVec.size();
-  if(maxSize > maxSpec)
-    vocabSize = std::min(maxSize - maxSpec - 1, vocabVec.size());
-
-  for(size_t i = 0; i < vocabSize; ++i)
-    vocabYaml.force_insert(vocabVec[i], i + maxSpec + 1);
-
-  (std::ostream&)vocabStrm << vocabYaml;
+  if(!vImpl_)
+    vImpl_ = createVocab(vocabPath, options_, batchIndex_);
+  vImpl_->create(vocabPath, trainPaths, maxSize);
 }
+
+void Vocab::create(const std::string& vocabPath,
+                   const std::string& trainPath,
+                   size_t maxSize) {
+  create(vocabPath, std::vector<std::string>({trainPath}), maxSize);
 }
+
+void Vocab::createFake() {
+  if(!vImpl_)
+    vImpl_ = createDefaultVocab(); // DefaultVocab is OK here
+  vImpl_->createFake();
+}
+
+// string token to token id
+Word Vocab::operator[](const std::string& word) const {
+  return vImpl_->operator[](word);
+}
+
+// token id to string token
+const std::string& Vocab::operator[](Word id) const {
+  return vImpl_->operator[](id);
+}
+
+// line of text to list of token ids, can perform tokenization
+Words Vocab::encode(const std::string& line,
+              bool addEOS,
+              bool inference) const {
+  return vImpl_->encode(line, addEOS, inference);
+}
+
+// list of token ids to single line, can perform detokenization
+std::string Vocab::decode(const Words& sentence,
+                    bool ignoreEOS) const {
+  return vImpl_->decode(sentence, ignoreEOS);
+}
+
+// number of vocabulary items
+size_t Vocab::size() const { return vImpl_->size(); }
+
+// number of vocabulary items
+std::string Vocab::type() const { return vImpl_->type(); }
+
+// return EOS symbol id
+Word Vocab::getEosId() const { return vImpl_->getEosId(); }
+
+// return UNK symbol id
+Word Vocab::getUnkId() const { return vImpl_->getUnkId(); }
+
+}  // namespace marian

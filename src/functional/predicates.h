@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "functional/defs.h"
 #include "functional/operands.h"
 
@@ -49,10 +51,10 @@ struct BinaryFunctor {
   template <class X>                                     \
   using name = UnaryFunctor<elem::name, X>;              \
   template <typename X>                                  \
-  name<IsClass<X>> name2(X x) {                          \
+  static inline name<IsClass<X>> name2(X x) {            \
     return name<X>(x);                                   \
   }                                                      \
-  static name<Capture> name2(Capture x) { return name<Capture>(x); }
+  static inline name<Capture> name2(Capture x) { return name<Capture>(x); }
 
 #define BINARY(name, name2, func)                                 \
   namespace elem {                                                \
@@ -84,15 +86,24 @@ UNARY(Log, log, logf(x));
 UNARY(Exp, exp, expf(x));
 UNARY(Abs, abs, fabs(x));
 UNARY(Sqrt, sqrt, sqrtf(x));
-UNARY(Neg, operator-, -x);
-UNARY(Logit,
-      logit,
+UNARY(Neg, operator-, - x);
+UNARY(Sigmoid,
+      sigmoid,
       x > 0 ? (1.f / (1.f + expf(-x))) : (expf(x) / (1.f + expf(x))));
 
 BINARY(Plus, operator+, x + y);
 BINARY(Minus, operator-, x - y);
 BINARY(Mult, operator*, x* y);
 BINARY(Div, operator/, x / y);
+
+BINARY(LogAddExp,
+       logaddexp,
+       (/*if*/ (x < y) ?  // Note: This may not be ideal for CUDA; cf. CNTK implementation
+          (y + log1pf(expf(x - y)))
+        /*else*/ :
+          (x + log1pf(expf(y - x)))));
+BINARY(Maximum, max, (x > y) ? x : y);  // Note: std::max not available on CUDA it seems
+BINARY(Minimum, min, (x < y) ? x : y);
 
 UNARY(Negate, operator!, !x);
 BINARY(Eq, operator==, x == y);
@@ -106,7 +117,7 @@ BINARY(Or, operator||, x || y);
 
 template <typename T>
 __HDI__ T sgn(T val) {
-  return (float(0) < val) - (val < float(0));
+  return T((0 < val) - (val < 0));
 }
 
 UNARY(Sgn, sgn, sgn(x));
@@ -114,6 +125,8 @@ UNARY(Sgn, sgn, sgn(x));
 BINARY(Pow, pow, pow(x, y));
 
 BINARY(Clip, clip, fabs(x) >= y ? sgn(x) * y : x);
+
+// derivative of Clip, cut-off function
 BINARY(Bump, bump, fabs(x) >= y ? 0.f : 1.f);
 
 UNARY(sReLU, ReLU, x > 0.f ? x : 0.f);
@@ -230,5 +243,5 @@ struct Assignee {
 };
 
 /******************************************************************************/
-}
-}
+}  // namespace functional
+}  // namespace marian

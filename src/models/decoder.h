@@ -2,6 +2,7 @@
 
 #include "marian.h"
 #include "states.h"
+
 #include "data/shortlist.h"
 #include "layers/generic.h"
 
@@ -23,6 +24,8 @@ public:
         inference_(options->get<bool>("inference", false)),
         batchIndex_(options->get<size_t>("index", 1)) {}
 
+  virtual ~DecoderBase() {}
+
   virtual Ptr<DecoderState> startState(Ptr<ExpressionGraph>,
                                        Ptr<data::CorpusBatch> batch,
                                        std::vector<Ptr<EncoderState>>&)
@@ -33,13 +36,12 @@ public:
   virtual void embeddingsFromBatch(Ptr<ExpressionGraph> graph,
                                    Ptr<DecoderState> state,
                                    Ptr<data::CorpusBatch> batch) {
-    using namespace keywords;
 
     int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
     int dimEmb = opt<int>("dim-emb");
 
-    auto yEmbFactory = embedding(graph)  //
-        ("dimVocab", dimVoc)             //
+    auto yEmbFactory = embedding()  //
+        ("dimVocab", dimVoc)        //
         ("dimEmb", dimEmb);
 
     if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
@@ -50,34 +52,24 @@ public:
     if(options_->has("embedding-fix-trg"))
       yEmbFactory("fixed", opt<bool>("embedding-fix-trg"));
 
-    if(options_->has("embedding-vectors")) {
+    if(options_->hasAndNotEmpty("embedding-vectors")) {
       auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
       yEmbFactory("embFile", embFiles[batchIndex_])  //
           ("normalization", opt<bool>("embedding-normalization"));
     }
 
-    auto yEmb = yEmbFactory.construct();
+    auto yEmb = yEmbFactory.construct(graph);
 
     auto subBatch = (*batch)[batchIndex_];
-    int dimBatch = subBatch->batchSize();
-    int dimWords = subBatch->batchWidth();
 
-    auto chosenEmbeddings = rows(yEmb, subBatch->data());
-
-    auto y
-        = reshape(chosenEmbeddings, {dimWords, dimBatch, opt<int>("dim-emb")});
-
-    auto yMask = graph->constant({dimWords, dimBatch, 1},
-                                 inits::from_vector(subBatch->mask()));
+    Expr y, yMask; std::tie
+    (y, yMask) = yEmb->apply(subBatch);
 
     Expr yData;
     if(shortlist_) {
-      yData = graph->constant({(int)shortlist_->mappedIndices().size(), 1},
-                              inits::from_vector(shortlist_->mappedIndices()));
-    }
-    else {
-      yData = graph->constant({(int)subBatch->data().size(), 1},
-                              inits::from_vector(subBatch->data()));
+      yData = graph->indices(shortlist_->mappedIndices());
+    } else {
+      yData = graph->indices(subBatch->data());
     }
 
     auto yShifted = shift(y, {1, 0, 0});
@@ -89,47 +81,51 @@ public:
 
   virtual void embeddingsFromPrediction(Ptr<ExpressionGraph> graph,
                                         Ptr<DecoderState> state,
-                                        const std::vector<size_t>& embIdx,
+                                        const std::vector<IndexType>& embIdx,
                                         int dimBatch,
                                         int dimBeam) {
-    using namespace keywords;
-
     int dimTrgEmb = opt<int>("dim-emb");
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
-
-    // embeddings are loaded from model during translation, no fixing required
-    auto yEmbFactory = embedding(graph)  //
-        ("dimVocab", dimTrgVoc)          //
-        ("dimEmb", dimTrgEmb);
-
-    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
-      yEmbFactory("prefix", "Wemb");
-    else
-      yEmbFactory("prefix", prefix_ + "_Wemb");
-
-    auto yEmb = yEmbFactory.construct();
 
     Expr selectedEmbs;
     if(embIdx.empty()) {
       selectedEmbs = graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros);
     } else {
-      selectedEmbs = rows(yEmb, embIdx);
-      selectedEmbs = reshape(selectedEmbs, {dimBeam, 1, dimBatch, dimTrgEmb});
+      // embeddings are loaded from model during translation, no fixing required
+      auto yEmbFactory = embedding()  //
+          ("dimVocab", dimTrgVoc)     //
+          ("dimEmb", dimTrgEmb);
+
+      if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+        yEmbFactory("prefix", "Wemb");
+      else
+        yEmbFactory("prefix", prefix_ + "_Wemb");
+
+      auto yEmb = yEmbFactory.construct(graph);
+
+      selectedEmbs = yEmb->apply(embIdx, {dimBeam, 1, dimBatch, dimTrgEmb});
     }
     state->setTargetEmbeddings(selectedEmbs);
   }
 
-  virtual const std::vector<Expr> getAlignments(int i = 0) { return {}; };
+  virtual const std::vector<Expr> getAlignments(int /*i*/ = 0) { return {}; };
 
   virtual Ptr<data::Shortlist> getShortlist() { return shortlist_; }
-  virtual void setShortlist(Ptr<data::Shortlist> shortlist) { shortlist_ = shortlist; }
+  virtual void setShortlist(Ptr<data::Shortlist> shortlist) {
+    shortlist_ = shortlist;
+  }
 
   template <typename T>
-  T opt(const std::string& key) {
+  T opt(const std::string& key) const {
     return options_->get<T>(key);
+  }
+
+  template <typename T>
+  T opt(const std::string& key, const T& def) {
+    return options_->get<T>(key, def);
   }
 
   virtual void clear() = 0;
 };
 
-}
+}  // namespace marian

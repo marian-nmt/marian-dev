@@ -28,12 +28,11 @@ const SentenceTuple& CorpusIterator::dereference() const {
   return tup_;
 }
 
-CorpusBase::CorpusBase(std::vector<std::string> paths,
-                       std::vector<Ptr<Vocab>> vocabs,
-                       Ptr<Config> options)
-    : DatasetBase(paths),
+CorpusBase::CorpusBase(const std::vector<std::string>& paths,
+                       const std::vector<Ptr<Vocab>>& vocabs,
+                       Ptr<Options> options)
+    : DatasetBase(paths, options),
       vocabs_(vocabs),
-      options_(options),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")) {
@@ -41,12 +40,15 @@ CorpusBase::CorpusBase(std::vector<std::string> paths,
            "Number of corpus files and vocab files does not agree");
 
   for(auto path : paths_) {
-    files_.emplace_back(new InputFileStream(path));
+    files_.emplace_back(new io::InputFileStream(path));
+    ABORT_IF(files_.back()->empty(), "File '{}' is empty", path);
   }
+
+  initEOS(/*training=*/true);
 }
 
-CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
-    : options_(options),
+CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
+    : DatasetBase(options),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")) {
@@ -57,8 +59,10 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
   else
     paths_ = options_->get<std::vector<std::string>>("input");
 
+  initEOS(training);
+
   std::vector<std::string> vocabPaths;
-  if(options_->has("vocabs"))
+  if(!options_->get<std::vector<std::string>>("vocabs").empty())
     vocabPaths = options_->get<std::vector<std::string>>("vocabs");
 
   if(training) {
@@ -66,26 +70,29 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
              "Number of corpus files and vocab files does not agree");
   }
 
+  // @TODO: check if size_t can be used instead of int
   std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
 
-  if(training) {  // training or scoring
-    std::vector<Vocab> vocabs;
-
+  // training or scoring
+  if(training) {
     if(vocabPaths.empty()) {
       if(maxVocabs.size() < paths_.size())
         maxVocabs.resize(paths_.size(), 0);
 
+      LOG(info, "No vocabulary files given, trying to find or build based on training data. "
+                "Vocabularies will be built separately for each file.");
+
       // Create vocabs if not provided
       for(size_t i = 0; i < paths_.size(); ++i) {
-        Ptr<Vocab> vocab = New<Vocab>();
-        int vocSize = vocab->loadOrCreate("", paths_[i], maxVocabs[i]);
-        LOG(info,
-            "[data] Setting vocabulary size for input {} to {}",
-            i,
-            vocSize);
-        options_->get()["dim-vocabs"][i] = vocSize;
+        Ptr<Vocab> vocab = New<Vocab>(options_, i);
+        std::vector<std::string> trainPaths = { paths_[i] };
+        size_t vocSize = vocab->loadOrCreate("", trainPaths, maxVocabs[i]);
+        // TODO: this is not nice as it modifies the option object and needs to expose the changes
+        // outside the corpus as models need to know about the vocabulary size; extract the vocab
+        // creation functionality from the class.
+        options_->getYaml()["dim-vocabs"][i] = vocSize;
 
-        options_->get()["vocabs"].push_back(paths_[i] + ".yml");
+        options_->getYaml()["vocabs"].push_back(paths_[i] + ".yml");
         vocabs_.emplace_back(vocab);
       }
     } else {
@@ -93,15 +100,35 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
       if(maxVocabs.size() < vocabPaths.size())
         maxVocabs.resize(paths_.size(), 0);
 
+      // Helper object to for grouping training data based on vocabulary file name
+      struct PathsAndSize {
+        std::set<std::string> paths; // contains all paths that are used for training the vocabulary
+        size_t size;                 // contains the maximum vocabulary size
+      };
+
+      // Group training files based on vocabulary path. If the same
+      // vocab path corresponds to different training files, this means
+      // that a single vocab should combine tokens from all files.
+      std::map<std::string, PathsAndSize> groupVocab;
       for(size_t i = 0; i < vocabPaths.size(); ++i) {
-        Ptr<Vocab> vocab = New<Vocab>();
-        int vocSize
-            = vocab->loadOrCreate(vocabPaths[i], paths_[i], maxVocabs[i]);
-        LOG(info,
-            "[data] Setting vocabulary size for input {} to {}",
-            i,
-            vocSize);
-        options_->get()["dim-vocabs"][i] = vocSize;
+        groupVocab[vocabPaths[i]].paths.insert(paths_[i]);
+        if(groupVocab[vocabPaths[i]].size < maxVocabs[i])
+          groupVocab[vocabPaths[i]].size = maxVocabs[i];
+      }
+
+      for(size_t i = 0; i < vocabPaths.size(); ++i) {
+        Ptr<Vocab> vocab = New<Vocab>(options_, i);
+
+        // Get the set of files that corresponds to the vocab. If the next file is the same vocab,
+        // it wild not be created again, but just correctly loaded.
+        auto pathsAndSize = groupVocab[vocabPaths[i]];
+        std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
+        size_t vocSize = vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
+
+        // TODO: this is not nice as it modifies the option object and needs to expose the changes
+        // outside the corpus, because models need to know about the vocabulary size; extract the
+        // vocab creation functionality from the class.
+        options_->getYaml()["dim-vocabs"][i] = vocSize;
 
         vocabs_.emplace_back(vocab);
       }
@@ -116,13 +143,9 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
       maxVocabs.resize(paths_.size(), 0);
 
     for(size_t i = 0; i + 1 < vocabPaths.size(); ++i) {
-      Ptr<Vocab> vocab = New<Vocab>();
-      int vocSize = vocab->load(vocabPaths[i], maxVocabs[i]);
-      LOG(info,
-          "[data] Setting vocabulary size for input {} to {}",
-          i,
-          vocSize);
-      options_->get()["dim-vocabs"][i] = vocSize;
+      Ptr<Vocab> vocab = New<Vocab>(options_, i);
+      size_t vocSize = vocab->load(vocabPaths[i], maxVocabs[i]);
+      options_->getYaml()["dim-vocabs"][i] = vocSize;
 
       vocabs_.emplace_back(vocab);
     }
@@ -130,9 +153,9 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
 
   for(auto path : paths_) {
     if(path == "stdin")
-      files_.emplace_back(new InputFileStream(std::cin));
+      files_.emplace_back(new io::InputFileStream(std::cin));
     else {
-      files_.emplace_back(new InputFileStream(path));
+      files_.emplace_back(new io::InputFileStream(path));
       ABORT_IF(files_.back()->empty(), "File '{}' is empty", path);
     }
   }
@@ -143,33 +166,39 @@ CorpusBase::CorpusBase(Ptr<Config> options, bool translate)
            files_.size(),
            vocabs_.size());
 
-  if(training && options_->has("guided-alignment")) {
+  if(training && options_->get("guided-alignment", std::string("none")) != "none") {
     auto path = options_->get<std::string>("guided-alignment");
 
-    ABORT_IF(!boost::filesystem::exists(path), "Alignment file does not exist");
+    ABORT_IF(!filesystem::exists(path), "Alignment file does not exist");
     LOG(info, "[data] Using word alignments from file {}", path);
 
     alignFileIdx_ = paths_.size();
     paths_.emplace_back(path);
-    files_.emplace_back(new InputFileStream(path));
+    files_.emplace_back(new io::InputFileStream(path));
+    ABORT_IF(files_.back()->empty(), "File with alignments '{}' is empty", path);
   }
 
-  if(training && options_->has("data-weighting")) {
+  if(training && options_->hasAndNotEmpty("data-weighting")) {
     auto path = options_->get<std::string>("data-weighting");
 
-    ABORT_IF(!boost::filesystem::exists(path), "Weight file does not exist");
+    ABORT_IF(!filesystem::exists(path), "Weight file does not exist");
     LOG(info, "[data] Using weights from file {}", path);
 
     weightFileIdx_ = paths_.size();
     paths_.emplace_back(path);
-    files_.emplace_back(new InputFileStream(path));
+    files_.emplace_back(new io::InputFileStream(path));
+    ABORT_IF(files_.back()->empty(), "File with weights '{}' is empty", path);
   }
 }
 
 void CorpusBase::addWordsToSentenceTuple(const std::string& line,
-                                         size_t i,
+                                         size_t batchIndex,
                                          SentenceTuple& tup) const {
-  Words words = (*vocabs_[i])(line);
+
+  // This turns a string in to a sequence of numerical word ids. Depending
+  // on the vocabulary type, this can be non-trivial, e.g. when SentencePiece
+  // is used.
+  Words words = vocabs_[batchIndex]->encode(line, /*addEOS =*/ addEOS_[batchIndex], inference_);
 
   if(words.empty())
     words.push_back(0);
@@ -195,9 +224,8 @@ void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,
   tup.setAlignment(align);
 }
 
-void CorpusBase::addWeightsToSentenceTuple(const std::string& line,
-                                           SentenceTuple& tup) const {
-  auto elements = Split(line, " ");
+void CorpusBase::addWeightsToSentenceTuple(const std::string& line, SentenceTuple& tup) const {
+  auto elements = utils::split(line, " ");
 
   if(!elements.empty()) {
     std::vector<float> weights;
@@ -215,28 +243,26 @@ void CorpusBase::addWeightsToSentenceTuple(const std::string& line,
 }
 
 void CorpusBase::addAlignmentsToBatch(Ptr<CorpusBatch> batch,
-                                      const std::vector<sample>& batchVector) {
-  int srcWords = batch->front()->batchWidth();
-  int trgWords = batch->back()->batchWidth();
-  int dimBatch = batch->getSentenceIds().size();
-  std::vector<float> aligns(dimBatch * srcWords * trgWords, 0.f);
+                                      const std::vector<Sample>& batchVector) {
+  int srcWords = (int)batch->front()->batchWidth();
+  int trgWords = (int)batch->back()->batchWidth();
+  int dimBatch = (int)batch->getSentenceIds().size();
+
+  std::vector<float> aligns(srcWords * dimBatch * trgWords, 0.f);
 
   for(int b = 0; b < dimBatch; ++b) {
     for(auto p : batchVector[b].getAlignment()) {
-      int sid, tid;
-      std::tie(sid, tid) = p;
-
-      size_t idx = b + sid * dimBatch + tid * srcWords * dimBatch;
+      size_t idx = p.srcPos * dimBatch * trgWords + b * trgWords + p.tgtPos;
       aligns[idx] = 1.f;
     }
   }
-  batch->setGuidedAlignment(aligns);
+  batch->setGuidedAlignment(std::move(aligns));
 }
 
 void CorpusBase::addWeightsToBatch(Ptr<CorpusBatch> batch,
-                                   const std::vector<sample>& batchVector) {
-  int dimBatch = batch->size();
-  int trgWords = batch->back()->batchWidth();
+                                   const std::vector<Sample>& batchVector) {
+  int dimBatch = (int)batch->size();
+  int trgWords = (int)batch->back()->batchWidth();
 
   auto sentenceLevel
       = options_->get<std::string>("data-weighting-type") == "sentence";
@@ -257,5 +283,41 @@ void CorpusBase::addWeightsToBatch(Ptr<CorpusBatch> batch,
 
   batch->setDataWeights(weights);
 }
+
+void CorpusBase::initEOS(bool training = true) {
+  // Labels fed into sub-batches that are just class-labels, not sequence labels do not require to
+  // add a EOS symbol. Hence decision to add EOS is now based on input stream positions and correspoding
+  // input type.
+
+  addEOS_.resize(paths_.size(), true);
+  // @TODO: think if this should be checked and processed here or in a validation step in config?
+  auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
+
+  // make sure there is an input type for each path
+  ABORT_IF(inputTypes.size() > 0 && inputTypes.size() < paths_.size(),
+           "Input types have been specified ({}), you need to specify one per input ({})",
+           inputTypes.size(),
+           paths_.size());
+
+  // make sure there is an equal number of input types and paths when training
+  ABORT_IF(training && inputTypes.size() > 0 && inputTypes.size() != paths_.size(),
+           "Input types have been specified ({}), you need to specify one per input ({})",
+           inputTypes.size(),
+           paths_.size());
+
+  for(int i = 0; i < paths_.size(); ++i)
+    if(inputTypes.size() > i) {
+      if(inputTypes[i] == "class")
+        addEOS_[i] = false;
+      else if(inputTypes[i] == "sequence")
+        addEOS_[i] = true;
+      else
+        ABORT("Unknown input type {}: {}", i, inputTypes[i]);
+    } else {
+      // No input type specified, assuming "sequence"
+      addEOS_[i] = true;
+    }
 }
-}
+
+}  // namespace data
+}  // namespace marian

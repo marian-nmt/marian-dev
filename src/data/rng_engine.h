@@ -16,8 +16,7 @@ protected:
   std::mt19937 eng_;
 
 public:
-  RNGEngine() : eng_(Config::seed) {}
-  RNGEngine(size_t eng) : eng_(eng) {}
+  RNGEngine() : eng_((unsigned int)Config::seed) {}
 
   std::string getRNGState() {
     std::ostringstream oss;
@@ -30,5 +29,5 @@ public:
     iss >> eng_;
   }
 };
-}
-}
+}  // namespace data
+}  // namespace marian

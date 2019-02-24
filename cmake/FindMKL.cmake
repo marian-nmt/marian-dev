@@ -35,10 +35,17 @@ if (MKL_INCLUDE_DIRS AND MKL_LIBRARIES AND MKL_INTERFACE_LIBRARY AND
 endif()
 
 if(NOT BUILD_SHARED_LIBS)
-  set(INT_LIB "libmkl_intel_ilp64.a")
-  set(SEQ_LIB "libmkl_sequential.a")
-  set(THR_LIB "libmkl_intel_thread.a")
-  set(COR_LIB "libmkl_core.a")
+  if (WIN32)
+    set(INT_LIB "mkl_intel_ilp64.lib")
+    set(SEQ_LIB "mkl_sequential.lib")
+    set(THR_LIB "mkl_intel_thread.lib")
+    set(COR_LIB "mkl_core.lib")
+  else()
+    set(INT_LIB "libmkl_intel_ilp64.a")
+    set(SEQ_LIB "libmkl_sequential.a")
+    set(THR_LIB "libmkl_intel_thread.a")
+    set(COR_LIB "libmkl_core.a")
+  endif()
 else()
   set(INT_LIB "mkl_intel_ilp64")
   set(SEQ_LIB "mkl_sequential")
@@ -46,7 +53,13 @@ else()
   set(COR_LIB "mkl_core")
 endif()
 
-set(INTEL_ROOT "/opt/intel" CACHE PATH "Folder contains intel libs")
+if(MSVC)
+  set(ProgramFilesx86 "ProgramFiles(x86)")
+  set(INTEL_ROOT_DEFAULT $ENV{${ProgramFilesx86}}/IntelSWTools/compilers_and_libraries/windows)
+else()
+  set(INTEL_ROOT_DEFAULT "/opt/intel")
+endif()
+set(INTEL_ROOT ${INTEL_ROOT_DEFAULT} CACHE PATH "Folder contains intel libs")
 find_path(MKL_ROOT include/mkl.h PATHS $ENV{MKLROOT} ${INTEL_ROOT}/mkl
                                    DOC "Folder contains MKL")
 
@@ -57,6 +70,7 @@ find_library(MKL_INTERFACE_LIBRARY
              NAMES ${INT_LIB}
              PATHS ${MKL_ROOT}/lib
                    ${MKL_ROOT}/lib/intel64
+                   ${MKL_ROOT}/lib/intel64_win
                    ${INTEL_ROOT}/mkl/lib/intel64
              NO_DEFAULT_PATH)
 
@@ -77,15 +91,22 @@ find_library(MKL_CORE_LIBRARY
 set(MKL_INCLUDE_DIRS ${MKL_INCLUDE_DIR})
 set(MKL_LIBRARIES ${MKL_INTERFACE_LIBRARY} ${MKL_SEQUENTIAL_LAYER_LIBRARY} ${MKL_CORE_LIBRARY})
 
+# message("1 ${MKL_INCLUDE_DIR}")
+# message("2 ${MKL_INTERFACE_LIBRARY}")
+# message("3 ${MKL_SEQUENTIAL_LAYER_LIBRARY}")
+# message("4 ${MKL_CORE_LIBRARY}")
+
 if (MKL_INCLUDE_DIR AND
     MKL_INTERFACE_LIBRARY AND
     MKL_SEQUENTIAL_LAYER_LIBRARY AND
     MKL_CORE_LIBRARY)
 
+
     if (NOT DEFINED ENV{CRAY_PRGENVPGI} AND
         NOT DEFINED ENV{CRAY_PRGENVGNU} AND
         NOT DEFINED ENV{CRAY_PRGENVCRAY} AND
-        NOT DEFINED ENV{CRAY_PRGENVINTEL})
+        NOT DEFINED ENV{CRAY_PRGENVINTEL} AND
+        NOT MSVC)
       set(ABI "-m64")
     endif()
 
@@ -93,7 +114,6 @@ if (MKL_INCLUDE_DIR AND
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMKL_ILP64 ${ABI}")
 
 else()
-
   set(MKL_INCLUDE_DIRS "")
   set(MKL_LIBRARIES "")
   set(MKL_INTERFACE_LIBRARY "")

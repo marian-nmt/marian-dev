@@ -6,40 +6,62 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <boost/functional/hash.hpp>
 
+#include "common/hash.h"
 #include "common/logging.h"
 
 namespace marian {
 
+struct Slice // Python-like slice/index descriptor
+{
+  Slice(int b, int e, int s) : begin(b), end(e), stride(s) {}
+  Slice(int b, int e) : Slice(b, e, 1) {}
+  Slice() : Slice(0, END) {}
+  explicit Slice(int i) : Slice(i, i + 1) {}
+  Slice(const Slice& other) : Slice(other.begin, other.end, other.stride) {}
+  const Slice& operator=(const Slice& other) { begin = other.begin; end = other.end; stride = other.stride; return *this; }
+  const Slice& operator=(int i) { begin = i; end = i + 1; stride = 1; return *this; }
+  bool operator==(const Slice& other) const { return begin == other.begin && end == other.end && stride == other.stride; }
+  bool operator!=(const Slice& other) const { return !(*this == other); }
+  /*const*/ int begin, end, stride;
+  static const int END = INT_MAX;
+};
+typedef std::vector<Slice> Slices;
+
 struct Shape {
-public:
+private:
   std::vector<int> shape_;
 
 public:
-  Shape() : shape_{1} {}
+  Shape() : shape_({1}) {}
 
   Shape(std::initializer_list<int> il) : Shape() {
     shape_.resize(il.size());
     std::copy(il.begin(), il.end(), begin());
   }
 
-  void resize(size_t n) { shape_.resize(n, 1); }
-
-  const int* data() const { return shape_.data(); }
-
-  int* data() { return shape_.data(); }
+  Shape(std::vector<int>&& shape) : shape_(std::move(shape)) {}
 
   Shape(const Shape& shape) : Shape() {
     shape_.resize(shape.size());
     std::copy(shape.begin(), shape.end(), begin());
   }
 
-  inline void set(int i, int val) { dim(i) = val; }
+  inline size_t size() const { return shape_.size(); }
+
+  void resize(size_t n) { shape_.resize(n, 1); }
+
+  const int* data() const { return shape_.data(); }
+  int* data() { return shape_.data(); }
+
+  inline void set(int    i, int val) { dim(i) = val; }
+  inline void set(size_t i, int val) { dim(i) = val; }
+  inline void set(int    i, size_t val) { dim(i) = (int)val; }
+  inline void set(size_t i, size_t val) { dim(i) = (int)val; }
 
   inline int& dim(int i) {
     if(i >= 0) {
-      ABORT_IF(i >= size(),
+      ABORT_IF(i >= (int)size(),
                "Index {} is out of bounds, shape has {} dimension",
                i,
                size());
@@ -52,20 +74,24 @@ public:
       return shape_[size() + i];
     }
   }
-
   inline const int& dim(int i) const {
     return const_cast<Shape&>(*this).dim(i);
   }
 
-  inline int operator[](int i) { return dim(i); }
+  inline       int& dim(size_t i)       { return dim(int(i)); }
+  inline const int& dim(size_t i) const { return dim(int(i)); }
 
   inline int operator[](int i) const { return dim(i); }
+  inline int operator[](int i)       { return dim(i); }
+  inline int operator[](size_t i) const { return dim(i); }
+  inline int operator[](size_t i)       { return dim(i); }
 
+  inline int back() const { return shape_.back(); }
   inline int& back() { return shape_.back(); }
 
   inline int stride(int i) const {
     std::vector<int> stride(shape_.size(), 1);
-    for(int j = shape_.size() - 2; j >= 0; --j)
+    for(int j = (int)shape_.size() - 2; j >= 0; --j)
       stride[j] = stride[j + 1] * shape_[j + 1];
 
     if(i >= 0)
@@ -73,8 +99,6 @@ public:
     else
       return stride[size() + i];
   }
-
-  inline size_t size() const { return shape_.size(); }
 
   inline int elements() const {
     int el = 1;
@@ -87,10 +111,10 @@ public:
     d.resize(shape_.size());
 
     std::vector<int> stride(shape_.size(), 1);
-    for(int j = shape_.size() - 2; j >= 0; --j)
+    for(int j = (int)shape_.size() - 2; j >= 0; --j)
       stride[j] = stride[j + 1] * shape_[j + 1];
 
-    for(int j = 0; j < d.size(); ++j)
+    for(size_t j = 0; j < d.size(); ++j)
       d[j] = (i / stride[j]) % shape_[j];
   }
 
@@ -132,15 +156,26 @@ public:
     return ss.str();
   }
 
-  int axis(int ax) {
+  int axis(int ax) const {
     if(ax < 0)
-      return size() + ax;
+      return (int)size() + ax;
     else
       return ax;
   }
 
+  Slice slice(Slice slice, int ax) const { // interpret negative and special values in Slice
+    int n = dim(ax);
+    if (slice.begin < 0)
+      slice.begin += n;
+    if (slice.end < 0)
+      slice.end += n;
+    else if (slice.end == Slice::END)
+      slice.end = n;
+    return slice;
+  }
+
   static Shape broadcast(const std::vector<Shape>& shapes) {
-    int maxDims = 0;
+    size_t maxDims = 0;
     for(auto& s : shapes)
       if(s.size() > maxDims)
         maxDims = s.size();
@@ -149,9 +184,9 @@ public:
     shape.resize(maxDims);
 
     for(auto& s : shapes) {
-      for(int i = 0; i < s.size(); ++i) {
+      for(int i = 1; i <= (int)s.size(); ++i) {
         ABORT_IF(shape[-i] != s[-i] && shape[-i] != 1 && s[-i] != 1,
-                 "Shapes {} and {} cannot be broadcasted",
+                 "Shapes {} and {} cannot be broadcast",
                  (std::string)shape,
                  (std::string)s);
         shape.set(-i, std::max(shape[-i], s[-i]));
@@ -167,7 +202,7 @@ public:
 
   template <typename T>
   static Shape broadcast(const std::vector<T>& nodes) {
-    int maxDims = 0;
+    size_t maxDims = 0;
     for(auto& n : nodes)
       if(n->shape().size() > maxDims)
         maxDims = n->shape().size();
@@ -177,7 +212,7 @@ public:
 
     for(auto& node : nodes) {
       const Shape& shapen = node->shape();
-      for(int i = 1; i <= shapen.size(); ++i) {
+      for(int i = 1; i <= (int)shapen.size(); ++i) {
         ABORT_IF(shape[-i] != shapen[-i] && shape[-i] != 1 && shapen[-i] != 1,
                  "Shapes {} and {} cannot be broadcasted",
                  (std::string)shape,
@@ -189,10 +224,10 @@ public:
   }
 
   size_t hash() const {
-    size_t seed = boost::hash<int>()(shape_[0]);
-    for(int i = 1; i < shape_.size(); ++i)
-      boost::hash_combine(seed, shape_[i]);
+    size_t seed = util::hash<int>()(shape_[0]);
+    for(size_t i = 1; i < shape_.size(); ++i)
+      util::hash_combine(seed, shape_[i]);
     return seed;
   }
 };
-}
+}  // namespace marian

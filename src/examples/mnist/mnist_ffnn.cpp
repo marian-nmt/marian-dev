@@ -4,8 +4,6 @@
 #include <iomanip>
 #include <string>
 
-#include <boost/timer/timer.hpp>
-
 #include "marian.h"
 
 #include "examples/mnist/model.h"
@@ -24,7 +22,7 @@ const std::vector<std::string> VALID_SET
 using namespace marian;
 
 int main(int argc, char** argv) {
-  auto options = New<Config>(argc, argv, ConfigMode::training, false);
+  auto options = parseOptions(argc, argv, cli::mode::training, false);
 
   if(!options->has("train-sets"))
     options->set("train-sets", TRAIN_SET);
@@ -34,7 +32,7 @@ int main(int argc, char** argv) {
   if(options->get<std::string>("type") != "mnist-lenet")
     options->set("type", "mnist-ffnn");
 
-  auto devices = options->getDevices();
+  auto devices = Config::getDevices(options);
 
   if(devices.size() > 1) {
     if(options->get<bool>("sync-sgd"))

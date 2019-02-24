@@ -1,6 +1,6 @@
 #include "graph/node_initializers.h"
-#include "3rd_party/svd/svd.h"
 #include "layers/word2vec_reader.h"
+#include "tensors/tensor_operators.h"
 
 #include <stdint.h>
 #include <algorithm>
@@ -10,21 +10,6 @@
 namespace marian {
 
 namespace inits {
-
-float xor128() {
-  static uint64_t x = 123456789;
-  static uint64_t y = 362436069;
-  static uint64_t z = 521288629;
-  static uint64_t w = 88675123;
-  uint64_t t;
-
-  t = (x ^ (x << 11)) % 1000;
-  x = y;
-  y = z;
-  z = w;
-  w = (w ^ (w >> 19) ^ t ^ (t >> 8)) % 1000;
-  return 0.1 * ((w % 1000) / 1000.f) - 0.05;
-}
 
 void zeros(Tensor t) {
   t->set(0.f);
@@ -38,72 +23,97 @@ NodeInitializer from_value(float v) {
   return [v](Tensor t) { t->set(v); };
 }
 
-NodeInitializer diag(float val) {
+// diagonal matrix with value val along diagonal
+NodeInitializer eye(float val) {
   return [val](Tensor t) {
-    if(t->shape()[0] == t->shape()[1] && t->shape()[2] == 1
-       && t->shape()[3] == 1) {
-      std::vector<float> vec(t->size(), 0);
-      for(int i = 0; i < t->shape()[0]; ++i)
-        vec[i * t->shape()[1] + i] = val;
-      t->set(vec);
-    }
+    ABORT_IF(t->shape().size() != 2 || t->shape()[-1] != t->shape()[-2],
+             "eye(val) is defined only for quadratic tensors, shape is {}",
+             t->shape());
+
+    // @TODO: implement efficient version on the GPU
+    std::vector<float> vec(t->size(), 0);
+    for(int i = 0; i < t->shape()[-1]; ++i)
+      vec[i * t->shape()[0] + i] = val;
+    t->set(vec);
   };
 }
 
-NodeInitializer normal(float scale, bool ortho /*= true*/) {
-  return [scale](Tensor t) {
-    distribution<std::normal_distribution<float>>(t, 0, scale);
+NodeInitializer uniform(float a, float b) {
+  return [a, b](Tensor tensor) {
+    tensor->getBackend()->getRandomGenerator()->uniform(tensor, a, b);
   };
 }
 
-NodeInitializer uniform(float scale) {
-  return [scale](Tensor t) {
-    distribution<std::uniform_real_distribution<float>>(t, -scale, scale);
+NodeInitializer normal(float mean, float stddev) {
+  return [mean, stddev](Tensor tensor) {
+    tensor->getBackend()->getRandomGenerator()->normal(tensor, mean, stddev);
   };
 }
 
-void glorot_uniform(Tensor t) {
-  float scale = sqrtf(6.0f / (t->shape()[0] + t->shape()[1]));
-  distribution<std::uniform_real_distribution<float>>(t, -scale, scale);
+// @TODO: replace with parametered version below
+void glorot_uniform(Tensor tensor) {
+  float scale = sqrtf(6.0f / (tensor->shape()[-2] + tensor->shape()[-1]));
+  uniform(-scale, scale)(tensor);
 }
 
-void xorshift(Tensor t) {
-  std::vector<float> vals(t->size());
-  for(auto&& v : vals)
-    v = xor128();
-  t->set(vals);
+NodeInitializer glorot_uniform2(bool fanIn, bool fanOut) {
+  return [fanIn, fanOut](Tensor tensor) {
+    float scale = 1.f;
+    if(fanIn && fanOut)
+      scale = sqrtf(6.0f / (tensor->shape()[-2] + tensor->shape()[-1]));
+    else if(!fanIn && fanOut)
+      scale = sqrtf(3.0f / tensor->shape()[-1]);
+    else if(fanIn && !fanOut)
+      scale = sqrtf(3.0f / tensor->shape()[-2]);
+    else
+      ABORT("You need to set fanIn or fanOut or both to true");
+
+    uniform(-scale, scale)(tensor);
+  };
 }
 
-void glorot_normal(Tensor t) {
-  float scale = sqrtf(2.0f / (t->shape()[0] + t->shape()[1]));
-  distribution<std::normal_distribution<float>>(t, 0, scale);
+// @TODO: replace with parametered version below
+void glorot_normal(Tensor tensor) {
+  float scale = sqrtf(2.0f / (tensor->shape()[-2] + tensor->shape()[-1]));
+  normal(0.f, scale)(tensor);
 }
 
-void svd(std::vector<float>& vec, Shape shape) {
-  int rows = shape[0] * shape[2] * shape[3];
-  int cols = shape[1];
+NodeInitializer glorot_normal2(bool fanIn, bool fanOut) {
+  return [fanIn, fanOut](Tensor tensor) {
+    float scale = 1.f;
+    if(fanIn && fanOut)
+      scale = sqrtf(2.0f / (tensor->shape()[-2] + tensor->shape()[-1]));
+    else if(!fanIn && fanOut)
+      scale = sqrtf(1.0f / tensor->shape()[-1]);
+    else if(fanIn && !fanOut)
+      scale = sqrtf(1.0f / tensor->shape()[-2]);
+    else
+      ABORT("You need to set fanIn or fanOut or both to true");
 
-  int n = std::min(rows, cols);
-  int m = std::max(rows, cols);
-
-  ABORT_IF(m % n != 0,
-           "Matrix dimensions must be equal or multiples of each other");
-
-  for(int i = 0; i < shape.elements(); i += n * n) {
-    std::vector<float> t1(n);
-    std::vector<float> t2(n * n);
-    float* a = vec.data() + i;
-    float* w = t1.data();
-    float* v = t2.data();
-    dsvd(a, n, n, w, v);
-  }
+    normal(0.f, scale)(tensor);
+  };
 }
 
-void ortho(Tensor t) {
-  std::vector<float> vec(t->size());
-  distribution<std::normal_distribution<float>>(vec, 0, 1);
-  svd(vec, t->shape());
-  t->set(vec);
+NodeInitializer bernoulli(float prob, float scale) {
+  return [prob, scale](Tensor tensor) {
+    Bernoulli(tensor, prob, scale);
+  };
+}
+
+NodeInitializer dropout(float dropProb) {
+  return [dropProb](Tensor t) {
+    Dropout(t, dropProb);
+  };
+}
+
+// gumbel noise:
+// -log(-log(uniform(0.f + eps, 1.f - eps)));
+void gumbel(Tensor tensor) {
+  using namespace functional;
+  // @TODO: make eps a parameter? Seems to influence amplitude quite heavily
+  float eps = 1e-05f;
+  uniform(0.f + eps, 1.f - eps)(tensor);
+  Element(_1 = -log(-log(_1)), tensor);
 }
 
 NodeInitializer from_vector(const std::vector<float>& v) {
@@ -112,9 +122,13 @@ NodeInitializer from_vector(const std::vector<float>& v) {
       [vPtr](Tensor t) { t->set(vPtr->data(), vPtr->data() + vPtr->size()); };
 }
 
-NodeInitializer from_vector(const std::vector<size_t>& v) {
-  std::vector<float> vf(v.begin(), v.end());
-  return from_vector(vf);
+// @TODO: handle this better with proper type support, the NodeInitializer
+// should be able to inform the calling function about the tensor type it
+// is expecting. Probably needs to turn into struct with type information.
+NodeInitializer from_vector(const std::vector<IndexType>& v) {
+  auto vPtr = New<std::vector<IndexType>>(v.begin(), v.end());
+  return
+      [vPtr](Tensor t) { t->set(vPtr->data(), vPtr->data() + vPtr->size()); };
 }
 
 NodeInitializer from_sparse_vector(
@@ -125,14 +139,14 @@ NodeInitializer from_sparse_vector(
   };
 }
 
-NodeInitializer from_numpy(const cnpy::NpyArrayPtr& np) {
-  return [np](Tensor t) {
-    size_t size = 1;
-    for(size_t dim : np->shape)
-      size *= dim;
-    t->set((float*)np->data(), (float*)np->data() + size);
-  };
-}
+// NodeInitializer from_numpy(const cnpy::NpyArrayPtr& np) {
+//  return [np](Tensor t) {
+//    size_t size = 1;
+//    for(size_t dim : np->shape)
+//      size *= dim;
+//    t->set((float*)np->data(), (float*)np->data() + size);
+//  };
+//}
 
 // move this somewhere else
 NodeInitializer from_word2vec(const std::string& file,
@@ -154,6 +168,51 @@ NodeInitializer from_word2vec(const std::string& file,
     t->set(embs);
   };
 }
+
+NodeInitializer from_item(const io::Item& item) {
+  if(item.mapped) {
+    return [item](Tensor t) {
+      // @TODO: implement other types, for now croak loudly.
+      ABORT_IF(t->getBackend()->getDeviceId().type != DeviceType::cpu,
+               "Memory mapping only works for CPU tensors");
+      ABORT_IF(!matchType<float>(t->type()),
+               "Tensor type and type for mapping do not match");
+      auto mp = New<MemoryPiece>((uint8_t*)item.ptr, t->size() * sizeof(float));
+      t->reset(mp);
+    };
+  } else {
+    return [item](Tensor t) {
+      // @TODO: implement other types, for now croak loudly.
+      ABORT_IF(!matchType<float>(t->type()),
+               "Tensor type and type for mapping do not match");
+      t->set((const float*)item.bytes.data(),
+             (const float*)item.bytes.data() + t->size());
+    };
+  }
 }
+
+// Computes Google's sinusoidal position embeddings
+NodeInitializer sinusoidalPositionEmbeddings(int start) {
+  return [start](Tensor t) {
+    int dimEmb   = t->shape()[-1];
+    int dimWords = (int)t->size() / dimEmb;
+
+    float numTimescales = (float)dimEmb / 2;
+    float logTimescaleIncrement = std::log(10000.f) / (numTimescales - 1.f);
+
+    std::vector<float> vPos(dimEmb * dimWords, 0);
+    for(int p = start; p < dimWords + start; ++p) {
+      for(int i = 0; i < numTimescales; ++i) {
+        float v = p * std::exp(i * -logTimescaleIncrement);
+        vPos[(p - start) * dimEmb + i                     ] = std::sin(v);
+        vPos[(p - start) * dimEmb + (int)numTimescales + i] = std::cos(v); // @TODO: is int vs. float correct for num_timescales?
+      }
+    }
+
+    from_vector(vPos)(t);
+  };
+}
+
+}  // namespace inits
 
 }  // namespace marian

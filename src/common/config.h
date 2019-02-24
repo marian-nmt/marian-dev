@@ -1,93 +1,58 @@
 #pragma once
 
+#include "3rd_party/yaml-cpp/yaml.h"
+#include "common/cli_helper.h"
+#include "common/config_parser.h"
+#include "common/io.h"
+#include "common/options.h"
+
+// TODO: why are these needed by a config parser? Can they be removed for Linux as well?
+#ifndef _WIN32
 #include <sys/ioctl.h>
 #include <unistd.h>
-#include <boost/program_options.hpp>
-
-#include "3rd_party/yaml-cpp/yaml.h"
-#include "3rd_party/cnpy/cnpy.h"
-#include "common/config_parser.h"
-#include "common/file_stream.h"
-#include "common/logging.h"
-#include "common/utils.h"
+#endif
 
 namespace marian {
 
+// TODO: Finally refactorize Config, Options, ConfigParser and ConfigValidator
+// classes.
+//
+// TODO: The problem is that there are many config classes in here, plus
+// "configuration" can refer to the high-level concept of the entire program's
+// configuration, and/or any of its representations. Avoidthe term "config" and
+// always qualify it what kind of config, e.g. new Options instance.
+//
+// TODO: What is not clear is the different config levels as there are classes
+// for:
+//  - parsing cmd-line options
+//  - representing a set of options
+//  - interpreting these options in the context of Marian
+// It is not clear which class does what, which class knows what.
+//
+// TODO: At the moment Config is an intermediate object used to get an Options object from
+// ConfigParser by calling parseOptions(). This should be either renamed and heavily refactorized or
+// (better) be build into ConfigParser.
 class Config {
 public:
   static size_t seed;
 
   typedef YAML::Node YamlNode;
 
-  Config(const std::string options,
-         ConfigMode mode = ConfigMode::training,
-         bool validate = false) {
-    std::vector<std::string> sargv;
-    Split(options, sargv, " ");
-    int argc = sargv.size();
-
-    std::vector<char*> argv(argc);
-    for(int i = 0; i < argc; ++i)
-      argv[i] = const_cast<char*>(sargv[i].c_str());
-
-    initialize(argc, &argv[0], mode, validate);
-  }
-
+  // TODO: remove mode from this class
   Config(int argc,
          char** argv,
-         ConfigMode mode = ConfigMode::training,
-         bool validate = true) {
-    initialize(argc, argv, mode, validate);
-  }
+         cli::mode mode = cli::mode::training,
+         bool validate = true);
 
-  void initialize(int argc,
-                  char** argv,
-                  ConfigMode mode = ConfigMode::training,
-                  bool validate = true) {
-    auto parser = ConfigParser(argc, argv, mode, validate);
-    config_ = parser.getConfig();
-    devices_ = parser.getDevices();
+  Config(const Config& other);
+  Config(const Options& options);
 
-    createLoggers(this);
-
-    if(get<size_t>("seed") == 0)
-      seed = (size_t)time(0);
-    else
-      seed = get<size_t>("seed");
-
-    if(mode != ConfigMode::translating) {
-      if(boost::filesystem::exists(get<std::string>("model"))
-         && !get<bool>("no-reload")) {
-        try {
-          if(!get<bool>("ignore-model-config"))
-            loadModelParameters(get<std::string>("model"));
-        } catch(std::runtime_error& e) {
-          LOG(info, "[config] No model configuration found in model file");
-        }
-      }
-    } else {
-      auto model = get<std::vector<std::string>>("models")[0];
-      try {
-        if(!get<bool>("ignore-model-config"))
-          loadModelParameters(model);
-      } catch(std::runtime_error& e) {
-        LOG(info, "[config] No model configuration found in model file");
-      }
-    }
-    log();
-
-    if(has("version"))
-      LOG(info,
-          "[config] Model created with Marian {}",
-          get("version").as<std::string>());
-  }
-
-  Config(const Config& other) : config_(YAML::Clone(other.config_)) {}
+  void initialize(int argc, char** argv, cli::mode mode, bool validate);
 
   bool has(const std::string& key) const;
 
+  YAML::Node operator[](const std::string& key) const;
   YAML::Node get(const std::string& key) const;
-  YAML::Node operator[](const std::string& key) const { return get(key); }
 
   template <typename T>
   T get(const std::string& key) const {
@@ -102,48 +67,55 @@ public:
       return dflt;
   }
 
+  const YAML::Node& get() const;
+  YAML::Node& get();
+
   template <typename T>
   void set(const std::string& key, const T& value) {
     config_[key] = value;
   }
 
-  const YAML::Node& get() const;
-  YAML::Node& get();
-
   YAML::Node getModelParameters();
   void loadModelParameters(const std::string& name);
+  void loadModelParameters(const void* ptr);
 
-  const std::vector<DeviceId>& getDevices() { return devices_; }
+  std::vector<DeviceId> getDevices(size_t myMPIRank = 0, size_t numRanks = 1);
 
-  void save(const std::string& name) {
-    OutputFileStream out(name);
-    (std::ostream&)out << *this;
-  }
+  void save(const std::string& name);
 
   friend std::ostream& operator<<(std::ostream& out, const Config& config) {
     YAML::Emitter outYaml;
-    OutputYaml(config.get(), outYaml);
+    cli::OutputYaml(config.get(), outYaml);
     out << outYaml.c_str();
     return out;
   }
 
-  static void AddYamlToNpz(const YAML::Node&,
-                           const std::string&,
-                           const std::string&);
-  static void AddYamlToNpzItems(const YAML::Node&,
-                                const std::string&,
-                                std::vector<cnpy::NpzItem>&);
-
+  static std::vector<DeviceId> getDevices(Ptr<Options> options,
+                                          size_t myMPIRank = 0,
+                                          size_t numMPIProcesses = 1);
 private:
   YAML::Node config_;
-  std::vector<DeviceId> devices_;
 
-  static void GetYamlFromNpz(YAML::Node&,
-                             const std::string&,
-                             const std::string&);
-
+  // Add options overwritting values for existing ones
   void override(const YAML::Node& params);
 
   void log();
+
 };
-}
+
+/**
+ * Parse the command line options.
+ *
+ * @param argc number of arguments passed to the program
+ * @param argv array of command-line arguments
+ * @param mode change the set of available command-line options, e.g. training, translation, etc.
+ * @param validate validate parsed options and abort on failure
+ *
+ * @return parsed otions
+ */
+Ptr<Options> parseOptions(int argc,
+                          char** argv,
+                          cli::mode mode,
+                          bool validate = true);
+
+}  // namespace marian

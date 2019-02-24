@@ -12,26 +12,33 @@ struct State {
   Expr output;
   Expr cell;
 
-  State select(const std::vector<size_t>& indices, int beamSize) {
-    output = atleast_4d(output);
-    if(cell)
-      cell = atleast_4d(cell);
+  State select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
+               int beamSize, bool isBatchMajor) const {
+    return{ select(output, selIdx, beamSize, isBatchMajor),
+            select(cell,   selIdx, beamSize, isBatchMajor) };
+  }
 
-    int dimDepth = output->shape()[-1];
-    int dimTime = output->shape()[-3];
+private:
+  static Expr select(Expr sel, // [beamSize, dimTime, dimBatch, dimDepth] or [beamSize, dimBatch, dimTime, dimDepth] (dimTime = 1 for RNN)
+                     const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
+                     int beamSize, bool isBatchMajor)
+  {
+    if (!sel)
+      return sel; // keep nullptr untouched
 
-    int dimBatch = indices.size() / beamSize;
+    sel = atleast_4d(sel);
 
-    if(cell) {
-      return State{reshape(rows(flatten_2d(output), indices),
-                           {beamSize, dimTime, dimBatch, dimDepth}),
-                   reshape(rows(flatten_2d(cell), indices),
-                           {beamSize, dimTime, dimBatch, dimDepth})};
-    } else {
-      return State{reshape(rows(flatten_2d(output), indices),
-                           {beamSize, dimTime, dimBatch, dimDepth}),
-                   nullptr};
-    }
+    int dimBatch = (int)selIdx.size() / beamSize;
+    int dimDepth = sel->shape()[-1];
+    int dimTime  = isBatchMajor ? sel->shape()[-2] : sel->shape()[-3];
+
+    ABORT_IF(dimTime != 1 && !isBatchMajor, "unexpected time extent for RNN state"); // (the reshape()/rows() trick won't work in this case)
+    int numCols = isBatchMajor ? dimDepth * dimTime : dimDepth;
+    // @TODO: Can this complex operation be more easily written using index_select()?
+    sel = reshape(sel, { sel->shape().elements() / numCols, numCols }); // [beamSize * dimBatch, dimDepth] or [beamSize * dimBatch, dimTime * dimDepth]
+    sel = rows(sel, selIdx);
+    sel = reshape(sel, { beamSize, isBatchMajor ? dimBatch : dimTime, isBatchMajor ? dimTime : dimBatch, dimDepth });
+    return sel;
   }
 };
 
@@ -44,15 +51,17 @@ public:
   States(const std::vector<State>& states) : states_(states) {}
   States(size_t num, State state) : states_(num, state) {}
 
-  auto begin() -> decltype(states_.begin()) { return states_.begin(); }
-  auto end() -> decltype(states_.begin()) { return states_.end(); }
+  std::vector<State>::iterator begin() { return states_.begin(); }
+  std::vector<State>::iterator end()   { return states_.end(); }
+  std::vector<State>::const_iterator begin() const { return states_.begin(); }
+  std::vector<State>::const_iterator end()   const { return states_.end(); }
 
   Expr outputs() {
     std::vector<Expr> outputs;
     for(auto s : states_)
       outputs.push_back(atleast_3d(s.output));
     if(outputs.size() > 1)
-      return concatenate(outputs, keywords::axis = -3);
+      return concatenate(outputs, /*axis =*/ -3);
     else
       return outputs[0];
   }
@@ -70,10 +79,12 @@ public:
 
   void push_back(const State& state) { states_.push_back(state); }
 
-  States select(const std::vector<size_t>& indices, int beamSize) {
+  // create updated set of states that reflect reordering and dropping of hypotheses
+  States select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
+                int beamSize, bool isBatchMajor) const {
     States selected;
     for(auto& state : states_)
-      selected.push_back(state.select(indices, beamSize));
+      selected.push_back(state.select(selIdx, beamSize, isBatchMajor));
     return selected;
   }
 
@@ -83,7 +94,7 @@ public:
 };
 
 class Cell;
-struct CellInput;
+class CellInput;
 
 class Stackable : public std::enable_shared_from_this<Stackable> {
 protected:
@@ -156,7 +167,7 @@ public:
   virtual std::vector<Expr> applyInput(std::vector<Expr> inputs) = 0;
   virtual State applyState(std::vector<Expr>, State, Expr = nullptr) = 0;
 
-  virtual void clear() {}
+  virtual void clear() override {}
 };
 
 class MultiCellInput : public CellInput {
@@ -170,25 +181,25 @@ public:
 
   void push_back(Ptr<CellInput> input) { inputs_.push_back(input); }
 
-  virtual Expr apply(State state) {
+  virtual Expr apply(State state) override {
     std::vector<Expr> outputs;
     for(auto input : inputs_)
       outputs.push_back(input->apply(state));
 
     if(outputs.size() > 1)
-      return concatenate(outputs, keywords::axis = -1);
+      return concatenate(outputs, /*axis =*/ -1);
     else
       return outputs[0];
   }
 
-  virtual int dimOutput() {
+  virtual int dimOutput() override {
     int sum = 0;
     for(auto input : inputs_)
       sum += input->dimOutput();
     return sum;
   }
 
-  virtual void clear() {
+  virtual void clear() override {
     for(auto i : inputs_)
       i->clear();
   }
@@ -209,19 +220,19 @@ public:
 
   void push_back(Ptr<Stackable> stackable) { stackables_.push_back(stackable); }
 
-  virtual std::vector<Expr> applyInput(std::vector<Expr> inputs) {
+  virtual std::vector<Expr> applyInput(std::vector<Expr> inputs) override {
     // lastInputs_ = inputs;
     return stackables_[0]->as<Cell>()->applyInput(inputs);
   }
 
   virtual State applyState(std::vector<Expr> mappedInputs,
                            State state,
-                           Expr mask = nullptr) {
+                           Expr mask = nullptr) override {
     State hidden
         = stackables_[0]->as<Cell>()->applyState(mappedInputs, state, mask);
     ;
 
-    for(int i = 1; i < stackables_.size(); ++i) {
+    for(size_t i = 1; i < stackables_.size(); ++i) {
       if(stackables_[i]->is<Cell>()) {
         auto hiddenNext
             = stackables_[i]->as<Cell>()->apply(lastInputs_, hidden, mask);
@@ -240,23 +251,23 @@ public:
 
   Ptr<Stackable> at(int i) { return stackables_[i]; }
 
-  virtual void clear() {
+  virtual void clear() override {
     for(auto s : stackables_)
       s->clear();
   }
 
-  virtual std::vector<Expr> getLazyInputs(Ptr<rnn::RNN> parent) {
+  virtual std::vector<Expr> getLazyInputs(Ptr<rnn::RNN> parent) override {
     ABORT_IF(!stackables_[0]->is<Cell>(),
              "First stackable should be of type Cell");
     return stackables_[0]->as<Cell>()->getLazyInputs(parent);
   }
 
   virtual void setLazyInputs(
-      std::vector<std::function<Expr(Ptr<rnn::RNN>)>> lazy) {
+      std::vector<std::function<Expr(Ptr<rnn::RNN>)>> lazy) override {
     ABORT_IF(!stackables_[0]->is<Cell>(),
              "First stackable should be of type Cell");
     stackables_[0]->as<Cell>()->setLazyInputs(lazy);
   }
 };
-}
-}
+}  // namespace rnn
+}  // namespace marian

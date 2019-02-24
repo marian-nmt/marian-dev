@@ -26,7 +26,7 @@ class SparseTensorBase : public std::enable_shared_from_this<SparseTensorBase> {
 
   template <typename T>
   T* newData(int size, Ptr<Backend> backend) {
-    Ptr<Device> device = DispatchDevice(backend->getDevice());
+    Ptr<Device> device = DispatchDevice(backend->getDeviceId());
     device->reserve(size * sizeof(T));
     devices.push_back(device);
     return (T*)device->data();
@@ -34,7 +34,7 @@ class SparseTensorBase : public std::enable_shared_from_this<SparseTensorBase> {
 
 public:
   SparseTensorBase(int capacity, Ptr<Backend> backend)
-      : backend_(backend), capacity_(capacity) {
+      : capacity_(capacity), backend_(backend) {
     data_ = newData<float>(capacity, backend);
     indices_ = newData<int>(capacity, backend);
   }
@@ -64,7 +64,7 @@ public:
   // copy to cpu vector
   void get(std::vector<float>& g, std::vector<int>& i) {
     int s = std::min((int)g.size(), size());
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       std::copy(data(), data() + s, g.data());
       std::copy(indices(), indices() + s, i.data());
     }
@@ -80,7 +80,7 @@ public:
   void set(const std::vector<float>& g, const std::vector<int>& i) {
     int s = std::min((int)g.size(), capacity());
     size_ = s;
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       std::copy(g.data(), g.data() + s, data());
       std::copy(i.data(), i.data() + s, indices());
     }
@@ -94,7 +94,7 @@ public:
 
   void copyFrom(float* ndata, int* nindices, int nsize) {
     size_ = nsize;
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }
 #ifdef CUDA_FOUND
@@ -102,6 +102,8 @@ public:
       gpu::copy(backend_, ndata, ndata + nsize, data());
       gpu::copy(backend_, nindices, nindices + nsize, indices());
     }
+#else
+    ndata; nindices; // (unused)
 #endif
   }
 
@@ -117,7 +119,7 @@ public:
 
   // Convert a tensor into a sparse tensor format
   void fromDense(Tensor t) {
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }
 #ifdef CUDA_FOUND
@@ -130,37 +132,43 @@ public:
 
   // Add t[indices[i]] += data[i]
   void scatterAdd(Tensor t, int offset = 0) {
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }
 #ifdef CUDA_FOUND
     else {
       gpu::scatterAdd(t, data(), indices(), size(), offset);
     }
+#else
+    t; offset; // (unused)
 #endif
   }
 
   // Add t[indices[i]] = data[i]
   void scatterUpdate(Tensor t, int offset = 0) {
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }
 #ifdef CUDA_FOUND
     else {
       gpu::scatterUpdate(t, data(), indices(), size(), offset);
     }
+#else
+    t; offset; // (unused)
 #endif
   }
 
   // data[i] = t[indices[i]]
   void gather(Tensor t, int offset = 0) {
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }
 #ifdef CUDA_FOUND
     else {
       gpu::gather(t, data(), indices(), size(), offset);
     }
+#else
+    t; offset; // (unused)
 #endif
   }
 
@@ -172,13 +180,13 @@ public:
     values[0] = pos;
     values[1] = pos + subsize - 1;
 
-    if(backend_->getDevice().type == DeviceType::cpu) {
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }
 #ifdef CUDA_FOUND
     else {
-      std::vector<int> outputs
-          = gpu::lower_bounds(indices(), values, size(), backend_->getDevice());
+      std::vector<int> outputs = gpu::lower_bounds(
+          indices(), values, size(), backend_->getDeviceId());
 
       startOffset = outputs[0];
       endOffset = outputs[1];
@@ -193,4 +201,4 @@ public:
 };
 
 typedef std::shared_ptr<SparseTensorBase> SparseTensor;
-}
+}  // namespace marian

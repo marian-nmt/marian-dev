@@ -9,8 +9,9 @@ namespace marian {
 struct ConstantNode : public Node {
   ConstantNode(Ptr<ExpressionGraph> graph,
                const Shape& shape,
-               const NodeInitializer& init)
-      : Node(graph, shape), // TODO: add value_type
+               const NodeInitializer& init,
+               Type value_type = Type::float32)
+      : Node(graph, shape, value_type),
         init_(new NodeInitializer(init)),
         initialized_(false) {
     setTrainable(false);
@@ -18,24 +19,22 @@ struct ConstantNode : public Node {
 
   ~ConstantNode() {}
 
-  virtual size_t allocate();
-  virtual void init();
+  virtual size_t allocate() override;
+  virtual void init() override;
 
-  const std::string type() { return "const"; }
+  const std::string type() override { return "const"; }
 
-  const std::string form() { return "diamond"; }
+  const std::string form() override { return "diamond"; }
 
-  const std::string color() { return "white"; }
+  const std::string color() override { return "white"; }
 
-  virtual size_t hash() {
-    std::size_t seed = boost::hash<std::string>()(name());  // TODO: add value_type
-    boost::hash_combine(seed, type());
-    boost::hash_combine(seed, this);
+  virtual size_t hash() override {
+    size_t seed = util::hash<size_t>()((size_t)this);
     return seed;
   }
 
-  virtual bool equal(Expr node) { return this == node.get(); }
-  virtual void record(Ptr<AutoTunerRecorder>, size_t, bool) {};
+  virtual bool equal(Expr node) override { return this == node.get(); }
+  virtual void record(Ptr<AutoTunerRecorder>, size_t, bool) override{};
 
 private:
   UPtr<NodeInitializer> init_;
@@ -50,32 +49,30 @@ struct ParamNode : public Node {
 
   ~ParamNode() {}
 
-  virtual size_t allocate() {
-    ABORT_IF(!val_, "Parameters should be allocated by their graph");
+  virtual size_t allocate() override {
+    ABORT_IF(!val_, "Parameters should be allocated by their graph. Parameter {} was not", name_);
     return 0;
   }
 
-  virtual void init();
+  virtual void init() override;
 
-  const std::string type() { return "param"; }
+  const std::string type() override { return "param"; }
 
-  const std::string form() { return "hexagon"; }
+  const std::string form() override { return "hexagon"; }
 
-  const std::string color() { return "orangered"; }
+  const std::string color() override { return "orangered"; }
 
-  virtual size_t hash() {
-    std::size_t seed = boost::hash<std::string>()(name());
-    boost::hash_combine(seed, type());
-    boost::hash_combine(seed, this);
+  virtual size_t hash() override {
+    size_t seed = util::hash<size_t>()((size_t)this);
     return seed;
   }
 
-  virtual bool equal(Expr node) { return name() == node->name(); }
+  virtual bool equal(Expr node) override { return name() == node->name(); }
 
-  virtual void record(Ptr<AutoTunerRecorder>, size_t, bool) {};
+  virtual void record(Ptr<AutoTunerRecorder>, size_t, bool) override{};
 
 private:
   UPtr<NodeInitializer> init_;
   bool initialized_;
 };
-}
+}  // namespace marian

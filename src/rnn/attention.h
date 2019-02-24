@@ -5,7 +5,6 @@
 #include "rnn/types.h"
 
 namespace marian {
-
 namespace rnn {
 
 Expr attOps(Expr va, Expr context, Expr state);
@@ -80,10 +79,10 @@ public:
         W_comb_att_lnb_ = graph->param(
             prefix + "_W_comb_att_lnb", {1, dimEncState}, inits::zeros);
 
-        mappedContext_ = layer_norm(affine(contextDropped_, Ua_, ba_),
-                                    Wc_att_lns_,
-                                    Wc_att_lnb_,
-                                    NEMATUS_LN_EPS);
+        mappedContext_ = layerNorm(affine(contextDropped_, Ua_, ba_),
+                                   Wc_att_lns_,
+                                   Wc_att_lnb_,
+                                   NEMATUS_LN_EPS);
       } else {
         gammaContext_ = graph->param(
             prefix + "_att_gamma1", {1, dimEncState}, inits::from_value(1.0));
@@ -91,7 +90,7 @@ public:
             prefix + "_att_gamma2", {1, dimEncState}, inits::from_value(1.0));
 
         mappedContext_
-            = layer_norm(dot(contextDropped_, Ua_), gammaContext_, ba_);
+            = layerNorm(dot(contextDropped_, Ua_), gammaContext_, ba_);
       }
 
     } else {
@@ -105,8 +104,7 @@ public:
     }
   }
 
-  Expr apply(State state) {
-    using namespace keywords;
+  Expr apply(State state) override {
     auto recState = state.output;
 
     int dimBatch = contextDropped_->shape()[-2];
@@ -119,12 +117,14 @@ public:
       recState = dropout(recState, dropMaskState_);
 
     auto mappedState = dot(recState, Wa_);
-    if(layerNorm_)
-      if(nematusNorm_)
-        mappedState = layer_norm(
+    if(layerNorm_) {
+      if(nematusNorm_) {
+        mappedState = layerNorm(
             mappedState, W_comb_att_lns_, W_comb_att_lnb_, NEMATUS_LN_EPS);
-      else
-        mappedState = layer_norm(mappedState, gammaState_);
+      } else {
+        mappedState = layerNorm(mappedState, gammaState_);
+      }
+    }
 
     auto attReduce = attOps(va_, mappedContext_, mappedState);
 
@@ -133,7 +133,7 @@ public:
                      {dimBeam, srcWords, dimBatch, 1});
     // <- horrible
 
-    auto alignedSource = scalar_product(encState_->getAttended(), e, axis = -3);
+    auto alignedSource = scalar_product(encState_->getAttended(), e, /*axis =*/ -3);
 
     contexts_.push_back(alignedSource);
     alignments_.push_back(e);
@@ -142,18 +142,18 @@ public:
 
   std::vector<Expr>& getContexts() { return contexts_; }
 
-  Expr getContext() { return concatenate(contexts_, keywords::axis = -3); }
+  Expr getContext() { return concatenate(contexts_, /*axis =*/ -3); }
 
   std::vector<Expr>& getAlignments() { return alignments_; }
 
-  virtual void clear() {
+  virtual void clear() override {
     contexts_.clear();
     alignments_.clear();
   }
 
-  int dimOutput() { return encState_->getContext()->shape()[-1]; }
+  int dimOutput() override { return encState_->getContext()->shape()[-1]; }
 };
 
 using Attention = GlobalAttention;
-}
-}
+}  // namespace rnn
+}  // namespace marian

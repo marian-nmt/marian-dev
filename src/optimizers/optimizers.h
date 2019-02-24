@@ -1,15 +1,15 @@
 #pragma once
 
-#include <algorithm>
-#include <map>
-#include <memory>
-
-#include "common/config.h"
+#include "common/options.h"
 #include "graph/expression_graph.h"
 #include "optimizers/clippers.h"
 #include "tensors/backend.h"
 #include "tensors/tensor.h"
 #include "training/training_state.h"
+
+#include <algorithm>
+#include <map>
+#include <memory>
 
 namespace marian {
 
@@ -18,67 +18,91 @@ namespace marian {
  */
 class OptimizerBase : public TrainingObserver {
 public:
-  OptimizerBase(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : eta_(eta), clipper_(clipper) {}
+  OptimizerBase(float eta, size_t refMBWordsParam, Ptr<ClipperBase> clipper)
+      : eta_(eta), refMBWordsParam_(refMBWordsParam), clipper_(clipper) {
 
-  void update(Ptr<ExpressionGraph> graph, float multiplyFactor = 1.0f) {
+    // automatic learning-rate adjustment
+    // If users provide, in addition to the hyper-parameters, a reference minibatch size,
+    // that these hyper-parameters were originally tuned for, then the learning-rate gets
+    // adjusted accordingly. Note: Requires user to also use ce-sum criterion.
+    if (refMBWordsParam_ != 0)
+      LOG(info, "[optimizers] Learning rate gets automatically adjusted as if minibatch size was {}", refMBWordsParam_);
+  }
+
+  static constexpr size_t mbSizeNotProvided = SIZE_MAX;
+
+  void update(Ptr<ExpressionGraph> graph, size_t mbSize = mbSizeNotProvided) {
     Tensor p = graph->params()->vals();
     Tensor g = graph->params()->grads();
 
-    update(p, g, multiplyFactor);
+    update(p, g, mbSize);
   }
 
-  void update(Tensor params, Tensor grads, float multiplyFactor = 1.0f) {
+  void update(Tensor params, Tensor grads, size_t mbSize = mbSizeNotProvided) {
     if(clipper_)
       clipper_->clip(grads);
 
-    // In case we want to add a multiply factor to our learning rate
-    multiplyFactor_ = multiplyFactor;
-    updateImpl(params, grads);
+    size_t refMBWords = refMBWordsParam_;
+    if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
+      refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
+    }
+    else { // optimizer is configured to auto-adjust hyper-parameters
+      ABORT_IF(mbSize == mbSizeNotProvided, "Using rational optimizer auto-adjustment with trainer that does not provide MB size");
+      // note: this behavior is only meaningful if using the ce-sum criterion
+    }
+
+    updateImpl(params, grads, mbSize, refMBWords);
   }
 
-  virtual void init(TrainingState& state) {
+  virtual void init(TrainingState& state) override {
     eta_ = state.eta;
-    multiplyFactor_ = state.factor;
   }
-  virtual void actAfterLoaded(TrainingState& state) {
+  virtual void actAfterLoaded(TrainingState& state) override {
     eta_ = state.eta;
-    multiplyFactor_ = state.factor;
   }
-  virtual void actAfterEpoch(TrainingState& state) {
+  virtual void actAfterEpoch(TrainingState& state) override {
     eta_ = state.eta;
     if(state.reset)
       resetStats();
   }
-  virtual void actAfterBatches(TrainingState& state) {
+  virtual void actAfterBatches(TrainingState& state) override {
     eta_ = state.eta;
     if(state.reset)
       resetStats();
   }
-  virtual void actAfterStalled(TrainingState& state) {
+  virtual void actAfterStalled(TrainingState& state) override {
     eta_ = state.eta;
     if(state.reset)
       resetStats();
   }
 
-  void setParams(const std::vector<float>& params) { parseParams(params); }
+  virtual void setParams(const std::vector<float>& params) = 0;
 
-  virtual void load(const std::string& name,
-                    std::vector<Ptr<OptimizerBase>> opts,
-                    std::vector<Ptr<Backend>> backends) {}
-  virtual void save(const std::string& name,
-                    std::vector<Ptr<OptimizerBase>> opts,
-                    size_t totalSize) {}
+  typedef std::function<void(size_t /*localDeviceIndex*/,
+                             std::vector<float>::const_iterator /*begin*/,
+                             std::vector<float>::const_iterator /*end*/)> ScatterStateSetFunc;
+  typedef std::function<std::vector<float>(size_t /*localDeviceIndex*/)> GatherStateGetFunc;
+
+  typedef std::function<void(const std::vector<float>& /*data*/, const ScatterStateSetFunc& /*setFn*/)> ScatterStateFunc;
+  typedef std::function<std::vector<float>(const GatherStateGetFunc& /*getFn*/)> GatherStateFunc;
+
+  virtual void load(const std::string& /*name*/,
+                    const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+                    const std::vector<Ptr<Backend>>& /*backends*/,
+                    const ScatterStateFunc& /*scatterFn*/) {}
+  virtual void save(const std::string& /*name*/,
+                    const std::vector<Ptr<OptimizerBase>>& /*opts*/,
+                    const GatherStateFunc& /*gatherFn*/,
+                    bool /*isMainProcess*/ = true) {}
 
 protected:
-  virtual void updateImpl(Tensor params, Tensor grads) = 0;
-  virtual void parseParams(const std::vector<float>& params) = 0;
+  virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
   virtual void resetStats() = 0;
 
   // Learning rate
   float eta_;
-  // Compensates for larger batch
-  float multiplyFactor_;
+  // Reference MB size. This enables automatic adjustment of optimizer hyper-parameters to MB size.
+  size_t refMBWordsParam_{0}; // 0 means no adjustment
   // Clip gradient norm
   Ptr<ClipperBase> clipper_;
 };
@@ -88,14 +112,14 @@ protected:
  */
 class Sgd : public OptimizerBase {
 public:
-  Sgd(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, clipper) {}
+  Sgd(float eta, size_t refMBWordsParam = 0, Ptr<ClipperBase> clipper = nullptr)
+      : OptimizerBase(eta, refMBWordsParam, clipper) {}
 
+  virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
-  void updateImpl(Tensor params, Tensor grads);
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
 
-  virtual void parseParams(const std::vector<float>& params) {}
-  virtual void resetStats() {}
+  virtual void resetStats() override {}
 };
 
 /**
@@ -105,26 +129,28 @@ private:
  */
 class Adagrad : public OptimizerBase {
 public:
-  Adagrad(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, clipper) {}
+  Adagrad(float eta, size_t refMBWordsParam = 0, Ptr<ClipperBase> clipper = nullptr)
+      : OptimizerBase(eta, refMBWordsParam, clipper) {}
 
   void load(const std::string& name,
-            std::vector<Ptr<OptimizerBase>> opts,
-            std::vector<Ptr<Backend>> backends);
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const std::vector<Ptr<Backend>>& backends,
+            const ScatterStateFunc& scatterFn) override;
   void save(const std::string& name,
-            std::vector<Ptr<OptimizerBase>> opts,
-            size_t totalSize);
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const GatherStateFunc& gatherFn,
+            bool /*isMainProcess*/ = true) override;
 
-private:
-  void updateImpl(Tensor params, Tensor grads);
-  void resetStats();
-
-  void parseParams(const std::vector<float>& params) {
+  void setParams(const std::vector<float>& params) override {
     if(params.size() > 0)
       eps_ = params[0];
   }
 
-  float eps_ = 1e-8;
+private:
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+  void resetStats() override;
+
+  float eps_ = 1e-8f;
   Ptr<TensorAllocator> alloc_;
   Tensor gt_;
 };
@@ -133,50 +159,66 @@ private:
  * @brief Adam optimizer
  *
  * https://arxiv.org/pdf/1412.6980v8.pdf
+ *
+ * with Frank's modifications for automatic hyper-parameter adjustment.
  */
 class Adam : public OptimizerBase {
 public:
-  Adam(float eta, Ptr<ClipperBase> clipper = nullptr)
-      : OptimizerBase(eta, clipper), t_(0) {}
+  Adam(float eta, size_t refMBWordsParam = 0, Ptr<ClipperBase> clipper = nullptr)
+      : OptimizerBase(eta, refMBWordsParam, clipper) {}
 
   void load(const std::string& name,
-            std::vector<Ptr<OptimizerBase>> opts,
-            std::vector<Ptr<Backend>> backends);
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const std::vector<Ptr<Backend>>& backends,
+            const ScatterStateFunc& scatterFn) override;
   void save(const std::string& name,
-            std::vector<Ptr<OptimizerBase>> opts,
-            size_t totalSize);
+            const std::vector<Ptr<OptimizerBase>>& opts,
+            const GatherStateFunc& gatherFn,
+            bool isMainProcess = true) override;
 
 private:
-  void updateImpl(Tensor params, Tensor grads);
-  void resetStats();
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+  void resetStats() override;
 
-  virtual void parseParams(const std::vector<float>& params) {
+  // Adam parameters:
+  // [beta1, beta2, eps, w, refMBWords]
+  virtual void setParams(const std::vector<float>& params) override {
     if(params.size() > 0)
       beta1_ = params[0];
     if(params.size() > 1)
       beta2_ = params[1];
     if(params.size() > 2)
       eps_ = params[2];
+
+    // weighted decay for AdamW, to be explored, disabled by default
+    if(params.size() > 3)
+      w_ = params[3]; // default (disabled): 0
   }
 
-  float beta1_ = 0.9;
-  float beta2_ = 0.999;
-  float eps_ = 1e-8;
-  size_t t_;
+  // hyper-parameters
+  float beta1_ = 0.9f;
+  float beta2_ = 0.999f;
+  float eps_ = 1e-8f;
+  float w_ = 0.0f;
 
+  // CPU-side running accumulators
+  double denom1_ = 0;
+  double denom2_ = 0;
+
+  // GPU-side running accumulators
   Ptr<TensorAllocator> alloc_;
   Tensor mt_;
   Tensor vt_;
 };
 
 template <class Algorithm>
-Ptr<OptimizerBase> Optimizer(float eta,
+Ptr<OptimizerBase> Optimizer(float eta, size_t refMBWordsParam = 0,
                              Ptr<ClipperBase> clipper = nullptr,
                              std::vector<float> params = {}) {
-  auto opt = Ptr<OptimizerBase>(new Algorithm(eta, clipper));
+  auto opt = Ptr<OptimizerBase>(new Algorithm(eta, refMBWordsParam, clipper));
   opt->setParams(params);
   return opt;
 }
 
-Ptr<OptimizerBase> Optimizer(Ptr<Config> options);
-}
+Ptr<OptimizerBase> Optimizer(Ptr<Options> options);
+}  // namespace marian

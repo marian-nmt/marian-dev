@@ -2,9 +2,13 @@
 #include "graph/node_operators_binary.h"
 
 namespace marian {
-Convolution::Convolution(Ptr<ExpressionGraph> graph) : Factory(graph) {}
+
+#ifdef CUDNN
+Convolution::Convolution(Ptr<ExpressionGraph> graph) {}
 
 Expr Convolution::apply(Expr x) {
+  auto graph = x->graph();
+
   auto prefix = opt<std::string>("prefix");
   auto kernelDims = opt<std::pair<int, int>>("kernel-dims");
   auto kernelNum = opt<int>("kernel-num");
@@ -13,11 +17,11 @@ Expr Convolution::apply(Expr x) {
 
   int layerIn = x->shape()[1];
   auto kernel
-      = graph_->param(prefix + "_conv_kernels",
+      = graph->param(prefix + "_conv_kernels",
                       {layerIn, kernelNum, kernelDims.first, kernelDims.second},
                       inits::glorot_uniform);
 
-  auto bias = graph_->param(
+  auto bias = graph->param(
       prefix + "_conv_bias", {1, kernelNum, 1, 1}, inits::zeros);
 
   std::vector<Expr> nodes = {x, kernel, bias};
@@ -29,4 +33,6 @@ Expr Convolution::apply(const std::vector<Expr>&) {
   ABORT("Can't apply convolution on many inputs at once");
   return nullptr;
 }
-}
+#endif
+
+}  // namespace marian

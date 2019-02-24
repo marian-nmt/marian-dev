@@ -17,7 +17,7 @@ struct isnan_test {
   __host__ __device__ bool operator()(const float a) const { return isnan(a); }
 };
 
-__device__ inline float stableLogit(float x) {
+__device__ inline float stableSigmoid(float x) {
   if(x >= 0) {
     float z = expf(-x);
     return 1.0 / (1.0 + z);
@@ -27,20 +27,52 @@ __device__ inline float stableLogit(float x) {
   }
 }
 
-bool IsNan(Tensor in) {
-  // cudaSetDevice(in->getDevice().no);
-  // thrust::device_ptr<float> begin = thrust::device_pointer_cast(in->data());
-  // thrust::device_ptr<float> end
-  //    = thrust::device_pointer_cast(in->data() + in->size());
-  // return thrust::transform_reduce(
-  //    begin, end, isnan_test(), 0, thrust::plus<bool>());
-  return false;
+template <typename T>
+__global__ void gIsNan(T* in, int length, bool* isNan, bool* isInf, bool zero) {
+  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+    if(index < length) {
+      if(isnan((float)in[index])) {
+        if(zero) in[index] = (T)0.f;
+        *isNan = true;
+      }
+      else if(isinf((float)in[index])) {
+        if(zero) in[index] = (T)0.f;
+        *isInf = true;
+      }
+    }
+  }
+}
+
+void IsNan(Tensor in, Ptr<Allocator> allocator, bool& isNan, bool& isInf, bool zero) {
+  cudaSetDevice(in->getDeviceId().no);
+
+  int length = in->size();
+
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  auto mem = allocator->alloc<bool>(2);
+  bool* dIsNan = &mem->data<bool>()[0];
+  bool* dIsInf = &mem->data<bool>()[1];
+  fill(in->getBackend(), dIsNan, dIsNan + 2, false);
+
+  if(in->type() == Type::float32) {
+    gIsNan<<<blocks, threads>>>(in->data<float>(), length, dIsNan, dIsInf, zero);
+  } else {
+    ABORT("IsNan for type {} not implemented", in->type());
+  }
+
+  CudaCopy(dIsNan, dIsNan + 1, &isNan);
+  CudaCopy(dIsInf, dIsInf + 1, &isInf);
+
+  allocator->free(mem);
+
+  cudaStreamSynchronize(0);
 }
 
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
-
-
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
   int step = 1;
   for(int i = 0; i < axis; ++i)
     step *= out->shape()[i];
@@ -52,9 +84,9 @@ void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
       size_t offset2 = i * size;
 
       cudaMemcpy(out->data() + offset1,
-                      in->data() + offset2,
-                      size * sizeof(float),
-                      cudaMemcpyDeviceToDevice);
+                 in->data() + offset2,
+                 size * sizeof(float),
+                 cudaMemcpyDeviceToDevice);
 
       offset1 += size;
     }
@@ -62,6 +94,7 @@ void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
   cudaStreamSynchronize(0);
 }
 
+template <bool add>
 __global__ void gInsertCols(float* out,
                             const float* in,
                             size_t rows,
@@ -79,14 +112,17 @@ __global__ void gInsertCols(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols)
-          rowOut[i] = rowIn[i];
+          if(add)
+            rowOut[i] += rowIn[i];
+          else
+            rowOut[i] = rowIn[i];
       }
     }
   }
 }
 
 void Concatenate1(Tensor out, const std::vector<Tensor>& inputs) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
 
@@ -101,25 +137,26 @@ void Concatenate1(Tensor out, const std::vector<Tensor>& inputs) {
     int blocks = std::min(MAX_BLOCKS, rows);
     int threads = std::min(MAX_THREADS, cols_in);
 
-    gInsertCols<<<blocks, threads>>>(
+    gInsertCols<false><<<blocks, threads>>>(
         out->data(), in->data(), rows, cols_in, cols_out, cols_in, offset, 0);
     offset += cols_in;
   }
   cudaStreamSynchronize(0);
 }
 
-
-__global__ void gJoin2(float* out, size_t rowBatch, size_t cols,
-                       const float* in1, size_t inStride1,
-                       const float* in2, size_t inStride2) {
-
+__global__ void gJoin2(float* out,
+                       size_t rowBatch,
+                       size_t cols,
+                       const float* in1,
+                       size_t inStride1,
+                       const float* in2,
+                       size_t inStride2) {
   int outStride = inStride1 + inStride2;
   int rows = rowBatch * outStride;
 
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
     if(j < rows) {
-
       float* rowOut = out + j * cols;
 
       int curBatch = j / outStride;
@@ -140,14 +177,12 @@ __global__ void gJoin2(float* out, size_t rowBatch, size_t cols,
             rowOut[i] = rowIn2[i];
         }
       }
-
     }
   }
 }
 
-
 void Concatenate2(Tensor out, Tensor in1, Tensor in2) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t rows = out->shape().elements() / out->shape().back();
   size_t cols = out->shape().back();
@@ -181,7 +216,7 @@ void Concatenate(Tensor out, const std::vector<Tensor>& inputs, int ax) {
 }
 
 void Split1(std::vector<Tensor>& outputs, const Tensor in) {
-  cudaSetDevice(in->getDevice().no);
+  cudaSetDevice(in->getDeviceId().no);
 
   size_t offset = 0;
   int rows = in->shape().elements() / in->shape().back();
@@ -194,31 +229,49 @@ void Split1(std::vector<Tensor>& outputs, const Tensor in) {
     int blocks = std::min(MAX_BLOCKS, rows);
     int threads = std::min(MAX_THREADS, cols_out);
 
-    gInsertCols<<<blocks, threads>>>(
+    gInsertCols<true><<<blocks, threads>>>(
         out->data(), in->data(), rows, cols_out, cols_out, cols_in, 0, offset);
     offset += cols_out;
   }
   cudaStreamSynchronize(0);
 }
 
+// @TODO: this function is just a temporary fix until I come up with
+// something better for the situation below.
+__global__ void gAddRow(float* out, const float* in, int length) {
+  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+    if(index < length) {
+      out[index] = in[index] + out[index];
+    }
+  }
+}
+
 void SplitCont(std::vector<Tensor>& outputs, const Tensor in, int axis) {
-  cudaSetDevice(in->getDevice().no);
+  cudaSetDevice(in->getDeviceId().no);
 
   int step = 1;
   for(int i = 0; i < axis; ++i)
     step *= in->shape()[i];
 
-  size_t offset1 = 0;
+  int offset1 = 0;
   for(int i = 0; i < step; ++i) {
     for(auto out : outputs) {
-      size_t size = out->shape().elements() / step;
-      size_t offset2 = i * size;
+      int size = out->shape().elements() / step;
+      int offset2 = i * size;
 
-      cudaMemcpyAsync(out->data() + offset2,
-                      in->data() + offset1,
-                      size * sizeof(float),
-                      cudaMemcpyDeviceToDevice);
+      // BUG: this is does not add gradients
+      // cudaMemcpyAsync(out->data() + offset2,
+      //                in->data() + offset1,
+      //                size * sizeof(float),
+      //                cudaMemcpyDeviceToDevice);
 
+      // @TODO: this is a quick but bad fix for the above bug
+      int threads = std::min(MAX_THREADS, size);
+      int blocks = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
+
+      gAddRow<<<blocks, threads>>>(
+          out->data() + offset2, in->data() + offset1, size);
       offset1 += size;
     }
   }
@@ -232,6 +285,7 @@ void Deconcatenate(std::vector<Tensor>& outputs, const Tensor in, int ax) {
     SplitCont(outputs, in, ax);
 }
 
+template <bool add>
 __global__ void gTransposeND(
     functional::Tensor<float> out,
     const functional::Tensor<float> in,
@@ -247,18 +301,21 @@ __global__ void gTransposeND(
       out.shape().dims(index, oDims);
       for(int i = 0; i < N; ++i)
         pDims[permute[i]] = oDims[i];
-      out[index] = in[pDims];
+      if(add)
+        out[index] += in[pDims];
+      else
+        out[index] = in[pDims];
     }
   }
 }
 
-__global__
-void gTranspose0213(float* out, const float* in,
-                    int rows,
-                    int cols,
-                    int stride1,
-                    int stride2) {
-
+template <bool add>
+__global__ void gTranspose0213(float* out,
+                               const float* in,
+                               int rows,
+                               int cols,
+                               int stride1,
+                               int stride2) {
   int stride = stride1 * stride2;
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
@@ -274,18 +331,20 @@ void gTranspose0213(float* out, const float* in,
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
-        if(i < cols)
-          rowOut[i] = rowIn[i];
+        if(i < cols) {
+          if(add)
+            rowOut[i] += rowIn[i];
+          else
+            rowOut[i] = rowIn[i];
+        }
       }
     }
   }
-
 }
 
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
   if(vAxis == std::vector<int>({0, 2, 1, 3})) {
-
     int rows = out->shape().elements() / out->shape().back();
     int cols = out->shape().back();
 
@@ -295,10 +354,9 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     int stride1 = out->shape()[-2];
     int stride2 = out->shape()[-3];
 
-    gTranspose0213<<<blocks, threads>>>(out->data(), in->data(), rows, cols, stride1, stride2);
-  }
-  else {
-
+    gTranspose0213<false><<<blocks, threads>>>(
+        out->data(), in->data(), rows, cols, stride1, stride2);
+  } else {
     functional::Array<int, functional::Shape::size()> axes;
     int diff = functional::Shape::size() - vAxis.size();
     for(int i = 0; i < axes.size(); ++i)
@@ -309,51 +367,80 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
 
     int length = out->shape().elements();
     int threads = std::min(MAX_THREADS, length);
-    int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+    int blocks
+        = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-    gTransposeND<<<blocks, threads>>>(out, in, axes);
+    gTransposeND<false><<<blocks, threads>>>(out, in, axes);
   }
 }
 
+void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
+  cudaSetDevice(out->getDeviceId().no);
+  if(vAxis == std::vector<int>({0, 2, 1, 3})) {
+    int rows = out->shape().elements() / out->shape().back();
+    int cols = out->shape().back();
+
+    int blocks = std::min(MAX_BLOCKS, rows);
+    int threads = std::min(MAX_THREADS, cols);
+
+    int stride1 = out->shape()[-2];
+    int stride2 = out->shape()[-3];
+
+    gTranspose0213<true><<<blocks, threads>>>(
+        out->data(), in->data(), rows, cols, stride1, stride2);
+  } else {
+    functional::Array<int, functional::Shape::size()> axes;
+    int diff = functional::Shape::size() - vAxis.size();
+    for(int i = 0; i < axes.size(); ++i)
+      if(i < diff)
+        axes[i] = i;
+      else
+        axes[i] = vAxis[i - diff] + diff;
+
+    int length = out->shape().elements();
+    int threads = std::min(MAX_THREADS, length);
+    int blocks
+        = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+    gTransposeND<true><<<blocks, threads>>>(out, in, axes);
+  }
+}
+
+// Computes the softmax
+// in - input tensor
+// out - output tensor
+// we compute the softmax over the the cols (last dimension)
+// rows are time, batch or beam dimensions
+// number of threads is number of cols or MAX_THREADS
+// number of blocks is number of rows or MAX_BLOCKS
 __global__ void gSoftmax(float* out,
                          functional::Shape outShape,
-                         const float* in,
-                         const float* mask,
-                         const functional::Shape maskShape) {
+                         const float* in) {
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
-  bool broadcast = outShape != maskShape;
-  functional::Array<int, functional::Shape::size()> dims;
-
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
-    if(j < rows) {
-      float* so = out + j * cols;
+  for(int bid = 0; bid < rows; bid += gridDim.x) { // loop over blocks of rows
+    int j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
+    if(j < rows) { // compute softmax over one row, row elements distributed over threads
+      float* so = out + j * cols; // pointer to row input data
       const float* sp = in + j * cols;
 
       extern __shared__ float _share[];
 
-      float* _max = _share + blockDim.x;
-      _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          float mVal = 1.f;
-          if(mask) {
-            int mIndex = id + j * cols;
-            if(broadcast) {
-              outShape.dims(mIndex, dims);
-              mIndex = maskShape.bindex(dims);
-            }
-            mVal = mask[mIndex];
-          }
-
-          if(mVal && sp[id] > _max[threadIdx.x])
-            _max[threadIdx.x] = sp[id];
+      // determine max (used below to improve numeric stability)
+      float* _max = _share;
+      _max[threadIdx.x] = -CUDA_FLT_MAX; // [threadIdx.x = relative column index within a block of columns]
+      // find max over column indices that have the same relative column index (=threadIdx.x) across all blocks of columns
+      for(int tid = 0; tid < cols; tid += blockDim.x) { // loop over blocks of columns, blockDim.x = index of block of columns
+        // threadIdx.x = column index within block of columns; we reduce over columns within a block, then over blocks
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          if(sp[i] > _max[threadIdx.x])
+            _max[threadIdx.x] = sp[i];
         }
       }
       __syncthreads();
+      // max over columns within a column block via tree reduction
       int len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -367,33 +454,22 @@ __global__ void gSoftmax(float* out,
       }
       __syncthreads();
       float max = _max[0];
-      __syncthreads();
+      __syncthreads(); // @TODO: do we need this?
 
-      float* _sum = _share + blockDim.x;
-
+      // compute denominator
+      float* _sum = _share;
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          float mVal = 1.f;
-          if(mask) {
-            int mIndex = id + j * cols;
-            if(broadcast) {
-              outShape.dims(mIndex, dims);
-              mIndex = maskShape.bindex(dims);
-            }
-            mVal = mask[mIndex];
-          }
-
-          float ex = 0;
-          if(mVal)
-            ex = __expf(sp[id] - max);
-          so[id] = ex;
-
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          // @TODO: is it faster to cache the result of expf() in GPU RAM, or would it be faster to recompute it below?
+          float ex = __expf(sp[i] - max);
+          so[i] = ex;
           _sum[threadIdx.x] += ex;
         }
       }
       __syncthreads();
+      // now reduce over all columns within the block
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -403,34 +479,34 @@ __global__ void gSoftmax(float* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
+
+      // produce final output data
+      float sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id < cols) {
-          so[id] = so[id] / _sum[0];
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          so[i] = so[i] / sum;
         }
       }
     }
+    __syncthreads();
   }
 }
 
-void Softmax(Tensor out, Tensor in, Tensor mask) {
-  cudaSetDevice(out->getDevice().no);
+void Softmax(Tensor out, Tensor in) {
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t m = out->shape().elements() / out->shape().back();
   size_t k = out->shape().back();
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
 
-  if(mask)
-    gSoftmax<<<blocks, threads, shared>>>(
-        out->data(), out->shape(), in->data(), mask->data(), mask->shape());
-  else
-    gSoftmax<<<blocks, threads, shared>>>(
-        out->data(), out->shape(), in->data(), 0, out->shape());
+  gSoftmax<<<blocks, threads, shared>>>(out->data(), out->shape(), in->data());
 }
 
+// @TODO: refactor to reuse code from softmax, add comments
 __global__ void gLogSoftmax(float* out,
                             const functional::Shape outShape,
                             const float* in) {
@@ -445,7 +521,7 @@ __global__ void gLogSoftmax(float* out,
 
       extern __shared__ float _share[];
 
-      float* _max = _share + blockDim.x;
+      float* _max = _share;
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -470,7 +546,7 @@ __global__ void gLogSoftmax(float* out,
       float max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
 
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -498,18 +574,19 @@ __global__ void gLogSoftmax(float* out,
           so[id] -= __logf(_sum[0]);
       }
     }
+    __syncthreads();
   }
 }
 
 void LogSoftmax(Tensor out, Tensor in) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t m = out->shape().elements() / out->shape().back();
   size_t k = out->shape().back();
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
 
   gLogSoftmax<<<blocks, threads, shared>>>(
       out->data(), out->shape(), in->data());
@@ -526,7 +603,7 @@ __global__ void gSoftmaxGrad(float* grad,
     int j = bid + blockIdx.x;
     if(j < rows) {
       extern __shared__ float _share[];
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
 
       float* gradRow = grad + j * cols;
       const float* adjRow = adj + j * cols;
@@ -557,11 +634,13 @@ __global__ void gSoftmaxGrad(float* grad,
         }
       }
     }
+    __syncthreads();
   }
 }
 
+// @TODO: refactor with logsoftmax, add math
 void SoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
   // grad and val are both m-by-k matrices, passed as input.
   // A weighted average of each row of grad (according to the weights
   // specified in val) is computed and subtracted from Out.
@@ -571,7 +650,7 @@ void SoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
 
   int blocks = std::min(MAX_BLOCKS, m);
   int threads = std::min(MAX_THREADS, k);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
   gSoftmaxGrad<<<blocks, threads, shared>>>(
       grad->data(), adj->data(), val->data(), m, k);
 }
@@ -585,7 +664,7 @@ __global__ void gLogSoftmaxGrad(float* grad,
     int j = bid + blockIdx.x;
     if(j < rows) {
       extern __shared__ float _share[];
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
 
       float* gradRow = grad + j * cols;
       const float* adjRow = adj + j * cols;
@@ -613,11 +692,12 @@ __global__ void gLogSoftmaxGrad(float* grad,
           gradRow[id] += adjRow[id] - (expf(valRow[id]) * _sum[0]);
       }
     }
+    __syncthreads();
   }
 }
 
 void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
 
   // grad and val are both m-by-k matrices, passed as input.
   // A weighted average of each row of grad (according to the weights
@@ -628,7 +708,7 @@ void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
 
   int blocks = std::min(MAX_BLOCKS, m);
   int threads = std::min(MAX_THREADS, k);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
   gLogSoftmaxGrad<<<blocks, threads, shared>>>(
       grad->data(), adj->data(), val->data(), m, k);
 }
@@ -658,7 +738,7 @@ __global__ void gArgmax(float* out,
 __global__ void gCopyRows(float* out,
                           const float* in,
                           size_t cols,
-                          const size_t* sourceRowIdx,
+                          const IndexType* sourceRowIdx,
                           size_t rows) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
@@ -678,32 +758,28 @@ __global__ void gCopyRows(float* out,
   }
 }
 
-void CopyRows(Tensor out, const Tensor in, const std::vector<size_t>& indices) {
-  cudaSetDevice(out->getDevice().no);
+void CopyRows(Tensor out,
+              const Tensor in,
+              const Tensor indices) {
+
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t cols = in->shape().back();
-  size_t rowsToCopy = indices.size();
+  size_t rowsToCopy = indices->size();
 
   int threads = std::min(MAX_THREADS, (int)cols);
   int blocks = std::min(MAX_BLOCKS, (int)rowsToCopy);
 
-  size_t* d_indices;
-  CUDA_CHECK(cudaMalloc(&d_indices, rowsToCopy * sizeof(size_t)));
-  CUDA_CHECK(cudaMemcpy(d_indices,
-                        indices.data(),
-                        rowsToCopy * sizeof(size_t),
-                        cudaMemcpyHostToDevice));
-
   gCopyRows<<<blocks, threads>>>(
-      out->data(), in->data(), cols, d_indices, rowsToCopy);
-
-  CUDA_CHECK(cudaFree(d_indices));
+      out->data(), in->data(), cols, indices->data<IndexType>(), rowsToCopy);
 }
 
 __global__ void gPasteRows(float* out,
                            const float* in,
                            size_t cols,
-                           const size_t* targetRowIdx,
+                           const IndexType* targetRowIdx,
                            size_t rows) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
@@ -725,26 +801,20 @@ __global__ void gPasteRows(float* out,
 
 void PasteRows(Tensor out,
                const Tensor in,
-               const std::vector<size_t>& indices) {
-  cudaSetDevice(out->getDevice().no);
+               const Tensor indices) {
+
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t cols = in->shape().back();
-  size_t rowsToCopy = indices.size();
+  size_t rowsToCopy = indices->size();
 
   int threads = std::min(MAX_THREADS, (int)cols);
   int blocks = std::min(MAX_BLOCKS, (int)rowsToCopy);
 
-  // @TODO: turn into tensor
-  size_t* d_indices;
-  CUDA_CHECK(cudaMalloc(&d_indices, rowsToCopy * sizeof(size_t)));
-  CUDA_CHECK(cudaMemcpy(d_indices,
-                        indices.data(),
-                        rowsToCopy * sizeof(size_t),
-                        cudaMemcpyHostToDevice));
-
   gPasteRows<<<blocks, threads>>>(
-      out->data(), in->data(), cols, d_indices, rowsToCopy);
-  CUDA_CHECK(cudaFree(d_indices));
+      out->data(), in->data(), cols, indices->data<IndexType>(), rowsToCopy);
 }
 
 /////////////
@@ -753,7 +823,7 @@ __global__ void gCopyCols(float* out,
                           const float* in,
                           size_t rows,
                           size_t colsIn,
-                          const size_t* sourceColIdx,
+                          const IndexType* sourceColIdx,
                           size_t colsOut) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
@@ -770,35 +840,28 @@ __global__ void gCopyCols(float* out,
   }
 }
 
-void CopyCols(Tensor out, const Tensor in, const std::vector<size_t>& indices) {
-  cudaSetDevice(out->getDevice().no);
+void CopyCols(Tensor out, const Tensor in, const Tensor indices) {
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t rows = in->shape().elements() / in->shape().back();
   size_t cols = in->shape().back();
 
-  size_t colsToCopy = indices.size();
+  size_t colsToCopy = indices->size();
 
   int threads = std::min(MAX_THREADS, (int)colsToCopy);
   int blocks = std::min(MAX_BLOCKS, (int)rows);
 
-  size_t* d_indices;
-  CUDA_CHECK(cudaMalloc(&d_indices, colsToCopy * sizeof(size_t)));
-  CUDA_CHECK(cudaMemcpy(d_indices,
-                        indices.data(),
-                        colsToCopy * sizeof(size_t),
-                        cudaMemcpyHostToDevice));
-
   gCopyCols<<<blocks, threads>>>(
-      out->data(), in->data(), rows, cols, d_indices, colsToCopy);
-
-  CUDA_CHECK(cudaFree(d_indices));
+      out->data(), in->data(), rows, cols, indices->data<IndexType>(), colsToCopy);
 }
 
 __global__ void gPasteCols(float* out,
                            const float* in,
                            size_t rows,
                            size_t colsOut,
-                           const size_t* targetColIdx,
+                           const IndexType* targetColIdx,
                            size_t colsIn) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
     int j = bid + blockIdx.x;
@@ -809,7 +872,7 @@ __global__ void gPasteCols(float* out,
       for(int tid = 0; tid < colsIn; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < colsIn)
-          rowOut[targetColIdx[i]] = rowIn[i];
+          rowOut[targetColIdx[i]] += rowIn[i];
       }
     }
   }
@@ -817,28 +880,21 @@ __global__ void gPasteCols(float* out,
 
 void PasteCols(Tensor out,
                const Tensor in,
-               const std::vector<size_t>& indices) {
-  cudaSetDevice(out->getDevice().no);
+               const Tensor indices) {
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t rows = in->shape().elements() / in->shape().back();
   size_t cols = in->shape().back();
 
-  size_t colsToCopy = indices.size();
+  size_t colsToCopy = indices->size();
 
   int threads = std::min(MAX_THREADS, (int)colsToCopy);
   int blocks = std::min(MAX_BLOCKS, (int)rows);
 
-  size_t* d_indices;
-  CUDA_CHECK(cudaMalloc(&d_indices, colsToCopy * sizeof(size_t)));
-  CUDA_CHECK(cudaMemcpy(d_indices,
-                        indices.data(),
-                        colsToCopy * sizeof(size_t),
-                        cudaMemcpyHostToDevice));
-
   gPasteCols<<<blocks, threads>>>(
-      out->data(), in->data(), rows, cols, d_indices, colsToCopy);
-
-  CUDA_CHECK(cudaFree(d_indices));
+      out->data(), in->data(), rows, cols, indices->data<IndexType>(), colsToCopy);
 }
 
 __global__ void gSelect(float* out,
@@ -846,7 +902,7 @@ __global__ void gSelect(float* out,
                         const float* in,
                         const functional::Shape inShape,
                         int axis,
-                        size_t* d_indices) {
+                        IndexType* d_indices) {
   int length = outShape.elements();
   functional::Array<int, functional::Shape::size()> dims;
 
@@ -866,7 +922,7 @@ __global__ void gInsert(float* out,
                         const float* in,
                         const functional::Shape inShape,
                         int axis,
-                        size_t* d_indices) {
+                        IndexType* d_indices) {
   int length = inShape.elements();
   functional::Array<int, functional::Shape::size()> dims;
 
@@ -874,29 +930,25 @@ __global__ void gInsert(float* out,
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       inShape.dims(index, dims);
-      dims[axis] = d_indices[dims[index]];
+      dims[axis] = d_indices[dims[axis]];
       int outIndex = outShape.index(dims);
-      out[outIndex] = in[index];
+      out[outIndex] += in[index];
     }
   }
 }
 
 void Select(Tensor out,
             const Tensor in,
-            int axis,
-            const std::vector<size_t>& indices,
-            Ptr<Allocator> allocator) {
-  cudaSetDevice(out->getDevice().no);
+            const Tensor indices,
+            int axis) {
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   int length = out->shape().elements();
 
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-
-  auto mp_indices = allocator->alloc<size_t>(indices.size());
-  CudaCopy(indices.data(),
-           indices.data() + indices.size(),
-           mp_indices->data<size_t>());
 
   int axisGPU = axis + functional::Shape::size() - out->shape().size();
   gSelect<<<blocks, threads>>>(out->data(),
@@ -904,27 +956,20 @@ void Select(Tensor out,
                                in->data(),
                                in->shape(),
                                axisGPU,
-                               mp_indices->data<size_t>());
-
-  allocator->free(mp_indices);
+                               indices->data<IndexType>());
 }
 
 void Insert(Tensor out,
             const Tensor in,
-            int axis,
-            const std::vector<size_t>& indices,
-            Ptr<Allocator> allocator) {
-  cudaSetDevice(in->getDevice().no);
+            const Tensor indices,
+            int axis) {
+  matchOrAbort<IndexType>(indices->type());
+  cudaSetDevice(in->getDeviceId().no);
 
   int length = in->shape().elements();
 
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-
-  auto mp_indices = allocator->alloc<size_t>(indices.size());
-  CudaCopy(indices.data(),
-           indices.data() + indices.size(),
-           mp_indices->data<size_t>());
 
   int axisGPU = axis + functional::Shape::size() - out->shape().size();
   gInsert<<<blocks, threads>>>(out->data(),
@@ -932,9 +977,7 @@ void Insert(Tensor out,
                                in->data(),
                                in->shape(),
                                axisGPU,
-                               mp_indices->data<size_t>());
-
-  allocator->free(mp_indices);
+                               indices->data<IndexType>());
 }
 
 __global__ void gGRUFastForward(float* out,
@@ -959,11 +1002,11 @@ __global__ void gGRUFastForward(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float r = stableLogit(xWrow[i] + sUrow[i] + b[i]);
+          float r = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
 
-          float z = stableLogit(xWrow[k] + sUrow[k] + b[k]);
+          float z = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
           float h;
@@ -981,7 +1024,7 @@ __global__ void gGRUFastForward(float* out,
 }
 
 void GRUFastForward(Tensor out, std::vector<Tensor> inputs, bool final) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
   int cols = out->shape().back();
@@ -1034,8 +1077,8 @@ __global__ void gGRUFastBackward(float* outState,
           int k = i + cols;
           int l = i + 2 * cols;
 
-          float r = stableLogit(rowXW[i] + rowSU[i] + b[i]);
-          float z = stableLogit(rowXW[k] + rowSU[k] + b[k]);
+          float r = stableSigmoid(rowXW[i] + rowSU[i] + b[i]);
+          float z = stableSigmoid(rowXW[k] + rowSU[k] + b[k]);
 
           float h;
           if(final)
@@ -1094,7 +1137,7 @@ void GRUFastBackward(std::vector<Tensor> outputs,
                      std::vector<Tensor> inputs,
                      Tensor adj,
                      bool final) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
 
   int rows = adj->shape().elements() / adj->shape().back();
   int cols = adj->shape().back();
@@ -1122,7 +1165,7 @@ __global__ void gCrossEntropyPick(float* out,
                                   const functional::Shape outShape,
                                   const float* in,
                                   const functional::Shape inShape,
-                                  const float* pick) {
+                                  const IndexType* pick) {
   int rows = inShape.elements() / inShape.back();
   int cols = inShape.back();
 
@@ -1132,7 +1175,7 @@ __global__ void gCrossEntropyPick(float* out,
       const float* sp = in + j * cols;
 
       extern __shared__ float _share[];
-      float* _max = _share + blockDim.x;
+      float* _max = _share;
 
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 1; tid < cols; tid += blockDim.x) {
@@ -1158,7 +1201,7 @@ __global__ void gCrossEntropyPick(float* out,
       float max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1185,28 +1228,35 @@ __global__ void gCrossEntropyPick(float* out,
         }
       }
     }
+    __syncthreads();
   }
 }
 
-void CrossEntropyPick(Tensor out, Tensor in, Tensor pick) {
-  cudaSetDevice(out->getDevice().no);
+// In each j-th row, take the corresponding j-th label index i from indices and compute:
+// For each vocabulary item v, the only non-zero element in a row in the sum is the item
+// that matches the label indexed by i (the picked element).
+// C = sum_{v in V}(-logsoftmax(A) * delta(v, i) = -logsoftmax(A)[i]
+void CrossEntropyPick(Tensor out, Tensor in, Tensor indices) {
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = in->shape().elements() / in->shape().back();
   int cols = in->shape().back();
 
   int blocks = std::min(MAX_BLOCKS, (int)rows);
   int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
 
   gCrossEntropyPick<<<blocks, threads, shared>>>(
-      out->data(), out->shape(), in->data(), in->shape(), pick->data());
+      out->data(), out->shape(), in->data(), in->shape(), indices->data<IndexType>());
 }
 
 __global__ void gCrossEntropyPickBackward(float* out,
                                           const functional::Shape outShape,
                                           const float* adj,
                                           const float* in,
-                                          const float* pick) {
+                                          const IndexType* pick) {
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
   for(int bid = 0; bid < rows; bid += gridDim.x) {
@@ -1216,7 +1266,7 @@ __global__ void gCrossEntropyPickBackward(float* out,
       float* so = out + j * cols;
 
       extern __shared__ float _share[];
-      float* _max = _share + blockDim.x;
+      float* _max = _share;
 
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 1; tid < cols; tid += blockDim.x) {
@@ -1242,7 +1292,7 @@ __global__ void gCrossEntropyPickBackward(float* out,
       float max = _max[0];
       __syncthreads();
 
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1271,25 +1321,28 @@ __global__ void gCrossEntropyPickBackward(float* out,
         }
       }
     }
+    __syncthreads();
   }
 }
 
-void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor pick) {
-  cudaSetDevice(out->getDevice().no);
+void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) {
+  matchOrAbort<IndexType>(indices->type());
+
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
   int cols = out->shape().back();
 
   int blocks = std::min(MAX_BLOCKS, (int)rows);
   int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
 
   gCrossEntropyPickBackward<<<blocks, threads, shared>>>(
-      out->data(), out->shape(), adj->data(), a->data(), pick->data());
+      out->data(), out->shape(), adj->data(), a->data(), indices->data<IndexType>());
 }
 
 float L2Norm(Tensor in) {
-  cudaSetDevice(in->getDevice().no);
+  cudaSetDevice(in->getDeviceId().no);
 
   int size = in->shape().elements();
   int threads = std::min(MAX_THREADS, size);
@@ -1317,7 +1370,7 @@ __global__ void gAtt(float* out,
                      int k,  // depth
                      int b,  // batch size
                      int t   // time of ctx
-                     ) {
+) {
   int rows = m;
   int cols = k;
 
@@ -1329,7 +1382,7 @@ __global__ void gAtt(float* out,
       const float* stateRow = state + ((j / (b * t)) * b + j % b) * cols;
 
       extern __shared__ float _share[];
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
 
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -1351,13 +1404,13 @@ __global__ void gAtt(float* out,
       }
       __syncthreads();
       out[j] = _sum[0];
-      __syncthreads();
     }
+    __syncthreads();
   }
 }
 
 void Att(Tensor out, Tensor va, Tensor context, Tensor state) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   size_t m = out->shape().elements() / out->shape().back();
   size_t k = context->shape()[-1];
@@ -1366,7 +1419,7 @@ void Att(Tensor out, Tensor va, Tensor context, Tensor state) {
 
   int blocks = std::min(MAX_BLOCKS, (int)m);
   int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads * 2;
+  int shared = sizeof(float) * threads;
 
   gAtt<<<blocks, threads, shared>>>(
       out->data(), va->data(), context->data(), state->data(), m, k, b, t);
@@ -1382,7 +1435,7 @@ __global__ void gAttBack(float* gVa,
                          int m,  // rows
                          int k,  // cols
                          int n   // batch size
-                         ) {
+) {
   int rows = m;
   int cols = k;
   for(int bid = 0; bid < m; bid += gridDim.x) {
@@ -1418,7 +1471,7 @@ void AttBack(Tensor gVa,
              Tensor context,
              Tensor state,
              Tensor adj) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
 
   size_t m = adj->shape().elements() / adj->shape()[-1];
   size_t k = context->shape()[-1];
@@ -1456,7 +1509,7 @@ __global__ void gLNormalization(float* out,
       float* so = out + j * cols;
       const float* sp = in + j * cols;
 
-      float* _sum = _share + blockDim.x;
+      float* _sum = _share;
       _sum[threadIdx.x] = 0.0f;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1478,7 +1531,7 @@ __global__ void gLNormalization(float* out,
       float mean = _sum[0] / cols;
       __syncthreads();
 
-      float* _sqSum = _share + blockDim.x;
+      float* _sqSum = _share;
 
       _sqSum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -1511,6 +1564,7 @@ __global__ void gLNormalization(float* out,
         }
       }
     }
+    __syncthreads();
   }
 }
 
@@ -1519,14 +1573,14 @@ void LayerNormalization(Tensor out,
                         Tensor gamma,
                         Tensor beta,
                         float eps) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = in->shape().elements() / in->shape().back();
   int cols = in->shape().back();
 
   int blocks = std::min(MAX_BLOCKS, (int)rows);
   int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = 2 * threads * sizeof(float);
+  int shared = threads * sizeof(float);
 
   gLNormalization<<<blocks, threads, shared>>>(out->data(),
                                                in->data(),
@@ -1636,6 +1690,7 @@ __global__ void gLayerNormalizationGrad(float* gradX,
         }
       }
     }
+    __syncthreads();
   }
 }
 
@@ -1648,7 +1703,7 @@ void LayerNormalizationGrad(Tensor gradX,
                             Tensor gamma,
                             Tensor beta,
                             float eps) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
   int rows = y->shape().elements() / y->shape()[-1];
   int cols = y->shape()[-1];
 
@@ -1670,22 +1725,37 @@ void LayerNormalizationGrad(Tensor gradX,
       eps);
 }
 
-__global__ void gShift(float* out, const float* in, int length, int offset) {
+template <bool add>
+__global__ void gShift(float* out,
+                       const float* in,
+                       int length,
+                       int offset,
+                       float padValue) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
-      if(index - offset < 0 || index - offset >= length)
-        out[index] = 0;
-      else
-        out[index] = in[index - offset];
+      if(add) {
+        if(index - offset >= 0 && index - offset < length)
+          out[index] += in[index - offset];
+      } else {
+        if(index - offset < 0 || index - offset >= length)
+          out[index] = padValue;
+        else
+          out[index] = in[index - offset];
+      }
     }
   }
 }
 
-void Shift(Tensor out, Tensor in, marian::Shape shift, bool invert) {
+void Shift(Tensor out,
+           Tensor in,
+           marian::Shape shift,
+           float padValue,
+           bool invert) {
   ABORT_IF(in->shape().size() != shift.size(), "bad dimensions");
 
-  // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the last axis cannot be implemented this way.
+  // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the
+  // last axis cannot be implemented this way.
   int offset = 0;
   for(int i = 0; i < shift.size(); ++i)
     offset += in->shape().stride(i) * shift[i];
@@ -1693,14 +1763,38 @@ void Shift(Tensor out, Tensor in, marian::Shape shift, bool invert) {
   if(invert)
     offset = -offset;
 
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int length = out->shape().elements();
 
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-  gShift<<<blocks, threads>>>(out->data(), in->data(), length, offset);
+  gShift<false>
+      <<<blocks, threads>>>(out->data(), in->data(), length, offset, padValue);
+}
+
+void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
+  ABORT_IF(in->shape().size() != shift.size(), "bad dimensions");
+
+  // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the
+  // last axis cannot be implemented this way.
+  int offset = 0;
+  for(int i = 0; i < shift.size(); ++i)
+    offset += in->shape().stride(i) * shift[i];
+
+  if(invert)
+    offset = -offset;
+
+  cudaSetDevice(out->getDeviceId().no);
+
+  int length = out->shape().elements();
+
+  int threads = std::min(MAX_THREADS, length);
+  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+
+  gShift<true>
+      <<<blocks, threads>>>(out->data(), in->data(), length, offset, 0.f);
 }
 
 __global__ void gSetSparse(float* out,
@@ -1765,10 +1859,10 @@ __global__ void gLSTMCellForward(float* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float gf = stableLogit(xWrow[i] + sUrow[i] + b[i]);
+          float gf = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
-          float gi = stableLogit(xWrow[k] + sUrow[k] + b[k]);
+          float gi = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
           float gc = tanhf(xWrow[l] + sUrow[l] + b[l]);
@@ -1782,7 +1876,7 @@ __global__ void gLSTMCellForward(float* out,
 }
 
 void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
   int cols = out->shape().back();
@@ -1821,7 +1915,7 @@ __global__ void gLSTMOutputForward(float* out,
         int i = tid + threadIdx.x;
         if(i < cols) {
           int k = i + 3 * cols;
-          float go = stableLogit(xWrow[k] + sUrow[k] + b[k]);
+          float go = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           rowOut[i] = go * tanhf(rowCell[i]);
         }
@@ -1831,7 +1925,7 @@ __global__ void gLSTMOutputForward(float* out,
 }
 
 void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int rows = out->shape().elements() / out->shape().back();
   int cols = out->shape().back();
@@ -1878,10 +1972,10 @@ __global__ void gLSTMCellBackward(float* outCell,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
         if(i < cols) {
-          float gf = stableLogit(xWrow[i] + sUrow[i] + b[i]);
+          float gf = stableSigmoid(xWrow[i] + sUrow[i] + b[i]);
 
           int k = i + cols;
-          float gi = stableLogit(xWrow[k] + sUrow[k] + b[k]);
+          float gi = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           int l = i + 2 * cols;
           float gc = tanhf(xWrow[l] + sUrow[l] + b[l]);
@@ -1927,7 +2021,7 @@ __global__ void gLSTMCellBackward(float* outCell,
 void LSTMCellBackward(std::vector<Tensor> outputs,
                       std::vector<Tensor> inputs,
                       Tensor adj) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
 
   int rows = adj->shape().elements() / adj->shape().back();
   int cols = adj->shape().back();
@@ -1978,7 +2072,7 @@ __global__ void gLSTMOutputBackward(float* outCell,
         int i = tid + threadIdx.x;
         if(i < cols) {
           int k = i + 3 * cols;
-          float go = stableLogit(xWrow[k] + sUrow[k] + b[k]);
+          float go = stableSigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           float t = tanhf(rowCell[i]);
 
@@ -2005,7 +2099,7 @@ __global__ void gLSTMOutputBackward(float* outCell,
 void LSTMOutputBackward(std::vector<Tensor> outputs,
                         std::vector<Tensor> inputs,
                         Tensor adj) {
-  cudaSetDevice(adj->getDevice().no);
+  cudaSetDevice(adj->getDeviceId().no);
 
   int rows = adj->shape().elements() / adj->shape().back();
   int cols = adj->shape().back();
@@ -2035,7 +2129,7 @@ __global__ void gHighwayForward(float* out,
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
-      float sigma = stableLogit(t[index]);
+      float sigma = stableSigmoid(t[index]);
       out[index] = in1[index] * sigma + in2[index] * (1.f - sigma);
     }
   }
@@ -2045,7 +2139,7 @@ void HighwayForward(Tensor out,
                     const Tensor in1,
                     const Tensor in2,
                     const Tensor t) {
-  cudaSetDevice(out->getDevice().no);
+  cudaSetDevice(out->getDeviceId().no);
 
   int length = out->shape().elements();
 
@@ -2067,7 +2161,7 @@ __global__ void gHighwayBackward(float* out1,
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
-      float sigma = stableLogit(t[index]);
+      float sigma = stableSigmoid(t[index]);
       out1[index] = sigma * adj[index];
       out2[index] = (1.f - sigma) * adj[index];
       outt[index]
@@ -2083,7 +2177,7 @@ void HighwayBackward(Tensor out1,
                      const Tensor in2,
                      const Tensor t,
                      const Tensor adj) {
-  cudaSetDevice(out1->getDevice().no);
+  cudaSetDevice(out1->getDeviceId().no);
 
   int length = out1->shape().elements();
 
@@ -2241,5 +2335,5 @@ void PoolingWithMaskingBackward(Tensor adj,
                                            width,
                                            lastWidth);
 }
-}
+}  // namespace gpu
 }  // namespace marian

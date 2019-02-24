@@ -36,14 +36,13 @@ struct ConstantShape {
         bstride_(shape.bstride_),
         elements_(shape.elements_) {}
 
-  ConstantShape(const Shape& shape) {
+  ConstantShape(const marian::Shape& shape) {
     size_t filled = shape.size();
 
     ABORT_IF(filled > N,
              "Recompile with CONST_SHAPE_DIMS >= " + std::to_string(filled));
 
-    std::copy(
-        shape.shape_.begin(), shape.shape_.end(), shape_.begin() + N - filled);
+    std::copy(shape.begin(), shape.end(), shape_.begin() + N - filled);
     if(N - filled)
       std::fill_n(shape_.begin(), N - filled, 1);
     updateStrides();
@@ -90,7 +89,7 @@ struct ConstantShape {
 
   __HDI__ static constexpr size_t size() { return N; }
 
-  __HDI__ int elements() const { return elements_; }
+  __HDI__ int elements() const { return (int)elements_; }
 
   __HDI__ int index(const Array<int, N>& d) const {
     int i = 0;
@@ -124,5 +123,5 @@ struct ConstantShape {
 };
 
 typedef ConstantShape<CONST_SHAPE_DIMS> Shape;
-}
-}
+}  // namespace functional
+}  // namespace marian

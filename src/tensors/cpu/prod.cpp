@@ -5,6 +5,7 @@
 
 #include "tensors/cpu/backend.h"
 #include "tensors/tensor.h"
+#include "tensors/tensor_allocator.h"
 
 #if MKL_FOUND
 #include <mkl.h>
@@ -21,15 +22,18 @@ namespace marian {
 namespace cpu {
 
 #if BLAS_FOUND
-inline void sgemm(bool transA, bool transB,
-                  int rows_a, int rows_b, int width,
+inline void sgemm(bool transA,
+                  bool transB,
+                  int rows_a,
+                  int rows_b,
+                  int width,
                   float alpha,
-                  float *a,
+                  float* a,
                   int lda,
-                  float *b,
+                  float* b,
                   int ldb,
                   float beta,
-                  float *c,
+                  float* c,
                   int ldc) {
   cblas_sgemm(CblasRowMajor,
               transA ? CblasTrans : CblasNoTrans,
@@ -49,13 +53,12 @@ inline void sgemm(bool transA, bool transB,
 #endif
 
 void Prod(marian::Tensor C,
-          const marian::Tensor A,
-          const marian::Tensor B,
+          const marian::Tensor& A,
+          const marian::Tensor& B,
           bool transA,
           bool transB,
           float beta,
           float scalar) {
-
 #if BLAS_FOUND
   float alpha = scalar;
 
@@ -90,12 +93,13 @@ void Prod(marian::Tensor C,
         C->data(),
         ldc);
 #else
-  ABORT("Not implemented!");
+  C; A; B; transA; transB; beta; scalar;
+  ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
 }
 
 void ProdBatched(marian::Tensor C,
-                 Ptr<Allocator> allocator,
+                 Ptr<Allocator> /*allocator*/,
                  const marian::Tensor A,
                  const marian::Tensor B,
                  bool transA,
@@ -129,31 +133,32 @@ void ProdBatched(marian::Tensor C,
   auto strideA = batchA == 1 ? 0 : m * k;
   auto strideC = n * m;
 
-  int batchC = std::max(batchA, batchB);
-  for(int i = 0; i < batchC; ++i) {
+  auto batchC = std::max(batchA, batchB);
+  for(size_t i = 0; i < batchC; ++i) {
     sgemm(transA,
           transB,
-          m,
-          n,
-          k,
+          (int)m,
+          (int)n,
+          (int)k,
           alpha,
           A->data() + (i % batchA) * strideA,
-          lda,
+          (int)lda,
           B->data() + (i % batchB) * strideB,
-          ldb,
+          (int)ldb,
           beta,
           C->data() + i * strideC,
-          ldc);
+          (int)ldc);
   }
 #else
-  ABORT("Not implemented!");
+  C; A; B; transA; transB; beta; scalar;
+  ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
 }
 
 void ProdWithBias(marian::Tensor C,
-                  const marian::Tensor A,
-                  const marian::Tensor B,
-                  const marian::Tensor bias,
+                  const marian::Tensor& A,
+                  const marian::Tensor& B,
+                  const marian::Tensor& bias,
                   bool transA,
                   bool transB,
                   float beta,
@@ -162,5 +167,18 @@ void ProdWithBias(marian::Tensor C,
   cpu::AddBias(C, bias);
 }
 
+void CSRProd(marian::Tensor C,
+             Ptr<Allocator> /*allocator*/,
+             const marian::Tensor& A_values,
+             const marian::Tensor& A_indices,
+             const marian::Tensor& A_offsets,
+             const marian::Tensor& B,
+             bool transA,
+             bool swapOperands,
+             float beta) {
+  C, A_values, A_indices, A_offsets, B, transA, swapOperands, beta;
+  ABORT("CSRProd is not yet implemented for CPU");
 }
-}
+
+}  // namespace cpu
+}  // namespace marian

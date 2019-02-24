@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/config.h"
+#include "common/options.h"
 #include "data/batch_generator.h"
 #include "graph/expression_graph.h"
 #include "models/model_base.h"
@@ -12,36 +12,30 @@ using namespace marian;
 
 namespace marian {
 
-class AccuracyValidator : public Validator<data::MNISTData> {
+class MNISTAccuracyValidator : public Validator<data::MNISTData> {
 public:
-  AccuracyValidator(Ptr<Config> options)
-      : Validator(std::vector<Ptr<Vocab>>(), options, false) {
-    Ptr<Options> temp = New<Options>();
-    temp->merge(options);
-    temp->set("inference", true);
-    builder_ = models::from_options(temp, models::usage::scoring);
+  MNISTAccuracyValidator(Ptr<Options> options) : Validator(std::vector<Ptr<Vocab>>(), options, false) {
+    createBatchGenerator(/*isTranslating=*/false);
+    builder_ = models::from_options(options, models::usage::scoring);
   }
 
-  virtual void keepBest(const std::vector<Ptr<ExpressionGraph>>& graphs) {
+  virtual void keepBest(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
     LOG(warn, "Keeping best model for MNIST examples is not supported");
   }
 
-  std::string type() { return "accuracy"; }
+  std::string type() override { return "accuracy"; }
 
 protected:
-  virtual float validateBG(
-      const std::vector<Ptr<ExpressionGraph>>& graphs,
-      Ptr<data::BatchGenerator<data::MNISTData>> batchGenerator) {
+  virtual float validateBG(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
     float correct = 0;
     size_t samples = 0;
 
-    while(*batchGenerator) {
-      auto batch = batchGenerator->next();
+    for(auto batch : *batchGenerator_) {
       auto probs = builder_->build(graphs[0], batch, true);
       graphs[0]->forward();
 
       std::vector<float> scores;
-      probs->val()->get(scores);
+      probs->loss(scores);
 
       correct += countCorrect(scores, batch->labels());
       samples += batch->size();
@@ -51,18 +45,17 @@ protected:
   }
 
 private:
-  float countCorrect(const std::vector<float>& probs,
-                     const std::vector<float>& labels) {
+  float countCorrect(const std::vector<float>& probs, const std::vector<float>& labels) {
     size_t numLabels = probs.size() / labels.size();
     float numCorrect = 0;
     for(size_t i = 0; i < probs.size(); i += numLabels) {
-      auto pred = std::distance(
-          probs.begin() + i,
-          std::max_element(probs.begin() + i, probs.begin() + i + numLabels));
+      auto pred = std::distance(probs.begin() + i,
+                                std::max_element(probs.begin() + i, probs.begin() + i + numLabels));
       if(pred == labels[i / numLabels])
         ++numCorrect;
     }
     return numCorrect;
   }
 };
-}
+
+}  // namespace marian

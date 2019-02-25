@@ -45,6 +45,8 @@
 #include <stdint.h>
 #include <exception>
 
+#include "types.h"
+
 /* Dispatch to functions based on runtime CPUID.  This adds one call-by-variable to each call. */
 
 namespace intgemm {
@@ -56,7 +58,7 @@ class UnsupportedCPU : public std::exception {
 
     ~UnsupportedCPU() throw();
 
-    const char *what() const throw();
+    const char *what() const throw() override;
 };
 
 /* 16-bit matrix multiplication. */
@@ -64,32 +66,32 @@ struct Int16 {
   typedef int16_t Integer;
 
   // A's size must be a multiple of 1x32.
-  static const int kATileRow = 1;
-  static const int kATileCol = 32;
+  static const Index kATileRow = 1;
+  static const Index kATileCol = 32;
   // B's size must be a multiple of 32x8.
-  static const int kBTileRow = 32;
-  static const int kBTileCol = 8;
+  static const Index kBTileRow = 32;
+  static const Index kBTileCol = 8;
 
   // Currently A is prepared by quantization but this could theoretically change.
   // A's columns must be a multiple of 8.
   // The number of rows is anything.
-  static inline void PrepareA(const float *input, int16_t *output, float quant_mult, int rows, int cols) {
+  static inline void PrepareA(const float *input, int16_t *output, float quant_mult, Index rows, Index cols) {
     Quantize(input, output, quant_mult, rows * cols);
   }
 
   // Multiply floats by quant_mult then convert to 16-bit integers with saturation.
   // input
-  static void (*Quantize)(const float *input, int16_t *output, float quant_mult, int size);
+  static void (*Quantize)(const float *input, int16_t *output, float quant_mult, Index size);
 
   // Warning: the output of PrepareB depends on the CPU.
   // It will match the Multiply function on the same CPU though.
-  static void (*PrepareB)(const float *input, int16_t *output, float quant_mult, int rows, int cols);
+  static void (*PrepareB)(const float *input, int16_t *output, float quant_mult, Index rows, Index cols);
 
   // Select columns from a prepared B matrix.  The number of selected columns must be a multiple of 8. 
-  static void (*SelectColumnsB)(const int16_t *input, int16_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end);
+  static void (*SelectColumnsB)(const int16_t *input, int16_t *output, Index rows, const Index *cols_begin, const Index *cols_end);
 
   // Multiply C = A * B, presuming A and B have been prepared.
-  static void (*Multiply)(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
+  static void (*Multiply)(const int16_t *A, const int16_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols);
 
   static const char *const kName;
 };
@@ -99,31 +101,31 @@ struct Int8 {
   typedef int8_t Integer;
 
   // A's size must be a multiple of 1x64.
-  static const int kATileRow = 1;
-  static const int kATileCol = 64;
+  static const Index kATileRow = 1;
+  static const Index kATileCol = 64;
   // B's size must be a multiple of 64x8.
-  static const int kBTileRow = 64;
-  static const int kBTileCol = 8;
+  static const Index kBTileRow = 64;
+  static const Index kBTileCol = 8;
 
   // Currently A is prepared by quantization but this could theoretically change.
   // A's columns must be a multiple of 8.
   // The number of rows is anything.
-  static inline void PrepareA(const float *input, int8_t *output, float quant_mult, int rows, int cols) {
+  static inline void PrepareA(const float *input, int8_t *output, float quant_mult, Index rows, Index cols) {
     Quantize(input, output, quant_mult, rows * cols);
   }
 
   // Multiply floats by quant_mult then convert to 8-bit integers with saturation.
-  static void (*Quantize)(const float *input, int8_t *output, float quant_mult, int size);
+  static void (*Quantize)(const float *input, int8_t *output, float quant_mult, Index size);
   
   // Warning: the output of PrepareB depends on the CPU.
   // It will match the Multiply function on the same CPU though.
-  static void (*PrepareB)(const float *input, int8_t *output, float quant_mult, int rows, int cols);
+  static void (*PrepareB)(const float *input, int8_t *output, float quant_mult, Index rows, Index cols);
 
   // Select columns from a prepared B matrix.  The number of selected columns must be a multiple of 8. 
-  static void (*SelectColumnsB)(const int8_t *input, int8_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end);
+  static void (*SelectColumnsB)(const int8_t *input, int8_t *output, Index rows, const Index *cols_begin, const Index *cols_end);
 
   // Multiply C = A * B, presuming A and B have been prepared.
-  static void (*Multiply)(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols);
+  static void (*Multiply)(const int8_t *A, const int8_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols);
   
   static const char *const kName;
 };

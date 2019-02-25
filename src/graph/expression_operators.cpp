@@ -367,7 +367,8 @@ Expr int8_setup_B(Expr b, bool transB, float clipValue) {
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
   float clipValue = a->graph()->getBackend()->getClip();
-<<<<<<< HEAD
+  // Currently only true when command line options
+  // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
     return cpu::int8::dot(cpu::int8::prepareA(transA ? transpose(a) : a, clipValue),
@@ -375,24 +376,8 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
                           scale);
   }
   else {
-    return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue),
-                                 transA, transB, scale);
-=======
-
-  // Currently only true when command line options
-  // --optimize --cpu-thread=N with N > 0 are set.
-  if(a->graph()->isOptimized() && device == DeviceType::cpu) {
-    // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-    // if transA = false and transB = false.
-
-    return cpu::int16::dot(
-        cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-        cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-        scale);
-  } else {
     return Expression<DotNodeOp>(
         clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
->>>>>>> master
   }
 }
 
@@ -406,12 +391,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   float clipValue = a->graph()->getBackend()->getClip();
 
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
-<<<<<<< HEAD
-
+    // TODO @emjotde there should be a parameter
     bool autotune = false;
-=======
-    bool autotune = true;
->>>>>>> master
+
     if(autotune) {
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
 
@@ -440,23 +422,12 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         return e;
       };
       auto alg1 = [=]() {
-<<<<<<< HEAD
         // TODO(emjotde) choice of 16 or 8 bit.
         return rec1(cpu::int8::affine(rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a, clipValue)),
                                        int8_setup_B(b, transB, clipValue),
                                        bias,
                                        scale),
                     true);
-=======
-        return rec1(
-            cpu::int16::affine(
-                rec1(cpu::int16::quantize(transA ? rec1(transpose(a)) : a,
-                                          clipValue)),
-                cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-                bias,
-                scale),
-            true);
->>>>>>> master
       };
       tuner->insert({hash1, alg1});
 
@@ -488,23 +459,12 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // execute algorithm with autotuning
       return tuner->run();
 
-<<<<<<< HEAD
-    }
-    else {
+    } else {
       // cpu int8 version
       return cpu::int8::affine(cpu::int8::prepareA(transA ? transpose(a) : a, clipValue),
                                 int8_setup_B(b, transB, clipValue),
                                 bias,
                                 scale);
-=======
-    } else {
-      // cpu int16 version
-      return cpu::int16::affine(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-          bias,
-          scale);
->>>>>>> master
     }
   } else {
     // general version, MKL, CBlas or CUDA

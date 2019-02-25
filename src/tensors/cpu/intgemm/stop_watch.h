@@ -6,7 +6,7 @@
 
 namespace intgemm {
 
-uint64_t rdtsc_begin(uint32_t &processor) {
+static inline uint64_t rdtsc_begin(uint32_t &processor) {
   uint32_t lo, hi;
   __asm__ __volatile__ (
       "cpuid\n\t"
@@ -20,7 +20,7 @@ uint64_t rdtsc_begin(uint32_t &processor) {
   return static_cast<uint64_t>(hi) << 32 | lo;
 }
 
-uint64_t rdtsc_end(uint32_t &processor) {
+static inline uint64_t rdtsc_end(uint32_t &processor) {
   uint32_t lo, hi;
   __asm__ __volatile__ (
       "rdtscp\n\t"

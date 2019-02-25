@@ -8,10 +8,11 @@
 #include <math.h>
 
 int main() {
-  const int A_rows = 1;
+  using intgemm::Index;
+  const Index A_rows = 1;
   // The shared dimension: A's columns and B's rows.
-  const int width = 64;
-  const int B_cols = 8;
+  const Index width = 64;
+  const Index B_cols = 8;
 
   // This is a simple vector class that allocates memory aligned to 64 bytes.
   // You don't have to use it; just use aligned_alloc and friends directly.

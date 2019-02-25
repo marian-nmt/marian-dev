@@ -196,7 +196,7 @@ template <class Register> static inline void Transpose8InLane(
 // 256 272
 // 257 273
 // ... ...
-template <class Quantizer> static inline void PrepareBFor8(const float *input, int8_t *output_shadow, Quantizer q, int rows, int cols) {
+template <class Quantizer> static inline void PrepareBFor8(const float *input, int8_t *output_shadow, Quantizer q, Index rows, Index cols) {
   typedef typename Quantizer::Integer Register;
   // Currently all multipliers have a stride of 8 columns.
   const int kColStride = 8;
@@ -229,7 +229,7 @@ template <class Quantizer> static inline void PrepareBFor8(const float *input, i
   }
 }
 
-template <class Quantizer> static inline void PrepareBFor16(const float *input, int16_t *output_shadow, Quantizer q, int rows, int cols) {
+template <class Quantizer> static inline void PrepareBFor16(const float *input, int16_t *output_shadow, Quantizer q, Index rows, Index cols) {
   typedef typename Quantizer::Integer Register;
   assert(cols % 8 == 0);
   assert(rows % (sizeof(Register) / sizeof(int16_t)) == 0);
@@ -250,7 +250,7 @@ template <class Quantizer> static inline void PrepareBFor16(const float *input, 
 
 /* Select columns of B from PrepareB format to PrepareB format.
  */
-template <class Register> static inline void SelectColumnsOfB(const Register *input, Register *output, int rows_bytes /* number of bytes in a row */, const std::size_t *cols_begin, const std::size_t *cols_end) {
+template <class Register> static inline void SelectColumnsOfB(const Register *input, Register *output, Index rows_bytes /* number of bytes in a row */, const Index *cols_begin, const Index *cols_end) {
   assert(rows_bytes % sizeof(Register) == 0);
   assert((cols_end - cols_begin) % 8 == 0); 
   // Do columns for multiples of 8.

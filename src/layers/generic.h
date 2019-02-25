@@ -4,6 +4,7 @@
 
 #include "data/shortlist.h"
 #include "layers/factory.h"
+#include "tensors/cpu/integer.h"
 
 namespace marian {
 namespace mlp {
@@ -187,12 +188,17 @@ public:
 
     if (shortlist_) {
       if (!cachedShortWt_) { // short versions of parameters are cached within one batch, then clear()ed
-        cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
-        cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
-        if (input->graph()->isOptimized() && device == DeviceType::cpu) {
-          cachedShortWt_ = cpu::int8::prepareB(cachedShortWt_, -1000.0 /* currently unused */);
-          cachedShortWt_ = cpu::int8::selectColumnsB(cachedShortWt_, shortlist_->indices()); // TODO Maybe not necessary anymore?
+        if (graph_->isOptimized() && graph_->getDeviceId().type == DeviceType::cpu) {
+          if (isLegacyUntransposedW) {
+              Wt_ = transpose(Wt_);
+              isLegacyUntransposedW = false;
+          }
+          cachedShortWt_ = marian::cpu::int8::prepareB(cachedShortWt_, -1000.0 /* currently unused */);
+          cachedShortWt_ = marian::cpu::int8::selectColumnsB(cachedShortWt_, shortlist_->indices()); // TODO Maybe not necessary anymore?
+        } else {
+          cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
+        cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
       }
       return affine(input, cachedShortWt_, cachedShortb_, false, /*transB=*/isLegacyUntransposedW ? false : true);
     }

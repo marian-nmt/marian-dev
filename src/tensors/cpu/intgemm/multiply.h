@@ -204,7 +204,7 @@ template <class Register> inline Register Pack0123(Register sum0, Register sum1,
 // A_rows can be anything non-negative.
 // width must be a multiple of the register size.
 // B_cols must be a multiple of 8.
-template <class Integer, class Float> inline void Multiply16(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
+template <class Integer, class Float> inline void Multiply16(const int16_t *A, const int16_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols) {
   assert(width % (sizeof(Integer) / sizeof(int16_t)) == 0);
   assert(B_cols % 8 == 0);
   assert(reinterpret_cast<uintptr_t>(A) % sizeof(Integer) == 0);
@@ -409,7 +409,7 @@ struct Multiply8_C {
   }
 };
 
-template <class Algo, class Integer, class Float> inline void Multiply8_SSE2OrAVX2(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
+template <class Algo, class Integer, class Float> inline void Multiply8_SSE2OrAVX2(const int8_t *A, const int8_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols) {
   assert(width % sizeof(Integer) == 0);
   assert(B_cols % 8 == 0);
   assert(reinterpret_cast<uintptr_t>(A) % sizeof(Integer) == 0);

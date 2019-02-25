@@ -29,7 +29,7 @@ class QuantizeTile16 {
       return Tile(input, input + 8);
     }
 
-    Integer ForReshape(const float *input, int cols) {
+    Integer ForReshape(const float *input, Index cols) {
       // 8 rows in the first 128-bit register, 8 in the second register.
       return Tile(input, input + 8 * cols);
     }
@@ -50,7 +50,7 @@ class QuantizeTile16 {
 } // namespace
 
 // Just quantize everything in order.
-void AVX2_16bit::Quantize(const float *input, int16_t *output, float quant_mult, int size) {
+void AVX2_16bit::Quantize(const float *input, int16_t *output, float quant_mult, Index size) {
   assert(size % 16 == 0);
   assert(reinterpret_cast<uintptr_t>(input) % 32 == 0);
   QuantizeTile16 q(quant_mult);
@@ -75,7 +75,7 @@ class QuantizeTile8 {
       return Tile(input, input + 8, input + 16, input + 24);
     }
 
-    inline __m256i ForReshape(const float *input, int cols) {
+    inline __m256i ForReshape(const float *input, Index cols) {
       // Put higher rows in the second half of the register.  These will jumble
       // around in the same way then conveniently land in the right place.
       return Tile(input, input + 2 * cols, input + 16 * cols, input + 18 * cols);
@@ -110,7 +110,7 @@ class QuantizeTile8 {
 } // namespace
 
 // Just quantize everything in order.
-void AVX2_8bit::Quantize(const float *input, int8_t *output, float quant_mult, int size) {
+void AVX2_8bit::Quantize(const float *input, int8_t *output, float quant_mult, Index size) {
   assert(size % 32 == 0);
   assert(reinterpret_cast<uintptr_t>(input) % 32 == 0);
   QuantizeTile8 q(quant_mult);
@@ -120,27 +120,27 @@ void AVX2_8bit::Quantize(const float *input, int8_t *output, float quant_mult, i
   }
 }
 
-void AVX2_16bit::PrepareB(const float *input, int16_t *output, float quant_mult, int rows, int cols) {
+void AVX2_16bit::PrepareB(const float *input, int16_t *output, float quant_mult, Index rows, Index cols) {
   PrepareBFor16(input, output, QuantizeTile16(quant_mult), rows, cols);
 }
 
-void AVX2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end) {
+void AVX2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, Index rows, const Index *cols_begin, const Index *cols_end) {
   SelectColumnsOfB((const __m256i*)input, (__m256i*)output, rows * 2, cols_begin, cols_end);
 }
 
-void AVX2_8bit::PrepareB(const float *input, int8_t *output, float quant_mult, int rows, int cols) {
+void AVX2_8bit::PrepareB(const float *input, int8_t *output, float quant_mult, Index rows, Index cols) {
   PrepareBFor8(input, output, QuantizeTile8(quant_mult), rows, cols);
 }
 
-void AVX2_8bit::SelectColumnsB(const int8_t *input, int8_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end) {
+void AVX2_8bit::SelectColumnsB(const int8_t *input, int8_t *output, Index rows, const Index *cols_begin, const Index *cols_end) {
   SelectColumnsOfB((const __m256i*)input, (__m256i*)output, rows, cols_begin, cols_end);
 }
 
-void AVX2_16bit::Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
+void AVX2_16bit::Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols) {
   Multiply16<__m256i, __m256>(A, B, C, unquant_mult, A_rows, width, B_cols);
 }
 
-void AVX2_8bit::Multiply(const int8_t *A, const int8_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
+void AVX2_8bit::Multiply(const int8_t *A, const int8_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols) {
   Multiply8_SSE2OrAVX2<Multiply8_AVXAVX2, __m256i, __m256>(A, B, C, unquant_mult, A_rows, width, B_cols);
 }
 

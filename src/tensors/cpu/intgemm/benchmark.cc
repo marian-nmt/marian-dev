@@ -25,7 +25,7 @@ float MaxAbsoluteBaseline(const float *begin, const float *end) {
 }
 
 void BenchmarkMaxAbsolute() {
-  const int size = 4096 * 4096;
+  const Index size = 4096 * 4096;
   AlignedVector<float> v(size);
   for (int i = 0; i < size; ++i) {
     v[i] = (float)rand() / (float)RAND_MAX;
@@ -46,7 +46,7 @@ void BenchmarkMaxAbsolute() {
 }
 
 struct RandomMatrices {
-  RandomMatrices(int A_rows_in, int width_in, int B_cols_in) :
+  RandomMatrices(Index A_rows_in, Index width_in, Index B_cols_in) :
     A_rows(A_rows_in), width(width_in), B_cols(B_cols_in),
     A(A_rows * width), B(width * B_cols) {
     for (int i = 0; i < A_rows * width; i++) {
@@ -58,7 +58,7 @@ struct RandomMatrices {
     }
   }
 
-  const int A_rows, width, B_cols;
+  const Index A_rows, width, B_cols;
   AlignedVector<float> A, B;
 };
 

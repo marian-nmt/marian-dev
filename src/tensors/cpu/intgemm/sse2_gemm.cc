@@ -44,7 +44,7 @@ class QuantizeTile16 {
  * This code: 0.00228409, 0.00204906
  * With _mm_cvtps_pi16 basis: 0.00391884, 0.00390869
  */
-void SSE2_16bit::Quantize(const float *input, int16_t *output, float quant_mult, int size) {
+void SSE2_16bit::Quantize(const float *input, int16_t *output, float quant_mult, Index size) {
   assert(size % 8 == 0);
   assert(reinterpret_cast<uintptr_t>(input) % 16 == 0);
   assert(reinterpret_cast<uintptr_t>(output) % 16 == 0);
@@ -55,15 +55,15 @@ void SSE2_16bit::Quantize(const float *input, int16_t *output, float quant_mult,
   }
 }
 
-void SSE2_16bit::PrepareB(const float *input, int16_t *output, float quant_mult, int rows, int cols) {
+void SSE2_16bit::PrepareB(const float *input, int16_t *output, float quant_mult, Index rows, Index cols) {
   PrepareBFor16(input, output, QuantizeTile16(quant_mult), rows, cols);
 }
 
-void SSE2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, int rows, const std::size_t *cols_begin, const std::size_t *cols_end) {
+void SSE2_16bit::SelectColumnsB(const int16_t *input, int16_t *output, Index rows, const Index *cols_begin, const Index *cols_end) {
   SelectColumnsOfB((const __m128i*)input, (__m128i*)output, rows * 2, cols_begin, cols_end);
 }
 
-void SSE2_16bit::Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
+void SSE2_16bit::Multiply(const int16_t *A, const int16_t *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols) {
   Multiply16<__m128i, __m128>(A, B, C, unquant_mult, A_rows, width, B_cols);
 }
 

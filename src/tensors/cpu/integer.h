@@ -4,6 +4,7 @@
 #include "graph/node.h"
 #include "graph/node_operators_unary.h"
 #include "tensors/cpu/intgemm/intgemm.h"
+#include "common/hash.h"
 
 namespace marian {
 namespace cpu {
@@ -12,7 +13,7 @@ namespace integer {
 struct ScaledNodeOp : public UnaryNodeOp {
   float quantMult_;
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp()};
   }
@@ -46,7 +47,7 @@ template <class Backend> struct PrepareANodeOp : public ScaledNodeOp {
   // TODO(emjotde): map from template argument to Type.
   PrepareANodeOp(Expr a, float clipValue) : ScaledNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return { [=] {
       CalculateQuantMult<typename Backend::Integer>();
       auto c = child(0)->val();
@@ -59,7 +60,7 @@ template <class Backend> struct PrepareANodeOp : public ScaledNodeOp {
     }};
   }
 
-  const std::string type() { return "intPrepareA"; }
+  const std::string type() override { return "intPrepareA"; }
 };
 
 // Seems exessive to have everything duplicated for PrepareB.
@@ -67,7 +68,7 @@ template <class Backend> struct PrepareANodeOp : public ScaledNodeOp {
 template <class Backend> struct PrepareBNodeOp : public ScaledNodeOp {
   PrepareBNodeOp(Expr a, float clipValue) : ScaledNodeOp(a, sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return { [=] {
       CalculateQuantMult<typename Backend::Integer>();
       auto c = child(0)->val();
@@ -80,19 +81,19 @@ template <class Backend> struct PrepareBNodeOp : public ScaledNodeOp {
     }};
   }
 
-  const std::string type() { return "intPrepareB"; }
+  const std::string type() override { return "intPrepareB"; }
 };
 
 template <class Backend> class SelectColumnsBNodeOp : public ScaledNodeOp {
   public:
-    SelectColumnsBNodeOp(Expr a, const std::vector<size_t> &indices)
+    SelectColumnsBNodeOp(Expr a, const std::vector<Word> &indices)
       : ScaledNodeOp(
           a,
           newShape(a, indices),
           sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8),
       indices_(indices) {}
 
-    NodeOps forwardOps() {
+    NodeOps forwardOps() override {
       return { [=] {
         quantMult_ = std::static_pointer_cast<ScaledNodeOp>(child(0))->quantMult_;
         auto c = child(0)->val();
@@ -105,18 +106,18 @@ template <class Backend> class SelectColumnsBNodeOp : public ScaledNodeOp {
       }};
     }
 
-    const std::string type() { return "intSelectColumnsB"; }
+    const std::string type() override { return "intSelectColumnsB"; }
 
-    size_t hash() {
+    size_t hash() override {
       if (!hash_) {
         hash_ = NaryNodeOp::hash();
         for(auto i : indices_)
-          boost::hash_combine(hash_, i);
+          util::hash_combine(hash_, i);
       }
       return hash_;
     }
 
-    bool equal(Expr node) {
+    bool equal(Expr node) override {
       if(!NaryNodeOp::equal(node)) return false;
       Ptr<SelectColumnsBNodeOp> cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
       if (!cnode) return false;
@@ -125,13 +126,13 @@ template <class Backend> class SelectColumnsBNodeOp : public ScaledNodeOp {
 
 
   private:
-    static Shape newShape(Expr a, const std::vector<size_t>& indices) {
+    static Shape newShape(Expr a, const std::vector<Word>& indices) {
       Shape ret = a->shape();
       ret.set(1, indices.size());
       return ret;
     }
 
-    std::vector<std::size_t> indices_;
+    std::vector<Word> indices_;
 };
 
 template <class Backend> class DotNodeOp : public NaryNodeOp {
@@ -155,7 +156,7 @@ public:
     return outShape;
   }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {
       NodeOp(
       typedef typename Backend::Integer Integer;
@@ -174,12 +175,12 @@ public:
     };
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp()};
   }
 
-  const std::string type() { return "dotInt"; }
+  const std::string type() override { return "dotInt"; }
 };
 
 
@@ -205,7 +206,7 @@ public:
     return outShape;
   }
 
-  NodeOps forwardOps() {
+  NodeOps forwardOps() override {
     return {
       NodeOp(
           typedef typename Backend::Integer Integer;
@@ -226,12 +227,12 @@ public:
     };
   }
 
-  NodeOps backwardOps() {
+  NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp()};
   }
 
-  const std::string type() { return "affineInt"; }
+  const std::string type() override { return "affineInt"; }
 };
 } // namespace integer
 
@@ -254,7 +255,7 @@ static inline Expr prepareB(Expr b, float clipValue) {
   return Expression<integer::PrepareBNodeOp<intgemm::Int16> >(b, clipValue);
 }
 
-static inline Expr selectColumnsB(Expr b, const std::vector<size_t> &cols) {
+static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
   return Expression<integer::SelectColumnsBNodeOp<intgemm::Int16> >(b, cols);
 }
 
@@ -279,7 +280,7 @@ static inline Expr prepareB(Expr b, float clipValue) {
   return Expression<integer::PrepareBNodeOp<intgemm::Int8> >(b, clipValue);
 }
 
-static inline Expr selectColumnsB(Expr b, const std::vector<size_t> &cols) {
+static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
   return Expression<integer::SelectColumnsBNodeOp<intgemm::Int8> >(b, cols);
 }
 

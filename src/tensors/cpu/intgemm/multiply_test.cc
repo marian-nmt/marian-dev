@@ -21,7 +21,7 @@
 namespace intgemm {
 
 // Rearrange a tile of simd x unroll entries.
-template <class V> void SlowRearrangeTile(const V *from, V *to, int simd, int unroll, int cols) {
+template <class V> void SlowRearrangeTile(const V *from, V *to, int simd, int unroll, Index cols) {
   for (int i = 0; i < unroll; ++i) {
     for (int j = 0; j < simd; ++j) {
       to[simd * i + j] = from[cols * j + i];
@@ -29,7 +29,7 @@ template <class V> void SlowRearrangeTile(const V *from, V *to, int simd, int un
   }
 }
 
-template <class V> void SlowRearrange(const V *from, V *to, int simd, int unroll, int rows, int cols) {
+template <class V> void SlowRearrange(const V *from, V *to, int simd, int unroll, Index rows, Index cols) {
   for (int c = 0; c < cols; c += unroll) {
     for (int r = 0; r < rows; r += simd) {
       SlowRearrangeTile(from + cols * r + c, to, simd, unroll, cols);
@@ -38,7 +38,7 @@ template <class V> void SlowRearrange(const V *from, V *to, int simd, int unroll
   }
 }
 
-template <class V> void SlowTranspose(const V *from, V *to, int rows, int cols) {
+template <class V> void SlowTranspose(const V *from, V *to, Index rows, Index cols) {
   for (int r = 0; r < rows; ++r) {
     for (int c = 0; c < cols; ++c) {
       to[rows * c + r] = from[cols * r + c];
@@ -84,7 +84,7 @@ void TestTranspose8() {
   }
 }
 
-template <class T> void PrintMatrix(const T *mem, int rows, int cols) {
+template <class T> void PrintMatrix(const T *mem, Index rows, Index cols) {
   for (int r = 0; r < rows; ++r) {
     for (int c = 0; c < cols; ++c) {
       std::cout << std::setw(4) << (int64_t) mem[r * cols + c] << ' ';
@@ -93,7 +93,7 @@ template <class T> void PrintMatrix(const T *mem, int rows, int cols) {
   }
 }
 
-template <class Routine> void TestPrepare(int rows = 32, int cols = 16) {
+template <class Routine> void TestPrepare(Index rows = 32, Index cols = 16) {
   if (intgemm::kCPU < Routine::kUses) return;
   // Create array.
   AlignedVector<float> input(rows * cols);
@@ -125,7 +125,7 @@ template <class Routine> void TestPrepare(int rows = 32, int cols = 16) {
   }
 }
 
-template <class Routine> void TestSelectColumnsB(int rows = 32, int cols = 16) {
+template <class Routine> void TestSelectColumnsB(Index rows = 32, Index cols = 16) {
   if (intgemm::kCPU < Routine::kUses) return;
   AlignedVector<float> input(rows * cols);
   for (int i = 0; i < rows * cols; ++i) {
@@ -135,8 +135,8 @@ template <class Routine> void TestSelectColumnsB(int rows = 32, int cols = 16) {
   AlignedVector<Integer> prepared(rows * cols);
   Routine::PrepareB(input.get(), prepared.get(), 1, rows, cols);
 
-  int kSelectCols = 8;
-  std::size_t select_cols[kSelectCols];
+  int kSelectCols = 24;
+  Index select_cols[kSelectCols];
   for (int i = 0; i < kSelectCols; ++i) {
     select_cols[i] = rand() % cols;
   }
@@ -218,7 +218,7 @@ template <float (*Backend) (const float *, const float *)> void TestMaxAbsolute(
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 // Compute A*B slowly in floats.
-void SlowRefFloat(const float *A, const float *B, float *C, int A_rows, int width, int B_cols) {
+void SlowRefFloat(const float *A, const float *B, float *C, Index A_rows, Index width, Index B_cols) {
   for (int r = 0; r < A_rows; ++r) {
     for (int c = 0; c < B_cols; ++c) {
       float sum = 0.0f;
@@ -231,7 +231,7 @@ void SlowRefFloat(const float *A, const float *B, float *C, int A_rows, int widt
 }
 
 // Compute A*B slowly from integers.
-template <class Integer> void SlowRefInt(const Integer *A, const Integer *B, float *C, float unquant_mult, int A_rows, int width, int B_cols) {
+template <class Integer> void SlowRefInt(const Integer *A, const Integer *B, float *C, float unquant_mult, Index A_rows, Index width, Index B_cols) {
   for (int r = 0; r < A_rows; ++r) {
     for (int c = 0; c < B_cols; ++c) {
       int32_t sum = 0;
@@ -258,7 +258,7 @@ void Compare(const float *float_ref, const float *int_ref, const float *int_test
   std::cout << "Float MSE = " << sqrt(float_sum / size) << "\tInt MSE = " << sqrt(int_sum / size) << std::endl;
 }
 
-template <class Routine> void TestMultiply(int A_rows, int width, int B_cols) {
+template <class Routine> void TestMultiply(Index A_rows, Index width, Index B_cols) {
   typedef typename Routine::Integer Integer;
   if (intgemm::kCPU < Routine::kUses) return;
   std::cout << Routine::kName << "\t" << A_rows << '\t' << width << '\t' << B_cols << '\n';
@@ -295,7 +295,7 @@ template <class Routine> void TestMultiply(int A_rows, int width, int B_cols) {
   Compare(float_C.get(), slowint_C.get(), test_C.get(), A_rows * B_cols);
 }
 
-void TestBoth(int A_rows, int width, int B_cols) {
+void TestBoth(Index A_rows, Index width, Index B_cols) {
 #ifndef INTGEMM_NO_AVX512
   TestMultiply<AVX512_16bit>(A_rows, width, B_cols);
 #endif
@@ -326,19 +326,21 @@ int main(int argc, char ** argv) {
     TestPrepare<AVX512_16bit>(32, 8);
     TestPrepare<AVX512_16bit>(256, 32);
     TestSelectColumnsB<AVX512_8bit>();
-    TestSelectColumnsB<AVX512_16bit>();
+    TestSelectColumnsB<AVX512_16bit>(256, 256);
 #endif
     TestPrepare<AVX2_8bit>(64, 32);
     TestPrepare<AVX2_16bit>(64, 32);
-    TestSelectColumnsB<AVX2_8bit>();
-    TestSelectColumnsB<AVX2_16bit>();
+    TestSelectColumnsB<AVX2_8bit>(256, 256);
+    TestSelectColumnsB<AVX2_16bit>(256, 256);
     TestPrepare<SSSE3_8bit>(16, 8);
     TestPrepare<SSSE3_8bit>(32, 16);
     TestPrepare<SSSE3_8bit>(32, 32);
     TestSelectColumnsB<SSSE3_8bit>();
+    TestSelectColumnsB<SSSE3_8bit>(256, 256);
     TestPrepare<SSE2_16bit>(8, 8);
     TestPrepare<SSE2_16bit>(32, 32);
     TestSelectColumnsB<SSE2_16bit>();
+    TestSelectColumnsB<SSE2_16bit>(256, 256);
     TestMax<__m128>();
     TestMaxAbsolute<SSE2_MaxAbsolute>();
 /*    if (kCPU >= CPU_AVX2) {

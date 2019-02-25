@@ -36,11 +36,6 @@ add_library(marian STATIC
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
   tensors/cpu/tensor_operators.cpp
-
-  #TODO should those be removed?
-  tensors/cpu/sharp/int_gemm.cpp
-  tensors/cpu/sharp/avx_gemm.cpp
-  tensors/cpu/sharp/sse_gemm.cpp
   
   tensors/cpu/intgemm/sse2_gemm.cc
   tensors/cpu/intgemm/ssse3_gemm.cc

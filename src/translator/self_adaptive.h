@@ -152,7 +152,9 @@ public:
     }
 
     auto translations = collector->collect(options_->get<bool>("n-best"));
-    return "{\"output\":\"" + utils::join(translations, "\\n") + "\"}";
+    YAML::Emitter output;
+    output << YAML::DoubleQuoted << YAML::Flow << utils::join(translations, "\\n");
+    return "{\"output\":" + std::string(output.c_str()) + "}";
   }
 
   void run() override {

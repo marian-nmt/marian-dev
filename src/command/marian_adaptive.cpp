@@ -15,11 +15,7 @@ int main(int argc, char **argv) {
   auto options = parseOptions(argc, argv, cli::mode::selfadaptive);
   auto task = New<TrainSelfAdaptive>(options);
 
-  if(!options->has("port")) {
-    timer::Timer timer;
-    task->run();
-    LOG(info, "Total time: {:.5f}s", timer.elapsed());
-  } else {
+  if(options->has("port") && options->get<size_t>("port") != 0) {
     // Initialize web server
     WSServer server;
     server.config.port = options->get<size_t>("port", 8080);
@@ -60,6 +56,10 @@ int main(int argc, char **argv) {
     });
 
     serverThread.join();
+  } else {
+    timer::Timer timer;
+    task->run();
+    LOG(info, "Total time: {:.5f}s", timer.elapsed());
   }
 
   return 0;

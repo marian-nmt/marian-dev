@@ -102,10 +102,6 @@ public:
     builder_->load(graph_, model);
   }
 
-  void init() override {
-    LOG(warn, "Not implemented");
-  }
-
   std::string run(const std::string& json) override {
     //LOG(warn, "REMOVEME Received Json:\n{}", json);
 
@@ -237,14 +233,14 @@ private:
         }
 
         // Make an update step on the copy of the model
-        auto costNode = builder_->build(graphAdapt_, batch);
+        auto lossNode = builder_->build(graphAdapt_, batch);
         graphAdapt_->forward();
-        float cost = costNode->scalar();
+        StaticLoss loss = *lossNode;
         graphAdapt_->backward();
 
         // Notify optimizer and scheduler
         optimizer_->update(graphAdapt_);
-        scheduler->update(cost, batch);
+        scheduler->update(loss, batch);
       }
       if(scheduler->keepGoing())
         scheduler->increaseEpoch();

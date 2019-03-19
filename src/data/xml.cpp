@@ -156,20 +156,12 @@ void processXml(const std::string& line,
           std::vector< std::string > translationWords;
           utils::trim(translation);
           utils::split(translation, translationWords, " ");
-          std::cerr << "new option (" << startPos << "," << endPos << ") " << translation
-                    << ", size " << translationWords.size() << "\n";
 
           // TODO: make sure that the third argument (inference) should be set to true
           Words translation_words = target_vocab->encode(translation, /* addEos= */ false, true);
 
-          std::cerr << "encoded size " << translation_words.size() << "\n";
-          std::cerr << "word id = " << translation_words[0] << "\n";
           Ptr<XmlOption> xmlOption = New<XmlOption>(startPos, endPos, translation_words);
           xmlOptions->push_back( xmlOption );
-          Ptr<XmlOption> option = xmlOption;
-          const Words &output = option->getOutput();
-          std::cerr << "created XmlOption " << option << ": " << option->getStart() << "-"
-                    << option->getEnd() << ", output length " << output.size() << "\n";
         }
       }
     }

@@ -467,13 +467,6 @@ public:
   const Ptr<XmlOptionsList> getXmlOptionsList() const { return xmlOptionsList_; }
   void setXmlOptionsList(Ptr<XmlOptionsList> xopsl) {
     xmlOptionsList_ = xopsl;
-    // XML TODO: remove debugs
-    std::cerr << "setXmlOptionsList " << xopsl << "\n";
-    std::cerr << "xopsl->size() = " << xopsl->size() << ", " << (*xopsl)[0] << "\n";
-    const Ptr<XmlOptions> xops = (*xopsl)[0];
-    std::cerr << "xops->size() = " << xops->size();
-    if (xops->size() > 0) std::cerr << ", " << (*xops)[0];
-    std::cerr << "\n";
   }
 
   /**

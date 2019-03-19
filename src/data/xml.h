@@ -51,10 +51,6 @@ private:
 public:
   XmlOptionCovered(const Ptr<XmlOption> option)
       : started_(false), covered_(false), alignmentCost_(0.0f), position_(0), option_(option) {
-    // XML TODO: debugs
-    const Words& output = option->getOutput();
-    std::cerr << "created XmlOptionCovered from option " << option << ": " << option->getStart()
-              << "-" << option->getEnd() << ", output length " << output.size() << "\n";
   }
 
   XmlOptionCovered(const XmlOptionCovered& covered)
@@ -63,11 +59,6 @@ public:
         alignmentCost_(covered.getAlignmentCost()),
         position_(covered.getPosition()),
         option_(covered.getOption()) {
-    // XML TODO: debugs
-    const Ptr<XmlOption> option = covered.getOption();
-    const Words& output = option->getOutput();
-    std::cerr << "created XmlOptionCovered from covered " << option->getStart() << "-"
-              << option->getEnd() << ", output length " << output.size() << "\n";
   }
 
   bool getStarted() const { return started_; }
@@ -103,18 +94,13 @@ public:
   }
 
   void addAlignmentCost(const std::vector<float>& alignments) {
-    // XML TODO: debugs
-    std::cerr << "alignment cost for span " << option_->getStart() << "-" << option_->getEnd()
-              << ":";
     float sum = 0.0f;
     for(size_t i = option_->getStart(); i < option_->getEnd(); i++) {
-      std::cerr << " " << alignments[i];
       sum += alignments[i];
     }
     if(sum < 0.001)
       sum = 0.001;  // floor
     alignmentCost_ += std::log(sum);
-    std::cerr << " --log--> " << std::log(sum) << ", alignmentCost_ " << alignmentCost_ << "\n";
   }
 };
 

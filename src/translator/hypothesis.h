@@ -23,9 +23,7 @@ public:
       : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {
     // create XmlOptionCovered objects
     xmlOptionCovered_ = New<data::XmlOptionCoveredList>();
-    std::cerr << "Hypothesis xmlOptions " << xmlOptions << "\n";
     for(size_t i = 0; i < xmlOptions->size(); i++) {
-      std::cerr << "Hypothesis xmlOption " << (*xmlOptions)[i] << "\n";
       data::XmlOptionCovered covered((*xmlOptions)[i]);
       xmlOptionCovered_->push_back(covered);
     }
@@ -67,7 +65,6 @@ public:
       Words targetWords;
       for (auto hyp = this; hyp->GetPrevHyp(); hyp = hyp->GetPrevHyp().get()) {
           targetWords.push_back(hyp->GetWord());
-          // std::cerr << hyp->GetWord() << " " << hyp << std::endl;
       }
       std::reverse(targetWords.begin(), targetWords.end());
       return targetWords;

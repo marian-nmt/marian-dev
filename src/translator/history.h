@@ -34,8 +34,6 @@ public:
           // TODO: refactorize and make sure 'xml-violation-penalty' is not used unless --xml-input
           // is specified
           pathScore += xmlPenalty_ * beam[j]->GetXmlStatus();
-          std::cerr << "Add " << history_.size() << " " << j << " " << pathScore
-                    << " (penalty= " << xmlPenalty_ << ")" << std::endl;
           topHyps_.push({history_.size(), j, pathScore});
         }
     }

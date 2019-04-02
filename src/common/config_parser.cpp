@@ -405,6 +405,20 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+
+  cli.add<int>("--compress-bit",
+     "Model compression bit. Set 32 to disable",
+      32);
+  cli.add<float>("--compress-base",
+     "Model compression base",
+     2.0);
+  cli.add<float>("--compress-clip",
+     "Clip before compression. set 0 to disable",
+     0.0);
+  cli.add<int>("--compress-interval",
+     "Compress model every N steps",
+     1);
+
   // add ULR settings
   addSuboptionsULR(cli);
   // clang-format on

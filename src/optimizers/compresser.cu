@@ -56,14 +56,10 @@ namespace marian {
     cudaSetDevice(t->getDeviceId().no);
     int threads = 512;
     int blocksSample = 1 + t->size() / threads;
-    static int wow = 0;
-    if (wow < 10 && t->getDeviceId().no == 0)
-      LOG(info, " ori:   {}", t->get(0));
+    
     // clip first
     if (clipRange > 0.0)
       gClip<<<blocksSample, threads>>>(t->data(), t->size(), clipRange);
-    if (wow < 10 &&  t->getDeviceId().no == 0)
-      LOG(info, " clip:  {}", t->get(0));
 
     // get max element in Tensor
     thrust::device_ptr<float> d_ptr(t->data());
@@ -76,8 +72,5 @@ namespace marian {
     
     // compress by log quantization
     gQuantize<<<blocksSample, threads>>>(t->data(), t->size(), (1<<(bit-1)) - 1, base, max);
-    if (wow < 10 && t->getDeviceId().no == 0)
-      LOG(info, " final:  {}", t->get(0));
-    wow++;
   }	
 }

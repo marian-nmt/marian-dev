@@ -36,17 +36,24 @@ namespace marian {
     if(idx >= size)
       return;
 
+    // get sign flag
     bool isNeg = false;
       if (data[idx] < 0) {
       isNeg = true;
       data[idx] *= -1;
     }
 
+    // compute the log of the parameter
     data[idx] /= max;
     int center = round(log(data[idx]) / log(base));
+    
+    // clip the center to [0, 2^(bit-1)-1]    
     if (center < -num_centers)
       center = -num_centers;
+    if (center > 0)
+      center = 0;
 
+    // revert back to floating point representation
     data[idx] = std::pow(base, center) * max;
     if (isNeg)
       data[idx] *= -1;
@@ -68,7 +75,7 @@ namespace marian {
     max = std::max(max, min);
 
     // get maximum center
-    max = std::pow(base, std::floor(std::log(max) / std::log(base)));
+    max = std::pow(base, std::round(std::log(max) / std::log(base)));
     
     // compress by log quantization
     gQuantize<<<blocksSample, threads>>>(t->data(), t->size(), (1<<(bit-1)) - 1, base, max);

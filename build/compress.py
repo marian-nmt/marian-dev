@@ -22,7 +22,7 @@ def log_b(tensor, base):
 def log_quantize(tensor, bit, base):
   # find max quantization center
   max = np.max(np.abs(tensor))
-  max = base ** math.floor(math.log(max) / math.log(base))
+  max = base ** round(math.log(max) / math.log(base))
 
   # scale down
   tensor = tensor / max

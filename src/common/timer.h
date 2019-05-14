@@ -15,6 +15,7 @@
 #endif
 
 #include <chrono>
+#include <iostream>
 #include <sstream>
 
 namespace marian {

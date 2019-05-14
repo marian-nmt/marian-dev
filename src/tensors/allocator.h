@@ -104,14 +104,14 @@ private:
     std::set<Gap> oldGaps;
     gaps_.swap(oldGaps);
 
-    for(auto gap : oldGaps)
+    for(const auto& gap : oldGaps)
       gaps_.insert(Gap(device_->data() + std::distance(oldData, gap.data()),
                        gap.size()));
     insertGap(Gap(device_->data() + oldSize, add));
 
     std::unordered_map<uint8_t*, Ptr<MemoryPiece>> oldAllocated;
     allocated_.swap(oldAllocated);
-    for(auto it : oldAllocated) {
+    for(const auto& it : oldAllocated) {
       uint8_t* newPtr = device_->data() + std::distance(oldData, it.first);
       allocated_[newPtr] = oldAllocated[it.first];
       allocated_[newPtr]->setPtr(newPtr);
@@ -122,13 +122,21 @@ private:
     size = align(size);
     auto it = std::lower_bound(gaps_.begin(), gaps_.end(), Gap(nullptr, size));
 
-    if(throw_ && it == gaps_.end()) {
-      throw AllocationException(available_, size);
-    }
+    if (it == gaps_.end()) {
+      if (throw_) {
+        throw AllocationException(available_, size);
+      }
 
-    // @TODO: compact memory before re-allocation attempt, maybe by left shifting memory over currently largest gap
-    while(it == gaps_.end()) {
-      grow(step_);
+      size_t last_gap_size = 0;
+      for (const auto& gap : gaps_) {
+        if (gap.data() + gap.size() == device_->data() + device_->size()) {
+          last_gap_size = gap.size();
+          break;
+        }
+      }
+
+      // @TODO: compact memory before re-allocation attempt, maybe by left shifting memory over currently largest gap
+      grow(std::max(step_, size - last_gap_size));
       it = std::lower_bound(gaps_.begin(), gaps_.end(), Gap(nullptr, size));
     }
 

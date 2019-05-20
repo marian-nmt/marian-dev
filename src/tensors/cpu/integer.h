@@ -9,7 +9,7 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
-namespace {
+namespace { // anonymous namespace
 
 inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
 inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
@@ -17,7 +17,13 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
 template <typename Backend>
 constexpr Type TypeFromBackend() { return Type(TypeClass::signed_type + sizeof(typename Backend::Integer)); };
 
-}
+template <typename Backend>
+using IsSupportedBackend = typename std::enable_if<
+  std::is_same<Backend, intgemm::Int8>::value ||
+  std::is_same<Backend, intgemm::Int16>::value,
+  void>::type;
+
+} // anonymous namespace
 
 struct OnlyForInferenceNodeOp : public NaryNodeOp {
   OnlyForInferenceNodeOp(const std::vector<Expr>& nodes,
@@ -55,8 +61,8 @@ struct QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
 };
 
 // Prepare A for multiplication.
-// Expected template argument: intgemm::Int16 or intgemm::Int8.
-template <class Backend> struct PrepareANodeOp : public OnlyForInferenceNodeOp {
+template <class Backend, typename = IsSupportedBackend<Backend>>
+struct PrepareANodeOp : public OnlyForInferenceNodeOp {
   PrepareANodeOp(Expr input, Expr quantize_mult, float clipValue)
       : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
@@ -76,9 +82,10 @@ template <class Backend> struct PrepareANodeOp : public OnlyForInferenceNodeOp {
   const std::string type() override { return "intPrepareA"; }
 };
 
+// Prepare B for multiplication.
 // Seems exessive to have everything duplicated for PrepareB.
-// Expected template argument: intgemm::Int16 or intgemm::Int8.
-template <class Backend> struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
+template <class Backend, typename = IsSupportedBackend<Backend>>
+struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
   PrepareBNodeOp(Expr input, Expr quantize_mult, float clipValue)
       : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
@@ -98,7 +105,8 @@ template <class Backend> struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
   const std::string type() override { return "intPrepareB"; }
 };
 
-template <class Backend> class SelectColumnsBNodeOp : public OnlyForInferenceNodeOp {
+template <class Backend>
+class SelectColumnsBNodeOp : public OnlyForInferenceNodeOp {
   public:
     SelectColumnsBNodeOp(Expr input, const std::vector<Word> &indices)
         : OnlyForInferenceNodeOp({input}, newShape(input, indices), TypeFromBackend<Backend>()), indices_(indices) {}
@@ -143,7 +151,8 @@ template <class Backend> class SelectColumnsBNodeOp : public OnlyForInferenceNod
     std::vector<Word> indices_;
 };
 
-template <class Backend> class DotNodeOp : public OnlyForInferenceNodeOp {
+template <class Backend>
+class DotNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
 
@@ -185,8 +194,8 @@ public:
   const std::string type() override { return "dotInt"; }
 };
 
-
-template <class Backend> class AffineNodeOp : public OnlyForInferenceNodeOp {
+template <class Backend>
+class AffineNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
 
@@ -231,6 +240,7 @@ public:
 
   const std::string type() override { return "affineInt"; }
 };
+
 } // namespace integer
 
 namespace int16 {

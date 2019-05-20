@@ -179,8 +179,6 @@ struct NaryNodeOp : public Node {
 
   virtual ~NaryNodeOp() {}
 
-  std::vector<Expr>& children() override { return children_; }
-
   virtual size_t hash() override {
     if(!hash_) {
       std::size_t seed = util::hash<std::string>()(name());

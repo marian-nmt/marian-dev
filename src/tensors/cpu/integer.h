@@ -14,6 +14,9 @@ namespace {
 inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
 inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
 
+template <typename Backend>
+constexpr Type TypeFromBackend() { return Type(TypeClass::signed_type + sizeof(typename Backend::Integer)); };
+
 }
 
 struct OnlyForInferenceNodeOp : public NaryNodeOp {
@@ -40,7 +43,7 @@ struct QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
       if (input->type() != Type::float32) {
         ABORT("Trying to quantize non-float");
       }
-      if (sizeof(typename Backend::Integer) == 2) {
+      if (TypeFromBackend<Backend>() == Type::int16) {
         *val_->data() = 1024.0f;
       } else {
         *val_->data() = 127.0f / intgemm::MaxAbsolute(input->data(), input->data() + input->shape().elements());
@@ -54,9 +57,8 @@ struct QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
 // Prepare A for multiplication.
 // Expected template argument: intgemm::Int16 or intgemm::Int8.
 template <class Backend> struct PrepareANodeOp : public OnlyForInferenceNodeOp {
-  // TODO(emjotde): map from template argument to Type.
   PrepareANodeOp(Expr input, Expr quantize_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
+      : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -78,7 +80,7 @@ template <class Backend> struct PrepareANodeOp : public OnlyForInferenceNodeOp {
 // Expected template argument: intgemm::Int16 or intgemm::Int8.
 template <class Backend> struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
   PrepareBNodeOp(Expr input, Expr quantize_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8) {}
+      : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -99,7 +101,7 @@ template <class Backend> struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
 template <class Backend> class SelectColumnsBNodeOp : public OnlyForInferenceNodeOp {
   public:
     SelectColumnsBNodeOp(Expr input, const std::vector<Word> &indices)
-        : OnlyForInferenceNodeOp({input}, newShape(input, indices), sizeof(typename Backend::Integer) == 2 ? Type::int16 : Type::int8), indices_(indices) {}
+        : OnlyForInferenceNodeOp({input}, newShape(input, indices), TypeFromBackend<Backend>()), indices_(indices) {}
 
     NodeOps forwardOps() override {
       return {NodeOp(

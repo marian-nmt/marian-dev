@@ -15,17 +15,18 @@ inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
 inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
 
 template <typename Backend>
-constexpr Type TypeFromBackend() { return Type(TypeClass::signed_type + sizeof(typename Backend::Integer)); };
-
-template <typename Backend>
-using IsSupportedBackend = typename std::enable_if<
+using EnableIfBackendIsSupported = typename std::enable_if<
   std::is_same<Backend, intgemm::Int8>::value ||
   std::is_same<Backend, intgemm::Int16>::value,
   void>::type;
 
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+constexpr Type TypeFromBackend() { return Type(TypeClass::signed_type + sizeof(typename Backend::Integer)); };
+
 } // anonymous namespace
 
-struct OnlyForInferenceNodeOp : public NaryNodeOp {
+class OnlyForInferenceNodeOp : public NaryNodeOp {
+public:
   OnlyForInferenceNodeOp(const std::vector<Expr>& nodes,
                          Shape shape,
                          Type value_type = Type::float32)
@@ -39,8 +40,9 @@ struct OnlyForInferenceNodeOp : public NaryNodeOp {
   }
 };
 
-template <class Backend>
-struct QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+class QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
+public:
   QuantizeMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {}
 
   NodeOps forwardOps() override {
@@ -78,8 +80,9 @@ inline NodeOps prepareMatrixForwardOps(Node* node, PrepareMatrixFun prepare_matr
 
 } // anonymous namespace
 
-template <class Backend, typename = IsSupportedBackend<Backend>>
-struct PrepareANodeOp : public OnlyForInferenceNodeOp {
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+class PrepareANodeOp : public OnlyForInferenceNodeOp {
+public:
   PrepareANodeOp(Expr input, Expr quantize_mult, float clipValue)
       : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
@@ -90,8 +93,9 @@ struct PrepareANodeOp : public OnlyForInferenceNodeOp {
   const std::string type() override { return "intPrepareA"; }
 };
 
-template <class Backend, typename = IsSupportedBackend<Backend>>
-struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+class PrepareBNodeOp : public OnlyForInferenceNodeOp {
+public:
   PrepareBNodeOp(Expr input, Expr quantize_mult, float clipValue)
       : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
@@ -102,53 +106,53 @@ struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
   const std::string type() override { return "intPrepareB"; }
 };
 
-template <class Backend>
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class SelectColumnsBNodeOp : public OnlyForInferenceNodeOp {
-  public:
-    SelectColumnsBNodeOp(Expr input, const std::vector<Word> &indices)
-        : OnlyForInferenceNodeOp({input}, newShape(input, indices), TypeFromBackend<Backend>()), indices_(indices) {}
+public:
+  SelectColumnsBNodeOp(Expr input, const std::vector<Word> &indices)
+      : OnlyForInferenceNodeOp({input}, newShape(input, indices), TypeFromBackend<Backend>()), indices_(indices) {}
 
-    NodeOps forwardOps() override {
-      return {NodeOp(
-        auto input = child(0)->val();
-        Backend::SelectColumnsB(
-            (const typename Backend::Integer*)input->data(),
-            val_->data<typename Backend::Integer>(),
-            rows(input),
-            &*indices_.begin(),
-            &*indices_.end());
-      )};
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      auto input = child(0)->val();
+      Backend::SelectColumnsB(
+          (const typename Backend::Integer*)input->data(),
+          val_->data<typename Backend::Integer>(),
+          rows(input),
+          &*indices_.begin(),
+          &*indices_.end());
+    )};
+  }
+
+  const std::string type() override { return "intSelectColumnsB"; }
+
+  size_t hash() override {
+    if (!hash_) {
+      hash_ = NaryNodeOp::hash();
+      for(auto i : indices_)
+        util::hash_combine(hash_, i);
     }
+    return hash_;
+  }
 
-    const std::string type() override { return "intSelectColumnsB"; }
+  bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node)) return false;
+    Ptr<SelectColumnsBNodeOp> cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
+    if (!cnode) return false;
+    return indices_ == cnode->indices_;
+  }
 
-    size_t hash() override {
-      if (!hash_) {
-        hash_ = NaryNodeOp::hash();
-        for(auto i : indices_)
-          util::hash_combine(hash_, i);
-      }
-      return hash_;
-    }
+private:
+  static Shape newShape(Expr a, const std::vector<Word>& indices) {
+    Shape ret = a->shape();
+    ret.set(1, indices.size());
+    return ret;
+  }
 
-    bool equal(Expr node) override {
-      if(!NaryNodeOp::equal(node)) return false;
-      Ptr<SelectColumnsBNodeOp> cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
-      if (!cnode) return false;
-      return indices_ == cnode->indices_;
-    }
-
-  private:
-    static Shape newShape(Expr a, const std::vector<Word>& indices) {
-      Shape ret = a->shape();
-      ret.set(1, indices.size());
-      return ret;
-    }
-
-    std::vector<Word> indices_;
+  std::vector<Word> indices_;
 };
 
-template <class Backend>
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class DotNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
@@ -188,10 +192,10 @@ public:
     )};
   }
 
-  const std::string type() override { return "dotInt"; }
+  const std::string type() override { return "intDot"; }
 };
 
-template <class Backend>
+template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class AffineNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
@@ -235,68 +239,40 @@ public:
     )};
   }
 
-  const std::string type() override { return "affineInt"; }
+  const std::string type() override { return "intAffine"; }
 };
 
 } // namespace integer
 
-namespace int16 {
+#define API_IMPLEMENTATION(backend)                                                  \
+  static inline Expr dot(Expr a, Expr b, float scalar) {                             \
+    return Expression<integer::DotNodeOp<backend>>(a, b, scalar);                    \
+  }                                                                                  \
+  static inline Expr affine(Expr a, Expr b, Expr c, float scalar) {                  \
+    std::vector<Expr> nodes = {a, b, c};                                             \
+    return Expression<integer::AffineNodeOp<backend>>(nodes, scalar);                \
+  }                                                                                  \
+  static inline Expr quantizeMult(Expr a) {                                          \
+    return Expression<integer::QuantizeMultNodeOp<backend>>(a);                      \
+  }                                                                                  \
+  static inline Expr prepareA(Expr a, Expr quantizeMult, float clipValue) {          \
+    return Expression<integer::PrepareANodeOp<backend>>(a, quantizeMult, clipValue); \
+  }                                                                                  \
+  static inline Expr prepareB(Expr b, Expr quantizeMult, float clipValue) {          \
+    return Expression<integer::PrepareBNodeOp<backend>>(b, quantizeMult, clipValue); \
+  }                                                                                  \
+  static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {         \
+    return Expression<integer::SelectColumnsBNodeOp<backend>>(b, cols);              \
+  }
 
-static inline Expr dot(Expr a, Expr b, float scalar) {
-  return Expression<integer::DotNodeOp<intgemm::Int16>>(a, b, scalar);
-}
-
-static inline Expr affine(Expr a, Expr b, Expr c, float scalar) {
-  std::vector<Expr> nodes = {a, b, c};
-  return Expression<integer::AffineNodeOp<intgemm::Int16>>(nodes, scalar);
-}
-
-static inline Expr quantizeMult(Expr a) {
-  return Expression<integer::QuantizeMultNodeOp<intgemm::Int16>>(a);
-}
-
-static inline Expr prepareA(Expr a, Expr quantize_mult, float clipValue) {
-  return Expression<integer::PrepareANodeOp<intgemm::Int16>>(a, quantize_mult, clipValue);
-}
-
-static inline Expr prepareB(Expr b, Expr quantize_mult, float clipValue) {
-  return Expression<integer::PrepareBNodeOp<intgemm::Int16>>(b, quantize_mult, clipValue);
-}
-
-static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
-  return Expression<integer::SelectColumnsBNodeOp<intgemm::Int16>>(b, cols);
-}
-
-} // namespace int16
 
 namespace int8 {
-
-static inline Expr dot(Expr a, Expr b, float scalar) {
-  return Expression<integer::DotNodeOp<intgemm::Int8>>(a, b, scalar);
+API_IMPLEMENTATION(intgemm::Int8)
 }
 
-static inline Expr affine(Expr a, Expr b, Expr c, float scalar) {
-  std::vector<Expr> nodes = {a, b, c};
-  return Expression<integer::AffineNodeOp<intgemm::Int8>>(nodes, scalar);
+namespace int16 {
+API_IMPLEMENTATION(intgemm::Int16)
 }
-
-static inline Expr quantizeMult(Expr a) {
-  return Expression<integer::QuantizeMultNodeOp<intgemm::Int8>>(a);
-}
-
-static inline Expr prepareA(Expr a, Expr quantize_mult, float clipValue) {
-  return Expression<integer::PrepareANodeOp<intgemm::Int8>>(a, quantize_mult, clipValue);
-}
-
-static inline Expr prepareB(Expr b, Expr quantize_mult, float clipValue) {
-  return Expression<integer::PrepareBNodeOp<intgemm::Int8>>(b, quantize_mult, clipValue);
-}
-
-static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
-  return Expression<integer::SelectColumnsBNodeOp<intgemm::Int8>>(b, cols);
-}
-
-} // namespace int8
 
 }
 }

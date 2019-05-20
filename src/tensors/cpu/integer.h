@@ -60,46 +60,43 @@ struct QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
   const std::string type() override { return "intMaxAbs"; }
 };
 
-// Prepare A for multiplication.
+namespace { // anonymous namespace
+
+template <typename Integer, typename PrepareMatrixFun>
+inline NodeOps prepareMatrixForwardOps(Node* node, PrepareMatrixFun prepare_matrix_fun) {
+  return {NodeOp(
+    auto input = node->child(0)->val();
+    auto quantize_mult = node->child(1)->val();
+    prepare_matrix_fun(
+        input->data(),
+        node->val()->data<Integer>(),
+        *quantize_mult->data(),
+        rows(input),
+        input->shape()[-1]);
+  )};
+}
+
+} // anonymous namespace
+
 template <class Backend, typename = IsSupportedBackend<Backend>>
 struct PrepareANodeOp : public OnlyForInferenceNodeOp {
   PrepareANodeOp(Expr input, Expr quantize_mult, float clipValue)
       : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
   NodeOps forwardOps() override {
-    return {NodeOp(
-      auto input = child(0)->val();
-      auto quantize_mult = child(1)->val();
-      Backend::PrepareA(
-          input->data(),
-          val_->data<typename Backend::Integer>(),
-          *quantize_mult->data(),
-          rows(input),
-          input->shape()[-1]);
-    )};
+    return prepareMatrixForwardOps<typename Backend::Integer>(this, Backend::PrepareA);
   }
 
   const std::string type() override { return "intPrepareA"; }
 };
 
-// Prepare B for multiplication.
-// Seems exessive to have everything duplicated for PrepareB.
 template <class Backend, typename = IsSupportedBackend<Backend>>
 struct PrepareBNodeOp : public OnlyForInferenceNodeOp {
   PrepareBNodeOp(Expr input, Expr quantize_mult, float clipValue)
       : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
   NodeOps forwardOps() override {
-    return {NodeOp(
-      auto input = child(0)->val();
-      auto quantize_mult = child(1)->val();
-      Backend::PrepareB(
-          input->data(),
-          val_->data<typename Backend::Integer>(),
-          *quantize_mult->data(),
-          rows(input),
-          input->shape()[-1]);
-    )};
+    return prepareMatrixForwardOps<typename Backend::Integer>(this, Backend::PrepareB);
   }
 
   const std::string type() override { return "intPrepareB"; }

@@ -6,22 +6,13 @@ include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
-#Compile GEMM routines for specific CPU architectures.
-set_source_files_properties(tensors/cpu/intgemm/sse2_gemm.cc PROPERTIES COMPILE_FLAGS -msse2)
-set_source_files_properties(tensors/cpu/intgemm/ssse3_gemm.cc PROPERTIES COMPILE_FLAGS "-msse2 -mssse3")
-set_source_files_properties(tensors/cpu/intgemm/avx2_gemm.cc PROPERTIES COMPILE_FLAGS -mavx2)
-set_source_files_properties(tensors/cpu/intgemm/avx512_gemm.cc PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512bw -mavx512dq")
-
-try_compile(AVX512 "${CMAKE_BINARY_DIR}/compile_tests" "${CMAKE_SOURCE_DIR}/src/tensors/cpu/intgemm/compile_test_avx512.cc"
+try_compile(AVX512 "${CMAKE_BINARY_DIR}/compile_tests" "${CMAKE_SOURCE_DIR}/src/3rd_party/intgemm/compile_test_avx512.cc"
   #Hack: pass compiler arguments as definitions because the test code overrides CXX_FLAGS :'(
   COMPILE_DEFINITIONS -mavx512f -mavx512bw -mavx512dq)
 
-if (AVX512)
-  set(AVX512_GEMM tensors/cpu/intgemm/avx512_gemm.cc)
-else()
-  set(AVX512_GEMM)
+if(NOT AVX512)
   message("Not building AVX512-based multiplication because your compiler is too old.\nFor details rerun cmake with --debug-trycompile then try to build in compile_tests/CMakeFiles/CMakeTmp.")
-  set_source_files_properties(tensors/cpu/intgemm/intgemm.cc PROPERTIES COMPILE_DEFINITIONS "INTGEMM_NO_AVX512")
+  set_source_files_properties(${CMAKE_SOURCE_DIR}/src/3rd_party/intgemm/intgemm.cc PROPERTIES COMPILE_DEFINITIONS "INTGEMM_NO_AVX512")
 endif()
 
 add_library(marian STATIC
@@ -54,12 +45,8 @@ add_library(marian STATIC
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
   tensors/cpu/tensor_operators.cpp
-  
-  tensors/cpu/intgemm/sse2_gemm.cc
-  tensors/cpu/intgemm/ssse3_gemm.cc
-  tensors/cpu/intgemm/avx2_gemm.cc
-  "${AVX512_GEMM}"
-  tensors/cpu/intgemm/intgemm.cc
+
+  3rd_party/intgemm/intgemm.cc
 
   graph/expression_graph.cpp
   graph/expression_operators.cpp

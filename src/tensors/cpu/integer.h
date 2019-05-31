@@ -1,10 +1,10 @@
 #pragma once
 
-#include "tensors/cpu/bias.h"
+#include "3rd_party/intgemm/intgemm.h"
+#include "common/hash.h"
 #include "graph/node.h"
 #include "graph/node_operators_unary.h"
-#include "tensors/cpu/intgemm/intgemm.h"
-#include "common/hash.h"
+#include "tensors/cpu/bias.h"
 
 namespace marian {
 namespace cpu {
@@ -159,13 +159,13 @@ public:
   NodeOps forwardOps() override {
     return {
       NodeOp(
-      typedef typename Backend::Integer Integer;
-      Backend::Multiply(
+          using Integer = typename Backend::Integer;
+          using intgemm::JustUnquantizeC;
+
+          Backend::Multiply(
             (const Integer*)child(0)->val()->data(),
             (const Integer*)child(1)->val()->data(),
-            val_->data(),
-            // TODO(emjotde): please can we just directly expose the quantization multiplier?
-            scalar_ / (std::static_pointer_cast<ScaledNodeOp>(child(0))->quantMult_ * std::static_pointer_cast<ScaledNodeOp>(child(1))->quantMult_),
+            JustUnquantizeC(val_->data(), scalar_ / (std::static_pointer_cast<ScaledNodeOp>(child(0))->quantMult_ * std::static_pointer_cast<ScaledNodeOp>(child(1))->quantMult_)),
             // Number of rows in A
             child(0)->val()->shape().elements() / child(0)->val()->shape()[-1],
             // Shared dimension.
@@ -209,13 +209,13 @@ public:
   NodeOps forwardOps() override {
     return {
       NodeOp(
-          typedef typename Backend::Integer Integer;
+          using Integer = typename Backend::Integer;
+          using intgemm::JustUnquantizeC;
+
           Backend::Multiply(
             (const Integer*)child(0)->val()->data(),
             (const Integer*)child(1)->val()->data(),
-            val_->data(),
-            // TODO(emjotde): please can we just directly expose the quantization multiplier?
-            scalar_ / (std::static_pointer_cast<PrepareANodeOp<Integer> >(child(0))->quantMult_ * std::static_pointer_cast<PrepareBNodeOp<Integer> >(child(1))->quantMult_),
+            JustUnquantizeC(val_->data(), scalar_ / (std::static_pointer_cast<PrepareANodeOp<Integer> >(child(0))->quantMult_ * std::static_pointer_cast<PrepareBNodeOp<Integer> >(child(1))->quantMult_)),
             // Number of rows in A
             child(0)->val()->shape().elements() / child(0)->val()->shape()[-1],
             // Shared dimension.

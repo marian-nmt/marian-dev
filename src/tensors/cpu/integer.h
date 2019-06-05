@@ -221,7 +221,7 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
       using Integer = typename Backend::Integer;
-      using intgemm::JustUnquantizeC;
+      using intgemm::BiasAddUnquantizeC;
 
       auto a = child(0)->val();
       auto b = child(1)->val();
@@ -230,12 +230,12 @@ public:
       Backend::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
-          JustUnquantizeC(val_->data(), scalar_ / (a_scale * b_scale)),
+          BiasAddUnquantizeC(val_->data(), child(2)->val()->data(), scalar_ / (a_scale * b_scale)),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
 
-      AddBias(val_, child(2)->val());
+      //AddBias(val_, child(2)->val());
     )};
   }
 

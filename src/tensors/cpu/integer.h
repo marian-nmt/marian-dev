@@ -48,9 +48,9 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
       auto input = child(0)->val();
-      if (input->type() != Type::float32) {
-        ABORT("Trying to quantize non-float");
-      }
+
+      ABORT_IF(input->type() != Type::float32, "Trying to quantize non-float");
+
       if (TypeFromBackend<Backend>() == Type::int16) {
         *val_->data() = 1024.0f;
       } else {
@@ -164,12 +164,13 @@ public:
   Shape newShape(Expr a, Expr b) {
     auto shapeA = a->shape();
     auto shapeB = b->shape();
+
     assert(shapeB[-1] % 8 == 0);
+    ABORT_IF(shapeA[-1] != shapeB[-2],
+             "matrix product requires dimensions to match");
 
     Shape outShape = shapeA;
     outShape.set(-1, shapeB[-1]);
-    ABORT_IF(shapeA[-1] != shapeB[-2],
-             "matrix product requires dimensions to match");
     return outShape;
   }
 
@@ -203,18 +204,22 @@ private:
 public:
   AffineNodeOp(const std::vector<Expr>& nodes,
                float scalar)
-      : OnlyForInferenceNodeOp(nodes, newShape(nodes[0], nodes[1])),
+      : OnlyForInferenceNodeOp(nodes, newShape(nodes[0], nodes[1], nodes[2])),
         scalar_(scalar) {}
 
-  Shape newShape(Expr a, Expr b) {
+  Shape newShape(Expr a, Expr b, Expr bias) {
     auto shapeA = a->shape();
     auto shapeB = b->shape();
+    auto shapeBias = bias->shape();
+
     assert(shapeB[-1] % 8 == 0);
+    ABORT_IF(shapeA[-1] != shapeB[-2],
+             "matrix product requires dimensions to match");
+    ABORT_IF(shapeB[-1] != shapeBias[-1],
+             "dimension mismatch between B matrix and bias vector");
 
     Shape outShape = shapeA;
     outShape.set(-1, shapeB[-1]);
-    ABORT_IF(shapeA[-1] != shapeB[-2],
-             "matrix product requires dimensions to match");
     return outShape;
   }
 
@@ -225,17 +230,16 @@ public:
 
       auto a = child(0)->val();
       auto b = child(1)->val();
+      auto bias = child(2)->val();
       auto a_scale = *child(0)->child(1)->val()->data();
       auto b_scale = *child(1)->child(1)->val()->data();
       Backend::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), child(2)->val()->data(), scalar_ / (a_scale * b_scale)),
+          BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (a_scale * b_scale)),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
-
-      //AddBias(val_, child(2)->val());
     )};
   }
 

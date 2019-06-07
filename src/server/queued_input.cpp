@@ -1,5 +1,6 @@
 #include "data/text_input.h"
 #include "common/utils.h"
+#include "queued_input.h"
 
 namespace marian {
 namespace data {
@@ -25,9 +26,13 @@ QueuedInput::QueuedInput(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
   , timeout_(options ? options->get<int>("queue-timeout",100) : 100)
 { }
 
-// QueuedInput is mainly used for inference in the server mode, not for training, so skipping too long
-// or ill-formed inputs is not necessary here
+// QueuedInput is mainly used for inference in the server mode, not
+// for training, so skipping too long or ill-formed inputs is not
+// necessary here
 SentenceTuple QueuedInput::next(bool starts_batch) {
+  // Use a longer timeout when starting a batch, because if there's no
+  // input in that case, no one is waiting for a reponse, so response
+  // latency isn't an issue.
   std::chrono::milliseconds timeout = starts_batch ? 1000 : timeout_;
 
   Ptr<TranslationJob> job;
@@ -40,7 +45,8 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
         std::istringstream buf((job->second)[i]);
       std::string line;
       if(io::getline(buf, line)) {
-        Words words = vocabs_[i]->encode(line, /*addEOS =*/ true, /*inference =*/ inference_);
+        // second, third parameter below: addEOS, inference mode?
+        Words words = vocabs_[i]->encode(line,true,inference_);
         if(words.empty())
           words.push_back(DEFAULT_EOS_ID);
         tup.push_back(words);

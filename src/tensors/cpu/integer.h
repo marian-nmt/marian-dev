@@ -202,10 +202,8 @@ private:
   float scalar_;
 
 public:
-  AffineNodeOp(const std::vector<Expr>& nodes,
-               float scalar)
-      : OnlyForInferenceNodeOp(nodes, newShape(nodes[0], nodes[1], nodes[2])),
-        scalar_(scalar) {}
+  AffineNodeOp(Expr a, Expr b, Expr bias, float scalar)
+      : OnlyForInferenceNodeOp({a, b, bias}, newShape(a, b, bias)), scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b, Expr bias) {
     auto shapeA = a->shape();
@@ -252,9 +250,8 @@ public:
   static inline Expr dot(Expr a, Expr b, float scalar) {                             \
     return Expression<integer::DotNodeOp<backend>>(a, b, scalar);                    \
   }                                                                                  \
-  static inline Expr affine(Expr a, Expr b, Expr c, float scalar) {                  \
-    std::vector<Expr> nodes = {a, b, c};                                             \
-    return Expression<integer::AffineNodeOp<backend>>(nodes, scalar);                \
+  static inline Expr affine(Expr a, Expr b, Expr bias, float scalar) {               \
+    return Expression<integer::AffineNodeOp<backend>>(a, b, bias, scalar);           \
   }                                                                                  \
   static inline Expr quantizeMult(Expr a) {                                          \
     return Expression<integer::QuantizeMultNodeOp<backend>>(a);                      \

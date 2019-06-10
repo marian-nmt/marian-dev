@@ -1,5 +1,5 @@
-// TODO: This is really a .CPP file now. I kept the .H name to minimize confusing git, until this is code-reviewed.
-// This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
+// TODO: This is really a .CPP file now. I kept the .H name to minimize confusing git, until this is
+// code-reviewed. This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
 
 #pragma once
 
@@ -156,6 +156,32 @@ public:
     return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
+  Expr Maracon(const std::string& prefix, const Expr input) const {
+	const int maraconDim = opt<int>("maracon-dim");
+	const std::string& mod = opt<string>("maracon-mod");
+	const double factor = opt<double>("marcon-factor");
+	const double reluDropProb = opt<double>("marcon-relu-drop-prob");
+	const double dropProb = opt<double>("marcon-drop-prob");
+		
+	if (mod != "identical" && mod != "new") {
+	  ABORT("Unknown marcon mod '{}'", mod);
+	}
+
+	string parmName = prefix + (mod == "identical"?"":"_maracon");
+
+	const int input_dim = input->shape()[-1];
+	Wo1 = graph_->param(parmName + "_Wo1", {input_dim, maraconDim}, inits::glorot_uniform);
+	bo1 = graph_->param(parmName + "_bo1", {1, maraconDim}, inits::zeros);
+	Wo2 = graph_->param(parmName + "_Wo2", {maraconDim, input_dim}, inits::glorot_uniform);
+	bo2 = graph_->param(parmName + "_bo2", {1, input_dim }, inits::zeros);
+
+	output = relu(affine(input, Wo1) + bo1);
+	output = dropout(output, reluDropProb);
+	output = affine(output, Wo2) + bo2;
+	output = dropout(output, dropProb);
+	return input + output * factor;
+  }
+
   Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
     auto output = input;
     for(auto op : ops) {
@@ -165,6 +191,9 @@ public:
       // layer normalization
       else if (op == 'n')
         output = layerNorm(output, prefix, "_pre");
+	  // Maracon.
+	  else if (op == 'm') 
+		  output = Maracon(prefix+ "_pre", output);
       else
         ABORT("Unknown pre-processing operation '{}'", op);
     }

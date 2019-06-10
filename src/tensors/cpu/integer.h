@@ -41,9 +41,9 @@ public:
 };
 
 template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
-class QuantizeMultNodeOp : public OnlyForInferenceNodeOp {
+class QuantMultNodeOp : public OnlyForInferenceNodeOp {
 public:
-  QuantizeMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {}
+  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {}
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -59,7 +59,7 @@ public:
     )};
   }
 
-  const std::string type() override { return "intQuantizeMult"; }
+  const std::string type() override { return "intQuantMult"; }
 };
 
 namespace { // anonymous namespace
@@ -68,11 +68,11 @@ template <typename Integer, typename PrepareMatrixFun>
 inline NodeOps prepareMatrixForwardOps(Node* node, PrepareMatrixFun prepare_matrix_fun) {
   return {NodeOp(
     auto input = node->child(0)->val();
-    auto quantize_mult = node->child(1)->val();
+    auto quant_mult = node->child(1)->val();
     prepare_matrix_fun(
         input->data(),
         node->val()->data<Integer>(),
-        *quantize_mult->data(),
+        *quant_mult->data(),
         rows(input),
         input->shape()[-1]);
   )};
@@ -83,8 +83,8 @@ inline NodeOps prepareMatrixForwardOps(Node* node, PrepareMatrixFun prepare_matr
 template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class PrepareANodeOp : public OnlyForInferenceNodeOp {
 public:
-  PrepareANodeOp(Expr input, Expr quantize_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
+  PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
   NodeOps forwardOps() override {
     return prepareMatrixForwardOps<typename Backend::Integer>(this, Backend::PrepareA);
@@ -96,8 +96,8 @@ public:
 template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class PrepareBNodeOp : public OnlyForInferenceNodeOp {
 public:
-  PrepareBNodeOp(Expr input, Expr quantize_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quantize_mult}, input->shape(), TypeFromBackend<Backend>()) {}
+  PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), TypeFromBackend<Backend>()) {}
 
   NodeOps forwardOps() override {
     return prepareMatrixForwardOps<typename Backend::Integer>(this, Backend::PrepareB);
@@ -152,26 +152,47 @@ private:
   std::vector<Word> indices_;
 };
 
+/*
+*                   +-----------+
+*                   |    Dot    |
+*                   +-----------+
+*                         |
+*         +----------+----------+----------+
+*         |          |          |          |
+*  +-------------+   |   +-------------+   |
+*  | Quantized A |   |   | Quantized B |   |
+*  +-------------+   |   +-------------+   |
+*             +-------------+       +-------------+
+*             | QuantMult A |       | QuantMult B |
+*             +-------------+       +-------------+
+*/
 template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class DotNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
 
 public:
-  DotNodeOp(Expr a, Expr b, float scalar)
-      : OnlyForInferenceNodeOp({a, b}, newShape(a, b)), scalar_(scalar) {}
+  DotNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, float scalar)
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult}, newShape(a, b)), scalar_(scalar) {
+    ABORT_IF(children().size() != 4, "expected 4 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "a cannot be null");
+    ABORT_IF(child(1) == nullptr, "quantize mult of A cannot be null");
+    ABORT_IF(child(2) == nullptr, "quantize mult of B cannot be null");
+    ABORT_IF(child(3) == nullptr, "a cannot be null");
+
+    // Check alignment
+    assert(child(2)->shape()[-1] % 8 == 0);
+
+    // Check dimmensions
+    ABORT_IF(child(0)->shape()[-1] != child(2)->shape()[-2], "matrices cannot be multiplied because there's a dimension mismatch");
+  }
 
   Shape newShape(Expr a, Expr b) {
-    auto shapeA = a->shape();
-    auto shapeB = b->shape();
-
-    assert(shapeB[-1] % 8 == 0);
-    ABORT_IF(shapeA[-1] != shapeB[-2],
-             "matrix product requires dimensions to match");
-
-    Shape outShape = shapeA;
-    outShape.set(-1, shapeB[-1]);
-    return outShape;
+    Shape result = a->shape();
+    result.set(-1, b->shape()[-1]);
+    return result;
   }
 
   NodeOps forwardOps() override {
@@ -180,13 +201,13 @@ public:
       using intgemm::JustUnquantizeC;
 
       auto a = child(0)->val();
-      auto b = child(1)->val();
-      auto a_scale = *child(0)->child(1)->val()->data();
-      auto b_scale = *child(1)->child(1)->val()->data();
+      auto quant_mult_a = child(1)->val();
+      auto b = child(2)->val();
+      auto quant_mult_b = child(3)->val();
       Backend::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
-          JustUnquantizeC(val_->data(), scalar_ / (a_scale * b_scale)),
+          JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
@@ -196,29 +217,49 @@ public:
   const std::string type() override { return "intDot"; }
 };
 
+/*
+*                         +-----------+
+*                         |  Affine   |
+*                         +-----------+
+*                               |
+*         +----------+----------+----------+----------+
+*         |          |          |          |          |
+*  +-------------+   |   +-------------+   |      +-------+
+*  | Quantized A |   |   | Quantized B |   |      | Bias  |
+*  +-------------+   |   +-------------+   |      +-------+
+*             +-------------+       +-------------+
+*             | QuantMult A |       | QuantMult B |
+*             +-------------+       +-------------+
+*/
 template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
 class AffineNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
 
 public:
-  AffineNodeOp(Expr a, Expr b, Expr bias, float scalar)
-      : OnlyForInferenceNodeOp({a, b, bias}, newShape(a, b, bias)), scalar_(scalar) {}
+  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar)
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b, bias)), scalar_(scalar) {
+    ABORT_IF(children().size() != 5, "expected 5 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "a cannot be null");
+    ABORT_IF(child(1) == nullptr, "quantize mult of A cannot be null");
+    ABORT_IF(child(2) == nullptr, "quantize mult of B cannot be null");
+    ABORT_IF(child(3) == nullptr, "a cannot be null");
+    ABORT_IF(child(4) == nullptr, "bias cannot be null");
+
+    // Check alignment
+    assert(child(2)->shape()[-1] % 8 == 0);
+
+    // Check dimmensions
+    ABORT_IF(child(0)->shape()[-1] != child(2)->shape()[-2], "matrices cannot be multiplied because there's a dimension mismatch");
+    ABORT_IF(child(2)->shape()[-1] != child(4)->shape()[-1], "bias cannot be added because there's a dimension mismatch");
+  }
 
   Shape newShape(Expr a, Expr b, Expr bias) {
-    auto shapeA = a->shape();
-    auto shapeB = b->shape();
-    auto shapeBias = bias->shape();
-
-    assert(shapeB[-1] % 8 == 0);
-    ABORT_IF(shapeA[-1] != shapeB[-2],
-             "matrix product requires dimensions to match");
-    ABORT_IF(shapeB[-1] != shapeBias[-1],
-             "dimension mismatch between B matrix and bias vector");
-
-    Shape outShape = shapeA;
-    outShape.set(-1, shapeB[-1]);
-    return outShape;
+    Shape result = a->shape();
+    result.set(-1, b->shape()[-1]);
+    return result;
   }
 
   NodeOps forwardOps() override {
@@ -227,14 +268,14 @@ public:
       using intgemm::BiasAddUnquantizeC;
 
       auto a = child(0)->val();
-      auto b = child(1)->val();
-      auto bias = child(2)->val();
-      auto a_scale = *child(0)->child(1)->val()->data();
-      auto b_scale = *child(1)->child(1)->val()->data();
+      auto quant_mult_a = child(1)->val();
+      auto b = child(2)->val();
+      auto quant_mult_b = child(3)->val();
+      auto bias = child(4)->val();
       Backend::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (a_scale * b_scale)),
+          BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
@@ -246,24 +287,24 @@ public:
 
 } // namespace integer
 
-#define API_IMPLEMENTATION(backend)                                                  \
-  static inline Expr dot(Expr a, Expr b, float scalar) {                             \
-    return Expression<integer::DotNodeOp<backend>>(a, b, scalar);                    \
-  }                                                                                  \
-  static inline Expr affine(Expr a, Expr b, Expr bias, float scalar) {               \
-    return Expression<integer::AffineNodeOp<backend>>(a, b, bias, scalar);           \
-  }                                                                                  \
-  static inline Expr quantizeMult(Expr a) {                                          \
-    return Expression<integer::QuantizeMultNodeOp<backend>>(a);                      \
-  }                                                                                  \
-  static inline Expr prepareA(Expr a, Expr quantizeMult, float clipValue) {          \
-    return Expression<integer::PrepareANodeOp<backend>>(a, quantizeMult, clipValue); \
-  }                                                                                  \
-  static inline Expr prepareB(Expr b, Expr quantizeMult, float clipValue) {          \
-    return Expression<integer::PrepareBNodeOp<backend>>(b, quantizeMult, clipValue); \
-  }                                                                                  \
-  static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {         \
-    return Expression<integer::SelectColumnsBNodeOp<backend>>(b, cols);              \
+#define API_IMPLEMENTATION(backend)                                                                          \
+  static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {               \
+    return Expression<integer::DotNodeOp<backend>>(a, quant_mult_a, b, quant_mult_b, scalar);                \
+  }                                                                                                          \
+  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) { \
+    return Expression<integer::AffineNodeOp<backend>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);       \
+  }                                                                                                          \
+  static inline Expr quantMult(Expr a) {                                                                     \
+    return Expression<integer::QuantMultNodeOp<backend>>(a);                                                 \
+  }                                                                                                          \
+  static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {                                    \
+    return Expression<integer::PrepareANodeOp<backend>>(a, quant_mult, clipValue);                           \
+  }                                                                                                          \
+  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {                                    \
+    return Expression<integer::PrepareBNodeOp<backend>>(b, quant_mult, clipValue);                           \
+  }                                                                                                          \
+  static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {                                 \
+    return Expression<integer::SelectColumnsBNodeOp<backend>>(b, cols);                                      \
   }
 
 

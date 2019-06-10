@@ -359,7 +359,7 @@ Expr int8_setup_B(Expr b, bool transB, float clipValue) {
     if(transB) ABORT("Transposing prepared values isn't supported.");
     return b;
   } else {
-    return cpu::int8::prepareB(transB ? transpose(b) : b, marian::cpu::int8::quantizeMult(b), clipValue);
+    return cpu::int8::prepareB(transB ? transpose(b) : b, marian::cpu::int8::quantMult(b), clipValue);
   }
 }
 } // namespace
@@ -371,9 +371,12 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
-    return cpu::int8::dot(cpu::int8::prepareA(transA ? transpose(a) : a,
-                          marian::cpu::int8::quantizeMult(a), clipValue),
-                          int8_setup_B(b, transB, clipValue),
+    auto quant_mult_a = marian::cpu::int8::quantMult(a);
+    auto quant_mult_b = marian::cpu::int8::quantMult(b);
+    return cpu::int8::dot(cpu::int8::prepareA(transA ? transpose(a) : a, quant_mult_a, clipValue),
+                          quant_mult_a,
+                          cpu::int8::prepareB(transB ? transpose(b) : b, quant_mult_b, clipValue),
+                          quant_mult_b,
                           scale);
   }
   else {
@@ -424,11 +427,15 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       };
       auto alg1 = [=]() {
         // TODO(emjotde) choice of 16 or 8 bit.
+        auto quant_mult_a = marian::cpu::int8::quantMult(a);
+        auto quant_mult_b = marian::cpu::int8::quantMult(b);
         return rec1(cpu::int8::affine(rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a,
-                                           marian::cpu::int8::quantizeMult(a), clipValue)),
-                                      int8_setup_B(b, transB, clipValue),
-                                      bias,
-                                      scale),
+                                quant_mult_a, clipValue)),
+                                quant_mult_a,
+                                cpu::int8::prepareB(transB ? transpose(b) : b, quant_mult_b, clipValue),
+                                quant_mult_b,
+                                bias,
+                                scale),
                     true);
       };
       tuner->insert({hash1, alg1});
@@ -463,9 +470,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
     } else {
       // cpu int8 version
+      auto quant_mult_a = marian::cpu::int8::quantMult(a);
+      auto quant_mult_b = marian::cpu::int8::quantMult(b);
       return cpu::int8::affine(cpu::int8::prepareA(transA ? transpose(a) : a,
-                                                   marian::cpu::int8::quantizeMult(a), clipValue),
-                               int8_setup_B(b, transB, clipValue),
+                               quant_mult_a, clipValue),
+                               quant_mult_a,
+                               cpu::int8::prepareB(transB ? transpose(b) : b, quant_mult_b, clipValue),
+                               quant_mult_b,
                                bias,
                                scale);
     }

@@ -59,7 +59,7 @@ public:
     )};
   }
 
-  const std::string type() override { return "intMaxAbs"; }
+  const std::string type() override { return "intQuantizeMult"; }
 };
 
 namespace { // anonymous namespace

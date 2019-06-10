@@ -202,6 +202,7 @@ public:
         bestNum_,
         threshold);
 
+    // @TODO: Load and prune in one go.
     load(fname);
     prune(threshold);
 

@@ -9,19 +9,22 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
+template <Type Type_>
+using EnableIfTypeIsSupported = typename std::enable_if<
+  std::integral_constant<bool,
+    (Type_ == Type::int8) ||
+    (Type_ == Type::int16)
+  >::value>::type;
+
 namespace { // anonymous namespace
 
 inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
 inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
 
-template <typename Backend>
-using EnableIfBackendIsSupported = typename std::enable_if<
-  std::is_same<Backend, intgemm::Int8>::value ||
-  std::is_same<Backend, intgemm::Int16>::value,
-  void>::type;
-
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
-constexpr Type TypeFromBackend() { return Type(TypeClass::signed_type + sizeof(typename Backend::Integer)); };
+template <Type Type_> struct backend_s;
+template <> struct backend_s<Type::int8> { using backend = intgemm::Int8; };
+template <> struct backend_s<Type::int16> { using backend = intgemm::Int16; };
+template <Type Type_> using backend = typename backend_s<Type_>::backend;
 
 } // anonymous namespace
 
@@ -40,7 +43,7 @@ public:
   }
 };
 
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class QuantMultNodeOp : public OnlyForInferenceNodeOp {
 public:
   QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {}
@@ -51,7 +54,7 @@ public:
 
       ABORT_IF(input->type() != Type::float32, "Trying to quantize non-float");
 
-      if (TypeFromBackend<Backend>() == Type::int16) {
+      if (Type_ == Type::int16) {
         *val_->data() = 1024.0f;
       } else {
         *val_->data() = 127.0f / intgemm::MaxAbsolute(input->data(), input->data() + input->shape().elements());
@@ -64,9 +67,11 @@ public:
 
 namespace { // anonymous namespace
 
-template <typename Integer, typename PrepareMatrixFun>
+template <Type Type_, typename PrepareMatrixFun>
 inline NodeOps prepareMatrixForwardOps(Node* node, PrepareMatrixFun prepare_matrix_fun) {
   return {NodeOp(
+    using Integer = typename backend<Type_>::Integer;
+
     auto input = node->child(0)->val();
     auto quant_mult = node->child(1)->val();
     prepare_matrix_fun(
@@ -80,44 +85,46 @@ inline NodeOps prepareMatrixForwardOps(Node* node, PrepareMatrixFun prepare_matr
 
 } // anonymous namespace
 
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class PrepareANodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), TypeFromBackend<Backend>()) {}
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {}
 
   NodeOps forwardOps() override {
-    return prepareMatrixForwardOps<typename Backend::Integer>(this, Backend::PrepareA);
+    return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareA);
   }
 
   const std::string type() override { return "intPrepareA"; }
 };
 
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class PrepareBNodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), TypeFromBackend<Backend>()) {}
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {}
 
   NodeOps forwardOps() override {
-    return prepareMatrixForwardOps<typename Backend::Integer>(this, Backend::PrepareB);
+    return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareB);
   }
 
   const std::string type() override { return "intPrepareB"; }
 };
 
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class SelectColumnsBNodeOp : public OnlyForInferenceNodeOp {
 public:
   SelectColumnsBNodeOp(Expr input, const std::vector<Word> &indices)
-      : OnlyForInferenceNodeOp({input}, newShape(input, indices), TypeFromBackend<Backend>()), indices_(indices) {}
+      : OnlyForInferenceNodeOp({input}, newShape(input, indices), Type_), indices_(indices) {}
 
   NodeOps forwardOps() override {
     return {NodeOp(
+      using Integer = typename backend<Type_>::Integer;
+
       auto input = child(0)->val();
-      Backend::SelectColumnsB(
-          (const typename Backend::Integer*)input->data(),
-          val_->data<typename Backend::Integer>(),
+      backend<Type_>::SelectColumnsB(
+          (const Integer*)input->data(),
+          val_->data<Integer>(),
           rows(input),
           &*indices_.begin(),
           &*indices_.end());
@@ -166,7 +173,7 @@ private:
 *             | QuantMult A |       | QuantMult B |
 *             +-------------+       +-------------+
 */
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class DotNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
@@ -197,14 +204,14 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      using Integer = typename Backend::Integer;
+      using Integer = typename backend<Type_>::Integer;
       using intgemm::JustUnquantizeC;
 
       auto a = child(0)->val();
       auto quant_mult_a = child(1)->val();
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
-      Backend::Multiply(
+      backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
           JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
@@ -231,7 +238,7 @@ public:
 *             | QuantMult A |       | QuantMult B |
 *             +-------------+       +-------------+
 */
-template <typename Backend, typename = EnableIfBackendIsSupported<Backend>>
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class AffineNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
@@ -264,7 +271,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      using Integer = typename Backend::Integer;
+      using Integer = typename backend<Type_>::Integer;
       using intgemm::BiasAddUnquantizeC;
 
       auto a = child(0)->val();
@@ -272,7 +279,7 @@ public:
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
       auto bias = child(4)->val();
-      Backend::Multiply(
+      backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
           BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
@@ -285,36 +292,32 @@ public:
   const std::string type() override { return "intAffine"; }
 };
 
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
+struct ops {
+  static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {
+    return Expression<DotNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, scalar);
+  }
+  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) {
+    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);
+  }
+  static inline Expr quantMult(Expr a) {
+    return Expression<QuantMultNodeOp<Type_>>(a);
+  }
+  static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
+    return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);
+  }
+  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {
+    return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue);
+  }
+  static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
+    return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);
+  }
+};
+
 } // namespace integer
 
-#define API_IMPLEMENTATION(backend)                                                                          \
-  static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {               \
-    return Expression<integer::DotNodeOp<backend>>(a, quant_mult_a, b, quant_mult_b, scalar);                \
-  }                                                                                                          \
-  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) { \
-    return Expression<integer::AffineNodeOp<backend>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);       \
-  }                                                                                                          \
-  static inline Expr quantMult(Expr a) {                                                                     \
-    return Expression<integer::QuantMultNodeOp<backend>>(a);                                                 \
-  }                                                                                                          \
-  static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {                                    \
-    return Expression<integer::PrepareANodeOp<backend>>(a, quant_mult, clipValue);                           \
-  }                                                                                                          \
-  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {                                    \
-    return Expression<integer::PrepareBNodeOp<backend>>(b, quant_mult, clipValue);                           \
-  }                                                                                                          \
-  static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {                                 \
-    return Expression<integer::SelectColumnsBNodeOp<backend>>(b, cols);                                      \
-  }
-
-
-namespace int8 {
-API_IMPLEMENTATION(intgemm::Int8)
-}
-
-namespace int16 {
-API_IMPLEMENTATION(intgemm::Int16)
-}
+using int8 = integer::ops<Type::int8>;
+using int16 = integer::ops<Type::int16>;
 
 }
 }

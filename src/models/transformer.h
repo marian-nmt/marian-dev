@@ -156,30 +156,36 @@ public:
     return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
-  Expr Maracon(const std::string& prefix, const Expr input) const {
-	const int maraconDim = opt<int>("maracon-dim");
-	const std::string& mod = opt<string>("maracon-mod");
-	const double factor = opt<double>("marcon-factor");
-	const double reluDropProb = opt<double>("marcon-relu-drop-prob");
-	const double dropProb = opt<double>("marcon-drop-prob");
-		
-	if (mod != "identical" && mod != "new") {
-	  ABORT("Unknown marcon mod '{}'", mod);
-	}
-
-	string parmName = prefix + (mod == "identical"?"":"_maracon");
+  Expr maraconProcess(const std::string& prefix, const Expr input) const {
+	const int maraconDim = opt<int>("macaron-dim");
+	const double factor = opt<double>("macaron-factor");
+	const double reluDropProb = opt<double>("macaron-relu-drop-prob");
+	const double dropProb = opt<double>("macaron-drop-prob");
 
 	const int input_dim = input->shape()[-1];
-	Wo1 = graph_->param(parmName + "_Wo1", {input_dim, maraconDim}, inits::glorot_uniform);
-	bo1 = graph_->param(parmName + "_bo1", {1, maraconDim}, inits::zeros);
-	Wo2 = graph_->param(parmName + "_Wo2", {maraconDim, input_dim}, inits::glorot_uniform);
-	bo2 = graph_->param(parmName + "_bo2", {1, input_dim }, inits::zeros);
+	auto Wo1 = graph_->param(prefix + "_Wo1", {input_dim, maraconDim}, inits::glorot_uniform);
+	auto bo1 = graph_->param(prefix + "_bo1", {1, maraconDim}, inits::zeros);
+	auto Wo2 = graph_->param(prefix + "_Wo2", {maraconDim, input_dim}, inits::glorot_uniform);
+	auto bo2 = graph_->param(prefix + "_bo2", {1, input_dim }, inits::zeros);
 
-	output = relu(affine(input, Wo1) + bo1);
+	Expr output = relu(affine(input, Wo1, bo1));
 	output = dropout(output, reluDropProb);
-	output = affine(output, Wo2) + bo2;
+	output = affine(output, Wo2, bo2);
 	output = dropout(output, dropProb);
 	return input + output * factor;
+  }
+
+  Expr maraconPreProcess(const std::string& prefix, const Expr input) const {
+	const std::string& mod = opt<std::string>("macaron-mod");
+	if (mod != "identical" && mod != "new") {
+	  ABORT("Unknown macaron mod '{}'", mod);
+	}
+	std::string parmName = prefix + (mod == "identical" ? "_maracon" : "_maraconNew");
+	return maraconProcess(parmName, input);
+  }
+
+  Expr maraconPostProcess(const std::string& prefix, const Expr input) const {
+	return maraconProcess(prefix + "_maracon", input);
   }
 
   Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
@@ -193,7 +199,7 @@ public:
         output = layerNorm(output, prefix, "_pre");
 	  // Maracon.
 	  else if (op == 'm') 
-		  output = Maracon(prefix+ "_pre", output);
+		  output = maraconPreProcess(prefix+ "_pre", output);
       else
         ABORT("Unknown pre-processing operation '{}'", op);
     }
@@ -218,6 +224,8 @@ public:
       // layer normalization
       else if(op == 'n')
         output = layerNorm(output, prefix);
+	  else if(op == 'm')
+		output = maraconPostProcess(prefix+ "_pre", output);
       else
         ABORT("Unknown pre-processing operation '{}'", op);
     }

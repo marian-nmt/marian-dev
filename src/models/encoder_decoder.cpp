@@ -59,7 +59,6 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("ulr-dim-emb");
   modelFeatures_.insert("lemma-dim-emb");
 
-  modelFeatures_.insert("macaron-mod");
   modelFeatures_.insert("macaron-dim");
   modelFeatures_.insert("macaron-factor");
   modelFeatures_.insert("macaron-relu-drpo-prob");

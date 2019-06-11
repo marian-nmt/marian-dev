@@ -221,8 +221,11 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--bert-train-type-embeddings", "Train bert type embeddings, set to false to use static sinusoidal embeddings", true);
   cli.add<int>("--bert-type-vocab-size", "Size of BERT type vocab (sentence A and B)", 2);
 
-  cli.add<std::string>("--macaron-mod", "the macron mod (new, identical)", "new");
+  cli.add<bool>("--macaron-enabled", "Use macaron structure", false);
   cli.add<int>("--macaron-dim", "The macaron layer hidden dim.", 1024);
+  cli.add<int>("--macaron-before-depth", "The macaron before depth.", 2);
+  cli.add<int>("--macaron-after-depth", "The macaron after depth.", 2);
+  cli.add<int>("--macaron-normalize-before", "The macaron normalize-before.", false);
   cli.add<double>("--macaron-factor", "The macaron layer factor.", 0.5);
   cli.add<double>("--macaron-relu-drpo-prob", "The macaron layer relu dropout ratio", 0.1);
   cli.add<double>("--macaron-drpo-prob", "The macaron layer dropout ratio", 0.1);

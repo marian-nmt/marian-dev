@@ -156,38 +156,6 @@ public:
     return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
-  Expr maraconProcess(const std::string& prefix, const Expr input) const {
-	const int maraconDim = opt<int>("macaron-dim");
-	const double factor = opt<double>("macaron-factor");
-	const double reluDropProb = opt<double>("macaron-relu-drop-prob");
-	const double dropProb = opt<double>("macaron-drop-prob");
-
-	const int input_dim = input->shape()[-1];
-	auto Wo1 = graph_->param(prefix + "_Wo1", {input_dim, maraconDim}, inits::glorot_uniform);
-	auto bo1 = graph_->param(prefix + "_bo1", {1, maraconDim}, inits::zeros);
-	auto Wo2 = graph_->param(prefix + "_Wo2", {maraconDim, input_dim}, inits::glorot_uniform);
-	auto bo2 = graph_->param(prefix + "_bo2", {1, input_dim }, inits::zeros);
-
-	Expr output = relu(affine(input, Wo1, bo1));
-	output = dropout(output, reluDropProb);
-	output = affine(output, Wo2, bo2);
-	output = dropout(output, dropProb);
-	return input + output * factor;
-  }
-
-  Expr maraconPreProcess(const std::string& prefix, const Expr input) const {
-	const std::string& mod = opt<std::string>("macaron-mod");
-	if (mod != "identical" && mod != "new") {
-	  ABORT("Unknown macaron mod '{}'", mod);
-	}
-	std::string parmName = prefix + (mod == "identical" ? "_maracon" : "_maraconNew");
-	return maraconProcess(parmName, input);
-  }
-
-  Expr maraconPostProcess(const std::string& prefix, const Expr input) const {
-	return maraconProcess(prefix + "_maracon", input);
-  }
-
   Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
     auto output = input;
     for(auto op : ops) {
@@ -197,9 +165,6 @@ public:
       // layer normalization
       else if (op == 'n')
         output = layerNorm(output, prefix, "_pre");
-	  // Maracon.
-	  else if (op == 'm') 
-		  output = maraconPreProcess(prefix+ "_pre", output);
       else
         ABORT("Unknown pre-processing operation '{}'", op);
     }
@@ -224,8 +189,6 @@ public:
       // layer normalization
       else if(op == 'n')
         output = layerNorm(output, prefix);
-	  else if(op == 'm')
-		output = maraconPostProcess(prefix+ "_pre", output);
       else
         ABORT("Unknown pre-processing operation '{}'", op);
     }
@@ -408,6 +371,41 @@ public:
     ABORT("Invalid activation name '{}'", actName);
   }
 
+  Expr MacaronLayerFFN(const std::string& prefix, Expr input, bool isBefore) const {
+	int dimModel = input->shape()[-1];
+
+    const int dimFfn = opt<int>("macaron-dim");
+	const int beforeDepth = opt<int>("macaron-before-depth");
+	const int afterDepth = opt<int>("macaron-after-depth");
+    const int depthFfn = isBefore ? beforeDepth : (afterDepth + 1);
+	const bool normalizeBefore = opt<bool>("macaron-normalize-before");
+	const double macaronFactor = 1.0 / (beforeDepth + afterDepth);
+    const float dropProb = inference_ ? 0 : opt<float>("macaron-drpo-prob");
+	const float reluDropProb = inference_ ? 0 : opt<float>("macaron-relu-drpo-prob");
+	
+    ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
+
+	auto output = input;
+
+    // the stack of FF layers
+	for (int i = 0; i < depthFfn; ++i) {
+		auto residual = output;
+		if (normalizeBefore) {
+			output = layerNorm(output, prefix, std::to_string(i));
+		}
+
+		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc0", dimFfn, (ActivationFunction*)relu, reluDropProb);
+		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc0", dimModel, nullptr, dropProb);
+		output = residual + output * macaronFactor;
+
+		if (!normalizeBefore) {
+			output = layerNorm(output, prefix, std::to_string(i));
+		}
+	}
+	
+    return output;
+  }
+
   Expr LayerFFN(std::string prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 
@@ -568,14 +566,23 @@ public:
 
     // apply encoder layers
     auto encDepth = opt<int>("enc-depth");
+	bool macaronEnabled = opt<bool>("macaron-enabled");
     for(int i = 1; i <= encDepth; ++i) {
+	  if (macaronEnabled) {
+		layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", layer, true);
+	  }
+
       layer = LayerAttention(prefix_ + "_l" + std::to_string(i) + "_self",
                              layer, // query
                              layer, // keys
                              layer, // values
                              layerMask);
 
-      layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+	  if (macaronEnabled) {
+		layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_after", layer, false);
+	  } else {
+        layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+	  }
     }
 
     // restore organization of batch and time steps. This is currently required
@@ -738,7 +745,7 @@ public:
              "Specified layer tying for {} layers, but decoder has {} layers",
              tiedLayers.size(),
              decDepth);
-
+	bool macaronEnabled = opt<bool>("macaron-enabled");
     for(int i = 0; i < decDepth; ++i) {
       std::string layerNo = std::to_string(i + 1);
       if (!tiedLayers.empty())
@@ -747,6 +754,10 @@ public:
       rnn::State prevDecoderState;
       if(prevDecoderStates.size() > 0)
         prevDecoderState = prevDecoderStates[i];
+
+	  if (macaronEnabled) {
+		query = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", query, true);
+	  }
 
       // self-attention
       std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
@@ -787,6 +798,7 @@ public:
             saveAttentionWeights = i == attLayer;
           }
 
+
           query = LayerAttention(prefix,
                                  query,
                                  encoderContexts[j], // keys
@@ -799,8 +811,12 @@ public:
 
       // remember decoder state
       decoderStates.push_back(decoderState);
-
-      query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+	  if (macaronEnabled) {
+		query = MacaronLayerFFN(prefix_ + "_l" + layerNo + "_macaron_after", query, false); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+	  }
+	  else {
+        query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+	  }
     }
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]

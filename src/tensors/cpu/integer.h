@@ -46,7 +46,12 @@ public:
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class QuantMultNodeOp : public OnlyForInferenceNodeOp {
 public:
-  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {}
+  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {
+    ABORT_IF(children().size() != 1, "expected 1 child");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "Input matrix cannot be null");
+  }
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -89,7 +94,13 @@ template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class PrepareANodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {}
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {
+    ABORT_IF(children().size() != 2, "expected 2 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "A cannot be null");
+    ABORT_IF(child(0) == nullptr, "Quant mult of A cannot be null");
+  }
 
   NodeOps forwardOps() override {
     return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareA);
@@ -102,7 +113,13 @@ template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class PrepareBNodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {}
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {
+    ABORT_IF(children().size() != 2, "expected 2 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "B cannot be null");
+    ABORT_IF(child(0) == nullptr, "Quant mult of B cannot be null");
+  }
 
   NodeOps forwardOps() override {
     return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareB);
@@ -115,7 +132,15 @@ template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class SelectColumnsBNodeOp : public OnlyForInferenceNodeOp {
 public:
   SelectColumnsBNodeOp(Expr input, const std::vector<Word> &indices)
-      : OnlyForInferenceNodeOp({input}, newShape(input, indices), Type_), indices_(indices) {}
+      : OnlyForInferenceNodeOp({input}, newShape(input, indices), Type_), indices_(indices) {
+    ABORT_IF(children().size() != 1, "expected 1 child");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "B cannot be null");
+
+    // Check number of selected columns
+    assert(indices.size() % 8 == 0);
+  }
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -162,14 +187,14 @@ private:
 /*
 *                   +-----------+
 *                   |    Dot    |
-*                   +-----------+
+*                   +-----+-----+
 *                         |
-*         +----------+----------+----------+
+*         +----------+----+-----+----------+
 *         |          |          |          |
-*  +-------------+   |   +-------------+   |
+*  +------+------+   |   +------+------+   |
 *  | Quantized A |   |   | Quantized B |   |
 *  +-------------+   |   +-------------+   |
-*             +-------------+       +-------------+
+*             +------+------+       +------+------+
 *             | QuantMult A |       | QuantMult B |
 *             +-------------+       +-------------+
 */
@@ -184,16 +209,16 @@ public:
     ABORT_IF(children().size() != 4, "expected 4 children");
 
     // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "a cannot be null");
-    ABORT_IF(child(1) == nullptr, "quantize mult of A cannot be null");
-    ABORT_IF(child(2) == nullptr, "quantize mult of B cannot be null");
-    ABORT_IF(child(3) == nullptr, "a cannot be null");
+    ABORT_IF(child(0) == nullptr, "A cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
+    ABORT_IF(child(2) == nullptr, "B cannot be null");
+    ABORT_IF(child(3) == nullptr, "Quant mult of B cannot be null");
 
     // Check alignment
     assert(child(2)->shape()[-1] % 8 == 0);
 
     // Check dimmensions
-    ABORT_IF(child(0)->shape()[-1] != child(2)->shape()[-2], "matrices cannot be multiplied because there's a dimension mismatch");
+    ABORT_IF(child(0)->shape()[-1] != child(2)->shape()[-2], "Matrices cannot be multiplied because there's a dimension mismatch");
   }
 
   Shape newShape(Expr a, Expr b) {
@@ -227,14 +252,14 @@ public:
 /*
 *                         +-----------+
 *                         |  Affine   |
-*                         +-----------+
+*                         +-----+-----+
 *                               |
 *         +----------+----------+----------+----------+
 *         |          |          |          |          |
-*  +-------------+   |   +-------------+   |      +-------+
+*  +------+------+   |   +------+------+   |      +---+---+
 *  | Quantized A |   |   | Quantized B |   |      | Bias  |
 *  +-------------+   |   +-------------+   |      +-------+
-*             +-------------+       +-------------+
+*             +------+------+       +------+------+
 *             | QuantMult A |       | QuantMult B |
 *             +-------------+       +-------------+
 */
@@ -249,18 +274,18 @@ public:
     ABORT_IF(children().size() != 5, "expected 5 children");
 
     // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "a cannot be null");
-    ABORT_IF(child(1) == nullptr, "quantize mult of A cannot be null");
-    ABORT_IF(child(2) == nullptr, "quantize mult of B cannot be null");
-    ABORT_IF(child(3) == nullptr, "a cannot be null");
-    ABORT_IF(child(4) == nullptr, "bias cannot be null");
+    ABORT_IF(child(0) == nullptr, "A cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
+    ABORT_IF(child(2) == nullptr, "B cannot be null");
+    ABORT_IF(child(3) == nullptr, "Quant mult of B cannot be null");
+    ABORT_IF(child(4) == nullptr, "Bias cannot be null");
 
     // Check alignment
     assert(child(2)->shape()[-1] % 8 == 0);
 
     // Check dimmensions
-    ABORT_IF(child(0)->shape()[-1] != child(2)->shape()[-2], "matrices cannot be multiplied because there's a dimension mismatch");
-    ABORT_IF(child(2)->shape()[-1] != child(4)->shape()[-1], "bias cannot be added because there's a dimension mismatch");
+    ABORT_IF(child(0)->shape()[-1] != child(2)->shape()[-2], "Matrices cannot be multiplied because there's a dimension mismatch");
+    ABORT_IF(child(2)->shape()[-1] != child(4)->shape()[-1], "Bias cannot be added because there's a dimension mismatch");
   }
 
   Shape newShape(Expr a, Expr b, Expr bias) {

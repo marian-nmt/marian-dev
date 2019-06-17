@@ -1,6 +1,6 @@
 # Unit tests
 add_subdirectory(units)
-
+add_subdirectory(performance)
 
 # Testing apps
 set(APP_TESTS

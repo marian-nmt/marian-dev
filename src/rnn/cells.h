@@ -1075,6 +1075,100 @@ public:
   }
 };
 
+/******************************************************************************/
+
+template <Type Type_, typename = cpu::integer::EnableIfTypeIsSupported<Type_>>
+class SSRUInteger : public Cell {
+private:
+  Expr W_;
+  Expr Wf_, bf_;
+
+  float dropout_;
+  Expr dropMaskX_;
+
+  float layerNorm_;
+  Expr gamma_, gammaf_;
+
+  using impl = cpu::integer::ops<Type_>;
+
+public:
+  SSRUInteger(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
+    int dimInput = options_->get<int>("dimInput");
+    int dimState = options_->get<int>("dimState");
+
+    std::string prefix = options->get<std::string>("prefix");
+
+    ABORT_IF(dimInput != dimState,
+             "For SSRUInteger state and input dims have to be equal");
+
+    dropout_ = opt<float>("dropout", 0);
+    layerNorm_ = opt<bool>("layer-normalization", false);
+
+    W_ = graph->param(
+        prefix + "_W", {dimInput, dimInput}, inits::glorot_uniform);
+
+    Wf_ = graph->param(
+        prefix + "_Wf", {dimInput, dimInput}, inits::glorot_uniform);
+    bf_ = graph->param(prefix + "_bf", {1, dimInput}, inits::zeros);
+
+    if(dropout_ > 0.0f) {
+      dropMaskX_ = graph->dropout(dropout_, {1, dimInput});
+    }
+
+    if(layerNorm_) {
+      if(dimInput)
+        gamma_ = graph->param(prefix + "_gamma", {1, dimState}, inits::ones);
+      gammaf_ = graph->param(prefix + "_gammaf", {1, dimState}, inits::ones);
+    }
+  }
+
+  State apply(std::vector<Expr> inputs, State state, Expr mask = nullptr) {
+    return applyState(applyInput(inputs), state, mask);
+  }
+
+  std::vector<Expr> applyInput(std::vector<Expr> inputs) override {
+    ABORT_IF(inputs.empty(), "SSRUInteger expects input");
+
+    Expr input;
+    if(inputs.size() > 1)
+      input = concatenate(inputs, /*axis =*/ -1);
+    else
+      input = inputs.front();
+
+    auto inputDropped = dropMaskX_ ? dropout(input, dropMaskX_) : input;
+
+    Expr x, f;
+    if(layerNorm_) {
+      x = layerNorm(dot(inputDropped, W_), gamma_);
+      f = layerNorm(dot(inputDropped, Wf_), gammaf_, bf_);
+    } else {
+      x = dot(inputDropped, W_);
+      f = affine(inputDropped, Wf_, bf_);
+    }
+
+    return {x, f};
+  }
+
+  State applyState(std::vector<Expr> xWs, State state, Expr mask = nullptr) override {
+    auto recState = state.output;
+    auto cellState = state.cell;
+
+    auto x = xWs[0];
+    auto f = xWs[1];
+
+    auto nextCellState = highway(cellState, x, f);  // rename to "gate"?
+    auto nextState = relu(nextCellState);
+
+    auto maskedCellState = mask ? mask * nextCellState : nextCellState;
+    auto maskedState = mask ? mask * nextState : nextState;
+
+    return {maskedState, maskedCellState};
+  }
+};
+
+using SSRUInt8 = SSRUInteger<Type::int8>;
+using SSRUInt16 = SSRUInteger<Type::int16>;
+
 // class LSSRU : public Cell {
 // private:
 //   Expr W_;

@@ -2,12 +2,13 @@
 
 #include "common/definitions.h"
 #include "common/options.h"
+#include "common/utils.h"
 #include "data/batch_generator.h"
 #include "graph/expression_graph.h"
 #include "models/model_base.h"
 #include "optimizers/optimizers.h"
-#include "training/scheduler.h"
 #include "training/communicator.h"
+#include "training/scheduler.h"
 
 namespace marian {
 
@@ -69,7 +70,7 @@ public:
     size_t step = options_->get<size_t>("mini-batch-fit-step");
 
     size_t maxLength = options_->get<size_t>("max-length");
-    maxLength = (size_t)(std::ceil(maxLength / (float)step) * step);
+    maxLength = utils::roundUp(maxLength, step);
 
     // this should be only one class label per line on input, hence restricting length to 1
     std::vector<size_t> localMaxes(numFiles, maxLength);

@@ -41,5 +41,10 @@ std::string toUpper(const std::string& s);
 double parseDouble(const std::string& s);
 double parseNumber(std::string s);
 
+/**
+ * Return the lowest integer number greater than 'value' and divided by 'factor'.
+ */
+size_t roundUp(size_t value, size_t factor);
+
 }  // namespace utils
 }  // namespace marian

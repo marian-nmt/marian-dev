@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "common/definitions.h"
+#include "common/utils.h"
 
 namespace marian {
 
@@ -16,7 +17,7 @@ protected:
   size_t alignment_;
 
   size_t align(size_t size) {
-    return (size_t)(ceil(size / (float)alignment_) * alignment_);
+    return utils::roundUp(size, alignment_);
   }
 
 public:

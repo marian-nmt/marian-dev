@@ -173,5 +173,9 @@ double parseNumber(std::string param) {
   return factor * parseDouble(param);
 }
 
+size_t roundUp(size_t value, size_t factor) {
+  return (value + factor - 1) / factor * factor;
+}
+
 }  // namespace utils
 }  // namespace marian

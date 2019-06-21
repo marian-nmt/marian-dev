@@ -24,7 +24,7 @@ public:
     return oss.str();
   }
 
-  void setRNGState(std::string engineState) {
+  void setRNGState(const std::string& engineState) {
     std::istringstream iss(engineState);
     iss >> eng_;
   }

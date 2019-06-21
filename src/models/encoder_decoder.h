@@ -118,7 +118,7 @@ public:
   }
 
   template <typename T>
-  void set(std::string key, T value) {
+  void set(const std::string& key, T value) {
     options_->set(key, value);
   }
 

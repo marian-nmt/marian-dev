@@ -582,7 +582,7 @@ Expr highway(Expr y, Expr x, Expr t) {
   return Expression<HighwayNodeOp>(nodes);
 }
 
-Expr highway(const std::string prefix, Expr x) {
+Expr highway(const std::string& prefix, Expr x) {
   // clang-format off
   size_t outDim = x->shape()[-1];
   auto graph = x->graph();

@@ -104,7 +104,7 @@ static inline void processPaths(
 // without an emitter; consider extracting YAML-related helper functions to a
 // separate file
 // TODO: Look for Frank's function that does that.
-static void OutputYaml(const YAML::Node node, YAML::Emitter& out) {
+static void OutputYaml(const YAML::Node& node, YAML::Emitter& out) {
   std::set<std::string> sorter;
   switch(node.Type()) {
     case YAML::NodeType::Null: out << node; break;

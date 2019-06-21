@@ -87,13 +87,13 @@ void tests(DeviceType type) {
 
     std::vector<float> values;
 
-    auto buildRnn = [&graph] (std::string prefix,
+    auto buildRnn = [&graph] (const std::string& prefix,
                               Expr input, Expr mask,
                               int dimRnn=32,
                               int depth=1,
                               int cellDepth=1,
-                              std::string type="bidirectional",
-                              std::string cellType="gru",
+                              const std::string& type="bidirectional",
+                              const std::string& cellType="gru",
                               bool layerNorm=false,
                               bool skip=false) {
 

@@ -38,7 +38,7 @@ std::string withCommas(size_t n);
 bool endsWith(const std::string& text, const std::string& suffix);
 
 std::string toUpper(const std::string& s);
-double parseDouble(std::string s);
+double parseDouble(const std::string& s);
 double parseNumber(std::string s);
 
 }  // namespace utils

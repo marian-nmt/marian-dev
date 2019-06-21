@@ -141,7 +141,7 @@ public:
 
   // like affine() but with built-in parameters, activation, and dropout
   static inline
-  Expr dense(Expr x, std::string prefix, std::string suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
+  Expr dense(Expr x, const std::string& prefix, const std::string& suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
   {
     auto graph = x->graph();
 
@@ -156,14 +156,14 @@ public:
     return x;
   }
 
-  Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) const {
+  Expr layerNorm(Expr x, const std::string& prefix, const std::string& suffix = std::string()) const {
     int dimModel = x->shape()[-1];
     auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones);
     auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros);
     return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
-  Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
+  Expr preProcess(const std::string& prefix, const std::string& ops, Expr input, float dropProb = 0.0f) const {
     auto output = input;
     for(auto op : ops) {
       // dropout
@@ -178,7 +178,7 @@ public:
     return output;
   }
 
-  Expr postProcess(std::string prefix, std::string ops, Expr input, Expr prevInput, float dropProb = 0.0f) const {
+  Expr postProcess(const std::string& prefix, const std::string& ops, Expr input, Expr prevInput, float dropProb = 0.0f) const {
     auto output = input;
     for(auto op : ops) {
       // dropout
@@ -226,7 +226,7 @@ public:
 
   // determine the multiplicative-attention probability and performs the associative lookup as well
   // q, k, and v have already been split into multiple heads, undergone any desired linear transform.
-  Expr Attention(std::string /*prefix*/,
+  Expr Attention(const std::string& /*prefix*/,
                  Expr q,              // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
                  Expr k,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
                  Expr v,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
@@ -261,7 +261,7 @@ public:
     return output;
   }
 
-  Expr MultiHead(std::string prefix,
+  Expr MultiHead(const std::string& prefix,
                  int dimOut,
                  int dimHeads,
                  Expr q,             // [-4: beam depth * batch size, -3: num heads, -2: max q length, -1: split vector dim]
@@ -326,7 +326,7 @@ public:
     return output;
   }
 
-  Expr LayerAttention(std::string prefix,
+  Expr LayerAttention(const std::string& prefix,
                       Expr input,         // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
                       const Expr& keys,   // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
                       const Expr& values, // ...?
@@ -380,7 +380,7 @@ public:
     ABORT("Invalid activation name '{}'", actName);
   }
 
-  Expr LayerFFN(std::string prefix, Expr input) const {
+  Expr LayerFFN(const std::string& prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
@@ -409,7 +409,7 @@ public:
 
   // Implementation of Average Attention Network Layer (AAN) from
   // https://arxiv.org/pdf/1805.00631.pdf
-  Expr LayerAAN(std::string prefix, Expr x, Expr y) const {
+  Expr LayerAAN(const std::string& prefix, Expr x, Expr y) const {
     int dimModel = x->shape()[-1];
 
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");

@@ -59,8 +59,8 @@ private:
   UPtr<io::InputFileStream> file_;
   std::map<long, std::string> buffer_;
 
-  std::string addToNBest(const std::string nbest,
-                         const std::string feature,
+  std::string addToNBest(const std::string& nbest,
+                         const std::string& feature,
                          float score,
                          const data::SoftAlignment& align = {});
 };

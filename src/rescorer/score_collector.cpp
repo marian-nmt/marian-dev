@@ -109,8 +109,8 @@ void ScoreCollectorNBest::Write(long id,
   ScoreCollector::Write(id, addToNBest(line, fname_, score, align));
 }
 
-std::string ScoreCollectorNBest::addToNBest(const std::string nbest,
-                                            const std::string feature,
+std::string ScoreCollectorNBest::addToNBest(const std::string& nbest,
+                                            const std::string& feature,
                                             float score,
                                             const data::SoftAlignment& align) {
   auto fields = utils::split(nbest, "|||");

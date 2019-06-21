@@ -31,8 +31,8 @@ public:
         trgEosId_(trgEosId),
         trgUnkId_(trgUnkId) {}
 
-  Beams toHyps(const std::vector<unsigned int> keys,
-               const std::vector<float> pathScores,
+  Beams toHyps(const std::vector<unsigned int>& keys,
+               const std::vector<float>& pathScores,
                size_t vocabSize,
                const Beams& beams,
                std::vector<Ptr<ScorerState>>& states,
@@ -105,7 +105,7 @@ public:
   }
 
   std::vector<float> getAlignmentsForHypothesis(
-      const std::vector<float> alignAll,
+      const std::vector<float>& alignAll,
       Ptr<data::CorpusBatch> batch,
       int beamHypIdx,
       int beamIdx) {

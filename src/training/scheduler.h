@@ -72,7 +72,7 @@ private:
     state.updateEta(baselr);
   }
 
-  std::string formatLoss(std::string lossType,
+  std::string formatLoss(const std::string& lossType,
                          bool dispLabelCounts,
                          size_t batchLabels,
                          Ptr<TrainingState> state) {

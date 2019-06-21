@@ -99,7 +99,7 @@ Ptr<ModelBase> EncoderClassifierFactory::construct(Ptr<ExpressionGraph> graph) {
   return add_cost(enccls, options_);
 }
 
-Ptr<ModelBase> by_type(std::string type, usage use, Ptr<Options> options) {
+Ptr<ModelBase> by_type(const std::string& type, usage use, Ptr<Options> options) {
   Ptr<ExpressionGraph> graph = nullptr; // graph unknown at this stage
   // clang-format off
   if(type == "s2s" || type == "amun" || type == "nematus") {

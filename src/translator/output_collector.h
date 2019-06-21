@@ -46,7 +46,7 @@ private:
 class OutputCollector {
 public:
   OutputCollector();
-  OutputCollector(std::string outFile);
+  OutputCollector(const std::string& outFile);
 
   template <class T>
   OutputCollector(T&& arg) : nextId_(0), outStrm_(new io::OutputFileStream(arg)) {}

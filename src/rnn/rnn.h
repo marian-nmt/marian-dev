@@ -54,7 +54,7 @@ private:
   States last_;
 
   States apply(const Expr input,
-               const States initialState,
+               const States& initialState,
                const Expr mask = nullptr) {
     last_.clear();
 

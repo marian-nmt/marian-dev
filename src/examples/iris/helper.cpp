@@ -16,7 +16,7 @@ using namespace marian;
 const int NUM_FEATURES = 4;
 const int NUM_LABELS = 3;
 
-void readIrisData(const std::string fileName,
+void readIrisData(const std::string& fileName,
                   std::vector<float>& features,
                   std::vector<IndexType>& labels) {
   std::map<std::string, IndexType> CLASSES
@@ -69,8 +69,8 @@ void shuffleData(std::vector<float>& features, std::vector<IndexType>& labels) {
   labels = labelsTemp;
 }
 
-float calculateAccuracy(const std::vector<float> probs,
-                        const std::vector<IndexType> labels) {
+float calculateAccuracy(const std::vector<float>& probs,
+                        const std::vector<IndexType>& labels) {
   size_t numCorrect = 0;
   for(size_t i = 0; i < probs.size(); i += NUM_LABELS) {
     auto pred = std::distance(

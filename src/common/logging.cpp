@@ -36,7 +36,7 @@ std::shared_ptr<spdlog::logger> createStderrLogger(const std::string& name,
   return logger;
 }
 
-bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
+bool setLoggingLevel(spdlog::logger& logger, const std::string& level) {
   if(level == "trace")
     logger.set_level(spdlog::level::trace);
   else if(level == "debug")
@@ -130,7 +130,7 @@ static void setErrorHandlers() {
 
 // modify the log pattern for the "general" logger to include the MPI rank
 // This is called upon initializing MPI. It is needed to associated error messages to ranks.
-void switchtoMultinodeLogging(std::string nodeIdStr) {
+void switchtoMultinodeLogging(const std::string& nodeIdStr) {
   Logger log = spdlog::get("general");
   if(log)
     log->set_pattern("[%Y-%m-%d %T " + nodeIdStr + ":%t] %v");

@@ -171,7 +171,7 @@ public:
   // between calls to this. We call it from update(). Unfortunately, newEpoch()
   // is called at the wrong place for this to work, so SchedulingUnit::epoch is forbidden
   // for periods.
-  bool enteredNewPeriodOf(std::string schedulingParam) const {
+  bool enteredNewPeriodOf(const std::string& schedulingParam) const {
     auto period = SchedulingParameter::parse(schedulingParam);
     ABORT_IF(period.unit == SchedulingUnit::epochs,
              "Unit {} is not supported for frequency parameters (the one(s) with value {})",

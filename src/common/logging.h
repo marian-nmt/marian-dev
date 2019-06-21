@@ -99,7 +99,7 @@ class Config;
 }
 
 template <class... Args>
-void checkedLog(std::string logger, std::string level, Args... args) {
+void checkedLog(const std::string& logger, const std::string& level, Args... args) {
   Logger log = spdlog::get(logger);
   if(!log) {
     return;
@@ -123,4 +123,4 @@ void checkedLog(std::string logger, std::string level, Args... args) {
 }
 
 void createLoggers(const marian::Config* options = nullptr);
-void switchtoMultinodeLogging(std::string nodeIdStr);
+void switchtoMultinodeLogging(const std::string& nodeIdStr);

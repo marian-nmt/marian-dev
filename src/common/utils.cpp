@@ -145,7 +145,7 @@ std::string toUpper(const std::string& s) {
   return res;
 }
 
-double parseDouble(std::string s) {
+double parseDouble(const std::string& s) {
   double res;
   char c;  // dummy char -- if we succeed to parse this, then there were extraneous characters after the number
   auto rc = sscanf(s.c_str(), "%lf%c", &res, &c);

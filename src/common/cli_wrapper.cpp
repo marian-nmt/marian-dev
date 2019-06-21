@@ -43,7 +43,7 @@ CLIFormatter::CLIFormatter(size_t columnWidth, size_t screenWidth)
   column_width(columnWidth);
 }
 
-std::string CLIFormatter::make_option_desc(const CLI::Option *opt) const {
+std::string CLIFormatter::make_option_desc(const CLI::Option* opt) const {
   auto desc = opt->get_description();
 
   // TODO: restore guessing terminal width
@@ -72,10 +72,10 @@ std::string CLIFormatter::make_option_desc(const CLI::Option *opt) const {
   return desc;
 }
 
-CLIWrapper::CLIWrapper(YAML::Node &config,
-                       const std::string &description,
-                       const std::string &header,
-                       const std::string &footer,
+CLIWrapper::CLIWrapper(YAML::Node& config,
+                       const std::string& description,
+                       const std::string& header,
+                       const std::string& footer,
                        size_t columnWidth,
                        size_t screenWidth)
     : app_(std::make_shared<CLI::App>(description)),
@@ -101,23 +101,23 @@ CLIWrapper::CLIWrapper(YAML::Node &config,
 }
 
 CLIWrapper::CLIWrapper(Ptr<marian::Options> options,
-                       const std::string &description,
-                       const std::string &header,
-                       const std::string &footer,
+                       const std::string& description,
+                       const std::string& header,
+                       const std::string& footer,
                        size_t columnWidth,
                        size_t screenWidth)
     : CLIWrapper(options->getYaml(), description, header, footer, columnWidth, screenWidth) {}
 
 CLIWrapper::~CLIWrapper() {}
 
-void CLIWrapper::switchGroup(const std::string &name) {
+void CLIWrapper::switchGroup(const std::string& name) {
   currentGroup_ = name.empty() ? defaultGroup_ : name;
 }
 
-void CLIWrapper::parse(int argc, char **argv) {
+void CLIWrapper::parse(int argc, char** argv) {
   try {
     app_->parse(argc, argv);
-  } catch(const CLI::ParseError &e) {
+  } catch(const CLI::ParseError& e) {
     exit(app_->exit(e));
   }
 
@@ -128,14 +128,21 @@ void CLIWrapper::parse(int argc, char **argv) {
   }
 }
 
-std::string CLIWrapper::failureMessage(const CLI::App *app, const CLI::Error &e) {
+std::string CLIWrapper::failureMessage(const CLI::App* app, const CLI::Error& e) {
   std::string header = "Error: " + std::string(e.what()) + "\n";
   if(app->get_help_ptr() != nullptr)
     header += "Run with " + app->get_help_ptr()->get_name() + " for more information.\n";
   return header;
 }
 
-void CLIWrapper::updateConfig(const YAML::Node &config, const std::string& errorMsg) {
+std::string CLIWrapper::keyName(const std::string& args) const {
+  // re-use existing functions from CLI11 to keep option names consistent
+  return std::get<1>(
+              CLI::detail::get_names(CLI::detail::split_names(args)))  // get long names only
+      .front();                                                       // get first long name
+}
+
+void CLIWrapper::updateConfig(const YAML::Node& config, const std::string& errorMsg) {
   std::vector<std::string> invalidKeys;
   auto cmdOptions = getParsedOptionNames();
 
@@ -185,7 +192,7 @@ std::string CLIWrapper::dumpConfig(bool skipDefault /*= false*/) const {
                        + " with version " + buildVersion());
   out << YAML::BeginMap;
   std::string comment;
-  for(const auto &key : getOrderedOptionNames()) {
+  for(const auto& key : getOrderedOptionNames()) {
     // do not proceed keys that are removed from config_
     if(!config_[key])
       continue;
@@ -209,7 +216,7 @@ std::string CLIWrapper::dumpConfig(bool skipDefault /*= false*/) const {
 
 std::unordered_set<std::string> CLIWrapper::getParsedOptionNames() const {
   std::unordered_set<std::string> keys;
-  for(const auto &it : options_)
+  for(const auto& it : options_)
     if(!it.second.opt->empty())
       keys.emplace(it.first);
   return keys;
@@ -218,10 +225,10 @@ std::unordered_set<std::string> CLIWrapper::getParsedOptionNames() const {
 std::vector<std::string> CLIWrapper::getOrderedOptionNames() const {
   std::vector<std::string> keys;
   // extract all option names
-  for(auto const &it : options_)
+  for(auto const& it : options_)
     keys.push_back(it.first);
   // sort option names by creation index
-  sort(keys.begin(), keys.end(), [this](const std::string &a, const std::string &b) {
+  sort(keys.begin(), keys.end(), [this](const std::string& a, const std::string& b) {
     return options_.at(a).idx < options_.at(b).idx;
   });
   return keys;

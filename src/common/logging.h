@@ -123,4 +123,4 @@ void checkedLog(const std::string& logger, const std::string& level, Args... arg
 }
 
 void createLoggers(const marian::Config* options = nullptr);
-void switchtoMultinodeLogging(const std::string& nodeIdStr);
+void switchToMultinodeLogging(const std::string& nodeIdStr);

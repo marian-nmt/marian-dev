@@ -61,7 +61,7 @@ public:
     auto selectedState = New<DecoderState>(
         states_.select(selIdx, beamSize, /*isBatchMajor=*/false), logProbs_, encStates_, batch_);
 
-    // Set positon of new state based on the target token position of current
+    // Set position of new state based on the target token position of current
     // state
     selectedState->setPosition(getPosition());
     return selectedState;

@@ -64,7 +64,7 @@ public:
     return count_->val()->scalar<T>();
   }
 
-  // @TODO: add a funtion for returning maybe ratio?
+  // @TODO: add a function for returning maybe ratio?
 
   size_t size() const {
     ABORT_IF(!count_, "Labels have not been defined");
@@ -191,7 +191,7 @@ public:
  *
  * L = sum_i^N L_i + N/M sum_j^M L_j
  *
- * We set labels to N. When reporting L/N this is equvalient to sum of means.
+ * We set labels to N. When reporting L/N this is equivalent to sum of means.
  * Compare to sum of means below where N is factored into the loss, but labels
  * are set to 1.
  */
@@ -331,7 +331,7 @@ protected:
 
   virtual Expr compute(Expr logits, Expr labelIndices,
                        Expr mask = nullptr, Expr labelWeights = nullptr) override {
-    logits = atleast_3d(logits); // we always assuma a time and batch dimension exists.
+    logits = atleast_3d(logits); // we always assume a time and batch dimension exists.
     // for bert training or classification the time dimension is lot.
     // Here safeguard against 2d classifier output, adds 1 on the left, non-op.
 

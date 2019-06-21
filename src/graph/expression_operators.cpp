@@ -389,7 +389,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // start with new set of algorithms
       tuner->clear();
 
-      // lower precicion for shapes, reduces data sparsity
+      // lower precision for shapes, reduces data sparsity
       auto sh = [](Shape sh) {
         for(size_t i = 0; i < sh.size(); ++i)
           sh.set(i, sh[i] / 4);

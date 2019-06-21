@@ -111,7 +111,7 @@ private:
  * @param mode change the set of available command-line options, e.g. training, translation, etc.
  * @param validate validate parsed options and abort on failure
  *
- * @return parsed otions
+ * @return parsed options
  */
 Ptr<Options> parseOptions(int argc,
                           char** argv,

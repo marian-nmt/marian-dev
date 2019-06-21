@@ -47,7 +47,7 @@ public:
   /**
    * Determine maximal batch size that can fit into the given workspace
    * so that reallocation does not happen. Rather adjust the batch size
-   * based on the stastistics collected here. Activated with
+   * based on the statistics collected here. Activated with
    * `--mini-batch-fit`.
    * In a multi-GPU scenario, the first GPU is used to determine the size.
    * The actual allowed size is then determined by multiplying it with the
@@ -93,7 +93,7 @@ public:
         maxBatch *= 2;
     }
 
-    // Do a binary search for maxmimum batch size that fits into given workspace memory 
+    // Do a binary search for maximum batch size that fits into given workspace memory 
     // for a tested sentence length. 
     for(size_t i = step; i <= maxLength; i += step) {
       size_t start = 1;

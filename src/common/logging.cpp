@@ -130,7 +130,7 @@ static void setErrorHandlers() {
 
 // modify the log pattern for the "general" logger to include the MPI rank
 // This is called upon initializing MPI. It is needed to associated error messages to ranks.
-void switchtoMultinodeLogging(const std::string& nodeIdStr) {
+void switchToMultinodeLogging(const std::string& nodeIdStr) {
   Logger log = spdlog::get("general");
   if(log)
     log->set_pattern("[%Y-%m-%d %T " + nodeIdStr + ":%t] %v");

@@ -109,7 +109,7 @@ void ConfigValidator::validateOptionsTraining() const {
   // validate ULR options
   ABORT_IF((has("ulr") && get<bool>("ulr") && (get<std::string>("ulr-query-vectors") == ""
                                                || get<std::string>("ulr-keys-vectors") == "")),
-           "ULR enablign requires query and keys vectors specified with --ulr-query-vectors and "
+           "ULR enabling requires query and keys vectors specified with --ulr-query-vectors and "
            "--ulr-keys-vectors option");
 }
 

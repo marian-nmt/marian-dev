@@ -73,7 +73,7 @@ struct CLIOptionTuple {
  * getConfig().
  *
  * Options are organized in option groups. Each option group has a header that
- * preceeds all options in the group. The header for the default option group
+ * precedes all options in the group. The header for the default option group
  * can be set from the class constructor.
  */
 class CLIWrapper {

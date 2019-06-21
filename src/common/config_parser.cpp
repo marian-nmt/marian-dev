@@ -57,10 +57,10 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--config,-c",
     "Configuration file(s). If multiple, later overrides earlier");
   cli.add<size_t>("--workspace,-w",
-    "Preallocate  arg  MB of work space",
+    "Preallocate arg MB of work space",
     defaultWorkspace);
   cli.add<std::string>("--log",
-    "Log training process information to file given by  arg");
+    "Log training process information to file given by arg");
   cli.add<std::string>("--log-level",
     "Set verbosity level of logging: trace, debug, info, warn, err(or), critical, off",
     "info");
@@ -291,16 +291,16 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<size_t>("--after-batches",
       "Finish after this many batch updates, 0 is infinity");
   cli.add<std::string/*SchedulerPeriod*/>("--disp-freq",
-      "Display information every  arg  updates (append 't' for every  arg  target labels)",
+      "Display information every arg updates (append 't' for every arg target labels)",
       "1000u");
   cli.add<size_t>("--disp-first",
-      "Display information for the first  arg  updates");
+      "Display information for the first arg updates");
   cli.add<bool>("--disp-label-counts",
       "Display label counts when logging loss progress");
 //   cli.add<int>("--disp-label-index",
 //       "Display label counts based on i-th input stream (-1 is last)", -1);
   cli.add<std::string/*SchedulerPeriod*/>("--save-freq",
-      "Save model file every  arg  updates (append 't' for every  arg  target labels)",
+      "Save model file every arg updates (append 't' for every arg target labels)",
       "10000u");
 
   addSuboptionsInputLength(cli);
@@ -362,12 +362,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--lr-decay-repeat-warmup",
      "Repeat learning rate warmup when learning rate is decayed");
   cli.add<std::vector<std::string/*SchedulerPeriod*/>>("--lr-decay-inv-sqrt",
-     "Decrease learning rate at arg / sqrt(no. batches) starting at arg  (append 't' or 'e' for sqrt(target labels or epochs)). "
+     "Decrease learning rate at arg / sqrt(no. batches) starting at arg (append 't' or 'e' for sqrt(target labels or epochs)). "
      "Add second argument to define the starting point (default: same as first value)",
      {"0"});
 
   cli.add<std::string/*SchedulerPeriod*/>("--lr-warmup",
-     "Increase learning rate linearly for  arg  first batches (append 't' for  arg  first target labels)",
+     "Increase learning rate linearly for arg first batches (append 't' for arg first target labels)",
       "0");
   cli.add<float>("--lr-warmup-start-rate",
      "Start value for learning rate warmup");
@@ -379,7 +379,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<double>("--label-smoothing",
      "Epsilon for label smoothing (0 to disable)");
   cli.add<float>("--clip-norm",
-     "Clip gradient norm to  arg  (0 to disable)",
+     "Clip gradient norm to arg (0 to disable)",
      1.f);
   cli.add<float>("--exponential-smoothing",
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable. "
@@ -427,14 +427,14 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--valid-sets",
       "Paths to validation corpora: source target");
   cli.add<std::string/*SchedulerPeriod*/>("--valid-freq",
-      "Validate model every  arg  updates (append 't' for every  arg  target labels)",
+      "Validate model every arg updates (append 't' for every arg target labels)",
       "10000u");
   cli.add<std::vector<std::string>>("--valid-metrics",
       "Metric to use during validation: cross-entropy, ce-mean-words, perplexity, valid-script, "
       "translation, bleu, bleu-detok. Multiple metrics can be specified",
       {"cross-entropy"});
   cli.add<size_t>("--early-stopping",
-     "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
+     "Stop if the first validation metric does not improve for arg consecutive validation steps",
      10);
 
   // decoding options
@@ -474,7 +474,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<bool>("--keep-best",
       "Keep best model for each validation metric");
   cli.add<std::string>("--valid-log",
-     "Log validation scores to file given by  arg");
+     "Log validation scores to file given by arg");
   // clang-format on
 }
 
@@ -656,7 +656,7 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
       "Maximum length of a sentence in a training sentence pair",
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
-      "Crop a sentence to max-length instead of ommitting it if longer than max-length");
+      "Crop a sentence to max-length instead of omitting it if longer than max-length");
   // clang-format on
 }
 
@@ -671,10 +671,10 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   cli.add<std::string>("--ulr-query-vectors",
       "Path to file with universal sources embeddings from projection into universal space",
       "");
-  // keys: EK in Fig2 : is the keys of the target embbedings projected to unified space (i.e. ENU in
+  // keys: EK in Fig2 : is the keys of the target embeddings projected to unified space (i.e. ENU in
   // multi-lingual case)
   cli.add<std::string>("--ulr-keys-vectors",
-      "Path to file with universal sources embeddings of traget keys from projection into universal space",
+      "Path to file with universal sources embeddings of target keys from projection into universal space",
       "");
   cli.add<bool>("--ulr-trainable-transformation",
       "Make Query Transformation Matrix A trainable");

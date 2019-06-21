@@ -189,9 +189,9 @@ public:
   }
 
   /**
-   * @brief Performs backpropogation on this expression graph.
+   * @brief Performs backpropagation on this expression graph.
    *
-   * Backpropogation is implemented by performing first the forward pass and
+   * Backpropagation is implemented by performing first the forward pass and
    * then the backward pass of algorithmic differentiation (AD) on the nodes of
    * the graph.
    */
@@ -412,7 +412,7 @@ public:
     } else {
       node->setId(count_++);
 
-      // record in foward graph
+      // record in forward graph
       nodesForward_.push_back(node);
 
       // record in backward graph if training, and keep track of roots

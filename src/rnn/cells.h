@@ -661,7 +661,7 @@ public:
 using LSTM = FastLSTM;
 
 /******************************************************************************/
-// Experimentak cells, use with care
+// Experimental cells, use with care
 
 template <class CellType>
 class Multiplicative : public CellType {

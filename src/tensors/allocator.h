@@ -228,7 +228,7 @@ public:
     auto it = allocated_.find(ptr);
     if(it != allocated_.end()) {
       allocated_.erase(ptr);
-      insertGap(Gap(ptr, bytes), true);
+      insertGap(Gap(ptr, bytes));
       return true;
     }
     return false;

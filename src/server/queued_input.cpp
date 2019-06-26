@@ -33,23 +33,25 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
   // Use a longer timeout when starting a batch, because if there's no
   // input in that case, no one is waiting for a reponse, so response
   // latency isn't an issue.
-  std::chrono::milliseconds timeout = starts_batch ? 1000 : timeout_;
+  auto timeout = std::chrono::milliseconds(starts_batch ? 1000 : timeout_);
 
   Ptr<TranslationJob> job;
-  JobQueue::STATUS_CODE success = job_queue.pop(job,timeout);
+  JobQueue::STATUS_CODE success = job_queue_.pop(job,timeout);
   if (success == JobQueue::SUCCESS) {
       // fill up the sentence tuple with source and/or target sentences
       SentenceTuple tup(job->first); // job ID should be unique
-      std::vector<string> const& snt = job->second;
-      for(size_t i = 0; i < job->second->size(); ++i)
-        std::istringstream buf((job->second)[i]);
-      std::string line;
-      if(io::getline(buf, line)) {
-        // second, third parameter below: addEOS, inference mode?
-        Words words = vocabs_[i]->encode(line,true,inference_);
-        if(words.empty())
-          words.push_back(DEFAULT_EOS_ID);
-        tup.push_back(words);
+      std::vector<std::string> const& snt = job->second;
+      for(size_t i = 0; i < snt.size(); ++i) {
+        std::istringstream buf(snt[i]);
+        io::InputFileStream dummy(buf);
+        std::string line;
+        if(io::getline(dummy, line)) {
+          // second, third parameter below: addEOS, inference mode==true?
+          Words words = vocabs_[i]->encode(line,true,inference_);
+          if(words.empty())
+            words.push_back(DEFAULT_EOS_ID);
+          tup.push_back(words);
+        }
       }
       // check if each input file provided an example
       if(tup.size() == vocabs_.size())
@@ -61,7 +63,7 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
 // TODO: There are half dozen functions called toBatch(), which are very
 // similar. Factor them.
 // Why is this even a member function?
-batch_ptr
+QueuedInput::batch_ptr
 QueuedInput::
 toBatch(const std::vector<Sample>& batchVector) {
   size_t batchSize = batchVector.size();
@@ -98,7 +100,7 @@ toBatch(const std::vector<Sample>& batchVector) {
   for(size_t j = 0; j < maxDims.size(); ++j)
     subBatches[j]->setWords(words[j]);
 
-  auto batch = batch_ptr(new batch_type(subBatches));
+  auto batch = QueuedInput::batch_ptr(new batch_type(subBatches));
   batch->setSentenceIds(sentenceIds);
 
   return batch;
@@ -106,13 +108,13 @@ toBatch(const std::vector<Sample>& batchVector) {
 
 uint64_t
 QueuedInput::
-push(std::vector<std::string const> const& src) {
+push(std::vector<std::string> const& src) {
   // push a new item for translation
-  uint64_t jid = ++job_ctr;
+  uint64_t jid = ++job_ctr_;
   std::chrono::milliseconds timeout(5000);
-  auto job = New<TranslationJob(jid,src);
-  auto status = job_queue.push(job,timeout);
-  if (status = JobQueue::SUCCESS) return jid;
+  auto job = New<TranslationJob>(jid,src);
+  auto status = job_queue_.push(job,timeout);
+  if (status == JobQueue::SUCCESS) return jid;
   return 0; // failed
 }
 

@@ -1,7 +1,8 @@
 // -*- mode: c++; indent-tabs-mode: nil; tab-width: 2 -*-
-
 // Generic thread-safe, locking queue with timeout for push and pop.
 // Written by Ulrich Germann.
+
+#pragma once
 
 #include<vector>
 #include<deque>
@@ -10,7 +11,7 @@
 #include<condition_variable>
 #include<iostream>
 
-#include"logging.h"
+#include"common/logging.h"
 
 extern Logger logger;
 
@@ -51,10 +52,10 @@ Queue(size_t capacity)
 { }
 
 template<typename item_t>
-typename Queue<item_t>::STATUS_CODE
+bool
 Queue<item_t>::
 ready() const { // ready to accept more items?
-  return queue_open && (capacity_ == 0 or queue_.size() < capacity_);
+  return queue_open_ && (capacity_ == 0 or queue_.size() < capacity_);
 }
 
 

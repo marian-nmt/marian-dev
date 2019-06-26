@@ -79,6 +79,8 @@ add_library(marian STATIC
   training/validator.cpp
   training/communicator.cpp
 
+  server/queued_input.cpp
+
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
 
@@ -184,6 +186,12 @@ if(COMPILE_SERVER)
   target_compile_options(marian_server PUBLIC ${ALL_WARNINGS})
   set(EXECUTABLES ${EXECUTABLES} marian_server)
 endif(COMPILE_SERVER)
+
+# temporary additions by UG for server development
+add_executable(server-test server/server-test.cpp)
+set_target_properties(server-test PROPERTIES OUTPUT server-test)
+target_compile_options(server-test PUBLIC ${ALL_WARNINGS})
+set(EXECUTABLES ${EXECUTABLES} server-test)
 
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})

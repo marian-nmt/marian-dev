@@ -193,7 +193,7 @@ public:
               Wt_ = transpose(Wt_);
               isLegacyUntransposedW = false;
           }
-          cachedShortWt_ = marian::cpu::int8::prepareB(cachedShortWt_, marian::cpu::int8::quantMult(cachedShortWt_), -1000.0 /* currently unused */);
+          cachedShortWt_ = marian::cpu::int8::prepareB(Wt_, marian::cpu::int8::quantMult(Wt_), -1000.0 /* currently unused */);
           cachedShortWt_ = marian::cpu::int8::selectColumnsB(cachedShortWt_, shortlist_->indices()); // TODO Maybe not necessary anymore?
         } else {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());

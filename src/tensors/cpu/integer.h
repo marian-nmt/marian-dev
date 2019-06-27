@@ -46,7 +46,7 @@ public:
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class QuantMultNodeOp : public OnlyForInferenceNodeOp {
 public:
-  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}) {
+  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}, Shape()) {
     ABORT_IF(children().size() != 1, "expected 1 child");
 
     // Check if arguments are not null

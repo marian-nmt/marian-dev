@@ -189,22 +189,21 @@ public:
     if (shortlist_) {
       if (!cachedShortWt_) { // short versions of parameters are cached within one batch, then clear()ed
         if (graph_->isOptimized() && graph_->getDeviceId().type == DeviceType::cpu) {
-          if (isLegacyUntransposedW) {
+          if (!isLegacyUntransposedW) {
               Wt_ = transpose(Wt_);
-              isLegacyUntransposedW = false;
+              isLegacyUntransposedW = true;
           }
           cachedShortWt_ = marian::cpu::int8::prepareB(Wt_, marian::cpu::int8::quantMult(Wt_), -1000.0 /* currently unused */);
           cachedShortWt_ = marian::cpu::int8::selectColumnsB(cachedShortWt_, shortlist_->indices()); // TODO Maybe not necessary anymore?
         } else {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
-        cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+        cachedShortb_ = index_select(b_ , -1, shortlist_->indices());
       }
-      return affine(input, cachedShortWt_, cachedShortb_, false, /*transB=*/isLegacyUntransposedW ? false : true);
+      return affine(input, cachedShortWt_, cachedShortb_, false, !isLegacyUntransposedW);
     }
     else
-      // TODO optimize this path for integers.
-      return affine(input, Wt_, b_, false, /*transB=*/isLegacyUntransposedW ? false : true);
+      return affine(input, Wt_, b_, false, !isLegacyUntransposedW); // TODO optimize this path for integers.
   }
 
   virtual Expr apply(const std::vector<Expr>& /*inputs*/) override {

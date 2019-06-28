@@ -99,7 +99,7 @@ public:
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
-    ABORT_IF(child(0) == nullptr, "Quant mult of A cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
   }
 
   NodeOps forwardOps() override {
@@ -118,7 +118,7 @@ public:
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
-    ABORT_IF(child(0) == nullptr, "Quant mult of B cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
   }
 
   NodeOps forwardOps() override {

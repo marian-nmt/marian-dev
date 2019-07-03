@@ -185,6 +185,9 @@ Expr operator/(float a, Expr b) {
 /*********************************************************/
 
 Expr concatenate(const std::vector<Expr>& concats, int ax) {
+  auto shape = concats[0]->shape();
+  for (auto& e : concats)
+    ABORT_IF(e->shape() != shape, "You cannot concatenate tensors of different shapes.");
   return Expression<ConcatenateNodeOp>(concats, ax);
 }
 
@@ -195,6 +198,7 @@ Expr repeat(Expr a, size_t repeats, int ax) {
 }
 
 Expr reshape(Expr a, Shape shape) {
+  ABORT_IF(a->shape().elements() != shape.elements(), "You cannot reshape a tensor to one with a different number of elements.");
   return Expression<ReshapeNodeOp>(a, shape);
 }
 

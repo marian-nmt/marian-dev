@@ -395,7 +395,7 @@ public:
 		}
 
 		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc0", dimFfn, (ActivationFunction*)relu, reluDropProb);
-		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc0", dimModel, nullptr, dropProb);
+		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc1", dimModel, nullptr, dropProb);
 		output = residual + output * macaronFactor;
 
 		if (!normalizeBefore) {
@@ -813,8 +813,7 @@ public:
       decoderStates.push_back(decoderState);
 	  if (macaronEnabled) {
 		query = MacaronLayerFFN(prefix_ + "_l" + layerNo + "_macaron_after", query, false); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
-	  }
-	  else {
+	  } else {
         query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 	  }
     }

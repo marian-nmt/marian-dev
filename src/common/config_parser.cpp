@@ -221,6 +221,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--bert-train-type-embeddings", "Train bert type embeddings, set to false to use static sinusoidal embeddings", true);
   cli.add<int>("--bert-type-vocab-size", "Size of BERT type vocab (sentence A and B)", 2);
 
+  // Macaron net related configs
+  // see https://arxiv.org/pdf/1906.02762.pdf
   cli.add<bool>("--macaron-enabled", "Use macaron structure");
   cli.add<int>("--macaron-dim", "The macaron layer hidden dim.", 1024);
   cli.add<int>("--macaron-before-depth", "The macaron before depth.", 1);

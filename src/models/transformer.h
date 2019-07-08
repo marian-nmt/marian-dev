@@ -1,5 +1,6 @@
-// TODO: This is really a .CPP file now. I kept the .H name to minimize confusing git, until this is
-// code-reviewed. This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
+// TODO: This is really a .CPP file now. I kept the .H name to minimize confusing git, until this is code-reviewed.
+// This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
+
 
 #pragma once
 
@@ -371,6 +372,7 @@ public:
     ABORT("Invalid activation name '{}'", actName);
   }
 
+  // Implement the macaron-net FFN layer. See https://arxiv.org/pdf/1906.02762.pdf
   Expr MacaronLayerFFN(const std::string& prefix, Expr input, bool isBefore) const {
 	int dimModel = input->shape()[-1];
 
@@ -797,7 +799,6 @@ public:
 
             saveAttentionWeights = i == attLayer;
           }
-
 
           query = LayerAttention(prefix,
                                  query,

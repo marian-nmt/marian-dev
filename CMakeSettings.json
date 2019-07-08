@@ -30,53 +30,20 @@
       "buildCommandArgs": "-v",
       "ctestCommandArgs": "",
       "variables": [
-        {
-          "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "${env.VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake"
-        },
-        {
-          "name": "VCPKG_TARGET_TRIPLET",
-          "value": "x64-windows-static"
-        },
-
-        {
-          "name": "OPENSSL_USE_STATIC_LIBS:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "OPENSSL_MSVC_STATIC_RT:BOOL",
-          "value": "TRUE"
-        },
-
-        {
-          "name": "COMPILE_SERVER:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "COMPILE_EXAMPLES:BOOL",
-          "value": "FALSE"
-        },
-        {
-          "name": "COMPILE_TESTS:BOOL",
-          "value": "FALSE"
-        },
-        {
-          "name": "COMPILE_CPU:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "COMPILE_CUDA:BOOL",
-          "value": "TRUE"
-        },
-
-        {
-          "name": "USE_CUDNN:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "USE_MPI:BOOL",
-          "value": "FALSE"
-        }
+        { "name": "CMAKE_TOOLCHAIN_FILE", "value": "${env.VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake" },
+        { "name": "VCPKG_TARGET_TRIPLET", "value": "x64-windows-static" },
+        
+        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "TRUE" },
+        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "TRUE" },
+        
+        { "name": "COMPILE_SERVER:BOOL", "value": "TRUE" }, 
+        { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" }, 
+        { "name": "COMPILE_TESTS:BOOL", "value": "FALSE" }, 
+        { "name": "COMPILE_CPU:BOOL", "value": "TRUE" }, 
+        { "name": "COMPILE_CUDA:BOOL", "value": "TRUE" }, 
+        
+        { "name": "USE_CUDNN:BOOL", "value": "TRUE" }, 
+        { "name": "USE_MPI:BOOL", "value": "FALSE" }
       ]
     },
     {
@@ -90,53 +57,20 @@
       "buildCommandArgs": "-v",
       "ctestCommandArgs": "",
       "variables": [
-        {
-          "name": "CMAKE_TOOLCHAIN_FILE",
-          "value": "${env.VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake"
-        },
-        {
-          "name": "VCPKG_TARGET_TRIPLET",
-          "value": "x64-windows-static"
-        },
-
-        {
-          "name": "OPENSSL_USE_STATIC_LIBS:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "OPENSSL_MSVC_STATIC_RT:BOOL",
-          "value": "TRUE"
-        },
-
-        {
-          "name": "COMPILE_SERVER:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "COMPILE_EXAMPLES:BOOL",
-          "value": "FALSE"
-        },
-        {
-          "name": "COMPILE_TESTS:BOOL",
-          "value": "FALSE"
-        },
-        {
-          "name": "COMPILE_CPU:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "COMPILE_CUDA:BOOL",
-          "value": "TRUE"
-        },
-
-        {
-          "name": "USE_CUDNN:BOOL",
-          "value": "TRUE"
-        },
-        {
-          "name": "USE_MPI:BOOL",
-          "value": "FALSE"
-        }
+        { "name": "CMAKE_TOOLCHAIN_FILE", "value": "${env.VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake" },
+        { "name": "VCPKG_TARGET_TRIPLET", "value": "x64-windows-static" },
+        
+        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "TRUE" },
+        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "TRUE" },
+        
+        { "name": "COMPILE_SERVER:BOOL", "value": "TRUE" }, 
+        { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" }, 
+        { "name": "COMPILE_TESTS:BOOL", "value": "FALSE" }, 
+        { "name": "COMPILE_CPU:BOOL", "value": "TRUE" }, 
+        { "name": "COMPILE_CUDA:BOOL", "value": "TRUE" }, 
+        
+        { "name": "USE_CUDNN:BOOL", "value": "TRUE" }, 
+        { "name": "USE_MPI:BOOL", "value": "FALSE" }
       ]
     },
     {

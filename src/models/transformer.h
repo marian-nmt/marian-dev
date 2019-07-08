@@ -373,37 +373,37 @@ public:
 
   // Implement the macaron-net FFN layer. See https://arxiv.org/pdf/1906.02762.pdf
   Expr MacaronLayerFFN(const std::string& prefix, Expr input, bool isBefore) const {
-	int dimModel = input->shape()[-1];
+    int dimModel = input->shape()[-1];
 
     const int dimFfn = opt<int>("macaron-dim");
-	const int beforeDepth = opt<int>("macaron-before-depth");
-	const int afterDepth = opt<int>("macaron-after-depth");
+    const int beforeDepth = opt<int>("macaron-before-depth");
+    const int afterDepth = opt<int>("macaron-after-depth");
     const int depthFfn = isBefore ? beforeDepth : (afterDepth + 1);
-	const bool normalizeBefore = opt<bool>("macaron-normalize-before");
-	const double macaronFactor = 1.0 / (beforeDepth + afterDepth);
+    const bool normalizeBefore = opt<bool>("macaron-normalize-before");
+    const double macaronFactor = 1.0 / (beforeDepth + afterDepth);
     const float dropProb = inference_ ? 0 : opt<float>("macaron-drpo-prob");
-	const float reluDropProb = inference_ ? 0 : opt<float>("macaron-relu-drpo-prob");
-	
+    const float reluDropProb = inference_ ? 0 : opt<float>("macaron-relu-drpo-prob");
+
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
 
-	auto output = input;
+    auto output = input;
 
     // the stack of FF layers
-	for (int i = 0; i < depthFfn; ++i) {
-		auto residual = output;
-		if (normalizeBefore) {
-			output = layerNorm(output, prefix, std::to_string(i));
-		}
+    for (int i = 0; i < depthFfn; ++i) {
+      auto residual = output;
+      if (normalizeBefore) {
+        output = layerNorm(output, prefix, std::to_string(i));
+      }
 
-		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc0", dimFfn, (ActivationFunction*)relu, reluDropProb);
-		output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc1", dimModel, nullptr, dropProb);
-		output = residual + output * macaronFactor;
+      output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc0", dimFfn, (ActivationFunction*)relu, reluDropProb);
+      output = dense(output, prefix, std::to_string(i)+(isBefore?"_before":"_after")+"_fc1", dimModel, nullptr, dropProb);
+      output = residual + output * macaronFactor;
 
-		if (!normalizeBefore) {
-			output = layerNorm(output, prefix, std::to_string(i));
-		}
-	}
-	
+      if (!normalizeBefore) {
+        output = layerNorm(output, prefix, std::to_string(i));
+      }
+    }
+
     return output;
   }
 
@@ -567,23 +567,23 @@ public:
 
     // apply encoder layers
     auto encDepth = opt<int>("enc-depth");
-	bool macaronEnabled = opt<bool>("macaron-enabled");
+    bool macaronEnabled = opt<bool>("macaron-enabled");
     for(int i = 1; i <= encDepth; ++i) {
-	  if (macaronEnabled) {
-		layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", layer, true);
-	  }
+      if (macaronEnabled) {
+        layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", layer, true);
+      }
 
       layer = LayerAttention(prefix_ + "_l" + std::to_string(i) + "_self",
-                             layer, // query
-                             layer, // keys
-                             layer, // values
-                             layerMask);
+                              layer, // query
+                              layer, // keys
+                              layer, // values
+                              layerMask);
 
-	  if (macaronEnabled) {
-		layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_after", layer, false);
-	  } else {
-        layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
-	  }
+      if (macaronEnabled) {
+        layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_after", layer, false);
+      } else {
+          layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+      }
     }
 
     // restore organization of batch and time steps. This is currently required
@@ -746,7 +746,7 @@ public:
              "Specified layer tying for {} layers, but decoder has {} layers",
              tiedLayers.size(),
              decDepth);
-	bool macaronEnabled = opt<bool>("macaron-enabled");
+    bool macaronEnabled = opt<bool>("macaron-enabled");
     for(int i = 0; i < decDepth; ++i) {
       std::string layerNo = std::to_string(i + 1);
       if (!tiedLayers.empty())
@@ -756,9 +756,9 @@ public:
       if(prevDecoderStates.size() > 0)
         prevDecoderState = prevDecoderStates[i];
 
-	  if (macaronEnabled) {
-		query = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", query, true);
-	  }
+      if (macaronEnabled) {
+        query = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", query, true);
+      }
 
       // self-attention
       std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
@@ -811,11 +811,11 @@ public:
 
       // remember decoder state
       decoderStates.push_back(decoderState);
-	  if (macaronEnabled) {
-		query = MacaronLayerFFN(prefix_ + "_l" + layerNo + "_macaron_after", query, false); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
-	  } else {
+      if (macaronEnabled) {
+        query = MacaronLayerFFN(prefix_ + "_l" + layerNo + "_macaron_after", query, false); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+      } else {
         query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
-	  }
+      }
     }
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]

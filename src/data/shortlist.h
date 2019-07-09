@@ -119,8 +119,8 @@ public:
 class LexicalShortlistGenerator : public ShortlistGenerator {
 private:
   Ptr<Options> options_;
-  Ptr<Vocab> srcVocab_;
-  Ptr<Vocab> trgVocab_;
+  Ptr<Vocab const> srcVocab_;
+  Ptr<Vocab const> trgVocab_;
 
   size_t srcIdx_;
   size_t trgIdx_;
@@ -174,8 +174,8 @@ private:
 
 public:
   LexicalShortlistGenerator(Ptr<Options> options,
-                            Ptr<Vocab> srcVocab,
-                            Ptr<Vocab> trgVocab,
+                            Ptr<Vocab const> srcVocab,
+                            Ptr<Vocab const> trgVocab,
                             size_t srcIdx = 0,
                             size_t trgIdx = 1,
                             bool shared = false)

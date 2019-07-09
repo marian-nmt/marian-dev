@@ -4,6 +4,7 @@
 #include "common/hash.h"
 #include "graph/node.h"
 #include "tensors/cpu/bias.h"
+#include "3rd_party/intgemm/aligned.h"
 
 namespace marian {
 namespace cpu {
@@ -103,7 +104,7 @@ public:
   }
 
   NodeOps forwardOps() override {
-    return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareA);
+    return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareANew);
   }
 
   const std::string type() override { return "intPrepareA"; }
@@ -236,6 +237,8 @@ public:
       auto quant_mult_a = child(1)->val();
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
+      std::cerr << "UNBIASED" << std::endl;
+      ABORT_IF(true, "We only do biases around here");
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
@@ -304,6 +307,19 @@ public:
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
       auto bias = child(4)->val();
+      
+      /****
+       * Haaaaaaaacky
+       *
+      intgemm::AlignedVector<float> tmpBias(cols(b));
+      for (size_t i = 0; i<cols(b); i++) {
+        tmpBias[i] = bias->data()[i];
+      }
+      backend<Type_>::PrepareBiasFor8((const Integer*)b->data(), tmpBias.begin(), *quant_mult_a->data(), rows(b), cols(b));
+      ****
+       * Haaaaaaaacky
+       */
+      
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),

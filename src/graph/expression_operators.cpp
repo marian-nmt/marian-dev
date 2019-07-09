@@ -354,6 +354,8 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 
 namespace { // anonymous namespace
 // TODO: Do it better.
+inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
+inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
 std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue) {
   if (matrix->type() == "intPrepareA")
     return {trans ? transpose(matrix) : matrix, matrix->child(1)};
@@ -370,6 +372,20 @@ std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue) {
   else {
     auto quant_mult = marian::cpu::int8::quantMult(matrix);
     return {cpu::int8::prepareB(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
+  }
+}
+
+std::pair<Expr, std::pair<Expr, Expr>> int8_quantizeB(Expr matrix, Expr bias, bool trans, float clipValue, Expr quant_mult_a) {
+  if (matrix->type() == "intSelectColumnsB")
+    return {trans ? transpose(matrix) : matrix, {matrix->child(0)->child(1), bias}};
+  else if (matrix->type() == "intPrepareB")
+    return {trans ? transpose(matrix) : matrix, {matrix->child(1), bias}};
+  else {
+    auto quant_mult = marian::cpu::int8::quantMult(matrix);
+    int rowsB = rows(trans ? transpose(matrix)->child(0)->val() : matrix->child(0)->val());
+    int colsB = cols(trans ? transpose(matrix)->child(0)->val() : matrix->child(0)->val());
+    intgemm::Int8::PrepareBiasFor8(trans ? transpose(matrix)->child(0)->val()->data() : matrix->child(0)->val()->data(), bias->child(0)->val()->data(), *quant_mult_a->child(0)->val()->data(), rowsB, colsB);
+    return {cpu::int8::prepareB(trans ? transpose(matrix) : matrix, quant_mult, clipValue), {quant_mult, bias}};
   }
 }
 } // anonymous namespace
@@ -483,10 +499,10 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     } else {
       // cpu int8 version
       auto quant_a = int8_quantizeA(a, transA, clipValue);
-      auto quant_b = int8_quantizeB(b, transB, clipValue);
+      auto quant_b = int8_quantizeB(b, bias, transB, clipValue, quant_a.second);
       return cpu::int8::affine(quant_a.first, quant_a.second,
-                               quant_b.first, quant_b.second,
-                               bias,
+                               quant_b.first, quant_b.second.first,
+                               quant_b.second.second,
                                scale);
     }
   } else {

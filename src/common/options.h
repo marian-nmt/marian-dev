@@ -79,13 +79,13 @@ public:
   }
 
   template <typename T>
-  T get(const std::string& key) {
+  T get(const std::string& key) const {
     ABORT_IF(!has(key), "Required option '{}' has not been set", key);
     return options_[key].as<T>();
   }
 
   template <typename T>
-  T get(const std::string& key, T defaultValue) {
+  T get(const std::string& key, T defaultValue) const {
     if(has(key))
       return options_[key].as<T>();
     else

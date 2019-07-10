@@ -113,9 +113,9 @@ public:
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class PrepareBNodeOp : public OnlyForInferenceNodeOp {
 public:
-  PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
-      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {
-    ABORT_IF(children().size() != 2, "expected 2 children");
+  PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue, Expr bias, Expr alpha)
+      : OnlyForInferenceNodeOp({input, quant_mult, bias, alpha}, input->shape(), Type_) {
+    ABORT_IF(children().size() != 4, "expected 4 children");
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
@@ -123,6 +123,11 @@ public:
   }
 
   NodeOps forwardOps() override {
+    if (this->child(3)) {
+      int rowsB = rows(this->child(0)->val());
+      int colsB = cols(this->child(0)->val());
+      intgemm::Int8::PrepareBiasFor8(this->child(0)->val()->data(), this->child(2)->val()->data(), *this->child(3)->val()->data(), rowsB, colsB);
+    }
     return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareB);
   }
 
@@ -347,8 +352,8 @@ struct ops {
   static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
     return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);
   }
-  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {
-    return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue);
+  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue, Expr bias=nullptr, Expr alpha=nullptr) {
+    return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue, bias, alpha);
   }
   static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
     return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);

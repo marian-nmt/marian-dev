@@ -5,6 +5,7 @@
 
 #if USE_FBGEMM
 #include "3rd_party/fbgemm/include/fbgemm/FbgemmFP16.h"
+#include "3rd_party/fbgemm/include/fbgemm/Fbgemm.h"
 using namespace fbgemm;
 #endif  // USE_FBGEMM
 
@@ -85,18 +86,33 @@ struct PackNodeOp : public UnaryNodeOp {
     auto shapeMat = a->shape();
     // Should be 2D - weight matrix
     ABORT_IF(shapeMat.size() != 2,
-             "Weight Matrix should be 2D");
-    nrow_ = transpose ? shapeMat[1] : shapeMat[0];
-    ncol_ = transpose ? shapeMat[0] : shapeMat[1];
-    kernel_ncol_blocks_ = 2;
-    brow_ = 512;
-    bcol_ = 8 * kernel_ncol_blocks_;
-    last_brow_ = nrow_ % brow_ == 0 ? brow_ : nrow_ % brow_;
-    nbrow_ = nrow_ % brow_ == 0 ? nrow_ / brow_ : (nrow_ + brow_) / brow_;
-    nbcol_ = ncol_ % bcol_ == 0 ? ncol_ / bcol_ : (ncol_ + bcol_) / bcol_;
-    const int padding = 1024;  // required by sw pipelined kernels
-    const int specialMem = 256;
-    packsize_ = ((nbrow_ * brow_) * (nbcol_ * bcol_)) * sizeof(fbgemm::float16) + padding + specialMem;
+            "Weight Matrix should be 2D");
+    if(true) {
+    //if(!transpose) {
+    //if (shapeMat[0] < 3200 && shapeMat[1] < 3200) {
+      nrow_ = transpose ? shapeMat[1] : shapeMat[0];
+      ncol_ = transpose ? shapeMat[0] : shapeMat[1];
+      kernel_ncol_blocks_ = 2;
+      brow_ = 512;
+      bcol_ = 8 * kernel_ncol_blocks_;
+      last_brow_ = nrow_ % brow_ == 0 ? brow_ : nrow_ % brow_;
+      nbrow_ = nrow_ % brow_ == 0 ? nrow_ / brow_ : (nrow_ + brow_) / brow_;
+      nbcol_ = ncol_ % bcol_ == 0 ? ncol_ / bcol_ : (ncol_ + bcol_) / bcol_;
+      const int padding = 1024;  // required by sw pipelined kernels
+      const int specialMem = 256;
+      packsize_ = ((nbrow_ * brow_) * (nbcol_ * bcol_)) * sizeof(fbgemm::float16) + padding + specialMem;
+    } else {
+      nrow_ = transpose ? shapeMat[1] : shapeMat[0];
+      ncol_ = transpose ? shapeMat[0] : shapeMat[1];
+      packsize_ = fbgemm::PackMatrix<fbgemm::PackBMatrix<int8_t>, int8_t>::packedBufferSize(
+          transpose ? shapeMat[1] : shapeMat[0],
+          transpose ? shapeMat[0] : shapeMat[1]);
+      // add extra space for storing some other variables specific to B matrix
+      // quantization sacles: 1 per column and float
+      // quantization offset: 1 per column and int32
+      // column offsets: 1 per column and int32
+      packsize_ += ncol_ * (sizeof(float) + sizeof(int32_t) + sizeof(int32_t));
+    }
 
     Shape outShape({(int)packsize_});
 
@@ -162,15 +178,33 @@ public:
   }
 
   NodeOps forwardOps() override {
-    return {
-      NodeOp(GemmPackFp32(val_,
-                          child(0)->val(),
-                          child(1)->val(),
-                          child(2)->val(),
-                          m_,
-                          n_,
-                          transA_))
-    };
+    if (true) {
+//    if(n_ < 3200) {
+      return {
+        NodeOp(GemmPackFp32(val_,
+                            child(0)->val(),
+                            child(1)->val(),
+                            child(2)->val(),
+                            m_,
+                            n_,
+                            k_,
+                            transA_,
+                            transB_))
+      };
+    } else {
+      return {
+        NodeOp(GemmPackFp32(val_,
+                            child(0)->val(),
+                            child(1)->val(),
+                            child(2)->val(),
+                            m_,
+                            n_,
+                            k_,
+                            transA_,
+                            transB_);
+                AddBias(val_, child(2)->val()))
+      };
+    }   
   }
 
   NodeOps backwardOps() override {

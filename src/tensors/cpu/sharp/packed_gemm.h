@@ -40,14 +40,18 @@ void PackFp32(marian::Tensor out,
 // m: the number of rows in A and C
 // n: the number of columns in B and C
 // transA: transpose of A matrix
-// B is already packed. So, we don't need transB
+// transB: transpose of B matrix
 void GemmPackFp32(marian::Tensor C,
                   const marian::Tensor A,
                   const marian::Tensor B,
                   const marian::Tensor bias,
                   const size_t m,
                   const size_t n,
-                  const int transA = 0);
+                  const size_t k,
+                  const int transA = 0,
+                  const int transB = 0);
+
+void AddBias(marian::Tensor C, const marian::Tensor Bias);
 
 }  // namespace variant
 }  // namespace cpu

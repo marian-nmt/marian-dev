@@ -6,7 +6,7 @@ namespace marian {
 namespace data {
 
 QueuedInputIterator::QueuedInputIterator() : pos_(-1), tup_(0) {}
-QueuedInputIterator::QueuedInputIterator(QueuedInput& corpus) : corpus_(&corpus), pos_(0), tup_(corpus_->next()) {}
+QueuedInputIterator::QueuedInputIterator(QueuedInput& corpus) : corpus_(&corpus), pos_(0), tup_(corpus_->next(true)) {}
 
 void QueuedInputIterator::increment() {
   tup_ = corpus_->next();
@@ -21,9 +21,10 @@ const SentenceTuple& QueuedInputIterator::dereference() const {
   return tup_;
 }
 
-QueuedInput::QueuedInput(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-  : DatasetBase(options), vocabs_(vocabs)
-  , timeout_(options ? options->get<int>("queue-timeout",100) : 100)
+QueuedInput::
+QueuedInput(std::vector<Ptr<Vocab const>> const& vocabs, Ptr<Options> options)
+  : DatasetBase(options), vocabs_(vocabs),
+    timeout_(options ? options->get<int>("queue-timeout",100) : 100)
 { }
 
 // QueuedInput is mainly used for inference in the server mode, not
@@ -33,14 +34,19 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
   // Use a longer timeout when starting a batch, because if there's no
   // input in that case, no one is waiting for a reponse, so response
   // latency isn't an issue.
+  // LOG(info, "timeout is {}", starts_batch ? 1000 : timeout_);
   auto timeout = std::chrono::milliseconds(starts_batch ? 1000 : timeout_);
 
   Ptr<TranslationJob> job;
-  JobQueue::STATUS_CODE success = job_queue_.pop(job,timeout);
-  if (success == JobQueue::SUCCESS) {
+  JobQueue::STATUS_CODE success;
+  do {
+    success = job_queue_.pop(job,timeout);
+    // LOG(info, "job queue status code: {} [{} batch]", success, (starts_batch ? "new" : "old"));
+    if (success == JobQueue::SUCCESS) {
       // fill up the sentence tuple with source and/or target sentences
       SentenceTuple tup(job->first); // job ID should be unique
       std::vector<std::string> const& snt = job->second;
+      LOG(info, "QueuedInput is shipping job {}", job->first);
       for(size_t i = 0; i < snt.size(); ++i) {
         std::istringstream buf(snt[i]);
         io::InputFileStream dummy(buf);
@@ -54,9 +60,10 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
         }
       }
       // check if each input file provided an example
-      if(tup.size() == vocabs_.size())
-        return tup;
-  }
+      // if(tup.size() == vocabs_.size())
+      return tup;
+    }
+  } while(starts_batch and success == JobQueue::EMPTY);
   return SentenceTuple(0);
 }
 

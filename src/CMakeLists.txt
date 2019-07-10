@@ -188,10 +188,15 @@ if(COMPILE_SERVER)
 endif(COMPILE_SERVER)
 
 # temporary additions by UG for server development
-add_executable(server-test server/server-test.cpp)
-set_target_properties(server-test PROPERTIES OUTPUT server-test)
-target_compile_options(server-test PUBLIC ${ALL_WARNINGS})
-set(EXECUTABLES ${EXECUTABLES} server-test)
+# add_executable(server-test server/server-test.cpp)
+# set_target_properties(server-test PROPERTIES OUTPUT server-test)
+# target_compile_options(server-test PUBLIC ${ALL_WARNINGS})
+# set(EXECUTABLES ${EXECUTABLES} server-test)
+
+add_executable(websocket-server server/websocket-server.cpp)
+set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
+target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
+set(EXECUTABLES ${EXECUTABLES} websocket-server)
 
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})

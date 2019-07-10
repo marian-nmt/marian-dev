@@ -37,13 +37,18 @@ class TranslationWorker
 {
 private:
   DeviceId device_;
-  data::QueuedInput& job_queue_;
+  std::unique_ptr<std::thread> thread_;
+  // we use a pointer to the worker thread so that we have an easy way of
+  // ensuring the worker is run exactly once.
+
+  Ptr<data::QueuedInput> job_queue_;
   std::function<void (Ptr<History const>)> callback_;
   Ptr<Options> options_;
   Ptr<ExpressionGraph> graph_;
   std::vector<Ptr<Vocab const>> vocabs_;
   std::vector<Ptr<Scorer>> scorers_;
   Ptr<data::ShortlistGenerator const> slgen_;
+  bool keep_going_{true};
 
   void init_() {
     bool optimize = options_->get<bool>("optimize");
@@ -64,24 +69,15 @@ private:
     // to do this before scorer initialization. Logical flow: first
     // set up graph, then set up scorers. [UG]
   }
-public:
-  TranslationWorker(DeviceId const device,
-                    std::vector<Ptr<Vocab const>>& vocabs,
-                    Ptr<data::ShortlistGenerator const> slgen,
-                    data::QueuedInput& job_queue,
-                    std::function<void (Ptr<History const>)> callback,
-                    Options options)
-    : device_(device), vocabs_(vocabs), slgen_(slgen),
-      job_queue_(job_queue), callback_(callback), options_(options)
-  { }
 
-  void run()
-  {
+  void run_() {
     init_();
-    while(true) {
+    LOG(info,"Worker {} is ready.", std::string(device_));
+    keep_going_ = true;
+    while(keep_going_) { // will be set to false by stop()
       data::BatchGenerator<data::QueuedInput> bgen(job_queue_, options_);
       bgen.prepare(false);
-      size_t i = 0;
+      // size_t i = 0;
       auto eos_id = vocabs_.back()->getEosId();
       auto unk_id = vocabs_.back()->getUnkId();
       auto trgVocab = vocabs_.back();
@@ -95,58 +91,32 @@ public:
   }
 
 
-//   void run(JobQueue& Q)
-//   {
-//     std::chrono::milliseconds timeout(100);
-//     // timeout: max wait on Q for more input, after that, translate
-//     // partial batch instead of waiting for more input to fill it up
-//     // to do: make this configurable
+public:
+  TranslationWorker(DeviceId const device,
+                    std::vector<Ptr<Vocab const>> vocabs,
+                    Ptr<data::ShortlistGenerator const> slgen,
+                    Ptr<data::QueuedInput> job_queue,
+                    std::function<void (Ptr<History const>)> callback,
+                    Ptr<Options> options)
+    : device_(device), job_queue_(job_queue), callback_(callback),
+      options_(options), vocabs_(vocabs), slgen_(slgen)
+  { }
 
-//     JobQueue::STATUS_CODE status;
-//     Ptr<TranslationJob> job;
-//     // single line of input to be processed, plus a promise for the result
+  void start() {
+    ABORT_IF(thread_ != NULL, "Don't call start on a running worker!");
+    thread_.reset(new std::thread([this]{ this->run_(); }));
+  }
 
-//     while (true) {
-//       status = Q.pop(job);
-//       while (status == JobQueue::SUCCESS && batch_.size() < batch_.capacity()){
-//         batch_.push_back(job);
-//         status = Q.pop(job, timeout);
-//       }
-//       if (batch_.size()) process_batch();
-//       if (status == JobQueue::CLOSED)
-//         break;
-//     }
-//   } // end of function run
-// };
+  void stop() {
+    keep_going_ = false;
+  }
 
-// template<class Search>
-// class TranslationService
-// {
-//   Ptr<Config> options_;
-//   Ptr<Vocab> trgVocab_;
-//   std::vector<Ptr<Vocab> > srcVocabs_;
-//   std::vector<DeviceId> devices_;
-//   friend TranslationWorker<Search>;
-// public:
-//   TranslationService(Ptr<config> options)
-//     : options_(options)
-//   {
-//     options->set("inference", true);
-//     auto vpaths = options_->get<std::vector<std::string>>("vocabs");
-//     auto vdims  = options_->get<std::vector<int>>("dim-vocabs");
+  void join() {
+    thread_->join();
+    thread_.reset();
+  }
 
-//     auto topt = New<Options>();
-//     topt->merge(options_);
+}; // end of class TranslationWorker
 
-//     assert(vpaths.size());
-//     srcVocabs.resize(vpaths.size()-1);
-//     for(size_t i = 0; i < srcVocabs.size(); ++i) {
-//       (srcVocabs_[i] = New<Vocab>(topt, i))->load(vpaths[i],vdims[i]);
-//     }
-//     (trgVocab_ = New<Vocab>(topt, vpaths.size() - 1))->load(vpaths.back());
-
-//     // to do: add workers
-
-};
 } // end of namespace marian::server
 } // end of namespace marian

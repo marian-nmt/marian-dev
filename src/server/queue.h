@@ -13,7 +13,7 @@
 
 #include"common/logging.h"
 
-extern Logger logger;
+// extern Logger logger;
 
 namespace marian {
 namespace server {
@@ -32,7 +32,7 @@ class Queue {
   bool queue_open_;   // queue allows pushing of new items
   bool queue_active_; // queue is open or still has items in it
 
-  Logger logger_;
+  // Logger logger_;
 public:
   enum STATUS_CODE { SUCCESS=0, EMPTY=1, FULL=2, CLOSED=4, ERROR=8 };
   typedef typename std::chrono::duration<double> timeout_t;
@@ -43,6 +43,7 @@ public:
   void close();  // prohibit push, allow pop until empty
   void cancel(); // prohibit push, drop everything in the queue
   bool ready() const; // ready to accept more?
+  size_t size() const { return queue_.size(); }
 };
 
 template<typename item_t>
@@ -74,7 +75,7 @@ push(item_t item, timeout_t timeout) {
       have_room_.wait(lock); // NOT recommended, you may deadlock
   }
 
-  logger->debug("Got slot for item {}", item);
+  // logger->debug("Got slot for item {}", item);
   if (!queue_open_) {
     // logger->debug("Queue is closed");
     return CLOSED; // queue is closed for new business
@@ -95,27 +96,16 @@ typename Queue<item_t>::STATUS_CODE
 Queue<item_t>::
 pop(item_t& item, timeout_t timeout) {
   std::unique_lock<std::mutex> lock(mutex_);
-  while (queue_active_ and queue_open_ and queue_.empty()) {
-    logger->debug("Waiting for content.");
-    if (timeout.count() > 0)
-      ready_.wait_for(lock, timeout);
-    else
-      ready_.wait(lock);
-  }
-
+  ready_.wait_for(lock, timeout);
   if (!queue_active_) { // someone shut down the queue
-    // logger->debug("Queue canceled.");
     return CLOSED;
   }
 
   if (queue_.empty()) { // timed out, queue is empty
-    // logger->debug(queue_open_ ? "Timout on empty queue." : "Queue closed.");
     return queue_open_ ? EMPTY : CLOSED;
   }
 
   item = std::move(queue_.front());
-  // logger->debug("Popped {} from queue", item);
-
   queue_.pop_front();
   lock.unlock();
   have_room_.notify_one();

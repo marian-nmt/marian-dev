@@ -39,16 +39,18 @@ public:
   typedef QueuedInputIterator Iterator;
 
 private:
-  std::vector<Ptr<Vocab>> vocabs_;
+  std::vector<Ptr<Vocab const>> vocabs_;
   JobQueue job_queue_;
   int timeout_; // queue pop timeout (in milliseconds)
   std::atomic_ullong job_ctr_{0};
 public:
   typedef SentenceTuple Sample;
 
-  QueuedInput(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  QueuedInput(std::vector<Ptr<Vocab const>> const& vocabs,
+              Ptr<Options> options);
 
-  Sample next(bool starts_batch=false);
+  Sample next() override { return next(false); }
+  Sample next(bool starts_batch);
   // starts_batch == true => use longer timeout for first in batch
 
   QueuedInput::batch_ptr toBatch(const std::vector<Sample>& batchVector) override;
@@ -63,6 +65,7 @@ public:
   void shuffle() override {}
   void reset() override {}
   void prepare() override {}
+  size_t size() const { return job_queue_.size(); }
 };
 }  // namespace data
 }  // namespace marian

@@ -111,11 +111,53 @@ public:
 };
 
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
+class PrepareBiasForBNodeOp : public OnlyForInferenceNodeOp {
+public:
+  PrepareBiasForBNodeOp(Expr bias, Expr inputB, Expr a_quant_mult)
+      : OnlyForInferenceNodeOp({bias, inputB, a_quant_mult}, bias->shape(), Type_) { //TODO WRONG TYPE
+    ABORT_IF(children().size() != 3, "expected 2 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "Bias cannot be null");
+    ABORT_IF(child(1) == nullptr, "B cannot be null");
+    ABORT_IF(child(2) == nullptr, "Quant mult of A cannot be null");
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+    using Integer = typename backend<Type_>::Integer; //TODO WRONG TYPE
+
+    int rowsB = rows(this->child(1)->val());
+    int colsB = cols(this->child(1)->val());
+
+    auto inputB = this->child(1)->val()->data();
+
+    float alpha = 127/ *this->child(2)->val()->data();
+
+    //copy the bias because we shouldn't modify it in place
+    for (int i = 0; i < this->shape()[-1]; i++) {
+      this->val()->data<Integer>()[i] = inputB[i];
+    }
+
+
+    intgemm::Int8::PrepareBiasFor8(
+     inputB,
+     this->val()->data<Integer>(), //TODO WRONG TYPE
+     alpha,
+     rowsB,
+     colsB);
+    )};
+  }
+
+  const std::string type() override { return "prepareBias"; }
+};
+
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class PrepareBNodeOp : public OnlyForInferenceNodeOp {
 public:
-  PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue, Expr bias, Expr alpha)
-      : OnlyForInferenceNodeOp({input, quant_mult, bias, alpha}, input->shape(), Type_) {
-    ABORT_IF(children().size() != 4, "expected 4 children");
+  PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {
+    ABORT_IF(children().size() != 2, "expected 2 children");
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
@@ -123,11 +165,6 @@ public:
   }
 
   NodeOps forwardOps() override {
-    if (this->child(3)) {
-      int rowsB = rows(this->child(0)->val());
-      int colsB = cols(this->child(0)->val());
-      intgemm::Int8::PrepareBiasFor8(this->child(0)->val()->data(), this->child(2)->val()->data(), *this->child(3)->val()->data(), rowsB, colsB);
-    }
     return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareB);
   }
 
@@ -352,11 +389,14 @@ struct ops {
   static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
     return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);
   }
-  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue, Expr bias=nullptr, Expr alpha=nullptr) {
-    return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue, bias, alpha);
+  static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {
+    return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue);
+  }
+  static inline Expr prepareBiasForB(Expr bias, Expr inputB, Expr a_quant_mult) {
+    return Expression<PrepareBiasForBNodeOp<Type_>>(bias, inputB, a_quant_mult); //TODO type is wrong
   }
   static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
-    return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);
+    return Expression<SelectColumnsBNodeOp<float>>(b, cols);
   }
 };
 

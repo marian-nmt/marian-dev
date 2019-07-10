@@ -354,8 +354,6 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 
 namespace { // anonymous namespace
 // TODO: Do it better.
-inline int cols(Expr tensor) { return tensor->shape()[-1]; }
-inline int rows(Expr tensor) { return tensor->shape().elements() / cols(tensor); }
 std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue) {
   if (matrix->type() == "intPrepareA")
     return {trans ? transpose(matrix) : matrix, matrix->child(1)};
@@ -364,28 +362,23 @@ std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue) {
     return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
   }
 }
-std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue, Expr bias=nullptr, Expr alpha=nullptr) {
+std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue) {
   if (matrix->type() == "intSelectColumnsB")
     return {trans ? transpose(matrix) : matrix, matrix->child(0)->child(1)};
   else if (matrix->type() == "intPrepareB")
     return {trans ? transpose(matrix) : matrix, matrix->child(1)};
   else {
     auto quant_mult = marian::cpu::int8::quantMult(matrix);
-    return {cpu::int8::prepareB(trans ? transpose(matrix) : matrix, quant_mult, clipValue, bias, alpha), quant_mult};
+    return {cpu::int8::prepareB(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
   }
 }
-
-void int8_prepareBias(Expr matrix, Expr bias, bool trans, Expr quant_mult_a) {
-  if (matrix->type() == "intSelectColumnsB")
-    return;
-  else if (matrix->type() == "intPrepareB")
-    return;
+Expr int8_prepareBias(Expr bias, Expr inputB, bool trans, Expr a_quant_mult) {
+  if (inputB->type() == "intSelectColumnsB")
+    return bias; //TODO THIS MIGHT BE WRONG
+  else if (inputB->type() == "intPrepareB")
+    return bias; //TODO THIS MIGHT BE WRONG
   else {
-    auto quant_mult = marian::cpu::int8::quantMult(matrix);
-    int rowsB = rows(trans ? transpose(matrix) : matrix);
-    int colsB = cols(trans ? transpose(matrix) : matrix);
-    intgemm::Int8::PrepareBiasFor8(trans ? transpose(matrix)->child(0)->val()->data() : matrix->child(0)->val()->data(), bias->child(0)->val()->data(), *quant_mult_a->child(0)->val()->data(), rowsB, colsB);
-    return;
+    return cpu::int8::prepareBiasForB(bias, trans ? transpose(inputB) : inputB, a_quant_mult);
   }
 }
 } // anonymous namespace
@@ -459,10 +452,11 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           auto quant_mult = marian::cpu::int8::quantMult(a);
           quant_a = {rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a, quant_mult, clipValue)), quant_mult};
         }
-        auto quant_b = int8_quantizeB(b, transB, clipValue, bias, quant_a.second);
+        auto quant_b = int8_quantizeB(b, transB, clipValue);
+        auto prepped_bias = int8_prepareBias(bias, b, transB, quant_a.second);
         return rec1(cpu::int8::affine(quant_a.first, quant_a.second,
                                       quant_b.first, quant_b.second,
-                                      bias,
+                                      prepped_bias,
                                       scale),
                     true);
       };
@@ -499,10 +493,11 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     } else {
       // cpu int8 version
       auto quant_a = int8_quantizeA(a, transA, clipValue);
-      auto quant_b = int8_quantizeB(b, transB, clipValue, bias, quant_a.second);
+      auto quant_b = int8_quantizeB(b, transB, clipValue);
+      auto prepped_bias = int8_prepareBias(bias, b, transB, quant_a.second);
       return cpu::int8::affine(quant_a.first, quant_a.second,
                                quant_b.first, quant_b.second,
-                               bias,
+                               prepped_bias,
                                scale);
     }
   } else {

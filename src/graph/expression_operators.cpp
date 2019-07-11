@@ -373,11 +373,13 @@ std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue) {
   }
 }
 Expr int8_prepareBias(Expr bias, Expr inputB, bool trans, Expr a_quant_mult) {
-  if (inputB->type() == "intSelectColumnsB")
+  if (inputB->type() == "intSelectColumnsB") {
+    ABORT_IF(true, "We can't work on selectedColumnsB b Matrix yet.");
     return bias; //TODO THIS MIGHT BE WRONG
-  else if (inputB->type() == "intPrepareB")
+  } else if (inputB->type() == "intPrepareB") {
+    ABORT_IF(true, "We can't work on prepared B Matrix yet.");
     return bias; //TODO THIS MIGHT BE WRONG
-  else {
+  } else {
     return cpu::int8::prepareBiasForB(bias, trans ? transpose(inputB) : inputB, a_quant_mult);
   }
 }

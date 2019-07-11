@@ -110,7 +110,7 @@ public:
   const std::string type() override { return "intPrepareA"; }
 };
 
-template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
+template <Type Type_>
 class PrepareBiasForBNodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareBiasForBNodeOp(Expr bias, Expr inputB, Expr a_quant_mult)
@@ -125,7 +125,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-    using Integer = typename backend<Type_>::Integer; //TODO WRONG TYPE
+    //using Integer = typename backend<Type_>::Integer; //TODO WRONG TYPE
 
     int rowsB = rows(this->child(1)->val());
     int colsB = cols(this->child(1)->val());
@@ -136,13 +136,13 @@ public:
 
     //copy the bias because we shouldn't modify it in place
     for (int i = 0; i < this->shape()[-1]; i++) {
-      this->val()->data<Integer>()[i] = inputB[i];
+      this->val()->data()[i] = inputB[i];
     }
 
 
     intgemm::Int8::PrepareBiasFor8(
      inputB,
-     this->val()->data<Integer>(), //TODO WRONG TYPE
+     this->val()->data(), //TODO WRONG TYPE
      alpha,
      rowsB,
      colsB);
@@ -279,8 +279,7 @@ public:
       auto quant_mult_a = child(1)->val();
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
-      std::cerr << "UNBIASED" << std::endl;
-      ABORT_IF(true, "We only do biases around here");
+      ABORT_IF(true, "We only do multiplication with biases around here");
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
@@ -393,10 +392,10 @@ struct ops {
     return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue);
   }
   static inline Expr prepareBiasForB(Expr bias, Expr inputB, Expr a_quant_mult) {
-    return Expression<PrepareBiasForBNodeOp<Type_>>(bias, inputB, a_quant_mult); //TODO type is wrong
+    return Expression<PrepareBiasForBNodeOp<marian::Type::float32>>(bias, inputB, a_quant_mult); //TODO type is wrong
   }
   static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
-    return Expression<SelectColumnsBNodeOp<float>>(b, cols);
+    return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);
   }
 };
 

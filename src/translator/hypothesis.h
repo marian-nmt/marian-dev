@@ -8,20 +8,32 @@
 namespace marian {
 
 class Hypothesis {
-private:
-  std::vector<trieannosaurus::Node>* curr_trie_node;
 public:
-  Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {}
+  Hypothesis(std::vector<trieannosaurus::Node>* currTrieNode) : prevHyp_(nullptr), 
+  prevIndex_(0), word_(0), pathScore_(0.0), currTrieNode_(currTrieNode) {}
 
   Hypothesis(const Ptr<Hypothesis> prevHyp,
              Word word,
              IndexType prevIndex,
              float pathScore)
-      : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore) {}
+      : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore), 
+      currTrieNode_(prevHyp_->currTrieNode_) {}
 
   const Ptr<Hypothesis> GetPrevHyp() const { return prevHyp_; }
 
   Word GetWord() const { return word_; }
+
+  /*@TODO this one has the side effect of updating the trie node*/
+  bool hasTrieContinuatuions() {
+    //Assume matching vocabulary IDs. Will break otherwise.
+    uint16_t id = (uint16_t)word_;
+    currTrieNode_ = trieannosaurus::trieMeARiver::find(id, currTrieNode_);
+    if (currTrieNode_) {
+      return true;
+    } else {
+      return false;
+    }
+  }
 
   IndexType GetPrevStateIndex() const { return prevIndex_; }
 
@@ -61,6 +73,7 @@ private:
   const IndexType prevIndex_;
   const Word word_;
   const float pathScore_;
+  std::vector<trieannosaurus::Node>* currTrieNode_;
 
   std::vector<float> scoreBreakdown_;
   std::vector<float> alignment_;

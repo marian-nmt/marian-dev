@@ -17,7 +17,8 @@ private:
   size_t beamSize_;
   Word trgEosId_ = (Word)-1;
   Word trgUnkId_ = (Word)-1;
-
+  bool triePrune_ = false;
+  std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_;
 public:
   BeamSearch(Ptr<Options> options,
              const std::vector<Ptr<Scorer>>& scorers,
@@ -29,7 +30,17 @@ public:
                       ? options_->get<size_t>("beam-size")
                       : 3),
         trgEosId_(trgEosId),
-        trgUnkId_(trgUnkId) {}
+        trgUnkId_(trgUnkId) {
+          if (options_->get<std::string>("trie-pruning-path") != "-1") {
+            triePrune_ = true;
+            std::unordered_map<std::string, uint16_t> dict;
+            std::unordered_map<uint16_t, std::string> vocab;
+          
+            trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
+            trieannosaurus::readFileByLine(options_->get<std::string>("trie-pruning-path"), 
+                                          *trieConstructor_, "Constructing monolingual trie...");
+          }
+        }
 
   Beams toHyps(const std::vector<unsigned int> keys,
                const std::vector<float> pathScores,
@@ -140,6 +151,20 @@ public:
     return align;
   }
 
+  Beams filterForContinuations(const Beams& beams) {
+    Beams newBeams;
+    for(auto beam : beams) {
+      Beam newBeam;
+      for (auto hyp : beam) {
+        if (hyp->hasTrieContinuatuions()) {
+          newBeam.push_back(hyp);
+        }
+      }
+      newBeams.push_back(newBeam);
+    }
+    return newBeams;
+  }
+
   Beams pruneBeam(const Beams& beams) {
     Beams newBeams;
     for(auto beam : beams) {
@@ -173,7 +198,7 @@ public:
 
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(auto& beam : beams)
-      beam.resize(localBeamSize, New<Hypothesis>());
+      beam.resize(localBeamSize, triePrune_ ? New<Hypothesis>(trieConstructor_->getTrie()) : New<Hypothesis>(nullptr));
 
     bool first = true;
     bool final = false;
@@ -275,6 +300,10 @@ public:
                      localBeamSize,
                      first,
                      batch);
+      
+      if (triePrune_) {
+        beams = filterForContinuations(beams);
+      }
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {

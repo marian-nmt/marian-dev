@@ -509,6 +509,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::string>("--alignment",
      "Return word alignment. Possible values: 0.0-1.0, hard, soft")
     ->implicit_val("1");
+  cli.add<std::string>("--trie-pruning-path",
+     "Use trie pruning during translation. Provide path to the monolingual corpora.")
+    ->implicit_val("-1");
 
   addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);

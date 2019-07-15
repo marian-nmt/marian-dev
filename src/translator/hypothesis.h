@@ -3,10 +3,13 @@
 
 #include "common/definitions.h"
 #include "data/alignment.h"
+#include "3rd_party/trieannosaurus/trieMe.h"
 
 namespace marian {
 
 class Hypothesis {
+private:
+  std::vector<trieannosaurus::Node>* curr_trie_node;
 public:
   Hypothesis() : prevHyp_(nullptr), prevIndex_(0), word_(0), pathScore_(0.0) {}
 

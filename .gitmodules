@@ -10,3 +10,6 @@
 [submodule "src/3rd_party/nccl"]
 	path = src/3rd_party/nccl
 	url = https://github.com/marian-nmt/nccl
+[submodule "src/3rd_party/trieannosaurus"]
+	path = src/3rd_party/trieannosaurus
+	url = https://github.com/xapajiamnu/trieannosaurus

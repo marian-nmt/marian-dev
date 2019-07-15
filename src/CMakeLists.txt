@@ -3,6 +3,7 @@ add_subdirectory(3rd_party)
 include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
+include_directories(3rd_party/rapid/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
@@ -224,3 +225,5 @@ endif(COMPILE_TESTS)
 if(COMPILE_EXAMPLES)
   add_subdirectory(examples)
 endif(COMPILE_EXAMPLES)
+
+add_subdirectory(3rd_party/rapidjson)

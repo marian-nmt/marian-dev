@@ -6,7 +6,8 @@ namespace marian {
 namespace data {
 
 QueuedInputIterator::QueuedInputIterator() : pos_(-1), tup_(0) {}
-QueuedInputIterator::QueuedInputIterator(QueuedInput& corpus) : corpus_(&corpus), pos_(0), tup_(corpus_->next(true)) {}
+QueuedInputIterator::QueuedInputIterator(QueuedInput& corpus)
+  : corpus_(&corpus), pos_(0), tup_(corpus_->next(true)) {}
 
 void QueuedInputIterator::increment() {
   tup_ = corpus_->next();
@@ -24,7 +25,7 @@ const SentenceTuple& QueuedInputIterator::dereference() const {
 QueuedInput::
 QueuedInput(std::vector<Ptr<Vocab const>> const& vocabs, Ptr<Options> options)
   : DatasetBase(options), vocabs_(vocabs),
-    timeout_(options ? options->get<int>("queue-timeout",100) : 100)
+    timeout_(options ? options->get<int>("queue-timeout", 100) : 100)
 { }
 
 // QueuedInput is mainly used for inference in the server mode, not
@@ -37,30 +38,23 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
   // LOG(info, "timeout is {}", starts_batch ? 1000 : timeout_);
   auto timeout = std::chrono::milliseconds(starts_batch ? 1000 : timeout_);
 
-  Ptr<TranslationJob> job;
+  Ptr<server::Job> job;
   JobQueue::STATUS_CODE success;
   do {
     success = job_queue_.pop(job,timeout);
     // LOG(info, "job queue status code: {} [{} batch]", success, (starts_batch ? "new" : "old"));
     if (success == JobQueue::SUCCESS) {
       // fill up the sentence tuple with source and/or target sentences
-      SentenceTuple tup(job->first); // job ID should be unique
-      std::vector<std::string> const& snt = job->second;
-      LOG(info, "QueuedInput is shipping job {}", job->first);
+      SentenceTuple tup(job->internal_id); // job ID should be unique
+      std::vector<std::string> const& snt = job->input;
+      LOG(info, "QueuedInput is shipping job {}", job->internal_id);
       for(size_t i = 0; i < snt.size(); ++i) {
-        std::istringstream buf(snt[i]);
-        io::InputFileStream dummy(buf);
-        std::string line;
-        if(io::getline(dummy, line)) {
-          // second, third parameter below: addEOS, inference mode==true?
-          Words words = vocabs_[i]->encode(line,true,inference_);
-          if(words.empty())
-            words.push_back(DEFAULT_EOS_ID);
-          tup.push_back(words);
-        }
+        Words words = vocabs_[i]->encode(snt[i],true,inference_);
+        if(words.empty())
+          words.push_back(DEFAULT_EOS_ID);
+        tup.push_back(words);
       }
-      // check if each input file provided an example
-      // if(tup.size() == vocabs_.size())
+      job->dequeued();
       return tup;
     }
   } while(starts_batch and success == JobQueue::EMPTY);
@@ -113,16 +107,13 @@ toBatch(const std::vector<Sample>& batchVector) {
   return batch;
 }
 
-uint64_t
+bool
 QueuedInput::
-push(std::vector<std::string> const& src) {
+push(Ptr<server::Job> job) {
   // push a new item for translation
-  uint64_t jid = ++job_ctr_;
   std::chrono::milliseconds timeout(5000);
-  auto job = New<TranslationJob>(jid,src);
   auto status = job_queue_.push(job,timeout);
-  if (status == JobQueue::SUCCESS) return jid;
-  return 0; // failed
+  return status == JobQueue::SUCCESS;
 }
 
 }  // namespace data

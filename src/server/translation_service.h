@@ -25,6 +25,7 @@
 
 #include <string>
 #include "translation_worker.h"
+#include "translation_job.h"
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -32,20 +33,6 @@
 extern Logger logger;
 
 namespace marian {
-
-std::vector<std::pair<float,std::string>>
-topTranslations(Ptr<History const> h, bool const R2L,
-                Vocab const& V, size_t const n = 1) {
-  auto nbest_histories = h->NBest(n,true);
-  std::vector<std::pair<float,std::string>> nbest;
-  for (auto& hyp: nbest_histories) {
-    auto& snt = std::get<0>(hyp);
-    if (R2L) std::reverse(snt.begin(), snt.end());
-    nbest.push_back(std::make_pair(std::get<2>(hyp), V.decode(snt)));
-  }
-  return nbest;
-}
-
 namespace server {
 // This should actually go into vocab.*
 // Also it should be merged with the loadOrCreate code in corpus_base.cpp
@@ -71,11 +58,13 @@ loadVocabularies(Ptr<Options> options) {
 
 template<class Search>
 class TranslationService {
-
-  // Note to callback n00bs: see this:
-  // https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
+public:
   typedef std::function<void (uint64_t ejid, Ptr<History const> h)>
   ResponseHandler;
+
+private:
+  // Note to callback n00bs: see this:
+  // https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
 
   typedef TranslationWorker<Search>
   Worker;
@@ -89,27 +78,28 @@ class TranslationService {
 
   // bits and pieces for callbacks
   std::mutex lock_; // for management of pending callbacks
-  std::unordered_map<uint64_t, std::pair<uint64_t, ResponseHandler>> callback_map_;
+  typedef std::pair<Ptr<Job>, std::promise<Ptr<Job const>>> JobEntry;
+  std::unordered_map<uint64_t, JobEntry> scheduled_jobs_;
+
+  bool keep_going_{true};
+  std::atomic_ullong job_ctr_{0};
 
   void callback_(Ptr<History const> h) {
     // This function is called by the workers once translations are available.
-    // It routes histories back to the original client together with the external
-    // job ids.
 
-    ResponseHandler callback;
-    uint64_t ejid;
-    { // scope for lock-guard
+    JobEntry entry;
+    { // remove the job / promise pair from the pool of scheduled jobs
       std::lock_guard<std::mutex> lock(lock_);
-      auto m = callback_map_.find(h->GetLineNum());
-      if (m == callback_map_.end()) return; // job was cancelled
-      callback = m->second.second;
-      ejid = m->second.first;
-      callback_map_.erase(m);
+      auto m = scheduled_jobs_.find(h->GetLineNum());
+      if (m == scheduled_jobs_.end()) return; // job was cancelled (not yet implemented)
+      entry = std::move(m->second);
+      scheduled_jobs_.erase(m);
     }
-    callback(ejid,h);
-  }
 
-  bool keep_going_{true};
+    // extract translations from history and fulfil the promise
+    entry.first->finish(h, isRight2LeftDecoder(), *vocabs_.back());
+    entry.second.set_value(entry.first);
+  }
 
 public:
   TranslationService(Ptr<Options> options)
@@ -148,15 +138,24 @@ public:
     }
   }
 
-  uint64_t push(uint64_t ejid, std::string const& input, ResponseHandler cb) {
-    // push new job, return internal job id
-    std::lock_guard<std::mutex> lock(lock_);
-    uint64_t jid = jq_->push({input});
-    if (jid) {
-      callback_map_[jid] = std::make_pair(ejid, cb);
+  std::pair<uint64_t, std::future<Ptr<Job const>>>
+  push(uint64_t ejid, std::string const& input, size_t const nbest=1,
+       size_t const priority=0) {
+    auto job = New<Job>(++job_ctr_, ejid, input, nbest, priority);
+    if (!jq_->push(job)) {
+      job->error = New<Error>("Could not push to Queue.");
+      std::promise<Ptr<Job const>> prom;
+      prom.set_value(job);
+      return std::make_pair(job->internal_id,prom.get_future());
     }
-    LOG(info, "{} jobs queued up.", jq_->size());
-    return jid;
+    JobEntry* entry;
+    {
+      std::lock_guard<std::mutex> lock(lock_);
+      entry = &scheduled_jobs_[job->internal_id];
+    }
+    entry->first = job;
+    LOG(info, "Pushed job No {}; {} jobs queued up.", job->internal_id, jq_->size());
+    return std::make_pair(job->internal_id, entry->second.get_future());
   }
 
   Ptr<Vocab const> vocab(int i) const {
@@ -171,30 +170,16 @@ public:
   std::string
   translate(std::string const& srcText) {
     // @TODO: add priority for QoS differentiation [UG]
-    std::vector<std::future<std::string>> ftrans;
+    std::vector<std::future<Ptr<Job const>>> ftrans;
     std::istringstream buf(srcText);
     std::string line;
     for (size_t linectr = 0; getline(buf,line); ++linectr) {
-      auto prom = New<std::promise<std::string>>();
-      ftrans.push_back(prom->get_future());
-      // check for empty lines
-      if (line.find_first_not_of(" ") == std::string::npos) {
-        prom->set_value("");
-      }
-      else {
-        bool R2L = this->isRight2LeftDecoder();
-        Ptr<Vocab const> V = vocabs_.back();
-        auto cb = [prom,R2L,V](uint64_t jid, Ptr<History const> h) {
-          auto response = topTranslations(h, R2L,*V,1)[0].second;
-          LOG(info, "Translation of job {} is {}", jid, response);
-          prom->set_value(response);
-        };
-        this->push(linectr,line,cb);
-      }
+      ftrans.push_back(push(linectr,line).second);
     }
     std::ostringstream obuf;
     for (auto& t: ftrans) {
-      obuf << t.get() << std::endl;
+      Ptr<Job const> j = t.get();
+      obuf << j->translation << std::endl;
     }
     std::string translation = obuf.str();
     if (srcText.size() && srcText.back() != '\n')
@@ -202,5 +187,9 @@ public:
     return translation;
   }
 };
+
+
+
+
 
 }} // end of namespace marian::server

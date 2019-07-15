@@ -6,9 +6,11 @@
 #include "data/iterator_facade.h"
 #include "data/corpus.h"
 #include "server/queue.h"
+#include "server/translation_job.h"
 #include <stdint.h>
 #include <vector>
 #include <atomic>
+#include <sys/time.h>
 
 namespace marian {
 namespace data {
@@ -34,8 +36,7 @@ class QueuedInput
   : public DatasetBase<SentenceTuple, QueuedInputIterator, CorpusBatch>
 {
 public:
-  typedef std::pair<uint64_t, std::vector<std::string>> TranslationJob;
-  typedef server::Queue<Ptr<TranslationJob>> JobQueue;
+  typedef server::Queue<Ptr<server::Job>> JobQueue;
   typedef QueuedInputIterator Iterator;
 
 private:
@@ -57,11 +58,7 @@ public:
   iterator begin() override { return iterator(*this); }
   iterator end() override { return iterator(); }
 
-  // push translation job, return job ID
-  // Note that the vector accommodates factored input,
-  // not multiple sentences at once.
-  uint64_t push(std::vector<std::string> const& src);
-
+  bool push(Ptr<server::Job> job);
   void shuffle() override {}
   void reset() override {}
   void prepare() override {}

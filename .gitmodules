@@ -10,3 +10,6 @@
 [submodule "src/3rd_party/nccl"]
 	path = src/3rd_party/nccl
 	url = https://github.com/marian-nmt/nccl
+[submodule "src/3rd_party/rapidjson"]
+	path = src/3rd_party/rapidjson
+	url = https://github.com/Tencent/rapidjson.git

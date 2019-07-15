@@ -24,23 +24,11 @@ if __name__ == "__main__":
     linectr = 0
     for line in sys.stdin:
         count += 1
-        batch += "%d %s"%(linectr, line.decode('utf-8') if sys.version_info < (3, 0) else line)
-        linectr += 1
-        print("%d/%d"%(count, args.batch_size), file=sys.stderr)
-        if count == args.batch_size:
-            # translate the batch
-            ws.send(batch)
-            result = ws.recv()
-            print(result.rstrip())
+        ws.send('{ "id": %d, "text": "%s"}'%(count, line.decode('utf8').strip()))
 
-            count = 0
-            batch = ""
-
-    if count:
-        # translate the remaining sentences
-        ws.send(batch)
+    while count:
         result = ws.recv()
-        print(result.rstrip())
-
+        print(result)
+        count -= 1
     # close connection
     ws.close()

@@ -89,6 +89,34 @@ public:
 
     bg.prepare(false);
 
+
+    std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_(nullptr);
+    std::vector<trieannosaurus::Node>* trie_ = nullptr;
+    if (options_->get<std::string>("trie-pruning-path") != "-1") {
+      std::unordered_map<std::string, uint16_t> dict;
+      std::unordered_map<uint16_t, std::string> vocab;
+      {
+        /* Since our vocabulary could sentence piece and what not, this allows us to not care for the vocab format
+         * the downside is that we read through the corpora twice
+         * but more importantly @TODO unk handling might potentially lead to wrong results
+         * @TODO to really fix the unk handling and do this better */
+        trieannosaurus::MakeVocab vocabTMP;
+        trieannosaurus::readFileByLine(options_->get<std::string>("trie-pruning-path"), vocabTMP, "Building vocabulary...");
+        auto maps = vocabTMP.getMaps();
+
+        for (auto&& item : maps.first) {
+          std::string key = item.first;
+          dict[key] = (*trgVocab_)[key];
+          vocab[(uint16_t)(*trgVocab_)[key]] = key;
+        }
+      }
+    
+      trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
+      trieannosaurus::readFileByLine(options_->get<std::string>("trie-pruning-path"), 
+                                    *trieConstructor_, "Constructing monolingual trie...");
+      trie_ = trieConstructor_->getTrie();
+    }
+
     for(auto batch : bg) {
       auto task = [=](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
@@ -99,7 +127,8 @@ public:
           scorers = scorers_[id % numDevices_];
         }
 
-        auto search = New<Search>(options_, scorers, trgVocab_->getEosId(), trgVocab_->getUnkId());
+        auto search = New<Search>(options_, scorers, trgVocab_->getEosId(),
+         trgVocab_->getUnkId(), trie_);
         auto histories = search->search(graph, batch);
 
         for(auto history : histories) {

@@ -18,12 +18,13 @@ private:
   Word trgEosId_ = (Word)-1;
   Word trgUnkId_ = (Word)-1;
   bool triePrune_ = false;
-  std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_;
+  std::vector<trieannosaurus::Node>* trie_;
 public:
   BeamSearch(Ptr<Options> options,
              const std::vector<Ptr<Scorer>>& scorers,
              Word trgEosId,
-             Word trgUnkId = -1)
+             Word trgUnkId = -1,
+             std::vector<trieannosaurus::Node>* trie=nullptr)
       : options_(options),
         scorers_(scorers),
         beamSize_(options_->has("beam-size")
@@ -33,12 +34,6 @@ public:
         trgUnkId_(trgUnkId) {
           if (options_->get<std::string>("trie-pruning-path") != "-1") {
             triePrune_ = true;
-            std::unordered_map<std::string, uint16_t> dict;
-            std::unordered_map<uint16_t, std::string> vocab;
-          
-            trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
-            trieannosaurus::readFileByLine(options_->get<std::string>("trie-pruning-path"), 
-                                          *trieConstructor_, "Constructing monolingual trie...");
           }
         }
 
@@ -198,7 +193,7 @@ public:
 
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(auto& beam : beams)
-      beam.resize(localBeamSize, triePrune_ ? New<Hypothesis>(trieConstructor_->getTrie()) : New<Hypothesis>(nullptr));
+      beam.resize(localBeamSize, triePrune_ ? New<Hypothesis>(trie_) : New<Hypothesis>(nullptr));
 
     bool first = true;
     bool final = false;

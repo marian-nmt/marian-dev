@@ -483,7 +483,7 @@ public:
     auto expmap = this->getRevNameMap();
     auto namemap = this->getNameMap();
     Expr unnamed_alpha = namemap["F0::unnamed_alpha"];
-    this->alphas_.resize(params_->size(), unnamed_alpha);
+    this->alphas_.resize(params_->size(), unnamed_alpha); //@TODO XapaJIaMnu this might have to be params_->size() +1
     for (Expr exp : *params_) {
       size_t id = exp->getId();
       std::string paramName = expmap[exp];

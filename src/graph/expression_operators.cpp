@@ -452,7 +452,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
     size_t nodeid = b->getId();
     Expr alpha;
-    if (nodeid > b->graph()->alphas_.size()) {
+    if (nodeid >= b->graph()->alphas_.size()) { //@TODO XapaJIaMnu for some reason this never got triggered before...
       alpha = b->graph()->alphas_.back();
     } else {
       alpha = b->graph()->alphas_[nodeid];

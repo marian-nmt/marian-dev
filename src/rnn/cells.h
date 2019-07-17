@@ -1080,46 +1080,51 @@ public:
 template <Type Type_, typename = cpu::integer::EnableIfTypeIsSupported<Type_>>
 class SSRUInteger : public Cell {
 private:
-  Expr W_;
-  Expr Wf_, bf_;
+  Expr quantized_W;
+  Expr quantized_Wf;
+  Expr quantized_bf;
+  Expr quantized_sigmoid_lut;
 
-  float dropout_;
-  Expr dropMaskX_;
+  Expr quant_mult_input;
+  Expr quant_mult_W;
+  Expr quant_mult_Wf;
+  Expr quant_mult_bf;
+  Expr quant_mult_highway;
 
-  float layerNorm_;
-  Expr gamma_, gammaf_;
+  Expr sigmoid_lut_radius;
 
   using impl = cpu::integer::ops<Type_>;
 
 public:
   SSRUInteger(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = options_->get<int>("dimInput");
-    int dimState = options_->get<int>("dimState");
+    auto dimInput = options_->get<int>("dimInput");
+    auto dimState = options_->get<int>("dimState");
+    auto prefix = options->get<std::string>("prefix");
 
-    std::string prefix = options->get<std::string>("prefix");
+    ABORT_IF(dimInput != dimState, "For SSRUInteger state and input dims have to be equal");
 
-    ABORT_IF(dimInput != dimState,
-             "For SSRUInteger state and input dims have to be equal");
+    auto W = graph->param(prefix + "_W", {dimInput, dimInput}, inits::glorot_uniform);
+    auto Wf = graph->param(prefix + "_Wf", {dimInput, dimInput}, inits::glorot_uniform);
+    auto bf = graph->param(prefix + "_bf", {1, dimInput}, inits::zeros);
 
-    dropout_ = opt<float>("dropout", 0);
-    layerNorm_ = opt<bool>("layer-normalization", false);
+    auto graph_expmap = graph->getNameMap();
+    auto maxabs_input =  graph_expmap["F0::" + prefix + "_maxabs_input"];
+    auto maxabs_input_W = graph_expmap["F0::" + prefix + "_maxabs_input_W"];
+    auto maxabs_input_Wf = graph_expmap["F0::" + prefix + "_maxabs_input_Wf"];
+    sigmoid_lut_radius = graph_expmap["F0::" + prefix + "_sigmoid_lut_radius"];
+    auto sigmoid_lut = graph_expmap["F0::" + prefix + "_sigmoid_lut"];
 
-    W_ = graph->param(
-        prefix + "_W", {dimInput, dimInput}, inits::glorot_uniform);
+    quant_mult_input = 127.0 / maxabs_input;
+    quant_mult_W = impl::quantMult(W);
+    quant_mult_Wf = impl::quantMult(Wf);
+    quant_mult_bf = minimum(127.0 / maxabs_input_Wf, impl::quantMult(bf));
+    quant_mult_highway = 127.0 / maxabs_input_W;
+    auto quant_mult_sigmoid_f = graph->constant({1}, inits::from_value(127.0f));
 
-    Wf_ = graph->param(
-        prefix + "_Wf", {dimInput, dimInput}, inits::glorot_uniform);
-    bf_ = graph->param(prefix + "_bf", {1, dimInput}, inits::zeros);
-
-    if(dropout_ > 0.0f) {
-      dropMaskX_ = graph->dropout(dropout_, {1, dimInput});
-    }
-
-    if(layerNorm_) {
-      if(dimInput)
-        gamma_ = graph->param(prefix + "_gamma", {1, dimState}, inits::ones);
-      gammaf_ = graph->param(prefix + "_gammaf", {1, dimState}, inits::ones);
-    }
+    quantized_W = impl::prepareB(W, quant_mult_W);
+    quantized_Wf = impl::prepareB(Wf, quant_mult_Wf);
+    quantized_bf = impl::quantize(bf, quant_mult_bf);
+    quantized_sigmoid_lut = impl::quantize(sigmoid_lut, quant_mult_sigmoid_f);
   }
 
   State apply(std::vector<Expr> inputs, State state, Expr mask = nullptr) {
@@ -1135,34 +1140,35 @@ public:
     else
       input = inputs.front();
 
-    auto inputDropped = dropMaskX_ ? dropout(input, dropMaskX_) : input;
+    // NOTE: Keep in mind that if you use prepareA and PrepareBiasForB then you have to recalculate quant_mult_bf
+    auto quantized_input = impl::prepareAOld(input, quant_mult_input);
 
-    Expr x, f;
-    if(layerNorm_) {
-      x = layerNorm(dot(inputDropped, W_), gamma_);
-      f = layerNorm(dot(inputDropped, Wf_), gammaf_, bf_);
-    } else {
-      x = dot(inputDropped, W_);
-      f = affine(inputDropped, Wf_, bf_);
-    }
+    auto quantized_sigmoid_f = impl::SSRUSigmoidF(
+      quantized_input, quantized_Wf, quantized_bf, quantized_sigmoid_lut,
+      quant_mult_input * quant_mult_Wf, quant_mult_bf, sigmoid_lut_radius);
 
-    return {x, f};
+    auto quantized_right_part_of_highway = impl::SSRUPrecomputedPartOfHighway(
+      quantized_input, quantized_W, quantized_sigmoid_f,
+      quant_mult_highway / (quant_mult_input * quant_mult_W));
+
+    return {quantized_sigmoid_f, quantized_right_part_of_highway};
   }
 
   State applyState(std::vector<Expr> xWs, State state, Expr mask = nullptr) override {
-    auto recState = state.output;
-    auto cellState = state.cell;
+    auto cell_state = state.cell->value_type() != Type_ ? impl::quantize(state.cell, quant_mult_highway) : state.cell; // TODO: I guess it should be done on the outside by a user
 
-    auto x = xWs[0];
-    auto f = xWs[1];
+    auto quantized_left_part_of_highway = impl::elemwiseMul(cell_state, xWs[0], 7);
 
-    auto nextCellState = highway(cellState, x, f);  // rename to "gate"?
-    auto nextState = relu(nextCellState);
+    auto quantized_next_cell_state = impl::elemwiseAdd(quantized_left_part_of_highway, xWs[1]);
+    auto quantized_next_state = impl::relu(quantized_next_cell_state);
 
-    auto maskedCellState = mask ? mask * nextCellState : nextCellState;
-    auto maskedState = mask ? mask * nextState : nextState;
+    auto quantized_masked_cell_state = mask ? impl::elemwiseRescale(quantized_next_cell_state, mask) : quantized_next_cell_state;
+    auto quantized_masked_state = mask ? impl::elemwiseRescale(quantized_next_state, mask) : quantized_next_state;
 
-    return {maskedState, maskedCellState};
+    return {
+      impl::unquantize(quantized_masked_state, 1.0 / quant_mult_highway),       // TODO: Temporary unquantization
+      impl::unquantize(quantized_masked_cell_state, 1.0 / quant_mult_highway)   // TODO: Temporary unquantization
+    };
   }
 };
 

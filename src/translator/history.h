@@ -58,6 +58,12 @@ public:
       // note: bestHyp->GetPathScore() is not normalized, while bestHypCoord.normalizedPathScore is
       nbest.emplace_back(targetWords, bestHyp, bestHypCoord.normalizedPathScore);
     }
+    /*Produce empty containing 2 unks and eos*/
+    if ((nbest.size()) == 0) {
+      Words fakeTRGwords = {Word(1), Word(1), Word(0)};
+      for (size_t i = 0; i < n; i++)
+        nbest.emplace_back(fakeTRGwords, history_[0][0], 0.0);
+    }
     return nbest;
   }
 

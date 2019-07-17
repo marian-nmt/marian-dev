@@ -92,7 +92,8 @@ public:
 
     std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_(nullptr);
     std::vector<trieannosaurus::Node>* trie_ = nullptr;
-    if (options_->get<std::string>("trie-pruning-path") != "-1") {
+    if (options_->get<std::string>("trie-pruning-path") != "") {
+      std::string inputTrieFile = options_->get<std::string>("trie-pruning-path");
       std::unordered_map<std::string, uint16_t> dict;
       std::unordered_map<uint16_t, std::string> vocab;
       {
@@ -101,7 +102,7 @@ public:
          * but more importantly @TODO unk handling might potentially lead to wrong results
          * @TODO to really fix the unk handling and do this better */
         trieannosaurus::MakeVocab vocabTMP;
-        trieannosaurus::readFileByLine(options_->get<std::string>("trie-pruning-path"), vocabTMP, "Building vocabulary...");
+        trieannosaurus::readFileByLine(inputTrieFile, vocabTMP, "Building vocabulary...");
         auto maps = vocabTMP.getMaps();
 
         for (auto&& item : maps.first) {
@@ -109,12 +110,11 @@ public:
           dict[key] = (*trgVocab_)[key];
           vocab[(uint16_t)(*trgVocab_)[key]] = key;
         }
-      }
-    
       trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
-      trieannosaurus::readFileByLine(options_->get<std::string>("trie-pruning-path"), 
+      trieannosaurus::readFileByLine(inputTrieFile, 
                                     *trieConstructor_, "Constructing monolingual trie...");
       trie_ = trieConstructor_->getTrie();
+      }
     }
 
     for(auto batch : bg) {

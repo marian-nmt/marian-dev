@@ -31,8 +31,9 @@ public:
                       ? options_->get<size_t>("beam-size")
                       : 3),
         trgEosId_(trgEosId),
-        trgUnkId_(trgUnkId) {
-          if (options_->get<std::string>("trie-pruning-path") != "-1") {
+        trgUnkId_(trgUnkId),
+        trie_(trie) {
+          if (options_->get<std::string>("trie-pruning-path") != "") {
             triePrune_ = true;
           }
         }
@@ -151,7 +152,7 @@ public:
     for(auto beam : beams) {
       Beam newBeam;
       for (auto hyp : beam) {
-        if (hyp->hasTrieContinuatuions()) {
+        if (hyp->hasTrieContinuatuions() || hyp->GetWord() == trgEosId_) {
           newBeam.push_back(hyp);
         }
       }

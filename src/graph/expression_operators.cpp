@@ -355,11 +355,23 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 namespace { // anonymous namespace
 // TODO: Do it better.
 std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue) {
-  if (matrix->type() == "intPrepareA")
-    return {trans ? transpose(matrix) : matrix, matrix->child(1)};
+  if (matrix->type() == "intPrepareA") {
+      ABORT("Not supported yet");
+      return {trans ? transpose(matrix) : matrix, matrix->child(1)};
+  }
   else {
     auto quant_mult = marian::cpu::int8::quantMult(matrix);
     return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
+  }
+}
+std::pair<Expr, Expr> int8_quantizeAOld(Expr matrix, bool trans, float clipValue) {
+  if (matrix->type() == "intPrepareA") {
+      ABORT("Not supported yet");
+      return {trans ? transpose(matrix) : matrix, matrix->child(1)};
+  }
+  else {
+    auto quant_mult = marian::cpu::int8::quantMult(matrix);
+    return {cpu::int8::prepareAOld(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
   }
 }
 std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue) {
@@ -448,18 +460,23 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         // TODO(emjotde) choice of 16 or 8 bit.
         // TODO: It's copy-pasted from int8_quantizeA because of rec1 wrapper. Make it smarter.
         std::pair<Expr, Expr> quant_a;
-        if (a->type() == "intPrepareA")
+        std::pair<Expr, Expr> quant_a_old;
+        if (a->type() == "intPrepareA") {
           quant_a = {transA ? rec1(transpose(a)) : a, a->child(1)};
-        else {
+          ABORT("Not supported yet");
+        } else {
           auto quant_mult = marian::cpu::int8::quantMult(a);
           quant_a = {rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a, quant_mult, clipValue)), quant_mult};
+          quant_a_old = {rec1(cpu::int8::prepareAOld(transA ? rec1(transpose(a)) : a, quant_mult, clipValue)), quant_mult};
         }
         auto quant_b = int8_quantizeB(b, transB, clipValue);
         auto prepped_bias = int8_prepareBias(bias, b, transB, quant_a.second);
         return rec1(cpu::int8::affine(quant_a.first, quant_a.second,
                                       quant_b.first, quant_b.second,
                                       prepped_bias,
-                                      scale),
+                                      scale,
+                                      quant_a_old.first,
+                                      bias),
                     true);
       };
       tuner->insert({hash1, alg1});
@@ -483,6 +500,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
         int rows = ac->shape().elements() / ac->shape()[-1];
         Expr ones = ac->graph()->ones({rows, 1});
+        ABORT("Not supported yet");
         std::vector<Expr> nodes = {ac, bc, bias, ones};
         return rec2(Expression<AffineNodeOp>(nodes, transA, transB, scale),
                     true);
@@ -495,12 +513,15 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     } else {
       // cpu int8 version
       auto quant_a = int8_quantizeA(a, transA, clipValue);
+      auto quant_a_old = int8_quantizeAOld(a, transA, clipValue);
       auto quant_b = int8_quantizeB(b, transB, clipValue);
       auto prepped_bias = int8_prepareBias(bias, b, transB, quant_a.second);
       return cpu::int8::affine(quant_a.first, quant_a.second,
                                quant_b.first, quant_b.second,
                                prepped_bias,
-                               scale);
+                               scale,
+                               quant_a_old.first,
+                               bias);
     }
   } else {
     // general version, MKL, CBlas or CUDA

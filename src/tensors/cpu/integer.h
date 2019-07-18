@@ -110,11 +110,30 @@ public:
   const std::string type() override { return "intPrepareA"; }
 };
 
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
+class PrepareANodeOpOld : public OnlyForInferenceNodeOp {
+public:
+  PrepareANodeOpOld(Expr input, Expr quant_mult, float clipValue)
+      : OnlyForInferenceNodeOp({input, quant_mult}, input->shape(), Type_) {
+    ABORT_IF(children().size() != 2, "expected 2 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "A cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
+  }
+
+  NodeOps forwardOps() override {
+    return prepareMatrixForwardOps<Type_>(this, backend<Type_>::PrepareA);
+  }
+
+  const std::string type() override { return "intPrepareAold"; }
+};
+
 template <Type Type_>
 class PrepareBiasForBNodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareBiasForBNodeOp(Expr bias, Expr inputB, Expr a_quant_mult)
-      : OnlyForInferenceNodeOp({bias, inputB, a_quant_mult}, bias->shape(), Type_) { //TODO WRONG TYPE
+      : OnlyForInferenceNodeOp({bias, inputB, a_quant_mult}, bias->shape(), Type_) {
     ABORT_IF(children().size() != 3, "expected 2 children");
 
     // Check if arguments are not null
@@ -125,7 +144,6 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-    //using Integer = typename backend<Type_>::Integer; //TODO WRONG TYPE
 
     int rowsB = rows(this->child(1)->val());
     int colsB = cols(this->child(1)->val());
@@ -138,14 +156,19 @@ public:
     for (int i = 0; i < this->shape()[-1]; i++) {
       this->val()->data()[i] = inputB[i];
     }
-
+    static bool first = true;
+    if (first) {
+      std::cerr << "Alpha: " << alpha << std::endl;
+      first = false;
+    }
 
     intgemm::Int8::PrepareBiasFor8(
      inputB,
-     this->val()->data(), //TODO WRONG TYPE
+     this->val()->data(),
      alpha,
      rowsB,
      colsB);
+     //std::cout << this->val()->data()[0] << std::endl;
     )};
   }
 
@@ -313,9 +336,9 @@ private:
   float scalar_;
 
 public:
-  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar)
-      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b, bias)), scalar_(scalar) {
-    ABORT_IF(children().size() != 5, "expected 5 children");
+  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar, Expr a_old, Expr bias_old)
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias, a_old, bias_old}, newShape(a, b, bias)), scalar_(scalar) {
+    ABORT_IF(children().size() != 7, "expected 7 children");
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
@@ -323,6 +346,8 @@ public:
     ABORT_IF(child(2) == nullptr, "B cannot be null");
     ABORT_IF(child(3) == nullptr, "Quant mult of B cannot be null");
     ABORT_IF(child(4) == nullptr, "Bias cannot be null");
+    ABORT_IF(child(5) == nullptr, "Old A cannot be null");
+    ABORT_IF(child(6) == nullptr, "Old bias Cannot be null");
 
     // Check alignment
     assert(child(2)->shape()[-1] % 8 == 0);
@@ -348,6 +373,8 @@ public:
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
       auto bias = child(4)->val();
+      auto a_old = child(5)->val();
+      auto bias_old = child(6)->val();
       
       /****
        * Haaaaaaaacky
@@ -360,14 +387,78 @@ public:
       ****
        * Haaaaaaaacky
        */
-      
-      backend<Type_>::Multiply(
+      static bool first = true;
+      bool written = false;
+      backend<Type_>::Multiply8new(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
           BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
+      
+      for (int i = 0; i< rows(a)*cols(a); i++) {
+        if (((const Integer*)a_old->data())[i] + 127 != ((const uint8_t*)a->data())[i]) {
+          std::cerr<< "Error at " << i << " old: " << (int)((((const Integer*)a_old->data())[i])) << " new: " << (int)((((const uint8_t*)a->data())[i])) << std::endl;
+        }
+      }
+      if (first) {
+        std::cerr << "Scalar: " << scalar_ << " rows: " << rows(a) << " columns: " << cols(a) << " rows(b) " << rows(b) << std::endl;
+        std::cerr << "Quant mult a: " << *quant_mult_a->data() << " quant mult b: " << *quant_mult_b->data() << std::endl;
+        first = false;
+        written = true;
+        std::ofstream file("New");
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(b); j++) {
+            file << val_->data()[i*(cols(b)) + j] << " ";
+          }
+          file << std::endl;
+        }
+        std::ofstream file2("A_new");
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(a); j++) {
+            file2 << (int)(((const uint8_t*)a->data())[i*(cols(a)) + j]) << " ";
+          }
+          file2 << std::endl;
+        }
+        std::ofstream file3("bias_new");
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(b); j++) {
+            file3 << bias->data()[i*(cols(b)) + j] << " ";
+          }
+          file3 << std::endl;
+        }
+      }
+      backend<Type_>::Multiply(
+          (const Integer*)a_old->data(),
+          (const Integer*)b->data(),
+          BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          rows(a),
+          cols(a), // Shared dimension.
+          cols(b));
+      if (written) {
+        std::ofstream file("old");
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(b); j++) {
+            file << val_->data()[i*(cols(b)) + j] << " ";
+          }
+          file << std::endl;
+        }
+        std::ofstream file2("A_old");
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(a); j++) {
+            file2 << (int)(((const Integer*)a_old->data())[i*(cols(a)) + j]) << " ";
+          }
+          file2 << std::endl;
+        }
+        std::ofstream file3("bias_old");
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(b); j++) {
+            file3 << bias_old->data()[i*(cols(b)) + j] << " ";
+          }
+          file3 << std::endl;
+        }
+      }
     )};
   }
 
@@ -379,14 +470,17 @@ struct ops {
   static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {
     return Expression<DotNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, scalar);
   }
-  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) {
-    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);
+  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar, Expr a_old, Expr bias_old) {
+    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar, a_old, bias_old);
   }
   static inline Expr quantMult(Expr a) {
     return Expression<QuantMultNodeOp<Type_>>(a);
   }
   static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
     return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);
+  }
+  static inline Expr prepareAOld(Expr a, Expr quant_mult, float clipValue) {
+    return Expression<PrepareANodeOpOld<Type_>>(a, quant_mult, clipValue);
   }
   static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {
     return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue);

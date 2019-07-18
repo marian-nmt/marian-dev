@@ -38,6 +38,7 @@ public:
 
   typedef YAML::Node YamlNode;
 
+  Config(ConfigParser const& cp);
   // TODO: remove mode from this class
   Config(int argc,
          char** argv,
@@ -47,7 +48,8 @@ public:
   Config(const Config& other);
   Config(const Options& options);
 
-  void initialize(int argc, char** argv, cli::mode mode, bool validate);
+  void initialize(ConfigParser const& cp);
+  // void initialize(int argc, char** argv, cli::mode mode, bool validate);
 
   bool has(const std::string& key) const;
 

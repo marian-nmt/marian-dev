@@ -17,6 +17,9 @@ ConfigValidator::~ConfigValidator() {}
 void ConfigValidator::validateOptions(cli::mode mode) const {
   // clang-format off
   switch(mode) {
+    case cli::mode::server:
+      validateOptionsTranslation();
+      break;
     case cli::mode::translation:
       validateOptionsTranslation();
       break;
@@ -115,7 +118,7 @@ void ConfigValidator::validateOptionsTraining() const {
 
 void ConfigValidator::validateModelExtension(cli::mode mode) const {
   std::vector<std::string> models;
-  if(mode == cli::mode::translation)
+  if(mode == cli::mode::translation || mode == cli::mode::server)
     models = get<std::vector<std::string>>("models");
   else
     models.push_back(get<std::string>("model"));

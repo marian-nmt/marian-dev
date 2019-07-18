@@ -467,13 +467,13 @@ public:
         float totaldiff = 0;
         for (int i = 0; i < rows(a); i++) {
           for (int j = 0; j < cols(b); j++) {
-            float diff = fabs(val_->data()[i*(cols(b)) + j] - new_res.get()[i*(cols(b)) + j]);
+            float diff = val_->data()[i*(cols(b)) + j] - new_res.get()[i*(cols(b)) + j];
             file4 << diff << " ";
-            totaldiff += diff;
+            totaldiff += diff*diff;
           }
           file4 << std::endl;
         }
-        std::cerr << "Mean error: " << totaldiff/(rows(a)*cols(b)) << std::endl;
+        std::cerr << "MSE: " << std::sqrt(totaldiff/(rows(a)*cols(b))) << std::endl;
       }
     )};
   }

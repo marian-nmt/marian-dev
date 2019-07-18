@@ -5,6 +5,7 @@
 #include "graph/node.h"
 #include "tensors/cpu/bias.h"
 #include "3rd_party/intgemm/aligned.h"
+#include <math.h>
 
 namespace marian {
 namespace cpu {
@@ -402,6 +403,10 @@ public:
           std::cerr<< "Error at " << i << " old: " << (int)((((const Integer*)a_old->data())[i])) << " new: " << (int)((((const uint8_t*)a->data())[i])) << std::endl;
         }
       }
+      std::unique_ptr<float> new_res(new float[rows(a)*cols(b)]);
+      for (int i = 0; i<rows(a)*cols(b);i++) {
+        new_res.get()[i] = val_->data()[i];
+      }
       if (first) {
         std::cerr << "Scalar: " << scalar_ << " rows: " << rows(a) << " columns: " << cols(a) << " rows(b) " << rows(b) << std::endl;
         std::cerr << "Quant mult a: " << *quant_mult_a->data() << " quant mult b: " << *quant_mult_b->data() << std::endl;
@@ -458,6 +463,17 @@ public:
           }
           file3 << std::endl;
         }
+        std::ofstream file4("diff");
+        float totaldiff = 0;
+        for (int i = 0; i < rows(a); i++) {
+          for (int j = 0; j < cols(b); j++) {
+            float diff = fabs(val_->data()[i*(cols(b)) + j] - new_res.get()[i*(cols(b)) + j]);
+            file4 << diff << " ";
+            totaldiff += diff;
+          }
+          file4 << std::endl;
+        }
+        std::cerr << "Mean error: " << totaldiff/(rows(a)*cols(b)) << std::endl;
       }
     )};
   }

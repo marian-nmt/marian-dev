@@ -5,6 +5,8 @@ add_subdirectory(./yaml-cpp)
 add_subdirectory(./SQLiteCpp)
 add_subdirectory(./pathie-cpp)
 add_subdirectory(./zlib)
+add_subdirectory(./amqp-cpp)
+# add_subdirectory(./rapidjson)
 
 if(USE_SENTENCEPIECE)
   if(USE_STATIC_LIBS)

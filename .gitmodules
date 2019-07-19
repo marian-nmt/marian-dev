@@ -13,3 +13,6 @@
 [submodule "src/3rd_party/rapidjson"]
 	path = src/3rd_party/rapidjson
 	url = https://github.com/Tencent/rapidjson.git
+[submodule "src/3rd_party/amqp-cpp"]
+	path = src/3rd_party/amqp-cpp
+	url = https://github.com/ugermann/AMQP-CPP

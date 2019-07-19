@@ -5,6 +5,7 @@ include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/rapid/include)
 include_directories(3rd_party/sentencepiece)
+include_directories(3rd_party/amqp-cpp/include)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
@@ -199,6 +200,12 @@ set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
 target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
 set(EXECUTABLES ${EXECUTABLES} websocket-server)
 
+add_executable(amqp-worker server/amqp_worker.cpp)
+set_target_properties(amqp-worker PROPERTIES OUTPUT amqp-worker)
+target_compile_options(amqp-worker PUBLIC ${ALL_WARNINGS})
+set(EXECUTABLES ${EXECUTABLES} amqp-worker)
+target_link_libraries(amqp-worker marian amqpcpp ev)
+
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   if(CUDA_FOUND)
@@ -206,6 +213,7 @@ foreach(exec ${EXECUTABLES})
   endif(CUDA_FOUND)
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endforeach(exec)
+target_link_libraries(websocket-server marian amqpcpp ev)
 
 #add_executable(
 #  align2steps
@@ -225,5 +233,3 @@ endif(COMPILE_TESTS)
 if(COMPILE_EXAMPLES)
   add_subdirectory(examples)
 endif(COMPILE_EXAMPLES)
-
-add_subdirectory(3rd_party/rapidjson)

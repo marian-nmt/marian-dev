@@ -18,10 +18,11 @@ public:
 
 
 class Job {
+  static std::atomic_ullong job_ctr_;
 public:
   typedef std::pair<struct timeval, struct timezone> timestamp;
   typedef std::pair<float, std::string> nbestlist_item;
-  uint64_t internal_id{0}; // internal job id
+  uint64_t const unique_id; // internal job id
   uint64_t external_id{0}; // Client's job id
   int         priority{0}; // Job priority; currently not used
   timestamp    created; // time item entered the queue
@@ -35,10 +36,11 @@ public:
   Ptr<History const> history;
 
   Ptr<Error> error;
+  std::function<void (Ptr<Job>)> callback;
 
-  Job(uint64_t const ijid, uint64_t ejid, std::string const text,
+  Job(uint64_t ejid, std::string const text,
       size_t const num_nbest=0, size_t const pri=0)
-    : internal_id(ijid), external_id(ejid), priority(pri), input({text}),
+    : unique_id(++job_ctr_), external_id(ejid), priority(pri), input({text}),
       nbestlist_size(num_nbest)
   {
     gettimeofday(&created.first, &created.second);

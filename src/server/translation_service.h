@@ -82,7 +82,6 @@ private:
   std::unordered_map<uint64_t, JobEntry> scheduled_jobs_;
 
   bool keep_going_{true};
-  std::atomic_ullong job_ctr_{0};
 
   void callback_(Ptr<History const> h) {
     // This function is called by the workers once translations are available.
@@ -98,6 +97,7 @@ private:
 
     // extract translations from history and fulfil the promise
     entry.first->finish(h, isRight2LeftDecoder(), *vocabs_.back());
+    entry.first->callback(entry.first);
     entry.second.set_value(entry.first);
   }
 
@@ -140,22 +140,25 @@ public:
 
   std::pair<uint64_t, std::future<Ptr<Job const>>>
   push(uint64_t ejid, std::string const& input, size_t const nbest=1,
-       size_t const priority=0) {
-    auto job = New<Job>(++job_ctr_, ejid, input, nbest, priority);
+       size_t const priority=0,
+       std::function<void (Ptr<Job> j)> callback
+       =[=](Ptr<Job> j){return;}) {
+    auto job = New<Job>(ejid, input, nbest, priority);
     if (!jq_->push(job)) {
       job->error = New<Error>("Could not push to Queue.");
       std::promise<Ptr<Job const>> prom;
       prom.set_value(job);
-      return std::make_pair(job->internal_id,prom.get_future());
+      return std::make_pair(job->unique_id,prom.get_future());
     }
+    job->callback = callback;
     JobEntry* entry;
     {
       std::lock_guard<std::mutex> lock(lock_);
-      entry = &scheduled_jobs_[job->internal_id];
+      entry = &scheduled_jobs_[job->unique_id];
     }
     entry->first = job;
-    LOG(info, "Pushed job No {}; {} jobs queued up.", job->internal_id, jq_->size());
-    return std::make_pair(job->internal_id, entry->second.get_future());
+    LOG(info, "Pushed job No {}; {} jobs queued up.", job->unique_id, jq_->size());
+    return std::make_pair(job->unique_id, entry->second.get_future());
   }
 
   Ptr<Vocab const> vocab(int i) const {

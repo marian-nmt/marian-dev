@@ -82,6 +82,7 @@ add_library(marian STATIC
   training/communicator.cpp
 
   server/queued_input.cpp
+  server/translation_job.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp

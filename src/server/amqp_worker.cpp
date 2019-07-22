@@ -195,6 +195,10 @@ interpret_args(int argc, char** argv){
   return options;
 }
 
+// class Publisher {
+// public:
+//   Publisher(std::string broker);
+// };
 
 /**
  *  Main program
@@ -208,10 +212,10 @@ int main(int argc, char** argv)
 
 
   // access to the event loop
-    auto *loop = EV_DEFAULT;
+  auto *loop = EV_DEFAULT;
 
-    // handler for libev
-    MyHandler handler(loop);
+  // handler for libev
+  MyHandler handler(loop);
 
 //     // init the SSL library
 // #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -220,48 +224,66 @@ int main(int argc, char** argv)
 //     OPENSSL_init_ssl(0, NULL);
 // #endif
 
-    // make a connection
-    AMQP::Address address("amqp://guest:guest@localhost/");
-//    AMQP::Address address("amqps://guest:guest@localhost/");
-    AMQP::TcpConnection connection(&handler, address);
+  // make a connection
+  AMQP::Address address("amqp://guest:guest@localhost/");
+  //    AMQP::Address address("amqps://guest:guest@localhost/");
+  AMQP::TcpConnection connection(&handler, address);
 
-    // we need a channel too
-    AMQP::TcpChannel channel(&connection);
+  // we need a channel too
+  AMQP::TcpChannel channel(&connection);
 
-    // create a temporary queue
-    std::string qname;
-    auto& queue = channel.declareQueue(AMQP::exclusive);
-    queue.onSuccess([&connection, &channel, &qname, loop]
-                    (const std::string &name, uint32_t messagecount,
-                     uint32_t consumercount) {
-                      // report the name of the temporary queue
-                      std::cout << "declared queue " << name << std::endl;
-                      qname = name;
-                      // close the channel
-                      //channel.close().onSuccess([&connection, &channel]() {
-                      //
-                      //    // report that channel was closed
-                      //    std::cout << "channel closed" << std::endl;
-                      //
-                      //    // close the connection
-                      //    connection.close();
-                      //});
+  // create a temporary queue
+  std::string qname;
+  auto& queue = channel.declareQueue(listen_queue);
+  queue.onSuccess([&connection, &channel, &qname, loop]
+                  (const std::string &name, uint32_t messagecount,
+                   uint32_t consumercount) {
+                    // report the name of the temporary queue
+                    std::cout << "declared queue " << name << std::endl;
+                    qname = name;
+                  });
 
-                      // construct a timer that is going to publish stuff
-                      // auto *timer = new MyTimer(loop, &channel, name);
+  auto on_message = [&channel](const AMQP::Message &message,
+                               uint64_t deliveryTag,
+                               bool redelivered)
+    {
+      std::cout << "received message with "
+      << message.bodySize() << " bytes."
+      << std::endl;
 
-                      //connection.close();
-                    });
+      // acknowledge the message
+      // channel.ack(deliveryTag);
+    };
 
-    channel.publish("", qname, "Hello");
+  // callback function that is called when the consume operation starts
+  auto on_start = [](const std::string &consumertag)
+    {
+      std::cout << "consume operation started" << std::endl;
+    };
 
-//     std::cout << "published message" << std::endl;
+  // callback function that is called when the consume operation failed
+  auto on_error = [](const char *message)
+    {
+      std::cout << "consume operation failed" << std::endl;
+    };
 
-    // run the loop
-    ev_run(loop, 0);
+  // start consuming from the queue, and install the callbacks
+  channel.consume(listen_queue)
+    .onReceived(on_message)
+    .onSuccess(on_start)
+    .onError(on_error);
 
-    // done
-    return 0;
+
+
+  channel.publish("", qname, "Hello");
+
+  std::cout << "published message" << std::endl;
+
+  // run the loop
+  ev_run(loop, 0);
+
+  // done
+  return 0;
 }
 
 // /**
@@ -299,35 +321,6 @@ int main(int argc, char** argv)
 
 //     std::cout << "published message" << std::endl;
 
-//     auto on_message = [&channel](const AMQP::Message &message,
-//                                  uint64_t deliveryTag,
-//                                  bool redelivered)
-//       {
-//         std::cout << "received message with "
-//         << message.bodySize() << " bytes."
-//         << std::endl;
-
-//         // acknowledge the message
-//         // channel.ack(deliveryTag);
-//       };
-
-//     // callback function that is called when the consume operation starts
-//     auto on_start = [](const std::string &consumertag)
-//       {
-//         std::cout << "consume operation started" << std::endl;
-//       };
-
-//     // callback function that is called when the consume operation failed
-//     auto on_error = [](const char *message)
-//       {
-//         std::cout << "consume operation failed" << std::endl;
-//       };
-
-//     // start consuming from the queue, and install the callbacks
-//     channel.consume(queue_name)
-//       .onReceived(on_message)
-//       .onSuccess(on_start)
-//       .onError(on_error);
 
 //     // run the loop
 //     uv_run(loop, UV_RUN_DEFAULT);

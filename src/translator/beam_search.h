@@ -151,9 +151,18 @@ public:
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
+      bool allFake = true; /* Keep track if all hypothesis we have are placeholders
+                            * if that happens we should end search prematurely
+                            * by setting the beam to empty*/
       for (auto hyp : beam) {
         if (hyp->hasTrieContinuatuions() || hyp->GetWord() == trgEosId_) {
           newBeam.push_back(hyp);
+          allFake = false;
+        } else {
+          newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+        }
+        if (allFake) {
+          newBeam.resize(0);
         }
       }
       newBeams.push_back(newBeam);

@@ -10,6 +10,13 @@
 
 #include "graph/chainable.h"
 
+//#define USE_LAYER_TIMER 1
+#if USE_LAYER_TIMER
+#include <chrono>
+#include <ctime>
+#include <unordered_map>
+#endif
+
 namespace marian {
 
 /**
@@ -20,6 +27,9 @@ namespace marian {
 class Node : public Chainable<Tensor>,
              public std::enable_shared_from_this<Node> {
 protected:
+#if USE_LAYER_TIMER
+  size_t warmup_{20};
+#endif
   size_t id_{0};
   size_t edges_{0};
   bool trainable_{true};
@@ -43,6 +53,11 @@ protected:
   Ptr<AutoTunerRecorder> recorder_;
   size_t recorderHash_;
   bool recorderStop_;
+
+#if USE_LAYER_TIMER
+  static std::unordered_map<std::string, size_t> executedCnt_;
+  static std::unordered_map<std::string, double> cumulTime_;
+#endif
 
 public:
   Node(Ptr<ExpressionGraph> graph, Shape shape, Type value_type = Type::float32)
@@ -133,6 +148,9 @@ public:
             << "\"" << name_ << "\"";
     }
     label << " (" << getId() << "/" << trainable() << ")>";
+#if USE_LAYER_TIMER
+    label << " (" << this->shape_.toString() << ")>";
+#endif
     return label.str();
   }
 

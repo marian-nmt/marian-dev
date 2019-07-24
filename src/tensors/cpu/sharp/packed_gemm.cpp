@@ -55,6 +55,13 @@ namespace variant { // Variants of GEMM implementations
 // different marian instances should not share this variable.
 static thread_local PackedGemmMatrixFP16 packedPlaceholder(1, 1, 1, 1, 1, 1, 1, 1);
 
+//static float quantizebtime = 0.0;
+//static float minmaxbtime = 0.0;
+//static float quantizeatime = 0.0;
+//static float minmaxatime = 0.0;
+//static float gemmtime = 0.0;
+
+
 // This is copied from FBGEMM code
 // A better way?
 // will be removed, when FBGEMM api is changed
@@ -122,7 +129,7 @@ void PackFp32(marian::Tensor out,
               const int nbrow,
               const int nbcol,
               const uint64_t packsize) {
-  if(true) {
+  if(false) {
   //  if(!transpose) {
   //if (in->shape().size() == 2 && (in->shape()[0] < 3200 && in->shape()[1] < 3200)) {
     // initialize memory
@@ -175,24 +182,34 @@ void PackFp32(marian::Tensor out,
 
     // int hist[numBin] = { 0, };
 
+    //auto t_start = std::chrono::high_resolution_clock::now();
     float* data = in->data();
     float val = 0;
     for (int jj = 0; jj < n; jj++) {
       float min = std::numeric_limits<float>::max(), max = std::numeric_limits<float>::min();
-      for (int ii = 0; ii < k; ii++) {
-        if (transpose)
-          val = data[jj*k + ii];
-        else
-          val = data[jj + ii*n];
-        if (val < min) min = val;
-        if (val > max) max = val;
-        // hist[(int)((val + 1)/denum)]++;
+      if(transpose) {
+        FindMinMax(data + jj * k, &min, &max, k);
+      } else {
+        for(int ii = 0; ii < k; ii++) {
+          //if(transpose)
+          //  val = data[jj * k + ii];
+          //else
+          val = data[jj + ii * n];
+          if(val < min)
+            min = val;
+          if(val > max)
+            max = val;
+          // hist[(int)((val + 1)/denum)]++;
+        }
       }
       bqScale[jj] = (max - min)/255;
       bqZeropoint[jj] = (int32_t)(127 - max / bqScale[jj]);
       // bqScale[jj] = (0.3 + 0.4)/255;
       // bqZeropoint[jj] = (int32_t)(127 - 0.3 / bqScale[jj]);
     }
+    //auto t_end = std::chrono::high_resolution_clock::now();
+    //minmaxbtime += std::chrono::duration<double, std::milli>(t_end - t_start).count();
+    //std::cout << "B min max time: " << minmaxbtime << std::endl;
 
     // std::cout << "hist: ";
     // for (int ii = 0; ii < numBin; ii++) {
@@ -201,9 +218,14 @@ void PackFp32(marian::Tensor out,
     // std::cout << std::endl;
     // std::cout << "len: " << len << ", bqScale: " << bqScale << ", bqZeropoint: " << bqZeropoint << std::endl;
     //int8_t quantized[len]; // aligned malloc?
+    //t_start = std::chrono::high_resolution_clock::now();
     int8_t* quantized;
-    int result = posix_memalign((void**)&quantized, 256, len);
-    assert(result == 0);
+#ifdef _MSC_VER
+  quantized = (int8_t*)_aligned_malloc(len, 256);
+#else
+  int result = posix_memalign((void**)&quantized, 256, len);
+  assert(result == 0);
+#endif
     //int8_t* quantized = (int8_t*)aligned_alloc(256, len);
     // std::cout << "len: " << len << ", bqScale: " << bqScale << ", bqZeropoint: " << bqZeropoint << std::endl;
     for (int jj = 0; jj < n; jj++) {
@@ -251,6 +273,9 @@ void PackFp32(marian::Tensor out,
     //                                       n, // in->shape()[1],
     //                                       quantized,
     //                                       in->shape()[1]);
+    //t_end = std::chrono::high_resolution_clock::now();
+    //quantizebtime += std::chrono::duration<double, std::milli>(t_end - t_start).count();
+    //std::cout << "B quantize time: " << quantizebtime << std::endl;
 
 
     int8_t* packedbuf = out->data<int8_t>();
@@ -277,7 +302,11 @@ void PackFp32(marian::Tensor out,
     //std::cout << "col_offsets original: " << (void*)(packedbuf + (packsize - n * sizeof(int32_t)))
     //          << std::endl;
 
+#ifdef _MSC_VER
+    _aligned_free(quantized);
+#else
     free(quantized);
+#endif
     delete[] col_offsets;
     delete[] bqScale;
     delete[] bqZeropoint;
@@ -301,7 +330,7 @@ void GemmPackFp32(marian::Tensor C,
                   const size_t k,
                   const int transA,
                   const int transB) {
-  if(true) {
+  if(false) {
   //  if(!transB) {
   //std::cout << "packed gemm: " << m << ", " << n << ", " << k << std::endl;
   //if (n < 3200) {
@@ -389,6 +418,7 @@ void GemmPackFp32(marian::Tensor C,
 
     // vslSSDeleteTask( &task );
 
+    //auto t_start = std::chrono::high_resolution_clock::now();
     int elem = A->shape().elements();
     float* data = A->data();
     //for(int ii = 0; ii < elem; ii++) {
@@ -399,12 +429,18 @@ void GemmPackFp32(marian::Tensor C,
     //}
     FindMinMax(data, &min_est, &max_est, elem);
 
-    std::vector<int32_t> row_offset_buf(PackAWithQuantRowOffset<uint8_t>::rowOffsetBufferSize());
-
     float ascale = (max_est - min_est) / 255;
     //std::cout << "ascale: " << ascale << std::endl;
     int32_t azeropoint = (int32_t)(255 - max_est / ascale);
     //std::cout << "azeropoint: " << azeropoint << std::endl;
+
+    //auto t_end = std::chrono::high_resolution_clock::now();
+    //minmaxatime += std::chrono::duration<double, std::milli>(t_end - t_start).count();
+    //std::cout << "A min max time: " << minmaxatime << std::endl;
+
+    //t_start = std::chrono::high_resolution_clock::now();
+
+    std::vector<int32_t> row_offset_buf(PackAWithQuantRowOffset<uint8_t>::rowOffsetBufferSize());
     PackAWithQuantRowOffset<uint8_t> packAN(
         transA ? matrix_op_t::Transpose : matrix_op_t::NoTranspose,
         transA ? k : m,
@@ -469,6 +505,10 @@ void GemmPackFp32(marian::Tensor C,
     //   std::cout << C->data()[ii] << std::endl;
     // }
     // std::cout << std::endl;
+
+    //t_end = std::chrono::high_resolution_clock::now();
+    //gemmtime += std::chrono::duration<double, std::milli>(t_end - t_start).count();
+    //std::cout << "gemmtime time (+packA): " << gemmtime << std::endl;
   }
 }
 #else // USE_FBGEMM

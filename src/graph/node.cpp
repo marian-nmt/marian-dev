@@ -5,6 +5,11 @@
 
 namespace marian {
 
+#if USE_LAYER_TIMER
+std::unordered_map<std::string, size_t> Node::executedCnt_ = {};
+std::unordered_map<std::string, double> Node::cumulTime_ = {};
+#endif
+
 size_t Node::allocate() {
   size_t elements = 0;
   if(!val_) {
@@ -60,7 +65,35 @@ void Node::forward() {
   if(recorder_)
     recorder_->start(recorderHash_);
 
+#if USE_LAYER_TIMER
+  std::string label = this->label();
+  size_t cnt = 0;
+
+  if(executedCnt_.find(label) == executedCnt_.end()) {
+    executedCnt_[label] = 1;
+  } else {
+    cnt = ++executedCnt_[label];
+  }
+
+  if(cnt > warmup_) {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    runForward(forwardOps());
+
+    double duration = std::chrono::duration<double, std::milli>(
+        std::chrono::high_resolution_clock::now() - start).count();
+    double dur = duration + cumulTime_[label];
+    cumulTime_[label] = dur;
+
+    if((cnt % warmup_) == 0) {
+      LOG(info, "[benchmark] node: {}, count: {}, cumulative time: {}", label, cnt - warmup_, dur / 1e3);
+    }
+  } else {
+    runForward(forwardOps());
+  }
+#else // USE_LAYER_TIMER
   runForward(forwardOps());
+#endif // USE_LAYER_TIMER
 
   if(recorder_)
     recorder_->stop(recorderHash_, recorderStop_);

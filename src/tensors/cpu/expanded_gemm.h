@@ -87,7 +87,7 @@ struct PackNodeOp : public UnaryNodeOp {
     // Should be 2D - weight matrix
     ABORT_IF(shapeMat.size() != 2,
             "Weight Matrix should be 2D");
-    if(true) {
+    if(false) {
     //if(!transpose) {
     //if (shapeMat[0] < 3200 && shapeMat[1] < 3200) {
       nrow_ = transpose ? shapeMat[1] : shapeMat[0];
@@ -178,7 +178,7 @@ public:
   }
 
   NodeOps forwardOps() override {
-    if (true) {
+    if (false) {
 //    if(n_ < 3200) {
       return {
         NodeOp(GemmPackFp32(val_,

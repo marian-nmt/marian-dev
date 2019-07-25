@@ -28,6 +28,10 @@ private:
 
   size_t numDevices_;
 
+  /* trieme */
+  std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_;
+  std::vector<trieannosaurus::Node>* trie_;
+
 public:
   Translate(Ptr<Options> options) : options_(options) {
     // This is currently safe as the translator is either created stand-alone or
@@ -44,6 +48,42 @@ public:
     if(options_->hasAndNotEmpty("shortlist"))
       shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
           options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
+
+    /*
+     * Triennasaurus
+     *
+     */
+    if (options_->get<std::string>("trie-pruning-path") != "") {
+      std::string inputTrieFile = options_->get<std::string>("trie-pruning-path");
+      std::unordered_map<std::string, uint16_t> dict;
+      std::unordered_map<uint16_t, std::string> vocab;
+      {
+        /* Since our vocabulary could sentence piece and what not, this allows us to not care for the vocab format
+         * the downside is that we read through the corpora twice
+         * but more importantly @TODO unk handling might potentially lead to wrong results
+         * @TODO to really fix the unk handling and do this better */
+        trieannosaurus::MakeVocab vocabTMP;
+        trieannosaurus::readFileByLine(inputTrieFile, vocabTMP, "Building vocabulary...");
+        auto maps = vocabTMP.getMaps();
+
+        for (auto&& item : maps.first) {
+          std::string key = item.first;
+          dict[key] = (*trgVocab_)[key];
+          vocab[(uint16_t)(*trgVocab_)[key]] = key;
+        }
+      trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
+      trieannosaurus::readFileByLine(inputTrieFile,
+                                    *trieConstructor_, "Constructing monolingual trie...");
+      trie_ = trieConstructor_->getTrie();
+      }
+    } else {
+      trie_ = nullptr;
+    }
+
+    /*
+     * Triennasaurus
+     *
+     */
 
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
@@ -88,34 +128,6 @@ public:
       collector->setPrintingStrategy(New<QuietPrinting>());
 
     bg.prepare(false);
-
-
-    std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_(nullptr);
-    std::vector<trieannosaurus::Node>* trie_ = nullptr;
-    if (options_->get<std::string>("trie-pruning-path") != "") {
-      std::string inputTrieFile = options_->get<std::string>("trie-pruning-path");
-      std::unordered_map<std::string, uint16_t> dict;
-      std::unordered_map<uint16_t, std::string> vocab;
-      {
-        /* Since our vocabulary could sentence piece and what not, this allows us to not care for the vocab format
-         * the downside is that we read through the corpora twice
-         * but more importantly @TODO unk handling might potentially lead to wrong results
-         * @TODO to really fix the unk handling and do this better */
-        trieannosaurus::MakeVocab vocabTMP;
-        trieannosaurus::readFileByLine(inputTrieFile, vocabTMP, "Building vocabulary...");
-        auto maps = vocabTMP.getMaps();
-
-        for (auto&& item : maps.first) {
-          std::string key = item.first;
-          dict[key] = (*trgVocab_)[key];
-          vocab[(uint16_t)(*trgVocab_)[key]] = key;
-        }
-      trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
-      trieannosaurus::readFileByLine(inputTrieFile, 
-                                    *trieConstructor_, "Constructing monolingual trie...");
-      trie_ = trieConstructor_->getTrie();
-      }
-    }
 
     for(auto batch : bg) {
       auto task = [=](size_t id) {

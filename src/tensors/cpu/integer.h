@@ -150,12 +150,13 @@ public:
     int colsB = cols(this->child(1)->val());
 
     auto inputB = this->child(1)->val()->data();
+    auto bias = this->child(0)->val()->data();
 
     float alpha = 127/ *this->child(2)->val()->data();
 
     //copy the bias because we shouldn't modify it in place
     for (int i = 0; i < this->shape()[-1]; i++) {
-      this->val()->data()[i] = inputB[i];
+      this->val()->data()[i] = bias[i];
     }
     static bool first = true;
     if (first) {
@@ -388,12 +389,12 @@ public:
       ****
        * Haaaaaaaacky
        */
-      static bool first = true;
-      bool written = false;
-      backend<Type_>::Multiply8new(
-          (const Integer*)a->data(),
+      //static bool first = true;
+      //bool written = false;
+      /* backend<Type_>::Multiply(
+          (const Integer*)a_old->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
@@ -407,74 +408,25 @@ public:
       for (int i = 0; i<rows(a)*cols(b);i++) {
         new_res.get()[i] = val_->data()[i];
       }
-      if (first) {
-        std::cerr << "Scalar: " << scalar_ << " rows: " << rows(a) << " columns: " << cols(a) << " rows(b) " << rows(b) << std::endl;
-        std::cerr << "Quant mult a: " << *quant_mult_a->data() << " quant mult b: " << *quant_mult_b->data() << std::endl;
-        first = false;
-        written = true;
-        std::ofstream file("New");
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(b); j++) {
-            file << val_->data()[i*(cols(b)) + j] << " ";
-          }
-          file << std::endl;
-        }
-        std::ofstream file2("A_new");
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(a); j++) {
-            file2 << (int)(((const uint8_t*)a->data())[i*(cols(a)) + j]) << " ";
-          }
-          file2 << std::endl;
-        }
-        std::ofstream file3("bias_new");
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(b); j++) {
-            file3 << bias->data()[i*(cols(b)) + j] << " ";
-          }
-          file3 << std::endl;
-        }
-      }
-      backend<Type_>::Multiply(
-          (const Integer*)a_old->data(),
+      std::cerr << "Scalar: " << scalar_ << " rows: " << rows(a) << " columns: " << cols(a) << " rows(b) " << rows(b) << std::endl;
+      std::cerr << "Quant mult a: " << *quant_mult_a->data() << " quant mult b: " << *quant_mult_b->data() << std::endl;*/
+      
+        backend<Type_>::Multiply8new(
+          (const Integer*)a->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
-      if (written) {
-        std::ofstream file("old");
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(b); j++) {
-            file << val_->data()[i*(cols(b)) + j] << " ";
-          }
-          file << std::endl;
-        }
-        std::ofstream file2("A_old");
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(a); j++) {
-            file2 << (int)(((const Integer*)a_old->data())[i*(cols(a)) + j]) << " ";
-          }
-          file2 << std::endl;
-        }
-        std::ofstream file3("bias_old");
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(b); j++) {
-            file3 << bias_old->data()[i*(cols(b)) + j] << " ";
-          }
-          file3 << std::endl;
-        }
-        std::ofstream file4("diff");
+      /*
         float totaldiff = 0;
         for (int i = 0; i < rows(a); i++) {
           for (int j = 0; j < cols(b); j++) {
             float diff = val_->data()[i*(cols(b)) + j] - new_res.get()[i*(cols(b)) + j];
-            file4 << diff << " ";
             totaldiff += diff*diff;
           }
-          file4 << std::endl;
         }
-        std::cerr << "MSE: " << std::sqrt(totaldiff/(rows(a)*cols(b))) << std::endl;
-      }
+        std::cerr << "MSE: " << std::sqrt(totaldiff/(rows(a)*cols(b))) << std::endl;*/
     )};
   }
 

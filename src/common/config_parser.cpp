@@ -220,6 +220,17 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<float>("--bert-masking-fraction", "Fraction of masked out tokens during training", 0.15f);
   cli.add<bool>("--bert-train-type-embeddings", "Train bert type embeddings, set to false to use static sinusoidal embeddings", true);
   cli.add<int>("--bert-type-vocab-size", "Size of BERT type vocab (sentence A and B)", 2);
+
+  // Macaron net related configs
+  // see https://arxiv.org/pdf/1906.02762.pdf
+  cli.add<bool>("--macaron-enabled", "Use macaron structure");
+  cli.add<int>("--macaron-dim", "The macaron layer hidden dim.", 1024);
+  cli.add<int>("--macaron-before-depth", "The macaron before depth.", 1);
+  cli.add<int>("--macaron-after-depth", "The macaron after depth.", 1);
+  cli.add<bool>("--macaron-normalize-before", "The macaron normalize-before.");
+  cli.add<double>("--macaron-factor", "The macaron layer factor.", 0.5);
+  cli.add<double>("--macaron-relu-drpo-prob", "The macaron layer relu dropout ratio", 0.1);
+  cli.add<double>("--macaron-drpo-prob", "The macaron layer dropout ratio", 0.1);
 #ifdef CUDNN
   cli.add<int>("--char-stride",
       "Width of max-pooling layer after convolution layer in char-s2s model",

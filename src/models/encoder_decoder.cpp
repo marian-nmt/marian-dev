@@ -58,6 +58,15 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("ulr-trainable-transformation");
   modelFeatures_.insert("ulr-dim-emb");
   modelFeatures_.insert("lemma-dim-emb");
+
+  modelFeatures_.insert("macaron-enabled");
+  modelFeatures_.insert("macaron-dim");
+  modelFeatures_.insert("macaron-before-depth");
+  modelFeatures_.insert("macaron-after-depth");
+  modelFeatures_.insert("macaron-normalize-before");
+  modelFeatures_.insert("macaron-factor");
+  modelFeatures_.insert("macaron-relu-drpo-prob");
+  modelFeatures_.insert("macaron-drpo-prob");
 }
 
 std::vector<Ptr<EncoderBase>>& EncoderDecoder::getEncoders() {

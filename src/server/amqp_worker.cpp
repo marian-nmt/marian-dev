@@ -1,3 +1,4 @@
+// -*- mode: c++; indent-tabs-mode: nil; tab-width: 2 -*-
 /**
  *  Based on examples in the AMQP-CPP library code repository.
  *  (libuv.cpp and libev.cpp).
@@ -8,177 +9,23 @@
  *  Dependencies
  */
 #include <ev.h>
+#include <ev++.h>
 #include <amqpcpp.h>
 #include <amqpcpp/libev.h>
 #include "marian.h"
-
-class MyHandler;
-
-class amqp_receiver
-{
-private:
-  AMQP::TcpChannel& channel_;
-  std::string queue_name_;
-public:
-  amqp_receiver(AMQP::TcpChannel& channel) : channel_(channel) {};
-
-  void
-  listen(std::string const& queue_name)
-  {
-    queue_name_ = queue_name;
-
-  }
-};
-
-class amqp_publisher
-{
-
-private:
-  AMQP::TcpChannel& channel_;
-
-public:
-  amqp_publisher(AMQP::TcpChannel& channel)
-    : channel_(channel)
-  { }
-
-};
-
-/**
- *  Custom handler
- */
-class MyHandler : public AMQP::LibEvHandler
-{
-private:
-    /**
-     *  Method that is called when a connection error occurs
-     *  @param  connection
-     *  @param  message
-     */
-    virtual void onError(AMQP::TcpConnection *connection, const char *message) override
-    {
-        std::cout << "error: " << message << std::endl;
-    }
-
-    /**
-     *  Method that is called when the TCP connection ends up in a connected state
-     *  @param  connection  The TCP connection
-     */
-    virtual void onConnected(AMQP::TcpConnection *connection) override
-    {
-        std::cout << "connected" << std::endl;
-    }
-
-    /**
-     *  Method that is called when the TCP connection ends up in a ready
-     *  @param  connection  The TCP connection
-     */
-    virtual void onReady(AMQP::TcpConnection *connection) override
-    {
-        std::cout << "ready" << std::endl;
-    }
-
-    /**
-     *  Method that is called when the TCP connection is closed
-     *  @param  connection  The TCP connection
-     */
-    virtual void onClosed(AMQP::TcpConnection *connection) override
-    {
-        std::cout << "closed" << std::endl;
-    }
-
-    /**
-     *  Method that is called when the TCP connection is detached
-     *  @param  connection  The TCP connection
-     */
-    virtual void onDetached(AMQP::TcpConnection *connection) override
-    {
-        std::cout << "detached" << std::endl;
-    }
-
-
-public:
-    /**
-     *  Constructor
-     *  @param  ev_loop
-     */
-    MyHandler(struct ev_loop *loop) : AMQP::LibEvHandler(loop) {}
-
-    /**
-     *  Destructor
-     */
-    virtual ~MyHandler() = default;
-};
-
-/**
- *  Class that runs a timer
- */
-class MyTimer
-{
-private:
-    /**
-     *  The actual watcher structure
-     *  @var struct ev_io
-     */
-    struct ev_timer _timer;
-
-    /**
-     *  Pointer towards the AMQP channel
-     *  @var AMQP::TcpChannel
-     */
-    AMQP::TcpChannel *_channel;
-
-    /**
-     *  Name of the queue
-     *  @var std::string
-     */
-    std::string _queue;
-
-
-    /**
-     *  Callback method that is called by libev when the timer expires
-     *  @param  loop        The loop in which the event was triggered
-     *  @param  timer       Internal timer object
-     *  @param  revents     The events that triggered this call
-     */
-    static void callback(struct ev_loop *loop, struct ev_timer *timer, int revents)
-    {
-        // retrieve the this pointer
-        MyTimer *self = static_cast<MyTimer*>(timer->data);
-
-        // publish a message
-        self->_channel->publish("", self->_queue, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    }
-
-public:
-    /**
-     *  Constructor
-     *  @param  loop
-     *  @param  channel
-     *  @param  queue
-     */
-    MyTimer(struct ev_loop *loop, AMQP::TcpChannel *channel, std::string queue) :
-        _channel(channel), _queue(std::move(queue))
-    {
-        // initialize the libev structure
-        ev_timer_init(&_timer, callback, 0.005, 1.005);
-
-        // this object is the data
-        _timer.data = this;
-
-        // and start it
-        ev_timer_start(loop, &_timer);
-    }
-
-    /**
-     *  Destructor
-     */
-    virtual ~MyTimer()
-    {
-        // @todo to be implemented
-    }
-};
+#include "3rd_party/threadpool.h"
+#include "server/queue.h"
+#include "server/translation_service.h"
+#include "server/translation_job.h"
+#include "translator/beam_search.h"
+#include "3rd_party/rapidjson/include/rapidjson/document.h"
+#include "3rd_party/rapidjson/include/rapidjson/writer.h"
+#include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
+#include "server/amqp/event_handler.h"
+#include "server/amqp/request.h"
 
 using namespace marian;
+using namespace marian::amqp;
 Ptr<Options>
 interpret_args(int argc, char** argv){
   auto cp = ConfigParser(cli::mode::translation);
@@ -195,10 +42,34 @@ interpret_args(int argc, char** argv){
   return options;
 }
 
-// class Publisher {
-// public:
-//   Publisher(std::string broker);
-// };
+// This class is woken up when a Request has been processed
+class Responder {
+  Ptr<marian::server::Queue<Request<>>> q_;
+  AMQP::TcpChannel& channel_;
+public:
+  Responder(Ptr<marian::server::Queue<Request<>>> q,
+            AMQP::TcpChannel& channel)
+    : q_(q), channel_(channel) { }
+
+  void operator()(ev::async& a, int revents) {
+    Request<> R;
+    std::chrono::milliseconds timeout(10);
+    marian::server::Queue<Request<>>::STATUS_CODE success;
+    do {
+      success = q_->pop(R, timeout);
+      if (success == marian::server::Queue<Request<>>::SUCCESS) {
+        auto response = server::serialize(R.doc());
+        std::cout << response << std::endl;
+        AMQP::Envelope reply(response.c_str(), response.size());
+        if (R.correlationID() != "")
+          reply.setCorrelationID(R.correlationID());
+        reply.setContentType("application/json");
+        channel_.publish(R.exchange(), R.replyTo(), reply);
+        channel_.ack(R.deliveryTag());
+      }
+    } while (success == marian::server::Queue<Request<>>::SUCCESS);
+  }
+};
 
 /**
  *  Main program
@@ -206,53 +77,70 @@ interpret_args(int argc, char** argv){
  */
 int main(int argc, char** argv)
 {
+  using namespace marian;
   auto opts = interpret_args(argc,argv);
+
+  // start the translation service
+  auto service = New<server::TranslationService<BeamSearch>>(opts);
+  service->start();
+
+  // connect to AMQP broker and establish a communication channel
+
+  // // init the SSL library; currently not used
+  // #if OPENSSL_VERSION_NUMBER < 0x10100000L
+  //     SSL_library_init();
+  // #else
+  //     OPENSSL_init_ssl(0, NULL);
+  // #endif
+
+  auto *loop = EV_DEFAULT;
+  EventHandler handler(loop);
   std::string broker = opts->get<std::string>("amqp-broker");
   std::string listen_queue = opts->get<std::string>("amqp-queue");
-
-
-  // access to the event loop
-  auto *loop = EV_DEFAULT;
-
-  // handler for libev
-  MyHandler handler(loop);
-
-//     // init the SSL library
-// #if OPENSSL_VERSION_NUMBER < 0x10100000L
-//     SSL_library_init();
-// #else
-//     OPENSSL_init_ssl(0, NULL);
-// #endif
-
-  // make a connection
-  AMQP::Address address("amqp://guest:guest@localhost/");
-  //    AMQP::Address address("amqps://guest:guest@localhost/");
+  AMQP::Address address(broker);
   AMQP::TcpConnection connection(&handler, address);
-
-  // we need a channel too
   AMQP::TcpChannel channel(&connection);
+  // @TODO: add event handlers if connection / channel breaks down
 
-  // create a temporary queue
-  std::string qname;
+
+  // Set up a queue for finished jobs that the Responder function
+  // will read from.
+  auto Q = New<marian::server::Queue<Request<>>>();
+
+  // we need a thread pool to deal with requests in the background
+  auto nproc = std::thread::hardware_concurrency();
+  auto pool = New<ThreadPool>(nproc,nproc);
+
+
+  // The responder is a callback function that is called when a
+  // request has been processed. Connections and channels cannot be
+  // shared between threads.
+  Responder responder(Q, channel);
+
+  ev::async qbell; // a bell to ring when a job is done
+  // Note that the C++ LibEv interface always uses the default event
+  // loop.
+  qbell.set(&responder); // trigger responder when bell is rung
+  qbell.start(); // start waiting for qbell events
+
+  // listen on the input queue
   auto& queue = channel.declareQueue(listen_queue);
-  queue.onSuccess([&connection, &channel, &qname, loop]
-                  (const std::string &name, uint32_t messagecount,
-                   uint32_t consumercount) {
-                    // report the name of the temporary queue
+  queue.onSuccess([](const std::string &name, uint32_t messagecount,
+                     uint32_t consumercount) {
                     std::cout << "declared queue " << name << std::endl;
-                    qname = name;
                   });
 
-  auto on_message = [&channel](const AMQP::Message &message,
-                               uint64_t deliveryTag,
-                               bool redelivered)
+  auto on_message = [&channel,&pool,&service,&Q, &qbell]
+    (const AMQP::Message &message, uint64_t deliveryTag, bool redelivered)
     {
-      std::cout << "received message with "
-      << message.bodySize() << " bytes."
-      << std::endl;
-
-      // acknowledge the message
-      // channel.ack(deliveryTag);
+      auto R = New<Request<>>(deliveryTag, message, service);
+      auto task = [R, &Q, &qbell] () {
+        R->process();
+        Q->push(std::move(*R));
+        qbell.send();
+      };
+      pool->enqueue(task);
+      // // channel.ack(deliveryTag); // ack here or upon completion?
     };
 
   // callback function that is called when the consume operation starts
@@ -273,59 +161,6 @@ int main(int argc, char** argv)
     .onSuccess(on_start)
     .onError(on_error);
 
-
-
-  channel.publish("", qname, "Hello");
-
-  std::cout << "published message" << std::endl;
-
-  // run the loop
   ev_run(loop, 0);
-
-  // done
   return 0;
 }
-
-// /**
-//  *  Main program
-//  *  @return int
-//  */
-// int main()
-// {
-//     // access to the event loop
-//     auto *loop = uv_default_loop();
-
-//     // handler for libev
-//     MyHandler handler(loop);
-
-//     // make a connection
-//     AMQP::TcpConnection connection(&handler, AMQP::Address("amqp://guest:guest@localhost/"));
-
-//     // we need a channel too
-//     AMQP::TcpChannel channel(&connection);
-
-//     // create a temporary queue
-//     auto& queue = channel.declareQueue(AMQP::autodelete);
-//     std::string queue_name;
-//     queue.onSuccess([&connection,&queue_name](const std::string &name,
-//                                   uint32_t messagecount,
-//                                   uint32_t consumercount)
-//                     {
-//                       // report the name of the temporary queue
-//                       queue_name = name;
-//                       std::cout << "declared queue " << name << std::endl;
-//                     });
-
-
-//     channel.publish("", queue_name, "Hello");
-
-//     std::cout << "published message" << std::endl;
-
-
-//     // run the loop
-//     uv_run(loop, UV_RUN_DEFAULT);
-
-//     // done
-//     return 0;
-// }
-// x

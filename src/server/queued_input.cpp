@@ -47,7 +47,7 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
       // fill up the sentence tuple with source and/or target sentences
       SentenceTuple tup(job->unique_id); // job ID should be unique
       std::vector<std::string> const& snt = job->input;
-      LOG(info, "QueuedInput is shipping job {}", job->unique_id);
+      LOG(info, "Shipping job {} for translation.", job->unique_id);
       for(size_t i = 0; i < snt.size(); ++i) {
         Words words = vocabs_[i]->encode(snt[i],true,inference_);
         if(words.empty())

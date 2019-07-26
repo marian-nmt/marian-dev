@@ -13,6 +13,7 @@
 #include "translator/history.h"
 #include "translator/output_collector.h"
 #include "translator/output_printer.h"
+#include "translator/beam_search.h"
 
 #include "models/model_task.h"
 #include "translator/scorers.h"
@@ -157,7 +158,8 @@ public:
       entry = &scheduled_jobs_[job->unique_id];
     }
     entry->first = job;
-    LOG(info, "Pushed job No {}; {} jobs queued up.", job->unique_id, jq_->size());
+    // LOG(info, "Pushed job No {}; {} jobs queued up.",
+    //     job->unique_id, jq_->size());
     return std::make_pair(job->unique_id, entry->second.get_future());
   }
 
@@ -191,8 +193,71 @@ public:
   }
 };
 
+template<class Search=BeamSearch>
+class NodeTranslation {
+  std::vector<NodeTranslation<Search>> children_;
+  rapidjson::Value* node_;
+  std::vector<std::future<Ptr<Job const>>> delayed_;
+  bool ends_with_eol_char_{false};
+ public:
+  NodeTranslation(rapidjson::Value* n, TranslationService<Search>& service)
+    : node_(n) {
+    if (n == NULL) return; // nothing to do
+    if (n->IsString()) {
+      std::istringstream buf(n->GetString());
+      std::string line;
+      for (size_t linectr = 0; getline(buf, line); ++linectr) {
+        // LOG(info,"Input: {}",line);
+        auto foo = std::move(service.push(linectr,line));
+        delayed_.push_back(std::move(foo.second));
+        LOG(info, "Scheduled job No. {}: {}", foo.first, line);
+      }
+      ends_with_eol_char_ = line.size() && line.back() == '\n';
+      // @TODO: this needs a patch for windows w.r.t. EOL
+    }
+    else if (n->IsArray()) {
+      for (auto c = n->Begin(); c != n->End(); ++c)
+        children_.push_back(NodeTranslation(c, service));
+    }
+    else if (n->IsObject() && n->HasMember("text")) {
+      children_.push_back(NodeTranslation(&((*n)["text"]),service));
+    }
+  }
 
+  void finish(rapidjson::Document::AllocatorType& alloc) {
+    for (auto& c: children_) c.finish(alloc);
+    if (delayed_.size()) {
+      std::ostringstream buf;
+      for (auto& f: delayed_) {
+        Ptr<Job const> j = f.get();
+        buf << j->translation << std::endl;
+        LOG(info, "Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
+            j->translationTime(), j->totalTime(), j->input[0], j->translation);
+      }
+      std::string translation = buf.str();
+      if (!ends_with_eol_char_)
+        translation.pop_back();
+      if (node_) {
+        ABORT_IF(!node_->IsString(), "Node is not a string!");
+        // @TODO: We should thrown an exception here instead of aborting
+        node_->SetString(translation.c_str(), translation.size(), alloc);
+      }
+    }
+  }
+};
 
+std::string serialize(rapidjson::Document const& D) {
+  // @TODO: this should be in a different namespace, maybe rapidjson
+  rapidjson::StringBuffer buffer;
+  buffer.Clear();
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  D.Accept(writer);
+  return std::string(buffer.GetString(), buffer.GetSize());
+}
 
+void dump(rapidjson::Value& v, std::ostream& out) {
+  if (v.IsString()) { out << v.GetString() << std::endl; }
+  else if (v.IsArray()) { for (auto& c: v.GetArray()) dump(c,out); }
+}
 
 }} // end of namespace marian::server

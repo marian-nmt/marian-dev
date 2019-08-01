@@ -453,7 +453,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // It looks at the cpu register 
       // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
-      if(fbgemm::fbgemmHasAvx2Support() && b->memoize()) {
+      if((fbgemm::fbgemmHasAvx2Support() || fbgemm::fbgemmHasAvx512Support()) && b->memoize()) {
         // add packed GEMM algorithm variant (Packed GEMM) to the autotuner
         // Once an algorithm is added to the autotuner,
         // autotuner runs all the added algorithms for a designated times.

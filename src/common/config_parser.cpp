@@ -537,7 +537,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<std::string>("--gemm-type",
-      "Select GEMM options: auto, mklfp32, intrinint16, fp16packed, int8packed",
+      "Select GEMM options: auto, fp32default, int16intrin, fp16packed, int8packed",
       "auto");
 
   cli.add<std::vector<std::string>>("--shortlist",

@@ -392,7 +392,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu && a->graph()->getBackend()->isOptimized()
-     && a->graph()->getBackend()->getGemmType() == GemmType::IntrinInt16) {
+     && a->graph()->getBackend()->getGemmType() == GemmType::Int16Intrin) {
     // dotInt16 computes A * B.T, hence the transpose for B to get A * B
     // if transA = false and transB = false.
 
@@ -468,11 +468,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           return e;
         };
 
+        // Use int8 packed GEMM for auto-tuning. Skip fp16 packed GEMM to avoid too many evaluation cases
         auto algPack = [=]() {
-          auto packed = cpu::variant::pack(b, cpu::variant::PackMatrix::B, transB, clipValue);
+          auto packed = cpu::variant::pack(GemmType::FbInt8Packed, b, cpu::variant::PackMatrix::B, transB, clipValue);
 
           return recPack(
               cpu::variant::affine(
+                  GemmType::FbInt8Packed,
                   clip(a, clipValue),
                   packed,
                   b->shape(),
@@ -538,24 +540,25 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       return tuner->run();
 
     } else {
-      if(gemmType == GemmType::IntrinInt16) {
+      if(gemmType == GemmType::Int16Intrin) {
         // cpu int16 version
         return cpu::int16::affine(
             cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
             cpu::int16::quantize(transB ? b : transpose(b), clipValue),
             bias,
             scale);
-      } else if(gemmType == GemmType::FbFp16Packed) {
+      } else if(gemmType == GemmType::FbFp16Packed || gemmType == GemmType::FbInt8Packed) {
 #if USE_FBGEMM
         // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
         // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
         // It looks at the cpu register
         // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
         // and this cpu lookup is executed only once and the state is kept in FBGEMM.
-        if(fbgemm::fbgemmHasAvx2Support() && b->memoize()) {
-          auto packed = cpu::variant::pack(b, cpu::variant::PackMatrix::B, transB, clipValue);
+        if((fbgemm::fbgemmHasAvx2Support() || fbgemm::fbgemmHasAvx512Support()) && b->memoize()) {
+          auto packed = cpu::variant::pack(gemmType, b, cpu::variant::PackMatrix::B, transB, clipValue);
 
           return cpu::variant::affine(
+              gemmType,
               clip(a, clipValue),
               packed,
               b->shape(),
@@ -573,7 +576,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         ABORT("Packed GEMM is not available in this build");
 #endif  // USE_FBGEMM
 
-      } else if(gemmType == GemmType::MklFp32) {
+      } else if(gemmType == GemmType::Fp32Default) {
         // general version, MKL, CBlas or CUDA
 
         // if clipValue > 0, the inputs will be clipped to range [-clipValue,

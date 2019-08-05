@@ -155,7 +155,7 @@ public:
                             * if that happens we should end search prematurely
                             * by setting the beam to empty*/
       for (auto hyp : beam) {
-        if (hyp->hasTrieContinuatuions() || hyp->GetWord() == trgEosId_) {
+        if (hyp->hasTrieContinuatuions()) {
           newBeam.push_back(hyp);
           allFake = false;
         } else {

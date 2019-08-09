@@ -1,5 +1,6 @@
 #include "marian.h"
 
+#include "common/regex.h"
 #include "models/model_factory.h"
 #include "models/encoder_decoder.h"
 #include "models/encoder_classifier.h"
@@ -22,6 +23,8 @@
 #include "examples/mnist/model_lenet.h"
 #endif
 #endif
+
+#include "models/classifier.h"
 
 namespace marian {
 namespace models {
@@ -259,8 +262,190 @@ Ptr<ModelBase> by_type(std::string type, usage use, Ptr<Options> options) {
         .construct(graph);
   }
 
+  if(type == "bert-gpt") {
+    
+    auto gpt = models::encoder_decoder()(options)
+        ("usage", use)
+        ("index", 1)                 // use stream 1
+        ("type", "transformer")
+        ("original-type", "bert-gpt")
+        .push_back(models::decoder()
+                   ("prefix", "decoder"))        //
+        .construct(graph);
+
+    if(use != usage::training) // if not training
+      return gpt; // only evaluate target LM
+
+    auto model = New<MultiModel<SumMultiRationalLoss>>();
+    auto bert = models::encoder_classifier()(options) //
+        ("type", "bert")                         //
+        ("original-type", "bert-gpt")            // so we can query this
+        ("index", 0)                             //
+        ("usage", use)                           //
+        .push_back(models::encoder()             //
+                  ("type", "bert-encoder")       // close to original transformer encoder
+                  ("prefix", "encoder"))         //
+        .push_back(models::classifier()          //
+                  ("prefix", "masked-lm")        // prefix for parameter names
+                  ("type", "bert-masked-lm"))    // multi-task learning with MaskedLM
+        .construct(graph);
+
+    model->push_back(bert);  
+    model->push_back(gpt);
+
+    return model;
+  }
+
+  if(type == "transformer-bert-gpt") {
+    type = "transformer12-bert0"; // @TODO: remove hacky hack!
+  }
+
+  if(regex::regex_match(type, regex::regex("transformer(\\d\\d)?(-(bert|gpt)(\\d?))+"))) {
+    auto parts = utils::split(type, "-");
+    
+    size_t encoderStream = 0;
+    size_t decoderStream = 1;
+
+    {
+      regex::smatch match;
+      regex::regex_match(parts[0], match, regex::regex("(transformer)(\\d)?(\\d)?"));
+      std::string subtype = match[1].str();
+      std::string streamEnc  = match[2].str();
+      std::string streamDec  = match[3].str();
+      encoderStream = streamEnc.empty() ? 0 : std::stoi(streamEnc);
+      decoderStream = streamDec.empty() ? 1 : std::stoi(streamDec);
+      LOG_ONCE(info, "Model {} using streams {} and {}", subtype, encoderStream, decoderStream);
+    }
+    
+    auto transformer = models::encoder_decoder()(options)
+        ("usage", use)
+        ("original-type", type) // so we can query this
+        .push_back(models::encoder()
+                   ("type", "transformer")
+                   ("prefix", "encoder")
+                   ("index", encoderStream)) // use stream 0
+        .push_back(models::decoder()
+                   ("type", "transformer")
+                   ("prefix", "decoder")
+                   ("index", decoderStream)) // use stream 1
+        .construct(graph);
+
+    if(use != usage::training) // only build main translator for translation and scoring
+      return transformer;
+
+    auto model = New<MultiModel<SumMultiRationalLoss>>();
+    model->push_back(transformer);
+
+    for(int i = 1; i < parts.size(); ++i) {
+      regex::smatch match;
+      regex::regex_match(parts[i], match, regex::regex("(bert|gpt)(\\d)?"));
+      std::string subtype = match[1].str();
+      std::string stream  = match[2].str();
+      size_t streamNo = stream.empty() ? (2 + i - 1) : std::stoi(stream);
+
+      LOG_ONCE(info, "Model {} using stream {}", subtype, streamNo);
+
+      if(subtype == "bert") {
+        auto bert = models::encoder_classifier()(options)
+            ("type", "bert")                          //
+            ("original-type", type)                   // so we can query this
+            ("index", streamNo)                       // Index for BertBatch
+            ("usage", use)                            //
+            .push_back(models::encoder()              //
+                      ("type", "bert-encoder")        // close to original transformer encoder
+                      ("prefix", "encoder"))          //
+            .push_back(models::classifier()           //
+                      ("prefix", "masked-lm")         // prefix for parameter names
+                      ("type", "bert-masked-lm")      // multi-task learning with MaskedLM
+                      ("label-smoothing", 0))         // no label-smoothing for masked LM
+            .construct(graph);
+        model->push_back(bert);
+      } else if(subtype == "gpt") {
+        auto gpt = models::encoder_decoder()(options)
+            ("type", "transformer")
+            ("original-type", type)
+            ("index", streamNo)
+            ("usage", use)
+            .push_back(models::decoder()
+                      ("prefix", "decoder"))
+            .construct(graph);
+        model->push_back(gpt);
+      } else {
+        ABORT("Unknown model subtype {}", subtype);
+      }
+    }
+  
+    return model;
+  }
+
+  // @TODO: clean up code duplication
+  if(regex::regex_match(type, regex::regex("smtransformer(-(bert|gpt)(\\d?))+"))) {
+    // transformer translation model, always on streams 0 (encoder) and 1 (decoder)
+    auto transformer = models::encoder_decoder()(options)
+        ("usage", use)
+        ("original-type", type) // so we can query this
+        .push_back(models::encoder()
+                   ("type", "transformer")
+                   ("prefix", "encoder")
+                   ("index", 0)) // use stream 0
+        .push_back(models::encoder()
+                   ("type", "transformer")
+                   ("prefix", "encoder")
+                   ("index", 1)) // use stream 1
+        .push_back(models::decoder()
+                   ("type", "transformer")
+                   ("prefix", "decoder")
+                   ("index", 2)) // use stream 2
+        .construct(graph);
+
+    if(use != usage::training) // only build main translator for translation and scoring
+      return transformer;
+
+    auto model = New<MultiModel<SumMultiRationalLoss>>();
+    model->push_back(transformer);
+
+    auto parts = utils::split(type, "-");
+    for(int i = 1; i < parts.size(); ++i) {
+      regex::smatch match;
+      regex::regex_match(parts[i], match, regex::regex("(bert|gpt)(\\d)?"));
+      std::string subtype = match[1].str();
+      std::string stream  = match[2].str();
+      size_t streamNo = stream.empty() ? (3 + i - 1) : std::stoi(stream);
+
+      if(subtype == "bert") {
+        auto bert = models::encoder_classifier()(options)
+            ("type", "bert")                          //
+            ("original-type", type) // so we can query this
+            ("index", streamNo)                       // Index for BertBatch
+            ("usage", use)                            //
+            .push_back(models::encoder()              //
+                      ("type", "bert-encoder")        // close to original transformer encoder
+                      ("prefix", "encoder"))          //
+            .push_back(models::classifier()           //
+                      ("prefix", "masked-lm")         // prefix for parameter names
+                      ("type", "bert-masked-lm")      // multi-task learning with MaskedLM
+                      ("label-smoothing", 0))         // no label-smoothing for masked LM
+            .construct(graph);
+        model->push_back(bert);
+      } else if(subtype == "gpt") {
+        auto gpt = models::encoder_decoder()(options)
+            ("type", "transformer")
+            ("original-type", type)
+            ("index", streamNo)
+            ("usage", use)
+            .push_back(models::decoder()
+                      ("prefix", "decoder"))
+            .construct(graph);
+        model->push_back(gpt);
+      } else {
+        ABORT("Unknown model subtype {}", subtype);
+      }
+    }
+  
+    return model;
+  }
+
 #ifdef COMPILE_EXAMPLES
-  // @TODO: examples should be compiled optionally
   if(type == "mnist-ffnn") {
     auto mnist = New<MnistFeedForwardNet>(options);
     if(use == usage::scoring)

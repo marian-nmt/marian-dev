@@ -20,11 +20,13 @@ namespace marian {
     }                                    \
   }
 
+template <typename T>
 __global__ void gMaxElement(float* d_out,
                             int* d_ind,
-                            float* d_in,
+                            T* d_in, // this is the probs array, only one with type float or half
                             int numBatches,
-                            int* batchFirstElementIdxs) {
+                            int* batchFirstElementIdxs,
+                            float minimal) {
   extern __shared__ float sdata[];
   __shared__ int indices[512];
 
@@ -36,16 +38,16 @@ __global__ void gMaxElement(float* d_out,
 
     int i = begin + blockIdx.x * (blockDim.x * 2) + tid;
 
-    sdata[tid] = -3.40282e+38f;
+    sdata[tid] = minimal;
 
     if(i < end) {
-      sdata[tid] = d_in[i];
+      sdata[tid] = (float)d_in[i];
       indices[tid] = i;
     }
 
     if(i + blockDim.x < end) {
-      float a = d_in[i];
-      float b = d_in[i + blockDim.x];
+      float a = (float)d_in[i];
+      float b = (float)d_in[i + blockDim.x];
       if(a > b) {
         sdata[tid] = a;
         indices[tid] = i;
@@ -58,14 +60,14 @@ __global__ void gMaxElement(float* d_out,
     while(i + 2 * gridDim.x * blockDim.x < end) {
       i += 2 * gridDim.x * blockDim.x;
 
-      float a = d_in[i];
+      float a = (float)d_in[i];
       if(a > sdata[tid]) {
         sdata[tid] = a;
         indices[tid] = i;
       }
 
       if(i + blockDim.x < end) {
-        float b = d_in[i + blockDim.x];
+        float b = (float)d_in[i + blockDim.x];
         if(b > sdata[tid]) {
           sdata[tid] = b;
           indices[tid] = i + blockDim.x;
@@ -100,14 +102,16 @@ __global__ void gMaxElement(float* d_out,
   }
 }
 
+template <typename T>
 __global__ void gMaxElementUpdate(float* binCosts,
                                   int* binIdxs,
-                                  float* probs,
+                                  T* probs, // should work well enough with half, uses float everywhere else
                                   int* batchFirstElements,
                                   float* outCosts,
                                   int* outIdxs,
                                   int* cummulatedBeamSizes,
-                                  int NUM_BLOCKS) {
+                                  int NUM_BLOCKS,
+                                  float minimal) {
   extern __shared__ float sdata[];
   __shared__ int indices[512];
   __shared__ float bestBinCost;
@@ -126,7 +130,7 @@ __global__ void gMaxElementUpdate(float* binCosts,
       ++pos) {
     int i = tid;
 
-    sdata[tid] = -3.40282e+38f;
+    sdata[tid] = minimal;
 
     if(i < num_bins) {
       sdata[tid] = binCosts[batchIdx * NUM_BLOCKS + i];
@@ -186,7 +190,7 @@ __global__ void gMaxElementUpdate(float* binCosts,
       bestBinCost = sdata[0];
       bestBinCostIdx = batchIdx * NUM_BLOCKS + indices[0];
 
-      probs[binIdxs[bestBinCostIdx]] = -3.40282e+38f;
+      probs[binIdxs[bestBinCostIdx]] = minimal;
 
       outIdxs[pos] = binIdxs[bestBinCostIdx];
       outCosts[pos] = bestBinCost;
@@ -198,16 +202,16 @@ __global__ void gMaxElementUpdate(float* binCosts,
         + (bestBinCostIdx - batchIdx * NUM_BLOCKS) * (blockDim.x * 2) + tid;
     const int dist = num_bins * 2 * blockDim.x;
 
-    sdata[tid] = -3.40282e+38f;
+    sdata[tid] = minimal;
 
     if(i < batchFirstElements[batchIdx + 1]) {
-      sdata[tid] = probs[i];
+      sdata[tid] = (float)probs[i];
       indices[tid] = i;
     }
 
     if(i + blockDim.x < batchFirstElements[batchIdx + 1]) {
-      float a = probs[i];
-      float b = probs[i + blockDim.x];
+      float a = (float)probs[i];
+      float b = (float)probs[i + blockDim.x];
       if(a > b) {
         sdata[tid] = a;
         indices[tid] = i;
@@ -220,14 +224,14 @@ __global__ void gMaxElementUpdate(float* binCosts,
     while(i + dist < batchFirstElements[batchIdx + 1]) {
       i += dist;
 
-      float a = probs[i];
+      float a = (float)probs[i];
       if(a > sdata[tid]) {
         sdata[tid] = a;
         indices[tid] = i;
       }
 
       if(i + blockDim.x < batchFirstElements[batchIdx + 1]) {
-        float b = probs[i + blockDim.x];
+        float b = (float)probs[i + blockDim.x];
         if(b > sdata[tid]) {
           sdata[tid] = b;
           indices[tid] = i + blockDim.x;
@@ -259,14 +263,6 @@ __global__ void gMaxElementUpdate(float* binCosts,
       binIdxs[bestBinCostIdx] = indices[0];
     }
     __syncthreads();
-  }
-}
-
-__global__ void gGetValueByKey(float* d_in, float* d_out, int* indeces, int n) {
-  int tid = threadIdx.x + blockDim.x * blockIdx.x;
-  if(tid < n) {
-    int index = indeces[tid];
-    d_out[tid] = d_in[index];
   }
 }
 
@@ -316,9 +312,12 @@ public:
   }
 
 private:
-  void getNBestList(float* probs,
+  template <typename T>
+  void getNBestList(T* probs,
                     const std::vector<int>& batchFirstElementIdxs,
-                    const std::vector<int>& cummulatedBeamSizes) {
+                    const std::vector<int>& cummulatedBeamSizes,
+                    float minimal) {
+
     cudaSetDevice(deviceId_.no);
     CUDA_CHECK(cudaMemcpyAsync(d_batchPosition,
                                batchFirstElementIdxs.data(),
@@ -335,13 +334,13 @@ private:
 
     gMaxElement<<<NUM_BLOCKS,
                   BLOCK_SIZE,
-                  BLOCK_SIZE * sizeof(float),
+                  BLOCK_SIZE * sizeof(float), // shared memory size
                   /* stream_ */ 0>>>(
-        d_out, d_ind, probs, numBatches, d_batchPosition);
+        d_out, d_ind, probs, numBatches, d_batchPosition, minimal);
 
     gMaxElementUpdate<<<numBatches,
                         BLOCK_SIZE,
-                        BLOCK_SIZE * sizeof(float),
+                        BLOCK_SIZE * sizeof(float),  // shared memory size
                         /* stream_ */ 0>>>(d_out,
                                            d_ind,
                                            probs,
@@ -349,7 +348,8 @@ private:
                                            d_res,
                                            d_res_idx,
                                            d_cumBeamSizes,
-                                           NUM_BLOCKS);
+                                           NUM_BLOCKS,
+                                           minimal);
   }
 
 public:
@@ -364,6 +364,7 @@ public:
     std::vector<int> batchFirstElementIdxs(beamSizes.size() + 1, 0);
 
     const size_t vocabSize = Probs->shape()[-1];
+    ABORT_IF(vocabSize > MAX_VOCAB_SIZE, "Reached maximum vocab size. File an issue on gitub");
 
     for(size_t i = 0; i < beamSizes.size(); ++i) {
       cummulatedBeamSizes[i + 1] = cummulatedBeamSizes[i] + beamSizes[i];
@@ -371,14 +372,22 @@ public:
           += ((isFirst) ? (i + 1) : cummulatedBeamSizes[i + 1]) * vocabSize;
     }
 
-    getNBestList(Probs->data(), batchFirstElementIdxs, cummulatedBeamSizes);
+    if(Probs->type() == Type::float32) {
+      float minimal = std::numeric_limits<float>::lowest();
+      getNBestList(Probs->data<float>(), batchFirstElementIdxs, cummulatedBeamSizes, minimal);
+    } else if(Probs->type() == Type::float16) {
+      float minimal = std::numeric_limits<float16>::lowest();
+      getNBestList(Probs->data<half>(), batchFirstElementIdxs, cummulatedBeamSizes, minimal);
+    } else {
+      ABORT("getNBestList not implemented for type {}", Probs->type());
+    }
     getPairs(cummulatedBeamSizes.back(), outKeys, outCosts);
   }
 
 private:
   void getPairs(size_t number,
                 std::vector<unsigned>& outKeys,
-                std::vector<float>& outValues) {
+                std::vector<float>& outCosts) {
     cudaSetDevice(deviceId_.no);
     CUDA_CHECK(cudaMemcpyAsync(h_res,
                                d_res,
@@ -394,24 +403,10 @@ private:
 
     for(size_t i = 0; i < number; ++i) {
       outKeys.push_back(h_res_idx[i]);
-      outValues.push_back(h_res[i]);
+      outCosts.push_back(h_res[i]);
     }
 
     lastN = number;
-  }
-
-  void getValueByKey(std::vector<float>& out, float* d_in) {
-    cudaSetDevice(deviceId_.no);
-
-    gGetValueByKey<<<1, lastN, 0, /* stream_ */ 0>>>(
-        d_in, d_breakdown, h_res_idx, lastN);
-
-    CUDA_CHECK(cudaMemcpyAsync(out.data(),
-                               d_breakdown,
-                               lastN * sizeof(float),
-                               cudaMemcpyDeviceToHost,
-                               /* stream_ */ 0));
-    CUDA_CHECK(cudaStreamSynchronize(/* stream_ */ 0));
   }
 
   DeviceId deviceId_;

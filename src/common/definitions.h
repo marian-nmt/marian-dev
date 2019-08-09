@@ -1,7 +1,9 @@
 #pragma once
 
 #include "common/logging.h"
-#include "shape.h"
+#include "common/shape.h"
+#include "common/counting_ptr.h"
+#include "common/intrusive_ptr.h"
 
 #include <functional>
 #include <iostream>
@@ -11,6 +13,7 @@
 
 //#define THREAD_GUARD(body) std::thread([&]() { body; }).join()
 #define THREAD_GUARD(body) [&]() { body; }() // test if THREAD_GUARD is neccessary, remove if no problems occur.
+
 #define NodeOp(op) [=]() { op; }
 
 namespace marian {
@@ -22,10 +25,19 @@ namespace marian {
 typedef uint32_t IndexType;
 
 template <class T>
-using Ptr = std::shared_ptr<T>;
+using IPtr = IntrusivePtr<T>;
+
+template <class T>
+using CPtr = CountingPtr<T>;
 
 template <class T>
 using UPtr = std::unique_ptr<T>;
+
+template <class T>
+using IWeak = T*;
+
+template <class T>
+using Ptr = std::shared_ptr<T>;
 
 template <class T>
 using Weak = std::weak_ptr<T>;
@@ -40,6 +52,18 @@ Ptr<T> New(Args&&... args) {
 template <class T>
 Ptr<T> New(Ptr<T> p) {
   return Ptr<T>(p);
+}
+
+/** @brief Creates InstrusivePtr of any type, passes all arguments to any available
+ * constructor */
+template <class T, typename... Args>
+IPtr<T> INew(Args&&... args) {
+  return IPtr<T>(new T(std::forward<Args>(args)...));
+}
+
+template <class T>
+IPtr<T> INew(Ptr<T> p) {
+  return IPtr<T>(p);
 }
 
 enum class DeviceType : size_t { gpu = 0, cpu = 1 };
@@ -89,12 +113,14 @@ const DeviceId GPU5{5, DeviceType::gpu};
 const DeviceId GPU6{6, DeviceType::gpu};
 const DeviceId GPU7{7, DeviceType::gpu};
 
+// These are many small objects, hence use IntrusivePtr
 class TensorBase;
-typedef Ptr<TensorBase> Tensor;
+typedef IPtr<TensorBase> Tensor;
 
+// These are many small objects, hence use IntrusivePtr
 template <class DataType>
 class Chainable;
-typedef Ptr<Chainable<Tensor>> Expr;
+typedef IPtr<Chainable<Tensor>> Expr;
 
 class OptimizerBase;
 typedef Ptr<OptimizerBase> OptimizerBasePtr;

@@ -694,6 +694,7 @@
     <ClInclude Include="..\src\common\config_validator.h" />
     <ClInclude Include="..\src\common\filesystem.h" />
     <ClInclude Include="..\src\common\hash.h" />
+    <ClInclude Include="..\src\common\intrusive_ptr.h" />
     <ClInclude Include="..\src\common\io.h" />
     <ClInclude Include="..\src\common\io_item.h" />
     <ClInclude Include="..\src\common\timer.h" />

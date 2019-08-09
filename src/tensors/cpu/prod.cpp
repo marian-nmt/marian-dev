@@ -155,18 +155,6 @@ void ProdBatched(marian::Tensor C,
 #endif
 }
 
-void ProdWithBias(marian::Tensor C,
-                  const marian::Tensor& A,
-                  const marian::Tensor& B,
-                  const marian::Tensor& bias,
-                  bool transA,
-                  bool transB,
-                  float beta,
-                  float scalar) {
-  cpu::Prod(C, A, B, transA, transB, beta, scalar);
-  cpu::int16::AddBias(C, bias);
-}
-
 void CSRProd(marian::Tensor C,
              Ptr<Allocator> /*allocator*/,
              const marian::Tensor& A_values,

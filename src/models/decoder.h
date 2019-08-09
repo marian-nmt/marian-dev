@@ -62,6 +62,7 @@ public:
 
     auto subBatch = (*batch)[batchIndex_];
 
+    // @TODO: review potential application of padding symbol
     Expr y, yMask; std::tie
     (y, yMask) = yEmb->apply(subBatch);
 
@@ -88,8 +89,9 @@ public:
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
     Expr selectedEmbs;
-    if(embIdx.empty()) {
-      selectedEmbs = graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros);
+    if(embIdx.empty()) { // @TODO: use EOS symbol
+      selectedEmbs = // reshape(rows(yEmb, std::vector<IndexType>(dimBatch, 1)), {1, 1, dimBatch, dimTrgEmb});
+        graph->constant({1, 1, dimBatch, dimTrgEmb}, inits::zeros());
     } else {
       // embeddings are loaded from model during translation, no fixing required
       auto yEmbFactory = embedding()  //

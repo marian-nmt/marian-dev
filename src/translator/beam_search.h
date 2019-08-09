@@ -78,7 +78,7 @@ public:
         if(first)
           beamHypIdx = 0;
 
-        auto hyp = New<Hypothesis>(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
+        auto hyp = Hypothesis::New(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
 
         // Set score breakdown for n-best lists
         if(options_->get<bool>("n-best")) {
@@ -158,6 +158,8 @@ public:
   Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
     int dimBatch = (int)batch->size();
 
+    bool forceDecodingFinished = !options_->get<bool>("force-prefix", false); // false by default, i.e. decode normally.
+
     Histories histories;
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
@@ -171,9 +173,12 @@ public:
 
     auto getNBestList = createGetNBestListFn(localBeamSize, dimBatch, graph->getDeviceId());
 
+    bool allowUnk = options_->get<bool>("allow-unk", false);
+    float maxLengthFactor = options_->get<float>("max-length-factor");
+
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(auto& beam : beams)
-      beam.resize(localBeamSize, New<Hypothesis>());
+      beam.resize(localBeamSize, Hypothesis::New());
 
     bool first = true;
     bool final = false;
@@ -201,7 +206,7 @@ public:
       Expr prevPathScores; // [beam, 1, 1, 1]
       if(first) {
         // no scores yet
-        prevPathScores = graph->constant({1, 1, 1, 1}, inits::from_value(0));
+        prevPathScores = graph->constant({1, 1, 1, 1}, inits::zeros());
       } else {
         std::vector<float> beamScores;
 
@@ -224,7 +229,7 @@ public:
         }
 
         prevPathScores = graph->constant({(int)localBeamSize, 1, dimBatch, 1},
-                                    inits::from_vector(beamScores));
+                                         inits::fromVector(beamScores));
       }
 
       //**********************************************************************
@@ -245,15 +250,11 @@ public:
       if(dimBatch > 1 && localBeamSize > 1)
         pathScores = transpose(pathScores, {2, 1, 0, 3});
 
-      if(first)
-        graph->forward();
-      else
-        graph->forwardNext();
+      graph->forward();
 
       //**********************************************************************
       // suppress specific symbols if not at right positions
-      if(trgUnkId_ != -1 && options_->has("allow-unk")
-         && !options_->get<bool>("allow-unk"))
+      if(trgUnkId_ != -1 && !allowUnk)
         suppressWord(pathScores, trgUnkId_);
       for(auto state : states)
         state->blacklist(pathScores, batch);
@@ -264,7 +265,26 @@ public:
       std::vector<float> outPathScores;
 
       std::vector<size_t> beamSizes(dimBatch, localBeamSize);
-      getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
+      if(options_->get<bool>("force-prefix", false) && !forceDecodingFinished) {
+        auto targetBatch = batch->back();                               // use last batch stream for force-decoding
+        int currentPos = histories[0]->size() - 1;                      // current position in generated sentence(s), indexed from 0.
+        if(targetBatch->batchWidth() > currentPos + 1) {                // as long as the current position has not reached EOS of the prefix, also ignore prefix EOS
+          ABORT_IF(localBeamSize != 1, "Local beam size has to 1 for forced deocoding, not {}", localBeamSize); // can grow after forced-decoding
+          std::vector<float> scores;                                    // we do this on the CPU for now
+          pathScores->val()->get(scores);                               // copy everything to CPU, this is expensive, need better operator
+          int dimVocab = pathScores->shape()[-1];
+          for(int i = 0; i < dimBatch; ++i) {
+            Word word = targetBatch->data()[currentPos * dimBatch + i]; // get current word for time step pos and batch entry i.
+            outPathScores.push_back(scores[i * dimVocab + word]);       // get score for i-th batch entry at position word, beam is 1 so only batch position matters.
+            outKeys.push_back((IndexType)word);
+          }
+        } else {
+          forceDecodingFinished = true;
+        }
+      } 
+        
+      if(forceDecodingFinished)
+        getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
 
       int dimTrgVoc = pathScores->shape()[-1];
       beams = toHyps(outKeys,
@@ -281,8 +301,7 @@ public:
         if(!beams[i].empty()) {
           final = final
                   || histories[i]->size()
-                         >= options_->get<float>("max-length-factor")
-                                * batch->front()->batchWidth();
+                         >= maxLengthFactor * batch->front()->batchWidth();
           histories[i]->Add(
               beams[i], trgEosId_, prunedBeams[i].empty() || final);
         }

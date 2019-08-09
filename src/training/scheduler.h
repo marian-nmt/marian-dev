@@ -8,9 +8,12 @@
 
 namespace marian {
 
-class Scheduler : public TrainingObserver {
+class Scheduler : public TrainingObserver,
+                  public std::enable_shared_from_this<Scheduler> {
 private:
   Ptr<Options> options_;
+
+  // @TODO: disentagle shared and weak references in this code.
   Ptr<TrainingState> state_;
   std::vector<Ptr<ValidatorBase>> validators_;
 
@@ -179,12 +182,11 @@ public:
 
   void addValidator(Ptr<ValidatorBase> validator) {
     validators_.push_back(validator);
+    registerTrainingObserver(validator);
 
-    registerTrainingObserver(validators_.back());
     if(!state_->loaded) {
-      state_->validators[validator->type()]["last-best"]
-          = validator->initScore();
-      state_->validators[validator->type()]["stalled"] = 0;
+      state_->validators[validator->type()]["last-best"] = validator->initScore();
+      state_->validators[validator->type()]["stalled"]   = 0;
     }
     if(validators_.size() == 1)
       state_->validator = validator->type();
@@ -201,11 +203,11 @@ public:
   }
 
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                bool final = false) {
+                bool isFinal = false) {
     // Do not validate if already validated (for instance, after the model is
     // loaded) or if validation is scheduled for another update
     if(state_->validated
-       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !final))
+       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !isFinal))
       return;
 
     bool firstValidator = true;
@@ -256,7 +258,7 @@ public:
   }
 
   void update(StaticLoss rationalLoss, Ptr<data::Batch> batch) {
-    update(rationalLoss, /*numReadBatches=*/1, /*batchSize=*/batch->size(), /*batchLabels=*/batch->wordsTrg());
+    update(rationalLoss, /*numReadBatches=*/1, /*batchSize=*/batch->size(), /*batchLabels=*/batch->wordsTrg(), 0.f);
   }
 
   // @TODO: go back to function which takes batch as an argument? The current arguments make it hard
@@ -266,6 +268,7 @@ public:
               size_t numReadBatches, // number of batches read by the reader (for seeking in case of restart)
               size_t batchSize,      // total number of sentences in batch
               size_t batchLabels,    // total number of target words in batch
+              float gradientNorm,    // gradientNorm of update
               Ptr<IMPIWrapper> mpi = nullptr) {
     state_->rememberPreviousProgress();  // note: epoch increases happen at the wrong place, hence
                                          // -freq parameters do not support epoch units
@@ -307,23 +310,25 @@ public:
         // skip the report on alternate worker processes
       } else if(options_->get<bool>("lr-report")) {
         LOG(info,
-            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
+            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : gNorm {:.4f} : L.r. {:.4e}",
             state_->epochs,
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
             timer_.elapsed(),
             state_->wordsDisp / timer_.elapsed(),
+            gradientNorm, // @TODO: think of acumulation
             state_->eta);
       } else {
         LOG(info,
-            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s",
+            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : gNorm {:.4f}",
             state_->epochs,
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
             timer_.elapsed(),
-            state_->wordsDisp / timer_.elapsed());
+            state_->wordsDisp / timer_.elapsed(),
+            gradientNorm);
       }
 
 
@@ -380,7 +385,7 @@ public:
   size_t numberOfBatches() { return state_->batches; }
 
   void registerTrainingObserver(Ptr<TrainingObserver> observer) {
-    state_->registerObserver(observer);
+    state_->registerObserver(observer); // This is OK. State only holds weak references; and needs to know scheduler
   }
 
   void actAfterEpoch(TrainingState& state) override {

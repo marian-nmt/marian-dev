@@ -90,7 +90,7 @@ void CurandRandomGenerator::uniform(Tensor tensor, float a, float b) {
     matchOrAbort<float>(tensor->type());
 
     tensor->getBackend()->setDevice();
-    CURAND_CHECK(curandGenerateUniform(generator_, tensor->data(), tensor->size()));
+    CURAND_CHECK(curandGenerateUniform(generator_, tensor->data<float>(), tensor->size()));
 
     // curandGenerateUniform has no range parameters (why?) so we need to
     // scale and shift inplace if range is different than [0, 1).
@@ -103,7 +103,7 @@ void CurandRandomGenerator::normal(Tensor tensor, float mean, float stddev) {
     matchOrAbort<float>(tensor->type());
 
     tensor->getBackend()->setDevice();
-    CURAND_CHECK(curandGenerateNormal(generator_, tensor->data(), tensor->size(), mean, stddev));
+    CURAND_CHECK(curandGenerateNormal(generator_, tensor->data<float>(), tensor->size(), mean, stddev));
 }
 
 #endif

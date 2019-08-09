@@ -16,7 +16,6 @@ class MNISTAccuracyValidator : public Validator<data::MNISTData> {
 public:
   MNISTAccuracyValidator(Ptr<Options> options) : Validator(std::vector<Ptr<Vocab>>(), options, false) {
     createBatchGenerator(/*isTranslating=*/false);
-    builder_ = models::from_options(options, models::usage::scoring);
   }
 
   virtual void keepBest(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
@@ -30,8 +29,10 @@ protected:
     float correct = 0;
     size_t samples = 0;
 
+    auto builder = models::from_options(options_, models::usage::scoring);
+
     for(auto batch : *batchGenerator_) {
-      auto probs = builder_->build(graphs[0], batch, true);
+      auto probs = builder->build(graphs[0], batch, true);
       graphs[0]->forward();
 
       std::vector<float> scores;

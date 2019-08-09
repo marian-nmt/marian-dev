@@ -5,31 +5,32 @@
 
 using namespace marian;
 
-void tests(DeviceType device) {
-  auto floatApprox = [](float x, float y) -> bool { return x == Approx(y); };
-  auto floatEqual  = [](float x, float y) -> bool { return x == y; };
+template <typename T>
+void tests(DeviceType device, Type floatType = Type::float32) {
+  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).epsilon(0.01); };
+  auto floatEqual  = [](T x, T y) -> bool { return x == y; };
 
   Config::seed = 1234;
-
   auto graph = New<ExpressionGraph>();
+  graph->setParameterType(floatType);
   graph->setDevice({0, device});
   graph->reserveWorkspaceMB(16);
 
-  std::vector<float> values, values2;
+  std::vector<T> values, values2;
 
   SECTION("scalar multiplication") {
     graph->clear();
     values.clear();
-    std::vector<float> vB({1, 2, 3, 4, 5, 6});
+    std::vector<T> vB({1, 2, 3, 4, 5, 6});
 
-    auto B = graph->param("B", {3, 2}, inits::from_vector(vB));
+    auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
     auto B2 = B * 2.0f;
     graph->forward();
 
     CHECK(B2->shape() == Shape({3, 2}));
     B2->val()->get(values);
 
-    std::vector<float> vB2({2, 4, 6, 8, 10, 12});
+    std::vector<T> vB2({2, 4, 6, 8, 10, 12});
     CHECK(values == vB2);
   }
 
@@ -37,11 +38,11 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, -2, 3, -4});
-    std::vector<float> vB({0.5, 1.5});
+    std::vector<T> vA({1, -2, 3, -4});
+    std::vector<T> vB({0.5, 1.5});
 
-    auto a = graph->constant({2, 2, 1}, inits::from_vector(vA));
-    auto b = graph->constant({2, 1}, inits::from_vector(vB));
+    auto a = graph->constant({2, 2, 1}, inits::fromVector(vA));
+    auto b = graph->constant({2, 1}, inits::fromVector(vB));
 
     auto compare = [&](Expr res, std::function<float(float,float)> f, bool exactMatch) -> bool {
       if (res->shape() != Shape({ 2, 2, 1 }))
@@ -86,14 +87,14 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 2, 3, 4, 5, 6, 7, 8});
+    std::vector<T> vA({1, 2, 3, 4, 5, 6, 7, 8});
 
-    std::vector<float> vT1({1, 5, 2, 6, 3, 7, 4, 8});
-    std::vector<float> vT3({1, 2, 5, 6, 3, 4, 7, 8});
-    std::vector<float> vT4({1, 5, 3, 7, 2, 6, 4, 8});
-    std::vector<float> vT5({1, 2, 5, 6, 3, 4, 7, 8});
+    std::vector<T> vT1({1, 5, 2, 6, 3, 7, 4, 8});
+    std::vector<T> vT3({1, 2, 5, 6, 3, 4, 7, 8});
+    std::vector<T> vT4({1, 5, 3, 7, 2, 6, 4, 8});
+    std::vector<T> vT5({1, 2, 5, 6, 3, 4, 7, 8});
 
-    auto a = graph->constant({2, 4}, inits::from_vector(vA));
+    auto a = graph->constant({2, 4}, inits::fromVector(vA));
 
     auto t1 = transpose(a);
     auto t2 = transpose(t1);
@@ -136,15 +137,15 @@ void tests(DeviceType device) {
   SECTION("softmax and logsoftmax") {
     graph->clear();
     values.clear();
-    std::vector<float> in({-.2, -.3, 4.5, 5.2, -10, 101.45, -100.05, 1.05e-5});
+    std::vector<T> in({-.2, -.3, 4.5, 5.2, -10, 101.45, -100.05, 1.05e-5});
 
-    std::vector<float> smOut({ 0.52498f, 0.47502f, 0.33181f, 0.66819f,
+    std::vector<T> smOut({ 0.52498f, 0.47502f, 0.33181f, 0.66819f,
                                0.0f, 1.0f, 0.0f, 1.0f });
 
-    std::vector<float> lsmOut({ -0.6444f, -0.7444f, -1.10319f, -0.40319f,
+    std::vector<T> lsmOut({ -0.6444f, -0.7444f, -1.10319f, -0.40319f,
                                 -111.45f, 0.0f, -100.05001f, 0.0f });
 
-    auto input = graph->constant({2, 2, 2}, inits::from_vector(in));
+    auto input = graph->constant({2, 2, 2}, inits::fromVector(in));
 
     auto sm  = softmax(input);
     auto lsm = logsoftmax(input);
@@ -157,12 +158,12 @@ void tests(DeviceType device) {
     sm->val()->get(values);
 
     CHECK( std::equal(values.begin(), values.end(),
-                        smOut.begin(), floatApprox) );
+                      smOut.begin(), floatApprox) );
 
     lsm->val()->get(values);
 
     CHECK( std::equal(values.begin(), values.end(),
-                        lsmOut.begin(), floatApprox) );
+                      lsmOut.begin(), floatApprox) );
   }
 
   SECTION("layer normalization") {
@@ -170,24 +171,22 @@ void tests(DeviceType device) {
     values.clear();
 
 #ifdef CUDA_FOUND
-    std::vector<float> vLn({
+    std::vector<T> vLn({
       -1.1962, 1.43061, 0.380288, -0.614697, 0.816638, 0.622649,
       -1.69679, 0.257504, -1.12563, -0.151387, 1.61181, -0.334796,
       1.07207, -0.622614, 0.862014, -1.31147
     });
 #else
-    std::vector<float> vLn({
+    std::vector<T> vLn({
       -1.49821, -0.152206, 0.394932, 1.25548, -1.51701, -0.28032,
       0.9483, 0.849025, 0.855183, 1.11657, -0.788354, -1.1834,
       -0.85939, -1.13109, 0.972076, 1.01841
     });
 #endif
 
-    auto a = graph->constant({2, 2, 4}, inits::glorot_uniform);
-
-    auto gamma = graph->param("gamma", {1, 4}, inits::ones);
-    auto beta = graph->param("beta", {1, 4}, inits::zeros);
-
+    auto a = graph->constant({2, 2, 4}, inits::glorotUniform());
+    auto gamma = graph->param("gamma", {1, 4}, inits::ones());
+    auto beta = graph->param("beta", {1, 4}, inits::zeros());
     auto ln = layerNorm(a, gamma, beta);
 
     graph->forward();
@@ -204,21 +203,21 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 6, 3, 8,
-                           5, 2, 7, 4});
+    std::vector<T> vA({1, 6, 3, 8,
+                       5, 2, 7, 4});
     // import numpy as np
     // a = np.array([[1, 6, 3, 8], [5, 2, 7, 4]])
-    std::vector<float> vS1({6, 8, 10, 12});              // s1 = np.sum(a, axis=0)
-    std::vector<float> vS2({18, 18});                    // np.sum(a, axis = 1)
-    std::vector<float> vS4({2.6925824f, 1.80277564f});   // np.std(a, axis = 1)
-    std::vector<float> vV5({7.25, 3.25});                // np.var(a, axis = 1)
-    std::vector<float> vM6({8, 7});                      // np.max(a, axis = 1)
-    std::vector<float> vM7({1, 2});                      // np.min(a, axis = 1)
-    std::vector<float> vP8({144, 280});                  // np.prod(a, axis = 1)
-    std::vector<float> vL9({8.13364336f, 7.17551536f});  // np.log(np.sum(np.exp(a), axis=1))
-    std::vector<float> vW({5.0f, 4.55555556f});          // np.mean(a*s1,axis=-1) / np.mean(s1,axis=-1)
+    std::vector<T> vS1({6, 8, 10, 12});              // s1 = np.sum(a, axis=0)
+    std::vector<T> vS2({18, 18});                    // np.sum(a, axis = 1)
+    std::vector<T> vS4({2.6925824f, 1.80277564f});   // np.std(a, axis = 1)
+    std::vector<T> vV5({7.25, 3.25});                // np.var(a, axis = 1)
+    std::vector<T> vM6({8, 7});                      // np.max(a, axis = 1)
+    std::vector<T> vM7({1, 2});                      // np.min(a, axis = 1)
+    std::vector<T> vP8({144, 280});                  // np.prod(a, axis = 1)
+    std::vector<T> vL9({8.13364336f, 7.17551536f});  // np.log(np.sum(np.exp(a), axis=1))
+    std::vector<T> vW({5.0f, 4.55555556f});          // np.mean(a*s1,axis=-1) / np.mean(s1,axis=-1)
 
-    auto a = graph->constant({2, 4}, inits::from_vector(vA));
+    auto a = graph->constant({2, 4}, inits::fromVector(vA));
 
     auto s1 = sum(a, /*axis=*/ 0);
     auto s2 = sum(a, /*axis=*/ 1);
@@ -272,30 +271,30 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vO1({ 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,
+    std::vector<T> vO1({ 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,
                              3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4,
                              1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,
                              3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4});
 
-    std::vector<float> vO2({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
+    std::vector<T> vO2({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
                             1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
                             1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
                             1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4});
 
-    std::vector<float> vO3({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    std::vector<T> vO3({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                             2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
                             3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
                             4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4});
 
-    std::vector<float> vO4({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    std::vector<T> vO4({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                             2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
                             3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
                             4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4});
 
-    auto in1 = graph->constant({1, 2, 2, 3}, inits::from_value(1));
-    auto in2 = graph->constant({1, 2, 2, 3}, inits::from_value(2));
-    auto in3 = graph->constant({1, 2, 2, 3}, inits::from_value(3));
-    auto in4 = graph->constant({1, 2, 2, 3}, inits::from_value(4));
+    auto in1 = graph->constant({1, 2, 2, 3}, inits::fromValue(1));
+    auto in2 = graph->constant({1, 2, 2, 3}, inits::fromValue(2));
+    auto in3 = graph->constant({1, 2, 2, 3}, inits::fromValue(3));
+    auto in4 = graph->constant({1, 2, 2, 3}, inits::fromValue(4));
 
     auto c1out1 = concatenate({in1, in2, in3, in4}, /*axis=*/ 2);
     auto c1out2 = concatenate({in1, in2, in3, in4}, /*axis=*/ -1);
@@ -326,20 +325,20 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 2, 3,
-                           4, 5, 6,
-                           7, 8, 9,
-                           10, 11, 12});
-    std::vector<float> vB({1, 2,
-                           3, 4,
-                           5, 6});
-    std::vector<float> vC({22, 28,
-                           49, 64,
-                           76, 100,
-                           103, 136});
+    std::vector<T> vA({1, 2, 3,
+                       4, 5, 6,
+                       7, 8, 9,
+                       10, 11, 12});
+    std::vector<T> vB({1, 2,
+                       3, 4,
+                       5, 6});
+    std::vector<T> vC({22, 28,
+                       49, 64,
+                       76, 100,
+                        103, 136});
 
-    auto A = graph->param("A", {2, 2, 3}, inits::from_vector(vA));
-    auto B = graph->param("B", {3, 2}, inits::from_vector(vB));
+    auto A = graph->param("A", {2, 2, 3}, inits::fromVector(vA));
+    auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
     auto C = dot(A, B);
 
     CHECK(C->shape() == Shape({2, 2, 2}));
@@ -350,7 +349,8 @@ void tests(DeviceType device) {
     CHECK(values == vC);
   }
 
-  if(device == DeviceType::gpu) {
+  // Currently no support for fp16 or CPU - TODO use MKL for CPU, convert to float32 on the fly for fp16 via cast(x, Type::float16) or internally
+  if(device == DeviceType::gpu && floatType == Type::float32) {
     SECTION("csr-dot product") {
       graph->clear();
       values.clear();
@@ -361,9 +361,9 @@ void tests(DeviceType device) {
                             4, 5, 6, 2.3, 6.7,
                             7, 8, 9, 3.4, 7.8,
                             1, 1, 2, 4.5, 8.9});
-      auto S  = graph->param("S",  { 2, 4 }, inits::from_vector(vS));
-      auto D  = graph->param("D",  { 4, 5 }, inits::from_vector(vD));
-      auto DT = graph->param("DT", { 5, 4 }, inits::from_vector(vD)); // example matrix with transposed dimensions
+      auto S  = graph->param("S",  { 2, 4 }, inits::fromVector(vS));
+      auto D  = graph->param("D",  { 4, 5 }, inits::fromVector(vD));
+      auto DT = graph->param("DT", { 5, 4 }, inits::fromVector(vD)); // example matrix with transposed dimensions
       std::vector<float> SV;    // create CSR version of S
       std::vector<IndexType> SI, SO;
       SO.push_back((IndexType)SI.size());
@@ -382,15 +382,15 @@ void tests(DeviceType device) {
       auto STxSxDd = dot(S, SxDd, /*transA=*/true);
       auto SxDs = csr_dot( // sparse x dense
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             D);
       auto STxSxDs = csr_dot(   // transpose(sparse) x dense; we use result of previous since dimensions match
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             SxDd, /*transS=*/true);
 
       auto DTxSTd   = dot(DT,     S, /*transA=*/false, /*transB=*/true);
@@ -398,16 +398,16 @@ void tests(DeviceType device) {
       auto DTxSTs = dot_csr( // dense x sparse
             DT,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             /*transS=*/true);
       auto DTxSTxSs = dot_csr( // dense x transpose(sparse)
             DTxSTd,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::from_vector(SV), Type::float32),
-            graph->constant({(int)SI.size()}, inits::from_vector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::from_vector(SO), Type::uint32));
+            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32));
 
       CHECK(SxDs->shape() == SxDd->shape());
       CHECK(STxSxDs->shape() == STxSxDd->shape());
@@ -428,22 +428,24 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-    std::vector<float> vB({1, 2, 3, 4, 5, 6});
-    std::vector<float> vAff({24, 30, 51, 66, 78, 102, 105, 138});
+    std::vector<T> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    std::vector<T> vB({1, 2, 3, 4, 5, 6});
+    std::vector<T> vAff({24, 30, 51, 66, 78, 102, 105, 138});
 
-    auto A = graph->param("A", {4, 3}, inits::from_vector(vA));
-    auto B = graph->param("B", {3, 2}, inits::from_vector(vB));
-    auto C = graph->param("C", {4, 2}, inits::from_value(2));
+    auto A = graph->param("A", {4, 3}, inits::fromVector(vA));
+    auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
+    auto C = graph->param("C", {4, 2}, inits::fromValue(2));
+
     auto aff1 = affine(A, B, C);
     auto aff2 = dot(A, B) + C;
+
     graph->forward();
 
     CHECK(aff1->shape() == Shape({4, 2}));
     aff1->val()->get(values);
     CHECK(values == vAff);
 
-    std::vector<float> values2;
+    std::vector<T> values2;
     CHECK(aff2->shape() == aff1->shape());
     aff2->val()->get(values2);
     CHECK(values2 == values);
@@ -453,11 +455,11 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 2, 3, 4, 5, 6});
-    std::vector<float> vB({1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6});
-    std::vector<float> vC({1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6});
+    std::vector<T> vA({1, 2, 3, 4, 5, 6});
+    std::vector<T> vB({1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6});
+    std::vector<T> vC({1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6});
 
-    auto A = graph->param("A", {2,3}, inits::from_vector(vA));
+    auto A = graph->param("A", {2,3}, inits::fromVector(vA));
     auto I = repeat(A, 1, 0);
     auto B = repeat(A, 2, 0);
     auto C = repeat(A, 2, 1);
@@ -480,11 +482,11 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vIn({1, 2, 3, 4, 5, 6, 7, 8});
+    std::vector<T> vIn({1, 2, 3, 4, 5, 6, 7, 8});
 
-    auto A = graph->param("A", {2, 4}, inits::from_vector(vIn));
+    auto A = graph->param("A", {2, 4}, inits::fromVector(vIn));
     auto Af = flatten(A);
-    auto B = graph->param("B", {2, 2, 1, 2}, inits::from_vector(vIn));
+    auto B = graph->param("B", {2, 2, 1, 2}, inits::fromVector(vIn));
     auto Bf = flatten(B);
     graph->forward();
 
@@ -501,7 +503,7 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    std::vector<T> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 
     std::vector<IndexType> iB0({0});            // first row
     std::vector<IndexType> iB1({0, 1, 2});      // several consecutive rows
@@ -510,14 +512,14 @@ void tests(DeviceType device) {
     std::vector<IndexType> iB4({1, 1});         // repeated rows
     std::vector<IndexType> iB5({0, 1, 2, 3});   // identity
     std::vector<IndexType> iB6({});             // empty
-    std::vector<float> vB0({1, 2, 3});
-    std::vector<float> vB1({1, 2, 3, 4, 5, 6, 7, 8, 9});
-    std::vector<float> vB2({1, 2, 3, 7, 8, 9});
-    std::vector<float> vB3({7, 8, 9, 4, 5, 6});
-    std::vector<float> vB4({4, 5, 6, 4, 5, 6});
-    std::vector<float> vB6;
+    std::vector<T> vB0({1, 2, 3});
+    std::vector<T> vB1({1, 2, 3, 4, 5, 6, 7, 8, 9});
+    std::vector<T> vB2({1, 2, 3, 7, 8, 9});
+    std::vector<T> vB3({7, 8, 9, 4, 5, 6});
+    std::vector<T> vB4({4, 5, 6, 4, 5, 6});
+    std::vector<T> vB6;
 
-    auto A = graph->param("A", {4, 3}, inits::from_vector(vA));
+    auto A = graph->param("A", {4, 3}, inits::fromVector(vA));
     auto B0 = rows(A, iB0);
     auto B1 = rows(A, iB1);
     auto B2 = rows(A, iB2);
@@ -560,7 +562,7 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    std::vector<T> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 
     std::vector<IndexType> iB0({0});            // first column
     std::vector<IndexType> iB1({0, 1, 2});      // several consecutive columns
@@ -570,14 +572,14 @@ void tests(DeviceType device) {
     std::vector<IndexType> iB5({0, 1, 2, 3});   // identity
     std::vector<IndexType> iB6({});             // empty
 
-    std::vector<float> vB0({1, 5, 9});
-    std::vector<float> vB1({1, 2, 3, 5, 6, 7, 9, 10, 11});
-    std::vector<float> vB2({1, 3, 5, 7, 9, 11});
-    std::vector<float> vB3({3, 2, 7, 6, 11, 10});
-    std::vector<float> vB4({2, 2, 6, 6, 10, 10});
-    std::vector<float> vB6;
+    std::vector<T> vB0({1, 5, 9});
+    std::vector<T> vB1({1, 2, 3, 5, 6, 7, 9, 10, 11});
+    std::vector<T> vB2({1, 3, 5, 7, 9, 11});
+    std::vector<T> vB3({3, 2, 7, 6, 11, 10});
+    std::vector<T> vB4({2, 2, 6, 6, 10, 10});
+    std::vector<T> vB6;
 
-    auto A = graph->param("A", {3, 4}, inits::from_vector(vA));
+    auto A = graph->param("A", {3, 4}, inits::fromVector(vA));
     auto B0 = cols(A, iB0);
     auto B1 = cols(A, iB1);
     auto B2 = cols(A, iB2);
@@ -619,15 +621,15 @@ void tests(DeviceType device) {
   SECTION("relation of rows and columns selection using transpose") {
     graph->clear();
     values.clear();
-    std::vector<float> values2;
+    std::vector<T> values2;
 
-    std::vector<float> vA({0, .3333, -.2, -.3, 0, 4.5, 5.2, -10, 101.45, -100.05, 0, 1.05e-5});
+    std::vector<T> vA({0, .3333, -.2, -.3, 0, 4.5, 5.2, -10, 101.45, -100.05, 0, 1.05e-5});
     std::vector<IndexType> idx({0, 1});
 
-    auto A1 = graph->param("4x3", {4,3}, inits::from_vector(vA));
+    auto A1 = graph->param("4x3", {4,3}, inits::fromVector(vA));
     auto B1 = rows(transpose(A1), idx);
     auto C1 = transpose(cols(A1, idx));
-    auto A2 = graph->param("6x2", {6,2}, inits::from_vector(vA));
+    auto A2 = graph->param("6x2", {6,2}, inits::fromVector(vA));
     auto B2 = cols(transpose(A2), idx);
     auto C2 = transpose(rows(A2, idx));
     graph->forward();
@@ -652,30 +654,30 @@ void tests(DeviceType device) {
     graph->clear();
     values.clear();
 
-    std::vector<float> vA({  1, -2,   3,
+    std::vector<T> vA({  1, -2,   3,
                             -4,  5,  -6,
                              7, -8,   9,
                            -10, 11, -12});
-    std::vector<float> vC({ 1,  -2, // C = np.array([1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12]).reshape((2, 3, 2))
+    std::vector<T> vC({ 1,  -2, // C = np.array([1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12]).reshape((2, 3, 2))
                             3,  -4,
                             5,  -6,
 
                             7,  -8,
                             9, -10,
                            11, -12 });
-    std::vector<float> vB1({1, -2, 3});
-    std::vector<float> vB2({1, -4, 7, -10});
-    std::vector<float> vB3({-2, 5, -8, 11});
-    std::vector<float> vB4({1, -2, 3, -4, 5, -6});
-    std::vector<float> vD1(vB4);
-    std::vector<float> vD2({5, -6, 11, -12});
-    std::vector<float> vD3({1, -2, 5, -6, 7, -8, 11, -12}); // C[:,(0,2),:]
+    std::vector<T> vB1({1, -2, 3});
+    std::vector<T> vB2({1, -4, 7, -10});
+    std::vector<T> vB3({-2, 5, -8, 11});
+    std::vector<T> vB4({1, -2, 3, -4, 5, -6});
+    std::vector<T> vD1(vB4);
+    std::vector<T> vD2({5, -6, 11, -12});
+    std::vector<T> vD3({1, -2, 5, -6, 7, -8, 11, -12}); // C[:,(0,2),:]
     //std::vector<float> vD4({5, -6, 3, -4, 7, -8, 11, -12}); // [C[0,(2,1),:],C[1,(0,2),:]]
-    std::vector<float> vS1({7, -8, 9});
-    std::vector<float> vS2({-4, 5, -6, 7, -8, 9});
-    std::vector<float> vS3({7, -8, 9, -10, 11, -12});
+    std::vector<T> vS1({7, -8, 9});
+    std::vector<T> vS2({-4, 5, -6, 7, -8, 9});
+    std::vector<T> vS3({7, -8, 9, -10, 11, -12});
 
-    auto A = graph->param("4x3", {4,3}, inits::from_vector(vA));
+    auto A = graph->param("4x3", {4,3}, inits::fromVector(vA));
     auto B1a = index_select(A, 0, IndexVector({0})); // always uses gather()
     auto B1b = slice(A,  0, 0);                        // memory-consecutive view
     auto B2  = slice(A,  1, 0);                        // not memory-consecutive
@@ -690,7 +692,7 @@ void tests(DeviceType device) {
     CHECK(B4b->type() == "sliceView"); // must use view
     CHECK(B5.get() == A.get());        // must be no-op
 
-    auto C = graph->param("2x3x2", {2, 3, 2}, inits::from_vector(vC));
+    auto C = graph->param("2x3x2", {2, 3, 2}, inits::fromVector(vC));
     auto D1 = slice(C,  0, 0);
     auto D2 = slice(C, -2, 2);
     auto D3 = index_select(C, 1, IndexVector({0, 2})); // C[:,(0,2),:]
@@ -698,7 +700,7 @@ void tests(DeviceType device) {
     CHECK(D2->type() == "gather");
     // enable this once gather() supports batched indices:
     //auto D4 = gather(C, 1, graph->constant({2, 2, 1}, // [C[0,(2,1),:],C[1,(0,2),:]]
-    //                                       inits::from_vector(std::vector<IndexType>{
+    //                                       inits::fromVector(std::vector<IndexType>{
     //                                         2, 1,
     //                                         0, 2 }),
     //                                       Type::uint32));
@@ -729,16 +731,18 @@ void tests(DeviceType device) {
   SECTION("rows/cols as gather operations") {
     graph->clear();
     values.clear();
-    std::vector<float> values2;
+    std::vector<T> values2;
 
-    std::vector<float> vA({0, .3333, -.2, -.3, 0, 4.5, 5.2, -10, 101.45, -100.05, 0, 1.05e-5});
+
+    std::vector<T> vA({0, .3333, -.2, -.3, 0, 4.5, 5.2, -10, 101.45, -100.05, 0, 1.05e-5});
     std::vector<IndexType> indices({0, 2});
 
-    auto A = graph->param("4x3", {4, 3}, inits::from_vector(vA));
+    auto A = graph->param("4x3", {4, 3}, inits::fromVector(vA));
     auto B1 = rows(A, indices);
     auto B2 = gather(A, 0, graph->indices(indices, A, 0));
     auto C1 = cols(A, indices);
     auto C2 = gather(A, 1, graph->indices(indices, A, 1));
+
     graph->forward();
 
     CHECK(B1->shape() == B2->shape());
@@ -755,12 +759,16 @@ void tests(DeviceType device) {
 
 #ifdef CUDA_FOUND
 TEST_CASE("Expression graph supports basic math operations (gpu)", "[operator]") {
-  tests(DeviceType::gpu);
+  tests<float>(DeviceType::gpu);
+}
+
+TEST_CASE("Expression graph supports basic math operations (gpu fp16)", "[operator]") {
+  tests<float16>(DeviceType::gpu, Type::float16);
 }
 #endif
 
 #ifdef BLAS_FOUND
 TEST_CASE("Expression graph supports basic math operations (cpu)", "[operator]") {
-  tests(DeviceType::cpu);
+  tests<float>(DeviceType::cpu);
 }
 #endif

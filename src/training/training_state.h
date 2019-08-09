@@ -13,6 +13,8 @@ class TrainingState;
 
 class TrainingObserver {
 public:
+  virtual ~TrainingObserver() {}
+
   virtual void init(TrainingState&) {}
   virtual void actAfterEpoch(TrainingState&) {}
   virtual void actAfterBatches(TrainingState&) {}
@@ -104,6 +106,9 @@ public:
   float costSum{0};
   // Number of labels aggregated in
   // costSum since last display
+
+  float gradNorm{}; // Sum over gradient norms
+
   size_t costCount{0};
 
   // Number of words seen since last display
@@ -126,11 +131,6 @@ public:
 
   TrainingState(float learnRate) {
     updateEta(learnRate);
-  }
-
-  void registerObserver(Ptr<TrainingObserver> observer) {
-    observers_.push_back(observer);
-    observers_.back()->init(*this);
   }
 
   // return the totals count that corresponds to the given unit (batches, labels, or epochs)
@@ -183,8 +183,11 @@ public:
 
   void newEpoch() {
     ++epochs;
-    for(auto observer : observers_)
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterEpoch(*this);
+    }
     samplesEpoch = 0;
     batchesEpoch = 0;
   }
@@ -194,22 +197,31 @@ public:
     batchesEpoch += batchesInUpdate;
     loaded = false;
     validated = false;
-    for(auto observer : observers_)
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterBatches(*this);
+    }
   }
 
   void newStalled(size_t num) {
     stalled = num;
     if(num > maxStalled)
       ++maxStalled;
-    for(auto observer : observers_)
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterStalled(*this);
+    }
   }
 
   void newLoad() {
     loaded = true;
-    for(auto observer : observers_)
+    for(auto wObserver : observers_) {
+      auto observer = wObserver.lock();
+      ABORT_IF(!observer, "Training observer expired. Make sure all registered observers exist during scheduler life time");
       observer->actAfterLoaded(*this);
+    }
   }
 
   void load(const std::string& name) {
@@ -231,6 +243,8 @@ public:
     prevBatches     = config["prev-batches"]      ? config["prev-batches"].as<size_t>()      : 0;
     prevEpochs      = config["prev-epochs"]       ? config["prev-epochs"].as<size_t>()       : 0;
     // clang-format on
+
+    // @TODO: add gradNorm
 
     stalled = config["stalled"].as<size_t>();
     maxStalled = config["stalled-max"].as<size_t>();
@@ -291,7 +305,15 @@ public:
     fout << config;
   }
 
+  // @TODO: make this private and only accesible by scheduler
+  void registerObserver(Ptr<TrainingObserver> observer) {
+    observers_.push_back(observer);
+    observer->init(*this);
+  }
+
 private:
-  std::vector<Ptr<TrainingObserver>> observers_;
+  // this needs to be a vector of weak pointers, otherwise
+  // it is likely to cause circular dependencies.
+  std::vector<Weak<TrainingObserver>> observers_;
 };
 }  // namespace marian

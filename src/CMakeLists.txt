@@ -12,6 +12,7 @@ add_library(marian STATIC
   common/logging.cpp
   common/cli_helper.cpp
   common/cli_wrapper.cpp
+  common/aliases.cpp
   common/config.cpp
   common/config_parser.cpp
   common/config_validator.cpp
@@ -30,7 +31,9 @@ add_library(marian STATIC
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
+  3rd_party/phf/phf.cc
 
+  tensors/tensor.cpp
   tensors/backend.cpp
   tensors/rand.cpp
   tensors/cpu/device.cpp
@@ -55,6 +58,7 @@ add_library(marian STATIC
   rnn/attention.cpp
 
   optimizers/clippers.cpp
+  optimizers/exponential_smoothing.cpp
   optimizers/optimizers.cpp
 
   models/model_factory.cpp
@@ -70,12 +74,10 @@ add_library(marian STATIC
   translator/helpers.cpp
   translator/scorers.cpp
 
+  training/graph_group.cpp
   training/graph_group_async.cpp
-  training/graph_group_async_drop.cpp
   training/graph_group_sync.cpp
   training/graph_group_singleton.cpp
-  training/graph_group_multinode.cpp
-  training/graph_group_multinode_sync.cpp
   training/validator.cpp
   training/communicator.cpp
 
@@ -114,8 +116,6 @@ cuda_add_library(marian_cuda
   tensors/gpu/cudnn_wrappers.cu
   translator/nth_element.cu
   translator/helpers.cu
-  training/gradient_dropping/gpu/dropper.cu
-  training/gradient_dropping/gpu/sparse_algorithm.cu
   STATIC)
 
   target_compile_options(marian_cuda PUBLIC ${ALL_WARNINGS})
@@ -186,7 +186,7 @@ if(COMPILE_SERVER)
 endif(COMPILE_SERVER)
 
 foreach(exec ${EXECUTABLES})
-  target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+  target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS}  ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   if(CUDA_FOUND)
     target_link_libraries(${exec} marian marian_cuda ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   endif(CUDA_FOUND)

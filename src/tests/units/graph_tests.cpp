@@ -25,7 +25,7 @@ TEST_CASE("Expression graph can be initialized with constant values",
   SECTION("initializing with zeros") {
     graph->clear();
     values.clear();
-    auto zeros = graph->param("0s", {2, 5}, inits::zeros);
+    auto zeros = graph->param("0s", {2, 5}, inits::zeros());
     graph->forward();
 
     zeros->val()->get(values);
@@ -35,7 +35,7 @@ TEST_CASE("Expression graph can be initialized with constant values",
   SECTION("initializing with ones") {
     graph->clear();
     values.clear();
-    auto ones = graph->param("1s", {2, 5}, inits::ones);
+    auto ones = graph->param("1s", {2, 5}, inits::ones());
     graph->forward();
 
     ones->val()->get(values);
@@ -46,12 +46,27 @@ TEST_CASE("Expression graph can be initialized with constant values",
     graph->clear();
     values.clear();
     std::vector<float> v({1, 2, 3, 4, 5, 6});
-    auto vals = graph->param("vs", {2, 3}, inits::from_vector(v));
+    auto vals = graph->param("vs", {2, 3}, inits::fromVector(v));
     graph->forward();
 
     REQUIRE(values.empty());
     vals->val()->get(values);
     REQUIRE(values == v);
+  }
+
+  SECTION("initializing float16 node from vector") {
+    graph->clear();
+    std::vector<float16> values16;
+    std::vector<float16> v({1, 2, 3, 4, 5, 6});
+    auto vals1 = graph->param("vs1", {2, 3}, inits::fromVector(v), Type::float16);
+    auto vals2 = graph->param("vs2", {2, 3}, inits::fromValue(5), Type::float16);
+
+    debug(vals1 + vals2);
+    graph->forward();
+
+    REQUIRE(values.empty());
+    vals1->val()->get(values16);
+    REQUIRE(values16 == v);
   }
 }
 #endif
@@ -76,7 +91,7 @@ TEST_CASE("Expression graph can be initialized with constant values (cpu)",
   SECTION("initializing with zero (cpu)") {
     graph->clear();
     values.clear();
-    auto zeros = graph->param("0s", {2, 5}, inits::zeros);
+    auto zeros = graph->param("0s", {2, 5}, inits::zeros());
     graph->forward();
 
     zeros->val()->get(values);
@@ -86,7 +101,7 @@ TEST_CASE("Expression graph can be initialized with constant values (cpu)",
   SECTION("initializing with ones (cpu)") {
     graph->clear();
     values.clear();
-    auto ones = graph->param("1s", {2, 5}, inits::ones);
+    auto ones = graph->param("1s", {2, 5}, inits::ones());
     graph->forward();
 
     ones->val()->get(values);
@@ -97,7 +112,7 @@ TEST_CASE("Expression graph can be initialized with constant values (cpu)",
     graph->clear();
     values.clear();
     std::vector<float> v({1, 2, 3, 4, 5, 6});
-    auto vals = graph->param("vs", {2, 3}, inits::from_vector(v));
+    auto vals = graph->param("vs", {2, 3}, inits::fromVector(v));
     graph->forward();
 
     REQUIRE(values.empty());

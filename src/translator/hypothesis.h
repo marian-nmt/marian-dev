@@ -35,6 +35,8 @@ public:
     }
   }
 
+  std::vector<trieannosaurus::Node>* GetTrieNode() { return currTrieNode_; }
+
   IndexType GetPrevStateIndex() const { return prevIndex_; }
 
   float GetPathScore() const { return pathScore_; }

@@ -147,6 +147,31 @@ public:
     return align;
   }
 
+  void bumpScores(Tensor in_, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
+    int nColumns = in_->shape()[-1];
+
+    float* in = in_->data();
+    if (!currTrieNode) //Check for null ptrs
+      return;
+    for(auto node : *currTrieNode) {
+      auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
+        in[index] += bumpVal;
+    }
+  }
+
+  void bumpScoresBatch(Tensor in_, size_t batchID, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
+    int nColumns = in_->shape()[-1];
+    int beamSize = in_->shape()[2];
+
+    float* in = in_->data();
+    if (!currTrieNode) //Check for null ptrs
+      return;
+    for(auto node : *currTrieNode) {
+      auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
+        in[index] += bumpVal;
+    }
+  }
+
   Beams filterForContinuations(const Beams& beams) {
     Beams newBeams;
     for(auto beam : beams) {
@@ -294,7 +319,32 @@ public:
       std::vector<float> outPathScores;
 
       std::vector<size_t> beamSizes(dimBatch, localBeamSize);
+      //Pathscores if of shape {12, 1, 1, 36000}} AFTER the first step, otherwise it's {1, 1, 1, 36000}
+      //UNLESS It's batched then DIM0 is the batch size and DIM2 is the TrieSize
+      if (!first && triePrune_) {
+        for (int i = 0; i < beams.size(); i++) {
+          for (size_t j = 0; j < beams[i].size(); j++) {
+            beams[i][j]->hasTrieContinuatuions(); //Advance the trie after the first step.
+            if (dimBatch > 1) {
+              bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 100.0f);
+            } else {
+              bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 100.0f);
+            }
+          }
+        }
+      }
+
       getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
+
+      if (triePrune_) {
+        //Everything that came out of the trie will have a score >1
+        //Hence fix the scores
+        for (auto&& score : outPathScores) {
+          if (score > 1) {
+            score -= 100.0f; 
+          }
+        }
+      }
 
       int dimTrgVoc = pathScores->shape()[-1];
       beams = toHyps(outKeys,
@@ -305,10 +355,6 @@ public:
                      localBeamSize,
                      first,
                      batch);
-      
-      if (triePrune_) {
-        beams = filterForContinuations(beams);
-      }
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {

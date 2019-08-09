@@ -24,6 +24,10 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["cost-scaling"] = std::vector<std::string>({"7", "2000", "2", "0.05", "10", "1"});
   });
 
+  cli.alias("no-shuffle", "true", [](YAML::Node& config) {
+    config["shuffle"] = "none";
+  });
+
   // Options setting the BiDeep architecture proposed in http://www.aclweb.org/anthology/W17-4710
   cli.alias("best-deep", "true", [](YAML::Node& config) {
     // Model options

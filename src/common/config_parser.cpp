@@ -316,6 +316,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "How to shuffle input data (data: shuffles data and sorted batches; batches: "
       "data is read in order into batches, but batches are shuffled; none: no shuffling). "
       "Use with '--maxi-batch-sort none' in order to achieve exact reading order", "data");
+  cli.add<bool>("--no-shuffle", "Shortcut for --shuffle none");
   cli.add<bool>("--no-restore-corpus",
       "Skip restoring corpus state after training is restarted");
   cli.add<std::string>("--tempdir,-T",

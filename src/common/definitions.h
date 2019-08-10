@@ -2,7 +2,6 @@
 
 #include "common/logging.h"
 #include "common/shape.h"
-#include "common/counting_ptr.h"
 #include "common/intrusive_ptr.h"
 
 #include <functional>
@@ -26,9 +25,6 @@ typedef uint32_t IndexType;
 
 template <class T>
 using IPtr = IntrusivePtr<T>;
-
-template <class T>
-using CPtr = CountingPtr<T>;
 
 template <class T>
 using UPtr = std::unique_ptr<T>;

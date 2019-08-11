@@ -85,8 +85,13 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     config["mini-batch-fit"] = true;
     config["mini-batch"] = 1000;
     config["maxi-batch"] = 1000;
-    // config["workspace"] = 13000;
-    // config["workspace"] = "max";
+    config["workspace"] = 9500;
+    config["optimizer-params"] = std::vector<float>({0.9, 0.98, 1e-09});
+
+    // Validation specific options
+    config["beam-size"] = 8;
+    config["valid-mini-batch"] = 16;
+    config["normalize"] = 1.0;
   });
 
   // Architecture and proposed training settings for a Transformer "big" model introduced in

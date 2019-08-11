@@ -213,8 +213,6 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Train positional embeddings instead of using static sinusoidal embeddings");
   cli.add<bool>("--transformer-depth-scaling",
       "Scale down weight initialization in transformer layers by 1 / sqrt(depth)");
-  cli.add<bool>("--transformer-encoder-summary",
-      "Add a context position in each encoder layer via averaging");
   
   cli.add<std::string>("--bert-mask-symbol", "Masking symbol for BERT masked-LM training", "[MASK]");
   cli.add<std::string>("--bert-sep-symbol", "Sentence separator symbol for BERT next sentence prediction training", "[SEP]");

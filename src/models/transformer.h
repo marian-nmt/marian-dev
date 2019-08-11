@@ -598,16 +598,6 @@ public:
 
     layerMask = transposedLogMask(layerMask); // [-4: batch size, -3: 1, -2: vector dim=1, -1: max length]
 
-    if(opt<bool>("transformer-encoder-summary", false)) {
-      // first context, so we just average and concatenate at the beginning
-      auto context = mean(layer,  /*axis=*/-2);
-      layer = concatenate({context, layer},  /*axis=*/-2);
-      
-      // add a mask for first position, which is context, 0 as this is a log mask
-      auto contextMask = graph_->zeros({1, dimBatch, 1, 1});
-      layerMask = concatenate({contextMask, layerMask}, /*axis=*/-1);
-    }
-
     // apply encoder layers
     auto encDepth = opt<int>("enc-depth");
     for(int i = 1; i <= encDepth; ++i) {
@@ -620,15 +610,6 @@ public:
                              layerMask);
 
       layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
-
-      if(opt<bool>("transformer-encoder-summary", false)) {
-        // take all postions apart from first, which is the previous context
-        auto nocontext = slice(layer, /*axis=*/-2, Slice(1, Slice::END));
-        // create a new context
-        auto context   = mean(nocontext,  /*axis=*/-2);
-        // concatenate context and words, context is first
-        layer = concatenate({context, nocontext},  /*axis=*/-2);
-      }
 
       checkpoint(layer);
     }

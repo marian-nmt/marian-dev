@@ -391,15 +391,32 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
-  if(device == DeviceType::cpu && a->graph()->getBackend()->isOptimized()
-     && a->graph()->getBackend()->getGemmType() == GemmType::Int16Intrin) {
-    // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-    // if transA = false and transB = false.
+  if(device == DeviceType::cpu && a->graph()->getBackend()->isOptimized()) {
+    GemmType gemmType = a->graph()->getBackend()->getGemmType();
+    if (gemmType == GemmType::Int16Intrin) {
+      // dotInt16 computes A * B.T, hence the transpose for B to get A * B
+      // if transA = false and transB = false.
 
-    return cpu::int16::dot(
-        cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-        cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-        scale);
+      return cpu::int16::dot(
+          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+          scale);
+#if USE_FBGEMM
+    } else if (fbgemm::fbgemmHasAvx2Support() && b->memoize() &&
+      (gemmType == GemmType::FbFp16Packed || gemmType == GemmType::FbInt8Packed)) {
+      return cpu::variant::dot(gemmType,
+                               clip(a, clipValue),
+                               b,
+                               // packed,
+                               b->shape(),
+                               transA,
+                               transB,
+                               scale);
+#endif
+    } else {
+      return Expression<DotNodeOp>(
+          clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+    }
   } else {
     return Expression<DotNodeOp>(
         clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
@@ -441,7 +458,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       util::hash_combine(hash, transA);
       util::hash_combine(hash, transB);
 
-#if USE_FBGEMM
+//#if USE_FBGEMM
+#if false // Disable FBGEMM on auto tune. This is because packed GEMM uses different weights.
       // Use Packed GEMM only if the node b in the graph is memoized.
       // More specifically, packed GEMM is used only if the B matrix (weight) is constant.
       // In general, 'memoized' means that the node is a constant variable or
@@ -555,12 +573,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
         // and this cpu lookup is executed only once and the state is kept in FBGEMM.
         if((fbgemm::fbgemmHasAvx2Support() || fbgemm::fbgemmHasAvx512Support()) && b->memoize()) {
-          auto packed = cpu::variant::pack(gemmType, b, cpu::variant::PackMatrix::B, transB, clipValue);
+          //auto packed = cpu::variant::pack(gemmType, b, cpu::variant::PackMatrix::B, transB, clipValue);
 
           return cpu::variant::affine(
               gemmType,
               clip(a, clipValue),
-              packed,
+              b,
+              //packed,
               b->shape(),
               bias,
               transA,

@@ -67,6 +67,8 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("macaron-factor");
   modelFeatures_.insert("macaron-relu-drpo-prob");
   modelFeatures_.insert("macaron-drpo-prob");
+
+  modelFeatures_.insert("packed-weight");
 }
 
 std::vector<Ptr<EncoderBase>>& EncoderDecoder::getEncoders() {
@@ -141,8 +143,14 @@ void EncoderDecoder::save(Ptr<ExpressionGraph> graph,
   // ignore config for now
   LOG(info, "Saving model weights and runtime parameters to {}", name);
 
-  graph->save(name, getModelParametersAsString());
-
+  //graph->save(name, getModelParametersAsString());
+  // change packed-weight parameter
+  if(options_->get<std::string>("save-packed-model") != "none") {
+    options_->set<bool>("packed-weight", true);
+    graph->save(name, getModelParametersAsString(), true);
+  } else {
+    graph->save(name, getModelParametersAsString(), false);
+  }
   if(saveTranslatorConfig)
     createDecoderConfig(name);
 }

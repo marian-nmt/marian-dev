@@ -65,10 +65,17 @@ void ConfigValidator::validateOptionsParallelData() const {
 
 void ConfigValidator::validateOptionsScoring() const {
   filesystem::Path modelPath(get<std::string>("model"));
+  bool ignoreModelConfig = get<bool>("ignore-model-config");
+  std::string gemmType = get<std::string>("gemm-type");
 
   ABORT_IF(!filesystem::exists(modelPath), "Model file does not exist: " + modelPath.string());
   ABORT_IF(get<std::vector<std::string>>("vocabs").empty(),
            "Scoring, but vocabularies are not given!");
+           
+  // if gemm-type is a packed type, there should be a model config that weight matrices are packed.
+  // Therefore, the models configs should not be ignored.
+  ABORT_IF((gemmType == "fp16packed" || gemmType == "int8packed") && ignoreModelConfig,
+           "When packed GEMM is used, weight matrices should be packed format: " + gemmType);
 }
 
 void ConfigValidator::validateOptionsTraining() const {

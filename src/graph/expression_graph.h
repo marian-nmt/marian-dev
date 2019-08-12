@@ -10,6 +10,8 @@
 #include "graph/node_operators.h"
 #include "graph/parameters.h"
 
+#include "tensors/cpu/sharp/packed_gemm.h"
+
 #include <map>
 #include <unordered_set>
 
@@ -322,6 +324,42 @@ public:
     // check first if parameter already exists
     auto p = params_->get(name);
     if(p) {
+      // @TODO Need to check the correct version
+
+#if USE_FBGEMM
+      if(shape != p->shape()) {
+        // check packed size
+        int nrow;
+        int ncol;
+        int kernel_ncol_blocks;
+        int brow;
+        int bcol;
+        int last_brow;
+        int nbrow;
+        int nbcol;
+        uint64_t packsize;
+
+        cpu::variant::PackInfoFp16(shape,
+                                   false,
+                                   nrow,
+                                   ncol,
+                                   kernel_ncol_blocks,
+                                   brow,
+                                   bcol,
+                                   last_brow,
+                                   nbrow,
+                                   nbcol,
+                                   packsize);
+
+        // if yes add to tape and return
+        ABORT_IF(shape != p->shape() && packsize != p->shape().elements(),
+                 "Requested shape {} for existing parameter '{}' does not match "
+                 "original shape {}",
+                 shape,
+                 name,
+                 p->shape());
+      }
+#else // USE_FBGEMM
       // if yes add to tape and return
       ABORT_IF(shape != p->shape(),
                "Requested shape {} for existing parameter '{}' does not match "
@@ -329,6 +367,7 @@ public:
                shape,
                name,
                p->shape());
+#endif // USE_FBGEMM
 
       p->setTrainable(!fixed);
       add(p);
@@ -495,13 +534,13 @@ public:
 
 public:
   // convert all parameters into an array of io::Item elements, for saving
-  void save(std::vector<io::Item>& ioItems);
+  void save(std::vector<io::Item>& ioItems, const bool packsave = false);
 
-  void save(const std::string& name, const std::string& meta = "") {
+  void save(const std::string& name, const std::string& meta = "", const bool savePackedWeight = false) {
     // LOG(info, "Saving model to {}", name);
 
     std::vector<io::Item> ioItems;
-    save(ioItems);
+    save(ioItems, savePackedWeight);
     if(!meta.empty())
       io::addMetaToItems(meta, "special:model.yml", ioItems);
     io::saveItems(name, ioItems);

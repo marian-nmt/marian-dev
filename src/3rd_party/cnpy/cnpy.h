@@ -22,6 +22,7 @@ namespace cnpy {
     struct NpyArray {
         std::vector<char> bytes;
         std::vector<unsigned int> shape;
+        char type;
         unsigned int word_size{1};
         bool fortran_order{0};
 
@@ -51,7 +52,7 @@ namespace cnpy {
     char map_type(const std::type_info& t);
     static inline std::vector<char> create_npy_header(char type, size_t word_size, const unsigned int* shape, const unsigned int ndims);
     template<typename T> std::vector<char> create_npy_header(const T* data, const unsigned int* shape, const unsigned int ndims);
-    void parse_npy_header(FILE* fp,unsigned int& word_size, unsigned int*& shape, unsigned int& ndims, bool& fortran_order);
+    void parse_npy_header(FILE* fp, char& type, unsigned int& word_size, unsigned int*& shape, unsigned int& ndims, bool& fortran_order);
     void parse_zip_footer(FILE* fp, unsigned short& nrecs, unsigned int& global_header_size, unsigned int& global_header_offset);
     npz_t npz_load(std::string fname);
     NpyArrayPtr npz_load(std::string fname, std::string varname);
@@ -86,7 +87,8 @@ namespace cnpy {
             unsigned int word_size, tmp_dims;
             unsigned int* tmp_shape = 0;
             bool fortran_order;
-            parse_npy_header(fp,word_size,tmp_shape,tmp_dims,fortran_order);
+            char type;
+            parse_npy_header(fp, type, word_size,tmp_shape,tmp_dims,fortran_order);
             assert(!fortran_order);
 
             if(word_size != sizeof(T)) {

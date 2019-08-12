@@ -100,6 +100,50 @@ inline uint64_t addr(const int r_,
   return index;
 }
 
+void PackInfoFp16(const marian::Shape& shape,
+                  const bool transpose,
+                  int& nrow,
+                  int& ncol,
+                  int& kernel_ncol_blocks,
+                  int& brow,
+                  int& bcol,
+                  int& last_brow,
+                  int& nbrow,
+                  int& nbcol,
+                  uint64_t& packsize) {
+  nrow = transpose ? shape[1] : shape[0];
+  ncol = transpose ? shape[0] : shape[1];
+  kernel_ncol_blocks = 2;
+  brow = 512;
+  bcol = 8 * kernel_ncol_blocks;
+  last_brow = nrow % brow == 0 ? brow : nrow % brow;
+  nbrow = nrow % brow == 0 ? nrow / brow : (nrow + brow) / brow;
+  nbcol = ncol % bcol == 0 ? ncol / bcol : (ncol + bcol) / bcol;
+  ABORT_IF(ncol % bcol != 0, "ncol (number of columns) should be multiple of 16. {}", ncol);
+  packsize = ((nbrow * brow) * (nbcol * bcol)) * sizeof(fbgemm::float16) + PACK16_PADDING
+             + PACK16_SPECIALMEM;
+}
+
+void PackInfoInt8(const marian::Shape& shape,
+                  const bool transpose,
+                  int& nrow,
+                  int& ncol,
+                  uint64_t& packsize) {
+    // Should be 2D - weight matrix
+    ABORT_IF(shape.size() != 2,
+            "Weight Matrix should be 2D");
+    nrow = transpose ? shape[1] : shape[0];
+    ncol = transpose ? shape[0] : shape[1];
+    packsize = fbgemm::PackMatrix<fbgemm::PackBMatrix<int8_t>, int8_t>::packedBufferSize(
+        transpose ? shape[1] : shape[0],
+        transpose ? shape[0] : shape[1]);
+    // add extra space for storing some other variables specific to B matrix
+    // quantization sacles: 1 per column and float
+    // quantization offset: 1 per column and int32
+    // column offsets: 1 per column and int32
+    packsize += ncol * (sizeof(float) + sizeof(int32_t) + sizeof(int32_t));
+}
+
 inline void col_offsets_with_zero_pt_s8acc32_ref(
     bool transpose,
     int K,
@@ -200,15 +244,17 @@ void GemmPackFp16(marian::Tensor C,
   // packed matrix
   packedPlaceholder.pmat_ = (fbgemm::float16*)(B->data<uint8_t>() + 256);
 
+  if (bias != nullptr) {
 #if MKL_FOUND
-  for(int i = 0; i < m; ++i) {
-    mkl_somatcopy('R', 'N', 1, n, 1, bias->data(), n, C->data() + n * i, n);
-  }
+    for(int i = 0; i < m; ++i) {
+      mkl_somatcopy('R', 'N', 1, n, 1, bias->data(), n, C->data() + n * i, n);
+    }
 #else
-  for(int i = 0; i < m; ++i) {
-    std::copy(bias->data(), bias->data() + n, C->data() + n * i);
-  }
+    for(int i = 0; i < m; ++i) {
+      std::copy(bias->data(), bias->data() + n, C->data() + n * i);
+    }
 #endif
+  }
 
 #ifdef _OPENMP
 #pragma omp parallel
@@ -225,7 +271,7 @@ void GemmPackFp16(marian::Tensor C,
                       (int)m,
                       A->data(),
                       packedPlaceholder,
-                      1,
+                      bias != nullptr ? 1 : 0,
                       C->data(),
                       tid,
                       num_threads);
@@ -240,12 +286,6 @@ void PackInt8(marian::Tensor out,
               const bool transpose,
               const int nrow,
               const int ncol,
-              const int kernel_ncol_blocks,
-              const int brow,
-              const int bcol,
-              const int last_brow,
-              const int nbrow,
-              const int nbcol,
               const uint64_t packsize) {
   // Quantize to int8
   int k = transpose ? in->shape()[1] : in->shape()[0];
@@ -406,7 +446,6 @@ assert(result == 0);
 void GemmPackInt8(marian::Tensor C,
                   const marian::Tensor A,
                   const marian::Tensor B,
-                  const marian::Tensor bias,
                   const size_t m,
                   const size_t n,
                   const size_t k,
@@ -580,7 +619,6 @@ void PackInt8(marian::Tensor out,
 void GemmPackInt8(marian::Tensor C,
                   const marian::Tensor A,
                   const marian::Tensor B,
-                  const marian::Tensor bias,
                   const size_t m,
                   const size_t n,
                   const int transA,

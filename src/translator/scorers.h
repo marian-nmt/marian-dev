@@ -44,6 +44,11 @@ public:
   virtual Ptr<data::Shortlist> getShortlist() { return nullptr; };
 
   virtual std::vector<float> getAlignment() { return {}; };
+
+  virtual void save(Ptr<ExpressionGraph> graph,
+                    const std::string& name,
+                    bool saveTranslatorConfig = false)
+      = 0;
 };
 
 class ScorerWrapperState : public ScorerState {
@@ -132,6 +137,12 @@ public:
     // This makes as copy. @TODO: It should be OK to return this as a const&.
     return encdec_->getAlignment().front(); // [beam depth * max src length * batch size]
   }
+
+  virtual void save(Ptr<ExpressionGraph> graph,
+                    const std::string& name,
+                    bool saveTranslatorConfig = false) override {
+    encdec_->save(graph, name, saveTranslatorConfig);
+  };
 };
 
 Ptr<Scorer> scorerByType(const std::string& fname,
@@ -147,5 +158,7 @@ Ptr<Scorer> scorerByType(const std::string& fname,
                          Ptr<Options> config);
 
 std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<const void*>& ptrs);
+
+void convertModelScorer(Ptr<Options> options, Ptr<ExpressionGraph> graph);
 
 }  // namespace marian

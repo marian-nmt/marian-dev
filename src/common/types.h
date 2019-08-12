@@ -27,6 +27,7 @@ enum class Type : size_t {
   uint32 = TypeClass::unsigned_type + 4u,
   uint64 = TypeClass::unsigned_type + 8u,
 
+  float16 = TypeClass::float_type + 2u,
   float32 = TypeClass::float_type + 4u,
   float64 = TypeClass::float_type + 8u
 };
@@ -73,9 +74,16 @@ template <> inline bool matchType<float>(Type type)  { return type == Type::floa
 template <> inline bool matchType<double>(Type type) { return type == Type::float64; }
 // clang-format on
 
-template <typename T> inline Type getType();
-template <> inline Type getType<float>() { return Type::float32; }
-template <> inline Type getType<uint32_t>() { return Type::uint32; }
+template <typename T>
+inline Type getType();
+template <>
+inline Type getType<float>() {
+  return Type::float32;
+}
+template <>
+inline Type getType<uint32_t>() {
+  return Type::uint32;
+}
 
 static inline std::ostream& operator<<(std::ostream& out, Type type) {
   switch(type) {
@@ -89,6 +97,7 @@ static inline std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::uint32: out << "uint32"; break;
     case Type::uint64: out << "uint64"; break;
 
+    case Type::float16: out << "float16"; break;
     case Type::float32: out << "float32"; break;
     case Type::float64: out << "float64"; break;
   }
@@ -112,7 +121,6 @@ template <> inline std::string request<uint64_t>() { return "uint64"; }
 template <> inline std::string request<float>()  { return "float32"; }
 template <> inline std::string request<double>() { return "float64"; }
 // clang-format on
-
 
 // Abort if given C++ does not correspond to runtime type
 template <typename T>

@@ -185,8 +185,13 @@ NodeInitializer from_item(const io::Item& item) {
       // @TODO: implement other types, for now croak loudly.
       ABORT_IF(!matchType<float>(t->type()),
                "Tensor type and type for mapping do not match");
-      t->set((const float*)item.bytes.data(),
-             (const float*)item.bytes.data() + t->size());
+      if (item.type == Type::float32)
+        t->set((const float*)item.bytes.data(),
+              (const float*)item.bytes.data() + t->size());
+      else if (item.type == Type::int8 || item.type == Type::uint8)
+        t->set((const uint8_t*)item.bytes.data(), (const uint8_t*)item.bytes.data() + t->size());
+      else
+        ABORT("Unsupported type {}", item.type);
     };
   }
 }

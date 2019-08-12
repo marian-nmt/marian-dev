@@ -34,6 +34,13 @@ public:
     // or config is created anew from Options in the validator
     options_->set("inference", true);
 
+    // convert a nomarl model to a packed model
+    if(options->get<std::string>("save-packed-model") == "convert") {
+      //convertModel(options);
+      // skip and do the conversions in run() function
+      return;
+    }
+
     corpus_ = New<data::Corpus>(options_, true);
 
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
@@ -131,6 +138,20 @@ public:
       threadPool.enqueue(task, batchId++);
 
     }
+  }
+
+  void convertModel(Ptr<Options> options) {
+    auto graph = New<ExpressionGraph>(true);
+    graph->setDevice(CPU0);
+//    graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
+    //if(device.type == DeviceType::cpu) {
+    //  graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+    //  graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
+    //}
+//    graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
+//    graphs_[id] = graph;
+
+    convertModelScorer(options_, graph);
   }
 };
 

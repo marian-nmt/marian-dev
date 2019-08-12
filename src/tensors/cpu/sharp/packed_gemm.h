@@ -6,6 +6,27 @@ namespace marian {
 namespace cpu {
 namespace variant { // Variants of GEMM implementations
 
+const int PACK16_PADDING = 1024;  // required by sw pipelined kernels
+const int PACK16_SPECIALMEM = 256;
+
+void PackInfoFp16(const marian::Shape& shape,
+                  const bool transpose,
+                  int& nrow,
+                  int& ncol,
+                  int& kernel_ncol_blocks,
+                  int& brow,
+                  int& bcol,
+                  int& last_brow,
+                  int& nbrow,
+                  int& nbcol,
+                  uint64_t& packsize);
+
+void PackInfoInt8(const marian::Shape& shape,
+                  const bool transpose,
+                  int& nrow,
+                  int& ncol,
+                  uint64_t& packsize);
+
 // Pack a matrix into cache utilization efficient way (block format) into fp16
 // out: output tensor - packed format
 // in: input tensor - normal format
@@ -90,7 +111,6 @@ void PackInt8(marian::Tensor out,
 void GemmPackInt8(marian::Tensor C,
                   const marian::Tensor A,
                   const marian::Tensor B,
-                  const marian::Tensor bias,
                   const size_t m,
                   const size_t n,
                   const size_t k,

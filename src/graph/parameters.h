@@ -22,7 +22,12 @@ protected:
   size_t totalCapacity(Ptr<TensorAllocator> alloc) {
     size_t sum = 0;
     for(auto p : params_) {
-      sum += alloc->capacity(p->shape(), Type::float32);
+      if(p->name().find("_W") == p->name().length() - 3
+         || p->name().find("_W") == p->name().length() - 2)
+        sum += alloc->capacity(p->shape(), Type::uint8);
+      else
+        sum += alloc->capacity(p->shape(), Type::float32);
+//      sum += alloc->capacity(p->shape(), Type::float32);
     }
     return sum;
   }

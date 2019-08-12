@@ -82,6 +82,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<std::string>("--dump-config",
     "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal")
     ->implicit_val("full");
+  cli.add<std::string>("--save-packed-model", "Convert a nomal model to a packed model and save it.: none, convert, train");
   // clang-format on
 }
 
@@ -221,6 +222,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--bert-train-type-embeddings", "Train bert type embeddings, set to false to use static sinusoidal embeddings", true);
   cli.add<int>("--bert-type-vocab-size", "Size of BERT type vocab (sentence A and B)", 2);
 
+  // packed model
+  cli.add<bool>("--packed-weight", "Weight matrices are saved in cache efficient packed format.", false);
   // Macaron net related configs
   // see https://arxiv.org/pdf/1906.02762.pdf
   cli.add<bool>("--macaron-enabled", "Use macaron structure");
@@ -430,6 +433,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+  // model conversion
+  cli.add<std::string>("--save-packed-model",
+      "Save a trained model in a packed format: convert, finalmodel", "convert");
   // add ULR settings
   addSuboptionsULR(cli);
   // clang-format on

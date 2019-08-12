@@ -29,12 +29,16 @@ char cnpy::map_type(const std::type_info& t)
     if(t == typeid(short) ) return 'i';
     if(t == typeid(long) ) return 'i';
     if(t == typeid(long long) ) return 'i';
+    if(t == typeid(int8_t) ) return 'i';
+    if(t == typeid(int16_t) ) return 'i';
 
     if(t == typeid(unsigned char) ) return 'u';
     if(t == typeid(unsigned short) ) return 'u';
     if(t == typeid(unsigned long) ) return 'u';
     if(t == typeid(unsigned long long) ) return 'u';
     if(t == typeid(unsigned int) ) return 'u';
+    if(t == typeid(uint8_t) ) return 'u';
+    if(t == typeid(uint16_t) ) return 'u';
 
     if(t == typeid(bool) ) return 'b';
 
@@ -60,7 +64,7 @@ template<> std::vector<char>& cnpy::operator+=(std::vector<char>& lhs, const cha
     return lhs;
 }
 
-void cnpy::parse_npy_header(FILE* fp, unsigned int& word_size, unsigned int*& shape, unsigned int& ndims, bool& fortran_order) {
+void cnpy::parse_npy_header(FILE* fp, char& type, unsigned int& word_size, unsigned int*& shape, unsigned int& ndims, bool& fortran_order) {
     char buffer[256];
     size_t res = fread(buffer,sizeof(char),11,fp);
     if(res != 11)
@@ -95,7 +99,7 @@ void cnpy::parse_npy_header(FILE* fp, unsigned int& word_size, unsigned int*& sh
     bool littleEndian = (header[loc1] == '<' || header[loc1] == '|' ? true : false);
     assert(littleEndian); littleEndian;
 
-    //char type = header[loc1+1];
+    type = header[loc1+1];
     //assert(type == map_type(T));
 
     std::string str_ws = header.substr(loc1+2);
@@ -140,12 +144,14 @@ cnpy::NpyArrayPtr load_the_npy_file(FILE* fp) {
     unsigned int* shape;
     unsigned int ndims, word_size;
     bool fortran_order;
-    cnpy::parse_npy_header(fp, word_size, shape, ndims, fortran_order);
+    char type;
+    cnpy::parse_npy_header(fp, type, word_size, shape, ndims, fortran_order);
     unsigned long long size = 1; //long long so no overflow when multiplying by word_size
     for(unsigned int i = 0; i < ndims; i++)
         size *= shape[i];
 
     auto arr = cnpy::NpyArrayPtr(new cnpy::NpyArray());
+    arr->type = type;
     arr->word_size = word_size;
     arr->shape = std::vector<unsigned int>(shape, shape+ndims);
     delete[] shape;

@@ -144,10 +144,10 @@ public:
              "Vector size ({}) and underlying shape ({}) do not match",
              end - begin,
              std::string(shape_));
-    ABORT_IF(!matchType<T>(type_),
-             "Requested type ({}) and underlying type ({}) do not match",
-             request<T>(),
-             type_);
+    // ABORT_IF(!matchType<T>(type_),
+    //          "Requested type ({}) and underlying type ({}) do not match",
+    //          request<T>(),
+    //          type_);
 
     if(backend_->getDeviceId().type == DeviceType::cpu) {
       std::copy(begin, end, data<T>());

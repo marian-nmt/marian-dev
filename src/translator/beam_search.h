@@ -356,6 +356,10 @@ public:
                      first,
                      batch);
 
+      if (triePrune_) {
+         beams = filterForContinuations(beams);
+      }
+
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {
         if(!beams[i].empty()) {

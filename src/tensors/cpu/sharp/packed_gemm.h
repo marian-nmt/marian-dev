@@ -92,12 +92,6 @@ void PackInt8(marian::Tensor out,
               const bool transpose,
               const int nrow,
               const int ncol,
-              const int kernel_ncol_blocks,
-              const int brow,
-              const int bcol,
-              const int last_brow,
-              const int nbrow,
-              const int nbcol,
               const uint64_t packsize);
 
 // GEMM operation on the packed B matrix in 8 bit integers

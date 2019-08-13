@@ -290,8 +290,8 @@ void PackInt8(marian::Tensor out,
   // Quantize to int8
   int k = transpose ? in->shape()[1] : in->shape()[0];
   int n = transpose ? in->shape()[0] : in->shape()[1];
-  // std::cout << "transpose: " << transpose << ", k: " << k << ", n: " << n << std::endl;
-  // std::cout << ", bqScale: " << bqScale << ", bqZeropoint: " << bqZeropoint << std::endl;
+  std::cout << "transpose: " << transpose << ", nrow: " << nrow << ", ncol: " << ncol << ", packsize: " << packsize << std::endl;
+  //std::cout << ", bqScale: " << bqScale << ", bqZeropoint: " << bqZeropoint << std::endl;
   // two steps
   // 0. quantize --> this should be done outside
   int len = in->shape()[0]*in->shape()[1];
@@ -304,7 +304,7 @@ void PackInt8(marian::Tensor out,
   // float denum = 2/(float)numBin;
 
   // int hist[numBin] = { 0, };
-
+  std::cout << "stpe 0" << std::endl;
   //auto t_start = std::chrono::high_resolution_clock::now();
   float* data = in->data();
   float val = 0;
@@ -330,6 +330,7 @@ void PackInt8(marian::Tensor out,
     // bqScale[jj] = (0.3 + 0.4)/255;
     // bqZeropoint[jj] = (int32_t)(127 - 0.3 / bqScale[jj]);
   }
+  std::cout << "stpe 1: minmax" << std::endl;
   //auto t_end = std::chrono::high_resolution_clock::now();
   //minmaxbtime += std::chrono::duration<double, std::milli>(t_end - t_start).count();
   //std::cout << "B min max time: " << minmaxbtime << std::endl;
@@ -367,6 +368,8 @@ assert(result == 0);
       }
     }
   }
+  std::cout << "stpe 2: quantize" << std::endl;
+
   // std::cout << "original" << std::endl;
   // for (int ii = 0; ii < n; ii++) {
   //   for (int jj = 0; jj < 1; jj++) {
@@ -399,6 +402,7 @@ assert(result == 0);
   //t_end = std::chrono::high_resolution_clock::now();
   //quantizebtime += std::chrono::duration<double, std::milli>(t_end - t_start).count();
   //std::cout << "B quantize time: " << quantizebtime << std::endl;
+  std::cout << "stpe 3: offset" << std::endl;
 
 
   int8_t* packedbuf = out->data<int8_t>();
@@ -409,6 +413,8 @@ assert(result == 0);
   PackBMatrix<int8_t> packedBN(
       transpose ? matrix_op_t::Transpose : matrix_op_t::NoTranspose,
       nrow, ncol, quantized, in->shape()[1], packedbuf, 1);
+
+  std::cout << "stpe 4: pack" << std::endl;
 
   // copy quantization scale
   memcpy(packedbuf + (packsize - n * (sizeof(float) + sizeof(int32_t) + sizeof(int32_t))), bqScale, n * sizeof(float));
@@ -433,6 +439,9 @@ assert(result == 0);
   delete[] col_offsets;
   delete[] bqScale;
   delete[] bqZeropoint;
+
+  std::cout << "stpe 4: copy" << std::endl;
+
 }
 
 // GEMM operation on the packed B matrix

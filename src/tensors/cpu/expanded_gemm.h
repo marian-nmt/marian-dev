@@ -270,6 +270,7 @@ public:
 
     auto n = (bShape.elements() - PACK16_PADDING - PACK16_SPECIALMEM) / sizeof(fbgemm::float16)
              / nbrow / brow;
+    // std::cout << "!!!!!!!!!!affine out shape: " << n << std::endl;
 
     Shape outShape = shapeA;
     outShape.set(outShape.size() - 1, n);
@@ -331,14 +332,14 @@ public:
 
     int KCB;
     if (fbgemmHasAvx512Support()) {
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx512>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx512>::KCB;
     } else {
       // AVX2
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx2>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx2>::KCB;
     }
 
     ABORT_IF(transB, "B should not be transposed for packed GEMM.");
-    int brow = ((m_ + KCB - 1) / KCB) * KCB;
+    int brow = ((k_ + KCB - 1) / KCB) * KCB;
 
     // @TODO col should be multiple of NCB (32)
     n_ = bShape.elements() / (brow + sizeof(float) + sizeof(int32_t) + sizeof(int32_t));
@@ -357,16 +358,21 @@ public:
 
     int KCB;
     if (fbgemmHasAvx512Support()) {
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx512>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx512>::KCB;
     } else {
       // AVX2
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx2>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx2>::KCB;
     }
 
-    int brow = ((m_ + KCB - 1) / KCB) * KCB;
+    int brow = ((shapeA[shapeA.size() - 1] + KCB - 1) / KCB) * KCB;
 
     // @TODO col should be multiple of NCB (32)
     int n = bShape.elements() / (brow + sizeof(float) + sizeof(int32_t) + sizeof(int32_t));
+    // std::cout << "affine m_: " << m_ << std::endl;
+    // std::cout << "affine KCB: " << KCB << std::endl;
+    // std::cout << "affine brow: " << brow << std::endl;
+    // std::cout << "affine bShape.elements(): " << bShape.elements() << std::endl;
+    // std::cout << "affine out shape: " << n << std::endl;
 
     Shape outShape = shapeA;
     outShape.set(outShape.size() - 1, n);
@@ -468,6 +474,7 @@ public:
 
     auto n = (bShape.elements() - PACK16_PADDING - PACK16_SPECIALMEM) / sizeof(fbgemm::float16)
              / nbrow / brow;
+    // std::cout << "!!!!!!!dot out shape: " << n << std::endl;
 
     Shape outShape = shapeA;
     outShape.set(outShape.size() - 1, n);
@@ -529,14 +536,14 @@ public:
 
     int KCB;
     if (fbgemmHasAvx512Support()) {
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx512>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx512>::KCB;
     } else {
       // AVX2
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx2>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx2>::KCB;
     }
 
     ABORT_IF(transB, "B should not be transposed for packed GEMM.");
-    int brow = ((m_ + KCB - 1) / KCB) * KCB;
+    int brow = ((k_ + KCB - 1) / KCB) * KCB;
 
     // @TODO col should be multiple of NCB (32)
     n_ = bShape.elements() / (brow + sizeof(float) + sizeof(int32_t) + sizeof(int32_t));
@@ -554,16 +561,17 @@ public:
 
     int KCB;
     if (fbgemmHasAvx512Support()) {
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx512>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx512>::KCB;
     } else {
       // AVX2
-      KCB = PackingTraits<inpType, accType, inst_set_t::avx2>::KCB;
+      KCB = PackingTraits<int8_t, int32_t, inst_set_t::avx2>::KCB;
     }
 
-    int brow = ((m_ + KCB - 1) / KCB) * KCB;
+    int brow = ((shapeA[shapeA.size() - 1] + KCB - 1) / KCB) * KCB;
 
     // @TODO col should be multiple of NCB (32)
     int n = bShape.elements() / (brow + sizeof(float) + sizeof(int32_t) + sizeof(int32_t));
+    // std::cout << "dot out shape: " << n << std::endl;
 
     Shape outShape = shapeA;
     outShape.set(outShape.size() - 1, n);
@@ -579,7 +587,7 @@ public:
                           n_,
                           k_,
                           transA_,
-                          transB_)
+                          transB_))
     };
   }
 

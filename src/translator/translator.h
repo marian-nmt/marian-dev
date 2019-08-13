@@ -88,6 +88,12 @@ public:
   }
 
   void run() override {
+    // convert a nomarl model to a packed model and skip other procedures
+    if(options_->get<std::string>("save-packed-model") == "convert") {
+      convertModel(options_);
+      return;
+    }
+
     data::BatchGenerator<data::Corpus> bg(corpus_, options_);
 
     ThreadPool threadPool(numDevices_, numDevices_);
@@ -144,10 +150,10 @@ public:
     auto graph = New<ExpressionGraph>(true);
     graph->setDevice(CPU0);
 //    graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-    //if(device.type == DeviceType::cpu) {
-    //  graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-    //  graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
-    //}
+//    if(device.type == DeviceType::cpu) {
+//     graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+     graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
+//    }
 //    graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 //    graphs_[id] = graph;
 

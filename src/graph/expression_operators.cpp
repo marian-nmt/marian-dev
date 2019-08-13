@@ -567,6 +567,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
             scale);
       } else if(gemmType == GemmType::FbFp16Packed || gemmType == GemmType::FbInt8Packed) {
 #if USE_FBGEMM
+        //std::cout << "gemmType: " << gemmType << std::endl;
         // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
         // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
         // It looks at the cpu register

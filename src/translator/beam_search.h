@@ -155,7 +155,9 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
+      if (in[index] >= -7){
         in[index] += bumpVal;
+      }
     }
   }
 
@@ -168,7 +170,9 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
+      if (in[index] >= -7){
         in[index] += bumpVal;
+      }
     }
   }
 
@@ -178,7 +182,7 @@ public:
       Beam newBeam;
       bool allFake = true; /* Keep track if all hypothesis we have are placeholders
                             * if that happens we should end search prematurely
-                            * by setting the beam to empty*/
+                            * by setting the beam to empty */
       for (auto hyp : beam) {
         if (hyp->hasTrieContinuatuions()) {
           newBeam.push_back(hyp);
@@ -321,10 +325,11 @@ public:
       std::vector<size_t> beamSizes(dimBatch, localBeamSize);
       //Pathscores if of shape {12, 1, 1, 36000}} AFTER the first step, otherwise it's {1, 1, 1, 36000}
       //UNLESS It's batched then DIM0 is the batch size and DIM2 is the TrieSize
+
       if (!first && triePrune_) {
         for (int i = 0; i < beams.size(); i++) {
           for (size_t j = 0; j < beams[i].size(); j++) {
-            beams[i][j]->hasTrieContinuatuions(); //Advance the trie after the first step.
+            beams[i][j]->hasTrieContinuatuions();  //Advance the trie after the first step.
             if (dimBatch > 1) {
               bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 100.0f);
             } else {
@@ -341,7 +346,7 @@ public:
         //Hence fix the scores
         for (auto&& score : outPathScores) {
           if (score > 1) {
-            score -= 100.0f; 
+            score -= 100.0f;
           }
         }
       }
@@ -356,9 +361,9 @@ public:
                      first,
                      batch);
 
-      if (triePrune_) {
-         beams = filterForContinuations(beams);
-      }
+      //if (triePrune_) {
+      //   beams = filterForContinuations(beams);
+      //}
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {

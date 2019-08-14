@@ -329,7 +329,7 @@ public:
       if (!first && triePrune_) {
         for (int i = 0; i < beams.size(); i++) {
           for (size_t j = 0; j < beams[i].size(); j++) {
-            beams[i][j]->hasTrieContinuatuions();  //Advance the trie after the first step.
+            //beams[i][j]->hasTrieContinuatuions();  //Advance the trie after the first step.
             if (dimBatch > 1) {
               bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 100.0f);
             } else {
@@ -361,9 +361,9 @@ public:
                      first,
                      batch);
 
-      //if (triePrune_) {
-      //   beams = filterForContinuations(beams);
-      //}
+      if (triePrune_) {
+         beams = filterForContinuations(beams);
+      }
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {

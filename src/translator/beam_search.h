@@ -155,9 +155,9 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
-      if (in[index] >= -7){
+      //if (in[index] >= -15){
         in[index] += bumpVal;
-      }
+      //}
     }
   }
 
@@ -170,9 +170,9 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
-      if (in[index] >= -7){
+      //if (in[index] >= -15){
         in[index] += bumpVal;
-      }
+      //}
     }
   }
 
@@ -346,7 +346,7 @@ public:
         //Hence fix the scores
         for (auto&& score : outPathScores) {
           if (score > 1) {
-            score -= 100.0f;
+          score -= 100.0f;
           }
         }
       }

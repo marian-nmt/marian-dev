@@ -146,7 +146,8 @@ public:
   }
 
   InputFileStream(TemporaryFile& tempfile)
-      : fds_(tempfile.getFileDescriptor(), boost::iostreams::never_close_handle) {
+      : file_(tempfile.getFileName()),
+        fds_(tempfile.getFileDescriptor(), boost::iostreams::never_close_handle) {
     lseek(tempfile.getFileDescriptor(), 0, SEEK_SET);
 
     namespace bio = boost::iostreams;

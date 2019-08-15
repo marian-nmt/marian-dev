@@ -313,6 +313,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<std::string>("--tempdir,-T",
       "Directory for temporary (shuffled) files and database",
       "/tmp");
+  cli.add<bool>("--keep-temp",
+      "Keep temporary files instead of unlinking at creation");
   cli.add<std::string>("--sqlite",
       "Use disk-based sqlite3 database for training corpus storage, default"
       " is temporary with path creates persistent storage")

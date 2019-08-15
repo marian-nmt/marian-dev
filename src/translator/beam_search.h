@@ -155,11 +155,7 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
-      //if (in[index] >= -15){
-        //std::cout << in[index] << " | ";
-        in[index] += bumpVal;
-        //std::cout << in[index] << " || ";
-      //}
+      in[index] += bumpVal;
     }
   }
 
@@ -172,11 +168,7 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
-      //if (in[index] >= -15){
-        //std::cout << in[index] << " | ";
-        in[index] += bumpVal;
-        //std::cout << in[index] << " || ";
-      //}
+      in[index] += bumpVal;
     }
   }
 
@@ -186,7 +178,7 @@ public:
       Beam newBeam;
       bool allFake = true; /* Keep track if all hypothesis we have are placeholders
                             * if that happens we should end search prematurely
-                            * by setting the beam to empty */
+                            * by setting the beam to empty*/
       for (auto hyp : beam) {
         if (hyp->hasTrieContinuatuions()) {
           newBeam.push_back(hyp);
@@ -333,16 +325,13 @@ public:
       if (!first && triePrune_) {
         for (int i = 0; i < beams.size(); i++) {
           for (size_t j = 0; j < beams[i].size(); j++) {
-            //beams[i][j]->hasTrieContinuatuions();  //Advance the trie after the first step.
             if (dimBatch > 1) {
               bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 10000000.0f);
             } else {
               bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 10000000.0f);
             }
           }
-        // std::cout << "\n-----\n";
         }
-        // std::cout << "==========\n";
       }
 
       getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);

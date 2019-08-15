@@ -159,10 +159,8 @@ public:
     if(stopAfterBatches > 0 && state_->batches >= stopAfterBatches)
       return false;
 
-    // stop if the first validator did not improve for a given number of checks
-    size_t stopAfterStalled = options_->get<size_t>("early-stopping");
-    if(stopAfterStalled > 0 && !validators_.empty()
-       && stalled() >= stopAfterStalled)
+    // stop if the validators did not improve for a given number of checks
+    if(!validators_.empty() && stalled())
       return false;
 
     return true;
@@ -248,11 +246,19 @@ public:
     state_->validated = true;
   }
 
-  size_t stalled() {
-    if(!validators_.empty())
-      if(validators_[0])
-        return validators_[0]->stalled();
-    return 0;
+  bool stalled() {
+    std::vector<size_t> patiences
+        = options_->get<std::vector<size_t>>("early-stopping");
+    if(!validators_.empty() && !patiences.empty()) {
+      size_t i = 0;
+      for(size_t patience : patiences) {
+        if(validators_[i] && patience > 0)
+          if(validators_[i]->stalled() >= patience)
+            return true;
+        i++;
+      }
+    }
+    return false;
   }
 
   void update(StaticLoss rationalLoss, Ptr<data::Batch> batch) {

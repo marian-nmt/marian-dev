@@ -437,9 +437,10 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Metric to use during validation: cross-entropy, ce-mean-words, perplexity, valid-script, "
       "translation, bleu, bleu-detok. Multiple metrics can be specified",
       {"cross-entropy"});
-  cli.add<size_t>("--early-stopping",
-     "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
-     10);
+  cli.add<std::vector<size_t>>("--early-stopping",
+     "Stop if the corresponding validation metrics do not improve for  arg  consecutive validation steps. "
+     "At most one per metric",
+     {10});
 
   // decoding options
   cli.add<size_t>("--beam-size,-b",

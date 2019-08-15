@@ -156,7 +156,9 @@ public:
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
       //if (in[index] >= -15){
+        //std::cout << in[index] << " | ";
         in[index] += bumpVal;
+        //std::cout << in[index] << " || ";
       //}
     }
   }
@@ -171,7 +173,9 @@ public:
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
       //if (in[index] >= -15){
+        //std::cout << in[index] << " | ";
         in[index] += bumpVal;
+        //std::cout << in[index] << " || ";
       //}
     }
   }
@@ -331,12 +335,14 @@ public:
           for (size_t j = 0; j < beams[i].size(); j++) {
             //beams[i][j]->hasTrieContinuatuions();  //Advance the trie after the first step.
             if (dimBatch > 1) {
-              bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 100.0f);
+              bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 10000000.0f);
             } else {
-              bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 100.0f);
+              bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 10000000.0f);
             }
           }
+        // std::cout << "\n-----\n";
         }
+        // std::cout << "==========\n";
       }
 
       getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
@@ -346,7 +352,7 @@ public:
         //Hence fix the scores
         for (auto&& score : outPathScores) {
           if (score > 1) {
-          score -= 100.0f;
+          score -= 10000000.0f;
           }
         }
       }

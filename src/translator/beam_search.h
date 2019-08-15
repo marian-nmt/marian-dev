@@ -351,9 +351,9 @@ public:
         //Everything that came out of the trie will have a score >1
         //Hence fix the scores
         for (auto&& score : outPathScores) {
-          if (score > 1) {
+          //if (score > 1) {
           score -= 10000000.0f;
-          }
+          //}
         }
       }
 

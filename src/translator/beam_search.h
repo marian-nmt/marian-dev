@@ -155,7 +155,7 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
-        in[index] += bumpVal;
+      in[index] += bumpVal;
     }
   }
 
@@ -168,7 +168,7 @@ public:
       return;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
-        in[index] += bumpVal;
+      in[index] += bumpVal;
     }
   }
 
@@ -321,14 +321,14 @@ public:
       std::vector<size_t> beamSizes(dimBatch, localBeamSize);
       //Pathscores if of shape {12, 1, 1, 36000}} AFTER the first step, otherwise it's {1, 1, 1, 36000}
       //UNLESS It's batched then DIM0 is the batch size and DIM2 is the TrieSize
+
       if (!first && triePrune_) {
         for (int i = 0; i < beams.size(); i++) {
           for (size_t j = 0; j < beams[i].size(); j++) {
-            beams[i][j]->hasTrieContinuatuions(); //Advance the trie after the first step.
             if (dimBatch > 1) {
-              bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 100.0f);
+              bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 10000000.0f);
             } else {
-              bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 100.0f);
+              bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 10000000.0f);
             }
           }
         }
@@ -341,7 +341,7 @@ public:
         //Hence fix the scores
         for (auto&& score : outPathScores) {
           if (score > 1) {
-            score -= 100.0f; 
+          score -= 10000000.0f;
           }
         }
       }
@@ -355,6 +355,10 @@ public:
                      localBeamSize,
                      first,
                      batch);
+
+      if (triePrune_) {
+         beams = filterForContinuations(beams);
+      }
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {

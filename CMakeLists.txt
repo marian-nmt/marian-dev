@@ -22,6 +22,9 @@ option(USE_MPI "Use MPI library" OFF)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
 option(COMPILE_SERVER "Compile marian-server" ON)
+option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" ON)
+option(COMPILE_WEBSOCKET_SERVER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" ON)
+option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module" ON)
 
 # Project versioning
 find_package(Git QUIET)
@@ -322,4 +325,3 @@ if(DOXYGEN_FOUND)
     COMMENT "Generating API documentation with Doxygen" VERBATIM
   )
 endif(DOXYGEN_FOUND)
-

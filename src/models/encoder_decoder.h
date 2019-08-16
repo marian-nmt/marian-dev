@@ -34,8 +34,8 @@ public:
 
   virtual Ptr<RationalLoss> build(Ptr<ExpressionGraph> graph,
                                   Ptr<data::CorpusBatch> batch,
-                                  bool clearGraph = true) = 0;  
-                                  
+                                  bool clearGraph = true) = 0;
+
   virtual Ptr<DecoderState> startState(Ptr<ExpressionGraph> graph,
                                        Ptr<data::CorpusBatch> batch) = 0;
 
@@ -51,7 +51,7 @@ public:
   virtual Ptr<Options> getOptions() = 0;
 
   virtual void setShortlistGenerator(
-      Ptr<data::ShortlistGenerator> shortlistGenerator)
+      Ptr<data::ShortlistGenerator const> shortlistGenerator)
       = 0;
 
   virtual Ptr<data::Shortlist> getShortlist() = 0;
@@ -62,7 +62,7 @@ public:
 class EncoderDecoder : public EncoderDecoderBase {
 protected:
   Ptr<Options> options_;
-  Ptr<data::ShortlistGenerator> shortlistGenerator_;
+  Ptr<data::ShortlistGenerator const> shortlistGenerator_;
 
   std::string prefix_;
 
@@ -123,7 +123,7 @@ public:
   }
 
   virtual void setShortlistGenerator(
-      Ptr<data::ShortlistGenerator> shortlistGenerator) override {
+      Ptr<data::ShortlistGenerator const> shortlistGenerator) override {
     shortlistGenerator_ = shortlistGenerator;
   };
 

@@ -259,7 +259,7 @@ public:
   virtual Ptr<Options> getOptions() override { return encdec_->getOptions(); };
 
   virtual void setShortlistGenerator(
-      Ptr<data::ShortlistGenerator> shortlistGenerator) override {
+      Ptr<data::ShortlistGenerator const> shortlistGenerator) override {
     encdec_->setShortlistGenerator(shortlistGenerator);
   };
 

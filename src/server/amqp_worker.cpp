@@ -35,7 +35,7 @@ interpret_args(int argc, char** argv){
   cp.addOption<std::string>("--amqp-queue","AMQP options",
                             "Message queue to listen on",
                             "MT-tasks");
-  return New<Options>(cp, argc, argv, /*validate_options=*/ true);
+  return cp.parseOptions(argc, argv, /*validate_options=*/ true);
 }
 
 // This class is woken up when a Request has been processed

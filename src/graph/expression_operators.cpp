@@ -476,7 +476,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
                                       prepped_bias,
                                       scale,
                                       quant_a_old.first,
-                                      bias),
+                                      bias,
+                                      transB ? transpose(b) : b),
                     true);
       };
       tuner->insert({hash1, alg1});
@@ -521,7 +522,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
                                prepped_bias,
                                scale,
                                quant_a_old.first,
-                               bias);
+                               bias,
+                               transB ? transpose(b) : b);
     }
   } else {
     // general version, MKL, CBlas or CUDA

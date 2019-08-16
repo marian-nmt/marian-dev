@@ -117,7 +117,7 @@ private:
   size_t width_;
   size_t words_;
 
-  Ptr<Vocab> vocab_;
+  Ptr<Vocab const> vocab_;
   // ... TODO: add the length information (remember it)
 
 public:
@@ -127,7 +127,7 @@ public:
    * @param size Number of sentences
    * @param width Number of words in the longest sentence
    */
-  SubBatch(size_t size, size_t width, const Ptr<Vocab>& vocab)
+  SubBatch(size_t size, size_t width, const Ptr<Vocab const>& vocab)
       : indices_(size * width, 0),
         mask_(size * width, 0),
         size_(size),
@@ -153,7 +153,7 @@ public:
   /**
    * @brief Accessors to the vocab_ field.
    */
-  const Ptr<Vocab>& vocab() const { return vocab_; }
+  const Ptr<Vocab const>& vocab() const { return vocab_; }
 
   /**
    * @brief The number of sentences in the batch.

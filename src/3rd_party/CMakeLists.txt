@@ -7,6 +7,9 @@ add_subdirectory(./pathie-cpp)
 add_subdirectory(./zlib)
 add_subdirectory(./ssplit-cpp)
 
+if (COMPILE_AMQP_WORKER)
+  add_subdirectory(./amqp-cpp)
+endif(COMPILE_AMQP_WORKER)
 if(USE_FBGEMM)
   # @TODO: find out if this is somehow harmful. This is supppressing CMake warnings for CMAKE_SUPPRESS_DEVELOPER_WARNINGS
   # meant to silence CMakeFiles of 3rd_party tools.

@@ -37,7 +37,7 @@ public:
 
   size_t size() const { return history_.size(); } // number of time steps
 
-  NBestList nBest(size_t n) const {
+  NBestList NBest(size_t n, bool skip_empty = false) const {
     NBestList nbest;
     for (auto topHypsCopy = topHyps_; nbest.size() < n && !topHypsCopy.empty(); topHypsCopy.pop()) {
       auto bestHypCoord = topHypsCopy.top();
@@ -47,18 +47,19 @@ public:
       Hypothesis::PtrType bestHyp = history_[timeStepIdx][beamIdx];
 
       // trace back best path
-      Words targetWords = bestHyp->tracebackWords();
-
-      // note: bestHyp->getPathScore() is not normalized, while bestHypCoord.normalizedPathScore is
+      Words targetWords = bestHyp->TracebackWords();
+      if (skip_empty && targetWords.size() == 0)
+        continue; // skip empty translation
+      // note: bestHyp->GetPathScore() is not normalized, while bestHypCoord.normalizedPathScore is
       nbest.emplace_back(targetWords, bestHyp, bestHypCoord.normalizedPathScore);
     }
     return nbest;
   }
 
-  Result top() const { 
+  Result top() const {
     const NBestList& nbest = nBest(1);
     ABORT_IF(nbest.empty(), "No hypotheses in n-best list??");
-    return nbest[0]; 
+    return nbest[0];
   }
 
   size_t getLineNum() const { return lineNo_; }

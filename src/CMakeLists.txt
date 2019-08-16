@@ -3,8 +3,10 @@ add_subdirectory(3rd_party)
 include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
+include_directories(3rd_party/rapid/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(3rd_party/fbgemm/include)
+include_directories(3rd_party/amqp-cpp/include)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
@@ -15,6 +17,7 @@ add_library(marian STATIC
   common/logging.cpp
   common/cli_helper.cpp
   common/cli_wrapper.cpp
+  common/aliases.cpp
   common/config.cpp
   common/config_parser.cpp
   common/config_validator.cpp
@@ -93,6 +96,9 @@ add_library(marian STATIC
   training/validator.cpp
   training/communicator.cpp
   training/scheduler.cpp
+
+  server/queued_input.cpp
+  server/translation_job.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
@@ -220,6 +226,23 @@ if(APPLE) # This is a dependency of pathie but I can't seem to link it into that
    set(EXT_LIBS ${EXT_LIBS} iconv)
 endif()
 
+# temporary additions by UG for server development
+# add_executable(server-test server/server-test.cpp)
+# set_target_properties(server-test PROPERTIES OUTPUT server-test)
+# target_compile_options(server-test PUBLIC ${ALL_WARNINGS})
+# set(EXECUTABLES ${EXECUTABLES} server-test)
+
+add_executable(websocket-server server/websocket-server.cpp)
+set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
+target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
+set(EXECUTABLES ${EXECUTABLES} websocket-server)
+
+add_executable(amqp-worker server/amqp_worker.cpp)
+set_target_properties(amqp-worker PROPERTIES OUTPUT amqp-worker)
+target_compile_options(amqp-worker PUBLIC ${ALL_WARNINGS})
+set(EXECUTABLES ${EXECUTABLES} amqp-worker)
+target_link_libraries(amqp-worker marian amqpcpp ev)
+
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   if(CUDA_FOUND)
@@ -227,6 +250,7 @@ foreach(exec ${EXECUTABLES})
   endif(CUDA_FOUND)
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endforeach(exec)
+target_link_libraries(websocket-server marian amqpcpp ev)
 
 if(COMPILE_TESTS)
   set(CATCH_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party)

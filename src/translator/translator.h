@@ -98,6 +98,8 @@ public:
         auto scorers = createScorers(options_);
 #endif
         for(auto scorer : scorers) {
+          // Why aren't these steps part of createScorers?
+          // i.e., createScorers(options_, graph_, shortlistGenerator_) [UG]
           scorer->init(graph);
           if(shortlistGenerator_)
             scorer->setShortlistGenerator(shortlistGenerator_);

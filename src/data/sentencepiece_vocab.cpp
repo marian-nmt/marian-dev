@@ -252,7 +252,7 @@ public:
     LOG(info, "[data] Loading SentencePiece vocabulary from file {}", vocabPath);
 
     ABORT_IF(!filesystem::exists(vocabPath),
-             "SentencePiece vocabulary file {} does not exist",
+             "SentencePiece vocabulary file {} does not exits",
              vocabPath);
 
     spm_.reset(new sentencepiece::SentencePieceProcessor());

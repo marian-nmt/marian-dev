@@ -3,7 +3,9 @@ add_subdirectory(3rd_party)
 include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
+include_directories(3rd_party/rapid/include)
 include_directories(3rd_party/sentencepiece)
+include_directories(3rd_party/amqp-cpp/include)
 include_directories(3rd_party/fbgemm/include)
 include_directories(3rd_party/rapidjson/include)
 include_directories(3rd_party/amqp-cpp/include)
@@ -98,6 +100,9 @@ add_library(marian STATIC
   training/validator.cpp
   training/communicator.cpp
   training/scheduler.cpp
+
+  server/queued_input.cpp
+  server/translation_job.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
@@ -262,7 +267,6 @@ if (COMPILE_REST_SERVER)
   set(EXECUTABLES ${EXECUTABLES} rest-server)
   target_link_libraries(rest-server marian marian-service ssplit pcre pcrecpp)
 endif(COMPILE_REST_SERVER)
-
 
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})

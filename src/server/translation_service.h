@@ -6,6 +6,7 @@
 #include "3rd_party/ssplit-cpp/src/ssplit/ssplit.h"
 #include "3rd_party/threadpool.h"
 #include "common/logging.h"
+
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/shortlist.h"
@@ -198,10 +199,6 @@ public:
       entry = &scheduled_jobs_[job->unique_id];
     }
     entry->first = job;
-    // LOG(debug, "Pushed job No {}; {} jobs queued up.",
-    //     job->unique_id, jq_->size());
-    // auto pushtime = float(std::clock()-starttime)/CLOCKS_PER_SEC;
-    // LOG(debug,"[service] Pushing job took {}ms", 1000.* pushtime);
     return std::make_pair(job->unique_id, entry->second.get_future());
   }
 

@@ -62,6 +62,7 @@ public:
 class EncoderDecoder : public IEncoderDecoder, public LayerBase {
 protected:
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
+  // Ptr<Options> options_;
 
   const std::string prefix_;
   const bool inference_{ false };

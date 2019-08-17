@@ -354,6 +354,9 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size
     //alloc_->throwAtReallocation(true);
   }
 
+  if(rectified_)
+    LOG_ONCE(info, "Using rectified Adam");
+
   if(!mt_) {
     int elements = (int)params->size();
     size_t shard = (size_t)elements * sizeOf(params->type());

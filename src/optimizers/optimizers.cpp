@@ -346,7 +346,7 @@ void Adagrad::resetStats() {
 }
 
 // Adam
-void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size_t /*refMBWords*/) {
+void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
   // lazy allocation
   if(!alloc_) {
     LOG_ONCE(info, "Allocating memory for Adam-specific shards");
@@ -369,11 +369,11 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size
     vt_->set(0.f);
   }
 
-  double T    = 1; //(double)actualMBSize;
-  double Tref = 1; //(double)refMBWords;
+  double T    = (double)actualMBSize;
+  double Tref = (double)refMBWords;
 
   // adjust for minibatch-size changes if Adam parameters are given a reference size (else do nothing)
-  double eta   = eta_ * (T/Tref);
+  double eta   = eta_; // * (T/Tref);
   double beta1 = beta1_;
   double beta2 = beta2_;
   double decay = w_    ;

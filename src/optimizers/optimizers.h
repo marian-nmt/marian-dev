@@ -196,7 +196,10 @@ private:
  */
 class Adam : public OptimizerBase {
 public:
-  Adam(Ptr<Options> options) : OptimizerBase(options) {}
+  Adam(Ptr<Options> options) 
+   : OptimizerBase(options),
+     rectified_(options->get<std::string>("optimizer") == "radam") 
+  {}
 
   void load(std::vector<io::Item>& /*items*/,
             const std::vector<Ptr<OptimizerBase>>& /*opts*/,
@@ -225,6 +228,9 @@ private:
     if(params.size() > 3)
       w_ = params[3]; // default (disabled): 0
   }
+
+  // use rectified ADAM? https://arxiv.org/pdf/1908.03265v1.pdf
+  bool rectified_ = false;
 
   // hyper-parameters
   float beta1_ = 0.9f;

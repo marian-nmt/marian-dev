@@ -379,6 +379,7 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size
   denom1_ = (beta1 * denom1_) + (1 - beta1); // momentum smoothing, = 1 - beta1^t
   denom2_ = (beta2 * denom2_) + (1 - beta2); // RMS normalization, = 1 - beta2^t
 
+  // compute statistics for RADAM (rectified ADAM), ignored for standard ADAM
   double beta2t = 1.0 - denom2_;                       // denom2_ == 1 - beta2^t => beta2^t == 1 - denom2_
   double t      = log(beta2t) / log(beta2);            // solving for t because denom2_ == 1 - beta2^t
   double rhoinf = 2.0 / (1.0 - beta2) - 1.0;           // rho_inf
@@ -397,19 +398,20 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size
   // apply Adam normalization
   float etaf = (float)eta, denom1f = (float)denom1_, denom2f = (float)denom2_, decayf = (float)decay; // (get casts out of Element expression for readability)
 
-  if(rhot > 4.0) {
-    float rt   = (float)((rhot - 4.0)*(rhot - 2.0)*rhoinf) / ((rhoinf - 4.0)*(rhoinf - 2.0)*rhot);
-    denom2f = denom2f * rt;
+  if(!rectified_ || rhot > 4.0) { // default if not using RADAM
+    // Apply RADAM rectifier or do nothing if not using RADAM
+    float rtsquared = rectified_ ? (float)((rhot - 4.0)*(rhot - 2.0)*rhoinf) / ((rhoinf - 4.0)*(rhoinf - 2.0)*rhot) : 1.f;
+    denom2f  = denom2f * rtsquared;
 
     Element(_1 -= etaf                               // learning-rate: x_t = x_{t-1} - \eta * (...)
                   * ((  (     _2 / denom1f)          // momentum-smoothed per-sample gradient: m_{t-1}
                       / (sqrt(_3 / denom2f) + eps_)) // normalize by RMS: \sqrt(v_{t-1})
-                    + decayf * _1),                 // weight-decay: w * x_{t-1}
+                    + decayf * _1),                  // weight-decay: w * x_{t-1}
             params,  // =_1
             mt_,     // =_2
             vt_      // =_3
             );
-  } else {
+  } else { // update parameters with unadapted momentum (RADAM)
     Element(_1 -= etaf               // learning-rate: x_t = x_{t-1} - \eta * (...)
                   * (_2 / denom1f    // momentum-smoothed per-sample gradient: m_{t-1}
                     + decayf * _1),  // weight-decay: w * x_{t-1}
@@ -538,6 +540,8 @@ Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
     opt = New<Adagrad>(options);
   } else if(optType == "adam") {
     opt = New<Adam>(options);
+  } else if(optType == "radam") {
+    opt = New<Adam>(options);
   } else {
     ABORT("Unknown optimizer type: {}", opt);
   }
@@ -545,4 +549,5 @@ Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
   opt->setParams(params);
   return opt;
 }
+
 }  // namespace marian

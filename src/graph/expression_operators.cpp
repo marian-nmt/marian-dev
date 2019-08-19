@@ -384,15 +384,12 @@ std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue) {
     return {cpu::int8::prepareB(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
   }
 }
-Expr int8_prepareBias(Expr bias, Expr inputB, bool trans, Expr a_quant_mult) {
-  if (inputB->type() == "intSelectColumnsB") {
+Expr int8_prepareBias(Expr bias, Expr inputA, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult) {
+  if (inputB_preppd->type() == "intSelectColumnsB") {
     ABORT_IF(true, "We can't work on selectedColumnsB b Matrix yet.");
     return bias; //TODO THIS MIGHT BE WRONG
-  } else if (inputB->type() == "intPrepareB") {
-    ABORT_IF(true, "We can't work on prepared B Matrix yet.");
-    return bias; //TODO THIS MIGHT BE WRONG
   } else {
-    return cpu::int8::prepareBiasForB(bias, trans ? transpose(inputB) : inputB, a_quant_mult);
+    return cpu::int8::PrepareBiasForB(bias, inputA, inputB_preppd, a_quant_mult, b_quant_mult);
   }
 }
 } // anonymous namespace
@@ -470,7 +467,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           quant_a_old = {rec1(cpu::int8::prepareAOld(transA ? rec1(transpose(a)) : a, quant_mult, clipValue)), quant_mult};
         }
         auto quant_b = int8_quantizeB(b, transB, clipValue);
-        auto prepped_bias = int8_prepareBias(bias, b, transB, quant_a.second);
+        auto prepped_bias = int8_prepareBias(bias, a, quant_b.first, quant_a.second, quant_b.second);
         return rec1(cpu::int8::affine(quant_a.first, quant_a.second,
                                       quant_b.first, quant_b.second,
                                       prepped_bias,
@@ -516,7 +513,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       auto quant_a = int8_quantizeA(a, transA, clipValue);
       auto quant_a_old = int8_quantizeAOld(a, transA, clipValue);
       auto quant_b = int8_quantizeB(b, transB, clipValue);
-      auto prepped_bias = int8_prepareBias(bias, b, transB, quant_a.second);
+      auto prepped_bias = int8_prepareBias(bias, b, quant_b.first, quant_a.second, quant_b.second);
       return cpu::int8::affine(quant_a.first, quant_a.second,
                                quant_b.first, quant_b.second,
                                prepped_bias,

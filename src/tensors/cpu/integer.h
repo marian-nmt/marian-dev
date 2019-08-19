@@ -438,14 +438,9 @@ public:
       ****
        * Haaaaaaaacky
        */
-      //static bool first = true;
-      //bool written = false;
-      intgemm::AlignedVector<int32_t> oldMult16(rows(a)*cols(b));
-      intgemm::AlignedVector<int32_t> newMult16(rows(a)*cols(b));
-
       intgemm::AlignedVector<int16_t> A16(rows(a)*cols(a));
       intgemm::AlignedVector<int16_t> A127(rows(a)*cols(a));
-      intgemm::AlignedVector<int16_t> B16(rows(b)*cols(b));
+
 
       intgemm::AlignedVector<int16_t> B16_INT_NOREORD(rows(b)*cols(b));
       std::vector<int32_t> B32_INT_NOREORD(rows(b)*cols(b), 0);
@@ -457,34 +452,6 @@ public:
       for (int i = 0; i < B32_INT_NOREORD.size(); i++) {
         B32_INT_NOREORD[i] = B16_INT_NOREORD[i];
       }
-
-      for (int i = 0; i<A16.size(); i++) {
-        A16[i] = (int16_t)(((const Integer*)a_old->data())[i]);
-        A127[i] = (int16_t)(((const uint8_t*)a->data())[i]);
-        if (A16[i] +127 != A127[i]) {
-          std::cerr << "ERRROR MISMATCH: " << A16[i] << " " << A127[i] << std::endl;
-        }
-      }
-
-      intgemm::AVX2_16bit::Multiply(
-          A16.begin(),
-          B16.begin(),
-          //BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          Identity(reinterpret_cast<int32_t*>(oldMult16.begin())),
-          rows(a),
-          cols(a), // Shared dimension.
-          cols(b));
-
-      intgemm::AVX2_16bit::Multiply(
-          A127.begin(),
-          B16.begin(),
-          //BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          Identity(reinterpret_cast<int32_t*>(newMult16.begin())),
-          rows(a),
-          cols(a), // Shared dimension.
-          cols(b));
 
 
       intgemm::AlignedVector<int> oldMult(rows(a)*cols(b));
@@ -512,20 +479,15 @@ public:
           cols(b));
 
       std::vector<int> offset(rows(a)*cols(a), 127);
-      std::vector<int> b_int(rows(b)*cols(b));
+      std::vector<float> b_makeup_float(rows(a)*cols(b), 0.0f);
+      std::vector<float> onez(rows(a)*cols(a), 1.0f);
       std::vector<int> b_makeup(rows(a)*cols(b), 0);
-      for (size_t i = 0; i<b_int.size(); i++) {
-        b_int[i] = ((const Integer*)b->data())[i];
-      }
+
       SlowRefFloat2(&offset[0], &B32_INT_NOREORD[0], &b_makeup[0], rows(a), cols(a), cols(b), nullptr);
+      SlowRefFloat2(&onez[0], b_raw->data(), &b_makeup_float[0], rows(a), cols(a), cols(b), nullptr);
 
       for (size_t i = 0; i < newMult.size(); i++) {
         newMult[i] -= b_makeup[i];
-      }
-
-      //16Bit sanity check
-      for (size_t i = 0; i < newMult16.size(); i++) {
-        newMult16[i] -= b_makeup[i];
       }
 
       volatile int matches = 0;
@@ -534,197 +496,102 @@ public:
       
       for (size_t i = 0; i < newMult.size(); i++) {
         if (newMult[i] == oldMult[i]) {
-          //std::cerr << "Match: old: " << oldMult[i] << " new: " << newMult[i] << std::endl;
           matches++;
         } else {
           mismatches++;
         }
       }
       if (mismatches > 10) {
-        //static int i = 0;
-        std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
-        std::cerr << "Old vs new 8 bit: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-        /*std::ofstream file1(std::to_string(i));
-        i++;
-        file1 << "RowsA: " << rows(a) << " ColsA " << cols(a) << " RowsB " << rows(b) << " ColsB " << cols(b) << std::endl;
-        file1 << "QuantMultA: " << *quant_mult_a->data() << " QuantMultB: " << *quant_mult_b->data() << std::endl;
-        file1 << "AQuant:" << std::endl;
-        for (int i = 0; i < rows(a)*cols(a); i++) {
-          file1 << (int32_t)(((const Integer*)a_old->data())[i]) << " ";
-        }
-        file1 << std::endl << "BRaw:" << std::endl;
-        for (int i = 0; i < rows(b)*cols(b); i++) {
-          file1 << b_raw->data()[i] << " ";
-        }
-        file1 << std::endl << "Bias:" << std::endl;
-        for (int i = 0; i < bias_old->shape()[-1]; i++) {
-          file1 << bias_old->data()[i] << " ";
-        }
-        file1 << std::endl;
-        file1.close();*/
+        
+        //std::cerr << "Old vs new 8 bit: Matches: " << matches << " mismatches: " << mismatches << std::endl;
       }
-/* 
-      intgemm::AlignedVector<int32_t> slowResCwithSat(rows(a)*cols(b));
-      SaturateMult((const uint8_t *)a->data(), B16_INT_NOREORD.begin(), slowResCwithSat.begin(), rows(a), cols(a), cols(b));
 
-      //make up for add127
-      for (size_t i = 0; i < slowResCwithSat.size(); i++) {
-        slowResCwithSat[i] -= b_makeup[i];
-      }*/
-
-
-       /*
-      matches = 0;
-      mismatches = 0;
-      for (size_t i = 0; i < newMult.size(); i++) {
-        if (oldMult16[i] == oldMult[i]) {
-          //std::cerr << "Mismatch 8-16 old: 8: " << oldMult[i] << " 16: " << oldMult16[i] << std::endl;
-          matches++;
-        } else {
-          mismatches++;
-        }
-      }
-      if (mismatches > 10) {
-        std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
-        std::cerr << "Old 16 bit vs 8 bit: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-        for (size_t i =0; i < 10; i++) {
-          std::cerr << "Sample: " << oldMult[i] << " " << oldMult16[i] << std::endl;
-        }
-      }
-     
-      matches = 0;
-      mismatches = 0;
-      for (size_t i = 0; i < newMult.size(); i++) {
-        if (newMult16[i] == newMult[i]) {
-            matches++;
-        } else {
-          mismatches++;
-        }
-      }
-      std::cerr << "New 16 bit vs 8 bit: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-      
-      matches = 0;
-      mismatches = 0;
-      for (size_t i = 0; i < newMult16.size(); i++) {
-        if (newMult16[i] == oldMult16[i]) {
-          //std::cerr << "Mismatch 16bit: old: " << oldMult16[i] << " new: " << newMult16[i] << std::endl;
-          matches++;
-        } else {
-          mismatches++;
-        }
-      }
-      if (mismatches > 10) {
-        //static int i = 0;
-        std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
-        std::cerr << "Old vs new 16 bit: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-        //std::ofstream file1((std::to_string(i) + "_16"));
-        i++;
-        file1 << "RowsA: " << rows(a) << " ColsA " << cols(a) << " RowsB " << rows(b) << " ColsB " << cols(b) << std::endl;
-        file1 << "QuantMultA: " << *quant_mult_a->data() << " QuantMultB: " << *quant_mult_b->data() << std::endl;
-        file1 << "AQuant:" << std::endl;
-        for (int i = 0; i < rows(a)*cols(a); i++) {
-          file1 << (int32_t)(((const Integer*)a_old->data())[i]) << " ";
-        }
-        file1 << std::endl << "BRaw:" << std::endl;
-        for (int i = 0; i < rows(b)*cols(b); i++) {
-          file1 << b_raw->data()[i] << " ";
-        }
-        file1 << std::endl << "Bias:" << std::endl;
-        for (int i = 0; i < bias_old->shape()[-1]; i++) {
-          file1 << bias_old->data()[i] << " ";
-        }
-        file1 << std::endl;
-        file1.close();
-      }*/
-/*
-
-
-       backend<Type_>::Multiply(
-          (const Integer*)a_old->data(),
+      intgemm::AlignedVector<float> newMultQuant(rows(a)*cols(b));
+      backend<Type_>::Multiply8new(
+          //(const Integer*)a_old->data(),
+          (const Integer*)a->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          //BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          JustUnquantizeC(newMultQuant.begin(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          //Identity(reinterpret_cast<int32_t*>(newMult.begin())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
-      
-      for (int i = 0; i< rows(a)*cols(a); i++) {
-        if (((const Integer*)a_old->data())[i] + 127 != ((const uint8_t*)a->data())[i]) {
-          std::cerr<< "Error at " << i << " old: " << (int)((((const Integer*)a_old->data())[i])) << " new: " << (int)((((const uint8_t*)a->data())[i])) << std::endl;
-        }
+
+      for (size_t i = 0; i < newMultQuant.size(); i++) {
+        float tmp = (b_makeup[i]*(127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f);
+        //float tmp2 = b_makeup_float[i]*(127.0f / *quant_mult_a->data());
+        //std::cerr << "TMP1: " << tmp << " TMP2 " << tmp2 << std::endl;
+        newMultQuant[i] -= tmp;
       }
-      std::unique_ptr<float> new_res(new float[rows(a)*cols(b)]);
-      for (int i = 0; i<rows(a)*cols(b);i++) {
-        new_res.get()[i] = val_->data()[i];
+
+      intgemm::AlignedVector<float> newFullAddMult(rows(a)*cols(b));
+      float MSE_old_new = 0;
+      for (int i = 0; i<cols(b); i++) {
+        int idx = i;//*rows(a);
+        float tmp = (b_makeup[idx]*(127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f);
+        float tmp2 = b_makeup_float[i]*(127.0f / *quant_mult_a->data());
+        MSE_old_new += (tmp - tmp2)*(tmp-tmp2);
+        bias->data()[i] = bias_old->data()[i] - tmp;
       }
-      std::cerr << "Scalar: " << scalar_ << " rows: " << rows(a) << " columns: " << cols(a) << " rows(b) " << rows(b) << std::endl;
-      std::cerr << "Quant mult a: " << *quant_mult_a->data() << " quant mult b: " << *quant_mult_b->data() << std::endl;*/
-      
-        //backend<Type_>::Multiply8new(
-        //  (const Integer*)a->data(),
-        //  (const Integer*)b->data(),
-        //  BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-        //  rows(a),
-        //  cols(a), // Shared dimension.
-        //  cols(b));
-/* 
-        backend<Type_>::Multiply(
-          (const Integer*)a_old->data(),
-          //(const Integer*)a->data(),
+      std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
+      std::cerr << "MSE fakefloat truefloat: " << MSE_old_new << std::endl;
+      backend<Type_>::Multiply8new(
+          //(const Integer*)a_old->data(),
+          (const Integer*)a->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //Identity(reinterpret_cast<int32_t*>(val_->data())),
+          BiasAddUnquantizeC(newFullAddMult.begin(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          //JustUnquantizeC(newMultQuant.begin(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
+          //Identity(reinterpret_cast<int32_t*>(newMult.begin())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
-      AddBias(val_, bias_old);
-      //Add bias and unqunatize C
-      
-      //ONEZ: shape: rows(a), cols(a)
 
-      std::vector<float> onez(rows(a)*cols(a), 1.0f);
-      std::vector<float> bias_offset(rows(a)*cols(b), 0.0f);
-
-      SlowRefFloat2(&onez[0], b_raw->data(), &bias_offset[0], rows(a), cols(a), cols(b), nullptr);
-
-      //Scale everything by alpha
-      for (auto&& num : bias_offset) {
-        num = num*(127.0/(*quant_mult_a->data()));
-      }
-      //Add it to the bias
-      std::vector<float> manual_bias_with_offset(cols(b));
-      for (size_t i = 0; i<cols(b); i++) {
-        manual_bias_with_offset[i] = bias_old->data()[i] - bias_offset[rows(a)*i];
-      }
-
-      //Verify the difference between the new way to compute the bias and the old way
-      for (size_t i = 0; i<cols(b); i++) {
-        if (fabs(manual_bias_with_offset[i] - bias->data()[i]) > 0.00001) {
-          //std::cerr << "Biases differ! Assembly: " << bias->data()[i] << " slow CPP: " << manual_bias_with_offset[i] << std::endl;
-        }
-        bias->data()[i] = manual_bias_with_offset[i];
-      }
-
-*/
       for (int i = 0; i < rows(a); i++) {
         for (int j = 0; j < cols(b); j++) {
-          float mult_res = (float)(reinterpret_cast<int32_t*>(newMult.begin())[j + i*cols(b)]); // oldMult.begin()
+          float mult_res = (float)(reinterpret_cast<int32_t*>(newMult.begin())[j + i*cols(b)]); // oldMult.begin() : 49.57 newMult.begin() : 47.18.
           float unquant_mult = scalar_ / (*quant_mult_a->data() * *quant_mult_b->data());
           val_->data()[j + i*cols(b)] = mult_res*unquant_mult;
         }
       }
-      AddBias(val_, bias_old);
-      //AddBias(val_, bias);
-      /*
-      
-        float totaldiff = 0;
-        for (int i = 0; i < rows(a); i++) {
-          for (int j = 0; j < cols(b); j++) {
-            float diff = val_->data()[i*(cols(b)) + j] - new_res.get()[i*(cols(b)) + j];
-            totaldiff += diff*diff;
-          }
+
+      matches = 0;
+      mismatches = 0;
+
+      for (size_t i = 0; i < newMult.size(); i++) {
+        if (val_->data()[i] == newMultQuant[i]) {
+          matches++;
+        } else {
+          mismatches++;
         }
-        std::cerr << "MSE: " << std::sqrt(totaldiff/(rows(a)*cols(b))) << std::endl;*/
+        val_->data()[i] = newMultQuant[i]; // 49.47
+      }
+
+      if (mismatches > 10) {
+        //std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
+        //std::cerr << "New 8 bit quant/unquant: Matches: " << matches << " mismatches: " << mismatches << std::endl;
+      }
+
+      AddBias(val_, bias_old); //UnBiased BLEU: 36.5
+      //AddBias(val_, bias);
+
+      matches = 0;
+      mismatches = 0;
+
+      for (size_t i = 0; i < newMult.size(); i++) {
+        if (val_->data()[i] == newFullAddMult[i]) {
+          matches++;
+        } else {
+          mismatches++;
+        }
+        val_->data()[i] = newFullAddMult[i]; // 49.72
+      }
+
+      if (mismatches > 10) {
+        //std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
+        //std::cerr << "New 8 bit quant/unquant: Matches: " << matches << " mismatches: " << mismatches << std::endl;
+      }
+
     )};
   }
 

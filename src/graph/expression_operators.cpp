@@ -10,7 +10,10 @@
 #include "tensors/cpu/expanded_gemm.h"
 
 #if USE_FBGEMM
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include "fbgemm/Utils.h"
+#pragma GCC diagnostic pop
 #endif
 
 namespace marian {

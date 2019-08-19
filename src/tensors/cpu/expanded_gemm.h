@@ -5,8 +5,11 @@
 #include "backend.h"
 
 #if USE_FBGEMM
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include "3rd_party/fbgemm/include/fbgemm/FbgemmFP16.h"
 #include "3rd_party/fbgemm/include/fbgemm/Fbgemm.h"
+#pragma GCC diagnostic pop
 using namespace fbgemm;
 #endif  // USE_FBGEMM
 

@@ -17,9 +17,12 @@
 #endif
 
 #if USE_FBGEMM
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include "3rd_party/fbgemm/include/fbgemm/FbgemmFP16.h"
 #include "3rd_party/fbgemm/include/fbgemm/QuantUtils.h"
 #include "3rd_party/fbgemm/include/fbgemm/Fbgemm.h"
+#pragma GCC diagnostic pop
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -343,12 +346,12 @@ void PackInt8(marian::Tensor out,
   // std::cout << "len: " << len << ", bqScale: " << bqScale << ", bqZeropoint: " << bqZeropoint << std::endl;
   //int8_t quantized[len]; // aligned malloc?
   //t_start = std::chrono::high_resolution_clock::now();
-  int8_t* quantized;
+  int8_t* quantized = 0;
 #ifdef _MSC_VER
-quantized = (int8_t*)_aligned_malloc(len, 256);
+  quantized = (int8_t*)_aligned_malloc(len, 256);
 #else
-int result = posix_memalign((void**)&quantized, 256, len);
-assert(result == 0);
+  int result = posix_memalign((void**)&quantized, 256, len); result;
+  assert(result == 0);
 #endif
   //int8_t* quantized = (int8_t*)aligned_alloc(256, len);
   // std::cout << "len: " << len << ", bqScale: " << bqScale << ", bqZeropoint: " << bqZeropoint << std::endl;

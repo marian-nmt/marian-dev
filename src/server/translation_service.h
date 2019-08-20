@@ -14,6 +14,12 @@
 #include "models/model_task.h"
 #include "queue.h"
 #include "queued_input.h"
+#include <map>
+#include <ctime>
+
+#include <string>
+#include "translation_worker.h"
+
 #include "translation_job.h"
 #include "translation_worker.h"
 #include "translation_worker.h"
@@ -179,7 +185,7 @@ public:
        size_t const priority=0,
        std::function<void (Ptr<Job> j)> callback
        =[=](Ptr<Job> j){return;}) {
-    // auto starttime = std::clock();
+    auto starttime = std::clock();
     auto job = New<Job>(ejid, input, nbest, priority);
     if (input.empty()){//nothing to do
       std::promise<Ptr<Job const>> prom;
@@ -199,6 +205,10 @@ public:
       entry = &scheduled_jobs_[job->unique_id];
     }
     entry->first = job;
+    // LOG(info, "Pushed job No {}; {} jobs queued up.",
+    //     job->unique_id, jq_->size());
+    auto pushtime = float(std::clock()-starttime)/CLOCKS_PER_SEC;
+    LOG(debug,"[service] Pushing job took {}ms", 1000.* pushtime);
     return std::make_pair(job->unique_id, entry->second.get_future());
   }
 
@@ -211,90 +221,25 @@ public:
     return options_->get<bool>("right-left");
   }
 
-  Ptr<PlainTextTranslation<Search>>
-  translate(std::string const& input,
-            splitmode const smode = splitmode::wrapped_text){
-    Ptr<PlainTextTranslation<Search>> ret;
-    ret.reset(new PlainTextTranslation<Search>(input, *this, smode));
-    return ret;
-  }
-
-  // std::string
-  // translate(std::string const& srcText) {
-  //   // @TODO: add priority for QoS differentiation [UG]
-  //   std::vector<std::future<Ptr<Job const>>> ftrans;
-  //   std::istringstream buf(srcText);
-  //   std::string line;
-
-  //   // auto starttime = clock();
-  //   for (size_t linectr = 0; getline(buf,line); ++linectr) {
-  //     ftrans.push_back(push(linectr,line).second);
-  //   }
-  //   // auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
-  //   // LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
-  //   std::ostringstream obuf;
-  //   for (auto& t: ftrans) {
-  //     Ptr<Job const> j = t.get();
-  //     // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
-  //     //     j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
-  //     // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f}/{:.2f}/{:.2f} seconds:",
-  //     //     j->unique_id,
-  //     //     j->timeBeforeQueue(),
-  //     //     j->timeInQueue(),
-  //     //     j->translationTime(),
-  //     //     j->totalTime());
-  //     obuf << j->translation << std::endl;
-  //   }
-  //   std::string translation = obuf.str();
-  //   if (srcText.size() && srcText.back() != '\n')
-  //     translation.pop_back();
-  //   return translation;
-  // }
-
-  typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
-  ug::ssplit::SentenceStream
-  createSentenceStream(std::string const& input, ssplitmode const& mode)
-  {
-    return std::move(ug::ssplit::SentenceStream(input, this->ssplit_, mode));
-  }
-};
-
-template<class Search=BeamSearch>
-class PlainTextTranslation {
-public:
-  typedef  ug::ssplit::SentenceStream::splitmode splitmode;
-private:
-  std::vector<std::future<Ptr<Job const>>> pending_jobs_;
-  splitmode smode_;
-  bool ends_with_eol_char_{false};
-public:
-  PlainTextTranslation(std::string const& input,
-                       TranslationService<Search>& service,
-                       splitmode const& smode)
-    : smode_(smode) {
-    size_t linectr=0;
-    std::string snt;
-    auto buf = service.createSentenceStream(input, smode);
-    while (buf >> snt) {
-      LOG(trace, "SNT: {}", snt);
-      auto foo = std::move(service.push(++linectr, snt));
-      pending_jobs_.push_back(std::move(foo.second));
-    }
-    ends_with_eol_char_ = input.size() && input.back() == '\n';
-  }
-
   std::string
-  await() {
-    std::ostringstream buf;
-    char sep = (smode_ == splitmode::one_sentence_per_line ? '\n' : ' ');
-    for (auto& f: pending_jobs_) {
-      Ptr<Job const> j = f.get();
-      if (j->nbest.size() == 0) { // "job" was a paragraph marker
-        buf << (smode_ == splitmode::wrapped_text ? "\n\n" : "\n");
-      }
-      else {
-        buf << j->translation << sep;
-      }
+  translate(std::string const& srcText) {
+    // @TODO: add priority for QoS differentiation [UG]
+    std::vector<std::future<Ptr<Job const>>> ftrans;
+    std::istringstream buf(srcText);
+    std::string line;
+
+    auto starttime = clock();
+    for (size_t linectr = 0; getline(buf,line); ++linectr) {
+      ftrans.push_back(push(linectr,line).second);
+    }
+    auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
+    LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
+    std::ostringstream obuf;
+    for (auto& t: ftrans) {
+      Ptr<Job const> j = t.get();
+      LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
+          j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
+      obuf << j->translation << std::endl;
     }
     std::string ret = buf.str();
     if (ret.size() && !ends_with_eol_char_ && ret.back()=='\n')
@@ -355,14 +300,14 @@ class NodeTranslation {
                   NodeTranslation* parent=NULL)
     : node_(n) {
     if (n == NULL) return; // nothing to do
-    setOptions(n, parent, options_field);
-
-    if (n->IsObject()){
-      auto x = n->FindMember(payload_field.c_str());
-      if (x != n->MemberEnd()){
-        auto c = NodeTranslation(&(x->value), service,
-                                 payload_field, options_field, this);
-        children_.push_back(std::move(c));
+    if (n->IsString()) {
+      std::istringstream buf(n->GetString());
+      std::string line;
+      for (size_t linectr = 0; getline(buf, line); ++linectr) {
+        // LOG(info,"Input: {}",line);
+        auto foo = std::move(service.push(linectr,line));
+        delayed_.push_back(std::move(foo.second));
+        LOG(debug, "[service] Scheduled job No. {}: {}", foo.first, line);
       }
     }
     else if (n->IsString()) {
@@ -379,8 +324,17 @@ class NodeTranslation {
 
   void finish(rapidjson::Document::AllocatorType& alloc) {
     for (auto& c: children_) c.finish(alloc);
-    if (translation_){
-      std::string translation = translation_->await();
+    if (delayed_.size()) {
+      std::ostringstream buf;
+      for (auto& f: delayed_) {
+        Ptr<Job const> j = f.get();
+        buf << j->translation << std::endl;
+        LOG(debug, "[service] Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
+            j->translationTime(), j->totalTime(), j->input[0], j->translation);
+      }
+      std::string translation = buf.str();
+      if (!ends_with_eol_char_)
+        translation.pop_back();
       if (node_) {
         ABORT_IF(!node_->IsString(), "Node is not a string!");
         // @TODO: We should thrown an exception here instead of aborting

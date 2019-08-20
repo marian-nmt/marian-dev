@@ -40,7 +40,7 @@ void handle_request2(Ptr<server::TranslationService<BeamSearch>> service,
   auto sendStream = std::make_shared<WSS::SendStream>();
   if (!D.IsObject()) {
     *sendStream << "{\"error\": \"Invalid Json!\"}";
-    LOG(error, "Invalid Json!");
+    LOG(error, "Invalid Json: {}", msg);
   } else if (D.HasMember("text")) {
     auto input = D["text"].GetString();
     LOG(info, "Input is '{}'", input);

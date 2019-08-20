@@ -18,6 +18,7 @@ private:
   Word trgEosId_ = (Word)-1;
   Word trgUnkId_ = (Word)-1;
   bool triePrune_ = false;
+  bool paraphrase_ = false;
   std::vector<trieannosaurus::Node>* trie_;
 public:
   BeamSearch(Ptr<Options> options,
@@ -35,6 +36,9 @@ public:
         trie_(trie) {
           if (options_->get<std::string>("trie-pruning-path") != "") {
             triePrune_ = true;
+            if (options_->get<std::string>("paraphrase") == "true") {
+              paraphrase_ = true;
+            }
           }
         }
 
@@ -172,7 +176,11 @@ public:
     }
   }
 
-  Beams filterForContinuations(const Beams& beams) {
+  /* When reverse is false, we filter out beams that do not
+   * have continuations. Otherwise the function filters out
+   * beams that have continuations. This is for paraphrasing
+   * without using original words.*/
+  Beams filterForContinuations(const Beams& beams, bool reverse=false) {
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
@@ -181,10 +189,19 @@ public:
                             * by setting the beam to empty*/
       for (auto hyp : beam) {
         if (hyp->hasTrieContinuatuions()) {
-          newBeam.push_back(hyp);
-          allFake = false;
+          if (reverse) {
+            newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+          } else {
+            newBeam.push_back(hyp);
+            allFake = false;
+          }
         } else {
-          newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+          if (reverse) {
+            newBeam.push_back(hyp);
+            allFake = false;
+          } else {
+            newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+          }
         }
         if (allFake) {
           newBeam.resize(0);
@@ -322,7 +339,7 @@ public:
       //Pathscores if of shape {12, 1, 1, 36000}} AFTER the first step, otherwise it's {1, 1, 1, 36000}
       //UNLESS It's batched then DIM0 is the batch size and DIM2 is the TrieSize
 
-      if (!first && triePrune_) {
+      if (!paraphrase_ && !first && triePrune_) {
         for (int i = 0; i < beams.size(); i++) {
           for (size_t j = 0; j < beams[i].size(); j++) {
             if (dimBatch > 1) {
@@ -336,7 +353,7 @@ public:
 
       getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
 
-      if (triePrune_) {
+      if (!paraphrase_ && triePrune_) {
         //Everything that came out of the trie will have a score >1
         //Hence fix the scores
         for (auto&& score : outPathScores) {
@@ -357,7 +374,7 @@ public:
                      batch);
 
       if (triePrune_) {
-         beams = filterForContinuations(beams);
+         beams = filterForContinuations(beams, paraphrase_);
       }
 
       auto prunedBeams = pruneBeam(beams);

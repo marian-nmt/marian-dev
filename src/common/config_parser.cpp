@@ -512,6 +512,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::string>("--trie-pruning-path",
      "Use trie pruning during translation. Provide path to the monolingual corpora.")
     ->implicit_val("");
+  cli.add<std::string>("--paraphrase",
+     "Paraphrase based on trie sentences through NMT as a pivot. Can only be used in trie pruning mode (--trie-pruning-path).")
+    ->implicit_val("true");
 
   addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);

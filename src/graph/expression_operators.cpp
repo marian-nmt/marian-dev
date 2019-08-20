@@ -471,10 +471,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         return rec1(cpu::int8::affine(quant_a.first, quant_a.second,
                                       quant_b.first, quant_b.second,
                                       prepped_bias,
-                                      scale,
-                                      quant_a_old.first,
-                                      bias,
-                                      transB ? transpose(b) : b),
+                                      scale),
                     true);
       };
       tuner->insert({hash1, alg1});
@@ -513,14 +510,11 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       auto quant_a = int8_quantizeA(a, transA, clipValue);
       auto quant_a_old = int8_quantizeAOld(a, transA, clipValue);
       auto quant_b = int8_quantizeB(b, transB, clipValue);
-      auto prepped_bias = int8_prepareBias(bias, b, quant_b.first, quant_a.second, quant_b.second);
+      auto prepped_bias = int8_prepareBias(bias, a, quant_b.first, quant_a.second, quant_b.second);
       return cpu::int8::affine(quant_a.first, quant_a.second,
                                quant_b.first, quant_b.second,
                                prepped_bias,
-                               scale,
-                               quant_a_old.first,
-                               bias,
-                               transB ? transpose(b) : b);
+                               scale);
     }
   } else {
     // general version, MKL, CBlas or CUDA

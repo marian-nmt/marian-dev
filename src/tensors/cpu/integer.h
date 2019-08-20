@@ -133,8 +133,8 @@ public:
 template <Type Type_>
 class PrepareBiasForBNodeOp : public OnlyForInferenceNodeOp {
 public:
-  PrepareBiasForBNodeOp(Expr bias, Expr inputA, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
-      : OnlyForInferenceNodeOp({bias, inputA, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type_) {
+  PrepareBiasForBNodeOp(Expr bias, Expr a, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
+      : OnlyForInferenceNodeOp({bias, a, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type_) {
     ABORT_IF(children().size() != 5, "expected 5 children");
 
     // Check if arguments are not null
@@ -147,7 +147,6 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-    /*
     auto bias = this->child(0)->val();
     auto a = this->child(1)->val();
     auto b = this->child(2)->val();
@@ -155,15 +154,7 @@ public:
     auto quant_mult_b = this->child(4)->val();
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f); //Minus one to invert add_ps later on
-    intgemm::AlignedVector<uint8_t> offset2(rows(a)*cols(a));
-    intgemm::AlignedVector<float> output(rows(a)*cols(b));
-    memset(offset2.begin(), 127, rows(a)*cols(a));
-    intgemm::Int8::Multiply8new((const int8_t *)offset2.begin(), (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(output.begin(), bias->data(), unquant_mult), rows(a), cols(a), cols(b));
-    
-    for (int i = 0; i < cols(b); i++) {
-      bias->data()[i] = output.begin()[i];
-    }
-    */
+    intgemm::Int8::PrepareBiasFor8(127, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, cols(a), cols(b));
     )};
   }
 
@@ -375,9 +366,9 @@ private:
   float scalar_;
 
 public:
-  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar, Expr a_old, Expr bias_old, Expr b_raw)
-      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias, a_old, bias_old, b_raw}, newShape(a, b, bias)), scalar_(scalar) {
-    ABORT_IF(children().size() != 8, "expected 7 children");
+  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar)
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b, bias)), scalar_(scalar) {
+    ABORT_IF(children().size() != 5, "expected 5 children");
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
@@ -385,9 +376,6 @@ public:
     ABORT_IF(child(2) == nullptr, "B cannot be null");
     ABORT_IF(child(3) == nullptr, "Quant mult of B cannot be null");
     ABORT_IF(child(4) == nullptr, "Bias cannot be null");
-    ABORT_IF(child(5) == nullptr, "Old A cannot be null");
-    ABORT_IF(child(6) == nullptr, "Old bias Cannot be null");
-    ABORT_IF(child(7) == nullptr, "Raw B cannot be null");
     ABORT_IF(scalar_ != 1.0f, "Scalar should be one.");
 
     // Check alignment
@@ -416,197 +404,14 @@ public:
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
       auto bias = child(4)->val();
-      auto a_old = child(5)->val();
-      auto bias_old = child(6)->val();
-      auto b_raw = child(7)->val();
       
-      /****
-       * Haaaaaaaacky
-       *
-      intgemm::AlignedVector<float> tmpBias(cols(b));
-      for (size_t i = 0; i<cols(b); i++) {
-        tmpBias[i] = bias->data()[i];
-      }
-      backend<Type_>::PrepareBiasFor8((const Integer*)b->data(), tmpBias.begin(), *quant_mult_a->data(), rows(b), cols(b));
-      ****
-       * Haaaaaaaacky
-       */
-      /*      intgemm::AlignedVector<int16_t> A16(rows(a)*cols(a));
-      intgemm::AlignedVector<int16_t> A127(rows(a)*cols(a));
-
-
-      intgemm::AlignedVector<int16_t> B16_INT_NOREORD(rows(b)*cols(b));
-      std::vector<int32_t> B32_INT_NOREORD(rows(b)*cols(b), 0);
-
- 
-      intgemm::AVX2_16bit::Quantize(b_raw->data(), B16_INT_NOREORD.begin(), *quant_mult_b->data(), rows(b)*cols(b));
-
-
-      for (int i = 0; i < B32_INT_NOREORD.size(); i++) {
-        B32_INT_NOREORD[i] = B16_INT_NOREORD[i];
-      }*/
-
-      float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f); //Minus one to invert add_ps later on
-      intgemm::AlignedVector<uint8_t> offset2(rows(a)*cols(a));
-      intgemm::AlignedVector<float> output(rows(a)*cols(b));
-      memset(offset2.begin(), 127, rows(a)*cols(a));
-      backend<Type_>::Multiply8new((const Integer*)offset2.begin(), (const Integer*)b->data(), intgemm::BiasAddUnquantizeC(output.begin(), bias_old->data(), unquant_mult), rows(a), cols(a), cols(b));
-
-
-      //std::memcpy(bias->data(), output.begin(), cols(b));
-      for (int i = 0; i < cols(b); i++) {
-        bias->data()[i] = output.begin()[i];
-      }
-
       backend<Type_>::Multiply8new(
-          //(const Integer*)a_old->data(),
           (const Integer*)a->data(),
           (const Integer*)b->data(),
           BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //Identity(reinterpret_cast<int32_t*>(newMult.begin())),
           rows(a),
           cols(a), // Shared dimension.
           cols(b));
-/*
-      intgemm::AlignedVector<int> oldMult(rows(a)*cols(b));
-      intgemm::AlignedVector<int> newMult(rows(a)*cols(b));
-      backend<Type_>::Multiply(
-          (const Integer*)a_old->data(),
-          //(const Integer*)a->data(),
-          (const Integer*)b->data(),
-          //BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          Identity(reinterpret_cast<int32_t*>(oldMult.begin())),
-          rows(a),
-          cols(a), // Shared dimension.
-          cols(b));
-
-      backend<Type_>::Multiply8new(
-          //(const Integer*)a_old->data(),
-          (const Integer*)a->data(),
-          (const Integer*)b->data(),
-          //BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          Identity(reinterpret_cast<int32_t*>(newMult.begin())),
-          rows(a),
-          cols(a), // Shared dimension.
-          cols(b));
-
-      std::vector<int> offset(rows(a)*cols(a), 127); //was 127
-      std::vector<float> b_makeup_float(rows(a)*cols(b), 0.0f);
-      std::vector<float> onez(rows(a)*cols(a), 1.0f);
-      std::vector<int> b_makeup(rows(a)*cols(b), 0);
-
-      SlowRefFloat2(&offset[0], &B32_INT_NOREORD[0], &b_makeup[0], rows(a), cols(a), cols(b), nullptr);
-      SlowRefFloat2(&onez[0], b_raw->data(), &b_makeup_float[0], rows(a), cols(a), cols(b), nullptr);
-
-      for (size_t i = 0; i < newMult.size(); i++) {
-        newMult[i] -= b_makeup[i];
-      }
-
-      volatile int matches = 0;
-      volatile int mismatches = 0;
-
-      
-      for (size_t i = 0; i < newMult.size(); i++) {
-        if (newMult[i] == oldMult[i]) {
-          matches++;
-        } else {
-          mismatches++;
-        }
-      }
-      if (mismatches > 10) {
-        
-        //std::cerr << "Old vs new 8 bit: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-      }
-
-      intgemm::AlignedVector<float> newMultQuant(rows(a)*cols(b));
-      backend<Type_>::Multiply8new(
-          //(const Integer*)a_old->data(),
-          (const Integer*)a->data(),
-          (const Integer*)b->data(),
-          //BiasAddUnquantizeC(val_->data(), bias_old->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          JustUnquantizeC(newMultQuant.begin(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //Identity(reinterpret_cast<int32_t*>(newMult.begin())),
-          rows(a),
-          cols(a), // Shared dimension.
-          cols(b));
-
-      for (size_t i = 0; i < newMultQuant.size(); i++) {
-        float tmp = (b_makeup[i]*(127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f);
-        //float tmp2 = b_makeup_float[i]*(127.0f / *quant_mult_a->data());
-        //std::cerr << "TMP1: " << tmp << " TMP2 " << tmp2 << std::endl;
-        newMultQuant[i] -= tmp;
-      }
-
-      intgemm::AlignedVector<float> newFullAddMult(rows(a)*cols(b));
-      float MSE_old_new = 0;
-      for (int i = 0; i<cols(b); i++) {
-        int idx = i;//rows(a);
-        float tmp = (b_makeup[idx]*(127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f); //was 127**2
-        float tmp2 = b_makeup_float[i]*(127.0f / *quant_mult_a->data());
-        MSE_old_new += (tmp - tmp2)*(tmp-tmp2);
-        bias->data()[i] = bias_old->data()[i] - tmp;
-      }
-      std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
-      std::cerr << "MSE fakefloat truefloat: " << MSE_old_new << std::endl;
-      backend<Type_>::Multiply8new(
-          //(const Integer*)a_old->data(),
-          (const Integer*)a->data(),
-          (const Integer*)b->data(),
-          BiasAddUnquantizeC(newFullAddMult.begin(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //JustUnquantizeC(newMultQuant.begin(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
-          //Identity(reinterpret_cast<int32_t*>(newMult.begin())),
-          rows(a),
-          cols(a), // Shared dimension.
-          cols(b));
-
-      for (int i = 0; i < rows(a); i++) {
-        for (int j = 0; j < cols(b); j++) {
-          float mult_res = (float)(reinterpret_cast<int32_t*>(newMult.begin())[j + i*cols(b)]); // oldMult.begin() : 49.57 newMult.begin() : 47.18.
-          float unquant_mult = scalar_ / (*quant_mult_a->data() * *quant_mult_b->data());
-          val_->data()[j + i*cols(b)] = mult_res*unquant_mult;
-        }
-      }
-
-      matches = 0;
-      mismatches = 0;
-
-      for (size_t i = 0; i < newMult.size(); i++) {
-        if (val_->data()[i] == newMultQuant[i]) {
-          matches++;
-        } else {
-          mismatches++;
-        }
-        val_->data()[i] = newMultQuant[i]; // 49.47
-      }
-
-      if (mismatches > 10) {
-        //std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
-        //std::cerr << "New 8 bit quant/unquant: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-      }
-
-      AddBias(val_, bias_old); //UnBiased BLEU: 36.5
-      //AddBias(val_, bias);
-
-      matches = 0;
-      mismatches = 0;
-
-      for (size_t i = 0; i < newMult.size(); i++) {
-        if (val_->data()[i] == newFullAddMult[i]) {
-          matches++;
-        } else {
-          mismatches++;
-        }
-        //val_->data()[i] = newFullAddMult[i]; // 49.72
-        val_->data()[i] = newAttempt[i];
-      }
-
-      if (mismatches > 10) {
-        //std::cerr << "NEW MATRICES INCOMING: A: " << rows(a) << "x" << cols(a) << " B: " << rows(b) << "x" << cols(b) << std::endl;
-        //std::cerr << "New 8 bit quant/unquant: Matches: " << matches << " mismatches: " << mismatches << std::endl;
-      }*/
 
     )};
   }
@@ -619,8 +424,8 @@ struct ops {
   static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {
     return Expression<DotNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, scalar);
   }
-  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar, Expr a_old, Expr bias_old, Expr b_raw) {
-    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar, a_old, bias_old, b_raw);
+  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) {
+    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);
   }
   static inline Expr quantMult(Expr a) {
     return Expression<QuantMultNodeOp<Type_>>(a);

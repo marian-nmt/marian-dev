@@ -373,11 +373,9 @@ public:
                      first,
                      batch);
 
-      if (!first || !paraphrase_){ // if first word and paraphrasing, allow words in trie
-                                   // e.g. prevents "L" instead of "I" at beginning
-        if (triePrune_) {
-          beams = filterForContinuations(beams, paraphrase_);
-        }
+      if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
+                                                   // we are not at the first word while paraphrasing
+        beams = filterForContinuations(beams, paraphrase_);
       }
 
       auto prunedBeams = pruneBeam(beams);

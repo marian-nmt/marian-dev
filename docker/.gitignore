@@ -1,1 +1,1 @@
-!build-environment
+!./build-environment/*

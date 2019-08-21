@@ -45,8 +45,8 @@ pingme.txt
 *~
 
 # CMake files
-build
-build-*
+./build
+./build-*
 
 # Examples
 examples/*/*.gz

@@ -417,7 +417,7 @@ typedef std::shared_ptr<TensorBase> Tensor;
 template<typename T>
 static inline std::vector<T> get(Ptr<MemoryPiece> memory, Ptr<Backend> backend) {
   size_t n = memory->size() / sizeof(T);
-  TensorBase t(memory, Shape({ (int)n }), getType<T>(), backend);
+  TensorBase t(memory, Shape({ (int)n }), typeId<T>(), backend);
   std::vector<T> res;
   t.get(res);
   return res;

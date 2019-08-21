@@ -48,7 +48,8 @@ public:
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class QuantMultNodeOp : public OnlyForInferenceNodeOp {
 public:
-  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}, Shape()) {
+  std::string matname;
+  QuantMultNodeOp(Expr input, std::string name_to_search = "blaaaaaa") : OnlyForInferenceNodeOp({input}, Shape()), matname(name_to_search) {
     ABORT_IF(children().size() != 1, "expected 1 child");
 
     // Check if arguments are not null
@@ -61,10 +62,16 @@ public:
 
       ABORT_IF(input->type() != Type::float32, "Trying to quantize non-float");
 
+      auto expmap = child(0)->graph()->getNameMap();
+      auto mapiter2 = expmap.find(matname);
+
       if (Type_ == Type::int16) {
         *val_->data() = 1024.0f;
-      } else {
+      } else if (mapiter2 == expmap.end()) {
         *val_->data() = 127.0f / intgemm::MaxAbsolute(input->data(), input->data() + input->shape().elements());
+      } else {
+        //std::cerr << "Artificial quant mult" << std::endl;
+        *val_->data() = *(mapiter2->second->val()->data());
       }
     )};
   }
@@ -155,6 +162,26 @@ public:
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
     intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, cols(a), cols(b));
+
+    /* EXample code for alpha
+    auto namedmap = child(0)->graph()->getRevNameMap();
+    auto expmap = child(0)->graph()->getNameMap();
+    std::string alpha_name;
+    auto mapiter = namedmap.find(child(0));
+    if (mapiter != namedmap.end()) {
+      alpha_name = mapiter->second + "_alpha";
+    } else {
+      alpha_name = "_alpha";
+      std::cerr << "No found EXP name" << std::endl;
+    }
+
+    auto mapiter2 = expmap.find(alpha_name);
+    if (mapiter2 != expmap.end()) {
+      std::cerr << "Alpha actual: " << *quant_mult_a->data() << " alpha stored: " << *(mapiter2->second->val()->data()) << std::endl;
+    } else {
+      std::cerr << "Exp named: " << alpha_name << " not found" << std::endl;
+    }*/
+    
     )};
   }
 
@@ -427,8 +454,24 @@ struct ops {
   static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) {
     return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);
   }
-  static inline Expr quantMult(Expr a) {
-    return Expression<QuantMultNodeOp<Type_>>(a);
+  static inline Expr quantMult(Expr a, Expr bias=nullptr) {
+    if (bias) {
+      auto namedmap = bias->graph()->getRevNameMap();
+
+      if (namedmap[a] == "") { //Skip b matrix
+        std::string alpha_name;
+        auto mapiter = namedmap.find(bias);
+        if (mapiter != namedmap.end()) {
+          alpha_name = mapiter->second + "_alpha";
+        } else {
+          alpha_name = "_alpha";
+        }
+        return Expression<QuantMultNodeOp<Type_>>(a, alpha_name);
+      } else {
+        return Expression<QuantMultNodeOp<Type_>>(a, "BLAAAA");
+      }
+    }
+    return Expression<QuantMultNodeOp<Type_>>(a, "BLAAAA");
   }
   static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
     return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);

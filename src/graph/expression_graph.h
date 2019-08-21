@@ -154,6 +154,7 @@ public:
   bool isInference() { return inferenceOnly_; }
 
   auto getRevNameMap() -> decltype(params_->getRevMap()) { return params_->getRevMap(); }
+  auto getNameMap() -> decltype(params_->getMap()) { return params_->getMap(); }
 
 
   ~ExpressionGraph() {

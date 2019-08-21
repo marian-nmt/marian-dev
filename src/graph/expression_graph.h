@@ -153,6 +153,9 @@ public:
   void setInference(bool inference) { inferenceOnly_ = inference; }
   bool isInference() { return inferenceOnly_; }
 
+  auto getRevNameMap() -> decltype(params_->getRevMap()) { return params_->getRevMap(); }
+
+
   ~ExpressionGraph() {
     clear();
     params_->clear();

@@ -15,6 +15,7 @@ protected:
   /** @brief List of all parameter nodes of this expression graph. */
   std::vector<Expr> params_;
   std::map<std::string, Expr> named_;
+  std::map<Expr, std::string> reverseNamed_;
 
   Ptr<TensorAllocator> vals_;
   Ptr<TensorAllocator> grads_;
@@ -34,6 +35,8 @@ public:
 
   auto getMap() -> decltype(named_)& { return named_; }
 
+  auto getRevMap() -> decltype(reverseNamed_)& { return reverseNamed_; }
+
   Expr get(const std::string& name) {
     auto it = named_.find(name);
     if(it != named_.end()) {
@@ -49,6 +52,7 @@ public:
     params_.push_back(p);
     ABORT_IF(named_.count(name), "Parameter '{}' already exists", name);
     named_[name] = p;
+    reverseNamed_[p] = name;
   }
 
   virtual void init(Ptr<Backend> backend) {

@@ -386,8 +386,8 @@ std::pair<Expr, Expr> int8_quantizeB(Expr matrix, bool trans, float clipValue) {
 }
 Expr int8_prepareBias(Expr bias, Expr inputA, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult) {
   if (inputB_preppd->type() == "intSelectColumnsB") {
-    ABORT_IF(true, "We can't work on selectedColumnsB b Matrix yet.");
-    return bias; //TODO THIS MIGHT BE WRONG
+    //ABORT_IF(true, "We can't work on selectedColumnsB b Matrix yet.");
+    return cpu::int8::PrepareBiasForB(bias, inputA, inputB_preppd, a_quant_mult, b_quant_mult); //TODO THIS MIGHT BE WRONG
   } else {
     return cpu::int8::PrepareBiasForB(bias, inputA, inputB_preppd, a_quant_mult, b_quant_mult);
   }
@@ -425,6 +425,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO @emjotde there should be a parameter
     bool autotune = false;
+
+    //auto namedmap = a->graph()->getRevNameMap();
+    //std::cerr << "A: " << namedmap[a] << " B: " << namedmap[b] << std::endl;
 
     if(autotune) {
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();

@@ -426,9 +426,6 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     // TODO @emjotde there should be a parameter
     bool autotune = false;
 
-    //auto namedmap = a->graph()->getRevNameMap();
-    //std::cerr << "A: " << namedmap[a] << " B: " << namedmap[b] << std::endl;
-
     if(autotune) {
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
 

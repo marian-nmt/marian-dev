@@ -153,8 +153,15 @@ public:
     auto quant_mult_a = this->child(3)->val();
     auto quant_mult_b = this->child(4)->val();
 
-    float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f*127.0f); //Minus one to invert add_ps later on
-    intgemm::Int8::PrepareBiasFor8(127, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, cols(a), cols(b));
+    float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
+    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, cols(a), cols(b));
+
+    auto namedmap = this->child(0)->graph()->getRevNameMap();
+    float alpha = *(quant_mult_a->data());
+    static std::ofstream outputfile("Matrix_names");
+    outputfile << namedmap[this->child(0)] << "\t" << alpha << std::endl;
+
+
     )};
   }
 

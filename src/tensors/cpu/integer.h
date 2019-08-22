@@ -71,7 +71,7 @@ public:
         *val_->data() = 127.0f / intgemm::MaxAbsolute(input->data(), input->data() + input->shape().elements());
       } else {
         //std::cerr << "Artificial quant mult" << std::endl;
-        *val_->data() = *(mapiter2->second->val()->data());
+        *val_->data() = *(mapiter2->second->val()->data())/2;
       }
     )};
   }

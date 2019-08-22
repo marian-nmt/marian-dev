@@ -401,8 +401,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
-    ABORT("not supported");
-    auto quant_a = int8_quantizeAOld(a, transA, clipValue); //THIS IS WRONG. SHOULD BE QUANTIZE A BUT NO ACCESS TO THE MULTIPLIER
+    auto quant_a = int8_quantizeAOld(a, transA, clipValue);
     auto quant_b = int8_quantizeB(b, transB, clipValue);
     return cpu::int8::dot(quant_a.first, quant_a.second,
                           quant_b.first, quant_b.second,

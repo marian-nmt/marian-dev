@@ -315,7 +315,6 @@ public:
       auto quant_mult_a = child(1)->val();
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
-      ABORT_IF(true, "We only do multiplication with biases around here");
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),

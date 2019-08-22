@@ -24,8 +24,7 @@ namespace marian {
  * implements most common functions demanded by Chainable.
  * Each operation in a computation graph is a node.
  */
-class Node : public Chainable<Tensor>,
-             public std::enable_shared_from_this<Node> {
+class Node : public Chainable<Tensor> {
 protected:
 #if USE_LAYER_TIMER
   size_t warmup_{20};

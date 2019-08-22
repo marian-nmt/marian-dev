@@ -99,7 +99,7 @@ public:
       else
         word = Word::fromWordIndex(wordIdx);
 
-      auto hyp = New<Hypothesis>(prevHyp, word, prevBeamHypIdx, pathScore);
+      auto hyp = Hypothesis::New(prevHyp, word, prevBeamHypIdx, pathScore);
 
       // Set score breakdown for n-best lists
       if(options_->get<bool>("n-best")) {
@@ -144,7 +144,7 @@ public:
         }
         if (newBeam.size() > beam.size()) {
           //LOG(info, "Size {}, sorting...", newBeam.size());
-          std::nth_element(newBeam.begin(), newBeam.begin() + beam.size(), newBeam.end(), [](Ptr<Hypothesis> a, Ptr<Hypothesis> b) {
+          std::nth_element(newBeam.begin(), newBeam.begin() + beam.size(), newBeam.end(), [](IPtr<Hypothesis> a, IPtr<Hypothesis> b) {
             return a->getPathScore() > b->getPathScore(); // (sort highest score first)
           });
           //LOG(info, "Size {}, sorted...", newBeam.size());
@@ -243,7 +243,7 @@ public:
       states.push_back(scorer->startState(graph, batch));
     }
 
-    Beams beams(dimBatch, Beam(beamSize_, New<Hypothesis>())); // array [dimBatch] of array [localBeamSize] of Hypothesis
+    Beams beams(dimBatch, Beam(beamSize_, Hypothesis::New())); // array [dimBatch] of array [localBeamSize] of Hypothesis
 
     for(int i = 0; i < dimBatch; ++i)
       histories[i]->add(beams[i], trgEosId);

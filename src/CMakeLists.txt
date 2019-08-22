@@ -33,6 +33,7 @@ add_library(marian STATIC
   3rd_party/ExceptionWithCallStack.cpp
 
   tensors/backend.cpp
+  tensors/tensor.cpp
   tensors/rand.cpp
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp

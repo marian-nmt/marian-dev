@@ -160,6 +160,10 @@ public:
     float alpha = *(quant_mult_a->data());
     static std::ofstream outputfile("Matrix_names");
     outputfile << namedmap[this->child(0)] << "\t" << alpha << std::endl;
+    static bool once = true;
+    if (once)
+      std::cerr << "Writing out alpha values..." << std::endl;
+      once = false;
 
 
     )};
@@ -295,7 +299,6 @@ public:
       auto quant_mult_a = child(1)->val();
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
-      ABORT_IF(true, "We only do multiplication with biases around here");
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),

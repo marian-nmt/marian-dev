@@ -228,6 +228,12 @@ public:
     for (auto&& word : sentence)
       spmSentence.push_back(word.toWordIndex());
     spm_->Decode(spmSentence, &line);
+
+    // std::stringstream ss;
+    // for(auto&& id : spmSentence)
+    //   ss << spm_->IdToPiece(id) << "(" << id << ") ";
+    // return ss.str();
+    
     return line;
   }
 

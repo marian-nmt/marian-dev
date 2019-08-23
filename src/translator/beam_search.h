@@ -47,13 +47,18 @@ public:
                const Beams& beams,
                const std::vector<Ptr<ScorerState /*const*/>>& states,
                Ptr<data::CorpusBatch /*const*/> batch, // for alignments only
-               Ptr<FactoredVocab/*const*/> factoredVocab, size_t factorGroup) const {
+               Ptr<FactoredVocab/*const*/> factoredVocab, size_t factorGroup,
+               std::vector<IndexType>& batchMap) const {
     std::vector<float> align;
     if(alignment_ && factorGroup == 0)
       align = scorers_[0]->getAlignment(); // [beam depth * max src length * batch size] -> P(s|t); use alignments from the first scorer, even if ensemble
 
     const auto dimBatch = beams.size();
     Beams newBeams(dimBatch);   // return value of this function goes here
+
+    std::vector<IndexType> revBatchMap(batchMap.size());
+    for(int i = 0; i < batchMap.size(); ++i)
+      revBatchMap[batchMap[i]] = i;
 
     for(size_t i = 0; i < nBestKeys.size(); ++i) { // [dimBatch, beamSize] flattened
       // Keys encode batchIdx, beamHypIdx, and word index in the entire beam.
@@ -62,10 +67,15 @@ public:
       const auto  key       = nBestKeys[i];
       const float pathScore = nBestPathScores[i]; // expanded path score for (batchIdx, beamHypIdx, word)
 
+      std::cerr << "key=" << key << " " << pathScore << std::endl;
+
       // decompose key into individual indices (batchIdx, beamHypIdx, wordIdx)
       const auto wordIdx    = (WordIndex)(key % vocabSize);
       const auto beamHypIdx =            (key / vocabSize) % nBestBeamSize;
-      const auto batchIdx   =            (key / vocabSize) / nBestBeamSize;
+      auto batchIdx   =            (key / vocabSize) / nBestBeamSize;
+      batchIdx = revBatchMap[batchIdx];
+
+      std::cerr << wordIdx << " " << beamHypIdx << " " << batchIdx << std::endl;
 
       const auto& beam = beams[batchIdx];
       auto& newBeam = newBeams[batchIdx];
@@ -201,17 +211,24 @@ public:
   }
 
   // remove all beam entries that have reached EOS
-  Beams purgeBeams(const Beams& beams) {
+  Beams purgeBeams(const Beams& beams, std::vector<IndexType>& batchMap) {
     const auto trgEosId = trgVocab_->getEosId();
     Beams newBeams;
+    size_t b = 0;
     for(auto beam : beams) {
       Beam newBeam;
       for(auto hyp : beam) {
         if(hyp->getWord() != trgEosId) {
           newBeam.push_back(hyp);
-        }
+        } 
+      }
+      if(newBeam.empty()) {
+        std::cerr << "finished b=" << b << std::endl;
+        for(int i = b + 1; i < beams.size(); ++i)
+          batchMap[i] = i - 1;
       }
       newBeams.push_back(newBeam);
+      b++;
     }
     return newBeams;
   }
@@ -251,8 +268,13 @@ public:
 
     Beams beams(dimBatch, Beam(beamSize_, Hypothesis::New())); // array [dimBatch] of array [localBeamSize] of Hypothesis
 
-    for(int i = 0; i < dimBatch; ++i)
+    std::vector<IndexType> batchMap(dimBatch);
+    for(int i = 0; i < dimBatch; ++i) {
+      batchMap[i] = i;
       histories[i]->add(beams[i], trgEosId);
+    }
+
+    auto shiftedBatchMap = batchMap;
 
     // the decoding process updates the following state information in each output time step:
     //  - beams: array [dimBatch] of array [localBeamSize] of Hypothesis
@@ -277,8 +299,10 @@ public:
           localBeamSize = beam.size();
 
       // done if all batch entries have reached EOS on all beam entries
-      if (localBeamSize == 0)
+      if (localBeamSize == 0) {
+        std::cerr << "finish" << std::endl;
         break;
+      }
 
       for (size_t factorGroup = 0; factorGroup < numFactorGroups; factorGroup++) {
       // @TODO: Indent the body of this loop. Not done for this commit for easier reviewing.
@@ -299,20 +323,32 @@ public:
         for(size_t beamHypIdx = 0; beamHypIdx < localBeamSize; ++beamHypIdx) {
           for(int batchIdx = 0; batchIdx < dimBatch; ++batchIdx) { // loop over batch entries (active sentences)
             auto& beam = beams[batchIdx];
+            std::cerr << "bs=" << beam.size() << std::endl; 
             if(beamHypIdx < beam.size()) {
               auto hyp = beam[beamHypIdx];
               auto word = hyp->getWord();
               auto canExpand = (!factoredVocab || factoredVocab->canExpandFactoredWord(hyp->getWord(), factorGroup));
               //LOG(info, "[{}, {}] Can expand {} with {} -> {}", batchIdx, beamHypIdx, (*batch->back()->vocab())[hyp->getWord()], factorGroup, canExpand);
               anyCanExpand |= canExpand;
-              hypIndices.push_back((IndexType)(hyp->getPrevStateIndex() * dimBatch + batchIdx)); // (beamHypIdx, batchIdx), flattened, for index_select() operation
+              
+              auto hypIndex = (IndexType)(hyp->getPrevStateIndex() * dimBatch + batchIdx);
+              std::cerr << hypIndex << " = " << hyp->getPrevStateIndex() << " * " << dimBatch << " + " << batchIdx << std::endl;
+              hypIndex = batchMap[hypIndex];
+              std::cerr << "mapped=" << hypIndex << std::endl;
+
+              hypIndices.push_back(hypIndex); // (beamHypIdx, batchIdx), flattened, for index_select() operation
               prevWords .push_back(word);
               prevScores.push_back(canExpand ? hyp->getPathScore() : INVALID_PATH_SCORE);
+
+              std::cerr << hypIndices.back() << " " << prevWords.back().toWordIndex() << " " << prevScores.back() << std::endl;
             } else {  // pad to localBeamSize (dummy hypothesis)
-              hypIndices.push_back(0);
-              prevWords.push_back(trgEosId);  // (unused, but must be valid)
-              prevScores.push_back((float)INVALID_PATH_SCORE);
+              //hypIndices.push_back(0);
+              //prevWords.push_back(trgEosId);  // (unused, but must be valid)
+              //prevScores.push_back((float)INVALID_PATH_SCORE);
+              // std::cerr << hypIndices.back() << " " << prevWords.back().toWordIndex() << " " << prevScores.back() << std::endl;
             }
+          
+              
           }
         }
         prevPathScores = graph->constant({(int)localBeamSize, 1, dimBatch, 1}, inits::from_vector(prevScores));
@@ -345,7 +381,7 @@ public:
             auto shortlist = scorers_[i]->getShortlist();
             logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, shortlist); // [localBeamSize, 1, dimBatch, dimVocab]
           }
-          //logProbs->debug("logProbs");
+          logProbs->debug("logProbs");
         }
         else {
           // add secondary factors
@@ -360,8 +396,13 @@ public:
           logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, /*shortlist=*/ nullptr, hypIndices, localBeamSize); // [localBeamSize, 1, dimBatch, dimVocab]
         }
         // expand all hypotheses, [localBeamSize, 1, dimBatch, 1] -> [localBeamSize, 1, dimBatch, dimVocab]
+        if(hypIndices.size() > 0 && hypIndices.size() != expandedPathScores->shape()[-2])
+          expandedPathScores = index_select(expandedPathScores, -2, hypIndices);
+
         expandedPathScores = expandedPathScores + scorers_[i]->getWeight() * logProbs;
       }
+
+      batchMap = shiftedBatchMap;
 
       // make beams continuous
       expandedPathScores = swapAxes(expandedPathScores, 0, 2); // -> [dimBatch, 1, localBeamSize, dimVocab]
@@ -399,13 +440,14 @@ public:
                      beams,
                      states,    // used for keeping track of per-ensemble-member path score
                      batch,     // only used for propagating alignment info
-                     factoredVocab, factorGroup);
+                     factoredVocab, factorGroup,
+                     batchMap);
 
       } // END FOR factorGroup = 0 .. numFactorGroups-1
 
       // remove all hyps that end in EOS
       // The position of a hyp in the beam may change.
-      const auto purgedNewBeams = purgeBeams(beams);
+      const auto purgedNewBeams = purgeBeams(beams, shiftedBatchMap);
 
       // add updated search space (beams) to our return value
       bool maxLengthReached = false;
@@ -422,7 +464,10 @@ public:
 
       // this is the search space for the next output time step
       beams = purgedNewBeams;
+      std::cerr << "t=" << t << std::endl;
     } // end of main loop over output time steps
+
+    std::cerr << "done" << std::endl;
 
     return histories; // [dimBatch][t][N best hyps]
   }

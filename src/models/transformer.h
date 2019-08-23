@@ -273,7 +273,7 @@ public:
     // Caching transformation of the encoder that should not be created again.
     // @TODO: set this automatically by memoizing encoder context and
     // memoization propagation (short-term)
-    if (!cache || (cache && cache_.count(prefix + "_keys") == 0)) {
+    if (!cache || (cache && (cache_.count(prefix + "_keys") == 0 || cache_[prefix + "_keys"]->shape()[-4] != keys->shape()[-3]))) {
       auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorot_uniform);
       auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros);
 
@@ -286,12 +286,12 @@ public:
     }
 
     Expr vh;
-    if (!cache || (cache && cache_.count(prefix + "_values") == 0)) {
+    if (!cache || (cache && (cache_.count(prefix + "_values") == 0 || cache_[prefix + "_values"]->shape()[-4] != values->shape()[-3]))) {
       auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorot_uniform);
       auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros);
 
-      vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
-      vh = SplitHeads(vh, dimHeads);
+      vh = affine(values, Wv, bv);
+      vh = SplitHeads(vh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       cache_[prefix + "_values"] = vh;
     } else {
       vh = cache_[prefix + "_values"];
@@ -748,7 +748,8 @@ public:
              tiedLayers.size(),
              decDepth);
     bool macaronEnabled = opt<bool>("macaron-enabled");
-    for(int i = 0; i < decDepth; ++i) {
+
+    for(int i = 0; i < decDepth; ++i) {      
       std::string layerNo = std::to_string(i + 1);
       if (!tiedLayers.empty())
         layerNo = std::to_string(tiedLayers[i]);

@@ -401,11 +401,14 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
+    static auto namedmap = a->graph()->getRevNameMap();
+
     auto quant_a = int8_quantizeAOld(a, transA, clipValue);
     auto quant_b = int8_quantizeB(b, transB, clipValue);
     return cpu::int8::dot(quant_a.first, quant_a.second,
                           quant_b.first, quant_b.second,
-                          scale);
+                          scale,
+                          namedmap[b]);
   }
   else {
     return Expression<DotNodeOp>(
@@ -421,6 +424,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
   float clipValue = a->graph()->getBackend()->getClip();
+
+  static auto namedmap = a->graph()->getRevNameMap();
 
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO @emjotde there should be a parameter
@@ -471,7 +476,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         return rec1(cpu::int8::affine(quant_a.first, quant_a.second,
                                       quant_b.first, quant_b.second,
                                       prepped_bias,
-                                      scale),
+                                      scale,
+                                      namedmap[b]),
                     true);
       };
       tuner->insert({hash1, alg1});
@@ -514,7 +520,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       return cpu::int8::affine(quant_a.first, quant_a.second,
                                quant_b.first, quant_b.second,
                                prepped_bias,
-                               scale);
+                               scale,
+                               namedmap[b]);
     }
   } else {
     // general version, MKL, CBlas or CUDA

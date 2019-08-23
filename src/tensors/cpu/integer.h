@@ -155,17 +155,6 @@ public:
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
     intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, cols(a), cols(b));
-
-    auto namedmap = this->child(0)->graph()->getRevNameMap();
-    float alpha = *(quant_mult_a->data());
-    static std::ofstream outputfile("Matrix_names");
-    outputfile << namedmap[this->child(0)] << "\t" << alpha << std::endl;
-    static bool once = true;
-    if (once)
-      std::cerr << "Writing out alpha values..." << std::endl;
-      once = false;
-
-
     )};
   }
 
@@ -265,10 +254,11 @@ template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class DotNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
+  std::string bmat_name_;
 
 public:
-  DotNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, float scalar)
-      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult}, newShape(a, b)), scalar_(scalar) {
+  DotNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, float scalar, std::string bmat_name)
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult}, newShape(a, b)), scalar_(scalar), bmat_name_(bmat_name) {
     ABORT_IF(children().size() != 4, "expected 4 children");
 
     // Check if arguments are not null
@@ -299,6 +289,18 @@ public:
       auto quant_mult_a = child(1)->val();
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
+
+      float alpha = *(quant_mult_a->data());
+      static std::ofstream outputfile("Matrix_names_dot");
+      if (bmat_name_ == "")
+        bmat_name_ = "unnamed";
+      outputfile << bmat_name_ << "\t" << alpha << std::endl;
+      static bool once = true;
+      if (once) {
+        std::cerr << "Writing out alpha values for dot..." << std::endl;
+        once = false;
+      }
+
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
@@ -374,10 +376,11 @@ template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class AffineNodeOp : public OnlyForInferenceNodeOp {
 private:
   float scalar_;
+  std::string bmat_name_;
 
 public:
-  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar)
-      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b, bias)), scalar_(scalar) {
+  AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar, std::string bmat_name)
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b, bias)), scalar_(scalar), bmat_name_(bmat_name) {
     ABORT_IF(children().size() != 5, "expected 5 children");
 
     // Check if arguments are not null
@@ -414,6 +417,17 @@ public:
       auto b = child(2)->val();
       auto quant_mult_b = child(3)->val();
       auto bias = child(4)->val();
+
+      float alpha = *(quant_mult_a->data());
+      static std::ofstream outputfile("Matrix_names_affine");
+      if (bmat_name_ == "")
+        bmat_name_ = "unnamed";
+      outputfile << bmat_name_ << "\t" << alpha << std::endl;
+      static bool once = true;
+      if (once) {
+        std::cerr << "Writing out alpha values for affine..." << std::endl;
+        once = false;
+      }
       
       backend<Type_>::Multiply8new(
           (const Integer*)a->data(),
@@ -431,11 +445,11 @@ public:
 
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 struct ops {
-  static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {
-    return Expression<DotNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, scalar);
+  static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar, std::string bmat_name) {
+    return Expression<DotNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, scalar, bmat_name);
   }
-  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) {
-    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);
+  static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar, std::string bmat_name) {
+    return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar, bmat_name);
   }
   static inline Expr quantMult(Expr a) {
     return Expression<QuantMultNodeOp<Type_>>(a);

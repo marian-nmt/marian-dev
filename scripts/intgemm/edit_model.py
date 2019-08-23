@@ -16,7 +16,8 @@ def getMaxDict(filename: str) -> Tuple[Dict[str, float], Dict[str, float]]:
         if len(splitted) == 1:
             val = float(splitted[0])
         else:
-            name = splitted[0].split("::")[1]
+            if name != "unnamed":
+                name = splitted[0].split("::")[1]
             val = float(splitted[1])
 
         if name not in vals:

@@ -364,7 +364,7 @@ std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue, E
     return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
   }
 }
-std::pair<Expr, Expr> int8_quantizeAOld(Expr matrix, bool trans, float clipValue) {
+std::pair<Expr, Expr> int8_quantizeAOld(Expr matrix, bool trans, float clipValue, float alpha) {
   if (matrix->type() == "intPrepareA") {
       ABORT("Not supported yet");
       return {trans ? transpose(matrix) : matrix, matrix->child(1)};
@@ -401,7 +401,12 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
-    auto quant_a = int8_quantizeAOld(a, transA, clipValue);
+    static auto namedmap = a->graph()->getRevNameMap();
+    std::string b_name = namedmap[b] + "_alpha";
+    static auto expmap = a->graph()->getNameMap();
+    float alpha = *(expmap[b_name]->val()->data())/2;
+    std::cerr << "We are getting alpha: " << alpha << std::endl;
+    auto quant_a = int8_quantizeAOld(a, transA, clipValue, alpha);
     auto quant_b = int8_quantizeB(b, transB, clipValue);
     return cpu::int8::dot(quant_a.first, quant_a.second,
                           quant_b.first, quant_b.second,
@@ -426,6 +431,11 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     // TODO @emjotde there should be a parameter
     bool autotune = false;
 
+    static auto namedmap = a->graph()->getRevNameMap();
+    std::string b_name = namedmap[b] + "_alpha";
+    static auto expmap = a->graph()->getNameMap();
+    float alpha = *(expmap[b_name]->val()->data())/2;
+    std::cerr << "We are getting alpha: " << alpha << std::endl;
     if(autotune) {
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
 

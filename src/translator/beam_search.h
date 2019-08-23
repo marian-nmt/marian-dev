@@ -16,6 +16,8 @@ private:
   Ptr<Options> options_;
   std::vector<Ptr<Scorer>> scorers_;
   size_t beamSize_;
+  bool alignment_, nbest_, allowUnk_;
+  float normalize_, wordPenalty_, maxLengthFactor_;
   Ptr<Vocab> trgVocab_;
 
   static constexpr auto INVALID_PATH_SCORE = -9999; // (@TODO: change to -9999.0 once C++ allows that)
@@ -29,6 +31,12 @@ public:
         beamSize_(options_->has("beam-size")
                       ? options_->get<size_t>("beam-size")
                       : 3),
+        alignment_(options_->hasAndNotEmpty("alignment")),
+        nbest_(options_->get<bool>("n-best")),
+        allowUnk_(options_->has("allow-unk") && !options_->get<bool>("allow-unk")),
+        normalize_(options_->get<float>("normalize")), 
+        wordPenalty_(options_->get<float>("word-penalty")),
+        maxLengthFactor_(options_->get<float>("max-length-factor")),
         trgVocab_(trgVocab) {}
 
   // combine new expandedPathScores and previous beams into new set of beams
@@ -41,7 +49,7 @@ public:
                Ptr<data::CorpusBatch /*const*/> batch, // for alignments only
                Ptr<FactoredVocab/*const*/> factoredVocab, size_t factorGroup) const {
     std::vector<float> align;
-    if(options_->hasAndNotEmpty("alignment") && factorGroup == 0)
+    if(alignment_ && factorGroup == 0)
       align = scorers_[0]->getAlignment(); // [beam depth * max src length * batch size] -> P(s|t); use alignments from the first scorer, even if ensemble
 
     const auto dimBatch = beams.size();
@@ -102,7 +110,7 @@ public:
       auto hyp = Hypothesis::New(prevHyp, word, prevBeamHypIdx, pathScore);
 
       // Set score breakdown for n-best lists
-      if(options_->get<bool>("n-best")) {
+      if(nbest_) {
         auto breakDown = beam[beamHypIdx]->getScoreBreakdown();
         ABORT_IF(factoredVocab && factorGroup > 0 && !factoredVocab->canExpandFactoredWord(word, factorGroup),
                  "A word without this factor snuck through to here??");
@@ -232,9 +240,7 @@ public:
     Histories histories(dimBatch);
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
-      histories[i] = New<History>(sentId,
-                                  options_->get<float>("normalize"),
-                                  options_->get<float>("word-penalty"));
+      histories[i] = New<History>(sentId, normalize_, wordPenalty_);
     }
 
     // start states
@@ -368,7 +374,7 @@ public:
 
       //**********************************************************************
       // suppress specific symbols if not at right positions
-      if(trgUnkId != Word::NONE && options_->has("allow-unk") && !options_->get<bool>("allow-unk") && factorGroup == 0)
+      if(trgUnkId != Word::NONE && allowUnk_ && factorGroup == 0)
         suppressWord(expandedPathScores, factoredVocab ? factoredVocab->getUnkIndex() : trgUnkId.toWordIndex());
       for(auto state : states)
         state->blacklist(expandedPathScores, batch);
@@ -406,7 +412,7 @@ public:
       for(int i = 0; i < dimBatch; ++i) {
         // if this batch entry has surviving hyps then add them to the traceback grid
         if(!beams[i].empty()) {
-          if (histories[i]->size() >= options_->get<float>("max-length-factor") * batch->front()->batchWidth())
+          if (histories[i]->size() >= maxLengthFactor_ * batch->front()->batchWidth())
             maxLengthReached = true;
           histories[i]->add(beams[i], trgEosId, purgedNewBeams[i].empty() || maxLengthReached);
         }

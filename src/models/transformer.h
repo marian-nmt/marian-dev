@@ -245,7 +245,8 @@ public:
       collectOneHead(weights, dimBeam);
 
     // optional dropout for attention weights
-    weights = dropout(weights, inference_ ? 0 : opt<float>("transformer-dropout-attention"));
+    static float drop = opt<float>("transformer-dropout-attention", 0.f);
+    weights = dropout(weights, inference_ ? 0.f : drop);
 
     // apply attention weights to values
     auto output = bdot(weights, v);   // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
@@ -306,7 +307,7 @@ public:
 
     int dimAtt = output->shape()[-1];
 
-    bool project = !opt<bool>("transformer-no-projection");
+    static bool project = !opt<bool>("transformer-no-projection");
     if(project || dimAtt != dimOut) {
       auto Wo
         = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorot_uniform);
@@ -326,16 +327,16 @@ public:
                       bool saveAttentionWeights = false) {
     int dimModel = input->shape()[-1];
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
-    auto opsPre = opt<std::string>("transformer-preprocess");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
-    auto heads = opt<int>("transformer-heads");
+    static auto heads = opt<int>("transformer-heads");
 
     // multi-head self-attention over previous input
     output = MultiHead(prefix, dimModel, heads, output, keys, values, mask, cache, saveAttentionWeights);
 
-    auto opsPost = opt<std::string>("transformer-postprocess");
+    static auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
 
     return output;
@@ -375,14 +376,14 @@ public:
   Expr MacaronLayerFFN(const std::string& prefix, Expr input, bool isBefore) const {
     int dimModel = input->shape()[-1];
 
-    const int dimFfn = opt<int>("macaron-dim");
-    const int beforeDepth = opt<int>("macaron-before-depth");
-    const int afterDepth = opt<int>("macaron-after-depth");
-    const int depthFfn = isBefore ? beforeDepth : (afterDepth + 1);
-    const bool normalizeBefore = opt<bool>("macaron-normalize-before");
-    const double macaronFactor = 1.0 / (beforeDepth + afterDepth);
-    const float dropProb = inference_ ? 0 : opt<float>("macaron-drpo-prob");
-    const float reluDropProb = inference_ ? 0 : opt<float>("macaron-relu-drpo-prob");
+    const static int dimFfn = opt<int>("macaron-dim");
+    const static int beforeDepth = opt<int>("macaron-before-depth");
+    const static int afterDepth = opt<int>("macaron-after-depth");
+    const static int depthFfn = isBefore ? beforeDepth : (afterDepth + 1);
+    const static bool normalizeBefore = opt<bool>("macaron-normalize-before");
+    const static double macaronFactor = 1.0 / (beforeDepth + afterDepth);
+    const static float dropProb = inference_ ? 0 : opt<float>("macaron-drpo-prob");
+    const static float reluDropProb = inference_ ? 0 : opt<float>("macaron-relu-drpo-prob");
 
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
 
@@ -410,14 +411,14 @@ public:
   Expr LayerFFN(std::string prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
-    auto opsPre = opt<std::string>("transformer-preprocess");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_ffn", opsPre, input, dropProb);
 
-    int dimFfn = opt<int>("transformer-dim-ffn");
-    int depthFfn = opt<int>("transformer-ffn-depth");
-    auto actFn = activationByName(opt<std::string>("transformer-ffn-activation"));
-    float ffnDropProb
+    static int dimFfn = opt<int>("transformer-dim-ffn");
+    static int depthFfn = opt<int>("transformer-ffn-depth");
+    static auto actFn = activationByName(opt<std::string>("transformer-ffn-activation"));
+    static float ffnDropProb
       = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
 
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
@@ -427,7 +428,7 @@ public:
       output = dense(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
     output = dense(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
 
-    auto opsPost = opt<std::string>("transformer-postprocess");
+    static auto opsPost = opt<std::string>("transformer-postprocess");
     output
       = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
 
@@ -439,16 +440,16 @@ public:
   Expr LayerAAN(std::string prefix, Expr x, Expr y) const {
     int dimModel = x->shape()[-1];
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
-    auto opsPre = opt<std::string>("transformer-preprocess");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto opsPre = opt<std::string>("transformer-preprocess");
 
     y = preProcess(prefix + "_ffn", opsPre, y, dropProb);
 
     // FFN
-    int dimAan   = opt<int>("transformer-dim-aan");
-    int depthAan = opt<int>("transformer-aan-depth");
-    auto actFn = activationByName(opt<std::string>("transformer-aan-activation"));
-    float aanDropProb = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
+    static int dimAan   = opt<int>("transformer-dim-aan");
+    static int depthAan = opt<int>("transformer-aan-depth");
+    static auto actFn = activationByName(opt<std::string>("transformer-aan-activation"));
+    static float aanDropProb = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
 
     // the stack of AAN layers
     for(int i = 1; i < depthAan; ++i)
@@ -456,14 +457,14 @@ public:
     if(y->shape()[-1] != dimModel) // bring it back to the desired dimension if needed
       y = dense(y, prefix, std::to_string(depthAan), dimModel);
 
-    bool noGate = opt<bool>("transformer-aan-nogate");
+    static bool noGate = opt<bool>("transformer-aan-nogate");
     if(!noGate) {
       auto gi = dense(x, prefix, /*suffix=*/"i", dimModel, (ActivationFunction*)sigmoid);
       auto gf = dense(y, prefix, /*suffix=*/"f", dimModel, (ActivationFunction*)sigmoid);
       y = gi * x + gf * y;
     }
 
-    auto opsPost = opt<std::string>("transformer-postprocess");
+    static auto opsPost = opt<std::string>("transformer-postprocess");
     y = postProcess(prefix + "_ffn", opsPost, y, x, dropProb);
 
     return y;
@@ -513,8 +514,8 @@ public:
         .push_back(rnn::cell())
         .construct(graph_);
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
-    auto opsPre = opt<std::string>("transformer-preprocess");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix, opsPre, input, dropProb);
 
     output = transposeTimeBatch(output);
@@ -522,7 +523,7 @@ public:
     decoderState = rnn->lastCellStates()[0];
     output = transposeTimeBatch(output);
 
-    auto opsPost = opt<std::string>("transformer-postprocess");
+    static auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
 
     return output;
@@ -558,16 +559,16 @@ public:
     auto layerMask
       = reshape(transposeTimeBatch(batchMask), {1, dimBatch, 1, dimSrcWords}); // [-4: beam depth=1, -3: batch size, -2: vector dim=1, -1: max length]
 
-    auto opsEmb = opt<std::string>("transformer-postprocess-emb");
+    static auto opsEmb = opt<std::string>("transformer-postprocess-emb");
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     layer = preProcess(prefix_ + "_emb", opsEmb, layer, dropProb);
 
     layerMask = transposedLogMask(layerMask); // [-4: batch size, -3: 1, -2: vector dim=1, -1: max length]
 
     // apply encoder layers
-    auto encDepth = opt<int>("enc-depth");
-    bool macaronEnabled = opt<bool>("macaron-enabled");
+    static auto encDepth = opt<int>("enc-depth");
+    static bool macaronEnabled = opt<bool>("macaron-enabled");
     for(int i = 1; i <= encDepth; ++i) {
       if (macaronEnabled) {
         layer = MacaronLayerFFN(prefix_ + "_l" + std::to_string(i) + "_macaron_before", layer, true);
@@ -630,7 +631,7 @@ private:
     if(output_) // create it lazily
       return;
 
-    int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+    static int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
     auto outputFactory = mlp::OutputFactory(
         "prefix", prefix_ + "_ff_logit_out",
@@ -656,7 +657,7 @@ public:
     std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if (layerType == "rnn") {
       int dimBatch = (int)batch->size();
-      int dim = opt<int>("dim-emb");
+      static int dim = opt<int>("dim-emb");
 
       auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
@@ -698,8 +699,8 @@ public:
     // reorganize batch and timestep
     auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 
-    auto opsEmb = opt<std::string>("transformer-postprocess-emb");
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto opsEmb = opt<std::string>("transformer-postprocess-emb");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
 
     query = preProcess(prefix_ + "_emb", opsEmb, query, dropProb);
 
@@ -739,7 +740,7 @@ public:
     rnn::States prevDecoderStates = state->getStates();
     rnn::States decoderStates;
     // apply decoder layers
-    auto decDepth = opt<int>("dec-depth");
+    static auto decDepth = opt<int>("dec-depth");
     std::vector<size_t> tiedLayers = opt<std::vector<size_t>>("transformer-tied-layers",
                                                               std::vector<size_t>());
     ABORT_IF(!tiedLayers.empty() && tiedLayers.size() != decDepth,
@@ -761,7 +762,7 @@ public:
       }
 
       // self-attention
-      std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
+      static std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
       rnn::State decoderState;
       if(layerType == "self-attention")
         query = DecoderLayerSelfAttention(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_self", query, selfMask, startPos);

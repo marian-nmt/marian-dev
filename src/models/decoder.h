@@ -12,12 +12,14 @@ namespace marian {
 class DecoderBase : public EncoderDecoderLayerBase {
 protected:
   Ptr<data::Shortlist> shortlist_;
+  int dimEmb_;
 
 public:
   DecoderBase(Ptr<ExpressionGraph> graph, Ptr<Options> options) :
     EncoderDecoderLayerBase(graph, options, "decoder", /*batchIndex=*/1,
         options->get<float>("dropout-trg", 0.0f),
-        options->get<bool>("embedding-fix-trg", false)) {}
+        options->get<bool>("embedding-fix-trg", false)),
+    dimEmb_(opt<int>("dim-emb")) {}
 
   virtual Ptr<DecoderState> startState(Ptr<ExpressionGraph>,
                                        Ptr<data::CorpusBatch> batch,
@@ -58,11 +60,10 @@ public:
     graph_ = graph;
     auto embeddingLayer = getEmbeddingLayer();
     Expr selectedEmbs;
-    int dimEmb = opt<int>("dim-emb");
     if(words.empty())
-      selectedEmbs = graph_->constant({1, 1, dimBatch, dimEmb}, inits::zeros);
+      selectedEmbs = graph_->constant({1, 1, dimBatch, dimEmb_}, inits::zeros);
     else
-      selectedEmbs = embeddingLayer->apply(words, {dimBeam, 1, dimBatch, dimEmb});
+      selectedEmbs = embeddingLayer->apply(words, {dimBeam, 1, dimBatch, dimEmb_});
     state->setTargetHistoryEmbeddings(selectedEmbs);
   }
 

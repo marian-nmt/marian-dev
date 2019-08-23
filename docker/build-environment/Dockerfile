@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ubuntu:16.04
+ARG BASE_IMAGE=nvidia/cuda:9.2-cudnn7-devel-ubuntu16.04
 FROM ${BASE_IMAGE}
 LABEL MAINTAINER="Ulrich Germann <ugermann@inf.ed.ac.uk>"
 ARG GITHASH
@@ -6,7 +6,7 @@ ENV IMAGE_GITHASH=${GITHASH}
 # This is a docker containing the infrastructure required for building
 # or repackaging the components necessary to run the MT service.
 
-# Intel MKL is so expensive to install that we install it as on one of the first
+# Intel MKL is so expensive to install that we install it as one of the first
 # Docker layers
 
 COPY GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB .
@@ -25,17 +25,17 @@ RUN apt-get install -y \
     cmake \
     g++ \
     git \
+    libev++-dev \
     libssl-dev \
     libboost-all-dev \
     libtool \
     libgoogle-perftools-dev \
     libpcre3-dev \
+    libprotobuf-dev \
     protobuf-compiler \
     python3-pip \
     unzip \
     wget 
-
-RUN apt-get install -y libprotobuf-dev
 
 ADD . .
 # RUN rm -rf /var/lib/apt/lists/*

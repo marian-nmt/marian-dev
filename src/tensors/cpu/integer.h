@@ -48,8 +48,7 @@ public:
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class QuantMultNodeOp : public OnlyForInferenceNodeOp {
 public:
-  std::string matname;
-  QuantMultNodeOp(Expr input, std::string name_to_search = "blaaaaaa") : OnlyForInferenceNodeOp({input}, Shape()), matname(name_to_search) {
+  QuantMultNodeOp(Expr input) : OnlyForInferenceNodeOp({input}, Shape()) {
     ABORT_IF(children().size() != 1, "expected 1 child");
 
     // Check if arguments are not null
@@ -62,17 +61,11 @@ public:
 
       ABORT_IF(input->type() != Type::float32, "Trying to quantize non-float");
 
-      auto expmap = child(0)->graph()->getNameMap();
-      auto mapiter2 = expmap.find(matname);
-
       if (Type_ == Type::int16) {
         *val_->data() = 1024.0f;
-      } else if (mapiter2 == expmap.end()) {
-        *val_->data() = 127.0f / intgemm::MaxAbsolute(input->data(), input->data() + input->shape().elements());
       } else {
-        //std::cerr << "Artificial quant mult" << std::endl;
-        *val_->data() = *(mapiter2->second->val()->data())/2;
-      }
+        *val_->data() = 127.0f / intgemm::MaxAbsolute(input->data(), input->data() + input->shape().elements());
+      } 
     )};
   }
 
@@ -140,28 +133,26 @@ public:
 template <Type Type_>
 class PrepareBiasForBNodeOp : public OnlyForInferenceNodeOp {
 public:
-  PrepareBiasForBNodeOp(Expr bias, Expr a, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
-      : OnlyForInferenceNodeOp({bias, a, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type_) {
-    ABORT_IF(children().size() != 5, "expected 5 children");
+  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
+      : OnlyForInferenceNodeOp({bias, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type_) {
+    ABORT_IF(children().size() != 4, "expected 5 children");
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "Bias cannot be null");
-    ABORT_IF(child(1) == nullptr, "A cannot be null");
-    ABORT_IF(child(2) == nullptr, "B cannot be null");
-    ABORT_IF(child(3) == nullptr, "Quant mult of A cannot be null");
-    ABORT_IF(child(4) == nullptr, "Quant mult of B cannot be null");
+    ABORT_IF(child(1) == nullptr, "B cannot be null");
+    ABORT_IF(child(2) == nullptr, "Quant mult of A cannot be null");
+    ABORT_IF(child(3) == nullptr, "Quant mult of B cannot be null");
   }
 
   NodeOps forwardOps() override {
     return {NodeOp(
     auto bias = this->child(0)->val();
-    auto a = this->child(1)->val();
-    auto b = this->child(2)->val();
-    auto quant_mult_a = this->child(3)->val();
-    auto quant_mult_b = this->child(4)->val();
+    auto b = this->child(1)->val();
+    auto quant_mult_a = this->child(2)->val();
+    auto quant_mult_b = this->child(3)->val();
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
-    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, cols(a), cols(b));
+    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, rows(b), cols(b));
 
     /* EXample code for alpha
     auto namedmap = child(0)->graph()->getRevNameMap();
@@ -453,24 +444,8 @@ struct ops {
   static inline Expr affine(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, Expr bias, float scalar) {
     return Expression<AffineNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, bias, scalar);
   }
-  static inline Expr quantMult(Expr a, Expr bias=nullptr) {
-    if (bias) {
-      auto namedmap = bias->graph()->getRevNameMap();
-
-      if (namedmap[a] == "") { //Skip b matrix
-        std::string alpha_name;
-        auto mapiter = namedmap.find(bias);
-        if (mapiter != namedmap.end()) {
-          alpha_name = mapiter->second + "_alpha";
-        } else {
-          alpha_name = "_alpha";
-        }
-        return Expression<QuantMultNodeOp<Type_>>(a, alpha_name);
-      } else {
-        return Expression<QuantMultNodeOp<Type_>>(a, "BLAAAA");
-      }
-    }
-    return Expression<QuantMultNodeOp<Type_>>(a, "BLAAAA");
+  static inline Expr quantMult(Expr a) {
+    return Expression<QuantMultNodeOp<Type_>>(a);
   }
   static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
     return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);
@@ -481,8 +456,8 @@ struct ops {
   static inline Expr prepareB(Expr b, Expr quant_mult, float clipValue) {
     return Expression<PrepareBNodeOp<Type_>>(b, quant_mult, clipValue);
   }
-  static inline Expr PrepareBiasForB(Expr bias, Expr inputA, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult) {
-    return Expression<PrepareBiasForBNodeOp<marian::Type::float32>>(bias, inputA, inputB_preppd, a_quant_mult, b_quant_mult);
+  static inline Expr PrepareBiasForB(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult) {
+    return Expression<PrepareBiasForBNodeOp<marian::Type::float32>>(bias, inputB_preppd, a_quant_mult, b_quant_mult);
   }
   static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
     return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);

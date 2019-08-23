@@ -12,13 +12,10 @@ def getMaxDict(filename: str) -> Tuple[Dict[str, float], Dict[str, float]]:
     for line in infile:
         splitted = line.strip().split("\t")
         name = ""
-        val = 0
-        if len(splitted) == 1:
-            val = float(splitted[0])
-        else:
-            if name != "unnamed":
-                name = splitted[0].split("::")[1]
-            val = float(splitted[1])
+        name = splitted[0]
+        if name != "unnamed":
+            name = splitted[0].split("::")[1]
+        val = float(splitted[1])
 
         if name not in vals:
             vals[name] = val
@@ -29,17 +26,17 @@ def getMaxDict(filename: str) -> Tuple[Dict[str, float], Dict[str, float]]:
             vals_min[name] = val
     return (vals, vals_min)
 
-def addExtraDataToModel(filename: str, outfilename: str, alphadict: Dict[str, float]):
+def addExtraDataToModel(filename: str, outfilename: str, alphadict: Dict[str, float], scale_factor: float):
     numpy_mod = dict(np.load(filename))
     for name in alphadict:
-        numpy_mod[name + "_alpha"] = np.float32(alphadict[name])
+        numpy_mod[name + "_alpha"] = np.float32(float(alphadict[name])/scale_factor)
 
     np.savez(outfilename, **numpy_mod)
 
 if __name__ == '__main__':
-    if len(argv) < 4:
-        print("Usage: ", argv[0], "matrixStats input.npz output.npz")
+    if len(argv) < 5:
+        print("Usage: ", argv[0], "matrixStats input.npz output.npz scale_factor")
         exit()
 
     max_dict, min_dict = getMaxDict(argv[1])
-    addExtraDataToModel(argv[2], argv[3], max_dict)
+    addExtraDataToModel(argv[2], argv[3], max_dict, float(argv[4]))

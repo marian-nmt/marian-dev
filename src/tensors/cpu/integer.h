@@ -152,7 +152,7 @@ public:
     auto quant_mult_b = this->child(3)->val();
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
-    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, rows(b), cols(b));
+    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), 1, rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
 
     )};
   }
@@ -180,7 +180,7 @@ public:
     auto quant_mult_b = this->child(2)->val();
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
-    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::JustUnquantizeC(val_->data(), unquant_mult), 1, rows(b), cols(b));
+    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), 1, rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
     
     )};
   }
@@ -309,7 +309,7 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
       using Integer = typename backend<Type_>::Integer;
-      using intgemm::JustUnquantizeC;
+      using intgemm::callbacks::UnquantizeAndWrite;
 
       auto a = child(0)->val();
       auto quant_mult_a = child(1)->val();
@@ -318,10 +318,10 @@ public:
       backend<Type_>::Multiply(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
-          JustUnquantizeC(val_->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
-          cols(b));
+          cols(b),
+          UnquantizeAndWrite(scalar_ / (*quant_mult_a->data() * *quant_mult_b->data()), val_->data()));
     )};
   }
 
@@ -342,50 +342,7 @@ public:
 *             | QuantMult A |       | QuantMult B |
 *             +-------------+       +-------------+
 */
-namespace {
-template<class Numbah>
-void SlowRefFloat2(const Numbah *A, const Numbah *B, Numbah *C, size_t A_rows, size_t width, size_t B_cols, const float *bias) {
-  for (size_t r = 0; r < A_rows; ++r) {
-    for (size_t c = 0; c < B_cols; ++c) {
-      Numbah sum = 0;
-      for (size_t k = 0; k < width; ++k) {
-        sum += A[r * width + k] * B[k * B_cols + c];
-      }
-      if (bias) {
-        C[r * B_cols + c] = sum + bias[c];
-      } else {
-        C[r * B_cols + c] = sum;
-      }
-    }
-  }
-}
 
-void SaturateMult(const uint8_t *A, int16_t *B, int32_t *C, size_t A_rows, size_t width, size_t B_cols) {
-  const int32_t MAXINT16 = 32767;
-
-  //const int32_t MAXINT16 = 9992767;
-  for (size_t r = 0; r < A_rows; ++r) {
-    for (size_t c = 0; c < B_cols; ++c) {
-      int32_t sum = 0;
-      int32_t intermediate_sum = 0;
-      for (size_t k = 0; k < width; ++k) {
-        int32_t num1 = A[r * width + k];
-        int32_t num2 = B[k * B_cols + c];
-        intermediate_sum += num1*num2;
-        if ((k+1)%2 == 0) {
-          if (intermediate_sum > MAXINT16) {
-            std::cerr << "Saturation: " << intermediate_sum << std::endl;
-            intermediate_sum = MAXINT16;
-          }
-          sum+=intermediate_sum;
-          intermediate_sum = 0;
-        }
-      }
-      C[r * B_cols + c] = sum;
-    }
-  }
-}
-}
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 class AffineNodeOp : public OnlyForInferenceNodeOp {
 private:
@@ -421,9 +378,7 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
       using Integer = typename backend<Type_>::Integer;
-      using intgemm::BiasAddUnquantizeC;
-      using intgemm::Identity;
-      using intgemm::JustUnquantizeC;
+      using intgemm::callbacks::UnquantizeAndAddBiasAndWrite;
 
       auto a = child(0)->val();
       auto quant_mult_a = child(1)->val();
@@ -434,10 +389,10 @@ public:
       backend<Type_>::Multiply8new(
           (const Integer*)a->data(),
           (const Integer*)b->data(),
-          BiasAddUnquantizeC(val_->data(), bias->data(), scalar_ / (*quant_mult_a->data() * *quant_mult_b->data())),
           rows(a),
           cols(a), // Shared dimension.
-          cols(b));
+          cols(b),
+          UnquantizeAndAddBiasAndWrite(scalar_ / (*quant_mult_a->data() * *quant_mult_b->data()), bias->data(), val_->data()));
 
     )};
   }

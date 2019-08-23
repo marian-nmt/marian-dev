@@ -420,11 +420,18 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     }
     static auto expmap = a->graph()->getNameMap();
     Expr alpha = expmap[b_name];
-    auto quant_a = int8_quantizeAOld(a, transA, clipValue, alpha);
+    auto quant_a = int8_quantizeA(a, transA, clipValue, alpha);
     auto quant_b = int8_quantizeB(b, transB, clipValue);
+    auto fake_bias = cpu::int8::PrepareFakeBiasForB(quant_b.first, quant_a.second, quant_b.second);
+    return cpu::int8::affine(quant_a.first, quant_a.second,
+                          quant_b.first, quant_b.second,
+                          fake_bias,
+                          scale);
+    /*
     return cpu::int8::dot(quant_a.first, quant_a.second,
                           quant_b.first, quant_b.second,
                           scale);
+                          */
   }
   else {
     return Expression<DotNodeOp>(

@@ -135,7 +135,7 @@ class PrepareBiasForBNodeOp : public OnlyForInferenceNodeOp {
 public:
   PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
       : OnlyForInferenceNodeOp({bias, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type_) {
-    ABORT_IF(children().size() != 4, "expected 5 children");
+    ABORT_IF(children().size() != 4, "expected 4 children");
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "Bias cannot be null");
@@ -154,24 +154,33 @@ public:
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
     intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::BiasAddUnquantizeC(val_->data(), bias->data(), unquant_mult), 1, rows(b), cols(b));
 
-    /* EXample code for alpha
-    auto namedmap = child(0)->graph()->getRevNameMap();
-    auto expmap = child(0)->graph()->getNameMap();
-    std::string alpha_name;
-    auto mapiter = namedmap.find(child(0));
-    if (mapiter != namedmap.end()) {
-      alpha_name = mapiter->second + "_alpha";
-    } else {
-      alpha_name = "_alpha";
-      std::cerr << "No found EXP name" << std::endl;
-    }
+    )};
+  }
 
-    auto mapiter2 = expmap.find(alpha_name);
-    if (mapiter2 != expmap.end()) {
-      std::cerr << "Alpha actual: " << *quant_mult_a->data() << " alpha stored: " << *(mapiter2->second->val()->data()) << std::endl;
-    } else {
-      std::cerr << "Exp named: " << alpha_name << " not found" << std::endl;
-    }*/
+  const std::string type() override { return "prepareBias"; }
+};
+
+template <Type Type_>
+class PrepareFakeBiasForBNodeOp : public OnlyForInferenceNodeOp {
+public:
+  PrepareFakeBiasForBNodeOp(Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
+      : OnlyForInferenceNodeOp({inputB_preppd, a_quant_mult, b_quant_mult}, {1, inputB_preppd->shape()[-1]}, Type_) {
+    ABORT_IF(children().size() != 3, "expected 3 children");
+
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "B cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
+    ABORT_IF(child(2) == nullptr, "Quant mult of B cannot be null");
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+    auto b = this->child(0)->val();
+    auto quant_mult_a = this->child(1)->val();
+    auto quant_mult_b = this->child(2)->val();
+
+    float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
+    intgemm::Int8::PrepareBiasFor8(1, (const int8_t *)b->data(), intgemm::JustUnquantizeC(val_->data(), unquant_mult), 1, rows(b), cols(b));
     
     )};
   }
@@ -458,6 +467,9 @@ struct ops {
   }
   static inline Expr PrepareBiasForB(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult) {
     return Expression<PrepareBiasForBNodeOp<marian::Type::float32>>(bias, inputB_preppd, a_quant_mult, b_quant_mult);
+  }
+  static inline Expr PrepareFakeBiasForB(Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult) {
+    return Expression<PrepareFakeBiasForBNodeOp<marian::Type::float32>>(inputB_preppd, a_quant_mult, b_quant_mult);
   }
   static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
     return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);

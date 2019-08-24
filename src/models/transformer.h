@@ -48,7 +48,7 @@ public:
     Expr embeddings = input;
 
     if(trainPosEmbeddings) {
-      int maxLength = opt<int>("max-length");
+      static int maxLength = opt<int>("max-length");
 
       // Hack for translating with length longer than trained embeddings
       // We check if the embedding matrix "Wpos" already exist so we can
@@ -85,7 +85,7 @@ public:
   }
 
   virtual Expr addSpecialEmbeddings(Expr input, int start = 0, Ptr<data::CorpusBatch> /*batch*/ = nullptr) const {
-    bool trainPosEmbeddings = opt<bool>("transformer-train-positions", false);
+    static bool trainPosEmbeddings = opt<bool>("transformer-train-positions", false);
     return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }
 
@@ -411,7 +411,7 @@ public:
   Expr LayerFFN(std::string prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 
-    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout", 0);
     static auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_ffn", opsPre, input, dropProb);
 
@@ -502,7 +502,7 @@ public:
                        Expr input,
                        Expr /*selfMask*/,
                        int /*startPos*/) const {
-    float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
+    static float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
 
     auto rnn = rnn::rnn(
          "type", opt<std::string>("dec-cell"),
@@ -514,7 +514,8 @@ public:
         .push_back(rnn::cell())
         .construct(graph_);
 
-    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto transDrop = opt<float>("transformer-dropout", 0);
+    static float dropProb = inference_ ? 0 : transDrop;
     static auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix, opsPre, input, dropProb);
 
@@ -547,7 +548,8 @@ public:
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
 
-    auto embeddingLayer = getEmbeddingLayer(options_->has("ulr") && options_->get<bool>("ulr"));
+    static auto ulr = options_->has("ulr") && options_->get<bool>("ulr");
+    auto embeddingLayer = getEmbeddingLayer(ulr);
     std::tie(batchEmbeddings, batchMask) = embeddingLayer->apply((*batch)[batchIndex_]);
 
     batchEmbeddings = addSpecialEmbeddings(batchEmbeddings, /*start=*/0, batch);
@@ -560,7 +562,6 @@ public:
       = reshape(transposeTimeBatch(batchMask), {1, dimBatch, 1, dimSrcWords}); // [-4: beam depth=1, -3: batch size, -2: vector dim=1, -1: max length]
 
     static auto opsEmb = opt<std::string>("transformer-postprocess-emb");
-
     static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     layer = preProcess(prefix_ + "_emb", opsEmb, layer, dropProb);
 
@@ -632,15 +633,19 @@ private:
       return;
 
     static int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+    static auto vocabs = opt<std::vector<std::string>>("vocabs");
 
     auto outputFactory = mlp::OutputFactory(
         "prefix", prefix_ + "_ff_logit_out",
         "dim", dimTrgVoc,
-        "vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_], // for factored outputs
+        "vocab", vocabs[batchIndex_], // for factored outputs
         "lemma-dim-emb", opt<int>("lemma-dim-emb", 0)); // for factored outputs
 
-    if(opt<bool>("tied-embeddings") || opt<bool>("tied-embeddings-all"))
-      outputFactory.tieTransposed(opt<bool>("tied-embeddings-all") || opt<bool>("tied-embeddings-src") ? "Wemb" : prefix_ + "_Wemb");
+    static auto tied = opt<bool>("tied-embeddings");
+    static auto tiedAll = opt<bool>("tied-embeddings-all");
+    static auto tiedSrc = opt<bool>("tied-embeddings-src");
+    if(tied || tiedAll)
+      outputFactory.tieTransposed(tiedAll || tiedSrc ? "Wemb" : prefix_ + "_Wemb");
 
     output_ = std::dynamic_pointer_cast<mlp::Output>(outputFactory.construct(graph_)); // (construct() returns only the underlying interface)
   }
@@ -654,13 +659,14 @@ public:
       std::vector<Ptr<EncoderState>>& encStates) override {
     graph_ = graph;
 
-    std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
+    static std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if (layerType == "rnn") {
       int dimBatch = (int)batch->size();
       static int dim = opt<int>("dim-emb");
 
       auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
-      rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
+      static auto depth = opt<size_t>("dec-depth");
+      rnn::States startStates(depth, {start, start});
 
       // don't use TransformerState for RNN layers
       return New<DecoderState>(startStates, Logits(), encStates, batch);
@@ -741,13 +747,13 @@ public:
     rnn::States decoderStates;
     // apply decoder layers
     static auto decDepth = opt<int>("dec-depth");
-    std::vector<size_t> tiedLayers = opt<std::vector<size_t>>("transformer-tied-layers",
+    static std::vector<size_t> tiedLayers = opt<std::vector<size_t>>("transformer-tied-layers",
                                                               std::vector<size_t>());
     ABORT_IF(!tiedLayers.empty() && tiedLayers.size() != decDepth,
              "Specified layer tying for {} layers, but decoder has {} layers",
              tiedLayers.size(),
              decDepth);
-    bool macaronEnabled = opt<bool>("macaron-enabled");
+    static bool macaronEnabled = opt<bool>("macaron-enabled");
 
     for(int i = 0; i < decDepth; ++i) {      
       std::string layerNo = std::to_string(i + 1);
@@ -788,9 +794,11 @@ public:
           // decoding or scoring return the attention weights of one head of the last layer.
           // @TODO: maybe allow to return average or max over all heads?
           bool saveAttentionWeights = false;
-          if(j == 0 && (options_->get("guided-alignment", std::string("none")) != "none" || options_->hasAndNotEmpty("alignment"))) {
+          static auto guided = options_->get("guided-alignment", std::string("none"));
+          static auto align  = options_->hasAndNotEmpty("alignment");
+          if(j == 0 && (guided != "none" || align)) {
             size_t attLayer = decDepth - 1;
-            std::string gaStr = options_->get<std::string>("transformer-guided-alignment-layer", "last");
+            static std::string gaStr = options_->get<std::string>("transformer-guided-alignment-layer", "last");
             if(gaStr != "last")
               attLayer = std::stoull(gaStr) - 1;
 
@@ -831,7 +839,8 @@ public:
 
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
-    if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {
+    static auto autoreg = opt<std::string>("transformer-decoder-autoreg", "self-attention");
+    if (autoreg == "rnn") {
       nextState = New<DecoderState>(
         decoderStates, logits, state->getEncoderStates(), state->getBatch());
     } else {

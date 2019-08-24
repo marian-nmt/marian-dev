@@ -99,7 +99,7 @@ public:
     this_type(rhs).swap(*this);
   }
 
-  T* get() const {
+  inline T* get() const {
     return ptr_;
   }
 
@@ -109,21 +109,21 @@ public:
     return ret;
   }
 
-  T& operator*() const {
+  inline T& operator*() const {
     ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
     return *ptr_;
   }
 
-  T* operator->() const {
+  inline T* operator->() const {
     ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
     return ptr_;
   }
 
-  explicit operator bool() const {
+  inline explicit operator bool() const {
     return ptr_ != 0;
   }
 
-  bool operator!() const {
+  inline bool operator!() const {
     return ptr_ == 0;
   }
 

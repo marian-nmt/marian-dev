@@ -64,10 +64,6 @@ public:
   virtual Ptr<DecoderState> select(const std::vector<IndexType>& selIdx,
                                    int beamSize) const {
 
-    for(auto s : selIdx)
-      std::cerr << s << " ";
-    std::cerr << std::endl;
-
     std::vector<Ptr<EncoderState>> newEncStates;
 
     for(auto& es : encStates_) 

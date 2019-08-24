@@ -576,11 +576,14 @@ void Select(Tensor out,
   functional::Array<int, functional::Shape::size()> dims;
   int axisCPU = (int)(axis + functional::Shape::size() - out->shape().size());
 
+  auto odata = out->data();
+  const auto idata = in->data();
+
   for(int index = 0; index < length; ++index) {
     outShape.dims(index, dims);
     dims[axisCPU] = (int)indices->data<IndexType>()[dims[axisCPU]];
     int inIndex = inShape.index(dims);
-    out->data()[index] = in->data()[inIndex];
+    odata[index] = idata[inIndex];
   }
 
 }

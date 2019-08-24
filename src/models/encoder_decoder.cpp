@@ -189,7 +189,6 @@ Ptr<DecoderState> EncoderDecoder::step(Ptr<ExpressionGraph> graph,
   state = hypIndices.empty() ? state : state->select(hypIndices, beamSize);
 
   // Fill state with embeddings based on last prediction
-  std::cerr << words.size() << " -- " << dimBatch << std::endl;
   int newDimBatch = words.size() == 0 ? dimBatch : (int)(words.size() / beamSize);
 
   decoders_[0]->embeddingsFromPrediction(graph, state, words, newDimBatch, beamSize);

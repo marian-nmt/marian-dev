@@ -296,6 +296,11 @@ if(COMPILE_EXAMPLES)
   add_definitions(-DCOMPILE_EXAMPLES=1)
 endif(COMPILE_EXAMPLES)
 
+# Intgemm
+add_subdirectory(src/3rd_party/intgemm)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/3rd_party/intgemm)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/src/3rd_party/intgemm)
+
 # Generate project_version.h to reflect our version number
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
                ${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h @ONLY)
@@ -303,7 +308,6 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
-
 
 # Add a target to generate API documentation with Doxygen
 find_package(Doxygen)

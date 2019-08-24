@@ -363,7 +363,7 @@ std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue, E
     if (alpha) {
       return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, alpha, clipValue), alpha};
     } else {
-      //std::cerr << "Uknown alpha" << std::endl;
+      std::cerr << "Uknown alpha" << std::endl;
       auto quant_mult = marian::cpu::int8::quantMult(matrix);
       return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
     }
@@ -378,7 +378,7 @@ std::pair<Expr, Expr> int8_quantizeAOld(Expr matrix, bool trans, float clipValue
     if (alpha) {
       return {cpu::int8::prepareAOld(trans ? transpose(matrix) : matrix, alpha, clipValue), alpha};
     } else {
-      //std::cerr << "Uknown alpha" << std::endl;
+      std::cerr << "Uknown alpha" << std::endl;
       auto quant_mult = marian::cpu::int8::quantMult(matrix);
       return {cpu::int8::prepareAOld(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
     }

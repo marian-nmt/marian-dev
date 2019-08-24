@@ -561,6 +561,35 @@ void PasteCols(Tensor out_,
   }
 }
 
+void Select2(Tensor out,
+             const Tensor in,
+             const Tensor indices) {
+
+  matchOrAbort<IndexType>(indices->type());
+
+  functional::Shape outShape = out->shape();
+  functional::Shape inShape = in->shape();
+  
+  auto idxData = indices->data<IndexType>();
+  auto odata = out->data();
+  const auto idata = in->data();
+
+  int size = outShape[3];
+
+  for(int k = 0; k < outShape[0]; ++k) {
+    for(int j = 0; j < outShape[1]; ++j) {
+      int outOffset = k * j * outShape[2] * size + j * outShape[2] * size;
+      int inOffset = k * j * inShape[2] * size + j * inShape[2] * size;
+      for(int i = 0; i < outShape[2]; ++i) {
+        auto idx = idxData[i];
+        int outIndex = outOffset +   i * size;
+        int inIndex  = inOffset  + idx * size;
+        std::copy(idata + inIndex, idata + inIndex + size, odata + outIndex);
+      }
+    }
+  }
+}
+
 void Select(Tensor out,
             const Tensor in,
             const Tensor indices,
@@ -576,6 +605,9 @@ void Select(Tensor out,
   functional::Array<int, functional::Shape::size()> dims;
   int axisCPU = (int)(axis + functional::Shape::size() - out->shape().size());
 
+  if(axisCPU == 2) // specialization for axis==2, assuming N=4
+    return Select2(out, in, indices);
+
   auto odata = out->data();
   const auto idata = in->data();
 
@@ -585,7 +617,6 @@ void Select(Tensor out,
     int inIndex = inShape.index(dims);
     odata[index] = idata[inIndex];
   }
-
 }
 
 void Insert(Tensor out,

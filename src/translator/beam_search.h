@@ -9,6 +9,8 @@
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
 
+#define PRUNE 1
+
 namespace marian {
 
 class BeamSearch {
@@ -56,9 +58,11 @@ public:
     const auto dimBatch = beams.size();
     Beams newBeams(dimBatch);   // return value of this function goes here
 
+#ifdef PRUNE
     std::vector<IndexType> revBatchMap(batchMap.size());
     for(int i = 0; i < batchMap.size(); ++i)
       revBatchMap[batchMap[i]] = i;
+#endif
 
     for(size_t i = 0; i < nBestKeys.size(); ++i) { // [dimBatch, beamSize] flattened
       // Keys encode batchIdx, beamHypIdx, and word index in the entire beam.
@@ -70,8 +74,11 @@ public:
       // decompose key into individual indices (batchIdx, beamHypIdx, wordIdx)
       const auto wordIdx    = (WordIndex)(key % vocabSize);
       const auto beamHypIdx =            (key / vocabSize) % nBestBeamSize;
-      auto batchIdx   =            (key / vocabSize) / nBestBeamSize;
+      auto batchIdx   =                  (key / vocabSize) / nBestBeamSize;
+      
+#ifdef PRUNE
       batchIdx = revBatchMap[batchIdx];
+#endif
 
       const auto& beam = beams[batchIdx];
       auto& newBeam = newBeams[batchIdx];
@@ -222,9 +229,10 @@ public:
         }
       }
       if(reachedEos) {
-        //std::cerr << "\tfinished b=" << b << std::endl;
-        // for(int i = b + 1; i < beams.size(); ++i)
-        //  batchMap[i] = batchMap[i] - 1;
+#ifdef PRUNE
+        for(int i = b + 1; i < beams.size(); ++i)
+          batchMap[i] = batchMap[i] - 1;
+#endif
       }
       newBeams.push_back(newBeam);
       b++;
@@ -298,10 +306,8 @@ public:
           localBeamSize = beam.size();
 
       // done if all batch entries have reached EOS on all beam entries
-      if (localBeamSize == 0) {
-        //std::cerr << "finish" << std::endl;
+      if (localBeamSize == 0)
         break;
-      }
 
       for (size_t factorGroup = 0; factorGroup < numFactorGroups; factorGroup++) {
       // @TODO: Indent the body of this loop. Not done for this commit for easier reviewing.
@@ -322,7 +328,6 @@ public:
         for(size_t beamHypIdx = 0; beamHypIdx < localBeamSize; ++beamHypIdx) {
           for(int batchIdx = 0; batchIdx < dimBatch; ++batchIdx) { // loop over batch entries (active sentences)
             auto& beam = beams[batchIdx];
-            //std::cerr << "\tbs=" << beam.size() << std::endl; 
             if(beamHypIdx < beam.size()) {
               auto hyp = beam[beamHypIdx];
               auto word = hyp->getWord();
@@ -331,19 +336,20 @@ public:
               anyCanExpand |= canExpand;
               
               auto hypIndex = (IndexType)(hyp->getPrevStateIndex() * dimBatch + batchIdx);
-              //std::cerr << "\t" << hypIndex << " = " << hyp->getPrevStateIndex() << " * " << dimBatch << " + " << batchIdx << " -> ";
+#ifdef PRUNE
               hypIndex = batchMap[hypIndex];
-              //std::cerr << hypIndex << std::endl;
+#endif
 
               hypIndices.push_back(hypIndex); // (beamHypIdx, batchIdx), flattened, for index_select() operation
               prevWords .push_back(word);
               prevScores.push_back(canExpand ? hyp->getPathScore() : INVALID_PATH_SCORE);
 
             } else {  // pad to localBeamSize (dummy hypothesis)
+#ifndef PRUNE
               hypIndices.push_back(0);
               prevWords.push_back(trgEosId);  // (unused, but must be valid)
+#endif
               prevScores.push_back((float)INVALID_PATH_SCORE);
-              // std::cerr << hypIndices.back() << " " << prevWords.back().toWordIndex() << " " << prevScores.back() << std::endl;
             }
           
               

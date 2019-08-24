@@ -15,19 +15,19 @@
 #define ENABLE_INTRUSIVE_PTR(type)           \
   size_t references_{0};                     \
                                              \
-  friend void intrusivePtrAddRef(type* x) {  \
+  inline friend void intrusivePtrAddRef(type* x) {  \
     if(x != 0)                               \
       ++x->references_;                      \
   }                                          \
                                              \
-  friend void intrusivePtrRelease(type* x) { \
+  inline friend void intrusivePtrRelease(type* x) { \
     if(x != 0 && --x->references_ == 0) {    \
       delete x;                              \
       x = 0;                                 \
     }                                        \
   }                                          \
                                              \
-  friend size_t references(type* x) {        \
+  inline friend size_t references(type* x) {        \
     return x->references_;                   \
   }                                          \
 
@@ -71,31 +71,31 @@ public:
     rhs.ptr_ = 0;
   }
 
-  size_t useCount() {
+  inline size_t useCount() {
     return references(ptr_);
   }
 
-  IntrusivePtr& operator=(IntrusivePtr&& rhs) {
+  inline IntrusivePtr& operator=(IntrusivePtr&& rhs) {
     this_type(static_cast<IntrusivePtr&&>(rhs)).swap(*this);
     return *this;
   }
 
-  IntrusivePtr& operator=(const IntrusivePtr& rhs) {
+  inline IntrusivePtr& operator=(const IntrusivePtr& rhs) {
     this_type(rhs).swap(*this);
     return *this;
   }
 
   template<class Y>
-  IntrusivePtr& operator=(const IntrusivePtr<Y>& rhs) {
+  inline IntrusivePtr& operator=(const IntrusivePtr<Y>& rhs) {
     this_type(rhs).swap(*this);
     return *this;
   }
 
-  void reset() {
+  inline void reset() {
     this_type().swap(*this);
   }
 
-  void reset(T* rhs) {
+  inline void reset(T* rhs) {
     this_type(rhs).swap(*this);
   }
 
@@ -103,19 +103,19 @@ public:
     return ptr_;
   }
 
-  T* detach() {
+  inline T* detach() {
     T* ret = ptr_;
     ptr_ = 0;
     return ret;
   }
 
   inline T& operator*() const {
-    ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
+    //ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
     return *ptr_;
   }
 
   inline T* operator->() const {
-    ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
+    //ABORT_IF(ptr_ == 0, "Null pointer in IntrusivePtr");
     return ptr_;
   }
 
@@ -127,7 +127,7 @@ public:
     return ptr_ == 0;
   }
 
-  void swap(IntrusivePtr& rhs) {
+  inline void swap(IntrusivePtr& rhs) {
     T* tmp = ptr_;
     ptr_ = rhs.ptr_;
     rhs.ptr_ = tmp;
@@ -138,52 +138,52 @@ private:
 };
 
 template<class T, class U>
-bool operator==(const IntrusivePtr<T>& a, const IntrusivePtr<U>& b) {
+inline bool operator==(const IntrusivePtr<T>& a, const IntrusivePtr<U>& b) {
   return a.get() == b.get();
 }
 
 template<class T, class U>
-bool operator!=(const IntrusivePtr<T>& a, const IntrusivePtr<U>& b) {
+inline bool operator!=(const IntrusivePtr<T>& a, const IntrusivePtr<U>& b) {
   return a.get() != b.get();
 }
 
 template<class T>
-bool operator==(const IntrusivePtr<T>& a, T* b) {
+inline bool operator==(const IntrusivePtr<T>& a, T* b) {
   return a.get() == b;
 }
 
 template<class T>
-bool operator!=(const IntrusivePtr<T>& a, T* b) {
+inline bool operator!=(const IntrusivePtr<T>& a, T* b) {
   return a.get() != b;
 }
 
 template<class T>
-bool operator==(const IntrusivePtr<T>& a, std::nullptr_t) {
+inline bool operator==(const IntrusivePtr<T>& a, std::nullptr_t) {
   return a.get() == 0;
 }
 
 template<class T>
-bool operator!=(const IntrusivePtr<T>& a, std::nullptr_t) {
+inline bool operator!=(const IntrusivePtr<T>& a, std::nullptr_t) {
   return a.get() != 0;
 }
 
 template<class T>
-bool operator==(T* a, const IntrusivePtr<T>& b) {
+inline bool operator==(T* a, const IntrusivePtr<T>& b) {
   return b.get();
 }
 
 template<class T>
-bool operator!=(T* a, const IntrusivePtr<T>& b) {
+inline bool operator!=(T* a, const IntrusivePtr<T>& b) {
   return b.get();
 }
 
 template<class T, class U>
-bool operator<(const IntrusivePtr<T>& a, const IntrusivePtr<U>& b) {
+inline bool operator<(const IntrusivePtr<T>& a, const IntrusivePtr<U>& b) {
   return std::less<T*>()(a.get(), b.get());
 }
 
 template<class T>
-void swap(IntrusivePtr<T> & a, IntrusivePtr<T> & b) {
+inline void swap(IntrusivePtr<T> & a, IntrusivePtr<T> & b) {
   a.swap(b);
 }
 

@@ -350,7 +350,7 @@ private:
 
 public:
   AffineNodeOp(Expr a, Expr a_quant_mult, Expr b, Expr b_quant_mult, Expr bias, float scalar)
-      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b, bias)), scalar_(scalar) {
+      : OnlyForInferenceNodeOp({a, a_quant_mult, b, b_quant_mult, bias}, newShape(a, b)), scalar_(scalar) {
     ABORT_IF(children().size() != 5, "expected 5 children");
 
     // Check if arguments are not null
@@ -369,7 +369,7 @@ public:
     ABORT_IF(child(2)->shape()[-1] != child(4)->shape()[-1], "Bias cannot be added because there's a dimension mismatch");
   }
 
-  Shape newShape(Expr a, Expr b, Expr bias) {
+  Shape newShape(Expr a, Expr b) {
     Shape result = a->shape();
     result.set(-1, b->shape()[-1]);
     return result;
@@ -401,6 +401,39 @@ public:
 };
 
 template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
+class ReLUNodeOp : public OnlyForInferenceNodeOp {
+public:
+  ReLUNodeOp(Expr input)
+      : OnlyForInferenceNodeOp({input}) {
+    ABORT_IF(children().size() != 1, "expected 1 children");
+    ABORT_IF(child(0) == nullptr, "Input cannot be null");
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(relu(val_, child(0)->val()))};
+  }
+
+  const std::string type() override { return "intReLU"; }
+
+private:
+  static void relu(marian::Tensor output, const marian::Tensor input) {
+    static const auto const_zero = _mm256_setzero_si256();
+
+    auto input_it = input->data<__m256i>();
+    auto output_it = output->data<__m256i>();
+    auto lenght = input->shape().elements() / sizeof(__m256i) * sizeOf(Type_);
+
+    if (Type_ == Type::int8) {
+      for (auto i = 0; i < lenght; ++i)
+        *output_it++ = _mm256_max_epi8(*input_it++, const_zero);
+    } else if (Type_ == Type::int16) {
+      for (auto i = 0; i < lenght; ++i)
+        *output_it++ = _mm256_max_epi16(*input_it++, const_zero);
+    }
+  }
+};
+
+template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
 struct ops {
   static inline Expr dot(Expr a, Expr quant_mult_a, Expr b, Expr quant_mult_b, float scalar) {
     return Expression<DotNodeOp<Type_>>(a, quant_mult_a, b, quant_mult_b, scalar);
@@ -428,6 +461,9 @@ struct ops {
   }
   static inline Expr selectColumnsB(Expr b, const std::vector<Word> &cols) {
     return Expression<SelectColumnsBNodeOp<Type_>>(b, cols);
+  }
+  static inline Expr relu(Expr input) {
+    return Expression<ReLUNodeOp<Type_>>(input);
   }
 };
 

@@ -655,7 +655,7 @@ private:
     if(output_) // create it lazily
       return;
 
-    int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+    static int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
     auto outputFactory = mlp::output()         //
         ("prefix", prefix_ + "_ff_logit_out")  //
@@ -683,13 +683,14 @@ public:
       std::vector<Ptr<EncoderState>>& encStates) override {
     graph_ = graph;
 
-    std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
+    static std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if (layerType == "rnn") {
       int dimBatch = (int)batch->size();
-      int dim = opt<int>("dim-emb");
+      static int dim = opt<int>("dim-emb");
 
       auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros());
-      rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
+      static auto decDepth = opt<size_t>("dec-depth");
+      rnn::States startStates(decDepth, {start, start});
 
       // don't use TransformerState for RNN layers
       return New<DecoderState>(startStates, nullptr, encStates, batch);
@@ -712,7 +713,7 @@ public:
     auto decoderMask = state->getTargetMask();       // [max length, batch size, 1]  --this is a hypothesis
 
     // dropout target words
-    float dropoutTrg = inference_ ? 0 : opt<float>("dropout-trg");
+    static float dropoutTrg = inference_ ? 0 : opt<float>("dropout-trg");
     if(dropoutTrg) {
       int trgWords = embeddings->shape()[-3];
       embeddings = dropout(embeddings, dropoutTrg, {trgWords, 1, 1});
@@ -735,8 +736,8 @@ public:
     // reorganize batch and timestep
     auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 
-    auto opsEmb = opt<std::string>("transformer-postprocess-emb");
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    static auto opsEmb = opt<std::string>("transformer-postprocess-emb");
+    static float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
 
     query = preProcess(prefix_ + "_emb", opsEmb, query, dropProb);
 
@@ -776,8 +777,8 @@ public:
     rnn::States prevDecoderStates = state->getStates();
     rnn::States decoderStates;
     // apply decoder layers
-    auto decDepth = opt<int>("dec-depth");
-    std::vector<size_t> tiedLayers = opt<std::vector<size_t>>("transformer-tied-layers",
+    static auto decDepth = opt<int>("dec-depth");
+    static std::vector<size_t> tiedLayers = opt<std::vector<size_t>>("transformer-tied-layers",
                                                               std::vector<size_t>());
     ABORT_IF(!tiedLayers.empty() && tiedLayers.size() != decDepth,
              "Specified layer tying for {} layers, but decoder has {} layers",
@@ -796,7 +797,7 @@ public:
         prevDecoderState = prevDecoderStates[i];
 
       // self-attention
-      std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
+      static std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
       rnn::State decoderState;
       if(layerType == "self-attention")
         query = DecoderLayerSelfAttention(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_self", query, selfMask, startPos);
@@ -823,9 +824,10 @@ public:
           // decoding or scoring return the attention weights of one head of the last layer.
           // @TODO: maybe allow to return average or max over all heads?
           bool saveAttentionWeights = false;
-          if(j == 0 && (options_->get("guided-alignment", std::string("none")) != "none" || options_->hasAndNotEmpty("alignment"))) {
+          static auto alignment = (options_->get("guided-alignment", std::string("none")) != "none" || options_->hasAndNotEmpty("alignment"));
+          if(j == 0 && alignment) {
             size_t attLayer = decDepth - 1;
-            std::string gaStr = options_->get<std::string>("transformer-guided-alignment-layer", "last");
+            static std::string gaStr = options_->get<std::string>("transformer-guided-alignment-layer", "last");
             if(gaStr != "last")
               attLayer = std::stoull(gaStr) - 1;
 
@@ -864,7 +866,8 @@ public:
 
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
-    if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {
+    static auto autoreg = opt<std::string>("transformer-decoder-autoreg", "self-attention");
+    if (autoreg == "rnn") {
       nextState = New<DecoderState>(
           decoderStates, logits, state->getEncoderStates(), state->getBatch());
     } else {

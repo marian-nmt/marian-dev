@@ -15,6 +15,9 @@ private:
   Ptr<Options> options_;
   std::vector<Ptr<Scorer>> scorers_;
   size_t beamSize_;
+  bool alignment_, nbest_, allowUnk_;
+  float normalize_, wordPenality_, maxLengthFactor_;
+  bool forceDecodingFinished_;
   Word trgEosId_ = (Word)-1;
   Word trgUnkId_ = (Word)-1;
 
@@ -25,9 +28,14 @@ public:
              Word trgUnkId = -1)
       : options_(options),
         scorers_(scorers),
-        beamSize_(options_->has("beam-size")
-                      ? options_->get<size_t>("beam-size")
-                      : 3),
+        beamSize_(options_->get<size_t>("beam-size", 3)),
+        alignment_(options_->hasAndNotEmpty("alignment")),
+        nbest_(options_->get<bool>("n-best")),
+        allowUnk_(options_->get<bool>("allow-unk", false)),
+        normalize_(options_->get<float>("normalize")),
+        wordPenality_(options_->get<float>("word-penality", 0.f)),
+        maxLengthFactor_(options_->get<float>("max-length-factor")),
+        forceDecodingFinished_(!options_->get<bool>("force-prefix", false)),
         trgEosId_(trgEosId),
         trgUnkId_(trgUnkId) {}
 
@@ -42,7 +50,7 @@ public:
     Beams newBeams(beams.size());
 
     std::vector<float> align;
-    if(options_->hasAndNotEmpty("alignment"))
+    if(alignment_)
       // Use alignments from the first scorer, even if ensemble
       align = scorers_[0]->getAlignment();
 
@@ -81,7 +89,7 @@ public:
         auto hyp = Hypothesis::New(beam[beamHypIdx], embIdx, hypIdxTrans, pathScore);
 
         // Set score breakdown for n-best lists
-        if(options_->get<bool>("n-best")) {
+        if(nbest_) {
           std::vector<float> breakDown(states.size(), 0);
           beam[beamHypIdx]->GetScoreBreakdown().resize(states.size(), 0);
           for(size_t j = 0; j < states.size(); ++j) {
@@ -158,23 +166,18 @@ public:
   Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
     int dimBatch = (int)batch->size();
 
-    bool forceDecodingFinished = !options_->get<bool>("force-prefix", false); // false by default, i.e. decode normally.
-
     Histories histories;
     for(int i = 0; i < dimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
       auto history = New<History>(sentId,
-                                  options_->get<float>("normalize"),
-                                  options_->get<float>("word-penalty"));
+                                  normalize_, 
+                                  wordPenality_);
       histories.push_back(history);
     }
 
     size_t localBeamSize = beamSize_; // max over beam sizes of active sentence hypotheses
 
     auto getNBestList = createGetNBestListFn(localBeamSize, dimBatch, graph->getDeviceId());
-
-    bool allowUnk = options_->get<bool>("allow-unk", false);
-    float maxLengthFactor = options_->get<float>("max-length-factor");
 
     Beams beams(dimBatch);        // [batchIndex][beamIndex] is one sentence hypothesis
     for(auto& beam : beams)
@@ -254,7 +257,7 @@ public:
 
       //**********************************************************************
       // suppress specific symbols if not at right positions
-      if(trgUnkId_ != -1 && !allowUnk)
+      if(trgUnkId_ != -1 && !allowUnk_)
         suppressWord(pathScores, trgUnkId_);
       for(auto state : states)
         state->blacklist(pathScores, batch);
@@ -265,26 +268,7 @@ public:
       std::vector<float> outPathScores;
 
       std::vector<size_t> beamSizes(dimBatch, localBeamSize);
-      if(options_->get<bool>("force-prefix", false) && !forceDecodingFinished) {
-        auto targetBatch = batch->back();                               // use last batch stream for force-decoding
-        int currentPos = histories[0]->size() - 1;                      // current position in generated sentence(s), indexed from 0.
-        if(targetBatch->batchWidth() > currentPos + 1) {                // as long as the current position has not reached EOS of the prefix, also ignore prefix EOS
-          ABORT_IF(localBeamSize != 1, "Local beam size has to 1 for forced deocoding, not {}", localBeamSize); // can grow after forced-decoding
-          std::vector<float> scores;                                    // we do this on the CPU for now
-          pathScores->val()->get(scores);                               // copy everything to CPU, this is expensive, need better operator
-          int dimVocab = pathScores->shape()[-1];
-          for(int i = 0; i < dimBatch; ++i) {
-            Word word = targetBatch->data()[currentPos * dimBatch + i]; // get current word for time step pos and batch entry i.
-            outPathScores.push_back(scores[i * dimVocab + word]);       // get score for i-th batch entry at position word, beam is 1 so only batch position matters.
-            outKeys.push_back((IndexType)word);
-          }
-        } else {
-          forceDecodingFinished = true;
-        }
-      } 
-        
-      if(forceDecodingFinished)
-        getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
+      getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
 
       int dimTrgVoc = pathScores->shape()[-1];
       beams = toHyps(outKeys,
@@ -301,7 +285,7 @@ public:
         if(!beams[i].empty()) {
           final = final
                   || histories[i]->size()
-                         >= maxLengthFactor * batch->front()->batchWidth();
+                         >= maxLengthFactor_ * batch->front()->batchWidth();
           histories[i]->Add(
               beams[i], trgEosId_, prunedBeams[i].empty() || final);
         }

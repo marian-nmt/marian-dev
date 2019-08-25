@@ -72,36 +72,6 @@ public:
   const std::string type() override { return "intQuantMult"; }
 };
 
-template <Type Type_, typename = EnableIfTypeIsSupported<Type_>>
-class QuantMultANodeOp : public OnlyForInferenceNodeOp {
-public:
-  QuantMultANodeOp(Expr input) : OnlyForInferenceNodeOp({input}, Shape()) {
-    ABORT_IF(children().size() != 1, "expected 1 child");
-
-    // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "Input matrix cannot be null");
-  }
-
-  NodeOps forwardOps() override {
-    return {NodeOp(
-      auto input = child(0);
-
-      static auto namedmap = input->graph()->getRevNameMap();
-      std::string b_name = namedmap[input];
-      if (b_name == "") {
-        b_name = "F0::unnamed_alpha";
-      } else {
-        b_name = b_name + "_alpha";
-      }
-      static auto expmap = input->graph()->getNameMap();
-      Expr alpha = expmap[b_name];
-
-      *val_->data() = *alpha->val()->data();
-    )};
-  }
-  const std::string type() override { return "intQuantAMult"; }
-};
-
 namespace { // anonymous namespace
 
 template <Type Type_, typename PrepareMatrixFun>
@@ -440,9 +410,6 @@ struct ops {
   }
   static inline Expr quantMult(Expr a) {
     return Expression<QuantMultNodeOp<Type_>>(a);
-  }
-  static inline Expr quantMultA(Expr b) {
-    return Expression<QuantMultANodeOp<Type_>>(b);
   }
   static inline Expr prepareA(Expr a, Expr quant_mult, float clipValue) {
     return Expression<PrepareANodeOp<Type_>>(a, quant_mult, clipValue);

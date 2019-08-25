@@ -354,16 +354,16 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 
 namespace { // anonymous namespace
 // TODO: Do it better.
-std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue, Expr b=nullptr) {
+std::pair<Expr, Expr> int8_quantizeA(Expr matrix, bool trans, float clipValue, Expr alpha=nullptr) {
   if (matrix->type() == "intPrepareA") {
       ABORT("Not supported yet");
       return {trans ? transpose(matrix) : matrix, matrix->child(1)};
   }
   else {
-    if (b) {
-      auto quant_mult = marian::cpu::int8::quantMultA(b);
-      return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
+    if (alpha) {
+      return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, alpha, clipValue), alpha};
     } else {
+      std::cerr << "Uknown alpha" << std::endl;
       auto quant_mult = marian::cpu::int8::quantMult(matrix);
       return {cpu::int8::prepareA(trans ? transpose(matrix) : matrix, quant_mult, clipValue), quant_mult};
     }
@@ -411,7 +411,16 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
-    auto quant_a = int8_quantizeA(a, transA, clipValue, b);
+    static auto namedmap = a->graph()->getRevNameMap();
+    std::string b_name = namedmap[b];
+    if (b_name == "") {
+      b_name = "F0::unnamed_alpha";
+    } else {
+      b_name = b_name + "_alpha";
+    }
+    static auto expmap = a->graph()->getNameMap();
+    Expr alpha = expmap[b_name];
+    auto quant_a = int8_quantizeA(a, transA, clipValue, alpha);
     auto quant_b = int8_quantizeB(b, transB, clipValue);
     auto fake_bias = cpu::int8::PrepareFakeBiasForB(quant_b.first, quant_a.second, quant_b.second);
     return cpu::int8::affine(quant_a.first, quant_a.second,
@@ -443,6 +452,16 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     // TODO @emjotde there should be a parameter
     bool autotune = false;
 
+    static auto namedmap = a->graph()->getRevNameMap();
+    std::string b_name = namedmap[b];
+    if (b_name == "") {
+      b_name = "F0::unnamed_alpha";
+    } else {
+      b_name = b_name + "_alpha";
+    }
+    
+    static auto expmap = a->graph()->getNameMap();
+    Expr alpha = expmap[b_name];
     if(autotune) {
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
 
@@ -479,7 +498,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           quant_a = {transA ? rec1(transpose(a)) : a, a->child(1)};
           ABORT("Not supported yet");
         } else {
-          Expr quant_mult = marian::cpu::int8::quantMultA(b);
+          Expr quant_mult;
+          if (alpha) {
+            quant_mult = alpha;
+          } else {
+            std::cerr << "Uknown alpha" << std::endl;
+            quant_mult = marian::cpu::int8::quantMult(a);
+          }
           quant_a = {rec1(cpu::int8::prepareA(transA ? rec1(transpose(a)) : a, quant_mult, clipValue)), quant_mult};
           //quant_a_old = {rec1(cpu::int8::prepareAOld(transA ? rec1(transpose(a)) : a, quant_mult, clipValue)), quant_mult};
         }
@@ -524,7 +549,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
     } else {
       // cpu int8 version
-      auto quant_a = int8_quantizeA(a, transA, clipValue, b);
+      auto quant_a = int8_quantizeA(a, transA, clipValue, alpha);
       //auto quant_a_old = int8_quantizeAOld(a, transA, clipValue);
       auto quant_b = int8_quantizeB(b, transB, clipValue);
       auto prepped_bias = int8_prepareBias(bias, quant_b.first, quant_a.second, quant_b.second);

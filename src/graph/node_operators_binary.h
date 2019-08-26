@@ -319,8 +319,7 @@ public:
                                transA_,
                                transB_,
                                0.f,
-                               scalar_);
-                   Element(_1 = clip(_1, 100.f), val_))};
+                               scalar_))};
   }
 
   NodeOps backwardOps() override {

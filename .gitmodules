@@ -12,5 +12,5 @@
 	url = https://github.com/marian-nmt/nccl
 [submodule "src/3rd_party/fbgemm"]
 	path = src/3rd_party/fbgemm
-	url = https://marian-nmt/FBGEMM
+	url = https://github.com/marian-nmt/FBGEMM
 	branch = copyPublic

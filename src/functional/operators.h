@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/types.h"
+#include "functional/approx.h"
 #include <cmath>
 
 #ifdef __CUDA_ARCH__
@@ -384,9 +385,14 @@ struct Ops<float32x8> {
 
   // Neural Networks specific functions
   // @TODO: this is unsafe
+  // static inline float32x8 sigmoid(const float32x8& x) {
+  //   float32x8 e = exp(x);
+  //   return div(e, add(1.f, e));
+  // }
+
   static inline float32x8 sigmoid(const float32x8& x) {
-    float32x8 e = exp(x);
-    return div(e, add(1.f, e));
+    static Approx<5, 0, 50> approxSigmoid(Ops<float>::sigmoid);
+    return loop8(approxSigmoid, x);
   }
 
   static inline float32x8 logaddexp(const float32x8& x, const float32x8& y)  { return loop8(Ops<float>::logaddexp, x, y); }

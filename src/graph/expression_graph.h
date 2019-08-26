@@ -144,6 +144,7 @@ protected:
   ExpressionGraph(ExpressionGraph&&) = delete;
 
 public:
+  std::vector<Expr> alphas_;
   /** @brief Constructs a new expression graph
    *
    * Constructor should be used as New<ExpressionGraph>()
@@ -479,6 +480,18 @@ public:
     }
     if(markReloaded)
       setReloaded(true);
+    auto expmap = this->getRevNameMap();
+    auto namemap = this->getNameMap();
+    Expr unnamed_alpha = namemap["F0::unnamed_alpha"];
+    this->alphas_.resize(params_->size(), unnamed_alpha);
+    for (Expr exp : *params_) {
+      size_t id = exp->getId();
+      std::string paramName = expmap[exp];
+      if (paramName.find("alpha") != std::string::npos && paramName.find("special") != std::string::npos) {
+        this->alphas_[id] = namemap[paramName + "_alpha"];
+      }
+    }
+
   }
 
   void load(const std::string& name, bool markReloaded = true) {

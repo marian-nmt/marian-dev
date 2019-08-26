@@ -411,15 +411,13 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
     // TODO(emjotde) choice of 16 or 8 bit.
-    static auto namedmap = a->graph()->getRevNameMap();
-    std::string b_name = namedmap[b];
-    if (b_name == "") {
-      b_name = "F0::unnamed_alpha";
+    size_t nodeid = b->getId();
+    Expr alpha;
+    if (nodeid > b->graph()->alphas_.size()) {
+      alpha = b->graph()->alphas_.back();
     } else {
-      b_name = b_name + "_alpha";
+      alpha = b->graph()->alphas_[nodeid];
     }
-    static auto expmap = a->graph()->getNameMap();
-    Expr alpha = expmap[b_name];
     auto quant_a = int8_quantizeA(a, transA, clipValue, alpha);
     auto quant_b = int8_quantizeB(b, transB, clipValue);
     auto fake_bias = cpu::int8::PrepareFakeBiasForB(quant_b.first, quant_a.second, quant_b.second);
@@ -452,16 +450,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     // TODO @emjotde there should be a parameter
     bool autotune = false;
 
-    static auto namedmap = a->graph()->getRevNameMap();
-    std::string b_name = namedmap[b];
-    if (b_name == "") {
-      b_name = "F0::unnamed_alpha";
+    size_t nodeid = b->getId();
+    Expr alpha;
+    if (nodeid > b->graph()->alphas_.size()) {
+      alpha = b->graph()->alphas_.back();
     } else {
-      b_name = b_name + "_alpha";
+      alpha = b->graph()->alphas_[nodeid];
     }
-    
-    static auto expmap = a->graph()->getNameMap();
-    Expr alpha = expmap[b_name];
     if(autotune) {
       thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
 

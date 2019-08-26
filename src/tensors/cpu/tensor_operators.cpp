@@ -1343,12 +1343,13 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
   }
 }
 
-__m512 KennethSigmoid(__m512 from) {
+// Do most of a sigmoid, but for inputs < 1 you'll need to take 1 - output.
+// For a full Sigmoid, see KennethSigmoid
+inline __m512 KennethSigmoidPositive(__m512 from) {
   const int32_t kLookup = 32;
   const float kTaper = 5.0;
   const float kScaling = (kLookup - 1) / kTaper;
   const __m512 kScaleVec = _mm512_set1_ps(kScaling);
-  __mmask16 signs = _mm512_movepi32_mask(_mm512_castps_si512(from));
   __m512 scaled = _mm512_mul_ps(from, kScaleVec);
   __m512i as_int = _mm512_cvt_roundps_epi32(scaled, _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC);
   __m512i abs = _mm512_abs_epi32(as_int);
@@ -1358,7 +1359,13 @@ __m512 KennethSigmoid(__m512 from) {
   const __m512 kLookup1 = _mm512_set_ps(0x1.fc92c2p-1, 0x1.fbfa6cp-1, 0x1.fb47ep-1, 0x1.fa76b6p-1, 0x1.f981ccp-1, 0x1.f8633p-1, 0x1.f7140ap-1, 0x1.f58c74p-1, 0x1.f3c35ap-1, 0x1.f1ae64p-1, 0x1.ef41ccp-1, 0x1.ec7042p-1, 0x1.e92adcp-1, 0x1.e561p-1, 0x1.e1006ap-1, 0x1.dbf54p-1);
   __m512i looked_up = _mm512_permutex2var_epi32(_mm512_castps_si512(kLookup0), capped, _mm512_castps_si512(kLookup1));
   __m512 looked_up_f = _mm512_castsi512_ps(looked_up);
-  // TODO: return both 1-sigmoid and sigmoid.
+  return looked_up_f;
+}
+
+// A full sigmoid function with internal approximation.
+__m512 KennethSigmoid(__m512 from) {
+  __mmask16 signs = _mm512_movepi32_mask(_mm512_castps_si512(from));
+  __m512 looked_up_f = KennethSigmoidPositive(from);
   return _mm512_mask_sub_ps(looked_up_f, signs, _mm512_set1_ps(1.0f), looked_up_f);
 }
 
@@ -1374,10 +1381,15 @@ void HighwayForward(Tensor out,
   __m512 *oit = out->data<__m512>();
   const __m512 *end = it1 + in1->shape().elements() / 16;
   for (; it1 != end; ++it1, ++it2, ++itt, ++oit) {
-    __m512 sig = KennethSigmoid(*itt);
-    __m512 first = _mm512_mul_ps(sig, *it1);
-    __m512 oneminus = _mm512_sub_ps( _mm512_set1_ps(1.0f), sig);
-    *oit = _mm512_fmadd_ps(oneminus, *it2, first);
+    __mmask16 signs = _mm512_movepi32_mask(_mm512_castps_si512(*itt));
+    __m512 sig_positive = KennethSigmoidPositive(*itt);
+    __m512 one_minus_sig_positive = _mm512_sub_ps(_mm512_set1_ps(1.0f), sig_positive);
+
+    __m512 sigmoid = _mm512_mask_blend_ps(signs, sig_positive, one_minus_sig_positive);
+    __m512 one_minus_sigmoid = _mm512_mask_blend_ps(signs, one_minus_sig_positive, sig_positive);
+
+    __m512 first = _mm512_mul_ps(sigmoid, *it1);
+    *oit = _mm512_fmadd_ps(one_minus_sigmoid, *it2, first);
   }
 }
 

@@ -1055,17 +1055,20 @@ public:
       f = affine(inputDropped, Wf_, bf_);
     }
 
-    return {x, f};
+    Expr sigmoid_f = sigmoid(f);
+    Expr precomputed_part_of_highway = (1.0 - sigmoid_f) * x;
+
+    return {sigmoid_f, precomputed_part_of_highway};
   }
 
   State applyState(std::vector<Expr> xWs, State state, Expr mask = nullptr) override {
     auto recState = state.output;
     auto cellState = state.cell;
 
-    auto x = xWs[0];
-    auto f = xWs[1];
+    auto sigmoid_f = xWs[0];
+    auto precomputed_part_of_highway = xWs[1];
 
-    auto nextCellState = highway(cellState, x, f);  // rename to "gate"?
+    auto nextCellState = sigmoid_f * cellState + precomputed_part_of_highway;
     auto nextState = relu(nextCellState);
 
     auto maskedCellState = mask ? mask * nextCellState : nextCellState;

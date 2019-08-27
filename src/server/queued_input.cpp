@@ -48,16 +48,16 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
       // fill up the sentence tuple with source and/or target sentences
       SentenceTuple tup(job->unique_id); // job ID should be unique
       std::vector<std::string> const& snt = job->input;
-      auto start = std::clock();
+      // auto start = std::clock();
       for(size_t i = 0; i < snt.size(); ++i) {
         Words words = vocabs_[i]->encode(snt[i],true,inference_);
         if(words.empty())
           words.push_back(DEFAULT_EOS_ID);
         tup.push_back(words);
       }
-      auto lapsed = float(std::clock()-start)/CLOCKS_PER_SEC;
-      LOG(debug, "[service] Shipped job {} for translation after {}ms prep time.",
-          job->unique_id, 1000.*lapsed);
+      // auto lapsed = float(std::clock()-start)/CLOCKS_PER_SEC;
+      // LOG(trace, "[service] Shipped job {} for translation after {}ms prep time.",
+      // job->unique_id, 1000.*lapsed);
       job->dequeued();
       return tup;
     }
@@ -117,6 +117,7 @@ push(Ptr<server::Job> job) {
   // push a new item for translation
   std::chrono::milliseconds timeout(5000);
   auto status = job_queue_.push(job,timeout);
+  gettimeofday(&(job->queued.first),&(job->queued.second));
   return status == JobQueue::SUCCESS;
 }
 

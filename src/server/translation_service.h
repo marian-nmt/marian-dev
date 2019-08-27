@@ -145,7 +145,7 @@ public:
        size_t const priority=0,
        std::function<void (Ptr<Job> j)> callback
        =[=](Ptr<Job> j){return;}) {
-    auto starttime = std::clock();
+    // auto starttime = std::clock();
     auto job = New<Job>(ejid, input, nbest, priority);
     if (!jq_->push(job)) {
       job->error = New<Error>("Could not push to Queue.");
@@ -160,10 +160,10 @@ public:
       entry = &scheduled_jobs_[job->unique_id];
     }
     entry->first = job;
-    // LOG(info, "Pushed job No {}; {} jobs queued up.",
+    // LOG(debug, "Pushed job No {}; {} jobs queued up.",
     //     job->unique_id, jq_->size());
-    auto pushtime = float(std::clock()-starttime)/CLOCKS_PER_SEC;
-    LOG(debug,"[service] Pushing job took {}ms", 1000.* pushtime);
+    // auto pushtime = float(std::clock()-starttime)/CLOCKS_PER_SEC;
+    // LOG(debug,"[service] Pushing job took {}ms", 1000.* pushtime);
     return std::make_pair(job->unique_id, entry->second.get_future());
   }
 
@@ -183,17 +183,23 @@ public:
     std::istringstream buf(srcText);
     std::string line;
 
-    auto starttime = clock();
+    // auto starttime = clock();
     for (size_t linectr = 0; getline(buf,line); ++linectr) {
       ftrans.push_back(push(linectr,line).second);
     }
-    auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
-    LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
+    // auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
+    // LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
     std::ostringstream obuf;
     for (auto& t: ftrans) {
       Ptr<Job const> j = t.get();
-      LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
-          j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
+      // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
+      //     j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
+      // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f}/{:.2f}/{:.2f} seconds:",
+      //     j->unique_id,
+      //     j->timeBeforeQueue(),
+      //     j->timeInQueue(),
+      //     j->translationTime(),
+      //     j->totalTime());
       obuf << j->translation << std::endl;
     }
     std::string translation = obuf.str();
@@ -220,7 +226,7 @@ class NodeTranslation {
         // LOG(info,"Input: {}",line);
         auto foo = std::move(service.push(linectr,line));
         delayed_.push_back(std::move(foo.second));
-        LOG(debug, "[service] Scheduled job No. {}: {}", foo.first, line);
+        // LOG(debug, "[service] Scheduled job No. {}: {}", foo.first, line);
       }
       ends_with_eol_char_ = line.size() && line.back() == '\n';
       // @TODO: this needs a patch for windows w.r.t. EOL
@@ -241,8 +247,8 @@ class NodeTranslation {
       for (auto& f: delayed_) {
         Ptr<Job const> j = f.get();
         buf << j->translation << std::endl;
-        LOG(debug, "[service] Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
-            j->translationTime(), j->totalTime(), j->input[0], j->translation);
+        // LOG(debug, "[service] Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
+        // j->translationTime(), j->totalTime(), j->input[0], j->translation);
       }
       std::string translation = buf.str();
       if (!ends_with_eol_char_)

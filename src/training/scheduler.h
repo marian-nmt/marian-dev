@@ -21,7 +21,7 @@ private:
   timer::Timer heartBeatTimer_;
 
 
-  Ptr<mlflow::MLFlowWrapper> mlflow_;
+  Ptr<marian::mlflow::MLFlowWrapper> mlflow_;
 
   // determine scheduled LR decay factor (--lr-decay-inv-sqrt option)
   float getScheduledLRDecayFactor(const TrainingState& state) const {
@@ -147,9 +147,15 @@ public:
   }
 
   Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
-      : options_(options), state_(state) {
+      : options_(options), state_(state), mlflow_(new mlflow::MLFlowWrapper("http://localhost:5000", "test-exp")) {
     ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
     updateLearningRate(*state);
+
+    for (const auto& it : options->getYaml()) {
+      try {
+        mlflow_->logParam(it.first.as<std::string>(), it.second.as<std::string>());
+      } catch (...) {}
+    }
   }
 
   bool keepGoing() {
@@ -238,6 +244,7 @@ public:
         if(firstValidator)
           state_->validBest = value;
       }
+      mlflow_->logMetric(validator->type(), value, state_->batches);
 
       state_->validators[validator->type()]["last-best"]
           = validator->lastBest();
@@ -329,6 +336,24 @@ public:
             timer_.elapsed(),
             state_->wordsDisp / timer_.elapsed());
       }
+
+      double value = 0.0;
+
+      if(lossType == "ce-mean-words") {
+        value = state_->costSum / state_->costCount;
+      } else if(lossType == "ce-sum" && dispLabelCounts) {
+        value = state_->costSum / state_->costCount;
+      } else if(lossType == "ce-sum" && !dispLabelCounts) {
+        value = state_->costSum / state_->updatesDisp; // average over batches
+      } else if(lossType == "perplexity") {
+        value = std::exp(state_->costSum / state_->costCount);
+      } else if(lossType == "cross-entropy" || lossType == "ce-mean") { // backwards-compat, @TODO: get rid of this?
+        value = state_->costSum / state_->samplesDisp;
+      } else {
+        ABORT("Unknown loss type {}", lossType);
+      }
+
+      mlflow_->logMetric("train-" + lossType, value, state_->batches);
 
 
       timer_.start();

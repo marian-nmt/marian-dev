@@ -267,6 +267,17 @@ endif()
 
 find_package(Restclient-cpp)
 include_directories(${LIBRESTCLIENT_CPP_INCLUDE_DIRS})
+message("LIBRARIES: ${LIBRESTCLIENT_CPP_LIBRARIES}")
+message("INCLUDE: ${LIBRESTCLIENT_CPP_INCLUDE_DIRS}")
+link_libraries(${LIBRESTCLIENT_CPP_LIBRARIES})
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP jsoncpp)
+link_libraries(${JSONCPP_LIBRARIES})
+find_package(jsoncpp REQUIRED)
+message("FOUND CONFIG: ${jsoncpp_CONFIG}")
+message("INCLUDE DIRS: ${JSONCPP_INCLUDE_DIRS}")
+message("LIBRARIES: ${JSONCPP_lIBRARIES}")
 
 if(COMPILE_SERVER)
   find_package(OpenSSL)

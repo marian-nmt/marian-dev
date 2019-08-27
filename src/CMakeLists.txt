@@ -62,6 +62,8 @@ add_library(marian STATIC
   models/encoder_decoder.cpp
   models/transformer_stub.cpp
 
+  mlflow/mlflow_wrapper.cpp
+
   rescorer/score_collector.cpp
 
   translator/history.cpp

@@ -5,21 +5,15 @@
 #include <chrono>
 #include <vector>
 
-#include <json/json.h>
+#include <jsoncpp/json/json.h>
 
 #include <restclient-cpp/connection.h>
 #include <restclient-cpp/restclient.h>
 
+namespace marian {
+namespace mlflow {
 
-Json::Value str2json(const std::string& jsonInput) {
-      Json::Value root;
-      Json::Reader reader;
-      auto parsed = reader.parse(jsonInput.c_str(), root);
-      if (!parsed) {
-        std::cerr << "Could not parse json" << std::endl;
-      }
-      return root;
-}
+Json::Value str2json(const std::string& jsonInput);
 
 struct RunInfo {
   std::string runId;
@@ -95,6 +89,7 @@ struct RunData {
 
 
 struct MLFlowRun {
+  MLFlowRun() {}
   MLFlowRun(RunInfo runInfo, RunData runData)
     : runInfo(runInfo), runData(runData) {}
 
@@ -115,7 +110,7 @@ struct MLFlowRun {
 
 class MLFlowWrapper {
 public:
-  MLFlowWrapper(const std::string& url, const std::string& exp_name) {
+  explicit MLFlowWrapper(const std::string& url, const std::string& exp_name) {
     mUrl = url;
 
     RestClient::Response response = RestClient::post(
@@ -140,6 +135,7 @@ public:
     }
 
     std::cerr << "ExpId: " << mExpId << std::endl;
+    run_ = createRun();
   }
 
   MLFlowRun createRun() {
@@ -162,12 +158,12 @@ public:
     return run;
   }
 
-  int logMetric(const std::string metricName, double value, int steps, const MLFlowRun& run) {
+  void logMetric(const std::string metricName, double value, int steps) {
     std::stringstream ss;
 
     int timestamp = std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::system_clock::now().time_since_epoch()).count();
     ss << "{";
-    ss << "\"" << "run_id" << "\": "  << "\"" << run.runInfo.runId << "\"" << ", ";
+    ss << "\"" << "run_id" << "\": "  << "\"" << run_.runInfo.runId << "\"" << ", ";
     ss << "\"" << "key" << "\": "  << "\"" << metricName << "\"" << ", ";
     ss << "\"" << "value" << "\": "  << "\"" << value << "\"" << ", ";
     ss << "\"" << "timestamp" << "\": "  << "\"" << timestamp << "\"" << ", ";
@@ -184,16 +180,33 @@ public:
 
   }
 
-protected:
-  std::string getExperimentId() {
+  void logParam(const std::string paramName, const std::string paramValue) {
+    std::stringstream ss;
+
+    ss << "{";
+    ss << "\"" << "run_id" << "\": "  << "\"" << run_.runInfo.runId << "\"" << ", ";
+    ss << "\"" << "key" << "\": "  << "\"" << paramName << "\"" << ", ";
+    ss << "\"" << "value" << "\": "  << "\"" << paramValue << "\"";
+    ss << "}";
+
+    RestClient::Response response = RestClient::post(
+        mUrl + "/api/2.0/preview/mlflow/runs/log-parameter",
+        "application/json",
+        ss.str());
   }
+
+protected:
 
 private:
   std::string mUrl;
   std::string mExpId;
   std::string mRunId;
+  MLFlowRun run_;
 };
 
+
+}
+}
 
 // int main() {
   // MLFlowWrapper wrapper("http://localhost:5000", "test-exp");

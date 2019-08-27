@@ -5,6 +5,7 @@
 #include "training/validator.h"
 #include "training/communicator.h"
 #include "layers/loss.h"
+#include "mlflow/mlflow_wrapper.h"
 
 namespace marian {
 
@@ -18,6 +19,9 @@ private:
 
   timer::Timer timer_;
   timer::Timer heartBeatTimer_;
+
+
+  Ptr<mlflow::MLFlowWrapper> mlflow_;
 
   // determine scheduled LR decay factor (--lr-decay-inv-sqrt option)
   float getScheduledLRDecayFactor(const TrainingState& state) const {

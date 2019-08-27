@@ -265,6 +265,9 @@ else()
   message(STATUS "Using std::regex")
 endif()
 
+find_package(Restclient-cpp)
+include_directories(${LIBRESTCLIENT_CPP_INCLUDE_DIRS})
+
 if(COMPILE_SERVER)
   find_package(OpenSSL)
   if(OpenSSL_FOUND)

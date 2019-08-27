@@ -1,72 +1,125 @@
-#include "marian.h"
-#include "common/timer.h"
+#include <iostream>
+#include <cmath>
+#include <vector>
+
+#include <unistd.h>
+#include <cuda.h>
+#include <nccl.h>
+
+#define CUDA_CHECK(expr) do {                                                       \
+  cudaError_t rc = (expr);                                                         \
+  if(rc != cudaSuccess) {                                                           \
+    std::cerr << "CUDA error " << rc << " " << cudaGetErrorString(rc) << std::endl; \
+    abort(); \
+  } \
+ } while(0)
+
+#define NCCL_CHECK(expr) do {                                                       \
+  ncclResult_t rc = (expr);                                                         \
+  if(rc != ncclSuccess) {                                                           \
+    std::cerr << "NCCL error " << rc << " " << ncclGetErrorString(rc) << std::endl; \
+    abort(); \
+  } \
+ } while(0)
 
 int main(int argc, char** argv) {
-    using namespace marian;
+    int devices = 8;
+    int devs[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
-    {
-        auto g = New<ExpressionGraph>(true, false);
-        g->setDevice({0, DeviceType::cpu});
-        g->reserveWorkspaceMB(2512);
+    size_t bytes = std::pow(2, 32); // 4GB
 
-        timer::AutoTimer timer;
-        for(int i = 0; i < 100; ++i) {
-            g->clear();
+    size_t total = bytes / sizeof(float);
+    size_t shard = total / bytes; shard;
 
-            auto x = g->constant({1, 4, 8, 256}, inits::glorot_uniform);
+    ncclUniqueId id;
+    NCCL_CHECK(ncclGetUniqueId(&id));
+    
+    std::vector<float*> grads(devices);
+    std::vector<float*> params(devices);
 
-            auto W1 = g->param("W1", {256, 2048}, inits::glorot_uniform);
-            auto b1 = g->param("b1", {1, 2048}, inits::glorot_uniform);
+    cudaStream_t streams[devices];
+    ncclComm_t comms[devices]; 
 
-            auto out = affine(x, W1, b1);
+    std::cerr << "test 1" << std::endl;
 
-            for(int i = 2; i < 20; ++i) {
-                auto Wi = g->param("W" + std::to_string(i), {2048, 2048}, inits::glorot_uniform);
-                auto bi = g->param("b" + std::to_string(i), {1, 2048}, inits::glorot_uniform);
-
-                out = relu(affine(out, Wi, bi));
-            }
-
-            auto Wn = g->param("Wn", {2048, 256}, inits::glorot_uniform);
-            auto bn = g->param("bn", {1, 256}, inits::glorot_uniform);
-
-            auto y = affine(out, Wn, bn);
-
-            g->forward();
-        }
+    for(int i = 0; i < devices; ++i) {
+        CUDA_CHECK(cudaSetDevice(devs[i]));
+        CUDA_CHECK(cudaStreamCreate(&streams[i]));
+        CUDA_CHECK(cudaMalloc(&params[i], bytes));
+        CUDA_CHECK(cudaMalloc(&grads[i], bytes));
     }
 
-    {
-        auto g = New<ExpressionGraph>(true, true);
-        g->setDevice({0, DeviceType::cpu});
-        g->reserveWorkspaceMB(2512);
+    NCCL_CHECK(ncclCommInitAll(comms, devices, devs));
 
-        timer::AutoTimer timer;
-        for(int i = 0; i < 100; ++i) {
-            g->clear();
+    std::cerr << "test 2" << std::endl;
 
-            auto x = g->constant({1, 4, 8, 256}, inits::glorot_uniform);
+    for(int j = 0; j < 10; ++j) {
+        std::cerr << "Attempt: " << j << std::endl;
 
-            auto W1 = g->param("W1", {256, 2048}, inits::glorot_uniform);
-            auto b1 = g->param("b1", {1, 2048}, inits::glorot_uniform);
-
-            auto out = affine(x, W1, b1);
-
-            for(int i = 2; i < 20; ++i) {
-                auto Wi = g->param("W" + std::to_string(i), {2048, 2048}, inits::glorot_uniform);
-                auto bi = g->param("b" + std::to_string(i), {1, 2048}, inits::glorot_uniform);
-
-                out = relu(affine(out, Wi, bi));
-            }
-
-            auto Wn = g->param("Wn", {2048, 256}, inits::glorot_uniform);
-            auto bn = g->param("bn", {1, 256}, inits::glorot_uniform);
-
-            auto y = affine(out, Wn, bn);
-
-            g->forward();
+        for(int i = 0; i < devices; ++i) {
+            CUDA_CHECK(cudaSetDevice(devs[i]));
+            CUDA_CHECK(cudaStreamSynchronize(0));
         }
+
+        std::cerr << "test 3" << std::endl;
+
+        NCCL_CHECK(ncclGroupStart());
+        for(int i = 0; i < devices; ++i) {
+            const float*  sendbuf = grads[i];
+            float* recvbuf        = grads[i] + i * shard;
+            NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, shard, ncclFloat32, ncclSum, comms[i], streams[i]));
+        }
+        NCCL_CHECK(ncclGroupEnd());
+
+        std::cerr << "test 4" << std::endl;
+        
+        for(int i = 0; i < devices; ++i) {
+            CUDA_CHECK(cudaSetDevice(devs[i]));
+            CUDA_CHECK(cudaStreamSynchronize(streams[i]));
+        }
+
+        std::cerr << "test 5" << std::endl;
+
+        for(int i = 0; i < devices; ++i) {
+            CUDA_CHECK(cudaSetDevice(devs[i]));
+            CUDA_CHECK(cudaStreamSynchronize(0));
+            CUDA_CHECK(cudaMemcpy(params[i], grads[i], bytes, cudaMemcpyDeviceToDevice));
+        } // do stuff on stream 0
+        
+
+        for(int i = 0; i < devices; ++i) {
+            CUDA_CHECK(cudaSetDevice(devs[i]));
+            CUDA_CHECK(cudaStreamSynchronize(0));
+        }
+
+        std::cerr << "test 6" << std::endl;
+
+        NCCL_CHECK(ncclGroupStart());
+        for(int i = 0; i < devices; ++i) {
+            const float*  sendbuf = params[i] + i * shard;
+            float* recvbuf        = params[i];
+            NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, shard, ncclFloat32, comms[i], streams[i]));
+        }
+        NCCL_CHECK(ncclGroupEnd());
+
+        std::cerr << "test 7" << std::endl;
+        
+        for(int i = 0; i < devices; ++i) {
+            CUDA_CHECK(cudaSetDevice(devs[i]));
+            CUDA_CHECK(cudaStreamSynchronize(streams[i]));
+        }
+
+        std::cerr << "test 8" << std::endl;
+
     }
 
-    return 0;
+    for(int i = 0; i < devices; ++i) {
+        CUDA_CHECK(cudaSetDevice(devs[i]));
+        CUDA_CHECK(cudaFree(params[i]));
+        CUDA_CHECK(cudaFree(grads[i]));
+        CUDA_CHECK(cudaStreamDestroy(streams[i]));
+        NCCL_CHECK(ncclCommDestroy(comms[i]));
+    }
+
+    std::cerr << "test 9" << std::endl;
 }

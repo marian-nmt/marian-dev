@@ -32,15 +32,21 @@ public:
     LOG(info, "Loading model from {}", name);
     // load items from .npz file
     auto ioItems = io::loadItems(name);
-    // map names and remove a dummy matrix 'decoder_c_tt' from items to avoid creating isolated node
+
+    // map names and remove a dummy matrices from items to avoid creating isolated nodes
     for(auto it = ioItems.begin(); it != ioItems.end();) {
       if(it->name == "decoder_c_tt") {
         it = ioItems.erase(it);
+      } else if(it->name == "uidx") {
+        it = ioItems.erase(it);
+      } else if(it->name == "history_errs") {
+        it = ioItems.erase(it);
+      } else {
+        auto pair = nameMap_.find(it->name);
+        if(pair != nameMap_.end())
+          it->name = pair->second;
+        it++;
       }
-      auto pair = nameMap_.find(it->name);
-      if(pair != nameMap_.end())
-        it->name = pair->second;
-      ++it;
     }
     // load items into the graph
     graph->load(ioItems);

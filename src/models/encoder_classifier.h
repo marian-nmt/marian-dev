@@ -62,6 +62,7 @@ protected:
   std::vector<Ptr<ClassifierBase>> classifiers_;
 
   bool inference_{false};
+  size_t batchIndex_{0};
 
   std::set<std::string> modelFeatures_;
 
@@ -91,7 +92,8 @@ public:
   EncoderClassifier(Ptr<Options> options)
     : options_(options),
       prefix_(options->get<std::string>("prefix", "")),
-      inference_(options->get<bool>("inference", false)) {
+      inference_(options->get<bool>("inference", false)),
+      batchIndex_(options->get<size_t>("index", 0)) {
   modelFeatures_ = {"type",
                     "dim-vocabs",
                     "dim-emb",

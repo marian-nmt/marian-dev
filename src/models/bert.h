@@ -43,8 +43,8 @@ private:
 
   // Masking function, i.e. replaces a chosen word with either
   // a [MASK] symbol, itself or a random word
-  Word maskOut(Word word, Word mask, std::mt19937& engine) {
-    auto subBatch = subBatches_.front();
+  Word maskOut(Word word, Word mask, std::mt19937& engine, size_t batchIndex) {
+    auto subBatch = subBatches_[batchIndex];
 
     // @TODO: turn those threshold into parameters, adjustable from command line
     float r = (*randomPercent_)(engine);
@@ -71,12 +71,13 @@ public:
             const std::string& maskSymbol,
             const std::string& sepSymbol,
             const std::string& clsSymbol,
-            int dimTypeVocab)
+            int dimTypeVocab,
+            size_t batchIndex)
     : CorpusBatch(*batch),
       maskSymbol_(maskSymbol), sepSymbol_(sepSymbol), clsSymbol_(clsSymbol) {
 
     // BERT expects a textual first stream and a second stream with class labels
-    auto subBatch = subBatches_.front();
+    auto subBatch = subBatches_[batchIndex];
     const auto& vocab = *subBatch->vocab();
 
     // Initialize to sample random vocab id
@@ -111,30 +112,35 @@ public:
     for(int i = 0; i < words.size(); ++i) // collect words among which we will mask
       if(dontMask_.count(words[i]) == 0)  // do not add indices of special words
         selected.push_back(i);
+    
+    if(selected.empty()) // make sure we selected at least one element for masking, this will happen very rarely. 
+      selected.push_back(0); // position 0 should always exist as we remove zero-size samples in the batch generator, ignore dontMask_ in this special case.
+
     std::shuffle(selected.begin(), selected.end(), engine); // randomize positions
     selected.resize((size_t)std::ceil(selected.size() * maskFraction)); // select first x percent from shuffled indices
 
     for(int i : selected) {
       maskedPositions_.push_back(i);                // where is the original word?
       maskedWords_.push_back(words[i]);             // what is the original word?
-      words[i] = maskOut(words[i], maskId, engine); // mask that position
+      words[i] = maskOut(words[i], maskId, engine, batchIndex); // mask that position
     }
 
-    annotateSentenceIndices(dimTypeVocab);
+    annotateSentenceIndices(dimTypeVocab, batchIndex);
   }
 
   BertBatch(Ptr<CorpusBatch> batch,
             const std::string& sepSymbol,
             const std::string& clsSymbol,
-            int dimTypeVocab)
+            int dimTypeVocab,
+            size_t batchIndex)
     : CorpusBatch(*batch),
       maskSymbol_("dummy"), sepSymbol_(sepSymbol), clsSymbol_(clsSymbol) {
-    annotateSentenceIndices(dimTypeVocab);
+    annotateSentenceIndices(dimTypeVocab, batchIndex);
   }
 
-  void annotateSentenceIndices(int dimTypeVocab) {
+  void annotateSentenceIndices(int dimTypeVocab, size_t batchIndex) {
     // BERT expects a textual first stream and a second stream with class labels
-    auto subBatch = subBatches_.front();
+    auto subBatch = subBatches_[batchIndex];
     const auto& vocab = *subBatch->vocab();
     auto& words = subBatch->data();
 
@@ -191,12 +197,14 @@ public:
                                        opt<std::string>("bert-mask-symbol"),
                                        opt<std::string>("bert-sep-symbol"),
                                        opt<std::string>("bert-class-symbol"),
-                                       dimTypeVocab);
+                                       dimTypeVocab,
+                                       batchIndex_);
     } else if(modelType == "bert-classifier") { // we are probably fine-tuning a BERT model for a classification task
       bertBatch = New<data::BertBatch>(batch,
                                        opt<std::string>("bert-sep-symbol"),
                                        opt<std::string>("bert-class-symbol"),
-                                       dimTypeVocab); // only annotate sentence separators
+                                       dimTypeVocab,
+                                       batchIndex_); // only annotate sentence separators
     } else {
       ABORT("Unknown BERT-style model: {}", modelType);
     }
@@ -230,6 +238,8 @@ public:
     int dimWords = embeddings->shape()[-3];
 
     int dimTypeVocab = opt<int>("bert-type-vocab-size", 2);
+    if(dimTypeVocab == 0) // don't add sentence embeddings
+      return embeddings;
 
     Expr signal;
     if(learnedPosEmbeddings) {
@@ -350,8 +360,8 @@ public:
     else
       ABORT("Activation function {} not supported in BERT masked LM", activationType);
 
-    auto gamma = graph->param(prefix_ + "_ff_ln_scale", {1, dimModel}, inits::ones);
-    auto beta  = graph->param(prefix_ + "_ff_ln_bias",  {1, dimModel}, inits::zeros);
+    auto gamma = graph->param(prefix_ + "_ff_ln_scale", {1, dimModel}, inits::ones());
+    auto beta  = graph->param(prefix_ + "_ff_ln_bias",  {1, dimModel}, inits::zeros());
     intermediate = layerNorm(intermediate, gamma, beta);
 
     auto layer2 = mlp::mlp()

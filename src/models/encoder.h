@@ -11,6 +11,7 @@ protected:
   std::string prefix_{"encoder"};
   bool inference_{false};
   size_t batchIndex_{0};
+
 public: 
   EncoderBase(Ptr<Options> options)
       : options_(options),

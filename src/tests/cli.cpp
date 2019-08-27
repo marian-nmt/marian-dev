@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
   options->get<std::vector<std::string>>("defvec");
   options->get<bool>("bool");
   //w.get<std::string>("long");
-  options->get<std::string>("file");
+  //options->get<std::string>("file");
   //w.get<color>("enum");
 
   YAML::Emitter emit;

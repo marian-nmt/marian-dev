@@ -78,7 +78,7 @@ CLIWrapper::CLIWrapper(YAML::Node &config,
                        const std::string &footer,
                        size_t columnWidth,
                        size_t screenWidth)
-    : app_(std::make_shared<CLI::App>(description)),
+    : app_(New<CLI::App>(description)),
       defaultGroup_(header),
       currentGroup_(header),
       config_(config) {

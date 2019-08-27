@@ -73,7 +73,7 @@ public:
                      bool /*clean*/ = false) override {
     
     auto loss   = construct(graph, batch, inference_); // @TODO: unify nomenclature, e.g. rather use apply
-    auto count = graph->constant({(int)batch->size(), 1}, inits::from_value(1.f));
+    auto count = graph->constant({(int)batch->size(), 1}, inits::fromValue(1.f));
 
     return New<RationalLoss>(loss, count);
   }
@@ -125,7 +125,7 @@ protected:
     auto features
         = std::static_pointer_cast<data::DataBatch>(batch)->features();
     auto x = g->constant({(int)batch->size(), dims[0]},
-                         inits::from_vector(features));
+                         inits::fromVector(features));
 
     // Construct hidden layers
     std::vector<Expr> layers, weights, biases;
@@ -149,11 +149,11 @@ protected:
 
       // Construct a weight node for the outgoing connections from layer i
       weights.emplace_back(
-          g->param("W" + std::to_string(i), {in, out}, inits::glorot_uniform));
+          g->param("W" + std::to_string(i), {in, out}, inits::glorotUniform()));
 
       // Construct a bias node. These weights are initialized to zero
       biases.emplace_back(
-          g->param("b" + std::to_string(i), {1, out}, inits::zeros));
+          g->param("b" + std::to_string(i), {1, out}, inits::zeros()));
     }
 
     // Perform matrix multiplication and addition for the last layer

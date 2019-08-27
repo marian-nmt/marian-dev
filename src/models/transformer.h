@@ -28,6 +28,9 @@ protected:
   using Base::options_; using Base::inference_; using Base::batchIndex_;
   std::unordered_map<std::string, Expr> cache_;
 
+  bool depthScaling_{false}; // As recommended in the GPT-2 paper, down-scale layer weights by a factor of 1 / sqrt(depth);
+  size_t depth_{0}; // needs to be filled
+
   // attention weights produced by step()
   // If enabled, it is set once per batch during training, and once per step during translation.
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
@@ -72,8 +75,8 @@ public:
 
       // fill with increasing numbers until current length or maxPos
       std::vector<IndexType> positions(dimWords, numPos - 1);
-      for(int i = 0; i < std::min(dimWords, numPos); ++i)
-        positions[i] = i;
+      for(int i = start; i < std::min(dimWords + start, numPos); ++i)
+        positions[i - start] = i;
 
       auto signal = embeddingLayer->apply(positions, {dimWords, 1, dimEmb});
       embeddings = embeddings + signal;
@@ -83,7 +86,7 @@ public:
       embeddings = std::sqrt((float)dimEmb) * embeddings;
 
       auto signal = graph_->constant({dimWords, 1, dimEmb},
-                                     inits::sinusoidalPositionEmbeddings(start));
+                                     inits::sinusoidalPositionEmbeddings(start)); // @TODO: review why Fairseq shifts this by 1 or 2
       embeddings = embeddings + signal;
     }
 
@@ -91,7 +94,7 @@ public:
   }
 
   virtual Expr addSpecialEmbeddings(Expr input, int start = 0, Ptr<data::CorpusBatch> /*batch*/ = nullptr) const {
-    bool trainPosEmbeddings = opt<bool>("transformer-train-positions", false);
+    bool trainPosEmbeddings = opt<bool>("transformer-train-position-embeddings", false);
     return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }
 
@@ -101,13 +104,13 @@ public:
     for(int i = 0; i < length; ++i)
       for(int j = 0; j <= i; ++j)
         vMask[i * length + j] = 1.f;
-    return graph_->constant({1, length, length}, inits::from_vector(vMask));
+    return graph_->constant({1, length, length}, inits::fromVector(vMask));
   }
 
   // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
   static Expr transposedLogMask(Expr mask) { // mask: [-4: beam depth=1, -3: batch size, -2: vector dim=1, -1: max length]
     auto ms = mask->shape();
-    mask = (1 - mask) * -99999999.f;
+    mask = (1 - mask) * -9999.f; // @TODO: limit by type!
     return reshape(mask, {ms[-3], 1, ms[-2], ms[-1]}); // [-4: batch size, -3: num heads broadcast=1, -2: max length broadcast=1, -1: max length]
   }
 
@@ -140,13 +143,16 @@ public:
   }
 
   // like affine() but with built-in parameters, activation, and dropout
-  static inline
-  Expr dense(Expr x, std::string prefix, std::string suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
-  {
+  Expr dense(Expr x, std::string prefix, std::string suffix, int outDim,
+             const std::function<Expr(Expr)>& actFn = nullptr,
+             float dropProb = 0.0f) const {
     auto graph = x->graph();
 
-    auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorot_uniform);
-    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros);
+    // @TODO: the initializer should be an optional parameter to dense, to be fixed with better layer structure
+    auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim },
+                          inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+
+    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
 
     x = affine(x, W, b);
     if (actFn)
@@ -158,9 +164,9 @@ public:
 
   Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) const {
     int dimModel = x->shape()[-1];
-    auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones);
-    auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros);
-    return marian::layerNorm(x, scale, bias, 1e-6f);
+    auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
+    auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
+    return marian::layerNorm(x, scale, bias, 1e-5f);
   }
 
   Expr preProcess(std::string prefix, std::string ops, Expr input, float dropProb = 0.0f) const {
@@ -240,6 +246,7 @@ public:
 
     // multiplicative attention with flattened softmax
     float scale = 1.0f / std::sqrt((float)dk); // scaling to avoid extreme values due to matrix multiplication
+
     auto z = bdot(q, k, false, true, scale); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
 
     // mask out garbage beyond end of sequences
@@ -252,12 +259,12 @@ public:
       collectOneHead(weights, dimBeam);
 
     // optional dropout for attention weights
-    float dropProb
-        = inference_ ? 0 : opt<float>("transformer-dropout-attention");
+    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout-attention");
     weights = dropout(weights, dropProb);
 
     // apply attention weights to values
     auto output = bdot(weights, v);   // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
+
     return output;
   }
 
@@ -272,8 +279,9 @@ public:
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
     // @TODO: good opportunity to implement auto-batching here or do something manually?
-    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorot_uniform);
-    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros);
+
+    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
@@ -282,8 +290,8 @@ public:
     // @TODO: set this automatically by memoizing encoder context and
     // memoization propagation (short-term)
     if (!cache || (cache && cache_.count(prefix + "_keys") == 0)) {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorot_uniform);
-      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros);
+      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -295,8 +303,8 @@ public:
 
     Expr vh;
     if (!cache || (cache && cache_.count(prefix + "_values") == 0)) {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorot_uniform);
-      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros);
+      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
@@ -318,8 +326,8 @@ public:
     bool project = !opt<bool>("transformer-no-projection");
     if(project || dimAtt != dimOut) {
       auto Wo
-        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorot_uniform);
-      auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros);
+        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+      auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
       output = affine(output, Wo, bo);
     }
 
@@ -504,7 +512,11 @@ public:
 
 class EncoderTransformer : public Transformer<EncoderBase> {
 public:
-  EncoderTransformer(Ptr<Options> options) : Transformer(options) {}
+  EncoderTransformer(Ptr<Options> options) : Transformer(options) {
+    depthScaling_ = options_->get<bool>("transformer-depth-scaling");
+    depth_ = 1;
+  }
+
   virtual ~EncoderTransformer() {}
 
   // returns the embedding matrix based on options
@@ -555,6 +567,7 @@ public:
     // create the embedding matrix, considering tying and some other options
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
+
     Ptr<IEmbeddingLayer> embedding;
     if (options_->has("ulr") && options_->get<bool>("ulr") == true)
       embedding = createULREmbeddingLayer(); // embedding uses ULR
@@ -585,9 +598,21 @@ public:
 
     layerMask = transposedLogMask(layerMask); // [-4: batch size, -3: 1, -2: vector dim=1, -1: max length]
 
+    if(opt<bool>("transformer-encoder-summary", false)) {
+      // first context, so we just average and concatenate at the beginning
+      auto context = mean(layer,  /*axis=*/-2);
+      layer = concatenate({context, layer},  /*axis=*/-2);
+      
+      // add a mask for first position, which is context, 0 as this is a log mask
+      auto contextMask = graph_->zeros({1, dimBatch, 1, 1});
+      layerMask = concatenate({contextMask, layerMask}, /*axis=*/-1);
+    }
+
     // apply encoder layers
     auto encDepth = opt<int>("enc-depth");
     for(int i = 1; i <= encDepth; ++i) {
+      depth_ = i;
+
       layer = LayerAttention(prefix_ + "_l" + std::to_string(i) + "_self",
                              layer, // query
                              layer, // keys
@@ -595,6 +620,17 @@ public:
                              layerMask);
 
       layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+
+      if(opt<bool>("transformer-encoder-summary", false)) {
+        // take all postions apart from first, which is the previous context
+        auto nocontext = slice(layer, /*axis=*/-2, Slice(1, Slice::END));
+        // create a new context
+        auto context   = mean(nocontext,  /*axis=*/-2);
+        // concatenate context and words, context is first
+        layer = concatenate({context, nocontext},  /*axis=*/-2);
+      }
+
+      checkpoint(layer);
     }
 
     // restore organization of batch and time steps. This is currently required
@@ -655,7 +691,10 @@ private:
   }
 
 public:
-  DecoderTransformer(Ptr<Options> options) : Transformer(options) {}
+  DecoderTransformer(Ptr<Options> options) : Transformer(options) {
+    depthScaling_ = options_->get<bool>("transformer-depth-scaling");
+    depth_ = options_->get<size_t>("dec-depth");
+  }
 
   virtual Ptr<DecoderState> startState(
       Ptr<ExpressionGraph> graph,
@@ -668,7 +707,7 @@ public:
       int dimBatch = (int)batch->size();
       int dim = opt<int>("dim-emb");
 
-      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
+      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros());
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers
@@ -746,11 +785,11 @@ public:
       encoderMask = reshape(transposeTimeBatch(encoderMask),
                             {1, dimBatch, 1, dimSrcWords});
       encoderMask = transposedLogMask(encoderMask);
-      if(dimBeam > 1)
+      if(dimBeam > 1) // why?
         encoderMask = repeat(encoderMask, dimBeam, /*axis=*/ -4);
 
-      encoderContexts.push_back(encoderContext);
-      encoderMasks.push_back(encoderMask);
+      encoderContexts.push_back(checkpoint(encoderContext));
+      encoderMasks.push_back(checkpoint(encoderMask));
     }
 
     rnn::States prevDecoderStates = state->getStates();
@@ -765,6 +804,8 @@ public:
              decDepth);
 
     for(int i = 0; i < decDepth; ++i) {
+      depth_ = i + 1;
+
       std::string layerNo = std::to_string(i + 1);
       if (!tiedLayers.empty())
         layerNo = std::to_string(tiedLayers[i]);
@@ -785,6 +826,8 @@ public:
       else
         ABORT("Unknown auto-regressive layer type in transformer decoder {}",
               layerType);
+
+      checkpoint(query);
 
       // source-target attention
       // Iterate over multiple encoders and simply stack the attention blocks
@@ -821,16 +864,17 @@ public:
                                  saveAttentionWeights);
         }
       }
+      checkpoint(query);
 
       // remember decoder state
       decoderStates.push_back(decoderState);
 
       query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+      
+      checkpoint(query);
     }
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
-
-    //************************************************************************//
 
     // final feed-forward layer (output)
     if(shortlist_)

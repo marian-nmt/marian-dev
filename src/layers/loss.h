@@ -29,7 +29,7 @@ public:
 
   RationalLoss(Expr loss, float count)
   : loss_(loss),
-    count_(constant_like(loss, inits::from_value(count))) {}
+    count_(constant_like(loss, inits::fromValue(count))) {}
 
   RationalLoss(const RationalLoss& other)
   : loss_(other.loss_), count_(other.count_) {}
@@ -243,7 +243,7 @@ private:
     if(count_)
       return count_; // keep the existing '1'
     else
-      return current.count()->graph()->ones({1}); // just '1' as labels are factored into loss_
+      return current.count()->graph()->ones({1}, current.loss()->value_type()); // just '1' as labels are factored into loss_
   }
 
 public:
@@ -275,8 +275,8 @@ protected:
     ABORT_IF(!loss, "Loss has not been computed");
     ABORT_IF(!labels, "Labels have not been computed");
 
-    Expr lossSum   = loss;
-    Expr labelsSum = labels;
+    Expr lossSum   = cast(loss, Type::float32); // accumulate in float32
+    Expr labelsSum = cast(labels, Type::float32);
     for(int i = 0; i < axes_.size(); ++i) {
       lossSum   = sum(lossSum, axes_[i]);
       labelsSum = sum(labelsSum, axes_[i]);
@@ -289,7 +289,7 @@ protected:
   RationalLoss reduce(Expr loss) {
     ABORT_IF(!loss, "Loss has not been computed");
 
-    Expr  lossSum    = loss;
+    Expr  lossSum = cast(loss, Type::float32); // accumulate in float32, probably a non-op here
     for(int i = 0; i < axes_.size(); ++i)
       lossSum = sum(lossSum, axes_[i]);
 
@@ -335,7 +335,7 @@ protected:
     // for bert training or classification the time dimension is lot.
     // Here safeguard against 2d classifier output, adds 1 on the left, non-op.
 
-    Expr ce = cross_entropy(logits, labelIndices);
+    Expr ce = cast(cross_entropy(logits, labelIndices), Type::float32); // compute values in 32 bit
 
     if(labelSmoothing_ > 0) {
       // @TODO: add this to CE kernels instead
@@ -345,17 +345,18 @@ protected:
       // and H(u,p) penalizes deviation of p from u, u being uniform distribution over vocab V => u_v = 1/|V|.
       // H(u,p) = - \sum_{v \in V} u_v * \log p_v = - 1/|V| \sum_{v \in V} \log \softmax_v => -mean(logsoftmax(logits))
       // ceq = -H(u,p) - avoid one kernel call by negating in the interpolation below
-      Expr ceq = mean(logsoftmax(logits), /*axis=*/ -1);
+
+      Expr ceq = mean(cast(logsoftmax(logits), Type::float32), /*axis=*/ -1); // @TODO: this is expensive for float32! Integrate with CE
 
       // H(q',p) = (1 - eps) * H(q,p) - eps * -H(u,p)
       ce = (1 - labelSmoothing_) * ce - labelSmoothing_ * ceq;
     }
 
     if(mask)
-      ce = ce * mask;
+      ce = ce * cast(mask, Type::float32);
 
     if(labelWeights)
-      ce = ce * labelWeights;
+      ce = ce * cast(labelWeights, Type::float32);
 
     return ce;
   }

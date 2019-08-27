@@ -1,7 +1,6 @@
 # Unit tests
 add_subdirectory(units)
 
-
 # Testing apps
 set(APP_TESTS
     logger

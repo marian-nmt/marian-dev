@@ -183,11 +183,17 @@ public:
 // Seems to work well enough with beam-size=1. Turn on
 // with --output-sampling during translation with marian-decoder
 class GumbelSoftmaxStep : public CostStep {
+private:
+  float temperature_{1.f};
+
 public:
+  GumbelSoftmaxStep(float temperature = 1.f) :
+  temperature_(temperature) {}
+
   virtual Ptr<DecoderState> apply(Ptr<DecoderState> state) override {
     auto logits = state->getLogProbs();
 
-    auto logprobs = logsoftmax(logits + constant_like(logits, inits::gumbel));
+    auto logprobs = logsoftmax((logits / temperature_) + constant_like(logits, inits::gumbel()));
 
     state->setLogProbs(logprobs);
     return state;
@@ -278,8 +284,8 @@ inline Ptr<ModelBase> add_cost(Ptr<EncoderDecoder> encdec,
     case usage::scoring:
       return New<Scorer>(encdec, New<EncoderDecoderCE>(options));
     case usage::translation:
-      if(options->get<bool>("output-sampling", false))
-        return New<Stepwise>(encdec, New<GumbelSoftmaxStep>());
+      if(options->get<float>("output-sampling", 0.0f) != 0.0f)
+        return New<Stepwise>(encdec, New<GumbelSoftmaxStep>(options->get<float>("output-sampling")));
       else
         return New<Stepwise>(encdec, New<LogSoftmaxStep>());
     case usage::raw:

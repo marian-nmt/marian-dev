@@ -33,6 +33,7 @@ public:
     // This is currently safe as the translator is either created stand-alone or
     // or config is created anew from Options in the validator
     options_->set("inference", true);
+    options_->set("shuffle", "none");
 
     corpus_ = New<data::Corpus>(options_, true);
 
@@ -57,6 +58,8 @@ public:
       auto task = [&](DeviceId device, size_t id) {
         auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
         graph->setDevice(device);
+        auto prec = options_->get<std::vector<std::string>>("precision");
+        graph->setParameterType(typeFromString(prec[0]));
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
@@ -87,7 +90,9 @@ public:
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
 
-    bg.prepare(false);
+    bg.prepare();
+
+    bool doNbest = options_->get<bool>("n-best");
 
     for(auto batch : bg) {
       auto task = [=](size_t id) {
@@ -109,7 +114,7 @@ public:
           collector->Write((long)history->GetLineNum(),
                            best1.str(),
                            bestn.str(),
-                           options_->get<bool>("n-best"));
+                           doNbest);
         }
 
 
@@ -119,13 +124,12 @@ public:
             && id % 1000 == 0)  // hard beat once every 1000 batches
         {
           auto progress = 0.f; //fake progress for now
-          fprintf(stdout, "PROGRESS: %.2f%%\n", progress);
-          fflush(stdout);
+          fprintf(stderr, "PROGRESS: %.2f%%\n", progress);
+          fflush(stderr);
         }
       };
 
       threadPool.enqueue(task, batchId++);
-
     }
   }
 };
@@ -148,6 +152,7 @@ public:
   TranslateService(Ptr<Options> options) : options_(options) {
     // initialize vocabs
     options_->set("inference", true);
+    options_->set("shuffle", "none");
 
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
@@ -169,6 +174,8 @@ public:
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
       graph->setDevice(device);
+      auto prec = options_->get<std::vector<std::string>>("precision");
+      graph->setParameterType(typeFromString(prec[0]));
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
@@ -188,7 +195,7 @@ public:
     auto printer = New<OutputPrinter>(options_, trgVocab_);
     size_t batchId = 0;
 
-    batchGenerator.prepare(false);
+    batchGenerator.prepare();
 
     {
       ThreadPool threadPool_(numDevices_, numDevices_);

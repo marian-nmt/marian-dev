@@ -81,7 +81,7 @@ private:
   std::string alignment_;
   float alignmentThreshold_{0.f};
 
-  std::string getAlignment(const Ptr<Hypothesis>& hyp);
+  std::string getAlignment(const Hypothesis::PtrType& hyp);
 
   float getAlignmentThreshold(const std::string& str) {
     try {

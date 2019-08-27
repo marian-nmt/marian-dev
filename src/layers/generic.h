@@ -83,20 +83,20 @@ public:
         num = std::to_string(i);
 
       Expr W = g->param(
-          name + "_W" + num, {in->shape()[-1], dim}, inits::glorot_uniform);
-      Expr b = g->param(name + "_b" + num, {1, dim}, inits::zeros);
+          name + "_W" + num, {in->shape()[-1], dim}, inits::glorotUniform());
+      Expr b = g->param(name + "_b" + num, {1, dim}, inits::zeros());
 
       if(useLayerNorm) {
         if(useNematusNorm) {
           auto ln_s = g->param(
-              name + "_ln_s" + num, {1, dim}, inits::from_value(1.f));
-          auto ln_b = g->param(name + "_ln_b" + num, {1, dim}, inits::zeros);
+              name + "_ln_s" + num, {1, dim}, inits::fromValue(1.f));
+          auto ln_b = g->param(name + "_ln_b" + num, {1, dim}, inits::zeros());
 
           outputs.push_back(
               layerNorm(affine(in, W, b), ln_s, ln_b, NEMATUS_LN_EPS));
         } else {
           auto gamma = g->param(
-              name + "_gamma" + num, {1, dim}, inits::from_value(1.0));
+              name + "_gamma" + num, {1, dim}, inits::fromValue(1.0));
 
           outputs.push_back(layerNorm(dot(in, W), gamma, b));
         }
@@ -176,13 +176,13 @@ public:
         Wt_ = tiedParam_;
       } else {
         if (graph_->get(name + "_W")) { // support of legacy models that did not transpose
-          Wt_ = graph_->param(name + "_W", {input->shape()[-1], dim}, inits::glorot_uniform2(/*fanIn=*/true, /*fanOut=*/false)); // @TODO: unify initializers, already done in other branch
+          Wt_ = graph_->param(name + "_W", {input->shape()[-1], dim}, inits::glorotUniform(/*fanIn=*/true, /*fanOut=*/false));
           isLegacyUntransposedW = true;
         }
         else // this is the regular case:
-          Wt_ = graph_->param(name + "_Wt", {dim, input->shape()[-1]}, inits::glorot_uniform2(/*fanIn=*/false, /*fanOut=*/true)); // @TODO: unify initializers, already done in other branch
+          Wt_ = graph_->param(name + "_Wt", {dim, input->shape()[-1]}, inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true));
       }
-      b_ = graph_->param(name + "_b", {1, dim}, inits::zeros);
+      b_ = graph_->param(name + "_b", {1, dim}, inits::zeros());
     }
 
     if (shortlist_) {
@@ -213,14 +213,13 @@ public:
 
     bool fixed = opt<bool>("fixed", false);
 
-    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
-    NodeInitializer initFunc = inits::glorot_uniform2(/*fanIn=*/false, /*fanOut=*/true);
+    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true);
 
     if (options_->has("embFile")) {
       std::string file = opt<std::string>("embFile");
       if (!file.empty()) {
         bool norm = opt<bool>("normalization", false);
-        initFunc = inits::from_word2vec(file, dimVoc, dimEmb, norm);
+        initFunc = inits::fromWord2vec(file, dimVoc, dimEmb, norm);
       }
     }
 
@@ -235,7 +234,7 @@ public:
 
     auto batchEmbeddings = apply(subBatch->data(), { dimWords, dimBatch, dimEmb });
     auto batchMask = graph->constant({ dimWords, dimBatch, 1 },
-                                     inits::from_vector(subBatch->mask()));
+                                     inits::fromVector(subBatch->mask()));
     return std::make_tuple(batchEmbeddings, batchMask);
   }
 
@@ -258,25 +257,25 @@ public:
     bool fixed = opt<bool>("fixed", false);
 
     // Embedding layer initialization should depend only on embedding size, hence fanIn=false
-    NodeInitializer initFunc = inits::glorot_uniform2(/*fanIn=*/false, /*fanOut=*/true);
+    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true);
 
     std::string queryFile = opt<std::string>("ulrQueryFile");
     std::string keyFile = opt<std::string>("ulrKeysFile");
     bool trainTrans = opt<bool>("ulrTrainTransform", false);
     if (!queryFile.empty() && !keyFile.empty()) {
-      initFunc = inits::from_word2vec(queryFile, dimQueries, dimUlrEmb, false);
+      initFunc = inits::fromWord2vec(queryFile, dimQueries, dimUlrEmb, false);
       name = "ulr_query";
       fixed = true;
       auto query_embed = graph_->param(name, { dimQueries, dimUlrEmb }, initFunc, fixed);
       ulrEmbeddings_.push_back(query_embed);
       // keys embeds
-      initFunc = inits::from_word2vec(keyFile, dimKeys, dimUlrEmb, false);
+      initFunc = inits::fromWord2vec(keyFile, dimKeys, dimUlrEmb, false);
       name = "ulr_keys";
       fixed = true;
       auto key_embed = graph_->param(name, { dimKeys, dimUlrEmb }, initFunc, fixed);
       ulrEmbeddings_.push_back(key_embed);
       // actual  trainable embedding
-      initFunc = inits::glorot_uniform;
+      initFunc = inits::glorotUniform();
       name = "ulr_embed";
       fixed = false;
       auto ulr_embed = graph_->param(name, {dimKeys , dimEmb }, initFunc, fixed);  // note the reverse dim
@@ -288,7 +287,7 @@ public:
       // ulr transformation matrix
       //initFunc = inits::eye(1.f); // identity matrix  - is it ok to init wiht identity or shall we make this to the fixed case only
       if (trainTrans) {
-        initFunc = inits::glorot_uniform;
+        initFunc = inits::glorotUniform();
         fixed = false;
       }
       else
@@ -300,7 +299,7 @@ public:
       auto ulrTransform = graph_->param(name, { dimUlrEmb, dimUlrEmb }, initFunc, fixed);
       ulrEmbeddings_.push_back(ulrTransform);
 
-      initFunc = inits::from_value(1.f);  // TBD: we should read sharable flags here - 1 means all sharable - 0 means no universal embeddings - should be zero for top freq only
+      initFunc = inits::fromValue(1.f);  // TBD: we should read sharable flags here - 1 means all sharable - 0 means no universal embeddings - should be zero for top freq only
       fixed = true;
       name = "ulr_shared";
       auto share_embed = graph_->param(name, { dimQueries, 1 }, initFunc, fixed);
@@ -345,7 +344,7 @@ public:
     auto batchEmbeddings = reshape(chosenEmbeddings_mix, { dimWords, dimBatch, dimEmb });
     auto graph = ulrEmbeddings_.front()->graph();
     auto batchMask = graph->constant({ dimWords, dimBatch, 1 },
-                                     inits::from_vector(subBatch->mask()));
+                                     inits::fromVector(subBatch->mask()));
     return std::make_tuple(batchEmbeddings, batchMask);
   }
 

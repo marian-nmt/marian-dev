@@ -69,12 +69,17 @@ int main(int argc, char* argv[])
 {
 
   // Start the service
-  auto options = parseOptions(argc, argv, cli::mode::server, true);
+  ConfigParser cp(cli::mode::server);
+  cp.addOption<int>("--queue-timeout","Server Options",
+                    "timeout for queue in ms",100);
+  auto options = cp.parseOptions(argc, argv, true);
   auto service = New<server::TranslationService<BeamSearch>>(options);
   service->start();
 
   auto pool = New<ThreadPool>(std::thread::hardware_concurrency(),
                               std::thread::hardware_concurrency());
+
+
 
   // Start the server
   WSS server;

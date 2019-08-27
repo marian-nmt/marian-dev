@@ -100,6 +100,22 @@ __global__ void gMaxElement(float* d_out,
   }
 }
 
+__global__ void gBumpScoresKern(float * scores,
+                            uint32_t* idx,
+                            float bumpVal) {
+  const int tid = threadIdx.x;
+  scores[idx[tid]] += bumpVal;
+}
+
+void gBumpScores(std::vector<uint32_t>& ids, float * in_, float bumpVal) {
+  const int numThreads = ids.size();
+  uint32_t * cudaMem;
+  CUDA_CHECK(cudaMalloc((void**)&cudaMem, numThreads * sizeof(uint32_t)));
+  CUDA_CHECK(cudaMemcpy((void*)cudaMem, ids.data(), numThreads * sizeof(uint32_t), cudaMemcpyHostToDevice));
+  gBumpScoresKern<<<1, numThreads>>>(in_, cudaMem, bumpVal);
+  CUDA_CHECK(cudaFree(cudaMem));
+}
+
 __global__ void gMaxElementUpdate(float* binCosts,
                                   int* binIdxs,
                                   float* probs,

@@ -157,10 +157,17 @@ public:
     float* in = in_->data();
     if (!currTrieNode) //Check for null ptrs
       return;
+    std::vector<uint32_t> idxs_(currTrieNode->size());
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
-      in[index] += bumpVal;
+      if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
+        idxs_.push_back(index);
+      } else {
+        in[index] += bumpVal;
+      }
     }
+    if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
+      gBumpScores(idxs_, in, bumpVal);
   }
 
   void bumpScoresBatch(Tensor in_, size_t batchID, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
@@ -170,10 +177,17 @@ public:
     float* in = in_->data();
     if (!currTrieNode) //Check for null ptrs
       return;
+    std::vector<uint32_t> idxs_(currTrieNode->size());
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
-      in[index] += bumpVal;
+      if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
+        idxs_.push_back(index);
+      } else {
+        in[index] += bumpVal;
+      }
     }
+    if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
+      gBumpScores(idxs_, in, bumpVal);
   }
 
   /* When reverse is false, we filter out beams that do not

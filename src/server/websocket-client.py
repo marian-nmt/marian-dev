@@ -9,7 +9,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-b", "--batch-size", type=int, default=1)
     parser.add_argument("-p", "--port", type=int, default=8080)
-    parser.add_argument("file",type=file,nargs='?')
+    parser.add_argument("file",type=open,nargs='?')
     args = parser.parse_args()
     print("PORT: %d"%args.port)
 
@@ -23,14 +23,15 @@ if __name__ == "__main__":
     if args.file:
         text = regex.sub(r'\n',r'\\n',args.file.read())
         count = 1
-        payload = '{ "id": %d, "text": "%s"}'%(count, text.decode('utf8'))
+        payload = '{"id": %d, "text": "%s"}'%(count, text)
         print(payload)
-        ws.send('{ "id": %d, "text": "%s"}'%(count, text.decode('utf8')))
+        ws.send(payload)
+        result = ws.recv()
+        print(result)
     else:        
         for line in sys.stdin:
             count += 1
             ws.send('{ "id": %d, "text": "%s"}'%(count, line.decode('utf8').strip()))
->>>>>>> Log some timing info with log level 'debug'; more informative error message on invalid Json in websocket-server.
 
     if args.file:
         text = regex.sub(r'\n',r'\\n',args.file.read())

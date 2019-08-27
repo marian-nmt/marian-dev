@@ -85,6 +85,7 @@ public:
   void
   finish(Ptr<History const> h, bool const R2L, Vocab const& V)
   {
+    // auto starttime = clock();
     history = h;
     auto nbest_histories = h->NBest(nbestlist_size,true);
     for (auto& hyp: nbest_histories) {
@@ -95,6 +96,7 @@ public:
     if (nbest.size())
       translation = nbest[0].second;
     gettimeofday(&finished.first, &finished.second);
+    // LOG(debug,"Finishing Job took {} sec.", float(clock()-starttime)/CLOCKS_PER_SEC);
   }
 
   float
@@ -105,7 +107,6 @@ public:
   }
 
   float
-
   timeBeforeQueue() const {
     struct timeval t;
     timeval_subtract_(t, queued.first, created.first);

@@ -71,6 +71,61 @@ void addMetaToItems(const std::string& meta,
   items.emplace_back(std::move(item));
 }
 
+static std::unordered_map<std::string, float> alham_map({
+{"Wemb", 0.9296592},
+{"decoder_l1_context_Wk", 0.99786574},
+{"decoder_l1_context_Wo", 0.53925306},
+{"decoder_l1_context_Wq", 0.70678043},
+{"decoder_l1_context_Wv", 0.4280936},
+{"decoder_l1_ffn_W1", 1.1141714},
+{"decoder_l1_ffn_W2", 1.229842},
+{"decoder_l1_rnn_W", 0.70819724},
+{"decoder_l1_rnn_Wf", 0.78009325},
+{"encoder_l1_ffn_W1", 0.45678806},
+{"encoder_l1_ffn_W2", 0.8775526},
+{"encoder_l1_self_Wk", 1.1568298},
+{"encoder_l1_self_Wo", 0.17897393},
+{"encoder_l1_self_Wq", 1.2465283},
+{"encoder_l1_self_Wv", 0.20422521},
+{"encoder_l2_ffn_W1", 0.5061755},
+{"encoder_l2_ffn_W2", 1.2318062},
+{"encoder_l2_self_Wk", 0.6026684},
+{"encoder_l2_self_Wo", 0.46921992},
+{"encoder_l2_self_Wq", 0.7555442},
+{"encoder_l2_self_Wv", 0.23997004},
+{"encoder_l3_ffn_W1", 0.44958767},
+{"encoder_l3_ffn_W2", 0.7768512},
+{"encoder_l3_self_Wk", 0.5133644},
+{"encoder_l3_self_Wo", 0.29558635},
+{"encoder_l3_self_Wq", 0.47287956},
+{"encoder_l3_self_Wv", 0.23979305},
+{"encoder_l4_ffn_W1", 0.4244445},
+{"encoder_l4_ffn_W2", 0.71431214},
+{"encoder_l4_self_Wk", 0.47557107},
+{"encoder_l4_self_Wo", 0.408042},
+{"encoder_l4_self_Wq", 0.41991013},
+{"encoder_l4_self_Wv", 0.2435633},
+{"encoder_l5_ffn_W1", 0.7091122},
+{"encoder_l5_ffn_W2", 1.621571},
+{"encoder_l5_self_Wk", 0.59227574},
+{"encoder_l5_self_Wo", 0.7173325},
+{"encoder_l5_self_Wq", 0.5866978},
+{"encoder_l5_self_Wv", 0.27250895},
+{"encoder_l6_ffn_W1", 0.40217918},
+{"encoder_l6_ffn_W2", 2.3296742},
+{"encoder_l6_self_Wk", 0.46993786},
+{"encoder_l6_self_Wo", 0.7933633},
+{"encoder_l6_self_Wq", 0.48293704},
+{"encoder_l6_self_Wv", 0.2542558},
+});
+
+static float toFloat(uint8_t x, float scale) {
+  if (x >= 8)
+    return scale * std::pow(2.0, (int) x - 15);
+  return -scale * std::pow(2.0, (int) x - 7);
+}
+
+
 void loadItemsFromNpz(const std::string& fileName, std::vector<Item>& items) {
   auto numpy = cnpy::npz_load(fileName);
   for(auto it : numpy) {
@@ -84,7 +139,6 @@ void loadItemsFromNpz(const std::string& fileName, std::vector<Item>& items) {
       for(size_t i = 0; i < it.second->shape.size(); ++i)
         shape.set(i, (size_t)it.second->shape[i]);
     }
-
     Item item;
     item.name = it.first;
     item.shape = shape;
@@ -115,10 +169,31 @@ void loadItemsFromNpz(const std::string& fileName, std::vector<Item>& items) {
       item.type = Type::uint64;
     else
       ABORT("Numpy item '{}' type '{}' with size {} not supported", it.first, npzType, wordSize);
-
     item.bytes.swap(it.second->bytes);
+    LOG(info, "test {} {} {} ", it.first, it.second->type, it.second->word_size);    
+    if (alham_map.find(item.name) != alham_map.end()) {
+      LOG(info, "Deq: {}  {}, {}, {}", it.first, shape[0], shape[1], item.bytes.size());
+
+      item.type = Type::float32;
+
+      int shift = shape[0] * shape[1];
+      std::vector<float> newbytes(shift * 2, 0);
+    
+      for (int i = 0;i < item.bytes.size();i++){
+        uint8_t c = item.bytes[i];
+        newbytes[i] = toFloat(c >> 4, alham_map[item.name]);
+        newbytes[i + shift] = toFloat(c & 0xf, alham_map[item.name]);
+        if (i == 0) LOG(info, "test {} -> {} {} |  val {} ", (uint8_t) c,  (uint8_t) c >> 4, (uint8_t) c & 0xf, newbytes[i]);
+        
+      }
+      item.shape.set(0, shape[0] * 2);
+      char* c = (char*) newbytes.data();
+      std::vector<char> x(c, c + shift * 8);
+      item.bytes = x;
+    } 
     items.emplace_back(std::move(item));
   }
+  LOG(info, "DONE ALL");
 }
 
 std::vector<Item> loadItems(const std::string& fileName) {

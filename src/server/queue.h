@@ -96,7 +96,9 @@ typename Queue<item_t>::STATUS_CODE
 Queue<item_t>::
 pop(item_t& item, timeout_t timeout) {
   std::unique_lock<std::mutex> lock(mutex_);
-  ready_.wait_for(lock, timeout);
+  if(queue_.empty()) {
+    ready_.wait_for(lock, timeout);
+  }
   if (!queue_active_) { // someone shut down the queue
     return CLOSED;
   }

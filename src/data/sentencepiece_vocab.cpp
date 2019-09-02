@@ -36,6 +36,8 @@ private:
   std::mt19937 generator_;
   std::uniform_int_distribution<int> randInt_; // from 0 to INT_MAX
 
+  bool keepEncoded_{false};
+
   // Sample from one file, based on first algorithm from:
   // https://en.wikipedia.org/wiki/Reservoir_sampling
   void reservoirSampling(std::vector<std::string>& sample, size_t& seenLines,
@@ -111,8 +113,10 @@ private:
 
 public:
   SentencePieceVocab(Ptr<Options> options, size_t batchIndex)
-    : options_(options), batchIndex_(batchIndex), generator_((uint32_t)Config::seed) {
-
+      : options_(options),
+        batchIndex_(batchIndex),
+        generator_((uint32_t)Config::seed),
+        keepEncoded_(options->get<bool>("no-spm-decode")) {
     if(options_->has("sentencepiece-alphas")) {
       auto alphas = options_->get<std::vector<float>>("sentencepiece-alphas");
       if(alphas.size() <= batchIndex)
@@ -222,9 +226,15 @@ public:
 
   std::string decode(const Words& sentence, bool /*ignoreEOS*/) const override {
     std::string line;
-    // convert vector of Word to vector of int
-    std::vector<int> spmSentence(sentence.begin(), sentence.end());
-    spm_->Decode(spmSentence, &line);
+    if(keepEncoded_) {
+      for(const Word& id : sentence)
+        line += (*this)[id] + " ";
+      line.pop_back();  // trim the trailing whitespace
+    } else {
+      // convert vector of Word to vector of int
+      std::vector<int> spmSentence(sentence.begin(), sentence.end());
+      spm_->Decode(spmSentence, &line);
+    }
     return line;
   }
 

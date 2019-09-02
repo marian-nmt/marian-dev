@@ -459,6 +459,8 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Generate n-best list");
   cli.add<bool>("--word-scores",
       "Print word-level scores");
+  cli.add<bool>("--no-spm-decode",
+      "Keep the output segmented into SentencePiece subwords");
 
   // efficiency options
   cli.add<int>("--valid-mini-batch",
@@ -517,6 +519,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
     ->implicit_val("1");
   cli.add<bool>("--word-scores",
       "Print word-level scores");
+  cli.add<bool>("--no-spm-decode",
+      "Keep the output segmented into SentencePiece subwords");
 
   addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);

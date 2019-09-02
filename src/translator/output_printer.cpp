@@ -26,4 +26,11 @@ std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
   }
 }
 
+std::string OutputPrinter::getWordScores(const Ptr<Hypothesis>& hyp) {
+  std::string scores;
+  for(const auto& score : hyp->TracebackScores())
+    scores += " " + std::to_string(score);
+  return scores;
+}
+
 }  // namespace marian

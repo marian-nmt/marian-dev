@@ -20,7 +20,8 @@ public:
                    ? options->get<size_t>("beam-size")
                    : 0),
         alignment_(options->get<std::string>("alignment", "")),
-        alignmentThreshold_(getAlignmentThreshold(alignment_)) {}
+        alignmentThreshold_(getAlignmentThreshold(alignment_)),
+        wordScores_(options->get<bool>("word-scores")) {}
 
   template <class OStream>
   void print(Ptr<History> history, OStream& best1, OStream& bestn) {
@@ -52,6 +53,9 @@ public:
       float realScore = std::get<2>(result);
       bestn << " ||| " << realScore;
 
+      if(wordScores_)
+        bestn << " ||| WordScores=" << getWordScores(hypo);
+
       if(i < nbl.size() - 1)
         bestn << std::endl;
       else
@@ -71,6 +75,12 @@ public:
       const auto& hypo = std::get<1>(result);
       best1 << " ||| " << getAlignment(hypo);
     }
+
+    if(wordScores_) {
+      const auto& hypo = std::get<1>(result);
+      best1 << " ||| WordScores=" << getWordScores(hypo);
+    }
+
     best1 << std::flush;
   }
 
@@ -80,8 +90,12 @@ private:
   size_t nbest_{0};
   std::string alignment_;
   float alignmentThreshold_{0.f};
+  bool wordScores_{false};
 
+  // Get word alignment pairs
   std::string getAlignment(const Ptr<Hypothesis>& hyp);
+  // Get word-level scores
+  std::string getWordScores(const Ptr<Hypothesis>& hyp);
 
   float getAlignmentThreshold(const std::string& str) {
     try {

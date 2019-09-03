@@ -4,6 +4,7 @@
 #include "translator/output_printer.h"
 #include "common/timer.h"
 #include "common/utils.h"
+#include "api/elg.h"
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
@@ -31,7 +32,6 @@ class LogHandler : public crow::ILogHandler {
             LOG(critical,msg);
         }
 };
-
 
 typedef marian::server::TranslationService<marian::BeamSearch> tservice_t;
 

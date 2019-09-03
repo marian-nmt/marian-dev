@@ -2,52 +2,30 @@
   <head>
     <meta charset="UTF-8">
     <script language="javascript" type="text/javascript">
-
-      function go(source,destination) {
-          document.getElementById('translation').innerHTML = "";
-          var input = document.getElementById(source).value;
-          input.replace(/\n/g,"\\n");
-          var job = new XMLHttpRequest();
-          job.open("POST","http://{{URL}}/api/elg/v1/{{LANGPAIR}}");
-          job.setRequestHeader("Content-Type","application/json");
-          job.onreadystatechange = function () {
-              if (this.readyState === this.DONE) {
-                  console.log(this.responseText);
-                  var response = JSON.parse(this.responseText);
-                  var msg;
-                  if (response.failure) {
-                      msg = "<b>ERROR</b><br>" + response.errors.join("<br>");
-                  }
-                  else{
-                      msg = response.response.texts[0]["text"].replace(/\n/g,"<br>\n");
-                  }
-                  document.getElementById(destination).innerHTML = msg;
-              }
-          }
-          var payload = { "metadata" : { "id": 0 },
-                          "request"  : { "type" : "text",
-                                         "mimeType" : "text/plain",
-                                         "characterEncoding" : "UTF-8",
-                                         "content" : input}};
-          console.log(JSON.stringify(payload));
-          job.send(JSON.stringify(payload));
-          document.getElementById('input').focus();
-      }
-
-      function clearContent(srcfield,dstfield) {
-          document.getElementById(srcfield).value = "";
-          document.getElementById(dstfield).innerHTML = "";
-          document.getElementById(srcfield).focus();
-      }
-
-      function selectTab(thistab,alltabs) {
-          alltabs.forEach(item => {
-              if (item === thistab) {
-                  document.getElementById(item).style.display='block';
-              } else {
-                  document.getElementById(item).style.display='none';
-              }
-          })
+      function go() {
+      document.getElementById('translation').innerHTML = "";
+      var input = document.getElementById("input").value;
+      input.replace(/\n/g,"\\n");
+      var job = new XMLHttpRequest();
+      job.open("POST","http://{{URL}}/api/elg/v1");
+      job.setRequestHeader("Content-Type","application/json");
+      job.onreadystatechange = function () {
+      document.getElementById('translation').innerHTML
+      = this.responseText.replace(/\n/g,"<br>\n");
+      };
+      var payload = {
+      "metadata" : { "id": 0 },
+      "request"  : {
+      "type" : "text",
+      "mimeType" : "text/plain",
+      "characterEncoding" : "UTF-8",
+      "content" : input,
+      }};
+      job.send(JSON.stringify(payload));
+      };
+      function clearContent() {
+      document.getElementById('input').value = "";
+      document.getElementById('translation').innerHTML = "";
       }
     </script>
   </head>

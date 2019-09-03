@@ -13,6 +13,9 @@
 [submodule "src/3rd_party/amqp-cpp"]
 	path = src/3rd_party/amqp-cpp
 	url = https://github.com/ugermann/AMQP-CPP
+[submodule "src/3rd_party/crow"]
+	path = src/3rd_party/crow
+	url = https://github.com/ipkn/crow
 [submodule "src/3rd_party/fbgemm"]
 	path = src/3rd_party/fbgemm
 	url = https://github.com/marian-nmt/FBGEMM

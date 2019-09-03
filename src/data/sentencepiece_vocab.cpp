@@ -116,7 +116,7 @@ public:
       : options_(options),
         batchIndex_(batchIndex),
         generator_((uint32_t)Config::seed),
-        keepEncoded_(options->get<bool>("no-spm-decode")) {
+        keepEncoded_(options->get<bool>("no-spm-decode", false)) {
     if(options_->has("sentencepiece-alphas")) {
       auto alphas = options_->get<std::vector<float>>("sentencepiece-alphas");
       if(alphas.size() <= batchIndex)

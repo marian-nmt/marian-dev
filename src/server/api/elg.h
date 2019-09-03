@@ -18,27 +18,29 @@ template<class Service>
 Ptr<rapidjson::Document>
 translate_v1(Service& service, rapidjson::Value const& request){
   auto response = std::make_shared<rapidjson::Document>();
-  auto alloc = response->GetAllocator();
+  auto& alloc = response->GetAllocator();
+  rapidjson::Document& D = *response;
+  D.SetObject();
   // Copy metadata from request.
-  // @TODO: Metadata should be a required field.
   if (request.HasMember("metadata")){
-    response->AddMember("metadata").CopyFrom(request["metadata"]);
-  }
-  else{ // Metadata should be a required field.
-    // @TODO: return error.
+    D.AddMember("metadata", {}, alloc);
+    D["metadata"].CopyFrom(request["metadata"], alloc);
   }
   if (request.HasMember("request") &&
       request["request"].HasMember("content")){
     std::string payload = request["request"]["content"].GetString();
     std::string translation = service.translate(payload);
-    auto& r = response->AddMember("response",rapidjson::kObjectType(),alloc);
-    r.AddMember("type","texts",alloc);
-    r.AddMember("texts",kArrayType(),alloc).PushBack(translation,alloc);
+    auto& r = D.AddMember("response",{},alloc)["response"].SetObject();
+    r.AddMember("type", "texts", alloc);
+    rapidjson::Value x(rapidjson::kObjectType);
+    x.AddMember("text", {}, alloc)["text"]
+      .SetString(translation.c_str(), translation.size(), alloc);
+    r.AddMember("texts", {}, alloc)["texts"].SetArray().PushBack(x,alloc);
   }
   else{ // error
-    auto& r = response->AddMember("failure",rapidjson::kObjectType(),alloc);
-    r.AddMember("errors",rapidjson::kArrayType(),alloc)
-      .PushBack("Invalid request format");
+    auto& r = D.AddMember("failure",{},alloc)["failure"];
+    auto& e = r.AddMember("errors",{},alloc)["errors"].SetArray();
+    e.PushBack("Invalid request format.",alloc);
   }
   return response;
 }

@@ -1,0 +1,50 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <script language="javascript" type="text/javascript">
+      function go() {
+      document.getElementById('translation').innerHTML = "";
+      var input = document.getElementById("input").value;
+      input.replace(/\n/g,"\\n");
+      var job = new XMLHttpRequest();
+      job.open("POST","http://{{URL}}/api/elg/v1");
+      job.setRequestHeader("Content-Type","application/json");
+      job.onreadystatechange = function () {
+      document.getElementById('translation').innerHTML
+      = this.responseText.replace(/\n/g,"<br>\n");
+      };
+      var payload = {
+      "metadata" : { "id": 0 },
+      "request"  : {
+      "type" : "text",
+      "mimeType" : "text/plain",
+      "characterEncoding" : "UTF-8",
+      "content" : input,
+      }};
+      job.send(JSON.stringify(payload));
+      };
+      function clearContent() {
+      document.getElementById('input').value = "";
+      document.getElementById('translation').innerHTML = "";
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Translation Demo ({{URL}})</h1>
+    <p style="color:gray">This translation demo currently does not include automatic sentence splitting.<br>You'll have to provide each input sentence on a single, separate line. Have fun!</p>
+    <textarea id="input" rows="10" cols="80">Dieses Kamel ißt gerne Kirschkuchen mit frischem Pfefferminz-Senf.</textarea>
+    <br>
+    <button id="go" onclick="go()">translate</button>
+    <button onclick="clearContent()">clear</button>
+    <h2>Translation:</h2>
+    <div id="translation"></div>
+    <script language="javascript" type="text/javascript">
+      document.getElementById("input").addEventListener("keyup",function(ev) {
+      if (ev.keyCode == 13) {
+      ev.preventDefault();
+      this.focus();
+      document.getElementById("go").click();
+      }});
+    </script>
+  </body>
+</html>

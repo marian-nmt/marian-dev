@@ -6,6 +6,7 @@ include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(3rd_party/rapidjson/include)
 include_directories(3rd_party/amqp-cpp/include)
+include_directories(3rd_party/crow/include)
 include_directories(3rd_party/fbgemm/include)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
@@ -239,6 +240,15 @@ if (COMPILE_AMQP_WORKER)
   set(EXECUTABLES ${EXECUTABLES} amqp-worker)
   target_link_libraries(amqp-worker marian amqpcpp ev)
 endif(COMPILE_AMQP_WORKER)
+
+if (COMPILE_REST_SERVER)
+  add_executable(rest-server server/rest_server.cpp)
+  set_target_properties(rest-server PROPERTIES OUTPUT rest-server)
+  target_compile_options(rest-server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
+  set(EXECUTABLES ${EXECUTABLES} rest-server)
+  target_link_libraries(rest-server marian)
+endif(COMPILE_REST_SERVER)
+
 
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})

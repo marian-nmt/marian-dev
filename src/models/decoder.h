@@ -13,6 +13,7 @@ protected:
   Ptr<Options> options_;
   std::string prefix_{"decoder"};
   bool inference_{false};
+  bool dropout_{false};
   size_t batchIndex_{1};
 
   Ptr<data::Shortlist> shortlist_;
@@ -22,6 +23,7 @@ public:
       : options_(options),
         prefix_(options->get<std::string>("prefix", "decoder")),
         inference_(options->get<bool>("inference", false)),
+        dropout_(options->get<bool>("dropout-sampling", !inference_)),
         batchIndex_(options->get<size_t>("index", 1)) {}
 
   virtual ~DecoderBase() {}

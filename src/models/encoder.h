@@ -10,12 +10,15 @@ protected:
   Ptr<Options> options_;
   std::string prefix_{"encoder"};
   bool inference_{false};
+  bool dropout_{false};
   size_t batchIndex_{0};
-public: 
+
+public:
   EncoderBase(Ptr<Options> options)
       : options_(options),
         prefix_(options->get<std::string>("prefix", "encoder")),
         inference_(options->get<bool>("inference", false)),
+        dropout_(options->get<bool>("dropout-sampling", !inference_)),
         batchIndex_(options->get<size_t>("index", 0)) {}
 
   virtual ~EncoderBase() {}

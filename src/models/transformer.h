@@ -25,7 +25,7 @@ class Transformer : public EncoderOrDecoderBase {
   typedef EncoderOrDecoderBase Base;
 
 protected:
-  using Base::options_; using Base::inference_; using Base::batchIndex_;
+  using Base::options_; using Base::inference_; using Base::dropout_; using Base::batchIndex_;
   std::unordered_map<std::string, Expr> cache_;
 
   // attention weights produced by step()
@@ -41,9 +41,7 @@ protected:
   Ptr<ExpressionGraph> graph_;
 
 public:
-  Transformer(Ptr<Options> options)
-    : EncoderOrDecoderBase(options) {
-  }
+  Transformer(Ptr<Options> options) : EncoderOrDecoderBase(options) { }
 
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
 
@@ -252,8 +250,7 @@ public:
       collectOneHead(weights, dimBeam);
 
     // optional dropout for attention weights
-    float dropProb
-        = inference_ ? 0 : opt<float>("transformer-dropout-attention");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout-attention") : 0.f;
     weights = dropout(weights, dropProb);
 
     // apply attention weights to values
@@ -335,7 +332,7 @@ public:
                       bool saveAttentionWeights = false) {
     int dimModel = input->shape()[-1];
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout") : 0.f;
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
@@ -383,15 +380,14 @@ public:
   Expr LayerFFN(std::string prefix, Expr input) const {
     int dimModel = input->shape()[-1];
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout") : 0.f;
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_ffn", opsPre, input, dropProb);
 
     int dimFfn = opt<int>("transformer-dim-ffn");
     int depthFfn = opt<int>("transformer-ffn-depth");
     auto actFn = activationByName(opt<std::string>("transformer-ffn-activation"));
-    float ffnDropProb
-      = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
+    float ffnDropProb = dropout_ ? opt<float>("transformer-dropout-ffn") : 0.f;
 
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
 
@@ -412,7 +408,7 @@ public:
   Expr LayerAAN(std::string prefix, Expr x, Expr y) const {
     int dimModel = x->shape()[-1];
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout") : 0.f;
     auto opsPre = opt<std::string>("transformer-preprocess");
 
     y = preProcess(prefix + "_ffn", opsPre, y, dropProb);
@@ -421,7 +417,7 @@ public:
     int dimAan   = opt<int>("transformer-dim-aan");
     int depthAan = opt<int>("transformer-aan-depth");
     auto actFn = activationByName(opt<std::string>("transformer-aan-activation"));
-    float aanDropProb = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
+    float aanDropProb = dropout_ ? opt<float>("transformer-dropout-ffn") : 0.f;
 
     // the stack of AAN layers
     for(int i = 1; i < depthAan; ++i)
@@ -474,7 +470,7 @@ public:
                        Expr input,
                        Expr /*selfMask*/,
                        int /*startPos*/) const {
-    float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
+    float dropoutRnn = dropout_ ? opt<float>("dropout-rnn") : 0.f;
 
     auto rnn = rnn::rnn()                                          //
         ("type", opt<std::string>("dec-cell"))                     //
@@ -486,7 +482,7 @@ public:
         .push_back(rnn::cell())                                    //
         .construct(graph_);
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout") : 0.f;
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix, opsPre, input, dropProb);
 
@@ -563,7 +559,7 @@ public:
     std::tie(batchEmbeddings, batchMask) = embedding->apply((*batch)[batchIndex_]);
 
     // apply dropout over source words
-    float dropoutSrc = inference_ ? 0 : opt<float>("dropout-src");
+    float dropoutSrc = dropout_ ? opt<float>("dropout-src") : 0.f;
     if(dropoutSrc) {
       int srcWords = batchEmbeddings->shape()[-3];
       batchEmbeddings = dropout(batchEmbeddings, dropoutSrc, {srcWords, 1, 1});
@@ -580,7 +576,7 @@ public:
 
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
 
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout") : 0.f;
     layer = preProcess(prefix_ + "_emb", opsEmb, layer, dropProb);
 
     layerMask = transposedLogMask(layerMask); // [-4: batch size, -3: 1, -2: vector dim=1, -1: max length]
@@ -692,7 +688,7 @@ public:
     auto decoderMask = state->getTargetMask();       // [max length, batch size, 1]  --this is a hypothesis
 
     // dropout target words
-    float dropoutTrg = inference_ ? 0 : opt<float>("dropout-trg");
+    float dropoutTrg = dropout_ ? opt<float>("dropout-trg") : 0.f;
     if(dropoutTrg) {
       int trgWords = embeddings->shape()[-3];
       embeddings = dropout(embeddings, dropoutTrg, {trgWords, 1, 1});
@@ -716,7 +712,7 @@ public:
     auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
-    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    float dropProb = dropout_ ? opt<float>("transformer-dropout") : 0.f;
 
     query = preProcess(prefix_ + "_emb", opsEmb, query, dropProb);
 

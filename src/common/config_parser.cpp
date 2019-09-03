@@ -233,12 +233,6 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
 
   if(mode_ == cli::mode::training) {
     // TODO: add ->range(0,1);
-    cli.add<float>("--dropout-rnn",
-        "Scaling dropout along rnn layers and time (0 = no dropout)");
-    cli.add<float>("--dropout-src",
-        "Dropout source words (0 = no dropout)");
-    cli.add<float>("--dropout-trg",
-        "Dropout target words (0 = no dropout)");
     cli.add<float>("--grad-dropping-rate",
         "Gradient Dropping rate (0 = no gradient Dropping)");
     cli.add<float>("--grad-dropping-momentum",
@@ -246,6 +240,15 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
     cli.add<size_t>("--grad-dropping-warmup",
         "Do not apply gradient dropping for the first arg steps",
         100);
+  }
+
+  if(mode_ == cli::mode::training || mode_ == cli::mode::translation) {
+    cli.add<float>("--dropout-rnn",
+        "Scaling dropout along rnn layers and time (0 = no dropout)");
+    cli.add<float>("--dropout-src",
+        "Dropout source words (0 = no dropout)");
+    cli.add<float>("--dropout-trg",
+        "Dropout target words (0 = no dropout)");
     cli.add<float>("--transformer-dropout",
         "Dropout between transformer layers (0 = no dropout)");
     cli.add<float>("--transformer-dropout-attention",
@@ -535,6 +538,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Scorer weights");
   cli.add<bool>("--output-sampling",
      "Noise output layer with gumbel noise",
+      false);
+  cli.add<bool>("--dropout-sampling",
+      "Use dropout during inference",
       false);
 
   // add ULR settings

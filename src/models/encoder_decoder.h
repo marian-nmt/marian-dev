@@ -34,8 +34,8 @@ public:
 
   virtual Ptr<RationalLoss> build(Ptr<ExpressionGraph> graph,
                                   Ptr<data::CorpusBatch> batch,
-                                  bool clearGraph = true) = 0;  
-                                  
+                                  bool clearGraph = true) = 0;
+
   virtual Ptr<DecoderState> startState(Ptr<ExpressionGraph> graph,
                                        Ptr<data::CorpusBatch> batch) = 0;
 
@@ -70,6 +70,7 @@ protected:
   std::vector<Ptr<DecoderBase>> decoders_;
 
   bool inference_{false};
+  bool dropout_{false};
 
   std::set<std::string> modelFeatures_;
 

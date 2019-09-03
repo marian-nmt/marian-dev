@@ -32,7 +32,7 @@ public:
     auto backward = type == "alternating" ? rnn::dir::alternating_backward
                                           : rnn::dir::backward;
 
-    float dropoutRnn = inference_ ? 0 : opt<float>("dropout-rnn");
+    float dropoutRnn = dropout_ ? opt<float>("dropout-rnn") : 0.f;
 
     auto rnnFw = rnn::rnn()                                        //
         ("type", opt<std::string>("enc-cell"))                     //
@@ -157,7 +157,7 @@ public:
     (batchEmbeddings, batchMask) = embedding->apply((*batch)[batchIndex_]);
 
     // apply dropout over source words
-    float dropProb = inference_ ? 0 : opt<float>("dropout-src");
+    float dropProb = dropout_ ? opt<float>("dropout-src") : 0.f;
     if(dropProb) {
       int srcWords = batchEmbeddings->shape()[-3];
       batchEmbeddings = dropout(batchEmbeddings, dropProb, {srcWords, 1, 1});
@@ -179,7 +179,7 @@ private:
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
                                     Ptr<DecoderState> state) {
-    float dropoutRnn = inference_ ? 0 : opt<float>("dropout-rnn");
+    float dropoutRnn = dropout_ ? opt<float>("dropout-rnn") : 0.f;
     auto rnn = rnn::rnn()                                          //
         ("type", opt<std::string>("dec-cell"))                     //
         ("dimInput", opt<int>("dim-emb"))                          //
@@ -286,7 +286,7 @@ public:
     auto embeddings = state->getTargetEmbeddings();
 
     // dropout target words
-    float dropoutTrg = inference_ ? 0 : opt<float>("dropout-trg");
+    float dropoutTrg = dropout_ ? opt<float>("dropout-trg") : 0.f;
     if(dropoutTrg) {
       int trgWords = embeddings->shape()[-3];
       embeddings = dropout(embeddings, dropoutTrg, {trgWords, 1, 1});

@@ -11,6 +11,7 @@ image/build-environment:
 	docker build -t ${REGISTRY}/${IMAGE}:${TAG} ${IMAGE}
 
 image/marian-compiled: IMAGE=marian-compiled
+image/marian-compiled: FLAGS=${DOCKER_BUILD_ARGS}
 image/marian-compiled:
 	docker build -t ${REGISTRY}/${IMAGE}:${TAG} ${IMAGE}
 

@@ -26,7 +26,7 @@ const SentenceTuple& QueuedInputIterator::dereference() const {
 QueuedInput::
 QueuedInput(std::vector<Ptr<Vocab const>> const& vocabs, Ptr<Options> options)
   : DatasetBase(options), vocabs_(vocabs),
-    timeout_(options ? options->get<int>("queue-timeout", 100) : 100)
+    timeout_(options ? options->get<int>("queue-timeout", 5) : 5)
 { }
 
 // QueuedInput is mainly used for inference in the server mode, not

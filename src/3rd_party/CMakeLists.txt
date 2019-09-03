@@ -6,6 +6,10 @@ add_subdirectory(./SQLiteCpp)
 add_subdirectory(./pathie-cpp)
 add_subdirectory(./zlib)
 
+# if (COMPILE_REST_SERVER)
+#   add_subdirectory(./crow)
+# endif(COMPILE_REST_SERVER)
+
 if (COMPILE_AMQP_WORKER)
   add_subdirectory(./amqp-cpp)
 endif(COMPILE_AMQP_WORKER)

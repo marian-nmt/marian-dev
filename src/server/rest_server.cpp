@@ -53,33 +53,24 @@ int main(int argc, char* argv[])
     ([service](const crow::request& req){
       rapidjson::Document D;
       D.Parse(req.body.c_str());
+      if (!D.IsObject()){
+        return crow::response(200,"Invalid Json");
+      }
+
+      LOG(debug, "REQUEST: {}", server::serialize(D));
       auto R = server::elg::translate_v1(*service,D);
-      return crow::response(500,"Invalid Json");
-      // auto payload = crow::json::load(req.body);
-      // if (!payload){ // parsing failed
-      //   return crow::response(500,"Invalid Json");
-      // }
-      // LOG(debug, "REQUEST BODY IS {}", payload);
-      // auto foo = marian::server::elg::translate_v1(*service, payload);
-      // LOG(debug, "RESPONSE IS {}", crow::json::dump(foo));
-      // if (foo.has("response")){
-      //   return crow::response(200, crow::json::dump(foo));
-      // }
-      // return crow::response(500, crow::json::dump(foo));
-      // rapidjson::Document D;
-      // std::cerr << "MESSAGE BODY IS " << req.body << std::endl;
-      // D.Parse(req.body.c_str());
-      // if (!D.IsObject()) {
-      //   return crow::response(500,"Invalid Json");
-      // }
-      // std::cerr << "PARSED: " << server::serialize(D) << std::endl;
-      // if (!D.HasMember("request") || !D["request"].IsObject() ||
-      //     !D["request"].HasMember("content")){
-      //   return crow::response(500,"Invalid Request Structure");
-      // }
-      // std::string input = D["request"]["content"].GetString();
-      // std::string translation = service->translate(input);
-      // return crow::response(200,translation);
+      std::string response = server::serialize(*R);
+      LOG(debug,"RESPONSE: {}", response);
+      if (R->HasMember("failure")){
+        auto res = crow::response(500,response);
+        res.set_header("Content-Type","application/json");
+        return res;
+      }
+      else{
+        auto res = crow::response(200,response);
+        res.set_header("Content-Type","application/json");
+        return res;
+      }
     });
 
   CROW_ROUTE(app, "/api/ug/v1")

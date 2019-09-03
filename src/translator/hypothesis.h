@@ -58,6 +58,21 @@ public:
       return targetWords;
   }
 
+  std::vector<float> TracebackScores() {
+    std::vector<float> scores;
+    // traverse hypotheses backward
+    for(auto hyp = this; hyp->GetPrevHyp(); hyp = hyp->GetPrevHyp().get()) {
+      // calculate a word score from the cumulative path score for all but the first word
+      if(hyp->GetPrevHyp()) {
+        scores.push_back(hyp->pathScore_ - hyp->GetPrevHyp().get()->pathScore_);
+      } else {
+        scores.push_back(hyp->pathScore_);
+      }
+    }
+    std::reverse(scores.begin(), scores.end());
+    return scores;
+  }
+
   // get soft alignments for each target word starting from the hyp one
   typedef data::SoftAlignment SoftAlignment;
   SoftAlignment TracebackAlignment()

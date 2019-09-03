@@ -1,5 +1,7 @@
 #include "output_printer.h"
 
+#include <sstream>
+
 namespace marian {
 
 std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
@@ -24,6 +26,14 @@ std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
   } else {
     ABORT("Unrecognized word alignment type");
   }
+}
+
+std::string OutputPrinter::getWordScores(const Ptr<Hypothesis>& hyp) {
+  std::ostringstream scores;
+  scores.precision(5);
+  for(const auto& score : hyp->TracebackScores())
+    scores << " " << std::fixed << score;
+  return scores.str();
 }
 
 }  // namespace marian

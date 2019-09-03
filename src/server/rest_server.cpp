@@ -170,12 +170,77 @@ int main(int argc, char* argv[])
 
 
   CROW_ROUTE(app, "/api/elg/v1")
-    .methods("POST"_method)(elg_handler);
-  CROW_ROUTE(app, "/api/elg/v1/")
-    .methods("GET"_method)(elg_handler);
-  CROW_ROUTE(app, "/api/elg/demo.html")
-    .methods("GET"_method)(elg_handler);
+    .methods("POST"_method)
+    ([service](const crow::request& req){
+      rapidjson::Document D;
+      D.Parse(req.body.c_str());
+      if (!D.IsObject()){
+        return crow::response(200,"Invalid Json");
+      }
 
+      LOG(debug, "REQUEST: {}", server::serialize(D));
+      auto R = server::elg::translate_v1(*service,D);
+      std::string response = server::serialize(*R);
+      LOG(debug,"RESPONSE: {}", response);
+      if (R->HasMember("failure")){
+        auto res = crow::response(500,response);
+        res.set_header("Content-Type","application/json");
+        return res;
+      }
+      else{
+        auto res = crow::response(200,response);
+        res.set_header("Content-Type","application/json");
+        return res;
+      }
+    });
+
+  CROW_ROUTE(app, "/api/ug/v1")
+    .methods("POST"_method)
+    ([service](const crow::request& req){
+      rapidjson::Document D;
+      std::cerr << "MESSAGE BODY IS " << req.body << std::endl;
+      D.Parse(req.body.c_str());
+      if (!D.IsObject()) {
+        return crow::response(500,"Invalid Json");
+      }
+      std::cerr << "PARSED: " << server::serialize(D) << std::endl;
+      server::NodeTranslation<> job(&D,*service);
+      job.finish(D.GetAllocator());
+      std::string response = server::serialize(D);
+      std::cerr << response << std::endl;
+      return crow::response(response.c_str());
+    });
+
+
+  // route for serving the UI (templated)
+  CROW_ROUTE(app, "/")
+    ([](const crow::request& req){
+      crow::mustache::context ctx;
+      ctx["URL"] = req.get_header_value("Host");
+      return crow::mustache::load("demo.html").render(ctx);
+    });
+
+  // // route for serving files
+  // CROW_ROUTE(app, "/<string>")
+  //   ([](const crow::request& req, std::string path){
+  //     marian::filesystem::Path p(doc_root+path);
+  //     if (!p.exists())
+  //       return crow::response(404, path+" not found");
+  //     ifstream(doc_root+path);
+
+
+  // //     crow::mustache::context ctx;
+  // //     ctx["url"] = req.raw_url;
+  // //     std::cout << "URL " << req.get_header_value("Host") << req.url << std::endl;
+  // //     auto page = crow::mustache::load("demo.html");
+  // //     return page.render(ctx);
+
+  //     if (marian::filesystem::exists(path))
+  //       return crow::mustache::load(path).render();
+  //     return page.render();
+  //   });
+
+  // enables all log
 
   app.loglevel(crow::LogLevel::WARNING);
   // app.loglevel(crow::LogLevel::DEBUG);

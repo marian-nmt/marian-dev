@@ -1,5 +1,7 @@
 #include "output_printer.h"
 
+#include <sstream>
+
 namespace marian {
 
 std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
@@ -27,10 +29,11 @@ std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
 }
 
 std::string OutputPrinter::getWordScores(const Ptr<Hypothesis>& hyp) {
-  std::string scores;
+  std::ostringstream scores;
+  scores.precision(5);
   for(const auto& score : hyp->TracebackScores())
-    scores += " " + std::to_string(score);
-  return scores;
+    scores << " " << std::fixed << score;
+  return scores.str();
 }
 
 }  // namespace marian

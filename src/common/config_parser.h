@@ -86,12 +86,13 @@ public:
    * @param validate Do or do not validate parsed options
    * @return (YAML::Node const&)config_
    */
-  YAML::Node const& parseOptions(int argc, char** argv, bool validate);
 
+  YAML::Node const& parseOptions(int argc, char** argv, bool validate);
   YAML::Node const& getConfig() const;
   cli::mode getMode() const;
   std::string const& cmdLine() const;
 private:
+  // bool modeServer_;
   cli::CLIWrapper cli_;
   cli::mode mode_;
   YAML::Node config_;
@@ -118,11 +119,12 @@ private:
   void addOptionsTranslation(cli::CLIWrapper&);
   void addOptionsScoring(cli::CLIWrapper&);
 
+  void addAliases(cli::CLIWrapper&);
+
   void addSuboptionsDevices(cli::CLIWrapper&);
   void addSuboptionsBatching(cli::CLIWrapper&);
   void addSuboptionsInputLength(cli::CLIWrapper&);
   void addSuboptionsULR(cli::CLIWrapper&);
-  void expandAliases(cli::CLIWrapper&);
 
   // Extract paths to all config files found in the config object.
   // Look at --config option and model.npz.yml files.

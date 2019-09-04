@@ -1,4 +1,6 @@
 #include "common/config.h"
+#include "common/options.h"
+#include "common/config_parser.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
 #include "common/utils.h"
@@ -30,6 +32,7 @@ void Config::initialize(ConfigParser const& cp) {
   cli::mode mode = cp.getMode();
 
   createLoggers(this);
+
   // echo version and command line
   LOG(info, "[marian] Marian {}", buildVersion());
   std::string cmdLine = cp.cmdLine();
@@ -95,11 +98,6 @@ void Config::initialize(ConfigParser const& cp) {
     LOG(info, "[config] Model is being created with Marian {}", buildVersion());
   }
 }
-
-// void Config::initialize(int argc, char** argv, cli::mode mode, bool validate) {
-//   auto parser = ;
-//   initialize(parser,mode);
-// }
 
 bool Config::has(const std::string& key) const {
   return config_[key];
@@ -257,14 +255,17 @@ std::vector<DeviceId> Config::getDevices(Ptr<Options> options,
   return devices;
 }
 
-Ptr<Options> parseOptions(int argc,
-                          char** argv,
-                          cli::mode mode,
-                          bool validate /*= true*/) {
-  auto config = New<Config>(argc, argv, mode, validate);
-  auto options = New<Options>();
-  options->merge(config->get());
-  return options;
+Ptr<Options>
+parseOptions(int argc, char** argv, cli::mode mode, bool validate){
+  ConfigParser cp(mode);
+  return New<Options>(cp, argc, argv, validate);
+}
+
+std::ostream& operator<<(std::ostream& out, const Config& config) {
+  YAML::Emitter outYaml;
+  cli::OutputYaml(config.get(), outYaml);
+  out << outYaml.c_str();
+  return out;
 }
 
 }  // namespace marian

@@ -5,9 +5,10 @@
 #include "common/config_validator.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
+#include "common/options.h"
+#include "common/config.h"
 #include "common/utils.h"
 #include "common/regex.h"
-
 #include <algorithm>
 #include <set>
 #include <stdexcept>
@@ -72,9 +73,11 @@ ConfigParser::ConfigParser(cli::mode mode)
   : cli_(config_,"Marian: Fast Neural Machine Translation in C++",
          "General options", "", 40),
     // modeServer_(mode == cli::mode::server),
-    mode_(mode) {
+    mode_(mode == cli::mode::server ? cli::mode::translation : mode) {
 
   addOptionsGeneral(cli_);
+  if (mode == cli::mode::server)
+    addOptionsServer(cli_);
   addOptionsModel(cli_);
 
   // clang-format off
@@ -82,11 +85,8 @@ ConfigParser::ConfigParser(cli::mode mode)
     case cli::mode::training:
       addOptionsTraining(cli_);
       addOptionsValidation(cli_);
+      addAliases(cli_);
       break;
-    case cli::mode::server:
-      addOptionsServer(cli_);
-      // no break here, because
-      // mode::server implies mode::translation
     case cli::mode::translation:
       addOptionsTranslation(cli_);
       break;
@@ -100,9 +100,6 @@ ConfigParser::ConfigParser(cli::mode mode)
   // clang-format on
 
 }
-
-
-
 
 void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   int defaultWorkspace = (mode_ == cli::mode::translation) ? 512 : 2048;
@@ -135,7 +132,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<bool>("--relative-paths",
     "All paths are relative to the config file location");
   cli.add<std::string>("--dump-config",
-    "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal")
+    "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal, expand")
     ->implicit_val("full");
   // clang-format on
 }
@@ -474,9 +471,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+
   // add ULR settings
   addSuboptionsULR(cli);
 
+  cli.add<std::vector<std::string>>("--task",
+     "Use predefined set of options. Possible values: transformer, transformer-big");
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -753,30 +753,11 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
-void ConfigParser::expandAliases(cli::CLIWrapper& cli) {
-  YAML::Node config;
-  // The order of aliases does matter as later options overwrite earlier
-
-  if(config_["best-deep"].as<bool>()) {
-    config["layer-normalization"] = true;
-    config["tied-embeddings"] = true;
-    config["enc-type"] = "alternating";
-    config["enc-cell-depth"] = 2;
-    config["enc-depth"] = 4;
-    config["dec-cell-base-depth"] = 4;
-    config["dec-cell-high-depth"] = 2;
-    config["dec-depth"] = 4;
-    config["skip"] = true;
-  }
-
-  if(config) {
-    cli.updateConfig(config, "Unknown option(s) in aliases");
-  }
-}
 
 cli::mode ConfigParser::getMode() const { return mode_; }
 
-YAML::Node const& ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
+YAML::Node const&
+ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   cmdLine_ = escapeCmdLine(argc,argv);
 
   // parse command-line options and fill wrapped YAML config
@@ -786,7 +767,9 @@ YAML::Node const& ConfigParser::parseOptions(int argc, char** argv, bool doValid
   auto configPaths = findConfigPaths();
   if(!configPaths.empty()) {
     auto config = loadConfigFiles(configPaths);
-    cli_.updateConfig(config, "There are option(s) in a config file that are not expected");
+    cli_.updateConfig(config,
+                     cli::Priority::ConfigFile,
+                     "There are option(s) in a config file that are not expected");
   }
 
   if(get<bool>("interpolate-env-vars")) {
@@ -802,14 +785,20 @@ YAML::Node const& ConfigParser::parseOptions(int argc, char** argv, bool doValid
   config_.remove("config");
 
   if(!get<std::string>("dump-config").empty() && get<std::string>("dump-config") != "false") {
-    bool skipDefault = get<std::string>("dump-config") == "minimal";
+    auto dumpMode = get<std::string>("dump-config");
     config_.remove("dump-config");
-    std::cout << cli_.dumpConfig(skipDefault) << std::endl;
+
+    if(dumpMode == "expand") {
+      cli_.parseAliases();
+    }
+
+    bool minimal = (dumpMode == "minimal" || dumpMode == "expand");
+    std::cout << cli_.dumpConfig(minimal) << std::endl;
     exit(0);
   }
 
-  expandAliases(cli_);
-  return config_;
+  cli_.parseAliases();
+  return getConfig();
 }
 
 std::vector<std::string> ConfigParser::findConfigPaths() {

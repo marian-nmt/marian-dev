@@ -85,12 +85,7 @@ public:
 
   void save(const std::string& name);
 
-  friend std::ostream& operator<<(std::ostream& out, const Config& config) {
-    YAML::Emitter outYaml;
-    cli::OutputYaml(config.get(), outYaml);
-    out << outYaml.c_str();
-    return out;
-  }
+  friend std::ostream& operator<<(std::ostream& out, const Config& config);
 
   static std::vector<DeviceId> getDevices(Ptr<Options> options,
                                           size_t myMPIRank = 0,

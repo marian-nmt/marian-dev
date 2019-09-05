@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- An option to print word-level translation scores
+- An option to turn off automatic detokenization from SentencePiece
+
 ## [1.8.0] - 2019-09-04
 
 ### Added

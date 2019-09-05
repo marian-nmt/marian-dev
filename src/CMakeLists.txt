@@ -4,6 +4,7 @@ include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
+include_directories(3rd_party/fbgemm/include)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
@@ -18,11 +19,13 @@ add_library(marian STATIC
   common/config_validator.cpp
   common/binary.cpp
   common/io.cpp
+  common/filesystem.cpp
 
   data/alignment.cpp
   data/vocab.cpp
   data/default_vocab.cpp
   data/sentencepiece_vocab.cpp
+  data/factored_vocab.cpp
   data/corpus_base.cpp
   data/corpus.cpp
   data/corpus_sqlite.cpp
@@ -41,6 +44,7 @@ add_library(marian STATIC
   tensors/cpu/sharp/int_gemm.cpp
   tensors/cpu/sharp/avx_gemm.cpp
   tensors/cpu/sharp/sse_gemm.cpp
+  tensors/cpu/sharp/packed_gemm.cpp
 
   graph/expression_graph.cpp
   graph/expression_operators.cpp
@@ -49,6 +53,7 @@ add_library(marian STATIC
   graph/node_initializers.cpp
 
   layers/convolution.cpp
+  layers/generic.cpp
   layers/loss.cpp
   layers/weight.cpp
 

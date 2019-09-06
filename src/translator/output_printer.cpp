@@ -31,7 +31,7 @@ std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
 std::string OutputPrinter::getWordScores(const Ptr<Hypothesis>& hyp) {
   std::ostringstream scores;
   scores.precision(5);
-  for(const auto& score : hyp->TracebackScores())
+  for(const auto& score : hyp->tracebackWordScores())
     scores << " " << std::fixed << score;
   return scores.str();
 }

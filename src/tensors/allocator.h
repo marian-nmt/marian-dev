@@ -127,6 +127,10 @@ private:
         throw AllocationException(available_, size);
       }
 
+      // Extend the workspace to fit requested allocation. To avoid lots of small
+      // reallocations, the workspace is extended by at least step_.
+
+      // Find size of the last gap
       size_t last_gap_size = 0;
       for (const auto& gap : gaps_) {
         if (gap.data() + gap.size() == device_->data() + device_->size()) {

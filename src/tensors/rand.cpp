@@ -110,12 +110,7 @@ void CurandRandomGenerator::normal(Tensor tensor, float mean, float stddev) {
 
 Ptr<RandomGenerator> createRandomGenerator(size_t seed, DeviceId deviceId) {
 #ifdef CUDA_FOUND
-  if (deviceId.type != DeviceType::cpu){
     return New<CurandRandomGenerator>(seed, deviceId);
-  }
-  else {
-    return New<StdlibRandomGenerator>(seed);
-  }
 #else
     ABORT_IF(deviceId.type != DeviceType::cpu,
              "StdlibRandomGenerator can only be used for CPU tensors");

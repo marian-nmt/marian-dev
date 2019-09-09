@@ -92,10 +92,27 @@ int main(int argc, char* argv[])
 
 
   // route for serving the UI (templated)
+  CROW_ROUTE(app, "/api/elg/v1")
+    ([](const crow::request& req){
+      crow::mustache::context ctx;
+      ctx["URL"] = req.get_header_value("Host");
+      return crow::mustache::load("demo.html").render(ctx);
+    });
+
   CROW_ROUTE(app, "/")
     ([](const crow::request& req){
       crow::mustache::context ctx;
       ctx["URL"] = req.get_header_value("Host");
+      return crow::mustache::load("demo.html").render(ctx);
+    });
+
+  CROW_ROUTE(app, "/<string>")
+    ([](const crow::request& req, std::string path){
+      crow::mustache::context ctx;
+      ctx["URL"] = req.get_header_value("Host");
+      std::string url = dump(ctx["URL"]);
+      LOG(debug, "URL {}", url);
+      LOG(debug, "PATH {}", path);
       return crow::mustache::load("demo.html").render(ctx);
     });
 

@@ -3,16 +3,16 @@
     <meta charset="UTF-8">
     <script language="javascript" type="text/javascript">
 
-      function go() {
+      function go(source,destination) {
           document.getElementById('translation').innerHTML = "";
-          var input = document.getElementById("input").value;
+          var input = document.getElementById(source).value;
           input.replace(/\n/g,"\\n");
           var job = new XMLHttpRequest();
           job.open("POST","http://{{URL}}/api/elg/v1");
           job.setRequestHeader("Content-Type","application/json");
           job.onreadystatechange = function () {
               if (this.readyState === this.DONE) {
-                  // console.log(this.responseText);
+                  console.log(this.responseText);
                   var response = JSON.parse(this.responseText);
                   var msg;
                   if (response.failure) {
@@ -21,7 +21,7 @@
                   else{
                       msg = response.response.texts[0]["text"].replace(/\n/g,"<br>\n");
                   }
-                  document.getElementById('translation').innerHTML = msg;
+                  document.getElementById(destination).innerHTML = msg;
                   // document.getElementById('response').innerHTML = this.responseText;
               }
           }
@@ -30,14 +30,15 @@
                                          "mimeType" : "text/plain",
                                          "characterEncoding" : "UTF-8",
                                          "content" : input}};
+          console.log(JSON.stringify(payload));
           job.send(JSON.stringify(payload));
           document.getElementById('input').focus();
       }
 
-      function clearContent() {
-          document.getElementById('input').value = "";
-          document.getElementById('translation').innerHTML = "";
-          document.getElementById('input').focus();
+      function clearContent(srcfield,dstfield) {
+          document.getElementById(srcfield).value = "";
+          document.getElementById(dstfield).innerHTML = "";
+          document.getElementById(srcfield).focus();
       }
 
     </script>
@@ -48,20 +49,31 @@
       press [Enter] or click [Translate] to translate. Have fun!</p>
     <input id="input" size="200" oninput="document.getElementById('translation').innerHTML='';"
            value="Dieses Kamel ißt gerne Kartoffelsalat mit Wiener Würstchen, während es im Bett liegt und Fernsehen schaut."></input><br>
-    <button onclick="clearContent()">clear</button>
-    <button id="go" onclick="go()">translate</button>
+    <button onclick="clearContent('input','translation')">clear</button>
+    <button id="go" onclick="go('input','translation')">translate</button>
     <!-- <h2>Response:</h2>
          <div id="response"></div> -->
     <h2>Translation:</h2>
     <div id="translation"></div>
+    <hr>
+    <textarea id="multiline-input" rows=5 cols=100>
+Hier können Sie mehrere Sätze auf einmal übersetzen.
+Bitte nehmen Sie für jeden Satz genau eine Zeile.
+    </textarea><br>
+    <button onclick="clearContent('multiline-input','translation2')">clear</button>
+    <button id="go2" onclick="go('multiline-input','translation2')">translate</button>
+    <h2>Translation:</h2>
+    <div id="translation2"></div>
+    <hr>
 
     <script language="javascript" type="text/javascript">
       document.getElementById("input").focus();
-      document.getElementById("input").addEventListener("keyup",function(ev) {
+      document.getElementById("multiline-input").onlick="go('multiline-input','translation')"
+      document.getElementById("input").addEventListener("keyup", function(ev) {
       if (ev.keyCode == 13) {
-      ev.preventDefault();
-      this.focus();
-      go();
+          ev.preventDefault();
+          this.focus();
+          go('input','translation2');
       }});
     </script>
   </body>

@@ -10,14 +10,14 @@ namespace marian {
 class Hypothesis {
 public:
   Hypothesis(std::vector<trieannosaurus::Node>* currTrieNode) : prevHyp_(nullptr), 
-  prevIndex_(0), word_(0), pathScore_(0.0), currTrieNode_(currTrieNode) {}
+  prevIndex_(0), word_(0), pathScore_(0.0), currTrieNode_(currTrieNode), length_(1) {}
 
   Hypothesis(const Ptr<Hypothesis> prevHyp,
              Word word,
              IndexType prevIndex,
              float pathScore)
       : prevHyp_(prevHyp), prevIndex_(prevIndex), word_(word), pathScore_(pathScore), 
-      currTrieNode_(prevHyp_->currTrieNode_) {}
+      currTrieNode_(prevHyp_->currTrieNode_), length_(prevHyp_->GetLength() + 1) {}
 
   const Ptr<Hypothesis> GetPrevHyp() const { return prevHyp_; }
 
@@ -40,6 +40,8 @@ public:
   IndexType GetPrevStateIndex() const { return prevIndex_; }
 
   float GetPathScore() const { return pathScore_; }
+  
+  size_t GetLength() const { return length_; }
 
   std::vector<float>& GetScoreBreakdown() { return scoreBreakdown_; }
   std::vector<float>& GetAlignment() { return alignment_; }
@@ -94,6 +96,7 @@ private:
 
   std::vector<float> scoreBreakdown_;
   std::vector<float> alignment_;
+  const size_t length_;
 };
 
 typedef std::vector<Ptr<Hypothesis>> Beam;                // Beam = vector of hypotheses

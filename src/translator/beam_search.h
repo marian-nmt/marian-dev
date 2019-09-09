@@ -194,7 +194,7 @@ public:
    * have continuations. Otherwise the function filters out
    * beams that have continuations. This is for paraphrasing
    * without using original words.*/
-  Beams filterForContinuations(const Beams& beams, bool reverse=false) {
+  Beams filterForContinuations(const Beams& beams, size_t maxLength) {
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
@@ -202,20 +202,34 @@ public:
                             * if that happens we should end search prematurely
                             * by setting the beam to empty*/
       for (auto hyp : beam) {
-        if (hyp->hasTrieContinuatuions()) {
-          if (reverse) {
-            newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
-          } else {
-            newBeam.push_back(hyp);
-            allFake = false;
-          }
+        if (hyp->hasTrieContinuatuions() && hyp->GetLength() < maxLength ) {
+          newBeam.push_back(hyp);
+          allFake = false;
         } else {
-          if (reverse) {
-            newBeam.push_back(hyp);
-            allFake = false;
-          } else {
-            newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
-          }
+          newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+        }
+        if (allFake) {
+          newBeam.resize(0);
+        }
+      }
+      newBeams.push_back(newBeam);
+    }
+    return newBeams;
+  }
+
+    Beams reverseFilterForContinuations(const Beams& beams, size_t maxLength) {
+    Beams newBeams;
+    for(auto beam : beams) {
+      Beam newBeam;
+      bool allFake = true; /* Keep track if all hypothesis we have are placeholders
+                            * if that happens we should end search prematurely
+                            * by setting the beam to empty*/
+      for (auto hyp : beam) {
+        if (hyp->hasTrieContinuatuions() || hyp->GetLength() >= maxLength ) {
+          newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+        } else {
+          newBeam.push_back(hyp);
+          allFake = false;
         }
         if (allFake) {
           newBeam.resize(0);
@@ -389,7 +403,13 @@ public:
 
       if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
                                                    // we are not at the first word while paraphrasing
-        beams = filterForContinuations(beams, paraphrase_);
+        size_t maxSentenceLength = options_->get<float>("max-length-factor")* batch->front()->batchWidth();
+        if (paraphrase_) {
+          beams = reverseFilterForContinuations(beams, maxSentenceLength);
+        } else {
+          beams = filterForContinuations(beams, maxSentenceLength);
+        }
+        
       }
 
       auto prunedBeams = pruneBeam(beams);

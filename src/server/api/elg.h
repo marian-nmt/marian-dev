@@ -17,6 +17,12 @@ namespace elg {
 
 enum class api { v1 };
 
+// template<class Service>
+// Ptr<rapidjson::Value>
+// translate_node_v1(Service& service, rapidjson::Value const& c){
+
+// }
+
 template<class Service>
 Ptr<rapidjson::Document>
 translate_v1(Service& service, rapidjson::Value const& request){
@@ -31,22 +37,28 @@ translate_v1(Service& service, rapidjson::Value const& request){
   }
   if (request.HasMember("request") &&
       request["request"].HasMember("content")){
-    std::string payload = request["request"]["content"].GetString();
-    std::string translation = service.translate(payload);
-    auto& r = D.AddMember("response",{},alloc)["response"].SetObject();
-    r.AddMember("type", "texts", alloc);
-    rapidjson::Value x(rapidjson::kObjectType);
-    x.AddMember("text", {}, alloc)["text"]
-      .SetString(translation.c_str(), translation.size(), alloc);
-    r.AddMember("texts", {}, alloc)["texts"].SetArray().PushBack(x,alloc);
+    auto& c = request["request"]["content"];
+    if (c.IsArray()) {
+    }
+    else if (c.IsString()) {
+      std::string payload = request["request"]["content"].GetString();
+      std::string translation = service.translate(payload);
+      auto& r = D.AddMember("response",{},alloc)["response"].SetObject();
+      r.AddMember("type", "texts", alloc);
+      rapidjson::Value x(rapidjson::kObjectType);
+      x.AddMember("text", {}, alloc)["text"]
+        .SetString(translation.c_str(), translation.size(), alloc);
+      r.AddMember("texts", {}, alloc)["texts"].SetArray().PushBack(x,alloc);
+      return response;
+    }
   }
-  else{ // error
-    auto& r = D.AddMember("failure",{},alloc)["failure"];
-    auto& e = r.AddMember("errors",{},alloc)["errors"].SetArray();
-    e.PushBack("Invalid request format.",alloc);
-  }
+  // error
+  auto& r = D.AddMember("failure",{},alloc)["failure"];
+  auto& e = r.AddMember("errors",{},alloc)["errors"].SetArray();
+  e.PushBack("Invalid request format.",alloc);
   return response;
 }
+
 
 
 // template<class Service>

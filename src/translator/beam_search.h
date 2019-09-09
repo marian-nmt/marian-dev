@@ -403,7 +403,7 @@ public:
 
       if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
                                                    // we are not at the first word while paraphrasing
-        size_t maxSentenceLength = options_->get<float>("max-length-factor")* batch->front()->batchWidth();
+        size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
         if (paraphrase_) {
           beams = reverseFilterForContinuations(beams, maxSentenceLength);
         } else {

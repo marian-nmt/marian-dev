@@ -33,6 +33,7 @@ const std::set<std::string> PATHS = {
   "embedding-vectors",
   "valid-sets",
   "valid-script-path",
+  "valid-script-args",
   "valid-log",
   "valid-translation-output",
   "input",            // except: stdin
@@ -79,7 +80,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<bool>("--relative-paths",
     "All paths are relative to the config file location");
   cli.add<std::string>("--dump-config",
-    "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal")
+    "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal, expand")
     ->implicit_val("full");
   // clang-format on
 }
@@ -121,6 +122,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--dim-emb",
       "Size of embedding vector",
       512);
+  cli.add<int>("--lemma-dim-emb",
+      "Re-embedding dimension of lemma in factors",
+      0);
   cli.add<int>("--dim-rnn",
       "Size of rnn hidden state", 1024);
   cli.add<std::string>("--enc-type",
@@ -378,6 +382,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
 
   cli.add<double>("--label-smoothing",
      "Epsilon for label smoothing (0 to disable)");
+  cli.add<double>("--factor-weight",
+     "Weight for loss function for factors (factored vocab only) (1 to disable)", 1.0f);
   cli.add<float>("--clip-norm",
      "Clip gradient norm to arg (0 to disable)",
      1.f);
@@ -415,8 +421,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+
   // add ULR settings
   addSuboptionsULR(cli);
+
+  cli.add<std::vector<std::string>>("--task",
+     "Use predefined set of options. Possible values: transformer, transformer-big");
   // clang-format on
 }
 
@@ -468,6 +478,9 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
      " It should print a single score to stdout."
      " If the option is used with validating translation, the output"
      " translation file will be passed as a first argument");
+  cli.add<std::vector<std::string>>("--valid-script-args",
+      "Additional args passed to --valid-script-path. These are inserted"
+      " between the script path and the output translation-file path");
   cli.add<std::string>("--valid-translation-output",
      "Path to store the translation");
 
@@ -518,6 +531,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
+  cli.add<std::string>("--gemm-type",
+      "Select GEMM options: auto, mklfp32, intrinint16, fp16packed, int8packed",
+      "auto");
 
   cli.add<std::vector<std::string>>("--shortlist",
      "Use softmax shortlist: path first best prune");
@@ -630,6 +646,11 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--shuffle-in-ram",
       "Keep shuffled corpus in RAM, do not write to temp file");
+  // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
+  cli.add<size_t>("--all-caps-every",
+      "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
+  cli.add<size_t>("--english-title-case-every",
+      "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
 
   cli.add<int>("--mini-batch-words-ref",
       "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
@@ -689,27 +710,6 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
-void ConfigParser::expandAliases(cli::CLIWrapper& cli) {
-  YAML::Node config;
-  // The order of aliases does matter as later options overwrite earlier
-
-  if(config_["best-deep"].as<bool>()) {
-    config["layer-normalization"] = true;
-    config["tied-embeddings"] = true;
-    config["enc-type"] = "alternating";
-    config["enc-cell-depth"] = 2;
-    config["enc-depth"] = 4;
-    config["dec-cell-base-depth"] = 4;
-    config["dec-cell-high-depth"] = 2;
-    config["dec-depth"] = 4;
-    config["skip"] = true;
-  }
-
-  if(config) {
-    cli.updateConfig(config, "Unknown option(s) in aliases");
-  }
-}
-
 void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   cli::CLIWrapper cli(config_,
                       "Marian: Fast Neural Machine Translation in C++",
@@ -727,6 +727,7 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     case cli::mode::training:
       addOptionsTraining(cli);
       addOptionsValidation(cli);
+      addAliases(cli);
       break;
     case cli::mode::translation:
       addOptionsTranslation(cli);
@@ -747,7 +748,9 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   auto configPaths = findConfigPaths();
   if(!configPaths.empty()) {
     auto config = loadConfigFiles(configPaths);
-    cli.updateConfig(config, "There are option(s) in a config file that are not expected");
+    cli.updateConfig(config,
+                     cli::OptionPriority::ConfigFile,
+                     "There are option(s) in a config file that are not expected");
   }
 
   if(get<bool>("interpolate-env-vars")) {
@@ -755,7 +758,6 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   }
 
   if(doValidate) {
-    // this aborts the program on first validation error
     ConfigValidator(config_).validateOptions(mode_);
   }
 
@@ -763,13 +765,19 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   config_.remove("config");
 
   if(!get<std::string>("dump-config").empty() && get<std::string>("dump-config") != "false") {
-    bool skipDefault = get<std::string>("dump-config") == "minimal";
+    auto dumpMode = get<std::string>("dump-config");
     config_.remove("dump-config");
-    std::cout << cli.dumpConfig(skipDefault) << std::endl;
+
+    if(dumpMode == "expand") {
+      cli.parseAliases();
+    }
+
+    bool minimal = (dumpMode == "minimal" || dumpMode == "expand");
+    std::cout << cli.dumpConfig(minimal) << std::endl;
     exit(0);
   }
 
-  expandAliases(cli);
+  cli.parseAliases();
 }
 
 std::vector<std::string> ConfigParser::findConfigPaths() {

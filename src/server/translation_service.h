@@ -216,7 +216,9 @@ class NodeTranslation {
   std::vector<std::future<Ptr<Job const>>> delayed_;
   bool ends_with_eol_char_{false};
  public:
-  NodeTranslation(rapidjson::Value* n, TranslationService<Search>& service)
+  NodeTranslation(rapidjson::Value* n,
+                  TranslationService<Search>& service,
+                  std::string field="text")
     : node_(n) {
     if (n == NULL) return; // nothing to do
     if (n->IsString()) {
@@ -235,8 +237,8 @@ class NodeTranslation {
       for (auto c = n->Begin(); c != n->End(); ++c)
         children_.push_back(NodeTranslation(c, service));
     }
-    else if (n->IsObject() && n->HasMember("text")) {
-      children_.push_back(NodeTranslation(&((*n)["text"]),service));
+    else if (n->IsObject() && n->HasMember(field.c_str())) {
+      children_.push_back(NodeTranslation(&((*n)[field.c_str()]),service));
     }
   }
 

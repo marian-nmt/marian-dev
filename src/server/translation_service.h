@@ -316,15 +316,13 @@ class NodeTranslation {
         // LOG(debug, "[service] Scheduled job No. {}: {}", foo.first, line);
       }
     }
-    else if (n->IsString()) {
-      translation_.reset(new PlainTextTranslation<Search>(n->GetString(),
-                                                          service, smode_));
-    }
     else if (n->IsArray()) {
       for (auto c = n->Begin(); c != n->End(); ++c){
         auto x = NodeTranslation(c, service, payload_field, options_field, this);
         children_.push_back(std::move(x));
       }
+    else if (n->IsObject() && n->HasMember(field.c_str())) {
+      children_.push_back(NodeTranslation(&((*n)[field.c_str()]),service));
     }
   }
 

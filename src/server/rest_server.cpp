@@ -213,17 +213,20 @@ int main(int argc, char* argv[])
       }
     });
 
-  CROW_ROUTE(app, "/api/ug/v1")
+  CROW_ROUTE(app, "/api/bergamot/v1")
     .methods("POST"_method)
     ([service](const crow::request& req){
       rapidjson::Document D;
+      auto payload_field = req.url_params.get("payload");
+      std::string payload = payload_field ? payload_field : "text";
       std::cerr << "MESSAGE BODY IS " << req.body << std::endl;
+      std::cerr << "PAYLOAD FIELD IS " << payload << std::endl;
       D.Parse(req.body.c_str());
       if (!D.IsObject()) {
         return crow::response(500,"Invalid Json");
       }
       std::cerr << "PARSED: " << server::serialize(D) << std::endl;
-      server::NodeTranslation<> job(&D,*service);
+      server::NodeTranslation<> job(&D,*service,payload);
       job.finish(D.GetAllocator());
       std::string response = server::serialize(D);
       std::cerr << response << std::endl;

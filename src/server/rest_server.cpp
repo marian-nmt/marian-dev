@@ -10,6 +10,10 @@
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
 #include "translation_service.h"
 #include <sstream>
+#include <cstdlib>
+#include <cuda.h>
+#include <driver_types.h>
+#include <cuda_runtime.h>
 
 class LogHandler : public crow::ILogHandler {
     public:
@@ -33,15 +37,36 @@ int main(int argc, char* argv[])
   ConfigParser cp(cli::mode::translation);
   cp.addOption<int>("--port,-p","Server Options", "server port",18080);
   cp.addOption<int>("--queue-timeout","Server Options",
-                    "max wait for new data before batch is launched",10);
+                    "max wait time (in ms) for new data before an underfull "
+                    "batch is launched",5);
+  cp.addOption<size_t>("--max-workers","Server Options",
+                       "Maximum number of worker threads to deploy when using CPU.",
+                       std::thread::hardware_concurrency());
   cp.addOption<std::string>("--server-root","Server Options",
                             "server's document root directory","./rest");
 
   auto options = cp.parseOptions(argc, argv, true);
+
+  // If running in a docker container, a GPU may not be available
+  // but the executable was compiled with CUDA support. Determine
+  // whether a GPU is available and switch to CPU-based translation
+  // if not.
+  if (options->get<int>("cpu_threads",0) == 0){
+    int ngpus;
+    cudaError_t err = cudaGetDeviceCount(&ngpus);
+    if (err != cudaSuccess) {
+      LOG(warn, "NO GPU available, using CPU instead.");
+      options->set("cpu_threads",options->get<size_t>("max_workers"));
+    }
+  }
+  if (options->get<int>("cpu_threads",0)){
+    // use mini-batch size 1 if running on CPU
+    options->set<int>("mini_batch",1);
+  }
+
   auto service = New<server::TranslationService<BeamSearch>>(options);
   service->start();
 
-  // crow::App<ExampleMiddleware> app;
   crow::SimpleApp app;
   std::string doc_root = options->get<std::string>("server-root");
   if (doc_root.back() == '/') doc_root.pop_back();
@@ -92,7 +117,7 @@ int main(int argc, char* argv[])
 
 
   // route for serving the UI (templated)
-  CROW_ROUTE(app, "/api/elg/v1")
+  CROW_ROUTE(app, "/api/elg/v1") // GET requests
     ([](const crow::request& req){
       crow::mustache::context ctx;
       ctx["URL"] = req.get_header_value("Host");
@@ -106,41 +131,18 @@ int main(int argc, char* argv[])
       return crow::mustache::load("demo.html").render(ctx);
     });
 
-  CROW_ROUTE(app, "/<string>")
-    ([](const crow::request& req, std::string path){
-      crow::mustache::context ctx;
-      ctx["URL"] = req.get_header_value("Host");
-      std::string url = dump(ctx["URL"]);
-      LOG(debug, "URL {}", url);
-      LOG(debug, "PATH {}", path);
-      return crow::mustache::load("demo.html").render(ctx);
-    });
-
-  // // route for serving files
   // CROW_ROUTE(app, "/<string>")
   //   ([](const crow::request& req, std::string path){
-  //     marian::filesystem::Path p(doc_root+path);
-  //     if (!p.exists())
-  //       return crow::response(404, path+" not found");
-  //     ifstream(doc_root+path);
-
-
-  // //     crow::mustache::context ctx;
-  // //     ctx["url"] = req.raw_url;
-  // //     std::cout << "URL " << req.get_header_value("Host") << req.url << std::endl;
-  // //     auto page = crow::mustache::load("demo.html");
-  // //     return page.render(ctx);
-
-  //     if (marian::filesystem::exists(path))
-  //       return crow::mustache::load(path).render();
-  //     return page.render();
+  //     crow::mustache::context ctx;
+  //     ctx["URL"] = req.get_header_value("Host");
+  //     std::string url = dump(ctx["URL"]);
+  //     LOG(debug, "URL {}", url);
+  //     LOG(debug, "PATH {}", path);
+  //     return crow::mustache::load("demo.html").render(ctx);
   //   });
 
-  // enables all log
   app.loglevel(crow::LogLevel::WARNING);
-  //crow::logger::setHandler(std::make_shared<ExampleLogHandler>());
 
-//            cerr << "ExampleLogHandler -> " << message;
   LogHandler logger;
   crow::logger::setHandler(&logger);
   app.port(options->get<int>("port"))

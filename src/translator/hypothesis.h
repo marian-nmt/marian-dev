@@ -10,7 +10,7 @@ namespace marian {
 class Hypothesis {
 public:
   Hypothesis(std::vector<trieannosaurus::Node>* currTrieNode) : prevHyp_(nullptr), 
-  prevIndex_(0), word_(0), pathScore_(0.0), currTrieNode_(currTrieNode), length_(1) {}
+  prevIndex_(0), word_(0), pathScore_(0.0), currTrieNode_(currTrieNode), length_(0) {}
 
   Hypothesis(const Ptr<Hypothesis> prevHyp,
              Word word,

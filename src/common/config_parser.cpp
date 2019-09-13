@@ -242,20 +242,18 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         100);
   }
 
-  if(mode_ == cli::mode::training || mode_ == cli::mode::translation) {
-    cli.add<float>("--dropout-rnn",
-        "Scaling dropout along rnn layers and time (0 = no dropout)");
-    cli.add<float>("--dropout-src",
-        "Dropout source words (0 = no dropout)");
-    cli.add<float>("--dropout-trg",
-        "Dropout target words (0 = no dropout)");
-    cli.add<float>("--transformer-dropout",
-        "Dropout between transformer layers (0 = no dropout)");
-    cli.add<float>("--transformer-dropout-attention",
-        "Dropout for transformer attention (0 = no dropout)");
-    cli.add<float>("--transformer-dropout-ffn",
-        "Dropout for transformer filter (0 = no dropout)");
-  }
+  cli.add<float>("--dropout-rnn",
+      "Scaling dropout along rnn layers and time (0 = no dropout)");
+  cli.add<float>("--dropout-src",
+      "Dropout source words (0 = no dropout)");
+  cli.add<float>("--dropout-trg",
+      "Dropout target words (0 = no dropout)");
+  cli.add<float>("--transformer-dropout",
+      "Dropout between transformer layers (0 = no dropout)");
+  cli.add<float>("--transformer-dropout-attention",
+      "Dropout for transformer attention (0 = no dropout)");
+  cli.add<float>("--transformer-dropout-ffn",
+      "Dropout for transformer filter (0 = no dropout)");
   // clang-format on
 }
 
@@ -577,8 +575,9 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   cli.add<std::string>("--alignment",
      "Return word alignments. Possible values: 0.0-1.0, hard, soft")
      ->implicit_val("1"),
-  cli.add<bool>("--word-scores",
-      "Print word-level scores");
+  cli.add<bool>("--dropout-sampling",
+      "Use dropout during scoring",
+      false);
 
   addSuboptionsInputLength(cli);
   addSuboptionsDevices(cli);

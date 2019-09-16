@@ -51,7 +51,7 @@ public:
 
   void
   process() {
-    server::NodeTranslation<> job(request_.get(), *service_);
+    server::NodeTranslation<> job(request_.get(), *service_, "payload");
     job.finish(request_->GetAllocator());
   }
 

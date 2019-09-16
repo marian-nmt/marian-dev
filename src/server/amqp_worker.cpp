@@ -96,34 +96,35 @@ int main(int argc, char** argv)
   AMQP::Address address(broker);
   AMQP::TcpConnection connection(&handler, address);
   AMQP::TcpChannel channel(&connection);
-  // @TODO: add event handlers if connection / channel breaks down
-
-
-  // Set up a queue for finished jobs that the Responder function
-  // will read from.
-  auto Q = New<marian::server::Queue<Request<>>>();
+  // @TODO: add event handlers to reconnect if connection / channel breaks down
 
   // we need a thread pool to deal with requests in the background
   auto nproc = std::thread::hardware_concurrency();
   auto pool = New<ThreadPool>(nproc,nproc);
 
-
-  // The responder is a callback function that is called when a
+  // The Responder is a callback function that is called when a
   // request has been processed. Connections and channels cannot be
-  // shared between threads.
+  // shared between threads, so it needs to run in the same thread
+  // that listens on the AMQP input queue. Jobs finished by the
+  // translation workers will be pushed onto the Responder queue /Q/,
+  // from which the Responder delivers them back to the AMQP broker.
+  auto Q = New<marian::server::Queue<Request<>>>();
   Responder responder(Q, channel);
 
-  ev::async qbell; // a bell to ring when a job is done
-  // Note that the C++ LibEv interface always uses the default event
-  // loop.
+  // qbell is a bell rung by translation workers when a finished job
+  // has been pushed onto Q, to wake up the Responder.  For
+  // convenience, we use the C++ LibEv interface, which always uses
+  // the default event loop.
+  ev::async qbell;
   qbell.set(&responder); // trigger responder when bell is rung
   qbell.start(); // start waiting for qbell events
 
   // listen on the input queue
   auto& queue = channel.declareQueue(listen_queue);
-  queue.onSuccess([](const std::string &name, uint32_t messagecount,
+  queue.onSuccess([](const std::string &name,
+                     uint32_t messagecount,
                      uint32_t consumercount) {
-                    std::cout << "declared queue " << name << std::endl;
+                    LOG(info, "Declared queue {}", name);
                   });
 
   auto on_message = [&channel,&pool,&service,&Q, &qbell]
@@ -140,15 +141,16 @@ int main(int argc, char** argv)
     };
 
   // callback function that is called when the consume operation starts
-  auto on_start = [](const std::string &consumertag)
+  auto on_start = [&listen_queue](const std::string &consumertag)
     {
-      std::cout << "consume operation started" << std::endl;
+      LOG(info, "Consume operation started on queue {}", listen_queue);
     };
 
   // callback function that is called when the consume operation failed
-  auto on_error = [](const char *message)
+  auto on_error = [&listen_queue](const char *message)
     {
-      std::cout << "consume operation failed" << std::endl;
+      LOG(warn, "Consume operation failed on queue {}: {}",
+          listen_queue, message);
     };
 
   // start consuming from the queue, and install the callbacks

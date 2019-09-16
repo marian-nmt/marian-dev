@@ -32,6 +32,10 @@
 #include <mutex>
 #include <thread>
 
+#ifdef __CUDA_ARCH__
+#include <cuda.h>
+#endif
+
 extern Logger logger;
 
 namespace marian {
@@ -103,9 +107,36 @@ private:
     entry.second.set_value(entry.first);
   }
 
+  // When run in a docker container with nvidia docker, CUDA may or may
+  // not be available, depending on how the Docker container is run, i.e.,
+  // mapping host devices into the container via --gpus or not.
+  // chooseDevice() checks if CUDA is available and automatically switches
+  // to CPU mode if not. Without this check, Marian will crash unless
+  // --cpu-threads is set explicitly.
+  void chooseDevice_(Ptr<Options> options){
+#ifdef __CUDA_ARCH__
+    if (options->get<int>("cpu_threads",0) > 0)
+      return; // nothing to worry about, user wants to use CPU anyway
+    int ngpus;
+    cudaError_t err = cudaGetDeviceCount(&ngpus);
+    if (err != cudaSuccess){
+      size_t nproc = std::thread::hardware_concurrency();
+      size_t num_workers = options->get<size_t>("max_workers",nproc);
+      LOG(warn, "NO GPU available, using CPU instead. "
+          "Setting --cpu-threads to {}", num_workers);
+      options->set("cpu_threads",num_workers);
+    }
+    if (options->get<int>("cpu_threads",0)){
+      // use mini-batch size 1 if running on CPU
+      options->set<int>("mini_batch",1);
+    }
+#endif
+  }
+
 public:
   TranslationService(Ptr<Options> options)
     : options_(options) {
+    chooseDevice_(options);
   }
 
   ~TranslationService() {

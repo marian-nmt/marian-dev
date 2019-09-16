@@ -50,11 +50,11 @@ public:
         }
       }
 
+      if(wordScores_)
+        bestn << " WordScores=" << getWordScores(hypo);
+
       float realScore = std::get<2>(result);
       bestn << " ||| " << realScore;
-
-      if(wordScores_)
-        bestn << " ||| WordScores=" << getWordScores(hypo);
 
       if(i < nbl.size() - 1)
         bestn << std::endl;

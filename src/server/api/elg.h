@@ -50,7 +50,7 @@ translate_v1(Service& service, rapidjson::Value const& request){
     }
   }
   // error
-  auto& r = D.AddMember("failure",{},alloc)["failure"];
+  auto& r = D.AddMember("failure",{},alloc)["failure"].SetObject();
   auto& e = r.AddMember("errors",{},alloc)["errors"].SetArray();
   e.PushBack("Invalid request format.",alloc);
   return response;

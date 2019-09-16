@@ -46,24 +46,6 @@ int main(int argc, char* argv[])
                             "server's document root directory","./rest");
 
   auto options = cp.parseOptions(argc, argv, true);
-
-  // If running in a docker container, a GPU may not be available
-  // but the executable was compiled with CUDA support. Determine
-  // whether a GPU is available and switch to CPU-based translation
-  // if not.
-  if (options->get<int>("cpu_threads",0) == 0){
-    int ngpus;
-    cudaError_t err = cudaGetDeviceCount(&ngpus);
-    if (err != cudaSuccess) {
-      LOG(warn, "NO GPU available, using CPU instead.");
-      options->set("cpu_threads",options->get<size_t>("max_workers"));
-    }
-  }
-  if (options->get<int>("cpu_threads",0)){
-    // use mini-batch size 1 if running on CPU
-    options->set<int>("mini_batch",1);
-  }
-
   auto service = New<server::TranslationService<BeamSearch>>(options);
   service->start();
 

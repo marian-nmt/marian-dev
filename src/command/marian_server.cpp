@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
   // Initialize translation task
   auto options = parseOptions(argc, argv, cli::mode::server, true);
   auto task = New<TranslateService<BeamSearch>>(options);
+  auto inputNum = options->get<std::vector<std::string>>("vocabs").size() - 1;
 
   // Initialize web server
   WSServer server;
@@ -21,7 +22,7 @@ int main(int argc, char **argv) {
 
   auto &translate = server.endpoint["^/translate/?$"];
 
-  translate.on_message = [&task](Ptr<WSServer::Connection> connection,
+  translate.on_message = [&task, inputNum](Ptr<WSServer::Connection> connection,
                                  Ptr<WSServer::Message> message) {
     // Get input text
     auto inputText = message->string();
@@ -29,7 +30,13 @@ int main(int argc, char **argv) {
 
     // Translate
     timer::Timer timer;
-    auto outputText = task->run(inputText);
+    std::vector<std::string> inputs;
+    if (inputNum >= 2) {
+      inputs = utils::tsv2lists(inputText, inputNum);
+    } else {
+      inputs = std::vector<std::string>({inputText});
+    }
+    auto outputText = task->run(inputs);
     LOG(info, "Best translation: {}", outputText);
     *sendStream << outputText << std::endl;
     LOG(info, "Translation took: {:.5f}s", timer.elapsed());

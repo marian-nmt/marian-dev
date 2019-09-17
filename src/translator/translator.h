@@ -1,5 +1,8 @@
 #pragma once
 
+#include <iostream>
+#include <string>
+
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/shortlist.h"
@@ -189,7 +192,11 @@ public:
   }
 
   std::string run(const std::string& input) override {
-    auto corpus_ = New<data::TextInput>(std::vector<std::string>({input}), srcVocabs_, options_);
+    return run(std::vector<std::string>({input}));
+  }
+
+  std::string run(const std::vector<std::string>& inputs) override {
+    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
     data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_);
 
     auto collector = New<StringCollector>();

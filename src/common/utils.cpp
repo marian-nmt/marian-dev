@@ -13,6 +13,7 @@
 #endif
 #include <codecvt>
 #include <cwctype>
+#include <vector>
 
 namespace marian {
 namespace utils {
@@ -92,6 +93,26 @@ std::string join(const std::vector<std::string>& words, const std::string& del /
 
   return ss.str();
 }
+
+std::vector<std::string> tsv2lists(const std::string& inputText, int inputNum) {
+    std::string line_;
+    std::vector<std::vector<std::string>> inputLists(inputNum);
+    std::istringstream inputStream(inputText);
+    while (std::getline(inputStream, line_)) {
+      auto items = marian::utils::splitAny(line_, "\t");
+      std::cerr << "Split into " << items.size() << std::endl;
+      for (size_t i = 0; i < items.size(); ++i) {
+        inputLists[i].push_back(items[i]);
+      }
+    }
+
+    std::vector<std::string> inputs;
+    for (auto &inputList : inputLists) {
+      inputs.push_back(marian::utils::join(inputList, "\n"));
+    }
+    return inputs;
+}
+
 
 // escapes a string for passing to popen, which uses /bin/sh to parse its argument string
 static std::string escapeForPOpen(const std::string& arg) {

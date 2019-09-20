@@ -133,7 +133,7 @@ int main(int argc, char* argv[])
   cp.addOption<int>("--port,-p","Server Options", "server port",18080);
   cp.addOption<int>("--queue-timeout","Server Options",
                     "max wait time (in ms) for new data before an underfull "
-                    "batch is launched",5);
+                    "batch is launched",100);
   cp.addOption<size_t>("--max-workers","Server Options",
                        "Maximum number of worker threads to deploy when using CPU.",
                        std::thread::hardware_concurrency());
@@ -195,14 +195,27 @@ int main(int argc, char* argv[])
       }
     });
 
+  // route for serving the UI (templated)
+  CROW_ROUTE(app, "/api/bergamot/v1") // GET requests
+    // .methods("OPTIONS"_method, "GET"_method)
+    ([](const crow::request& req){
+      crow::mustache::context ctx;
+      ctx["URL"] = req.get_header_value("Host");
+      std::cerr << "BAMBAFOO" << std::endl;
+      return crow::mustache::load("bergamot_api_v1.html").render(ctx);
+    });
+
   CROW_ROUTE(app, "/api/bergamot/v1")
     .methods("POST"_method)
     ([service](const crow::request& req){
       rapidjson::Document D;
       auto payload_field = req.url_params.get("payload");
       std::string payload = payload_field ? payload_field : "text";
+      auto options_field = req.url_params.get("options");
+      std::string t_opts = options_field ? options_field : "options";
       std::cerr << "MESSAGE BODY IS " << req.body << std::endl;
       std::cerr << "PAYLOAD FIELD IS " << payload << std::endl;
+      std::cerr << "OPTIONS FIELD IS " << t_opts << std::endl;
       D.Parse(req.body.c_str());
       if (!D.IsObject()) {
         return crow::response(500,"Invalid Json");
@@ -214,7 +227,6 @@ int main(int argc, char* argv[])
       std::cerr << response << std::endl;
       return crow::response(response.c_str());
     });
-
 
   // route for serving the UI (templated)
   CROW_ROUTE(app, "/api/elg/v1") // GET requests

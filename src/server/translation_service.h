@@ -252,6 +252,13 @@ public:
       ret.pop_back();
     return ret;
   }
+
+  typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
+  ug::ssplit::SentenceStream
+  createSentenceStream(std::string const& input, ssplitmode const& mode)
+  {
+    return std::move(ug::ssplit::SentenceStream(input, this->ssplit_, mode));
+  }
 };
 
 template<class Search>
@@ -306,15 +313,30 @@ class NodeTranslation {
                   NodeTranslation* parent=NULL)
     : node_(n) {
     if (n == NULL) return; // nothing to do
-    if (n->IsString()) {
-      std::istringstream buf(n->GetString());
-      std::string line;
-      for (size_t linectr = 0; getline(buf, line); ++linectr) {
-        // LOG(info,"Input: {}",line);
-        auto foo = std::move(service.push(linectr,line));
-        delayed_.push_back(std::move(foo.second));
-        // LOG(debug, "[service] Scheduled job No. {}: {}", foo.first, line);
+    setOptions(n, parent, options_field);
+
+    if (n->IsObject()){
+      auto x = n->FindMember(payload_field.c_str());
+      if (x != n->MemberEnd()){
+        auto c = NodeTranslation(&(x->value), service,
+                                 payload_field, options_field, this);
+        children_.push_back(std::move(c));
       }
+    }
+    else if (n->IsString()) {
+      // SentenceStream doesn't copy the input, so input must
+      // live at least as long as buf.
+      std::string input = n->GetString();
+      auto buf = service.createSentenceStream(input, smode_);
+      std::string snt;
+      size_t linectr=0;
+      while (buf >> snt) {
+        LOG(trace,"SNT: {}",snt);
+        auto foo = std::move(service.push(++linectr, snt));
+        delayed_.push_back(std::move(foo.second));
+      }
+      ends_with_eol_char_ = input.size() && input.back() == '\n';
+      // @TODO: this needs a patch for windows w.r.t. EOL
     }
     else if (n->IsArray()) {
       for (auto c = n->Begin(); c != n->End(); ++c){
@@ -330,14 +352,21 @@ class NodeTranslation {
     for (auto& c: children_) c.finish(alloc);
     if (delayed_.size()) {
       std::ostringstream buf;
+      char sep = (smode_ == splitmode::one_sentence_per_line ? '\n' : ' ');
+      // TODO: Does this need a fix for Windows "\r\n"?
       for (auto& f: delayed_) {
         Ptr<Job const> j = f.get();
-        buf << j->translation << std::endl;
+        if (j->nbest.size() == 0) { // "job" was a paragraph marker
+          buf << (smode_ == splitmode::wrapped_text ? "\n\n" : "\n");
+        }
+        else {
+          buf << j->translation << sep;
+        }
         // LOG(debug, "[service] Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
         // j->translationTime(), j->totalTime(), j->input[0], j->translation);
       }
       std::string translation = buf.str();
-      if (!ends_with_eol_char_)
+      if (translation.size() && !ends_with_eol_char_)
         translation.pop_back();
       if (node_) {
         ABORT_IF(!node_->IsString(), "Node is not a string!");

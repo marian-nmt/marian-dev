@@ -5,6 +5,7 @@ add_subdirectory(./yaml-cpp)
 add_subdirectory(./SQLiteCpp)
 add_subdirectory(./pathie-cpp)
 add_subdirectory(./zlib)
+add_subdirectory(./ssplit-cpp)
 
 # if (COMPILE_REST_SERVER)
 #   add_subdirectory(./crow)

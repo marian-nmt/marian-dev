@@ -8,6 +8,7 @@ include_directories(3rd_party/fbgemm/include)
 include_directories(3rd_party/rapidjson/include)
 include_directories(3rd_party/amqp-cpp/include)
 include_directories(3rd_party/crow/include)
+include_directories(3rd_party/ssplit/include)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
@@ -237,6 +238,7 @@ if (COMPILE_WEBSOCKET_SERVER)
   add_executable(websocket-server server/websocket-server.cpp)
   set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
   target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
+  target_link_libraries(websocket-server marian amqpcpp ev ssplit pcre pcrecpp)
   set(EXECUTABLES ${EXECUTABLES} websocket-server)
 endif(COMPILE_WEBSOCKET_SERVER)
 
@@ -245,7 +247,7 @@ if (COMPILE_AMQP_WORKER)
   set_target_properties(amqp-worker PROPERTIES OUTPUT amqp-worker)
   target_compile_options(amqp-worker PUBLIC ${ALL_WARNINGS})
   set(EXECUTABLES ${EXECUTABLES} amqp-worker)
-  target_link_libraries(amqp-worker marian amqpcpp ev)
+  target_link_libraries(amqp-worker marian amqpcpp ev ssplit pcre pcrecpp)
 endif(COMPILE_AMQP_WORKER)
 
 if (COMPILE_REST_SERVER)
@@ -253,7 +255,7 @@ if (COMPILE_REST_SERVER)
   set_target_properties(rest-server PROPERTIES OUTPUT rest-server)
   target_compile_options(rest-server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
   set(EXECUTABLES ${EXECUTABLES} rest-server)
-  target_link_libraries(rest-server marian)
+  target_link_libraries(rest-server marian ssplit pcre pcrecpp)
 endif(COMPILE_REST_SERVER)
 
 

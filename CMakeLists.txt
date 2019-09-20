@@ -27,6 +27,10 @@ option(COMPILE_WEBSOCKET_SERVER "Compile Marian Advanced Message Queue Protocol 
 option(COMPILE_REST_SERVER "Compile Marian REST server" ON)
 option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module" ON)
 
+if(COMPILE_REST_SERVER)
+  find_package(PCRECPP)
+endif(COMPILE_REST_SERVER)
+
 # Project versioning
 find_package(Git QUIET)
 include(GetVersionFromFile)

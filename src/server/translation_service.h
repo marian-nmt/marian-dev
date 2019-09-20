@@ -3,33 +3,29 @@
 
 // @TODO: - priority handling of translation requests (for faster premium service)
 
-
+#include "3rd_party/ssplit-cpp/src/ssplit/ssplit.h"
+#include "3rd_party/threadpool.h"
+#include "common/logging.h"
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/shortlist.h"
 #include "data/text_input.h"
-
-#include "3rd_party/threadpool.h"
+#include "models/model_task.h"
+#include "queue.h"
+#include "queued_input.h"
+#include "translation_job.h"
+#include "translation_worker.h"
+#include "translation_worker.h"
+#include "translator/beam_search.h"
 #include "translator/history.h"
 #include "translator/output_collector.h"
 #include "translator/output_printer.h"
-#include "translator/beam_search.h"
-
-#include "models/model_task.h"
 #include "translator/scorers.h"
-
-#include "translation_worker.h"
-#include "common/logging.h"
-#include "queue.h"
-#include "queued_input.h"
-#include <map>
 #include <ctime>
-
-#include <string>
-#include "translation_worker.h"
-#include "translation_job.h"
 #include <functional>
+#include <map>
 #include <mutex>
+#include <string>
 #include <thread>
 
 #ifdef __CUDA_ARCH__
@@ -81,6 +77,7 @@ private:
   std::vector<Ptr<Worker>> workers_;
   Ptr<data::QueuedInput> jq_;
   Ptr<data::ShortlistGenerator const> slgen_;
+  ug::ssplit::SentenceSplitter ssplit_;
 
   // bits and pieces for callbacks
   std::mutex lock_; // for management of pending callbacks
@@ -135,7 +132,8 @@ private:
 
 public:
   TranslationService(Ptr<Options> options)
-    : options_(options) {
+    : options_(options)
+    , ssplit_(options_->get<std::string>("ssplit-prefix_file","")) {
     chooseDevice_(options);
   }
 
@@ -178,7 +176,12 @@ public:
        =[=](Ptr<Job> j){return;}) {
     // auto starttime = std::clock();
     auto job = New<Job>(ejid, input, nbest, priority);
-    if (!jq_->push(job)) {
+    if (input.empty()){//nothing to do
+      std::promise<Ptr<Job const>> prom;
+      prom.set_value(job);
+      return std::make_pair(job->unique_id,prom.get_future());
+    }
+    else if (!jq_->push(job)) {
       job->error = New<Error>("Could not push to Queue.");
       std::promise<Ptr<Job const>> prom;
       prom.set_value(job);
@@ -238,38 +241,96 @@ public:
       translation.pop_back();
     return translation;
   }
+
+  typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
+  ug::ssplit::SentenceStream
+  createSentenceStream(std::string const& input, ssplitmode const& mode)
+  {
+    return std::move(ug::ssplit::SentenceStream(input, this->ssplit_, mode));
+  }
 };
 
 template<class Search=BeamSearch>
 class NodeTranslation {
+
+  // Map from strings to sentence splitting modes.
+  // paragraph and wrapped_text use linguistic sentence splitting.
+  using splitmode=ug::ssplit::SentenceStream::splitmode;
+
   std::vector<NodeTranslation<Search>> children_;
   rapidjson::Value* node_;
   std::vector<std::future<Ptr<Job const>>> delayed_;
   bool ends_with_eol_char_{false};
+  splitmode smode_;
+
+  splitmode
+  determine_splitmode_(rapidjson::Value* n,
+                       NodeTranslation const* parent,
+                       const std::string& options_field){
+    if (n->IsObject()){
+      auto x = n->FindMember(options_field.c_str());
+      if (x != n->MemberEnd() && x->value.IsObject()){
+        auto y = x->value.FindMember("input-format");
+        if (y != x->value.MemberEnd() && y->value.IsString()){
+          std::string m = y->value.GetString();
+          if (m == "sentence")
+            return (smode_ = splitmode::one_sentence_per_line);
+          if (m == "paragraph")
+            return (smode_ = splitmode::one_paragraph_per_line);
+          if (m != "wrapped_text"){
+            LOG(warn,"Ignoring unknown text input format specification: {}.",m);
+          }
+        }
+      }
+    }
+    smode_ = parent ? parent->smode_ : splitmode::wrapped_text;
+    return smode_;
+  }
+
+  void setOptions(rapidjson::Value* n,
+                  NodeTranslation const* parent,
+                  const std::string& options_field){
+    determine_splitmode_(n, parent, options_field);
+  }
+
  public:
   NodeTranslation(rapidjson::Value* n,
                   TranslationService<Search>& service,
-                  std::string field="text")
+                  std::string payload_field="text",
+                  std::string options_field="options",
+                  NodeTranslation* parent=NULL)
     : node_(n) {
     if (n == NULL) return; // nothing to do
-    if (n->IsString()) {
-      std::istringstream buf(n->GetString());
-      std::string line;
-      for (size_t linectr = 0; getline(buf, line); ++linectr) {
-        // LOG(info,"Input: {}",line);
-        auto foo = std::move(service.push(linectr,line));
-        delayed_.push_back(std::move(foo.second));
-        // LOG(debug, "[service] Scheduled job No. {}: {}", foo.first, line);
+    setOptions(n, parent, options_field);
+
+    if (n->IsObject()){
+      auto x = n->FindMember(payload_field.c_str());
+      if (x != n->MemberEnd()){
+        auto c = NodeTranslation(&(x->value), service,
+                                 payload_field, options_field, this);
+        children_.push_back(std::move(c));
       }
-      ends_with_eol_char_ = line.size() && line.back() == '\n';
+    }
+    else if (n->IsString()) {
+      // SentenceStream doesn't copy the input, so input must
+      // live at least as long as buf.
+      std::string input = n->GetString();
+      auto buf = service.createSentenceStream(input, smode_);
+      std::string snt;
+      size_t linectr=0;
+      while (buf >> snt) {
+        LOG(trace,"SNT: {}",snt);
+        auto foo = std::move(service.push(++linectr, snt));
+        delayed_.push_back(std::move(foo.second));
+      }
+      ends_with_eol_char_ = input.size() && input.back() == '\n';
       // @TODO: this needs a patch for windows w.r.t. EOL
     }
     else if (n->IsArray()) {
-      for (auto c = n->Begin(); c != n->End(); ++c)
-        children_.push_back(NodeTranslation(c, service));
-    }
-    else if (n->IsObject() && n->HasMember(field.c_str())) {
-      children_.push_back(NodeTranslation(&((*n)[field.c_str()]),service));
+      for (auto c = n->Begin(); c != n->End(); ++c){
+        auto x = NodeTranslation(c, service, payload_field, options_field, this);
+        children_.push_back(std::move(x));
+      }
     }
   }
 
@@ -277,14 +338,21 @@ class NodeTranslation {
     for (auto& c: children_) c.finish(alloc);
     if (delayed_.size()) {
       std::ostringstream buf;
+      char sep = (smode_ == splitmode::one_sentence_per_line ? '\n' : ' ');
+      // TODO: Does this need a fix for Windows "\r\n"?
       for (auto& f: delayed_) {
         Ptr<Job const> j = f.get();
-        buf << j->translation << std::endl;
+        if (j->nbest.size() == 0) { // "job" was a paragraph marker
+          buf << (smode_ == splitmode::wrapped_text ? "\n\n" : "\n");
+        }
+        else {
+          buf << j->translation << sep;
+        }
         // LOG(debug, "[service] Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
         // j->translationTime(), j->totalTime(), j->input[0], j->translation);
       }
       std::string translation = buf.str();
-      if (!ends_with_eol_char_)
+      if (translation.size() && !ends_with_eol_char_)
         translation.pop_back();
       if (node_) {
         ABORT_IF(!node_->IsString(), "Node is not a string!");

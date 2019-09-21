@@ -201,7 +201,6 @@ int main(int argc, char* argv[])
     ([](const crow::request& req){
       crow::mustache::context ctx;
       ctx["URL"] = req.get_header_value("Host");
-      std::cerr << "BAMBAFOO" << std::endl;
       return crow::mustache::load("bergamot_api_v1.html").render(ctx);
     });
 
@@ -213,9 +212,6 @@ int main(int argc, char* argv[])
       std::string payload = payload_field ? payload_field : "text";
       auto options_field = req.url_params.get("options");
       std::string t_opts = options_field ? options_field : "options";
-      std::cerr << "MESSAGE BODY IS " << req.body << std::endl;
-      std::cerr << "PAYLOAD FIELD IS " << payload << std::endl;
-      std::cerr << "OPTIONS FIELD IS " << t_opts << std::endl;
       D.Parse(req.body.c_str());
       if (!D.IsObject()) {
         return crow::response(500,"Invalid Json");

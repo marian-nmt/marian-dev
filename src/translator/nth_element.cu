@@ -107,27 +107,6 @@ __global__ void gBumpScoresKern(float * scores,
   scores[idx[tid]] += bumpVal;
 }
 
-uint32_t * gHostMemory(size_t numElements) {
-  uint32_t * data;
-  CUDA_CHECK(cudaHostAlloc((void**)&data, numElements * sizeof(uint32_t), cudaHostAllocDefault));
-  return data;
-}
-
-void gBumpScores(uint32_t * ids, float * in_, float bumpVal, int numElements, size_t vocabSize) {
-  const int numThreads = numElements;
-  static bool first = true;
-  static uint32_t * cudaMem;
-  if (first) {
-    CUDA_CHECK(cudaMalloc((void**)&cudaMem, vocabSize * sizeof(uint32_t)));
-    CUDA_CHECK(cudaMemcpy((void*)cudaMem, ids, vocabSize* sizeof(uint32_t), cudaMemcpyHostToDevice));
-    first = false;
-  } else {
-    CUDA_CHECK(cudaMemcpy((void*)cudaMem, ids, numThreads * sizeof(uint32_t), cudaMemcpyHostToDevice));
-  }
-  gBumpScoresKern<<<1, numThreads>>>(in_, cudaMem, bumpVal);
-  //CUDA_CHECK(cudaFree(cudaMem));
-}
-
 void gBumpScores(std::vector<uint32_t>& ids, float * in_, float bumpVal) {
   const int numThreads = ids.size();
   uint32_t * cudaMem;

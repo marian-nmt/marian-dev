@@ -158,7 +158,7 @@ public:
     if (!currTrieNode) //Check for null ptrs
       return;
     std::vector<uint32_t> idxs_(currTrieNode->size());
-    for(auto node : *currTrieNode) {
+    for(auto&& node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
       if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
         idxs_.push_back(index);
@@ -178,7 +178,7 @@ public:
     if (!currTrieNode) //Check for null ptrs
       return;
     std::vector<uint32_t> idxs_(currTrieNode->size());
-    for(auto node : *currTrieNode) {
+    for(auto&& node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
       if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
         idxs_.push_back(index);

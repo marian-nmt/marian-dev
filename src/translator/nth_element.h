@@ -17,5 +17,7 @@ typedef std::function<void(const std::vector<size_t>& beamSizes,
                            const bool isFirst)> GetNBestListFn;
 
 GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId);
-void gBumpScores(std::vector<uint32_t>& ids, float * in_, float bumpVal);
+//void gBumpScores(std::vector<uint32_t>& ids, float * in_, float bumpVal);
+void gBumpScores(uint32_t * ids, float * in_, float bumpVal, int numElements, size_t vocabSize);
+uint32_t * gHostMemory(size_t numElements);
 }  // namespace marian

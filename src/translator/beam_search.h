@@ -152,42 +152,70 @@ public:
   }
 
   void bumpScores(Tensor in_, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
+    static std::ofstream outfile("bumpscores");
+    auto start = std::chrono::system_clock::now();
     int nColumns = in_->shape()[-1];
 
     float* in = in_->data();
     if (!currTrieNode) //Check for null ptrs
       return;
-    std::vector<uint32_t> idxs_(currTrieNode->size());
+    //static std::vector<uint32_t> idxs_(this->trie_->size());
+    static uint32_t * idxs_;
+    static bool first = true;
+    if (first) {
+      if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
+        idxs_ = gHostMemory(this->trie_->size()); //use pinned memory
+      first = false;
+    }
+    int i = 0;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
       if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
-        idxs_.push_back(index);
+        idxs_[i] = index;
+        i++;
       } else {
         in[index] += bumpVal;
       }
     }
     if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
-      gBumpScores(idxs_, in, bumpVal);
+      gBumpScores(idxs_, in, bumpVal, i, this->trie_->size());
+    auto end = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds = end-start;
+    outfile << elapsed_seconds.count() << std::endl;
   }
 
   void bumpScoresBatch(Tensor in_, size_t batchID, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
+    static std::ofstream outfile("bumpscoresBatch");
+    auto start = std::chrono::system_clock::now();
     int nColumns = in_->shape()[-1];
     int beamSize = in_->shape()[2];
 
     float* in = in_->data();
     if (!currTrieNode) //Check for null ptrs
       return;
-    std::vector<uint32_t> idxs_(currTrieNode->size());
+    //static std::vector<uint32_t> idxs_(this->trie_->size());
+    static uint32_t * idxs_;
+    static bool first = true;
+    if (first) {
+      if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
+        idxs_ = gHostMemory(this->trie_->size()); //use pinned memory
+      first = false;
+    }
+    int i = 0;
     for(auto node : *currTrieNode) {
       auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
       if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
-        idxs_.push_back(index);
+        idxs_[i] = index;
+        i++;
       } else {
         in[index] += bumpVal;
       }
     }
     if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
-      gBumpScores(idxs_, in, bumpVal);
+      gBumpScores(idxs_, in, bumpVal, i, this->trie_->size());
+    auto end = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds = end-start;
+    outfile << elapsed_seconds.count() << std::endl;
   }
 
   /* When reverse is false, we filter out beams that do not
@@ -195,6 +223,8 @@ public:
    * beams that have continuations. This is for paraphrasing
    * without using original words.*/
   Beams filterForContinuations(const Beams& beams, size_t maxLength) {
+    static std::ofstream outfile("filter");
+    auto start = std::chrono::system_clock::now();
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
@@ -214,6 +244,9 @@ public:
       }
       newBeams.push_back(newBeam);
     }
+    auto end = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds = end-start;
+    outfile << elapsed_seconds.count() << std::endl;
     return newBeams;
   }
 
@@ -384,11 +417,16 @@ public:
       if (!paraphrase_ && triePrune_) {
         //Everything that came out of the trie will have a score >1
         //Hence fix the scores
+        static std::ofstream outfile("restore");
+        auto start = std::chrono::system_clock::now();
         for (auto&& score : outPathScores) {
           if (score > 1) {
           score -= 10000000.0f;
           }
         }
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed_seconds = end-start;
+        outfile << elapsed_seconds.count() << std::endl;
       }
 
       int dimTrgVoc = pathScores->shape()[-1];

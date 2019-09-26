@@ -69,12 +69,14 @@ template<class Search> class PlainTextTranslation;
 template<class Search=BeamSearch> class NodeTranslation;
 
 template<class Search>
+class PlainTextTranslation;
+
+template<class Search>
 class TranslationService {
 public:
   typedef std::function<void (uint64_t ejid, Ptr<History const> h)>
   ResponseHandler;
   typedef ug::ssplit::SentenceStream::splitmode splitmode;
-  typedef Search SearchType;
 private:
   // Note to callback n00bs: see this:
   // https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
@@ -221,37 +223,45 @@ public:
     return options_->get<bool>("right-left");
   }
 
-  std::string
-  translate(std::string const& srcText) {
-    // @TODO: add priority for QoS differentiation [UG]
-    std::vector<std::future<Ptr<Job const>>> ftrans;
-    std::istringstream buf(srcText);
-    std::string line;
-
-    // auto starttime = clock();
-    for (size_t linectr = 0; getline(buf,line); ++linectr) {
-      ftrans.push_back(push(linectr,line).second);
-    }
-    // auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
-    // LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
-    std::ostringstream obuf;
-    for (auto& t: ftrans) {
-      Ptr<Job const> j = t.get();
-      // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
-      //     j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
-      // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f}/{:.2f}/{:.2f} seconds:",
-      //     j->unique_id,
-      //     j->timeBeforeQueue(),
-      //     j->timeInQueue(),
-      //     j->translationTime(),
-      //     j->totalTime());
-      obuf << j->translation << std::endl;
-    }
-    std::string ret = buf.str();
-    if (ret.size() && !ends_with_eol_char_ && ret.back()=='\n')
-      ret.pop_back();
+  Ptr<PlainTextTranslation<Search>>
+  translate(std::string const& input,
+            splitmode const smode = splitmode::wrapped_text){
+    Ptr<PlainTextTranslation<Search>> ret;
+    ret.reset(new PlainTextTranslation<Search>(input, *this, smode));
     return ret;
   }
+
+  // std::string
+  // translate(std::string const& srcText) {
+  //   // @TODO: add priority for QoS differentiation [UG]
+  //   std::vector<std::future<Ptr<Job const>>> ftrans;
+  //   std::istringstream buf(srcText);
+  //   std::string line;
+
+  //   // auto starttime = clock();
+  //   for (size_t linectr = 0; getline(buf,line); ++linectr) {
+  //     ftrans.push_back(push(linectr,line).second);
+  //   }
+  //   // auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
+  //   // LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
+  //   std::ostringstream obuf;
+  //   for (auto& t: ftrans) {
+  //     Ptr<Job const> j = t.get();
+  //     // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
+  //     //     j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
+  //     // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f}/{:.2f}/{:.2f} seconds:",
+  //     //     j->unique_id,
+  //     //     j->timeBeforeQueue(),
+  //     //     j->timeInQueue(),
+  //     //     j->translationTime(),
+  //     //     j->totalTime());
+  //     obuf << j->translation << std::endl;
+  //   }
+  //   std::string translation = obuf.str();
+  //   if (srcText.size() && srcText.back() != '\n')
+  //     translation.pop_back();
+  //   return translation;
+  // }
 
   typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
   ug::ssplit::SentenceStream
@@ -299,7 +309,7 @@ public:
       }
     }
     std::string ret = buf.str();
-    if (ret.size() && !ends_with_eol_char_)
+    if (ret.size() && !ends_with_eol_char_ && ret.back()=='\n')
       ret.pop_back();
     return ret;
   }
@@ -368,20 +378,8 @@ class NodeTranslation {
       }
     }
     else if (n->IsString()) {
-      // SentenceStream doesn't copy the input, so input must
-      // live at least as long as buf.
-      std::string input = n->GetString();
-      translation_.reset(new PlainTextTranslation<Search>(input, service, smode_));
-      // auto buf = service.createSentenceStream(input, smode_);
-      // std::string snt;
-      // size_t linectr=0;
-      // while (buf >> snt) {
-      //   LOG(trace,"SNT: {}",snt);
-      //   auto foo = std::move(service.push(++linectr, snt));
-      //   delayed_.push_back(std::move(foo.second));
-      // }
-      // ends_with_eol_char_ = input.size() && input.back() == '\n';
-      // // @TODO: this needs a patch for windows w.r.t. EOL
+      translation_.reset(new PlainTextTranslation<Search>(n->GetString(),
+                                                          service, smode_));
     }
     else if (n->IsArray()) {
       for (auto c = n->Begin(); c != n->End(); ++c){
@@ -397,24 +395,6 @@ class NodeTranslation {
     for (auto& c: children_) c.finish(alloc);
     if (translation_){
       std::string translation = translation_->await();
-      // if (delayed_.size()) {
-      //   std::ostringstream buf;
-      //   char sep = (smode_ == splitmode::one_sentence_per_line ? '\n' : ' ');
-      //   // TODO: Does this need a fix for Windows "\r\n"?
-      //   for (auto& f: delayed_) {
-      //     Ptr<Job const> j = f.get();
-      //     if (j->nbest.size() == 0) { // "job" was a paragraph marker
-      //       buf << (smode_ == splitmode::wrapped_text ? "\n\n" : "\n");
-      //     }
-      //     else {
-      //       buf << j->translation << sep;
-      //     }
-      //     // LOG(debug, "[service] Translated in {:.2f}/{:.2f} seconds:\n{}\n{}",
-      //     // j->translationTime(), j->totalTime(), j->input[0], j->translation);
-      //   }
-      //   std::string translation = buf.str();
-      //   if (translation.size() && !ends_with_eol_char_)
-      //     translation.pop_back();
       if (node_) {
         ABORT_IF(!node_->IsString(), "Node is not a string!");
         // @TODO: We should thrown an exception here instead of aborting

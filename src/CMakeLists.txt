@@ -1,4 +1,5 @@
 add_subdirectory(3rd_party)
+add_subdirectory(server)
 
 include_directories(.)
 include_directories(3rd_party)
@@ -101,9 +102,6 @@ add_library(marian STATIC
   training/validator.cpp
   training/communicator.cpp
   training/scheduler.cpp
-
-  server/queued_input.cpp
-  server/translation_job.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp

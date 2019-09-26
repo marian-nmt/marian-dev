@@ -8,7 +8,7 @@
           var input = document.getElementById(source).value;
           input.replace(/\n/g,"\\n");
           var job = new XMLHttpRequest();
-          job.open("POST","http://{{URL}}/api/elg/v1");
+          job.open("POST","http://{{URL}}/api/elg/v1/{{LANGPAIR}}");
           job.setRequestHeader("Content-Type","application/json");
           job.onreadystatechange = function () {
               if (this.readyState === this.DONE) {

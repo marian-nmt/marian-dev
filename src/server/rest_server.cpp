@@ -4,7 +4,9 @@
 #include "translator/output_printer.h"
 #include "common/timer.h"
 #include "common/utils.h"
-#include "api/elg.h"
+// #include "api/elg/json_request_handler.h"
+#include "api/bergamot/crow_request_handler.h"
+//#include "api/elg.h"
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
@@ -14,8 +16,8 @@
 #include <cuda.h>
 #include <driver_types.h>
 #include <cuda_runtime.h>
-#include "api/json_request_handler.h"
-// #include "api/elg/json_request_handler.h"
+#include "api/bergamot/json_request_handler.h"
+#include "api/elg/json_request_handler.h"
 
 class LogHandler : public crow::ILogHandler {
     public:
@@ -91,7 +93,7 @@ public:
 
 class BergamotRequestHandler : public RequestHandler {
 
-  marian::server::BergamotJsonRequestHandlerV1<tservice_t> process_;
+  marian::server::bergamot::JsonRequestHandlerV1<tservice_t> process_;
 
   std::string
   post(const crow::request& req) const{
@@ -103,8 +105,8 @@ class BergamotRequestHandler : public RequestHandler {
     std::string payload = payload_field ? payload_field : "text";
     std::string t_opts = options_field ? options_field : "options";
 
-    marian::Ptr<rapidjson::Document> D = process_(req.body, payload, t_opts);
-    std::string response = marian::server::serialize(*D);
+    rapidjson::Document D = process_(req.body, payload, t_opts);
+    std::string response = marian::server::serialize(D);
     return response;
   }
 public:
@@ -113,11 +115,11 @@ public:
 };
 
 class ElgRequestHandler : public RequestHandler {
-  marian::server::ElgJsonRequestHandlerV1<tservice_t> process_;
+  marian::server::elg::JsonRequestHandlerV1<tservice_t> process_;
   std::string
   post(const crow::request& req) const {
-    marian::Ptr<rapidjson::Document> D = process_(req.body.c_str());
-    return marian::server::serialize(*D);
+    rapidjson::Document D = process_(req.body.c_str());
+    return marian::server::serialize(D);
   }
 public:
   ElgRequestHandler(tservice_t& service, const std::string gui_file)
@@ -143,8 +145,7 @@ int main(int argc, char* argv[])
                             "File with nonbreaking prefixes for sentence splitting.");
 
   auto options = cp.parseOptions(argc, argv, true);
-  auto service = New<server::TranslationService<BeamSearch>>(options);
-
+  auto service = New<tservice_t>(options);
   service->start();
 
   crow::SimpleApp app;
@@ -153,7 +154,6 @@ int main(int argc, char* argv[])
   crow::mustache::set_base(doc_root+"/ui");
 
   BergamotRequestHandler bergamot_handler(*service,"bergamot_api_v1.html");
-  ElgRequestHandler elg_handler(*service,"elg_api_v1.html");
 
   // For some odd reason (probably a bug in crow), a GET
   // on a path not ending in a parameter specification
@@ -169,87 +169,8 @@ int main(int argc, char* argv[])
   CROW_ROUTE(app, "/api/bergamot/demo.html")
     .methods("GET"_method)(bergamot_handler);
 
-
-  CROW_ROUTE(app, "/api/elg/v1")
-    .methods("POST"_method)
-    ([service](const crow::request& req){
-      rapidjson::Document D;
-      D.Parse(req.body.c_str());
-      if (!D.IsObject()){
-        return crow::response(200,"Invalid Json");
-      }
-
-      LOG(debug, "REQUEST: {}", server::serialize(D));
-      auto R = server::elg::translate_v1(*service,D);
-      std::string response = server::serialize(*R);
-      LOG(debug,"RESPONSE: {}", response);
-      if (R->HasMember("failure")){
-        auto res = crow::response(500,response);
-        res.set_header("Content-Type","application/json");
-        return res;
-      }
-      else{
-        auto res = crow::response(200,response);
-        res.set_header("Content-Type","application/json");
-        return res;
-      }
-    });
-
-  // route for serving the UI (templated)
-  CROW_ROUTE(app, "/api/bergamot/v1") // GET requests
-    // .methods("OPTIONS"_method, "GET"_method)
-    ([](const crow::request& req){
-      crow::mustache::context ctx;
-      ctx["URL"] = req.get_header_value("Host");
-      return crow::mustache::load("bergamot_api_v1.html").render(ctx);
-    });
-
-  CROW_ROUTE(app, "/api/bergamot/v1")
-    .methods("POST"_method)
-    ([service](const crow::request& req){
-      rapidjson::Document D;
-      auto payload_field = req.url_params.get("payload");
-      std::string payload = payload_field ? payload_field : "text";
-      auto options_field = req.url_params.get("options");
-      std::string t_opts = options_field ? options_field : "options";
-      D.Parse(req.body.c_str());
-      if (!D.IsObject()) {
-        return crow::response(500,"Invalid Json");
-      }
-      std::cerr << "PARSED: " << server::serialize(D) << std::endl;
-      server::NodeTranslation<> job(&D,*service,payload);
-      job.finish(D.GetAllocator());
-      std::string response = server::serialize(D);
-      std::cerr << response << std::endl;
-      return crow::response(response.c_str());
-    });
-
-  // route for serving the UI (templated)
-  CROW_ROUTE(app, "/api/elg/v1") // GET requests
-    ([](const crow::request& req){
-      crow::mustache::context ctx;
-      ctx["URL"] = req.get_header_value("Host");
-      return crow::mustache::load("demo.html").render(ctx);
-    });
-
-  CROW_ROUTE(app, "/")
-    ([](const crow::request& req){
-      crow::mustache::context ctx;
-      ctx["URL"] = req.get_header_value("Host");
-      return crow::mustache::load("demo.html").render(ctx);
-    });
-
-  // CROW_ROUTE(app, "/<string>")
-  //   ([](const crow::request& req, std::string path){
-  //     crow::mustache::context ctx;
-  //     ctx["URL"] = req.get_header_value("Host");
-  //     std::string url = dump(ctx["URL"]);
-  //     LOG(debug, "URL {}", url);
-  //     LOG(debug, "PATH {}", path);
-  //     return crow::mustache::load("demo.html").render(ctx);
-  //   });
-
   app.loglevel(crow::LogLevel::WARNING);
+  // app.loglevel(crow::LogLevel::DEBUG);
 
   LogHandler logger;
   crow::logger::setHandler(&logger);

@@ -1,4 +1,5 @@
 add_subdirectory(3rd_party)
+add_subdirectory(server)
 
 include_directories(.)
 include_directories(3rd_party)
@@ -97,9 +98,6 @@ add_library(marian STATIC
   training/communicator.cpp
   training/scheduler.cpp
 
-  server/queued_input.cpp
-  server/translation_job.cpp
-
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
 
@@ -109,6 +107,14 @@ add_library(marian STATIC
   $<TARGET_OBJECTS:zlib>
 )
 target_compile_options(marian PUBLIC ${ALL_WARNINGS})
+
+add_library(marian-service STATIC
+  server/queued_input.cpp
+  server/translation_job.cpp
+  server/api/rapidjson_utils.cpp
+)
+target_compile_options(marian-service PUBLIC ${ALL_WARNINGS})
+
 
 # Generate git_revision.h to reflect current git revision information
 # [https://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake]
@@ -231,7 +237,7 @@ if (COMPILE_WEBSOCKET_SERVER)
   add_executable(websocket-server server/websocket-server.cpp)
   set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
   target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
-  target_link_libraries(websocket-server marian amqpcpp ev ssplit pcre pcrecpp)
+  target_link_libraries(websocket-server marian marian-service amqpcpp ev ssplit pcre pcrecpp)
   set(EXECUTABLES ${EXECUTABLES} websocket-server)
 endif(COMPILE_WEBSOCKET_SERVER)
 
@@ -240,7 +246,7 @@ if (COMPILE_AMQP_WORKER)
   set_target_properties(amqp-worker PROPERTIES OUTPUT amqp-worker)
   target_compile_options(amqp-worker PUBLIC ${ALL_WARNINGS})
   set(EXECUTABLES ${EXECUTABLES} amqp-worker)
-  target_link_libraries(amqp-worker marian amqpcpp ev ssplit pcre pcrecpp)
+  target_link_libraries(amqp-worker marian marian-service amqpcpp ev ssplit pcre pcrecpp)
 endif(COMPILE_AMQP_WORKER)
 
 if (COMPILE_REST_SERVER)
@@ -248,7 +254,7 @@ if (COMPILE_REST_SERVER)
   set_target_properties(rest-server PROPERTIES OUTPUT rest-server)
   target_compile_options(rest-server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
   set(EXECUTABLES ${EXECUTABLES} rest-server)
-  target_link_libraries(rest-server marian ssplit pcre pcrecpp)
+  target_link_libraries(rest-server marian marian-service ssplit pcre pcrecpp)
 endif(COMPILE_REST_SERVER)
 
 

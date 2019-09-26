@@ -383,6 +383,9 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
+if(COMPILE_REST_SERVER)
+  set(PCRECPP)
+endif(COMPILE_REST_SERVER)
 
 if(USE_DOXYGEN)
 # Add a target to generate API documentation with Doxygen

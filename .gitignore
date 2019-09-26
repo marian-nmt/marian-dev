@@ -61,4 +61,5 @@ examples/mnist/*ubyte
 
 .vs
 .vscode
-
+build/
+build.*/

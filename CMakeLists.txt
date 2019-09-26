@@ -11,6 +11,12 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
+# use ccache for faster compilation if available
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
+
 # Custom CMake options
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
@@ -22,14 +28,10 @@ option(USE_MPI "Use MPI library" OFF)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
 option(COMPILE_SERVER "Compile marian-server" ON)
-option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" ON)
-option(COMPILE_WEBSOCKET_SERVER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" ON)
+option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" off)
+option(COMPILE_WEBSOCKET_SERVER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" off)
 option(COMPILE_REST_SERVER "Compile Marian REST server" ON)
 option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module" ON)
-
-if(COMPILE_REST_SERVER)
-  find_package(PCRECPP)
-endif(COMPILE_REST_SERVER)
 
 # Project versioning
 find_package(Git QUIET)
@@ -317,8 +319,17 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
+if(COMPILE_REST_SERVER)
+  set(PCRECPP)
+endif(COMPILE_REST_SERVER)
 
+if(COMPILE_AMQP_WORKER)
+  set(PCRECPP)
+endif(COMPILE_AMQP_WORKER)
 
+if (NEED_PCRECPP)
+  find_package(PCRECPP)
+endif(NEED_PCRECPP)
 # Add a target to generate API documentation with Doxygen
 find_package(Doxygen)
 if(DOXYGEN_FOUND)

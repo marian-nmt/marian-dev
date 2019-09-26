@@ -44,7 +44,7 @@ void handle_request2(Ptr<server::TranslationService<BeamSearch>> service,
   } else if (D.HasMember("text")) {
     auto input = D["text"].GetString();
     LOG(info, "Input is '{}'", input);
-    auto t = service->translate(D["text"].GetString());
+    auto t = service->translate(D["text"].GetString())->await();
     D["text"].SetString(t.c_str(),t.size());
     StringBuffer buffer;
     Writer<StringBuffer> writer(buffer);

@@ -1,4 +1,4 @@
-
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include_directories(.)
 
 add_subdirectory(./yaml-cpp)

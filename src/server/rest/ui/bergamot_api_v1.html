@@ -8,7 +8,11 @@
           var input = document.getElementById(source).value;
           input.replace(/\n/g,"\\n");
           var job = new XMLHttpRequest();
-          job.open("POST","http://{{URL}}/api/bergamot/v1");
+          var url = "http://{{URL}}/api/bergamot/v1";
+          url += "?src="+document.getElementById('srclang').value;
+          url += "&trg="+document.getElementById('trglang').value;
+          console.log(url);
+          job.open("POST", url);
           job.setRequestHeader("Content-Type","application/json");
           job.onreadystatechange = function () {
               if (this.readyState === this.DONE) {
@@ -70,6 +74,14 @@
                  placeholder="Enter some German text here. Indicate the input format above. Then press the 'translate' button."></textarea></p>
 
     <button id=translate onclick="go('input','translation')">translate</button>
+    from
+    <select id=srclang>
+      <option value=de>German</option>
+    </select>
+    to
+    <select id=trglang>
+      <option value=en>English</option>
+    </select>
 
     <h2>Translation:</h2>
     <div id="translation"></div>

@@ -1,5 +1,4 @@
 add_subdirectory(3rd_party)
-add_subdirectory(server)
 
 include_directories(.)
 include_directories(3rd_party)

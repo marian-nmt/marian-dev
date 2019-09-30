@@ -4,9 +4,6 @@
 #include "translator/output_printer.h"
 #include "common/timer.h"
 #include "common/utils.h"
-// #include "api/elg/json_request_handler.h"
-#include "api/bergamot/crow_request_handler.h"
-//#include "api/elg.h"
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
@@ -155,6 +152,7 @@ int main(int argc, char* argv[])
   crow::mustache::set_base(doc_root+"/ui");
 
   BergamotRequestHandler bergamot_handler(*service,"bergamot_api_v1.html");
+  ElgRequestHandler elg_handler(*service,"elg_api_v1.html");
 
   // For some odd reason (probably a bug in crow), a GET
   // on a path not ending in a parameter specification
@@ -169,6 +167,15 @@ int main(int argc, char* argv[])
     .methods("GET"_method)(bergamot_handler);
   CROW_ROUTE(app, "/api/bergamot/demo.html")
     .methods("GET"_method)(bergamot_handler);
+
+
+  CROW_ROUTE(app, "/api/elg/v1")
+    .methods("POST"_method)(elg_handler);
+  CROW_ROUTE(app, "/api/elg/v1/")
+    .methods("GET"_method)(elg_handler);
+  CROW_ROUTE(app, "/api/elg/demo.html")
+    .methods("GET"_method)(elg_handler);
+
 
   app.loglevel(crow::LogLevel::WARNING);
   // app.loglevel(crow::LogLevel::DEBUG);

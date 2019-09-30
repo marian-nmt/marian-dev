@@ -1,0 +1,111 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <script language="javascript" type="text/javascript">
+
+      function go(source,destination) {
+          document.getElementById('translation').innerHTML = "";
+          var input = document.getElementById(source).value;
+          input.replace(/\n/g,"\\n");
+          var job = new XMLHttpRequest();
+          var url = "http://{{URL}}/api/elg/v1";
+          url += "?src="+document.getElementById('srclang').value;
+          url += "&trg="+document.getElementById('trglang').value;
+          console.log(url);
+          job.open("POST", url);
+          job.setRequestHeader("Content-Type","application/json");
+          job.onreadystatechange = function () {
+              if (this.readyState === this.DONE) {
+                  console.log(this.responseText);
+                  var response = JSON.parse(this.responseText);
+                  var msg;
+                  if (response.failure) {
+                      msg = "<b>ERROR</b><br>" + response.errors.join("<br>");
+                  }
+                  else{
+                      chunks = response.response.texts[0]["text"].split(/[\r\n]+/);
+                      msg = "<p>"+chunks.join("</p>\n<p>")+"</p>\n";
+                  }
+                  document.getElementById(destination).innerHTML = msg;
+              }
+          }
+          var fopts = document.getElementsByName('format');
+          var input_format;
+          for (i = 0; i < fopts.length; i++) {
+              if (fopts[i].checked) {
+                  input_format = fopts[i].value;
+                  break;
+              }
+          }
+          var fopts = document.getElementsByName('format');
+          var input_format;
+          for (i = 0; i < fopts.length; i++) {
+              if (fopts[i].checked) {
+                  input_format = fopts[i].value;
+                  break;
+              }
+          }
+          var payload = { "metadata" : { "id": 0 },
+                          "request"  : { "type" : "text",
+                                         "mimeType" : "text/plain",
+                                         "characterEncoding" : "UTF-8",
+                                         "params" : {"input-format":input_format},
+                                         "content" : input}};
+          console.log(JSON.stringify(payload));
+          job.send(JSON.stringify(payload));
+          document.getElementById('input').focus();
+      }
+
+      function clearContent(srcfield,dstfield) {
+          document.getElementById(srcfield).value = "";
+          document.getElementById(dstfield).innerHTML = "";
+          document.getElementById(srcfield).focus();
+      }
+
+      function selectTab(thistab,alltabs) {
+          alltabs.forEach(item => {
+              if (item === thistab) {
+                  document.getElementById(item).style.display='block';
+              } else {
+                  document.getElementById(item).style.display='none';
+              }
+          })
+      }
+
+    </script>
+  </head>
+  <body>
+    <h1>Bergamot Translation API Demo</h1>
+
+    <input type="radio" name="format" value="wrapped_text" checked>
+    <label for="wrapped_text">wrapped text (empty lines separate paragraphs)</label>
+    <input type="radio" name="format" value="sentence">
+    <label for="sentence">one sentence per line</label>
+    <input type="radio" name="format" value="paragraph">
+    <label for="paragraph">one paragraph per line</label>
+    <p><textarea id="input" wrap="on" cols=120 rows=10 oninput="resizeInputBox()"
+                 placeholder="Enter some German text here. Indicate the input format above. Then press the 'translate' button."></textarea></p>
+
+    <button id=translate onclick="go('input','translation')">translate</button>
+    from
+    <select id=srclang>
+      <option value=de>German</option>
+    </select>
+    to
+    <select id=trglang>
+      <option value=en>English</option>
+    </select>
+
+    <h2>Translation:</h2>
+    <div id="translation"></div>
+    <script language="javascript" type="text/javascript">
+      var inputBox = document.getElementById("input");
+      inputBox.oninput = function() {
+          inputBox.style.height = "";
+          inputBox.style.height = Math.min(inputBox.scrollHeight, 500)+"px";
+      };
+      inputBox.focus();
+
+    </script>
+  </body>
+</html>

@@ -157,6 +157,56 @@ struct SigmoidNodeOp : public UnaryNodeOp {
   const std::string type() override { return "sigmoid"; }
 };
 
+struct SigmoidLookupTableNodeOp : public UnaryNodeOp {
+private:
+  unsigned length_;
+
+public:
+  SigmoidLookupTableNodeOp(Expr radius, unsigned length) : UnaryNodeOp(radius, {1, int(length)}), length_(length) {}
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      ABORT_IF(length_ <= 1, "Length must be at least 2");
+
+      const auto radius = *child(0)->val()->data();
+      const auto delta = 2 * radius / (length_ - 1);
+      const auto sigmoid_stable = [](float x) {
+        if (x < 0)
+          return std::exp(x) / (1.0f + std::exp(x));
+        else
+          return 1.0f / (1.0f + std::exp(-x));
+      };
+      for (unsigned i = 0; i < length_; ++i)
+        val_->data()[(i + length_ / 2) % length_] = sigmoid_stable(-radius + i * delta);
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Not implemented");
+  }
+
+  const std::string type() override { return "sigmoid_lut"; }
+
+  virtual size_t hash() override {
+    if(!hash_) {
+      hash_ = NaryNodeOp::hash();
+      util::hash_combine(hash_, length_);
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<SigmoidLookupTableNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(length_ != cnode->length_)
+      return false;
+    return true;
+  }
+};
+
 // struct Scalar2PowNodeOp : public UnaryNodeOp {
 // private:
 //  float scalar_{0};

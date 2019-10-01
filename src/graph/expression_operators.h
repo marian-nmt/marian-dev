@@ -12,6 +12,7 @@ Expr plus(const std::vector<Expr>&);
 
 // TODO: should be logistic(), not sigmoid()
 Expr sigmoid(Expr a);
+Expr sigmoid_lut(Expr radius, unsigned length);
 Expr sigmoid(const std::vector<Expr>&);
 
 Expr swish(Expr a);

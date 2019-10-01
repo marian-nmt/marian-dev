@@ -20,6 +20,10 @@ Expr sigmoid(Expr a) {
   return Expression<SigmoidNodeOp>(a);
 }
 
+Expr sigmoid_lut(Expr radius, unsigned length) {
+  return Expression<SigmoidLookupTableNodeOp>(radius, length);
+}
+
 Expr relu(Expr a) {
   return Expression<ReLUNodeOp>(a);
 }

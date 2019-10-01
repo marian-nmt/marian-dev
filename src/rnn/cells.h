@@ -1112,7 +1112,7 @@ public:
     auto maxabs_input_W = graph_expmap["F0::" + prefix + "_maxabs_input_W"];
     auto maxabs_input_Wf = graph_expmap["F0::" + prefix + "_maxabs_input_Wf"];
     sigmoid_lut_radius = graph_expmap["F0::" + prefix + "_sigmoid_lut_radius"];
-    auto sigmoid_lut = graph_expmap["F0::" + prefix + "_sigmoid_lut"];
+    auto sigmoid_lut = marian::sigmoid_lut(sigmoid_lut_radius, 256);
 
     quant_mult_input = 127.0 / maxabs_input;
     quant_mult_W = impl::quantMult(W);

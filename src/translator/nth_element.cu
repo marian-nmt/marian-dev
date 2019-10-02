@@ -107,13 +107,17 @@ __global__ void gBumpScoresKern(float * scores,
   scores[idx[tid]] += bumpVal;
 }
 
-void gBumpScores(std::vector<uint32_t>& ids, float * in_, float bumpVal) {
+void gBumpScores(std::vector<uint32_t>& ids, float * in_, float bumpVal, int vocabBatchSize) {
   const int numThreads = ids.size();
-  uint32_t * cudaMem;
-  CUDA_CHECK(cudaMalloc((void**)&cudaMem, numThreads * sizeof(uint32_t)));
+  static uint32_t * cudaMem; //@TODO this is leaked. Free it.
+  static bool first = true;
+  if (first) {
+    CUDA_CHECK(cudaMalloc((void**)&cudaMem, vocabBatchSize * sizeof(uint32_t)));
+    first = false;
+  }
   CUDA_CHECK(cudaMemcpy((void*)cudaMem, ids.data(), numThreads * sizeof(uint32_t), cudaMemcpyHostToDevice));
   gBumpScoresKern<<<1, numThreads>>>(in_, cudaMem, bumpVal);
-  CUDA_CHECK(cudaFree(cudaMem));
+  //CUDA_CHECK(cudaFree(cudaMem));
 }
 
 __global__ void gMaxElementUpdate(float* binCosts,

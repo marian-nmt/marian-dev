@@ -167,7 +167,7 @@ public:
       }
     }
     if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
-      gBumpScores(idxs_, in, bumpVal);
+      gBumpScores(idxs_, in, bumpVal, this->trie_->size()*nColumns);
   }
 
   void bumpScoresBatch(Tensor in_, size_t batchID, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
@@ -187,7 +187,7 @@ public:
       }
     }
     if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
-      gBumpScores(idxs_, in, bumpVal);
+      gBumpScores(idxs_, in, bumpVal, this->trie_->size()*nColumns*beamSize);
   }
 
   /* When reverse is false, we filter out beams that do not

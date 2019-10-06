@@ -1,18 +1,13 @@
 #pragma once
-#include "../../translation_service.h"
-#include "3rd_party/rapidjson/include/rapidjson/document.h"
-#include "3rd_party/rapidjson/include/rapidjson/writer.h"
-#include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
-#include "../rapidjson_utils.h"
-
+// Do not include this file directly. It is included by ../json_request_handler.h
 namespace marian {
 namespace server {
-namespace elg {
 
 template<class Service>
-class JsonRequestHandlerV1{
-  Service& service_;
+class ElgJsonRequestHandlerV1
+  : public JsonRequestHandlerBaseClass<Service>{
 
+  // Return pointer to rapidjson::Value if path exists, NULL otherwise
   rapidjson::Value const*
   get(rapidjson::Value const* node, std::vector<char const*> path) const {
     for (char const* f: path) {
@@ -50,34 +45,41 @@ class JsonRequestHandlerV1{
 
 public:
   typedef ug::ssplit::SentenceStream::splitmode splitmode;
-  JsonRequestHandlerV1(Service& service) : service_(service) { }
+  ElgJsonRequestHandlerV1(Service& service)
+    : JsonRequestHandlerBaseClass<Service>(service) { }
 
 
-  rapidjson::Document
+
+  Ptr<rapidjson::Document>
   operator()(char const* body) const {
-    rapidjson::Document D;
-    D.Parse(body);
-    if (!D.IsObject()) {
-      apiError(D, "Invalid Json");
+    Ptr<rapidjson::Document> D(new rapidjson::Document());
+    D->Parse(body);
+    if (!D->IsObject()) {
+      apiError(*D, "Invalid Json");
       LOG(debug, "INVALID JSON: {}", body);
       return D;
     }
-    LOG(debug, "PARSED: {}", server::serialize(D));
-    return (*this)(D);
+    LOG(debug, "PARSED: {}", serialize(*D));
+    return (*this)(*D);
   }
 
-  rapidjson::Document
+  Ptr<rapidjson::Document>
+  operator()(std::string const& body) const override {
+    return (*this)(body.c_str());
+  }
+
+  Ptr<rapidjson::Document>
   operator()(rapidjson::Value const& request) const {
 
     // create a response JSON document
-    auto D = rapidjson::Document();
-    auto& alloc = D.GetAllocator();
-    D.SetObject();
+    auto D = std::make_shared<rapidjson::Document>();
+    auto& alloc = D->GetAllocator();
+    D->SetObject();
 
     // Copy metadata from request.
     if (request.HasMember("metadata")){
-      D.AddMember("metadata", {}, alloc);
-      D["metadata"].CopyFrom(request["metadata"], alloc);
+      D->AddMember("metadata", {}, alloc);
+      (*D)["metadata"].CopyFrom(request["metadata"], alloc);
     }
 
     // get translation parameters; currently, the only parameter
@@ -89,15 +91,15 @@ public:
     // get the actual payload
     auto payload = get(&request, {"request", "content"});
     if (!payload){
-      apiError(D, "No content to translate provided.");
+      apiError(*D, "No content to translate provided.");
     }
     if (!payload->IsString()){
-      apiError(D, "Translation payload ('request|content') is not a string.");
+      apiError(*D, "Translation payload ('request|content') is not a string.");
     }
     std::string translation
-      = service_.translate(payload->GetString(),smode)->await();
+      = this->service_.translate(payload->GetString(),smode)->await();
 
-    auto& r = D.AddMember("response",{},alloc)["response"].SetObject();
+    auto& r = D->AddMember("response",{},alloc)["response"].SetObject();
     r.AddMember("type", "texts", alloc);
     rapidjson::Value x(rapidjson::kObjectType);
     x.AddMember("text", {}, alloc)["text"]
@@ -107,4 +109,4 @@ public:
     return D;
   }
 };
-}}} // end of namespace marian::server::elg
+}} // end of namespace marian::server::elg

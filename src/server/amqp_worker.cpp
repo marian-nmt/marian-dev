@@ -1,4 +1,5 @@
 // -*- mode: c++; indent-tabs-mode: nil; tab-width: 2 -*-
+// Author: Ulrich Germann (ulrich.germann@gmail.com)
 /**
  *  Based on examples in the AMQP-CPP library code repository.
  *  (libuv.cpp and libev.cpp).
@@ -35,27 +36,31 @@ interpret_args(int argc, char** argv){
   cp.addOption<std::string>("--amqp-queue","AMQP options",
                             "Message queue to listen on",
                             "MT-tasks");
+  cp.addOption<std::string>("--api","AMQP options",
+                            "Which API to use (bergamot|elg)",
+                            "elg");
   return cp.parseOptions(argc, argv, /*validate_options=*/ true);
 }
 
 // This class is woken up when a Request has been processed
+template<class Search>
 class Responder {
-  Ptr<marian::server::Queue<Request<>>> q_;
+  Ptr<marian::server::Queue<Request<Search>>> q_;
   AMQP::TcpChannel& channel_;
 public:
-  Responder(Ptr<marian::server::Queue<Request<>>> q,
+  Responder(Ptr<marian::server::Queue<Request<Search>>> q,
             AMQP::TcpChannel& channel)
     : q_(q), channel_(channel) { }
 
   void operator()(ev::async& a, int revents) {
-    Request<> R;
+    Request<Search> R;
     std::chrono::milliseconds timeout(10);
-    marian::server::Queue<Request<>>::STATUS_CODE success;
+    typename marian::server::Queue<Request<Search>>::STATUS_CODE success;
     do {
       success = q_->pop(R, timeout);
-      if (success == marian::server::Queue<Request<>>::SUCCESS) {
+      if (success == marian::server::Queue<Request<Search>>::SUCCESS) {
         auto response = server::serialize(R.doc());
-        std::cout << response << std::endl;
+        LOG(debug, "RESPONSE: {}", response);
         AMQP::Envelope reply(response.c_str(), response.size());
         if (R.correlationID() != "")
           reply.setCorrelationID(R.correlationID());
@@ -63,14 +68,10 @@ public:
         channel_.publish(R.exchange(), R.replyTo(), reply);
         channel_.ack(R.deliveryTag());
       }
-    } while (success == marian::server::Queue<Request<>>::SUCCESS);
+    } while (success == marian::server::Queue<Request<Search>>::SUCCESS);
   }
 };
 
-/**
- *  Main program
- *  @return int
- */
 int main(int argc, char** argv)
 {
   using namespace marian;
@@ -79,6 +80,15 @@ int main(int argc, char** argv)
   // start the translation service
   auto service = New<server::TranslationService<BeamSearch>>(opts);
   service->start();
+
+  typedef server::TranslationService<BeamSearch> tservice_t;
+  Ptr<server::JsonRequestHandlerBaseClass<tservice_t> const> request_handler;
+  if (opts->get<std::string>("api") == "elg"){
+    request_handler.reset(new server::ElgJsonRequestHandlerV1<tservice_t>(*service));
+  }
+  else{
+    request_handler.reset(new server::BergamotJsonRequestHandlerV1<tservice_t>(*service));
+  }
 
   // connect to AMQP broker and establish a communication channel
 
@@ -90,11 +100,11 @@ int main(int argc, char** argv)
   // #endif
 
   auto *loop = EV_DEFAULT;
-  EventHandler handler(loop);
+  EventHandler event_handler(loop);
   std::string broker = opts->get<std::string>("amqp-broker");
   std::string listen_queue = opts->get<std::string>("amqp-queue");
   AMQP::Address address(broker);
-  AMQP::TcpConnection connection(&handler, address);
+  AMQP::TcpConnection connection(&event_handler, address);
   AMQP::TcpChannel channel(&connection);
   // @TODO: add event handlers to reconnect if connection / channel breaks down
 
@@ -108,8 +118,8 @@ int main(int argc, char** argv)
   // that listens on the AMQP input queue. Jobs finished by the
   // translation workers will be pushed onto the Responder queue /Q/,
   // from which the Responder delivers them back to the AMQP broker.
-  auto Q = New<marian::server::Queue<Request<>>>();
-  Responder responder(Q, channel);
+  auto Q = New<marian::server::Queue<Request<BeamSearch>>>();
+  Responder<BeamSearch> responder(Q, channel);
 
   // qbell is a bell rung by translation workers when a finished job
   // has been pushed onto Q, to wake up the Responder.  For
@@ -127,10 +137,11 @@ int main(int argc, char** argv)
                     LOG(info, "Declared queue {}", name);
                   });
 
-  auto on_message = [&channel,&pool,&service,&Q, &qbell]
+  auto on_message = [&channel,&pool,&request_handler,&Q, &qbell]
     (const AMQP::Message &message, uint64_t deliveryTag, bool redelivered)
     {
-      auto R = New<Request<>>(deliveryTag, message, service);
+
+      auto R = New<Request<BeamSearch>>(deliveryTag, message, request_handler);
       auto task = [R, &Q, &qbell] () {
         R->process();
         Q->push(std::move(*R));

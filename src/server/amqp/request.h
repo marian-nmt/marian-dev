@@ -13,21 +13,29 @@
 
 #include "server/translation_job.h"
 #include "server/translation_service.h"
+#include "server/api/json_request_handler.h"
 
 namespace marian {
 namespace amqp {
 
-template<class Search=BeamSearch>
+template<class Search>
 class Request {
-  // AMQP::Message response_; // response message
-  // AMQP::Envelope env_;
-
-  std::string exchange_;   // Which exchange should I respond to?
+public:
+  typedef server::TranslationService<Search> tservice_t;
+  typedef server::JsonRequestHandlerBaseClass<tservice_t> reqhandler_t;
+private:
+  // AMQP MetaData
+  std::string exchange_; // Which exchange should I respond to?
   std::string reply_to_; // Which queue should the response be posted to?
   std::string correlation_id_;
   uint64_t delivery_tag_{0};
-  Ptr<rapidjson::Document> request_; // the parsed payload of the amqp message
-  Ptr<server::TranslationService<Search>> service_;
+
+  // Request Data
+  Ptr<std::string> body_; // body of the amqp message
+
+  // Actual request handler (templated)
+  Ptr<reqhandler_t const> process_; // parses and processes body_
+  Ptr<rapidjson::Document> response_;
 public:
   Request() { }
 
@@ -36,28 +44,27 @@ public:
       reply_to_(other.reply_to_),
       correlation_id_(other.correlation_id_),
       delivery_tag_(other.delivery_tag_),
-      request_(other.request_),
-      service_(other.service_)
+      body_(other.body_),
+      process_(other.process_)
   { }
 
   Request(uint64_t deliveryTag, const AMQP::Message& msg,
-          Ptr<server::TranslationService<Search>> service)
+          Ptr<reqhandler_t const> processor)
     : exchange_(msg.exchange()), reply_to_(msg.replyTo()),
       correlation_id_(msg.correlationID()),
-      delivery_tag_(deliveryTag), service_(service) {
-    request_.reset(new rapidjson::Document);
-    request_->Parse(msg.body(), msg.bodySize());
+      delivery_tag_(deliveryTag),
+      process_(processor) {
+    body_.reset(new std::string(msg.body()));
   }
 
   void
   process() {
-    server::NodeTranslation<> job(request_.get(), *service_, "payload");
-    job.finish(request_->GetAllocator());
+    response_ = (*process_)(*body_);
   }
 
   rapidjson::Document const&
   doc() const {
-    return *request_;
+    return *response_;
   }
 
   uint64_t

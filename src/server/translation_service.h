@@ -58,8 +58,8 @@ loadVocabularies(Ptr<Options> options) {
   return vocabs;
 }
 
-template<class Search>
-class PlainTextTranslation;
+template<class Search> class PlainTextTranslation;
+template<class Search=BeamSearch> class NodeTranslation;
 
 template<class Search>
 class TranslationService {
@@ -67,7 +67,7 @@ public:
   typedef std::function<void (uint64_t ejid, Ptr<History const> h)>
   ResponseHandler;
   typedef ug::ssplit::SentenceStream::splitmode splitmode;
-
+  typedef Search SearchType;
 private:
   // Note to callback n00bs: see this:
   // https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
@@ -306,7 +306,7 @@ public:
   }
 };
 
-template<class Search=BeamSearch>
+template<class Search>
 class NodeTranslation {
 
   // Map from strings to sentence splitting modes.

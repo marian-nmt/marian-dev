@@ -13,8 +13,8 @@
 #include <cuda.h>
 #include <driver_types.h>
 #include <cuda_runtime.h>
-#include "api/bergamot/json_request_handler.h"
-#include "api/elg/json_request_handler.h"
+#include "api/json_request_handler.h"
+// #include "api/elg/json_request_handler.h"
 
 class LogHandler : public crow::ILogHandler {
     public:
@@ -90,7 +90,7 @@ public:
 
 class BergamotRequestHandler : public RequestHandler {
 
-  marian::server::bergamot::JsonRequestHandlerV1<tservice_t> process_;
+  marian::server::BergamotJsonRequestHandlerV1<tservice_t> process_;
 
   std::string
   post(const crow::request& req) const{
@@ -102,8 +102,8 @@ class BergamotRequestHandler : public RequestHandler {
     std::string payload = payload_field ? payload_field : "text";
     std::string t_opts = options_field ? options_field : "options";
 
-    rapidjson::Document D = process_(req.body, payload, t_opts);
-    std::string response = marian::server::serialize(D);
+    marian::Ptr<rapidjson::Document> D = process_(req.body, payload, t_opts);
+    std::string response = marian::server::serialize(*D);
     return response;
   }
 public:
@@ -112,11 +112,11 @@ public:
 };
 
 class ElgRequestHandler : public RequestHandler {
-  marian::server::elg::JsonRequestHandlerV1<tservice_t> process_;
+  marian::server::ElgJsonRequestHandlerV1<tservice_t> process_;
   std::string
   post(const crow::request& req) const {
-    rapidjson::Document D = process_(req.body.c_str());
-    return marian::server::serialize(D);
+    marian::Ptr<rapidjson::Document> D = process_(req.body.c_str());
+    return marian::server::serialize(*D);
   }
 public:
   ElgRequestHandler(tservice_t& service, const std::string gui_file)

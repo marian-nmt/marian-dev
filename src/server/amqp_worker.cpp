@@ -118,8 +118,8 @@ int main(int argc, char** argv)
   // that listens on the AMQP input queue. Jobs finished by the
   // translation workers will be pushed onto the Responder queue /Q/,
   // from which the Responder delivers them back to the AMQP broker.
-  auto Q = New<marian::server::Queue<Request<>>>();
-  Responder responder(Q, channel);
+  auto Q = New<marian::server::Queue<Request<BeamSearch>>>();
+  Responder<BeamSearch> responder(Q, channel);
 
   // qbell is a bell rung by translation workers when a finished job
   // has been pushed onto Q, to wake up the Responder.  For

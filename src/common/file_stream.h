@@ -26,7 +26,10 @@
 #include <iostream>
 #include <memory>
 
-#ifdef __GNUC__ // not supported; maybe we just need to increment a standard flag in gcc/cmake?
+//#ifdef __GNUC__ // not supported; maybe we just need to increment a standard flag in gcc/cmake?
+#ifdef __cpp_lib_make_unique
+using std::make_unique;
+#else
 namespace std {
   template<typename T, typename... Args>
   std::unique_ptr<T> make_unique(Args&&... args) {

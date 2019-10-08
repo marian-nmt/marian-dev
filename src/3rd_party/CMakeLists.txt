@@ -1,5 +1,6 @@
 
 include_directories(.)
+include(ProcessorCount)
 
 add_subdirectory(./yaml-cpp)
 add_subdirectory(./SQLiteCpp)
@@ -34,7 +35,7 @@ if(USE_SENTENCEPIECE)
     message(WARNING "You are compiling SentencePiece binaries with -DUSE_STATIC_LIBS=on. \
     This will cause spm_train to segfault. No need to worry if you do not intend to use that binary. \
     Marian support for SentencePiece will work fine.")
-    
+
     set(SPM_ENABLE_SHARED OFF CACHE BOOL "Builds shared libaries in addition to static libraries." FORCE)
     set(SPM_TCMALLOC_STATIC ON CACHE BOOL "Link static library of TCMALLOC." FORCE)
   else(USE_STATIC_LIBS)
@@ -65,7 +66,7 @@ include(ExternalProject)
 set(INSTALLS "") # this will contain a list of 3rd part dependencies that we install locally
 if(CUDA_FOUND)
   if(USE_NCCL)
-
+    processorcount(N)
     # disables compilation for sm_30 to avoid ptxas warning... that's general Kepler support. But K80s are supported for instance by sm_35
     set(GENCODE "-gencode=arch=compute_35,code=sm_35 -gencode=arch=compute_50,code=sm_50 -gencode=arch=compute_60,code=sm_60 -gencode=arch=compute_61,code=sm_61")
 
@@ -75,7 +76,7 @@ if(CUDA_FOUND)
       BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nccl
       CONFIGURE_COMMAND ""
       BUILD_COMMAND
-        $(MAKE) -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build
+        $(MAKE) -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build ${N}
         BUILDDIR=${CMAKE_BINARY_DIR}/local CUDA_HOME=${CUDA_TOOLKIT_ROOT_DIR}
         CUDA8_GENCODE=${GENCODE} CXX=${CMAKE_CXX_COMPILER}
       INSTALL_COMMAND "")

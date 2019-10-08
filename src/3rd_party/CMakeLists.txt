@@ -1,6 +1,5 @@
 
 include_directories(.)
-include(ProcessorCount)
 
 add_subdirectory(./yaml-cpp)
 add_subdirectory(./SQLiteCpp)
@@ -66,7 +65,6 @@ include(ExternalProject)
 set(INSTALLS "") # this will contain a list of 3rd part dependencies that we install locally
 if(CUDA_FOUND)
   if(USE_NCCL)
-    processorcount(N)
     # disables compilation for sm_30 to avoid ptxas warning... that's general Kepler support. But K80s are supported for instance by sm_35
     set(GENCODE "-gencode=arch=compute_35,code=sm_35 -gencode=arch=compute_50,code=sm_50 -gencode=arch=compute_60,code=sm_60 -gencode=arch=compute_61,code=sm_61")
 
@@ -76,7 +74,7 @@ if(CUDA_FOUND)
       BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nccl
       CONFIGURE_COMMAND ""
       BUILD_COMMAND
-        $(MAKE) -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build ${N}
+        $(MAKE) -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build
         BUILDDIR=${CMAKE_BINARY_DIR}/local CUDA_HOME=${CUDA_TOOLKIT_ROOT_DIR}
         CUDA8_GENCODE=${GENCODE} CXX=${CMAKE_CXX_COMPILER}
       INSTALL_COMMAND "")

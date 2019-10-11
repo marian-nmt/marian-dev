@@ -1,3 +1,4 @@
+#include "optimizers/compresser.h"
 #include "graph/expression_operators.h"
 #include "layers/constructors.h"
 
@@ -348,10 +349,44 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
   return p / s;
 }
 
+bool isCompress(Tensor a) {
+  // return true;
+  static int cnt = 0;
+  //LOG(info, "{} : {} {} {} {} {}", a->shape(), a->get(0), a->get(1), a->get(2), a->get(3), a->get(4));
+  if (a->size() < 200) return false;
+  std::set<float> s;
+  //if (a->size() != 6260652 && a->getDeviceId().no == 0 && cnt < 10 && cnt >= 0) std::cerr<<a->shape()<<"\n";
+  for (int i=0;i<200;i++) {
+    //if (a->size() != 6260652 && a->getDeviceId().no == 0 && cnt < 10 && cnt >= 0) std::cerr<<" "<<a->get(i);
+    s.insert(a->get(rand() %a->size()));
+  }
+  //if (a->size() != 626065280 && a->getDeviceId().no == 0 && cnt < 10 && cnt >= 0) std::cerr<<"\n";
+
+  if (a->size() != 626065280 && a->getDeviceId().no == 0 && s.size() > 0 && cnt++ < 10 && cnt >= 0)
+  {
+    std::cerr<<s.size()<<" of size \n";
+    int mp = 30;
+    for (float val: s) { if (mp-- > 0) std::cerr<<val<<" ";}
+     std::cerr<<"\n";
+  }
+  return s.size() > 16;
+}
+
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
   float clipValue = a->graph()->getBackend()->getClip();
+  // std::cerr<<"aa?"<<std::endl;
+  
+  if (true) {
+    LOG_ONCE(INFO, "Compressing activation");
+    if (a->graph()->params()->vals()->size() && isCompress(a->graph()->params()->vals()))
+      compressImpl(a->graph()->params()->vals(), 4, 2, 1, true, 0);
+    if (b->graph()->params()->vals()->size() && isCompress(b->graph()->params()->vals()))
+      compressImpl(b->graph()->params()->vals(), 4, 2, 1, true, 0);
+  }
 
+  static int step = 0;
+  if (step++ < 5) LOG(info, "inferencing {} vs", a->graph()->params()->vals()->size());
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
   if(a->graph()->isOptimized() && device == DeviceType::cpu) {
@@ -369,6 +404,16 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 }
 
 Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
+  // LOG(info, "compressing {} and {}", a->type(),  b->type());
+  // LOG(info, "device {}", a->graph()->params()->vals()->getDeviceId().no);
+  // LOG(info, "device {}", a->graph()->params()->vals()->get(0));
+  if (true) {
+    LOG_ONCE(INFO, "Compressing activation");
+    if (a->graph()->params()->vals()->size() && isCompress(a->graph()->params()->vals()))
+      compressImpl(a->graph()->params()->vals(), 4, 2, 1, true, 0);
+    if (b->graph()->params()->vals()->size() && isCompress(b->graph()->params()->vals()))
+      compressImpl(b->graph()->params()->vals(), 4, 2, 1, true, 0);
+  }
   return Expression<DotBatchedNodeOp>(a, b, transA, transB, scale);
 }
 

@@ -222,7 +222,7 @@ public:
   void forwardNext() {
     // @TODO: check if allocation works properly
     tensors_->clearShorttermMemory();
-
+    static int step = 0;
     while(!nodesForward_.empty()) {
       auto v = nodesForward_.front();
       v->allocate();
@@ -230,13 +230,13 @@ public:
       v->forward();
 
       checkNan(v->val());
-
-      if(v->marked_for_debug()) {
+      
+      if(v->val()->getDeviceId().no == 0 && (step++ < 5 || v->marked_for_debug())) {
         std::cerr << "Debug: " << v->debug_message() << " op=" << v->type()
-                  << std::endl;
-        std::cerr << v->val()->debug() << std::endl;
+                  <<"  "<< v->name() << std::endl;
+        // std::cerr << v->val()->debug() << std::endl;
       }
-
+      
       if(inferenceOnly_)
         v->children().clear();
       nodesForward_.pop_front();

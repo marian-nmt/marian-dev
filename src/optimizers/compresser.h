@@ -9,9 +9,8 @@
 #include "functional/functional.h"
 
 namespace marian {
-void compressImpl(Tensor t, int bit, float base, float clipRange, bool isMax = false, int kMeanStep = 0);
-void compressFix(Tensor t, int bit, float clipRange, int kMeanStep);
-void real_kmeans(Tensor t, int bit, float clipRange, int kMeanStep);
+void compressImpl(Tensor t, int bit, float base, float clipRange, int kMeanStep = 0);
+
 class Compresser {
 public:
   Compresser(Ptr<Options> options) 
@@ -28,7 +27,7 @@ public:
     // reserve tensor for error feedback mechanism
     if (!error) {
       LOG(info, " EXPERIMENTAL: Applying Log-{} based compress model to {}-bit every {} steps", base_, bit_, interval_);
-      LOG(info, " COMPRESS TYPE MAX: {} . K-means adjustment steps: {}", isMax_, kMeans_);
+      LOG(info, " K-means scale adjustment steps: {}", kMeans_);
 
       int elements = (int) graph->params()->vals()->size();
       errorAlloc = New<TensorAllocator>(graph->getBackend());
@@ -51,11 +50,8 @@ public:
           skip_size += p->val()->size();
           continue;
         }
-        if (kMeans_ < 0)
-          real_kmeans(p->val(), bit_, clip_, -kMeans_);
-        else
-          compressImpl(p->val(), bit_, base_, clip_, isMax_, kMeans_);
-          // compressFix(p->val(), bit_, clip_, kMeans_);
+        
+        compressImpl(p->val(), bit_, base_, clip_, kMeans_);
       }
     if (step == 1 && graph->params()->vals()->getDeviceId().no == 0) LOG(info, "skipping total of {}", skip_size);
 

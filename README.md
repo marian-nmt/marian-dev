@@ -1,3 +1,25 @@
+This branch is the implementation of our paper: 
+https://arxiv.org/abs/1909.06091
+
+4-Bit Compression
+======
+First, train a normal Marian model.
+To compress the model, do
+
+```
+python3 scripts/compress.py -i model.npz --kmeans 5 --base 2 --skip_bias -o model.compressed.npz
+```
+
+Your `model.compressed.npz` is now quantized with 4-bits precision. Note that the values are still stored in 32-bits float for the current version, but there are only at-most 16 different values for each quantized tensor.
+
+4-Bit Retraining
+======
+
+To retrain the model with 4-bits precision, simply use `model.compressed.npz` as the initial model and run Marian with these extra commands:
+```
+--compress-bit 4 --compress-base 2 --compress-k-means 5 --compress-skip-bias 
+```
+
 Marian
 ======
 

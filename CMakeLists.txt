@@ -22,6 +22,7 @@ option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
 option(COMPILE_SERVER "Compile marian-server" ON)
 option(USE_FBGEMM "Use FBGEMM" ON)
+option(USE_MKL "Use MKL" ON)
 
 # Project versioning
 find_package(Git QUIET)
@@ -43,10 +44,15 @@ if(MSVC)
 # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS /WX; /W4;)
 
-  # Disabled bogus warnings for CPU intrincics:
+  # Disabled bogus warnings for CPU intrinsics:
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
-  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
+  # Disable specific MSVC warnings that occur:
+  # C4100:'identifier' : unreferenced formal parameter
+  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4100\"")
+
+  # C4702: unreachable code
+  set(DISABLE_GLOBALLY_DEBUG "/wd\"4702\"")
 
   set(INTRINSICS "/arch:AVX")
 
@@ -56,7 +62,7 @@ if(MSVC)
 
   set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
   set(CMAKE_CXX_FLAGS_RELEASE   "${CMAKE_CXX_FLAGS} /MT /O2 ${INTRINSICS} /Zi /MP /GL /DNDEBUG")
-  set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
+  set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} ${DISABLE_GLOBALLY_DEBUG} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
   # ignores warning LNK4049: locally defined symbol free imported - this comes from zlib
   set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /NODEFAULTLIB:MSVCRT /ignore:4049")
@@ -172,12 +178,21 @@ if(CUDA_FOUND)
   endif()
 
   if(USE_STATIC_LIBS)
-    find_library(CUDA_culibos_LIBRARY NAMES culibos PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
-    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_culibos_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
-    set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_culibos_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    find_library(CUDA_culibos_LIBRARY NAMES culibos PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+    if (CUDA_culibos_LIBRARY)
+      set(EXT_LIBS ${EXT_LIBS} ${CUDA_culibos_LIBRARY})
+      set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_culibos_LIBRARY})
+    elseif(NOT WIN32)
+      message(FATAL_ERROR "cuLIBOS library not found")
+    endif()
     # CUDA 10.1 introduces cublasLt library that is required on static build
     if ((CUDA_VERSION VERSION_EQUAL "10.1" OR CUDA_VERSION VERSION_GREATER "10.1"))
-      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+      if(NOT CUDA_cublasLt_LIBRARY)
+        message(FATAL_ERROR "cuBLASLt library not found")
+      endif()
       set(EXT_LIBS ${EXT_LIBS} ${CUDA_cublasLt_LIBRARY})
       set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_cublasLt_LIBRARY})
     endif()
@@ -232,7 +247,7 @@ if(NOT MSVC)
   # @TODO: add warnings here too
   list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
 else()
-  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; )
+  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
 endif()
 
 list(REMOVE_DUPLICATES CUDA_NVCC_FLAGS)
@@ -267,7 +282,9 @@ if(USE_MPI)
 endif(USE_MPI)
 
 if(COMPILE_CPU)
-  find_package(MKL)
+  if(USE_MKL)
+    find_package(MKL)
+  endif()
   if(MKL_FOUND)
     include_directories(${MKL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})

@@ -109,7 +109,6 @@ namespace marian {
           factorMapTokenized.push_back(std::move(tokenizedMapLine));
         continue;
       }
-      ABORT("Malformed .fsv input line {}", line); // we only get here for lines we could not process
     }
     for (auto factorTypeName : deferredFactorVocab)
       factorVocab_.add("|" + factorTypeName, v++);

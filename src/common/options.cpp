@@ -52,7 +52,6 @@ namespace marian {
     } catch(const YAML::BadConversion&) {
       ABORT("Option '{}' is neither a sequence nor a text");
     }
-    return false;
   }
 
   bool Options::has(const std::string& key) const {

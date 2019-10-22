@@ -47,12 +47,7 @@ if(MSVC)
   # Disabled bogus warnings for CPU intrinsics:
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
-  # Disable specific MSVC warnings that occur:
-  # C4100:'identifier' : unreferenced formal parameter
-  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4100\"")
-
-  # C4702: unreachable code
-  set(DISABLE_GLOBALLY_DEBUG "/wd\"4702\"")
+  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
 
   set(INTRINSICS "/arch:AVX")
 
@@ -62,10 +57,12 @@ if(MSVC)
 
   set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
   set(CMAKE_CXX_FLAGS_RELEASE   "${CMAKE_CXX_FLAGS} /MT /O2 ${INTRINSICS} /Zi /MP /GL /DNDEBUG")
-  set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} ${DISABLE_GLOBALLY_DEBUG} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
+  set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
   # ignores warning LNK4049: locally defined symbol free imported - this comes from zlib
-  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /NODEFAULTLIB:MSVCRT /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRTD")
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")
 
   find_library(SHLWAPI Shlwapi.lib)
@@ -159,7 +156,9 @@ if(COMPILE_CUDA)
 
 if(USE_STATIC_LIBS)
   # link statically to stdlib libraries
-  set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+  if(NOT MSVC)
+    set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+  endif()
 
   # look for libraries that have .a suffix
   set(_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})

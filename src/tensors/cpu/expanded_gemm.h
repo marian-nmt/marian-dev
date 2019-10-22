@@ -80,8 +80,8 @@ struct PackNodeOp : public UnaryNodeOp {
 
   const std::string type() override { return "packMat"; }
 
-  Shape newShape(Expr a, bool transpose) {
 #if USE_FBGEMM
+  Shape newShape(Expr a, bool transpose) {
     auto shapeMat = a->shape();
     // Should be 2D - weight matrix
     ABORT_IF(shapeMat.size() != 2,
@@ -101,11 +101,13 @@ struct PackNodeOp : public UnaryNodeOp {
     Shape outShape({(int)packsize_});
 
     return outShape;
+  }
 #else // USE_FBGEMM
+  Shape newShape(Expr /*a*/, bool /*transpose*/) {
     ABORT("Packed GEMM requires a build with USE_FBGEMM enabled");
     return Shape();
-#endif  // USE_FBGEMM
   }
+#endif  // USE_FBGEMM
 };
 
 // Affine transform (matrix multiplication) using packed B matrix

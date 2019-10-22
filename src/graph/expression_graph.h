@@ -74,15 +74,19 @@ public:
     if(node->type() != "param" && node->memoize()) {
       auto it = longterm_->find(hash);
       if(it != longterm_->end()) {
+#if 1
+        if(!it->second.empty())
+          return *(it->second.begin());
+#else
+        // @TODO: check why below code does not work for certain nodes and
+        // autotuning.
         for(auto found : it->second) {
-          return found;
-          // @TODO: check why below code does not work for certain nodes and
-          // autotuning.
-          // if(node->equal(found)) {
-          // std::cerr << "found memoized" << std::endl;
-          // return found;
-          //}
+           if(node->equal(found)) {
+             std::cerr << "found memoized" << std::endl;
+             return found;
+          }
         }
+#endif
       }
       (*longterm_)[hash].push_back(node);
     }

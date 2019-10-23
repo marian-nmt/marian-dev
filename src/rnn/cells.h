@@ -1107,6 +1107,7 @@ public:
     auto Wf = graph->param(prefix + "_Wf", {dimInput, dimInput}, inits::glorot_uniform);
     auto bf = graph->param(prefix + "_bf", {1, dimInput}, inits::zeros);
 
+    // TODO: Maybe it should be moved to options...
     auto graph_expmap = graph->getNameMap();
     auto maxabs_input =  graph_expmap["F0::" + prefix + "_maxabs_input"];
     auto maxabs_input_W = graph_expmap["F0::" + prefix + "_maxabs_input_W"];
@@ -1165,10 +1166,12 @@ public:
     auto quantized_masked_cell_state = mask ? impl::elemwiseRescale(quantized_next_cell_state, mask) : quantized_next_cell_state;
     auto quantized_masked_state = mask ? impl::elemwiseRescale(quantized_next_state, mask) : quantized_next_state;
 
-    return {
-      impl::unquantize(quantized_masked_state, 1.0 / quant_mult_highway),       // TODO: Temporary unquantization
-      impl::unquantize(quantized_masked_cell_state, 1.0 / quant_mult_highway)   // TODO: Temporary unquantization
-    };
+    // return {
+    //   impl::unquantize(quantized_masked_state, 1.0 / quant_mult_highway),       // TODO: Temporary unquantization
+    //   impl::unquantize(quantized_masked_cell_state, 1.0 / quant_mult_highway)   // TODO: Temporary unquantization
+    // };
+
+    return {quantized_masked_state, quantized_masked_cell_state, 1.0 / quant_mult_highway};
   }
 };
 

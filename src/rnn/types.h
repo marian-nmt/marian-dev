@@ -11,6 +11,7 @@ namespace rnn {
 struct State {
   Expr output;
   Expr cell;
+  Expr unquant;
 
   State select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
                int beamSize, bool isBatchMajor) const {

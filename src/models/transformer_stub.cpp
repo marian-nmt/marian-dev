@@ -2,3 +2,4 @@
 // This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
 
 #include "models/transformer.h"
+#include "models/transformer_int.h"

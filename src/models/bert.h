@@ -3,6 +3,7 @@
 #include "data/corpus_base.h"
 #include "models/encoder_classifier.h"
 #include "models/transformer.h"
+#include "models/transformer_int.h"
 #include "data/rng_engine.h"
 
 namespace marian {

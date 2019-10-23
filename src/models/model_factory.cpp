@@ -38,6 +38,9 @@ Ptr<EncoderBase> EncoderFactory::construct(Ptr<ExpressionGraph> graph) {
   if(options_->get<std::string>("type") == "transformer")
     return NewEncoderTransformer(options_);
 
+  if(options_->get<std::string>("type") == "transformer_int")
+    return NewEncoderTransformerInt(options_);
+
   if(options_->get<std::string>("type") == "bert-encoder")
     return New<BertEncoder>(options_);
 
@@ -49,6 +52,8 @@ Ptr<DecoderBase> DecoderFactory::construct(Ptr<ExpressionGraph> graph) {
     return New<DecoderS2S>(options_);
   if(options_->get<std::string>("type") == "transformer")
     return NewDecoderTransformer(options_);
+  if(options_->get<std::string>("type") == "transformer_int")
+    return NewDecoderTransformerInt(options_);
   ABORT("Unknown decoder type");
 }
 
@@ -116,6 +121,14 @@ Ptr<ModelBase> by_type(std::string type, usage use, Ptr<Options> options) {
         ("usage", use)
         .push_back(models::encoder()("type", "transformer"))
         .push_back(models::decoder()("type", "transformer"))
+        .construct(graph);
+  }
+
+  if(type == "transformer_int") {
+    return models::encoder_decoder()(options)
+        ("usage", use)
+        .push_back(models::encoder()("type", "transformer_int"))
+        .push_back(models::decoder()("type", "transformer_int"))
         .construct(graph);
   }
 

@@ -35,6 +35,8 @@ add_library(marian STATIC
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
 
+  3rd_party/phf/phf.cc
+
   tensors/backend.cpp
   tensors/rand.cpp
   tensors/tensor.cpp

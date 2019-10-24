@@ -101,7 +101,6 @@ private:
 
   inline const IntrusivePtr<FastOpt>& phLookup(size_t keyId) const {
     const auto& node = array_[(*ph_)[keyId]];
-    ABORT_IF(node->fingerprint != keyId, "Unseen key {}" , keyId);
     return node;
   }
 
@@ -225,12 +224,14 @@ public:
     return value_->as<T>();
   }
 
-  // @TODO: missing specialization for as<std::vector<T>>() 
+  // @TODO: missing specialization for as<std::vector<T>>()
 
   const FastOpt& operator[](size_t keyId) const {
     switch(type()) {
       case NodeType::List : return *arrayLookup(keyId);
-      case NodeType::Map  : return *phLookup(keyId);
+      case NodeType::Map  :
+        ABORT_IF(phLookup(keyId)->fingerprint != keyId, "Unseen key {}" , keyId);
+        return *phLookup(keyId);
       default:
         ABORT("Not a map or list node");
     }

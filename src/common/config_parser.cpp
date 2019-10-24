@@ -542,7 +542,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
      "    {E} for epoch\n"
      "    {B} for # of batches within epoch\n"
      "    {U} for total # of updates\n"
-     "    {W} for total # of words/tokens seen\n"
+     "    {T} for total # of tokens seen\n"
      "    e.g., valid-after-{U}-updates-{W}-tokens.out");
 
   cli.add<bool>("--keep-best",

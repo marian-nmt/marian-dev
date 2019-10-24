@@ -654,7 +654,8 @@ public:
                                fmt::arg("E",state.epochs),
                                fmt::arg("U",state.batches),
                                fmt::arg("B",state.batchesEpoch),
-                               fmt::arg("W",state.labelsTotal));
+                               fmt::arg("W",state.labelsTotal), // alias for T
+                               fmt::arg("T",state.labelsTotal));
         collector = New<OutputCollector>(fileName); // for debugging
       }
       else {

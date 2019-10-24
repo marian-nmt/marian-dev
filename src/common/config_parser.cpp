@@ -537,7 +537,13 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Additional args passed to --valid-script-path. These are inserted"
       " between the script path and the output translation-file path");
   cli.add<std::string>("--valid-translation-output",
-     "Path to store the translation");
+     "(Template for) path to store the translation\n"
+     "    template parameters:\n"
+     "    {E} for epoch\n"
+     "    {B} for # of batches within epoch\n"
+     "    {U} for total # of updates\n"
+     "    {W} for total # of words/tokens seen\n"
+     "    e.g., valid-after-{U}-updates-{W}-tokens.out");
 
   cli.add<bool>("--keep-best",
       "Keep best model for each validation metric");

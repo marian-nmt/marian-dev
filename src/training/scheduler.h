@@ -219,7 +219,7 @@ public:
                 bool final = false) {
     // Do not validate if already validated (for instance, after the model is
     // loaded) or if validation is scheduled for another update
-    if(sigterm_ 
+    if(sigterm_
        || state_->validated
        || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !final))
       return;
@@ -230,7 +230,7 @@ public:
         continue;
 
       size_t stalledPrev = validator->stalled();
-      float value = validator->validate(graphs);
+      float value = validator->validate(graphs, *state_);
       if(validator->stalled() > 0) {
         LOG_VALID(info,
                   "Ep. {} : Up. {} : {} : {} : stalled {} times (last best: {})",

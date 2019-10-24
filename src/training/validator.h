@@ -37,7 +37,8 @@ protected:
 public:
   ValidatorBase(bool lowerIsBetter) : lowerIsBetter_(lowerIsBetter), lastBest_{initScore()} {}
 
-  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) = 0;
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                         const TrainingState& state) = 0;
   virtual std::string type() = 0;
 
   float lastBest() { return lastBest_; }
@@ -104,7 +105,8 @@ protected:
   }
 public:
 
-  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                         const TrainingState& ) override {
     for(auto graph : graphs)
       graph->setInference(true);
 
@@ -428,7 +430,8 @@ public:
              "valid-script metric but no script given");
   }
 
-  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                         const TrainingState& /*ignored*/) override {
     using namespace data;
     auto model = options_->get<std::string>("model");
     std::string suffix = model.substr(model.size() - 4);
@@ -466,7 +469,8 @@ public:
     createBatchGenerator(/*isTranslating=*/true);
   }
 
-  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                         const TrainingState& /*ignored*/) override {
     using namespace data;
 
     // Generate batches
@@ -605,7 +609,8 @@ public:
     createBatchGenerator(/*isTranslating=*/true);
   }
 
-  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs) override {
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                         const TrainingState& state) override {
     using namespace data;
 
     // Generate batches
@@ -645,6 +650,11 @@ public:
       Ptr<OutputCollector> collector;
       if(options_->hasAndNotEmpty("valid-translation-output")) {
         auto fileName = options_->get<std::string>("valid-translation-output");
+        fileName = fmt::format(fileName.c_str(),
+                               fmt::arg("E",state.epochs),
+                               fmt::arg("U",state.batches),
+                               fmt::arg("B",state.batchesEpoch),
+                               fmt::arg("W",state.labelsTotal));
         collector = New<OutputCollector>(fileName); // for debugging
       }
       else {

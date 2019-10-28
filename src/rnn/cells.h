@@ -1055,6 +1055,16 @@ public:
       f = affine(inputDropped, Wf_, bf_);
     }
 
+    auto minmax = [](const std::string& label, Expr expr) {
+    auto expr_min = min(flatten(expr), 0);
+    auto expr_max = max(flatten(expr), 0);
+    expr_min->debug(label + "_min");
+    expr_max->debug(label + "_max");
+    };
+    minmax("input", input);
+    minmax("x", x);
+    minmax("f", f);
+
     return {x, f};
   }
 

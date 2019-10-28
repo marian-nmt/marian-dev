@@ -96,6 +96,7 @@ public:
 // Check GetThreadTimes on Windows:
 // https://docs.microsoft.com/en-gb/windows/desktop/api/processthreadsapi/nf-processthreadsapi-getthreadtimes
 using CPUTimer = boost::timer::cpu_timer;
+using AutoCPUTimer = boost::timer::auto_cpu_timer;
 
 }  // namespace timer
 }  // namespace marian

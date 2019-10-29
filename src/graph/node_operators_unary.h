@@ -14,11 +14,17 @@
 namespace marian {
 
 struct UnaryNodeOp : public NaryNodeOp {
-  UnaryNodeOp(Expr a, Shape shape, Type value_type = Type::float32)
+  UnaryNodeOp(Expr a, Shape shape, Type value_type)
       : NaryNodeOp({a}, shape, value_type) {}
 
-  UnaryNodeOp(Expr a, Type value_type = Type::float32)
+  UnaryNodeOp(Expr a, Type value_type)
       : NaryNodeOp({a}, a->shape(), value_type) {}
+
+  UnaryNodeOp(Expr a, Shape shape)
+      : NaryNodeOp({a}, shape, a->value_type()) {}
+
+  UnaryNodeOp(Expr a)
+      : NaryNodeOp({a}, a->shape(), a->value_type()) {}
 
   const std::string color() override { return "yellow"; }
 };
@@ -60,6 +66,24 @@ public:
       return false;
     return true;
   }
+};
+
+// Cast a tensor to a different type
+struct CastNodeOp : public UnaryNodeOp {
+public:
+  CastNodeOp(Expr a, Type type) : UnaryNodeOp(a, type) {}
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+    return { NodeOp(CopyCast(val_, child(0)->val())) };
+  }
+
+  NodeOps backwardOps() override {
+    using namespace functional;
+    return { NodeOp(CopyCast(child(0)->grad(), adj_)) };
+  }
+
+  const std::string type() override { return "cast"; }
 };
 
 struct ScalarMultNodeOp : public UnaryNodeOp {
@@ -380,7 +404,7 @@ struct SwishNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SwishNodeOp> cnode = std::dynamic_pointer_cast<SwishNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SwishNodeOp>(node);
     if(!cnode)
       return false;
     if(b_ != cnode->b_)
@@ -477,6 +501,10 @@ struct ReduceNodeOp : public UnaryNodeOp {
 
   NodeOps backwardOps() override {
     using namespace functional;
+#if 1 // @BUGBUG: This is a workaround for not correctly propagating non-trainable information. @TODO: Do this the right and general way.
+    if (adj_ == nullptr)
+      return {};
+#endif
     switch (opCode_) {
     case ReduceNodeOpCode::sum:
       return {NodeOp(Add(_1, child(0)->grad(), adj_))};
@@ -497,7 +525,7 @@ struct ReduceNodeOp : public UnaryNodeOp {
       return {NodeOp(Add((_1 == _2) * _3, child(0)->grad(), child(0)->val(), val_, adj_))};
     case ReduceNodeOpCode::logSumExp:
       // y = log(sum_j exp(x_j))
-       // dJ/dx_i = dJ/dy * 1/(sum_j exp(x_j)) exp(x_i) = dJ/dy * exp(x_i - y))  --@REVIEW: is this correct?
+      // dJ/dx_i = dJ/dy * 1/(sum_j exp(x_j)) exp(x_i) = dJ/dy * exp(x_i - y))  --@REVIEW: is this correct?
       return {NodeOp(Add(_1 * exp(_2 - _3), child(0)->grad(), adj_, child(0)->val(), val_))};
     default:
       ABORT("Unexpected reduction op-code {}", (int)opCode_);
@@ -540,7 +568,7 @@ struct ReduceNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ReduceNodeOp> cnode = std::dynamic_pointer_cast<ReduceNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ReduceNodeOp>(node);
     if(!cnode)
       return false;
     if(axis_ != cnode->axis_ || opCode_ != cnode->opCode_)
@@ -612,7 +640,7 @@ struct SqrtNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SqrtNodeOp> cnode = std::dynamic_pointer_cast<SqrtNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SqrtNodeOp>(node);
     if(!cnode)
       return false;
     if(epsilon_ != cnode->epsilon_)
@@ -697,8 +725,7 @@ struct TransposeNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<TransposeNodeOp> cnode
-        = std::dynamic_pointer_cast<TransposeNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<TransposeNodeOp>(node);
     if(!cnode)
       return false;
     if(axes_ != cnode->axes_)
@@ -716,7 +743,9 @@ private:
   Expr reshapee_;
 
 public:
-  ReshapeNodeOp(Expr a, Shape shape) : UnaryNodeOp(a, shape, a->value_type()), reshapee_(a) {
+  ReshapeNodeOp(Expr a, Shape shape) : UnaryNodeOp(a, shape), reshapee_(a) {
+    ABORT_IF(a->shape().elements() != shape.elements(),
+             "Reshape must not change the number of elements (from {} to {})", a->shape().toString(), shape.toString());
     Node::destroy_ = false;
   }
 
@@ -734,15 +763,15 @@ public:
 
   Tensor& val() override {
     auto childVal = reshapee_->val();
-    val_.reset(
-        new TensorBase(childVal->memory(), shape(), childVal->type(), childVal->getBackend()));
+    auto temp = TensorBase::New(childVal->memory(), shape(), childVal->type(), childVal->getBackend());
+    val_.swap(temp);
     return val_;
   };
 
   Tensor& grad() override {
     auto childGrad = reshapee_->grad();
-    adj_.reset(
-        new TensorBase(childGrad->memory(), shape(), childGrad->type(), childGrad->getBackend()));
+    auto temp = TensorBase::New(childGrad->memory(), shape(), childGrad->type(), childGrad->getBackend());
+    adj_.swap(temp);
     return adj_;
   };
 
@@ -763,10 +792,79 @@ public:
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ReshapeNodeOp> cnode = std::dynamic_pointer_cast<ReshapeNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ReshapeNodeOp>(node);
     if(!cnode)
       return false;
     if(shape() != cnode->shape())
+      return false;
+    return true;
+  }
+};
+
+// @TODO: review if still required as this is an ugly hack anyway.
+// Memory less operator that clips gradients during backward step
+// Executes this as an additional operation on the gradient.
+class ClipGradientNodeOp : public UnaryNodeOp {
+private:
+  Expr clipee_;
+  float clipValue_{0};
+
+public:
+  ClipGradientNodeOp(Expr a, float clipValue)
+   : UnaryNodeOp(a), clipee_(a), clipValue_(clipValue) {
+    Node::destroy_ = false;
+  }
+
+  ~ClipGradientNodeOp() {}
+
+  size_t allocate() override { return 0; }
+  void free() override {}
+
+  void forward() override {}
+
+  void backward() override {
+    using namespace marian::functional;
+    Element(_1 = clip(_1, clipValue_), adj_);
+  }
+
+  void init_dependent() override { clipee_->init_dependent(); }
+
+  void set_zero_adjoint() override { clipee_->set_zero_adjoint(); }
+
+  Tensor& val() override {
+    auto childVal = clipee_->val();
+    auto temp = TensorBase::New(childVal->memory(), shape(), childVal->type(), childVal->getBackend());
+    val_.swap(temp);
+    return val_;
+  };
+
+  Tensor& grad() override {
+    auto childGrad = clipee_->grad();
+    auto temp = TensorBase::New(childGrad->memory(), shape(), childGrad->type(), childGrad->getBackend());
+    adj_.swap(temp);
+    return adj_;
+  };
+
+  const std::string type() override { return "clipGradient"; }
+
+  const std::string color() override { return "grey"; }
+
+  virtual size_t hash() override {
+    if(!hash_) {
+      size_t seed = NaryNodeOp::hash();
+      util::hash_combine(seed, clipValue_);
+      hash_ = seed;
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<ClipGradientNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(clipValue_ != cnode->clipValue_)
       return false;
     return true;
   }
@@ -817,15 +915,17 @@ public:
 
   Tensor& val() override {
     auto childVal = viewedNode_->val();
-    auto mem = New<MemoryPiece>(childVal->memory()->data() + byteOffset_, byteSize_);
-    val_.reset(new TensorBase(mem, shape(), childVal->type(), childVal->getBackend()));
+    auto mem = MemoryPiece::New(childVal->memory()->data() + byteOffset_, byteSize_);
+    auto temp = TensorBase::New(mem, shape(), childVal->type(), childVal->getBackend());
+    val_.swap(temp);
     return val_;
   };
 
   Tensor& grad() override {
     auto childGrad = viewedNode_->grad();
-    auto mem = New<MemoryPiece>(childGrad->memory()->data() + byteOffset_, byteSize_);
-    adj_.reset(new TensorBase(mem, shape(), childGrad->type(), childGrad->getBackend()));
+    auto mem = MemoryPiece::New(childGrad->memory()->data() + byteOffset_, byteSize_);
+    auto temp = TensorBase::New(mem, shape(), childGrad->type(), childGrad->getBackend());
+    adj_.swap(temp);
     return adj_;
   };
 
@@ -847,7 +947,7 @@ public:
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<SliceViewNodeOp> cnode = std::dynamic_pointer_cast<SliceViewNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<SliceViewNodeOp>(node);
     if(!cnode)
       return false;
     if(slice_ != cnode->slice_)
@@ -889,7 +989,7 @@ struct ShiftNodeOp : public UnaryNodeOp {
   virtual bool equal(Expr node) override {
     if(!NaryNodeOp::equal(node))
       return false;
-    Ptr<ShiftNodeOp> cnode = std::dynamic_pointer_cast<ShiftNodeOp>(node);
+    auto cnode = std::dynamic_pointer_cast<ShiftNodeOp>(node);
     if(!cnode)
       return false;
     if(shift_ != cnode->shift_)

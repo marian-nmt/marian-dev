@@ -1,14 +1,13 @@
-#include "common/config_parser.h"
-
-#include "common/definitions.h"
 #include "common/cli_helper.h"
+#include "common/config.h"
+#include "common/config_parser.h"
 #include "common/config_validator.h"
+#include "common/definitions.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
 #include "common/options.h"
-#include "common/config.h"
-#include "common/utils.h"
 #include "common/regex.h"
+#include "common/utils.h"
 #include <algorithm>
 #include <set>
 #include <stdexcept>
@@ -35,6 +34,7 @@ const std::set<std::string> PATHS = {
   "embedding-vectors",
   "valid-sets",
   "valid-script-path",
+  "valid-script-args",
   "valid-log",
   "valid-translation-output",
   "input",            // except: stdin
@@ -72,7 +72,6 @@ std::string const& ConfigParser::cmdLine() const {
 ConfigParser::ConfigParser(cli::mode mode)
   : cli_(config_,"Marian: Fast Neural Machine Translation in C++",
          "General options", "", 40),
-    // modeServer_(mode == cli::mode::server),
     mode_(mode == cli::mode::server ? cli::mode::translation : mode) {
 
   addOptionsGeneral(cli_);
@@ -85,7 +84,6 @@ ConfigParser::ConfigParser(cli::mode mode)
     case cli::mode::training:
       addOptionsTraining(cli_);
       addOptionsValidation(cli_);
-      addAliases(cli_);
       break;
     case cli::mode::translation:
       addOptionsTranslation(cli_);
@@ -97,8 +95,9 @@ ConfigParser::ConfigParser(cli::mode mode)
       ABORT("wrong CLI mode");
       break;
   }
-  // clang-format on
 
+  addAliases(cli_);
+  // clang-format on
 }
 
 void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
@@ -176,6 +175,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--dim-emb",
       "Size of embedding vector",
       512);
+  cli.add<int>("--lemma-dim-emb",
+      "Re-embedding dimension of lemma in factors",
+      0);
   cli.add<int>("--dim-rnn",
       "Size of rnn hidden state", 1024);
   cli.add<std::string>("--enc-type",
@@ -264,6 +266,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "dan");
   cli.add<bool>("--transformer-train-position-embeddings",
       "Train positional embeddings instead of using static sinusoidal embeddings");
+  cli.add<bool>("--transformer-depth-scaling",
+      "Scale down weight initialization in transformer layers by 1 / sqrt(depth)");
 
   cli.add<std::string>("--bert-mask-symbol", "Masking symbol for BERT masked-LM training", "[MASK]");
   cli.add<std::string>("--bert-sep-symbol", "Sentence separator symbol for BERT next sentence prediction training", "[SEP]");
@@ -362,8 +366,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   addSuboptionsInputLength(cli);
 
   // data management options
+  cli.add<std::string>("--shuffle",
+      "How to shuffle input data (data: shuffles data and sorted batches; batches: "
+      "data is read in order into batches, but batches are shuffled; none: no shuffling). "
+      "Use with '--maxi-batch-sort none' in order to achieve exact reading order", "data");
   cli.add<bool>("--no-shuffle",
-      "Skip shuffling of training data before each epoch");
+      "Shortcut for backwards compatiblity, equivalent to --shuffle none (deprecated)");
   cli.add<bool>("--no-restore-corpus",
       "Skip restoring corpus state after training is restarted");
   cli.add<std::string>("--tempdir,-T",
@@ -434,9 +442,11 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
 
   cli.add<double>("--label-smoothing",
      "Epsilon for label smoothing (0 to disable)");
+  cli.add<double>("--factor-weight",
+     "Weight for loss function for factors (factored vocab only) (1 to disable)", 1.0f);
   cli.add<float>("--clip-norm",
      "Clip gradient norm to  arg  (0 to disable)",
-     1.f);
+     1.f); // @TODO: this is currently wrong with ce-sum and should rather be disabled or fixed by multiplying with labels
   cli.add<float>("--exponential-smoothing",
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable. "
       "Auto-adjusted to --mini-batch-words-ref if given.",
@@ -466,6 +476,20 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--embedding-fix-trg",
      "Fix target embeddings. Affects all decoders");
 
+  // mixed precision training
+  cli.add<bool>("--fp16", 
+      "Shortcut for mixed precision training with float16 and cost-scaling, "
+      "corresponds to: --precision float16 float32 float32 --cost-scaling 7 2000 2 0.05 10 1");
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision training for forward/backward pass and optimizaton. "
+      "Defines types for: forward/backward, optimization, saving.",
+      {"float32", "float32", "float32"});
+  cli.add<std::vector<std::string>>("--cost-scaling",
+      "Dynamic cost scaling for mixed precision training: "
+      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
+
+  // multi-node training
   cli.add<bool>("--multi-node",
      "Enable asynchronous multi-node training through MPI (and legacy sync if combined with --sync-sgd)");
   cli.add<bool>("--multi-node-overlap",
@@ -529,6 +553,9 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
      " It should print a single score to stdout."
      " If the option is used with validating translation, the output"
      " translation file will be passed as a first argument");
+  cli.add<std::vector<std::string>>("--valid-script-args",
+      "Additional args passed to --valid-script-path. These are inserted"
+      " between the script path and the output translation-file path");
   cli.add<std::string>("--valid-translation-output",
      "Path to store the translation");
 
@@ -580,6 +607,15 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
+  cli.add<std::string>("--gemm-type",
+      "Select GEMM options: auto, mklfp32, intrinint16, fp16packed, int8packed",
+      "auto");
+  
+  cli.add<bool>("--fp16", 
+      "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision for inference, set parameter type in expression graph",
+      {"float32"});
 
   cli.add<std::vector<std::string>>("--shortlist",
      "Use softmax shortlist: path first best prune");
@@ -631,6 +667,12 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
+  cli.add<bool>("--fp16", 
+      "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision for inference, set parameter type in expression graph",
+      {"float32"});
+  
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -683,6 +725,8 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
     cli.add<size_t>("--mini-batch-fit-step",
       "Step size for mini-batch-fit statistics",
       10);
+    cli.add<bool>("--gradient-checkpointing", 
+      "Enable gradient-checkpointing to minimize memory usage");
   }
 
   cli.add<int>("--maxi-batch",
@@ -694,6 +738,11 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--shuffle-in-ram",
       "Keep shuffled corpus in RAM, do not write to temp file");
+  // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
+  cli.add<size_t>("--all-caps-every",
+      "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
+  cli.add<size_t>("--english-title-case-every",
+      "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
 
   cli.add<int>("--mini-batch-words-ref",
       "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
@@ -720,7 +769,7 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
       "Maximum length of a sentence in a training sentence pair",
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
-      "Crop a sentence to max-length instead of ommitting it if longer than max-length");
+      "Crop a sentence to max-length instead of omitting it if longer than max-length");
   // clang-format on
 }
 
@@ -756,8 +805,7 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
 
 cli::mode ConfigParser::getMode() const { return mode_; }
 
-Ptr<Options>
-ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
+Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   cmdLine_ = escapeCmdLine(argc,argv);
 
   // parse command-line options and fill wrapped YAML config
@@ -768,7 +816,7 @@ ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   if(!configPaths.empty()) {
     auto config = loadConfigFiles(configPaths);
     cli_.updateConfig(config,
-                     cli::Priority::ConfigFile,
+                     cli::OptionPriority::ConfigFile,
                      "There are option(s) in a config file that are not expected");
   }
 
@@ -777,7 +825,6 @@ ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   }
 
   if(doValidate) {
-    // this aborts the program on first validation error
     ConfigValidator(config_).validateOptions(mode_);
   }
 
@@ -834,7 +881,8 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
 
   for(auto& path : paths) {
     // load single config file
-    YAML::Node config = YAML::Load(io::InputFileStream(path));
+    io::InputFileStream strm(path);
+    YAML::Node config = YAML::Load(strm);
 
     // expand relative paths if requested
     if(config["relative-paths"] && config["relative-paths"].as<bool>()) {
@@ -861,7 +909,7 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
   return configAll;
 }
 
-YAML::Node const& ConfigParser::getConfig() const {
+const YAML::Node& ConfigParser::getConfig() const {
   return config_;
 }
 }  // namespace marian

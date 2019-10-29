@@ -29,10 +29,13 @@ private:
   size_t numDevices_;
 
 public:
-  Translate(Ptr<Options> options) : options_(options) {
+  Translate(Ptr<Options> options) 
+    : options_(New<Options>(options->clone())) { // @TODO: clone should return Ptr<Options> same as "with"?
     // This is currently safe as the translator is either created stand-alone or
     // or config is created anew from Options in the validator
+
     options_->set("inference", true);
+    options_->set("shuffle", "none");
 
     corpus_ = New<data::Corpus>(options_, true);
 
@@ -55,9 +58,16 @@ public:
     size_t id = 0;
     for(auto device : devices) {
       auto task = [&](DeviceId device, size_t id) {
-        auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
+        auto graph = New<ExpressionGraph>(true);
         graph->setDevice(device);
+        auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
+        graph->setParameterType(typeFromString(prec[0]));
+
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
+        if (device.type == DeviceType::cpu) {
+          graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+          graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
+        }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
 
@@ -89,8 +99,9 @@ public:
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
 
-    bg.prepare(false);
+    bg.prepare();
 
+    bool doNbest = options_->get<bool>("n-best");
     for(auto batch : bg) {
       auto task = [=](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
@@ -101,17 +112,17 @@ public:
           scorers = scorers_[id % numDevices_];
         }
 
-        auto search = New<Search>(options_, scorers, trgVocab_->getEosId(), trgVocab_->getUnkId());
+        auto search = New<Search>(options_, scorers, trgVocab_);
         auto histories = search->search(graph, batch);
 
         for(auto history : histories) {
           std::stringstream best1;
           std::stringstream bestn;
           printer->print(history, best1, bestn);
-          collector->Write((long)history->GetLineNum(),
+          collector->Write((long)history->getLineNum(),
                            best1.str(),
                            bestn.str(),
-                           options_->get<bool>("n-best"));
+                           doNbest);
         }
 
 
@@ -121,8 +132,8 @@ public:
             && id % 1000 == 0)  // hard beat once every 1000 batches
         {
           auto progress = 0.f; //fake progress for now
-          fprintf(stdout, "PROGRESS: %.2f%%\n", progress);
-          fflush(stdout);
+          fprintf(stderr, "PROGRESS: %.2f%%\n", progress);
+          fflush(stderr);
         }
       };
 
@@ -147,9 +158,11 @@ private:
 public:
   virtual ~TranslateService() {}
 
-  TranslateService(Ptr<Options> options) : options_(options) {
+  TranslateService(Ptr<Options> options) 
+    : options_(New<Options>(options->clone())) {
     // initialize vocabs
     options_->set("inference", true);
+    options_->set("shuffle", "none");
 
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
@@ -169,9 +182,17 @@ public:
 
     // initialize scorers
     for(auto device : devices) {
-      auto graph = New<ExpressionGraph>(true, options_->get<bool>("optimize"));
+      auto graph = New<ExpressionGraph>(true);
       graph->setDevice(device);
+      
+      auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
+      graph->setParameterType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
+
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
+      if (device.type == DeviceType::cpu) {
+        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+        graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
+      }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
 
@@ -190,7 +211,7 @@ public:
     auto printer = New<OutputPrinter>(options_, trgVocab_);
     size_t batchId = 0;
 
-    batchGenerator.prepare(false);
+    batchGenerator.prepare();
 
     {
       ThreadPool threadPool_(numDevices_, numDevices_);
@@ -206,14 +227,14 @@ public:
             scorers = scorers_[id % numDevices_];
           }
 
-          auto search = New<Search>(options_, scorers, trgVocab_->getEosId(), trgVocab_->getUnkId());
+          auto search = New<Search>(options_, scorers, trgVocab_);
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
             std::stringstream best1;
             std::stringstream bestn;
             printer->print(history, best1, bestn);
-            collector->add((long)history->GetLineNum(), best1.str(), bestn.str());
+            collector->add((long)history->getLineNum(), best1.str(), bestn.str());
           }
         };
 

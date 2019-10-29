@@ -8,11 +8,36 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Safe handling of sigterm signal
+- Automatic vectorization of elementwise operations on CPU for tensors dims that 
+  are divible by 4 (AVX) and 8 (AVX2)
+- Replacing std::shared_ptr<T> with custom IntrusivePtr<T> for small objects like 
+  Tensors, Hypotheses and Expressions.
+- Fp16 inference working for translation
+- Gradient-checkpointing
+
+### Fixed
+- Sort parameters by lexicographical order during allocation to ensure consistent 
+  memory-layout during allocation, loading, saving.
+- Output empty line when input is empty line. Previous behavior might result in 
+  hallucinated outputs.
+- Compilation with CUDA 10.1
+
+### Changed
+- Boost depdendency is now optional and only required for marian_server 
+  or for boost::regex when compiling with g++-4.9
+- Simplified file stream and temporary file handling
+- Unified node intializers, same function API.
+
+## [1.8.0] - 2019-09-04
+
+### Added
 - Alias options and new --task option
 - Automatic detection of CPU intrisics when building with -arch=native
 - First version of BERT-training and BERT-classifier, currently not compatible with TF models
 - New reduction operators
 - Use Cmake's ExternalProject to build NCCL and potentially other external libs
+- Code for Factored Vocabulary, currently not usable yet without outside tools
 
 ### Fixed
 - Issue with relative paths in automatically generated decoder config files
@@ -25,6 +50,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Errors due to warnings
 - Issue concerning failed saving with single GPU training and --sync-sgd option.
 - NaN problem when training with Tensor Cores on Volta GPUs
+- Fix pipe-handling
+- Fix compilation with GCC 9.1
+- Fix CMake build types
 
 ### Changed
 - Error message when using left-to-right and right-to-left models together in ensembles
@@ -34,6 +62,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - -DUSE_STATIC_LIBS=on now also looks for static versions of CUDA libraries
 - Include NCCL build from github.com/marian-nmt/nccl and compile within source tree
 - Set nearly all warnings as errors for Marian's own targets. Disable warnings for 3rd party
+- Refactored beam search
 
 ## [1.7.0] - 2018-11-27
 

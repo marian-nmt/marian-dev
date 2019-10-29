@@ -17,15 +17,15 @@ namespace models {
 
 // @TODO: looking at this file, simplify the new RationalLoss idea. Here it gets too complicated
 
-class MNISTCrossEntropyCost : public CostBase {
+class MNISTCrossEntropyCost : public ICost {
 public:
   MNISTCrossEntropyCost() {}
 
-  Ptr<MultiRationalLoss> apply(Ptr<ModelBase> model,
+  Ptr<MultiRationalLoss> apply(Ptr<IModel> model,
                                Ptr<ExpressionGraph> graph,
                                Ptr<data::Batch> batch,
                                bool clearGraph = true) override {
-    auto top = model->build(graph, batch, clearGraph);
+    auto top = model->build(graph, batch, clearGraph).getLogits();
 
     auto vfLabels = std::static_pointer_cast<data::DataBatch>(batch)->labels();
 
@@ -36,31 +36,27 @@ public:
     // Define a top-level node for training
     // use CE loss
 
-    auto loss = sum(cross_entropy(top->loss(), labels), /*axis =*/ 0);
+    auto loss = sum(cross_entropy(top, labels), /*axis =*/ 0);
     auto multiLoss = New<SumMultiRationalLoss>();
     multiLoss->push_back({loss, (float)vLabels.size()});
     return multiLoss;
   }
 };
 
-class MNISTLogsoftmax : public CostBase {
+class MNISTLogsoftmax : public ILogProb {
 public:
   MNISTLogsoftmax() {}
 
-  Ptr<MultiRationalLoss> apply(Ptr<ModelBase> model,
+  Logits apply(Ptr<IModel> model,
              Ptr<ExpressionGraph> graph,
              Ptr<data::Batch> batch,
              bool clearGraph = true) override {
     auto top = model->build(graph, batch, clearGraph);
-    
-    // @TODO: simplify this
-    auto multiLoss = New<SumMultiRationalLoss>();
-    multiLoss->push_back({logsoftmax(top->loss()), top->count()});
-    return multiLoss;
+    return top.applyUnaryFunction(logsoftmax);
   }
 };
 
-class MnistFeedForwardNet : public ModelBase {
+class MnistFeedForwardNet : public IModel {
 public:
   typedef data::MNISTData dataset_type;
 
@@ -68,14 +64,11 @@ public:
   MnistFeedForwardNet(Ptr<Options> options, Args... args)
       : options_(options), inference_(options->get<bool>("inference", false)) {}
 
-  virtual Ptr<RationalLoss> build(Ptr<ExpressionGraph> graph,
+  virtual Logits build(Ptr<ExpressionGraph> graph,
                      Ptr<data::Batch> batch,
                      bool /*clean*/ = false) override {
     
-    auto loss   = construct(graph, batch, inference_); // @TODO: unify nomenclature, e.g. rather use apply
-    auto count = graph->constant({(int)batch->size(), 1}, inits::from_value(1.f));
-
-    return New<RationalLoss>(loss, count);
+    return Logits(apply(graph, batch, inference_));
   }
 
   void load(Ptr<ExpressionGraph> /*graph*/, const std::string& /*name*/, bool) override {
@@ -100,11 +93,10 @@ public:
 
 protected:
   Ptr<Options> options_;
-  bool inference_{false};
+  const bool inference_{false};
 
   /**
-   * @brief Constructs an expression graph representing a feed-forward
-   * classifier.
+   * @brief Builds an expression graph representing a feed-forward classifier.
    *
    * @param dims number of nodes in each layer of the feed-forward classifier
    * @param batch a batch of training or testing examples
@@ -112,9 +104,9 @@ protected:
    *
    * @return a shared pointer to the newly constructed expression graph
    */
-  virtual Expr construct(Ptr<ExpressionGraph> g,
-                         Ptr<data::Batch> batch,
-                         bool /*inference*/ = false) {
+  virtual Expr apply(Ptr<ExpressionGraph> g,
+                     Ptr<data::Batch> batch,
+                     bool /*inference*/ = false) {
     const std::vector<int> dims = {784, 2048, 2048, 10};
 
     // Start with an empty expression graph
@@ -125,7 +117,7 @@ protected:
     auto features
         = std::static_pointer_cast<data::DataBatch>(batch)->features();
     auto x = g->constant({(int)batch->size(), dims[0]},
-                         inits::from_vector(features));
+                         inits::fromVector(features));
 
     // Construct hidden layers
     std::vector<Expr> layers, weights, biases;
@@ -149,11 +141,11 @@ protected:
 
       // Construct a weight node for the outgoing connections from layer i
       weights.emplace_back(
-          g->param("W" + std::to_string(i), {in, out}, inits::glorot_uniform));
+          g->param("W" + std::to_string(i), {in, out}, inits::glorotUniform()));
 
       // Construct a bias node. These weights are initialized to zero
       biases.emplace_back(
-          g->param("b" + std::to_string(i), {1, out}, inits::zeros));
+          g->param("b" + std::to_string(i), {1, out}, inits::zeros()));
     }
 
     // Perform matrix multiplication and addition for the last layer

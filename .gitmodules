@@ -10,6 +10,10 @@
 [submodule "src/3rd_party/nccl"]
 	path = src/3rd_party/nccl
 	url = https://github.com/marian-nmt/nccl
+[submodule "src/3rd_party/fbgemm"]
+	path = src/3rd_party/fbgemm
+	url = https://github.com/marian-nmt/FBGEMM
+	branch = master
 [submodule "src/3rd_party/amqp-cpp"]
 	path = src/3rd_party/amqp-cpp
 	url = https://github.com/ugermann/AMQP-CPP

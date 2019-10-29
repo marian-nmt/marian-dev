@@ -2,13 +2,13 @@
 
 namespace marian {
 
-std::string OutputPrinter::getAlignment(const Ptr<Hypothesis>& hyp) {
+std::string OutputPrinter::getAlignment(const Hypothesis::PtrType& hyp) {
   data::SoftAlignment align;
   auto last = hyp;
   // get soft alignments for each target word starting from the last one
-  while(last->GetPrevHyp().get() != nullptr) {
-    align.push_back(last->GetAlignment());
-    last = last->GetPrevHyp();
+  while(last->getPrevHyp().get() != nullptr) {
+    align.push_back(last->getAlignment());
+    last = last->getPrevHyp();
   }
 
   // reverse alignments

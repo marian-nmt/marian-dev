@@ -24,7 +24,7 @@ public:
 
   template <class OStream>
   void print(Ptr<History const> history, OStream& best1, OStream& bestn) {
-    const auto& nbl = history->NBest(nbest_);
+    const auto& nbl = history->nBest(nbest_);
 
     for(size_t i = 0; i < nbl.size(); ++i) {
       const auto& result = nbl[i];
@@ -35,17 +35,17 @@ public:
         std::reverse(words.begin(), words.end());
 
       std::string translation = vocab_->decode(words);
-      bestn << history->GetLineNum() << " ||| " << translation;
+      bestn << history->getLineNum() << " ||| " << translation;
 
       if(!alignment_.empty())
         bestn << " ||| " << getAlignment(hypo);
 
       bestn << " |||";
-      if(hypo->GetScoreBreakdown().empty()) {
-        bestn << " F0=" << hypo->GetPathScore();
+      if(hypo->getScoreBreakdown().empty()) {
+        bestn << " F0=" << hypo->getPathScore();
       } else {
-        for(size_t j = 0; j < hypo->GetScoreBreakdown().size(); ++j) {
-          bestn << " F" << j << "= " << hypo->GetScoreBreakdown()[j];
+        for(size_t j = 0; j < hypo->getScoreBreakdown().size(); ++j) {
+          bestn << " F" << j << "= " << hypo->getScoreBreakdown()[j];
         }
       }
 
@@ -58,7 +58,7 @@ public:
         bestn << std::flush;
     }
 
-    auto result = history->Top();
+    auto result = history->top();
     auto words = std::get<0>(result);
 
     if(reverse_)
@@ -81,7 +81,7 @@ private:
   std::string alignment_;
   float alignmentThreshold_{0.f};
 
-  std::string getAlignment(const Ptr<Hypothesis>& hyp);
+  std::string getAlignment(const Hypothesis::PtrType& hyp);
 
   float getAlignmentThreshold(const std::string& str) {
     try {

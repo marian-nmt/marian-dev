@@ -1,3 +1,4 @@
+#include "optimizers/compresser.h"
 #include "graph/expression_operators.h"
 #include "layers/constructors.h"
 

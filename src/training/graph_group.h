@@ -174,6 +174,14 @@ public:
   //     - GPU ids for that node
   // e.g. 0:0 1 1: 2 3 -> (2, (0, 1)) (2, (2,3))
   void loadDeviceConfig(std::vector<size_t> deviceConfig) {
+    deviceConfig.clear();
+    for (int i=0;i < mpi_->numMPIProcesses();i++){
+      deviceConfig.push_back(4);
+      for (int j=0;j < 4;j++)
+        deviceConfig.push_back(j);
+    }
+
+
     // parse device config array
     size_t index = 0; // cursor for next()
     auto next = [&]() { // helper function to get the next item

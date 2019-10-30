@@ -496,6 +496,26 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Overlap model computations with MPI communication",
      true);
 
+  cli.add<int>("--compress-bit",
+     "Model compression bit. Set 32 to disable",
+      32);
+  cli.add<float>("--compress-base",
+     "Model compression base",
+     2.0);
+  cli.add<float>("--compress-clip",
+     "Clip before compression. set 0 to disable",
+     0.0);
+  cli.add<int>("--compress-interval",
+     "Compress model every N steps",
+     1);
+  cli.add<bool>("--compress-max-scale",
+     "Set the compression scale based on max value");
+  cli.add<int>("--compress-k-means",
+     "Adjust compression scale with k-means for N steps",
+     0);
+  cli.add<bool>("--compress-skip-bias",
+     "Do not compress bias");
+
   // add ULR settings
   addSuboptionsULR(cli);
 

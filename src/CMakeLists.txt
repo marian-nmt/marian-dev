@@ -130,6 +130,7 @@ add_dependencies(marian 3rd_party_installs)
 
 if(CUDA_FOUND)
 cuda_add_library(marian_cuda
+  optimizers/compresser.cu
   tensors/gpu/device.cu
   tensors/gpu/algorithm.cu
   tensors/gpu/prod.cpp

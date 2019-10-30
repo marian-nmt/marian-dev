@@ -32,7 +32,7 @@ if(CCACHE_PROGRAM)
   message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
 else(CCACHE_PROGRAM)
-  message(STATUS "Compilation with ccache requested but no ccache found.")
+  message(WARNING "Compilation with ccache requested but no ccache found.")
 endif(CCACHE_PROGRAM)
 endif(USE_CCACHE)
 

@@ -10,12 +10,6 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
-# use ccache (https://ccache.dev) for faster compilation if available
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-endif()
-
 # Custom CMake options
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
@@ -29,6 +23,18 @@ option(COMPILE_TESTS "Compile tests" OFF)
 option(COMPILE_SERVER "Compile marian-server" OFF)
 option(USE_FBGEMM "Use FBGEMM" ON)
 option(USE_DOXYGEN "Build documentation with Doxygen" ON)
+option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
+
+# use ccache (https://ccache.dev) for faster compilation if requested and available
+if(USE_CCACHE)
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable)."
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+else(CCACHE_PROGRAM)
+  message(STATUS "Compilation with ccache requested but no ccache found.")
+endif(CCACHE_PROGRAM)
+endif(USE_CCACHE)
 
 # Project versioning
 find_package(Git QUIET)

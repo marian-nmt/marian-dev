@@ -29,7 +29,7 @@ option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
 if(USE_CCACHE)
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
-  message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable)."
+  message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
 else(CCACHE_PROGRAM)
   message(STATUS "Compilation with ccache requested but no ccache found.")

@@ -10,11 +10,11 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
--# use ccache for faster compilation if available
--find_program(CCACHE_PROGRAM ccache)
--if(CCACHE_PROGRAM)
--  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
--endif()
+# use ccache for faster compilation if available
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
 
 # Custom CMake options
 option(COMPILE_CPU "Compile CPU version" ON)

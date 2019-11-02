@@ -74,10 +74,12 @@ class FastOpt {
 private:
   ENABLE_INTRUSIVE_PTR(FastOpt)
 
+public:
   enum struct NodeType {
-    Scalar, Map, List
+    Null, Int64, Float64, String, List, Map
   };
 
+private:
   struct ElementType {
     ENABLE_INTRUSIVE_PTR(ElementType)
 
@@ -90,7 +92,7 @@ private:
   IntrusivePtr<ElementType> value_;
   IntrusivePtr<PerfectHash> ph_;
   std::vector<IntrusivePtr<FastOpt>> array_;
-  NodeType type_{NodeType::Scalar};
+  NodeType type_{NodeType::Null};
 
   uint64_t fingerprint{0};
   size_t elements_{0};
@@ -104,20 +106,41 @@ private:
     return node;
   }
 
+  void makeNull() {
+    // std::cerr << "Creating null " << std::endl;
+    value_.reset(nullptr);
+    elements_ = 0;
+    type_ = NodeType::Null;
+  }
+
   template <class V>
   void makeScalar(const V& v) {
-    std::cerr << "Creating scalar " << v << std::endl;
-
-    value_.reset(new ElementType());
-    value_->value = v;
+    // std::cerr << "Creating scalar " << v << std::endl;
 
     elements_ = 0;
-    type_ = NodeType::Scalar;
+    value_.reset(new ElementType());
+
+    try {
+      value_->value = v.as<int64_t>();
+      type_ = NodeType::Int64;
+    } catch(...) {
+      try {
+        value_->value = v.as<double>();
+        type_ = NodeType::Float64;
+      } catch(...) {
+        try { 
+          value_->value = v.as<std::string>();
+          type_ = NodeType::String;
+        } catch (...) {
+          ABORT("Could not convert scalar {}", v);
+        }
+      }
+    }
   }
 
   template <class V>
   void makeList(const std::vector<V>& v) {
-    std::cerr << "Creating list (" << v.size() << ")" << std::endl;
+    // std::cerr << "Creating list (" << v.size() << ")" << std::endl;
 
     array_.resize(v.size());
     elements_ = v.size();
@@ -132,7 +155,7 @@ private:
 
   template <class V>
   void makeMap(const std::map<uint64_t, V>& m) {
-    std::cerr << "Creating map (" << m.size() << ")" << std::endl;
+    // std::cerr << "Creating map (" << m.size() << ")" << std::endl;
 
     std::vector<uint64_t> keys;
     for(const auto& it : m)
@@ -156,13 +179,61 @@ private:
   template <class V>
   void makeMap(const std::map<std::string, V>& m) {
     std::map<uint64_t, V> mi;
-    for(const auto& it : m)
-      mi[crc(it.first.c_str())] = it.second;
+    for(const auto& it : m) {
+      auto key = it.first.c_str();
+      // std::cerr << "k: " << key << std::endl;
+      mi[crc(key)] = it.second;
+    }
 
     makeMap(mi);
   }
 
-public:
+  template <class T, class V>
+  static T convert(T, V value) {
+    return (T)value;
+  }
+
+  template <class T>
+  static T convert(T, const std::string& value) {
+    ABORT("Not implemented");
+    return T(0);
+  }
+
+  template <class V>
+  static std::string convert(std::string, V value) {
+    return std::to_string(value);
+  }
+
+  static std::string convert(std::string, const std::string& value) {
+    return value;
+  }
+
+  template <typename T>
+  struct As {
+    static inline T apply(const FastOpt* node) {
+      ABORT_IF(node->type_ == NodeType::Null, "Null node has no value");
+      ABORT_IF(node->elements_ != 0, "Not a leaf node");
+
+      if(node->type_ == NodeType::Int64)
+        return convert(T(), node->value_->as<int64_t>());
+      else if(node->type_ == NodeType::Float64)
+        return convert(T(), node->value_->as<double>());
+      else
+        return convert(T(), node->value_->as<std::string>());      
+    }
+  };
+
+  template <typename T>
+  struct As<std::vector<T>> {
+    static inline std::vector<T> apply(const FastOpt* node) {
+      ABORT_IF(node->type_ != NodeType::List, "Not a list node");
+      std::vector<T> seq;
+      for(const auto& elem : node->array_)
+        seq.push_back(elem->as<T>());
+      return seq;
+    }
+  };
+
   FastOpt(const FastOpt&) = delete;
 
   template <class V>
@@ -185,10 +256,27 @@ public:
     makeScalar(v);
   }
 
+public:
+  FastOpt() {}
+
   FastOpt(const YAML::Node& node) {
+    reset(node);
+  }
+
+  void reset(const YAML::Node& node) {
+    value_.reset();
+    ph_.reset();
+    {
+      std::vector<IntrusivePtr<FastOpt>> temp;
+      array_.swap(temp);
+    }
+    type_ = NodeType::Null;
+    fingerprint = 0;
+    elements_ = 0;
+
     switch(node.Type()) {
       case YAML::NodeType::Scalar:
-        makeScalar(node.as<std::string>());
+        makeScalar(node);
         break;
       case YAML::NodeType::Sequence: {
         std::vector<YAML::Node> nodesVec;
@@ -206,7 +294,7 @@ public:
       } break;
       case YAML::NodeType::Undefined:
       case YAML::NodeType::Null:
-        makeScalar(std::string("unknown"));
+        makeNull();
     }
   }
 
@@ -218,10 +306,13 @@ public:
     return has(crc(key));
   }
 
+  bool has(const std::string& key) const {
+    return has(crc(key.c_str()));
+  }
+
   template <typename T>
-  inline const T& as() const {
-    ABORT_IF(elements_ != 0, "Not a leaf node");
-    return value_->as<T>();
+  inline T as() const {
+    return As<T>::apply(this);
   }
 
   // @TODO: missing specialization for as<std::vector<T>>()
@@ -239,6 +330,10 @@ public:
 
   const FastOpt& operator[](const char* const key) const {
     return operator[](crc(key));
+  }
+
+  const FastOpt& operator[](const std::string& key) const {
+    return operator[](crc(key.c_str()));
   }
 
   const FastOpt& operator[](int key) const {

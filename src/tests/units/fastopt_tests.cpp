@@ -6,10 +6,12 @@ using namespace marian;
 
 TEST_CASE("FastOpt can be constructed from a YAML node", "[fastopt]") {
   YAML::Node node;
+  const FastOpt o;
 
   SECTION("from a simple node") {
     YAML::Node node = YAML::Load("{foo: bar}");
-    FastOpt o(node);
+    const_cast<FastOpt&>(o).reset(node);
+
     CHECK( o.has("foo") );
     CHECK_FALSE( o.has("bar") );
     CHECK_FALSE( o.has("baz") );
@@ -17,14 +19,18 @@ TEST_CASE("FastOpt can be constructed from a YAML node", "[fastopt]") {
 
   SECTION("from a sequence node") {
     YAML::Node node = YAML::Load("{foo: [bar, baz]}");
-    FastOpt o(node);
+    const_cast<FastOpt&>(o).reset(node);
     CHECK( o.has("foo") );
   }
 
   SECTION("from nested nodes") {
     YAML::Node node = YAML::Load("{foo: {bar: 123, baz}}");
-    FastOpt o(node);
+    const_cast<FastOpt&>(o).reset(node);
     CHECK( o.has("foo") );
+    CHECK( o["foo"].has("bar") );
+    CHECK( o["foo"].has("baz") );    
+    CHECK( o["foo"]["bar"].as<int>() == 123 );
+    CHECK( o["foo"]["baz"].type() == FastOpt::NodeType::Null );
   }
 }
 
@@ -33,12 +39,12 @@ TEST_CASE("Options can be accessed", "[fastopt]") {
       "foo: bar,"
       "seq: [1, 2, 3],"
       "subnode: {"
-      "  baz: 111,"
+      "  baz: 111.5,"
       "  qux: 222,"
       "  }"
       "}");
 
-  FastOpt o(node);
+  const FastOpt o(node);
 
   SECTION("using operator[]") {
     auto& oo = o["subnode"];
@@ -49,10 +55,12 @@ TEST_CASE("Options can be accessed", "[fastopt]") {
 
   SECTION("using as<T>()") {
     CHECK( o["foo"].as<std::string>() == "bar" );
-    //CHECK( o["subnode"]["baz"].as<int>() == 111 );
+    CHECK( o["subnode"]["baz"].as<int>() == 111 );
+    CHECK( o["subnode"]["baz"].as<float>() == 111.5f );
   }
 
-  //SECTION("using as<std::vector<T>>()") {
-    //CHECK( o["seq"].as<std::vector<int>>() == std::vector<int>({1, 2, 3}) );
-  //}
+  SECTION("using as<std::vector<T>>()") {
+    CHECK( o["seq"].as<std::vector<double>>() == std::vector<double>({1, 2, 3}) );
+  }  
+  
 }

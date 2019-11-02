@@ -17,10 +17,13 @@ add_library(marian STATIC
   common/config_parser.cpp
   common/aliases.cpp
   common/config_validator.cpp
+  common/options.cpp
   common/binary.cpp
   common/io.cpp
   common/filesystem.cpp
-
+  common/file_stream.cpp
+  common/types.cpp
+  
   data/alignment.cpp
   data/vocab.cpp
   data/default_vocab.cpp
@@ -87,6 +90,7 @@ add_library(marian STATIC
   training/graph_group_multinode_sync.cpp
   training/validator.cpp
   training/communicator.cpp
+  training/scheduler.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
@@ -216,13 +220,6 @@ foreach(exec ${EXECUTABLES})
   endif(CUDA_FOUND)
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endforeach(exec)
-
-#add_executable(
-#  align2steps
-#  tools/align2steps.cpp
-#)
-
-#set_target_properties(align2steps PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 if(COMPILE_TESTS)
   set(CATCH_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party)

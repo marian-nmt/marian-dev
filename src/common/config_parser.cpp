@@ -1,12 +1,14 @@
-#include "common/config_parser.h"
-
-#include "common/definitions.h"
+#include "common/authors.h"
 #include "common/cli_helper.h"
+#include "common/config.h"
+#include "common/config_parser.h"
 #include "common/config_validator.h"
+#include "common/definitions.h"
 #include "common/file_stream.h"
 #include "common/logging.h"
+#include "common/options.h"
+#include "common/regex.h"
 #include "common/utils.h"
-
 #include <algorithm>
 #include <set>
 #include <stdexcept>
@@ -49,12 +51,66 @@ const std::set<std::string> PATHS = {
 };
 // clang-format on
 
+std::string escapeCmdLine(int argc, char** argv){
+  std::string cmdLine;
+  for(int i = 0; i < argc; i++) {
+    std::string arg = argv[i];
+    std::string quote; // attempt to quote special chars
+    if(arg.empty() || arg.find_first_of(" #`\"'\\${}|&^?*!()%><") != std::string::npos)
+      quote = "'";
+    arg = regex::regex_replace(arg, regex::regex("'"), "'\\''");
+    if(!cmdLine.empty())
+      cmdLine.push_back(' ');
+    cmdLine += quote + arg + quote;
+  }
+  return cmdLine;
+}
+
+std::string const& ConfigParser::cmdLine() const {
+  return cmdLine_;
+}
+
+ConfigParser::ConfigParser(cli::mode mode)
+  : cli_(config_,"Marian: Fast Neural Machine Translation in C++",
+         "General options", "", 40),
+    mode_(mode == cli::mode::server ? cli::mode::translation : mode) {
+
+  addOptionsGeneral(cli_);
+  if (mode == cli::mode::server)
+    addOptionsServer(cli_);
+  addOptionsModel(cli_);
+
+  // clang-format off
+  switch(mode_) {
+    case cli::mode::training:
+      addOptionsTraining(cli_);
+      addOptionsValidation(cli_);
+      break;
+    case cli::mode::translation:
+      addOptionsTranslation(cli_);
+      break;
+    case cli::mode::scoring:
+      addOptionsScoring(cli_);
+      break;
+    default:
+      ABORT("wrong CLI mode");
+      break;
+  }
+
+  addAliases(cli_);
+  // clang-format on
+}
+
 void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   int defaultWorkspace = (mode_ == cli::mode::translation) ? 512 : 2048;
 
   cli.switchGroup("General options");
 
   // clang-format off
+  cli.add<bool>("--authors",
+    "Print list of authors and exit");
+  cli.add<bool>("--cite",
+    "Print citation and exit");
   cli.add<std::vector<std::string>>("--config,-c",
     "Configuration file(s). If multiple, later overrides earlier");
   cli.add<size_t>("--workspace,-w",
@@ -87,14 +143,16 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
 
 void ConfigParser::addOptionsServer(cli::CLIWrapper& cli) {
   // clang-format off
+  auto previous_group = cli.switchGroup("Server options");
   cli.add<size_t>("--port,-p",
       "Port number for web socket server",
       8080);
+  cli.switchGroup(previous_group);
   // clang-format on
 }
 
 void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
-  cli.switchGroup("Model options");
+  auto previous_group = cli.switchGroup("Model options");
 
   // clang-format off
   if(mode_ == cli::mode::translation) {
@@ -259,11 +317,12 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
     cli.add<float>("--transformer-dropout-ffn",
         "Dropout for transformer filter (0 = no dropout)");
   }
+  cli.switchGroup(previous_group);
   // clang-format on
 }
 
 void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
-  cli.switchGroup("Training options");
+  auto previous_group = cli.switchGroup("Training options");
   // clang-format off
   cli.add<std::string>("--cost-type", // @TODO: rename to loss-type
       "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");
@@ -392,7 +451,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Weight for loss function for factors (factored vocab only) (1 to disable)", 1.0f);
   cli.add<float>("--clip-norm",
      "Clip gradient norm to  arg  (0 to disable)",
-     1.f);
+     1.f); // @TODO: this is currently wrong with ce-sum and should rather be disabled or fixed by multiplying with labels
   cli.add<float>("--exponential-smoothing",
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable. "
       "Auto-adjusted to --mini-batch-words-ref if given.",
@@ -423,7 +482,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Fix target embeddings. Affects all decoders");
 
   // mixed precision training
-  cli.add<bool>("--fp16", 
+  cli.add<bool>("--fp16",
       "Shortcut for mixed precision training with float16 and cost-scaling, "
       "corresponds to: --precision float16 float32 float32 --cost-scaling 7 2000 2 0.05 10 1");
   cli.add<std::vector<std::string>>("--precision",
@@ -433,7 +492,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
       "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
-  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with worldsize / total labels");
+  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
 
   // multi-node training
   cli.add<bool>("--multi-node",
@@ -447,11 +506,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
 
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
+  cli.switchGroup(previous_group);
   // clang-format on
 }
 
 void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
-  cli.switchGroup("Validation set options");
+  auto previous_group = cli.switchGroup("Validation set options");
 
   // clang-format off
   cli.add<std::vector<std::string>>("--valid-sets",
@@ -508,11 +568,12 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Keep best model for each validation metric");
   cli.add<std::string>("--valid-log",
      "Log validation scores to file given by  arg");
+  cli.switchGroup(previous_group);
   // clang-format on
 }
 
 void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
-  cli.switchGroup("Translator options");
+  auto previous_group = cli.switchGroup("Translator options");
 
   // clang-format off
   cli.add<std::vector<std::string>>("--input,-i",
@@ -551,10 +612,6 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
-  cli.add<std::string>("--gemm-type",
-      "Select GEMM options: auto, mklfp32, intrinint16, fp16packed, int8packed",
-      "auto");
-  
   cli.add<bool>("--fp16", 
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
@@ -572,11 +629,12 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   // add ULR settings
   addSuboptionsULR(cli);
 
+  cli.switchGroup(previous_group);
   // clang-format on
 }
 
 void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
-  cli.switchGroup("Scorer options");
+  auto previous_group = cli.switchGroup("Scorer options");
 
   // clang-format off
   cli.add<bool>("--no-reload",
@@ -610,15 +668,13 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
-
-  //@TODO: gemm-type missing? fix this
-
-  cli.add<bool>("--fp16", 
+  cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
-  
+
+  cli.switchGroup(previous_group);
   // clang-format on
 }
 
@@ -670,7 +726,7 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
     cli.add<size_t>("--mini-batch-fit-step",
       "Step size for mini-batch-fit statistics",
       10);
-    cli.add<bool>("--gradient-checkpointing", 
+    cli.add<bool>("--gradient-checkpointing",
       "Enable gradient-checkpointing to minimize memory usage");
   }
 
@@ -747,46 +803,30 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
-void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
-  cli::CLIWrapper cli(config_,
-                      "Marian: Fast Neural Machine Translation in C++",
-                      "General options",
-                      "",
-                      40);
 
-  addOptionsGeneral(cli);
-  if(modeServer_)
-    addOptionsServer(cli);
-  addOptionsModel(cli);
+cli::mode ConfigParser::getMode() const { return mode_; }
 
-  // clang-format off
-  switch(mode_) {
-    case cli::mode::training:
-      addOptionsTraining(cli);
-      addOptionsValidation(cli);
-      break;
-    case cli::mode::translation:
-      addOptionsTranslation(cli);
-      break;
-    case cli::mode::scoring:
-      addOptionsScoring(cli);
-      break;
-    default:
-      ABORT("wrong CLI mode");
-      break;
-  }
-  // clang-format on
-
-  addAliases(cli);
+Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
+  cmdLine_ = escapeCmdLine(argc,argv);
 
   // parse command-line options and fill wrapped YAML config
-  cli.parse(argc, argv);
+  cli_.parse(argc, argv);
+
+  if(get<bool>("authors")) {
+    std::cerr << authors() << std::endl;
+    exit(0);
+  }
+
+  if(get<bool>("cite")) {
+    std::cerr << citation() << std::endl;
+    exit(0);
+  }
 
   // get paths to extra config files
   auto configPaths = findConfigPaths();
   if(!configPaths.empty()) {
     auto config = loadConfigFiles(configPaths);
-    cli.updateConfig(config,
+    cli_.updateConfig(config,
                      cli::OptionPriority::ConfigFile,
                      "There are option(s) in a config file that are not expected");
   }
@@ -807,15 +847,18 @@ void ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
     config_.remove("dump-config");
 
     if(dumpMode == "expand") {
-      cli.parseAliases();
+      cli_.parseAliases();
     }
 
     bool minimal = (dumpMode == "minimal" || dumpMode == "expand");
-    std::cout << cli.dumpConfig(minimal) << std::endl;
+    std::cout << cli_.dumpConfig(minimal) << std::endl;
     exit(0);
   }
 
-  cli.parseAliases();
+  cli_.parseAliases();
+  auto opts = New<Options>();
+  opts->merge(Config(*this).get());
+  return opts;
 }
 
 std::vector<std::string> ConfigParser::findConfigPaths() {
@@ -849,7 +892,8 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
 
   for(auto& path : paths) {
     // load single config file
-    YAML::Node config = YAML::Load(io::InputFileStream(path));
+    io::InputFileStream strm(path);
+    YAML::Node config = YAML::Load(strm);
 
     // expand relative paths if requested
     if(config["relative-paths"] && config["relative-paths"].as<bool>()) {
@@ -876,7 +920,7 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
   return configAll;
 }
 
-YAML::Node ConfigParser::getConfig() const {
+const YAML::Node& ConfigParser::getConfig() const {
   return config_;
 }
 }  // namespace marian

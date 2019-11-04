@@ -22,21 +22,36 @@ namespace marian {
 template<class EncoderOrDecoderBase>
 class Transformer : public EncoderOrDecoderBase {
   typedef EncoderOrDecoderBase Base;
-  using Base::Base;
+
+public:
+  Transformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) 
+    : Base(graph, options),
+      options_(options)
+  {}
 
 protected:
-  using Base::options_; using Base::inference_; using Base::batchIndex_; using Base::graph_;
+  using Base::inference_; using Base::batchIndex_; using Base::graph_;
   std::unordered_map<std::string, Expr> cache_;  // caching transformation of the encoder that should not be created again
 
+  Ptr<Options> options_;
   // attention weights produced by step()
   // If enabled, it is set once per batch during training, and once per step during translation.
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
   std::vector<Expr> alignments_; // [max tgt len or 1][beam depth, max src length, batch size, 1]
 
-  template <typename T> T opt(const std::string& key) const { Ptr<Options> options = options_; return options->get<T>(key); }  // need to duplicate, since somehow using Base::opt is not working
+  template <typename T> 
+  T opt(const std::string& key) const { 
+    return options_->get<T>(key); 
+  }  // need to duplicate, since somehow using Base::opt is not working
   // FIXME: that separate options assignment is weird
 
-  template <typename T> T opt(const std::string& key, const T& def) const { Ptr<Options> options = options_; if (options->has(key)) return options->get<T>(key); else return def; }
+  template <typename T> 
+  T opt(const std::string& key, const T& def) const { 
+    if(options_->has(key)) 
+      return options_->get<T>(key); 
+    else 
+      return def; 
+  }
 
 public:
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
@@ -512,7 +527,7 @@ public:
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
 
-    auto embeddingLayer = getEmbeddingLayer(options_->has("ulr") && options_->get<bool>("ulr"));
+    auto embeddingLayer = getEmbeddingLayer(opt<bool>("ulr", false));
     std::tie(batchEmbeddings, batchMask) = embeddingLayer->apply((*batch)[batchIndex_]);
     batchEmbeddings = addSpecialEmbeddings(batchEmbeddings, /*start=*/0, batch);
     
@@ -601,8 +616,6 @@ private:
   }
 
 public:
-  //DecoderTransformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Transformer(graph, options) {}
-
   virtual Ptr<DecoderState> startState(
       Ptr<ExpressionGraph> graph,
       Ptr<data::CorpusBatch> batch,

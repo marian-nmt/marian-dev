@@ -104,7 +104,8 @@ TemporaryFile::TemporaryFile(const std::string &base, bool earlyUnlink)
 
 TemporaryFile::~TemporaryFile() {
   if(!unlink_) {
-    ABORT_IF(remove(file_.string().c_str()), "Error while deleting '{}'", file_.string());
+    if(remove(file_.string().c_str()))
+      LOG(warn, "Error while deleting '{}'", file_.string());
   }
 }
 

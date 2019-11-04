@@ -1,16 +1,15 @@
 #include "catch.hpp"
-#include "common/fast_opt.h"
+#include "common/fastopt.h"
 #include "3rd_party/yaml-cpp/yaml.h"
 
 using namespace marian;
 
 TEST_CASE("FastOpt can be constructed from a YAML node", "[fastopt]") {
   YAML::Node node;
-  const FastOpt o;
-
+  
   SECTION("from a simple node") {
     YAML::Node node = YAML::Load("{foo: bar}");
-    const_cast<FastOpt&>(o).reset(node);
+    const FastOpt o(node);
 
     CHECK( o.has("foo") );
     CHECK_FALSE( o.has("bar") );
@@ -19,13 +18,13 @@ TEST_CASE("FastOpt can be constructed from a YAML node", "[fastopt]") {
 
   SECTION("from a sequence node") {
     YAML::Node node = YAML::Load("{foo: [bar, baz]}");
-    const_cast<FastOpt&>(o).reset(node);
+    const FastOpt o(node);
     CHECK( o.has("foo") );
   }
 
   SECTION("from nested nodes") {
     YAML::Node node = YAML::Load("{foo: {bar: 123, baz}}");
-    const_cast<FastOpt&>(o).reset(node);
+    const FastOpt o(node);
     CHECK( o.has("foo") );
     CHECK( o["foo"].has("bar") );
     CHECK( o["foo"].has("baz") );    
@@ -39,7 +38,7 @@ TEST_CASE("Options can be accessed", "[fastopt]") {
       "foo: bar,"
       "seq: [1, 2, 3],"
       "subnode: {"
-      "  baz: 111.5,"
+      "  baz: [ 111.5, False ],"
       "  qux: 222,"
       "  }"
       "}");
@@ -55,12 +54,28 @@ TEST_CASE("Options can be accessed", "[fastopt]") {
 
   SECTION("using as<T>()") {
     CHECK( o["foo"].as<std::string>() == "bar" );
-    CHECK( o["subnode"]["baz"].as<int>() == 111 );
-    CHECK( o["subnode"]["baz"].as<float>() == 111.5f );
+    CHECK( o["subnode"]["baz"][0].as<float>() == 111.5f );
+    CHECK( o["subnode"]["baz"][1].as<bool>() == false );
+    CHECK( o["subnode"]["baz"][0].as<int>() == 111 );
   }
+
+  // for(auto k : o[subnode].keys())
+  //   o[subnode][k].type()
 
   SECTION("using as<std::vector<T>>()") {
     CHECK( o["seq"].as<std::vector<double>>() == std::vector<double>({1, 2, 3}) );
   }  
+
+  YAML::Node yml = YAML::Load("{"
+    "filter: ["
+      "dense : { dim-in: 512, dim-out: 2048 },"
+      "relu,"
+      "dense : { dim-in: 2048, dim-out: 512 }"
+      "]"
+    "}");
+
+  const FastOpt graph(yml);
+  std::cerr << yml << std::endl;
+  std::cerr << yml["filter"][0].begin()->first.as<std::string>() << std::endl;
   
 }

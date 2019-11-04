@@ -3,7 +3,7 @@
 #include <sstream>
 #include <string>
 #include "common/definitions.h"
-
+#include "common/fastopt.h"
 #include "3rd_party/yaml-cpp/yaml.h"
 
 #define YAML_REGISTER_TYPE(registered, type)                \
@@ -30,6 +30,8 @@ namespace marian {
 class Options {
 protected:
   YAML::Node options_;
+  const FastOpt fastOptions_;
+  const bool fixed_{false};
 
 public:
   Options();
@@ -49,6 +51,17 @@ public:
     auto options = New<Options>(*this);
     options->set(std::forward<Args>(args)...);
     return options;
+  }
+
+  void fix() {
+    ABORT_IF(fixed_, "Already fixed");
+    FastOpt temp(options_);
+    const_cast<FastOpt&>(fastOptions_).swap(temp);
+    const_cast<bool&>(fixed_) = true;
+  }
+
+  bool fixed() {
+    return fixed_;
   }
 
   /**
@@ -78,6 +91,7 @@ public:
 
   template <typename T>
   void set(const std::string& key, T value) {
+    ABORT_IF(fixed_, "Options fixed and cannot be modified unless cloned");
     options_[key] = value;
   }
 
@@ -92,13 +106,13 @@ public:
   template <typename T>
   T get(const std::string& key) const {
     ABORT_IF(!has(key), "Required option '{}' has not been set", key);
-    return options_[key].as<T>();
+    return fixed_ ? fastOptions_[key].as<T>() : options_[key].as<T>();
   }
 
   template <typename T>
   T get(const std::string& key, T defaultValue) const {
     if(has(key))
-      return options_[key].as<T>();
+      return fixed_ ? fastOptions_[key].as<T>() : options_[key].as<T>();
     else
       return defaultValue;
   }

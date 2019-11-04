@@ -8,6 +8,8 @@ Ptr<Scorer> scorerByType(const std::string& fname,
                          const std::string& model,
                          Ptr<Options> options) {
   options->set("inference", true);
+  options->fix();
+  
   std::string type = options->get<std::string>("type");
 
   // @TODO: solve this better
@@ -30,6 +32,8 @@ Ptr<Scorer> scorerByType(const std::string& fname,
                          const void* ptr,
                          Ptr<Options> options) {
   options->set("inference", true);
+  options->fix();
+
   std::string type = options->get<std::string>("type");
 
   // @TODO: solve this better

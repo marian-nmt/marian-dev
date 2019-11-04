@@ -5,6 +5,8 @@
 #include "3rd_party/phf/phf.h"
 #include "3rd_party/yaml-cpp/yaml.h"
 
+namespace marian {
+
 constexpr uint32_t val_32_const = 0x811c9dc5;
 constexpr uint32_t prime_32_const = 0x1000193;
 constexpr uint64_t val_64_const = 0xcbf29ce484222325;
@@ -76,7 +78,7 @@ private:
 
 public:
   enum struct NodeType {
-    Null, Int64, Float64, String, List, Map
+    Null, Bool, Int64, Float64, String, List, Map
   };
 
 private:
@@ -94,7 +96,7 @@ private:
   std::vector<IntrusivePtr<FastOpt>> array_;
   NodeType type_{NodeType::Null};
 
-  uint64_t fingerprint{0};
+  uint64_t fingerprint_{0};
   size_t elements_{0};
 
   inline const IntrusivePtr<FastOpt>& arrayLookup(size_t keyId) const {
@@ -102,8 +104,7 @@ private:
   }
 
   inline const IntrusivePtr<FastOpt>& phLookup(size_t keyId) const {
-    const auto& node = array_[(*ph_)[keyId]];
-    return node;
+    return array_[(*ph_)[keyId]];
   }
 
   void makeNull() {
@@ -113,33 +114,34 @@ private:
     type_ = NodeType::Null;
   }
 
-  template <class V>
-  void makeScalar(const V& v) {
-    // std::cerr << "Creating scalar " << v << std::endl;
-
+  void makeScalar(const YAML::Node& v) {
     elements_ = 0;
     value_.reset(new ElementType());
-
+    
     try {
-      value_->value = v.as<int64_t>();
-      type_ = NodeType::Int64;
+      value_->value = v.as<bool>();
+      type_ = NodeType::Bool;
     } catch(...) {
       try {
-        value_->value = v.as<double>();
-        type_ = NodeType::Float64;
+        value_->value = v.as<int64_t>();
+        type_ = NodeType::Int64;
       } catch(...) {
-        try { 
-          value_->value = v.as<std::string>();
-          type_ = NodeType::String;
-        } catch (...) {
-          ABORT("Could not convert scalar {}", v);
+        try {
+          value_->value = v.as<double>();
+          type_ = NodeType::Float64;
+        } catch(...) {
+          try { 
+            value_->value = v.as<std::string>();
+            type_ = NodeType::String;
+          } catch (...) {
+            // ABORT("Could not convert scalar {}", v);
+          }
         }
       }
     }
   }
 
-  template <class V>
-  void makeList(const std::vector<V>& v) {
+  void makeList(const std::vector<YAML::Node>& v) {
     // std::cerr << "Creating list (" << v.size() << ")" << std::endl;
 
     array_.resize(v.size());
@@ -147,14 +149,13 @@ private:
 
     for(size_t pos = 0; pos < v.size(); ++pos) {
       array_[pos].reset(new FastOpt(v[pos]));
-      array_[pos]->fingerprint = pos;
+      array_[pos]->fingerprint_ = pos;
     }
 
     type_ = NodeType::List;
   }
 
-  template <class V>
-  void makeMap(const std::map<uint64_t, V>& m) {
+  void makeMap(const std::map<uint64_t, YAML::Node>& m) {
     // std::cerr << "Creating map (" << m.size() << ")" << std::endl;
 
     std::vector<uint64_t> keys;
@@ -170,15 +171,14 @@ private:
       uint64_t key = it.first;
       size_t pos = (*ph_)[key];
       array_[pos].reset(new FastOpt(it.second));
-      array_[pos]->fingerprint = key;
+      array_[pos]->fingerprint_ = key;
     }
 
     type_ = NodeType::Map;
   }
 
-  template <class V>
-  void makeMap(const std::map<std::string, V>& m) {
-    std::map<uint64_t, V> mi;
+  void makeMap(const std::map<std::string, YAML::Node>& m) {
+    std::map<uint64_t, YAML::Node> mi;
     for(const auto& it : m) {
       auto key = it.first.c_str();
       // std::cerr << "k: " << key << std::endl;
@@ -214,7 +214,9 @@ private:
       ABORT_IF(node->type_ == NodeType::Null, "Null node has no value");
       ABORT_IF(node->elements_ != 0, "Not a leaf node");
 
-      if(node->type_ == NodeType::Int64)
+      if(node->type_ == NodeType::Bool)
+        return convert(T(), node->value_->as<bool>());
+      else if(node->type_ == NodeType::Int64)
         return convert(T(), node->value_->as<int64_t>());
       else if(node->type_ == NodeType::Float64)
         return convert(T(), node->value_->as<double>());
@@ -236,44 +238,10 @@ private:
 
   FastOpt(const FastOpt&) = delete;
 
-  template <class V>
-  FastOpt(const std::map<uint64_t, V>& m) {
-    makeMap(m);
-  }
-
-  template <class V>
-  FastOpt(const std::map<std::string, V>& m) {
-    makeMap(m);
-  }
-
-  template <class V>
-  FastOpt(const std::vector<V>& v) {
-    makeList(v);
-  }
-
-  template <class V>
-  FastOpt(const V& v) {
-    makeScalar(v);
-  }
-
 public:
   FastOpt() {}
 
   FastOpt(const YAML::Node& node) {
-    reset(node);
-  }
-
-  void reset(const YAML::Node& node) {
-    value_.reset();
-    ph_.reset();
-    {
-      std::vector<IntrusivePtr<FastOpt>> temp;
-      array_.swap(temp);
-    }
-    type_ = NodeType::Null;
-    fingerprint = 0;
-    elements_ = 0;
-
     switch(node.Type()) {
       case YAML::NodeType::Scalar:
         makeScalar(node);
@@ -298,16 +266,26 @@ public:
     }
   }
 
-  bool has(size_t keyId) const {
-    return phLookup(keyId)->fingerprint == keyId;
+  void swap(FastOpt& other) {
+    value_.swap(other.value_);
+    ph_.swap(other.ph_);
+    array_.swap(other.array_);
+    std::swap(type_, other.type_);
+    std::swap(fingerprint_, other.fingerprint_);
+    std::swap(elements_, other.elements_);
   }
 
-  bool has(const char* key) const {
+  bool has(size_t keyId) const {
+    const auto ptr = phLookup(keyId);
+    return ptr ? ptr->fingerprint_ == keyId : false;
+  }
+
+  bool has(const char* const key) const {
     return has(crc(key));
   }
 
   bool has(const std::string& key) const {
-    return has(crc(key.c_str()));
+    return has(key.c_str());
   }
 
   template <typename T>
@@ -315,17 +293,20 @@ public:
     return As<T>::apply(this);
   }
 
-  // @TODO: missing specialization for as<std::vector<T>>()
-
   const FastOpt& operator[](size_t keyId) const {
     switch(type()) {
       case NodeType::List : return *arrayLookup(keyId);
-      case NodeType::Map  :
-        ABORT_IF(phLookup(keyId)->fingerprint != keyId, "Unseen key {}" , keyId);
-        return *phLookup(keyId);
+      case NodeType::Map  : {
+        const auto ptr = phLookup(keyId);
+        ABORT_IF(!ptr || ptr->fingerprint_ != keyId, "Unseen key {}" , keyId);
+        return *ptr; }
       default:
         ABORT("Not a map or list node");
     }
+  }
+
+  const FastOpt& operator[](int key) const {
+    return operator[]((size_t)key);
   }
 
   const FastOpt& operator[](const char* const key) const {
@@ -333,11 +314,7 @@ public:
   }
 
   const FastOpt& operator[](const std::string& key) const {
-    return operator[](crc(key.c_str()));
-  }
-
-  const FastOpt& operator[](int key) const {
-    return operator[]((size_t)key);
+    return operator[](key.c_str());
   }
 
   const NodeType& type() const {
@@ -348,3 +325,5 @@ public:
     return elements_;
   }
 };
+
+}

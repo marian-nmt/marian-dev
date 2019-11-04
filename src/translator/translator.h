@@ -39,6 +39,8 @@ public:
 
     corpus_ = New<data::Corpus>(options_, true);
 
+    options_->fix();
+
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
     trgVocab_ = New<Vocab>(options_, vocabs.size() - 1);
     trgVocab_->load(vocabs.back());

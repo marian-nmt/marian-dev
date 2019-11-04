@@ -59,6 +59,14 @@ TEST_CASE("Options can be accessed", "[fastopt]") {
     CHECK( o["subnode"]["baz"][0].as<int>() == 111 );
   }
 
+  node["foo"] = "baz";
+  if(o.has("foo")) {
+    FastOpt temp(node["foo"]);
+    const_cast<FastOpt&>(o["foo"]).swap(temp);
+  }
+
+  CHECK( o["foo"].as<std::string>() == "baz" );
+
   // for(auto k : o[subnode].keys())
   //   o[subnode][k].type()
 

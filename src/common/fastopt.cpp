@@ -14,8 +14,7 @@ struct Convert {
 template <typename To>
 struct Convert<To, std::string> { 
   static inline To apply(const std::string& from) { 
-    ABORT("Not implemented");
-    return To(0);
+    throw FastOpt::RuntimeError();
   }
 };
 
@@ -36,7 +35,7 @@ struct Convert<std::string, std::string> {
 template <typename T>
 T As<T>::apply(const FastOpt& node) {
   if(!node.isScalar())
-    throw FastOpt::BadConversion();
+    throw FastOpt::RuntimeError();
 
   if(node.isBool())
     return Convert<T, bool>::apply(node.value_->as<bool>());
@@ -47,15 +46,15 @@ T As<T>::apply(const FastOpt& node) {
   else if(node.isString())
     return Convert<T, std::string>::apply(node.value_->as<std::string>());      
   else {
-    throw FastOpt::BadConversion();
+    throw FastOpt::RuntimeError();
   }
 }
 
 template <typename T>
 std::vector<T> As<std::vector<T>>::apply(const FastOpt& node) {
   if(!node.isSequence())
-    throw FastOpt::BadConversion();
-    
+    throw FastOpt::RuntimeError();
+
   std::vector<T> seq;
   for(const auto& elem : node.array_)
     seq.push_back(elem->as<T>());

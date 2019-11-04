@@ -98,9 +98,9 @@ public:
     Null, Bool, Int64, Float64, String, Sequence, Map
   };
 
-  struct BadConversion : public std::runtime_error {
-    BadConversion() 
-      : std::runtime_error("Could not convert node to scalar") 
+  struct RuntimeError : public std::runtime_error {
+    RuntimeError() 
+      : std::runtime_error("FastOpt RuntimeError") 
     {}
   };
 
@@ -162,7 +162,7 @@ private:
             value_->value = v.as<std::string>();
             type_ = NodeType::String;
           } catch (const YAML::BadConversion& /*e*/) {
-            ABORT("Cannot convert YAML node");
+            throw FastOpt::RuntimeError();
           }
         }
       }
@@ -170,8 +170,6 @@ private:
   }
 
   void makeSequence(const std::vector<YAML::Node>& v) {
-    // std::cerr << "Creating list (" << v.size() << ")" << std::endl;
-
     array_.resize(v.size());
     elements_ = v.size();
 
@@ -184,8 +182,6 @@ private:
   }
 
   void makeMap(const std::map<uint64_t, YAML::Node>& m) {
-    // std::cerr << "Creating map (" << m.size() << ")" << std::endl;
-
     std::vector<uint64_t> keys;
     for(const auto& it : m)
       keys.push_back(it.first);
@@ -209,7 +205,6 @@ private:
     std::map<uint64_t, YAML::Node> mi;
     for(const auto& it : m) {
       auto key = it.first.c_str();
-      // std::cerr << "k: " << key << std::endl;
       mi[crc(key)] = it.second;
     }
 
@@ -289,8 +284,8 @@ public:
     ph_.swap(other.ph_);
     array_.swap(other.array_);
     std::swap(type_, other.type_);
-    std::swap(fingerprint_, other.fingerprint_);
     std::swap(elements_, other.elements_);
+    // leave fingerprint alone as it needed by parent node. @TODO: move to parent in separate array. 
   }
 
   bool has(size_t keyId) const {

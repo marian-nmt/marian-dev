@@ -476,7 +476,8 @@ public:
     return LayerAAN(prefix, input, output);
   }
 
-  Expr DecoderLayerRNN(rnn::State& decoderState,
+  Expr DecoderLayerRNN(std::unordered_map<std::string, Ptr<rnn::RNN>>& perLayerRnn, // @TODO: rewrite this whole organically grown mess
+                       rnn::State& decoderState,
                        const rnn::State& prevDecoderState,
                        std::string prefix,
                        Expr input,
@@ -484,15 +485,18 @@ public:
                        int /*startPos*/) const {
     float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
 
-    auto rnn = rnn::rnn(
-         "type", opt<std::string>("dec-cell"),
-         "prefix", prefix,
-         "dimInput", opt<int>("dim-emb"),
-         "dimState", opt<int>("dim-emb"),
-         "dropout", dropoutRnn,
-         "layer-normalization", opt<bool>("layer-normalization"))
-        .push_back(rnn::cell())
-        .construct(graph_);
+    if(!perLayerRnn[prefix])
+      perLayerRnn[prefix] = rnn::rnn(
+          "type", opt<std::string>("dec-cell"),
+          "prefix", prefix,
+          "dimInput", opt<int>("dim-emb"),
+          "dimState", opt<int>("dim-emb"),
+          "dropout", dropoutRnn,
+          "layer-normalization", opt<bool>("layer-normalization"))
+          .push_back(rnn::cell())
+          .construct(graph_);
+
+    auto rnn = perLayerRnn[prefix];
 
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     auto opsPre = opt<std::string>("transformer-preprocess");
@@ -593,6 +597,7 @@ class DecoderTransformer : public Transformer<DecoderBase> {
   using Base::Base;
 private:
   Ptr<mlp::Output> output_;
+  std::unordered_map<std::string, Ptr<rnn::RNN>> perLayerRnn_;
 
 private:
   // @TODO: move this out for sharing with other models
@@ -733,7 +738,7 @@ public:
       else if(layerType == "average-attention")
         query = DecoderLayerAAN(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_aan", query, selfMask, startPos);
       else if(layerType == "rnn")
-        query = DecoderLayerRNN(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_rnn", query, selfMask, startPos);
+        query = DecoderLayerRNN(perLayerRnn_, decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_rnn", query, selfMask, startPos);
       else
         ABORT("Unknown auto-regressive layer type in transformer decoder {}",
               layerType);

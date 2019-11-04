@@ -7,5 +7,6 @@ namespace gpu {
 
 template <class Functor, class... Tensors>
 void Element(Functor functor, Tensor out, Tensors... tensors);
+
 }
 }  // namespace marian

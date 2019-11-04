@@ -9,6 +9,7 @@ include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
   common/aliases.cpp
+  common/fastopt.cpp
   common/version.cpp
   common/utils.cpp
   common/logging.cpp

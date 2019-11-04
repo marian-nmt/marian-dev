@@ -24,9 +24,7 @@ protected:
 
 public:
   LayerBase(Ptr<ExpressionGraph> graph, Ptr<Options> options)
-      : graph_(graph), options_(options) {
-    options_->fix();
-  }
+      : graph_(graph), options_(options) {}
 
   template <typename T>
   T opt(const std::string key) const {

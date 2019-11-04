@@ -30,8 +30,7 @@ namespace marian {
 class Options {
 protected:
   YAML::Node options_;
-  const FastOpt fastOptions_;
-  const bool fixed_{false};
+  FastOpt fastOptions_;
 
 public:
   Options();
@@ -53,24 +52,12 @@ public:
     return options;
   }
 
-  void fix() {
-    ABORT_IF(fixed_, "Already fixed");
-    FastOpt temp(options_);
-    const_cast<FastOpt&>(fastOptions_).swap(temp);
-    const_cast<bool&>(fixed_) = true;
-  }
-
-  bool fixed() {
-    return fixed_;
-  }
-
   /**
    * @brief Return a copy of the object that can be safely modified.
    */
   Options clone() const;
 
   YAML::Node& getYaml();
-
   const YAML::Node& getYaml() const;
 
   void parse(const std::string& yaml);
@@ -90,29 +77,45 @@ public:
   std::string str();
 
   template <typename T>
-  void set(const std::string& key, T value) {
-    ABORT_IF(fixed_, "Options fixed and cannot be modified unless cloned");
+  bool setRec(const std::string& key, T value) {
     options_[key] = value;
+    if(fastOptions_.has(key)) {
+      FastOpt temp(options_[key]);
+      const_cast<FastOpt&>(fastOptions_[key]).swap(temp);
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  template <typename T, typename... Args>
+  bool setRec(const std::string& key, T value, Args&&... moreArgs) {
+    bool rebuild1 = setRec(key, value);
+    bool rebuild2 = setRec(std::forward<Args>(moreArgs)...);
+    return rebuild1 || rebuild2;
   }
 
   // set multiple
   // options->set("var1", val1, "var2", val2, ...)
-  template <typename T, typename... Args>
-  void set(const std::string& key, T value, Args&&... moreArgs) {
-    set(key, value);
-    set(std::forward<Args>(moreArgs)...);
+  template <typename... Args>
+  void set(Args&&... moreArgs) {
+    bool rebuild = setRec(std::forward<Args>(moreArgs)...);
+    if(rebuild) {
+      FastOpt temp(options_);
+      fastOptions_.swap(temp);
+    }
   }
 
   template <typename T>
   T get(const std::string& key) const {
     ABORT_IF(!has(key), "Required option '{}' has not been set", key);
-    return fixed_ ? fastOptions_[key].as<T>() : options_[key].as<T>();
+    return fastOptions_[key].as<T>();
   }
 
   template <typename T>
   T get(const std::string& key, T defaultValue) const {
     if(has(key))
-      return fixed_ ? fastOptions_[key].as<T>() : options_[key].as<T>();
+      return fastOptions_[key].as<T>();
     else
       return defaultValue;
   }

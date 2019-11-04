@@ -29,7 +29,7 @@ TEST_CASE("FastOpt can be constructed from a YAML node", "[fastopt]") {
     CHECK( o["foo"].has("bar") );
     CHECK( o["foo"].has("baz") );    
     CHECK( o["foo"]["bar"].as<int>() == 123 );
-    CHECK( o["foo"]["baz"].type() == FastOpt::NodeType::Null );
+    CHECK( o["foo"]["baz"].isNull() );
   }
 }
 

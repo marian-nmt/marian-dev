@@ -1,17 +1,19 @@
 #include "options.h"
 
 namespace marian {
-  Options::Options() {}
+  Options::Options() 
+  : fastOptions_(options_) {}
 
   Options::Options(const Options& other)
-    : options_(YAML::Clone(other.options_)) {}
+    : options_(YAML::Clone(other.options_)),
+      fastOptions_(options_)
+  {}
 
   Options Options::clone() const {
-    return Options(*this);
+    return Options(*this); // fastOptions_ get set in constructor above
   }
 
   YAML::Node& Options::getYaml() {
-    ABORT_IF(fixed_, "Options fixed and cannot be modified unless cloned");
     return options_;
   }
 
@@ -20,21 +22,24 @@ namespace marian {
   }
 
   void Options::parse(const std::string& yaml) {
-    ABORT_IF(fixed_, "Options fixed and cannot be modified unless cloned");
     auto node = YAML::Load(yaml);
     for(auto it : node)
       options_[it.first.as<std::string>()] = YAML::Clone(it.second);
+
+    FastOpt temp(options_);
+    fastOptions_.swap(temp);
   }
 
   void Options::merge(const YAML::Node& node, bool overwrite) {
-    ABORT_IF(fixed_, "Options fixed and cannot be modified unless cloned");
     for(auto it : node)
       if(overwrite || !options_[it.first.as<std::string>()])
         options_[it.first.as<std::string>()] = YAML::Clone(it.second);
+
+    FastOpt temp(options_);
+    fastOptions_.swap(temp);
   }
 
   void Options::merge(Ptr<Options> options) {
-    ABORT_IF(fixed_, "Options fixed and cannot be modified unless cloned");
     merge(options->getYaml());
   }
 
@@ -48,18 +53,18 @@ namespace marian {
     if(!has(key)) {
       return false;
     }
-    if(fixed_ ? fastOptions_[key].type() == FastOpt::NodeType::List : options_[key].IsSequence()) {
-      return fixed_ ? fastOptions_[key].size() != 0 : options_[key].size() != 0;
+    if(fastOptions_[key].isSequence()) {
+      return fastOptions_[key].size() != 0;
     }
     try {
-      return fixed_ ? !fastOptions_[key].as<std::string>().empty() : !options_[key].as<std::string>().empty();
-    } catch(const YAML::BadConversion& /* e */) {
+      return !fastOptions_[key].as<std::string>().empty();
+    } catch(const YAML::BadConversion& /* e */) { // missing now
       ABORT("Option '{}' is neither a sequence nor text");
     }
     return false;
   }
 
   bool Options::has(const std::string& key) const {
-    return fixed_ ? fastOptions_.has(key) : options_[key];
+    return fastOptions_.has(key);
   }
 }

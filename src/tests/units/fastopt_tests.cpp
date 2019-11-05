@@ -72,18 +72,5 @@ TEST_CASE("Options can be accessed", "[fastopt]") {
 
   SECTION("using as<std::vector<T>>()") {
     CHECK( o["seq"].as<std::vector<double>>() == std::vector<double>({1, 2, 3}) );
-  }  
-
-  YAML::Node yml = YAML::Load("{"
-    "filter: ["
-      "dense : { dim-in: 512, dim-out: 2048 },"
-      "relu,"
-      "dense : { dim-in: 2048, dim-out: 512 }"
-      "]"
-    "}");
-
-  const FastOpt graph(yml);
-  std::cerr << yml << std::endl;
-  std::cerr << yml["filter"][0].begin()->first.as<std::string>() << std::endl;
-  
+  } 
 }

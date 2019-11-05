@@ -13,8 +13,9 @@ int main(int argc, char** argv) {
 
   auto options = New<Options>();
   {
+    YAML::Node config;
     auto cli = New<cli::CLIWrapper>(
-        options,
+        config,
         "Convert a model in the .npz format and normal memory layout to a mmap-able binary model which could be in normal memory layout or packed memory layout",
         "Allowed options",
         "Examples:\n"
@@ -23,10 +24,7 @@ int main(int argc, char** argv) {
     cli->add<std::string>("--to,-t", "Output model", "model.bin");
     cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used with this weights", "mklfp32");
     cli->parse(argc, argv);
-    options->rebuild(); // Required when using CLIWrapper as it only modifies the underlying YAML object,
-                        // the Options object is unaware of any changes and does not trigger a rebuild.
-                        // This is not a problem when ConfigParser is used. Only needed for custom options like here.
-                        // @TODO: make CLIWrapper remember the Options object.
+    options->merge(config);
   }
   auto modelFrom = options->get<std::string>("from");
   auto modelTo = options->get<std::string>("to");

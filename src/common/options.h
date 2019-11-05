@@ -31,6 +31,19 @@ class Options {
 protected:
   YAML::Node options_;
   FastOpt fastOptions_;
+  mutable bool doLazyRebuild_{true};
+
+  void setLazyRebuild() const {
+    doLazyRebuild_ = true;
+  }
+
+  void checkLazyRebuild() const {
+    if(doLazyRebuild_) {
+      FastOpt temp(options_);
+      const_cast<FastOpt&>(fastOptions_).swap(temp);
+      doLazyRebuild_ = false;
+    }
+  }
 
 public:
   Options();
@@ -57,8 +70,7 @@ public:
    */
   Options clone() const;
 
-  YAML::Node& getYaml();
-  const YAML::Node& getYaml() const;
+  YAML::Node getYamlClone() const;
 
   void parse(const std::string& yaml);
 
@@ -77,46 +89,30 @@ public:
   std::string str();
 
   template <typename T>
-  bool setRec(const std::string& key, T value) {
+  void set(const std::string& key, T value) {
     options_[key] = value;
-    if(fastOptions_.has(key)) {
-      FastOpt temp(options_[key]);
-      const_cast<FastOpt&>(fastOptions_[key]).swap(temp);
-      return false;
-    } else {
-      return true;
-    }
-  }
-
-  template <typename T, typename... Args>
-  bool setRec(const std::string& key, T value, Args&&... moreArgs) {
-    bool rebuildFastOptions1 = setRec(key, value);
-    bool rebuildFastOptions2 = setRec(std::forward<Args>(moreArgs)...);
-    return rebuildFastOptions1 || rebuildFastOptions2;
-  }
-
-  void rebuild() {
-    FastOpt temp(options_);
-    fastOptions_.swap(temp);
+    setLazyRebuild();
   }
 
   // set multiple
   // options->set("var1", val1, "var2", val2, ...)
-  template <typename... Args>
-  void set(Args&&... moreArgs) {
-    bool rebuildFastOptions = setRec(std::forward<Args>(moreArgs)...);
-    if(rebuildFastOptions)
-      rebuild();
+  template <typename T, typename... Args>
+  void set(const std::string& key, T value, Args&&... moreArgs) {
+    set(key, value);
+    set(std::forward<Args>(moreArgs)...);
+    setLazyRebuild();
   }
 
   template <typename T>
   T get(const std::string& key) const {
+    checkLazyRebuild();
     ABORT_IF(!has(key), "Required option '{}' has not been set", key);
     return fastOptions_[key].as<T>();
   }
 
   template <typename T>
   T get(const std::string& key, T defaultValue) const {
+    checkLazyRebuild();
     if(has(key))
       return fastOptions_[key].as<T>();
     else

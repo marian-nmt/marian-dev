@@ -11,8 +11,9 @@ int main(int argc, char** argv) {
 
   Ptr<Options> options = New<Options>();
   {
+    YAML::Node config;
     auto cli = New<cli::CLIWrapper>(
-        options,
+        config,
         "Create a vocabulary from text corpora given on STDIN",
         "Allowed options",
         "Examples:\n"
@@ -20,10 +21,7 @@ int main(int argc, char** argv) {
         "  cat text.src text.trg | ./marian-vocab > vocab.yml");
     cli->add<size_t>("--max-size,-m", "Generate only UINT most common vocabulary items", 0);
     cli->parse(argc, argv);
-    options->rebuild(); // Required when using CLIWrapper as it only modifies the underlying YAML object,
-                        // the Options object is unaware of any changes and does not trigger a rebuild.
-                        // This is not a problem when ConfigParser is used. Only needed for custom options like here.
-                        // @TODO: make CLIWrapper remember the Options object.
+    options->merge(config);
   }
 
   LOG(info, "Creating vocabulary...");

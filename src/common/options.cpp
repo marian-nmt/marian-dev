@@ -26,8 +26,7 @@ namespace marian {
     for(auto it : node)
       options_[it.first.as<std::string>()] = YAML::Clone(it.second);
 
-    FastOpt temp(options_);
-    fastOptions_.swap(temp);
+    rebuild();
   }
 
   void Options::merge(const YAML::Node& node, bool overwrite) {
@@ -35,8 +34,7 @@ namespace marian {
       if(overwrite || !options_[it.first.as<std::string>()])
         options_[it.first.as<std::string>()] = YAML::Clone(it.second);
 
-    FastOpt temp(options_);
-    fastOptions_.swap(temp);
+    rebuild();
   }
 
   void Options::merge(Ptr<Options> options) {

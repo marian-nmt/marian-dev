@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
 
   createLoggers();
 
-  auto options = New<Options>();
+  Ptr<Options> options = New<Options>();
   {
     auto cli = New<cli::CLIWrapper>(
         options,
@@ -20,6 +20,10 @@ int main(int argc, char** argv) {
         "  cat text.src text.trg | ./marian-vocab > vocab.yml");
     cli->add<size_t>("--max-size,-m", "Generate only UINT most common vocabulary items", 0);
     cli->parse(argc, argv);
+    options->rebuild(); // Required when using CLIWrapper as it only modifies the underlying YAML object,
+                        // the Options object is unaware of any changes and does not trigger a rebuild.
+                        // This is not a problem when ConfigParser is used. Only needed for custom options like here.
+                        // @TODO: make CLIWrapper remember the Options object.
   }
 
   LOG(info, "Creating vocabulary...");

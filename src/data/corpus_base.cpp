@@ -83,19 +83,20 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       LOG(info, "No vocabulary files given, trying to find or build based on training data. "
                 "Vocabularies will be built separately for each file.");
 
+      std::vector<int> vocabDims(paths_.size(), 0);
+      std::vector<std::string> vocabPaths(paths_.size());
       // Create vocabs if not provided
       for(size_t i = 0; i < paths_.size(); ++i) {
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
         std::vector<std::string> trainPaths = { paths_[i] };
-        size_t vocSize = vocab->loadOrCreate("", trainPaths, maxVocabs[i]);
-        // TODO: this is not nice as it modifies the option object and needs to expose the changes
-        // outside the corpus as models need to know about the vocabulary size; extract the vocab
-        // creation functionality from the class.
-        options_->getYaml()["dim-vocabs"][i] = vocSize;
-
-        options_->getYaml()["vocabs"].push_back(paths_[i] + ".yml");
+        vocabDims[i] = vocab->loadOrCreate("", trainPaths, maxVocabs[i]);
+        vocabPaths[i] = paths_[i] + ".yml";
         vocabs_.emplace_back(vocab);
       }
+      // TODO: this is not nice as it modifies the option object and needs to expose the changes
+      // outside the corpus as models need to know about the vocabulary size; extract the vocab
+      // creation functionality from the class.
+      options_->set("dim-vocabs", vocabDims, "vocabs", vocabPaths);
     } else {
       // Load all vocabs
       if(maxVocabs.size() < vocabPaths.size())
@@ -117,6 +118,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
           groupVocab[vocabPaths[i]].size = maxVocabs[i];
       }
 
+      std::vector<int> vocabDims(paths_.size(), 0);
       for(size_t i = 0; i < vocabPaths.size(); ++i) {
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
 
@@ -124,15 +126,13 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         // it wild not be created again, but just correctly loaded.
         auto pathsAndSize = groupVocab[vocabPaths[i]];
         std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
-        size_t vocSize = vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
-
-        // TODO: this is not nice as it modifies the option object and needs to expose the changes
-        // outside the corpus, because models need to know about the vocabulary size; extract the
-        // vocab creation functionality from the class.
-        options_->getYaml()["dim-vocabs"][i] = vocSize;
-
+        vocabDims[i] = vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
         vocabs_.emplace_back(vocab);
       }
+      // TODO: this is not nice as it modifies the option object and needs to expose the changes
+      // outside the corpus as models need to know about the vocabulary size; extract the vocab
+      // creation functionality from the class.
+      options_->set("dim-vocabs", vocabDims);
     }
   }
 
@@ -143,13 +143,16 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     if(maxVocabs.size() < vocabPaths.size())
       maxVocabs.resize(paths_.size(), 0);
 
+    std::vector<int> vocabDims(paths_.size(), 0);
     for(size_t i = 0; i + 1 < vocabPaths.size(); ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);
-      size_t vocSize = vocab->load(vocabPaths[i], maxVocabs[i]);
-      options_->getYaml()["dim-vocabs"][i] = vocSize;
-
+      vocabDims[i] = vocab->load(vocabPaths[i], maxVocabs[i]);
       vocabs_.emplace_back(vocab);
     }
+    // TODO: this is not nice as it modifies the option object and needs to expose the changes
+    // outside the corpus as models need to know about the vocabulary size; extract the vocab
+    // creation functionality from the class.
+    options_->set("dim-vocabs", vocabDims);
   }
 
   for(auto path : paths_) {

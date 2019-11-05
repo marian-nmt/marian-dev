@@ -90,20 +90,23 @@ public:
 
   template <typename T, typename... Args>
   bool setRec(const std::string& key, T value, Args&&... moreArgs) {
-    bool rebuild1 = setRec(key, value);
-    bool rebuild2 = setRec(std::forward<Args>(moreArgs)...);
-    return rebuild1 || rebuild2;
+    bool rebuildFastOptions1 = setRec(key, value);
+    bool rebuildFastOptions2 = setRec(std::forward<Args>(moreArgs)...);
+    return rebuildFastOptions1 || rebuildFastOptions2;
+  }
+
+  void rebuild() {
+    FastOpt temp(options_);
+    fastOptions_.swap(temp);
   }
 
   // set multiple
   // options->set("var1", val1, "var2", val2, ...)
   template <typename... Args>
   void set(Args&&... moreArgs) {
-    bool rebuild = setRec(std::forward<Args>(moreArgs)...);
-    if(rebuild) {
-      FastOpt temp(options_);
-      fastOptions_.swap(temp);
-    }
+    bool rebuildFastOptions = setRec(std::forward<Args>(moreArgs)...);
+    if(rebuildFastOptions)
+      rebuild();
   }
 
   template <typename T>

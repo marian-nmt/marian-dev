@@ -100,6 +100,7 @@ private:
   static std::string failureMessage(const CLI::App *app, const CLI::Error &e);
 
 public:
+
   /**
    * @brief Create an instance of the command-line argument parser
    *

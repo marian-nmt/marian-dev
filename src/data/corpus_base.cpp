@@ -99,7 +99,8 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       options_->set("dim-vocabs", vocabDims, "vocabs", vocabPaths);
     } else {
       // Load all vocabs
-      if(maxVocabs.size() < vocabPaths.size())
+      size_t numVocs = vocabPaths.size();
+      if(maxVocabs.size() < numVocs)
         maxVocabs.resize(paths_.size(), 0);
 
       // Helper object to for grouping training data based on vocabulary file name
@@ -112,14 +113,15 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       // vocab path corresponds to different training files, this means
       // that a single vocab should combine tokens from all files.
       std::map<std::string, PathsAndSize> groupVocab;
-      for(size_t i = 0; i < vocabPaths.size(); ++i) {
+      for(size_t i = 0; i < numVocs; ++i) {
         groupVocab[vocabPaths[i]].paths.insert(paths_[i]);
         if(groupVocab[vocabPaths[i]].size < maxVocabs[i])
           groupVocab[vocabPaths[i]].size = maxVocabs[i];
       }
 
-      std::vector<int> vocabDims(paths_.size(), 0);
-      for(size_t i = 0; i < vocabPaths.size(); ++i) {
+      auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
+      vocabDims.resize(numVocs, 0);
+      for(size_t i = 0; i < numVocs; ++i) {
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
 
         // Get the set of files that corresponds to the vocab. If the next file is the same vocab,
@@ -140,11 +142,13 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     ABORT_IF(vocabPaths.empty(),
              "Translating, but vocabularies are not given!");
 
-    if(maxVocabs.size() < vocabPaths.size())
+    size_t numVocs = vocabPaths.size();
+    if(maxVocabs.size() < numVocs)
       maxVocabs.resize(paths_.size(), 0);
 
-    std::vector<int> vocabDims(paths_.size(), 0);
-    for(size_t i = 0; i + 1 < vocabPaths.size(); ++i) {
+    auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
+    vocabDims.resize(numVocs, 0);
+    for(size_t i = 0; i + 1 < numVocs; ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);
       vocabDims[i] = vocab->load(vocabPaths[i], maxVocabs[i]);
       vocabs_.emplace_back(vocab);

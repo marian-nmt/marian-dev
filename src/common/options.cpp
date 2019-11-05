@@ -47,18 +47,17 @@ namespace marian {
 
   bool Options::hasAndNotEmpty(const std::string& key) const {
     checkLazyRebuild();
-    if(!has(key)) {
+    if(!fastOptions_.has(key)) {
       return false;
+    } else {
+      auto& node = fastOptions_[key];
+      if(node.isString())
+        return !node.as<std::string>().empty();
+      else if(node.isSequence())
+        return node.size() != 0;
+      else
+        return false;
     }
-    if(fastOptions_[key].isSequence()) {
-      return fastOptions_[key].size() != 0;
-    }
-    try {
-      return !fastOptions_[key].as<std::string>().empty();
-    } catch(const YAML::BadConversion& /*e*/) {
-      ABORT("Option '{}' is neither a sequence nor text");
-    }
-    return false;
   }
 
   bool Options::has(const std::string& key) const {

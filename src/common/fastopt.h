@@ -98,12 +98,6 @@ public:
     Null, Bool, Int64, Float64, String, Sequence, Map
   };
 
-  struct RuntimeError : public std::runtime_error {
-    RuntimeError() 
-      : std::runtime_error("FastOpt RuntimeError") 
-    {}
-  };
-
 private:
   struct ElementType {
     ENABLE_INTRUSIVE_PTR(ElementType)
@@ -162,7 +156,7 @@ private:
             value_->value = v.as<std::string>();
             type_ = NodeType::String;
           } catch (const YAML::BadConversion& /*e*/) {
-            throw FastOpt::RuntimeError();
+            ABORT("Cannot convert YAML node {}", v);
           }
         }
       }
@@ -285,7 +279,7 @@ public:
     array_.swap(other.array_);
     std::swap(type_, other.type_);
     std::swap(elements_, other.elements_);
-    // leave fingerprint alone as it needed by parent node. @TODO: move to parent in separate array. 
+    // leave fingerprint alone as it needed by parent node. 
   }
 
   bool has(size_t keyId) const {

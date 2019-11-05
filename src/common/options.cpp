@@ -51,12 +51,12 @@ namespace marian {
       return false;
     } else {
       auto& node = fastOptions_[key];
-      if(node.isString())
-        return !node.as<std::string>().empty();
-      else if(node.isSequence())
+      if(node.isSequence())
         return node.size() != 0;
+      else if(node.isScalar()) // numerical values count as non-empty
+        return !node.as<std::string>().empty();
       else
-        return false;
+        ABORT("Wrong node type");
     }
   }
 

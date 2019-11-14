@@ -22,7 +22,7 @@ option(USE_DOXYGEN "Build documentation with Doxygen" ON)
 option(USE_FBGEMM "Use FBGEMM" OFF)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
+option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 
 # use ccache (https://ccache.dev) for faster compilation if requested and available

@@ -143,6 +143,8 @@ class DecoderS2S : public DecoderBase {
 private:
   Ptr<rnn::RNN> rnn_;
   Ptr<mlp::MLP> output_;
+  int lastDimBatch_{-1}; // monitor dimBatch to take into account batch-pruning during decoding
+                         // may require to lazily rebuild decoder RNN
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
                                     Ptr<DecoderState> state) {
@@ -239,7 +241,7 @@ public:
       int dimBatch = (int)batch->size();
       int dimRnn = opt<int>("dim-rnn");
 
-      start = graph->constant({dimBatch, dimRnn}, inits::zeros);
+      start = graph->constant({dimBatch, dimRnn}, inits::zeros());
     }
 
     rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
@@ -251,8 +253,19 @@ public:
 
     auto embeddings = state->getTargetHistoryEmbeddings();
 
-    if(!rnn_)
-      rnn_ = constructDecoderRNN(graph, state);
+    // The batch dimension of the inputs can change due to batch-pruning, in that case
+    // cached elements need to be rebuilt, in this case the mapped encoder context in the 
+    // attention mechanism of the decoder RNN.
+    int currDimBatch = embeddings->shape()[-2];
+    if(!rnn_ || lastDimBatch_ != currDimBatch)  // if currDimBatch is different, rebuild the cached RNN
+      rnn_ = constructDecoderRNN(graph, state); // @TODO: add a member to encoder/decoder state `bool batchDimChanged()`
+    lastDimBatch_ = currDimBatch;
+    // Also @TODO: maybe implement a Cached(build, updateIf) that runs a check and rebuild if required
+    // at dereferecing :
+    // rnn_ = Cached<decltype(constructDecoderRNN(graph, state))>(
+    //          /*build=*/[]{ return constructDecoderRNN(graph, state); }, 
+    //          /*updateIf=*/[]{ return state->batchDimChanged() });
+    // rnn_->transduce(...);
 
     // apply RNN to embeddings, initialized with encoder context mapped into
     // decoder space
@@ -280,10 +293,11 @@ public:
 
     if(!output_) {
       // construct deep output multi-layer network layer-wise
+
       auto hidden = mlp::dense()                                     //
           ("prefix", prefix_ + "_ff_logit_l1")                       //
           ("dim", opt<int>("dim-emb"))                               //
-          ("activation", mlp::act::tanh)                             //
+          ("activation", (int)mlp::act::tanh)                        //
           ("layer-normalization", opt<bool>("layer-normalization"))  //
           ("nematus-normalization",
            options_->has("original-type")

@@ -8,6 +8,9 @@
 
 namespace marian {
 
+bool getSigtermFlag();
+void installSignalHandlers(); 
+
 class Scheduler : public TrainingObserver {
 private:
   Ptr<Options> options_;
@@ -18,10 +21,6 @@ private:
 
   timer::Timer timer_;
   timer::Timer heartBeatTimer_;
-
-  static bool sigterm_;
-  void installSignalHandlers_();
-  static void signalHandler_(int sig);
 
   // determine scheduled LR decay factor (--lr-decay-inv-sqrt option)
   float getScheduledLRDecayFactor(const TrainingState& state) const {
@@ -150,12 +149,12 @@ public:
       : options_(options), state_(state) {
     ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
     updateLearningRate(*state);
-    installSignalHandlers_();
+    installSignalHandlers();
   }
 
-  bool keepGoing(bool checkForSigTerm=true) {
+  bool keepGoing() {
 
-    if (checkForSigTerm && sigterm_) // received signam SIGERM => exit gracefully
+    if(getSigtermFlag()) // received signal SIGERM => exit gracefully
       return false;
 
     // stop if it reached the maximum number of epochs
@@ -185,7 +184,7 @@ public:
 
   void started() { LOG(info, "Training started"); }
   void finished() {
-    if (keepGoing(false)) // false means: ignore sigterm flag
+    if (getSigtermFlag())
       LOG(info, "Training interrupted (SIGTERM).");
     else
       LOG(info, "Training finished");
@@ -218,10 +217,10 @@ public:
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                 bool final = false) {
     // Do not validate if already validated (for instance, after the model is
-    // loaded) or if validation is scheduled for another update
-    if(sigterm_
-       || state_->validated
-       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !final))
+    // loaded) or if validation is scheduled for another update, or when signal SIGTERM was received
+    if(getSigtermFlag() // SIGTERM was received
+       || state_->validated // already validated (in resumed training, for example)
+       || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !final)) // not now
       return;
 
     bool firstValidator = true;
@@ -386,9 +385,8 @@ public:
 
   void save(const std::string& name) {
     // Save config options
-    YAML::Node yaml = options_->getYaml();
     std::ofstream fout(name + ".yml");
-    fout << yaml;
+    fout << options_->asYamlString();
     // Save training progress
     state_->save(name + ".progress.yml");
   }

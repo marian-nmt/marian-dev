@@ -33,10 +33,18 @@ protected:
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
   std::vector<Expr> alignments_; // [max tgt len or 1][beam depth, max src length, batch size, 1]
 
-  template <typename T> T opt(const std::string& key) const { Ptr<Options> options = options_; return options->get<T>(key); }  // need to duplicate, since somehow using Base::opt is not working
-  // FIXME: that separate options assignment is weird
+  // @TODO: make this go away
+  template <typename T> 
+  T opt(const char* const key) const { Ptr<Options> options = options_; return options->get<T>(key); }  
 
-  template <typename T> T opt(const std::string& key, const T& def) const { Ptr<Options> options = options_; if (options->has(key)) return options->get<T>(key); else return def; }
+  template <typename T> 
+  T opt(const std::string& key) const { return opt<T>(key.c_str()); }  
+
+  template <typename T> 
+  T opt(const char* const key, const T& def) const { Ptr<Options> options = options_; return options->get<T>(key, def);  }
+
+  template <typename T> 
+  T opt(const std::string& key, const T& def) const { opt<T>(key.c_str(), def); }
 
 public:
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
@@ -95,13 +103,14 @@ public:
     for(int i = 0; i < length; ++i)
       for(int j = 0; j <= i; ++j)
         vMask[i * length + j] = 1.f;
-    return graph_->constant({1, length, length}, inits::from_vector(vMask));
+    return graph_->constant({1, length, length}, inits::fromVector(vMask));
   }
 
   // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
   static Expr transposedLogMask(Expr mask) { // mask: [-4: beam depth=1, -3: batch size, -2: vector dim=1, -1: max length]
     auto ms = mask->shape();
-    mask = (1 - mask) * -99999999.f;
+    float maskFactor = std::max(NumericLimits<float>(mask->value_type()).lowest / 2.f, -99999999.f); // to make sure we do not overflow for fp16
+    mask = (1 - mask) * maskFactor;
     return reshape(mask, {ms[-3], 1, ms[-2], ms[-1]}); // [-4: batch size, -3: num heads broadcast=1, -2: max length broadcast=1, -1: max length]
   }
 
@@ -139,8 +148,8 @@ public:
   {
     auto graph = x->graph();
 
-    auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorot_uniform);
-    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros);
+    auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorotUniform());
+    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
 
     x = affine(x, W, b);
     if (actFn)
@@ -151,8 +160,8 @@ public:
 
   Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) const {
     int dimModel = x->shape()[-1];
-    auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones);
-    auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros);
+    auto scale = graph_->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
+    auto bias  = graph_->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
     return marian::layerNorm(x, scale, bias, 1e-6f);
   }
 
@@ -240,7 +249,7 @@ public:
 
     // take softmax along src sequence axis (-1)
     auto weights = softmax(z); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
-
+    
     if(saveAttentionWeights)
       collectOneHead(weights, dimBeam);
 
@@ -249,6 +258,7 @@ public:
 
     // apply attention weights to values
     auto output = bdot(weights, v);   // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
+
     return output;
   }
 
@@ -263,8 +273,8 @@ public:
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
     // @TODO: good opportunity to implement auto-batching here or do something manually?
-    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorot_uniform);
-    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros);
+    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform());
+    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
@@ -272,28 +282,32 @@ public:
     // Caching transformation of the encoder that should not be created again.
     // @TODO: set this automatically by memoizing encoder context and
     // memoization propagation (short-term)
-    if (!cache || (cache && cache_.count(prefix + "_keys") == 0)) {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorot_uniform);
-      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros);
+    if (cache                                                                          // if caching
+        && cache_.count(prefix + "_keys") > 0                                          // and the keys expression has been seen
+        && cache_[prefix + "_keys"]->shape().elements() == keys->shape().elements()) { // and the underlying element size did not change
+      kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
+    }
+    else {
+      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform());
+      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       cache_[prefix + "_keys"] = kh;
     }
-    else {
-      kh = cache_[prefix + "_keys"];
-    }
 
     Expr vh;
-    if (!cache || (cache && cache_.count(prefix + "_values") == 0)) {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorot_uniform);
-      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros);
+    if (cache 
+        && cache_.count(prefix + "_values") > 0 
+        && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
+      vh = cache_[prefix + "_values"];
+    } else {
+      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform());
+      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
       cache_[prefix + "_values"] = vh;
-    } else {
-      vh = cache_[prefix + "_values"];
     }
 
     int dimBeam = q->shape()[-4];
@@ -309,8 +323,8 @@ public:
     bool project = !opt<bool>("transformer-no-projection");
     if(project || dimAtt != dimOut) {
       auto Wo
-        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorot_uniform);
-      auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros);
+        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform());
+      auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
       output = affine(output, Wo, bo);
     }
 
@@ -334,7 +348,7 @@ public:
 
     // multi-head self-attention over previous input
     output = MultiHead(prefix, dimModel, heads, output, keys, values, mask, cache, saveAttentionWeights);
-
+    
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
 
@@ -459,7 +473,8 @@ public:
     return LayerAAN(prefix, input, output);
   }
 
-  Expr DecoderLayerRNN(rnn::State& decoderState,
+  Expr DecoderLayerRNN(std::unordered_map<std::string, Ptr<rnn::RNN>>& perLayerRnn, // @TODO: rewrite this whole organically grown mess
+                       rnn::State& decoderState,
                        const rnn::State& prevDecoderState,
                        std::string prefix,
                        Expr input,
@@ -467,15 +482,18 @@ public:
                        int /*startPos*/) const {
     float dropoutRnn = inference_ ? 0.f : opt<float>("dropout-rnn");
 
-    auto rnn = rnn::rnn(
-         "type", opt<std::string>("dec-cell"),
-         "prefix", prefix,
-         "dimInput", opt<int>("dim-emb"),
-         "dimState", opt<int>("dim-emb"),
-         "dropout", dropoutRnn,
-         "layer-normalization", opt<bool>("layer-normalization"))
-        .push_back(rnn::cell())
-        .construct(graph_);
+    if(!perLayerRnn[prefix]) // lazily created and cache RNNs in the docoder to avoid costly recreation @TODO: turn this into class members
+      perLayerRnn[prefix] = rnn::rnn(
+          "type", opt<std::string>("dec-cell"),
+          "prefix", prefix,
+          "dimInput", opt<int>("dim-emb"),
+          "dimState", opt<int>("dim-emb"),
+          "dropout", dropoutRnn,
+          "layer-normalization", opt<bool>("layer-normalization"))
+          .push_back(rnn::cell())
+          .construct(graph_);
+
+    auto rnn = perLayerRnn[prefix];
 
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     auto opsPre = opt<std::string>("transformer-preprocess");
@@ -510,11 +528,10 @@ public:
     // embed the source words in the batch
     Expr batchEmbeddings, batchMask;
 
-    auto embeddingLayer = getEmbeddingLayer(options_->has("ulr") && options_->get<bool>("ulr"));
+    auto embeddingLayer = getEmbeddingLayer(opt<bool>("ulr", false));
     std::tie(batchEmbeddings, batchMask) = embeddingLayer->apply((*batch)[batchIndex_]);
-
     batchEmbeddings = addSpecialEmbeddings(batchEmbeddings, /*start=*/0, batch);
-
+    
     // reorganize batch and timestep
     batchEmbeddings = atleast_nd(batchEmbeddings, 4);
     batchMask = atleast_nd(batchMask, 4);
@@ -560,10 +577,19 @@ public:
                    Ptr<data::CorpusBatch> batch)
       : DecoderState(states, logProbs, encStates, batch) {}
 
-  virtual Ptr<DecoderState> select(const std::vector<IndexType>& selIdx,
+  virtual Ptr<DecoderState> select(const std::vector<IndexType>& hypIndices,   // [beamIndex * activeBatchSize + batchIndex]
+                                   const std::vector<IndexType>& batchIndices, // [batchIndex]
                                    int beamSize) const override {
+
+    // @TODO: code duplication with DecoderState only because of isBatchMajor=true, should rather be a contructor argument of DecoderState?
+    
+    std::vector<Ptr<EncoderState>> newEncStates;
+    for(auto& es : encStates_) 
+      // If the size of the batch dimension of the encoder state context changed, subselect the correct batch entries    
+      newEncStates.push_back(es->getContext()->shape()[-2] == batchIndices.size() ? es : es->select(batchIndices));
+
     // Create hypothesis-selected state based on current state and hyp indices
-    auto selectedState = New<TransformerState>(states_.select(selIdx, beamSize, /*isBatchMajor=*/true), logProbs_, encStates_, batch_);
+    auto selectedState = New<TransformerState>(states_.select(hypIndices, beamSize, /*isBatchMajor=*/true), logProbs_, newEncStates, batch_); 
 
     // Set the same target token position as the current state
     // @TODO: This is the same as in base function.
@@ -577,6 +603,10 @@ class DecoderTransformer : public Transformer<DecoderBase> {
   using Base::Base;
 private:
   Ptr<mlp::Output> output_;
+
+  // This caches RNN objects to avoid reconstruction between batches or deocoding steps.
+  // To be removed after refactoring of transformer.h
+  std::unordered_map<std::string, Ptr<rnn::RNN>> perLayerRnn_;
 
 private:
   // @TODO: move this out for sharing with other models
@@ -600,8 +630,6 @@ private:
   }
 
 public:
-  //DecoderTransformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Transformer(graph, options) {}
-
   virtual Ptr<DecoderState> startState(
       Ptr<ExpressionGraph> graph,
       Ptr<data::CorpusBatch> batch,
@@ -613,7 +641,7 @@ public:
       int dimBatch = (int)batch->size();
       int dim = opt<int>("dim-emb");
 
-      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros);
+      auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros());
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers
@@ -676,10 +704,14 @@ public:
       auto encoderMask = encoderState->getMask();
 
       encoderContext = transposeTimeBatch(encoderContext); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
-
       int dimSrcWords = encoderContext->shape()[-2];
 
-      //int dims = encoderMask->shape().size();
+      // This would happen if something goes wrong during batch pruning.
+      ABORT_IF(encoderContext->shape()[-3] != dimBatch,
+               "Context and query batch dimension do not match {} != {}", 
+               encoderContext->shape()[-3], 
+               dimBatch);
+
       encoderMask = atleast_nd(encoderMask, 4);
       encoderMask = reshape(transposeTimeBatch(encoderMask),
                             {1, dimBatch, 1, dimSrcWords});
@@ -719,7 +751,7 @@ public:
       else if(layerType == "average-attention")
         query = DecoderLayerAAN(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_aan", query, selfMask, startPos);
       else if(layerType == "rnn")
-        query = DecoderLayerRNN(decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_rnn", query, selfMask, startPos);
+        query = DecoderLayerRNN(perLayerRnn_, decoderState, prevDecoderState, prefix_ + "_l" + layerNo + "_rnn", query, selfMask, startPos);
       else
         ABORT("Unknown auto-regressive layer type in transformer decoder {}",
               layerType);
@@ -774,7 +806,7 @@ public:
     if(shortlist_)
       output_->setShortlist(shortlist_);
     auto logits = output_->applyAsLogits(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab or shortlist dim]
-
+    
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
     if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {

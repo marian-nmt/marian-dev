@@ -568,7 +568,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
      "    {B} for # of batches within epoch\n"
      "    {U} for total # of updates\n"
      "    {T} for total # of tokens seen\n"
-     "    e.g., valid-after-{U}-updates-{W}-tokens.out");
+     "    e.g., valid-after-{U}-updates-{T}-tokens.out");
 
   cli.add<bool>("--keep-best",
       "Keep best model for each validation metric");

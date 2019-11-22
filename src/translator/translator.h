@@ -6,12 +6,21 @@
 #include "data/text_input.h"
 
 #include "3rd_party/threadpool.h"
+
 #include "translator/history.h"
 #include "translator/output_collector.h"
 #include "translator/output_printer.h"
 
 #include "models/model_task.h"
 #include "translator/scorers.h"
+
+// currently for diagnostics only, will try to mmap files ending in *.bin suffix when enabled.
+// @TODO: add this as an actual feature.
+#define MMAP 0
+
+#if MMAP
+#include "3rd_party/mio/mio.hpp"
+#endif
 
 namespace marian {
 
@@ -28,14 +37,18 @@ private:
 
   size_t numDevices_;
 
+#if MMAP
+  std::vector<mio::mmap_source> mmaps_;
+#endif
+
 public:
   Translate(Ptr<Options> options) 
     : options_(New<Options>(options->clone())) { // @TODO: clone should return Ptr<Options> same as "with"?
     // This is currently safe as the translator is either created stand-alone or
     // or config is created anew from Options in the validator
 
-    options_->set("inference", true);
-    options_->set("shuffle", "none");
+    options_->set("inference", true, 
+                  "shuffle", "none");
 
     corpus_ = New<data::Corpus>(options_, true);
 
@@ -55,26 +68,36 @@ public:
     scorers_.resize(numDevices_);
     graphs_.resize(numDevices_);
 
+#if MMAP
+    auto models = options->get<std::vector<std::string>>("models");
+    for(auto model : models) {
+      marian::filesystem::Path modelPath(model);
+      ABORT_IF(modelPath.extension() != marian::filesystem::Path(".bin"), 
+              "Non-binarized models cannot be mmapped");
+      mmaps_.push_back(std::move(mio::mmap_source(model)));
+    }
+#endif
+
     size_t id = 0;
     for(auto device : devices) {
       auto task = [&](DeviceId device, size_t id) {
         auto graph = New<ExpressionGraph>(true);
-        graph->setDevice(device);
         auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
-        graph->setParameterType(typeFromString(prec[0]));
-
+        graph->setDefaultElementType(typeFromString(prec[0]));
+        graph->setDevice(device);
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         if (device.type == DeviceType::cpu) {
           graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-          graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
         }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
 
+#if MMAP
+        auto scorers = createScorers(options_, mmaps_);
+#else 
         auto scorers = createScorers(options_);
+#endif
         for(auto scorer : scorers) {
-          // Why aren't these steps part of createScorers?
-          // i.e., createScorers(options_, graph_, shortlistGenerator_) [UG]
           scorer->init(graph);
           if(shortlistGenerator_)
             scorer->setShortlistGenerator(shortlistGenerator_);
@@ -183,15 +206,13 @@ public:
     // initialize scorers
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true);
-      graph->setDevice(device);
       
       auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
-      graph->setParameterType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
-
+      graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
+      graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       if (device.type == DeviceType::cpu) {
         graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-        graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
       }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

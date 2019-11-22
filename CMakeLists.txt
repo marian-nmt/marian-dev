@@ -10,29 +10,35 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
-# use ccache for faster compilation if available
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-endif()
-
 # Custom CMake options
+option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module (relevant only if COMPILE_AMQP_WORKER is ON)" ON)
+option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" OFF)
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
-option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
-option(USE_CUDNN "Use CUDNN library" OFF)
-option(USE_NCCL "Use NCCL library" ON)
-option(USE_MPI "Use MPI library" OFF)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
-option(COMPILE_TESTS "Compile tests" OFF)
-option(COMPILE_SERVER "Compile marian-server" OFF)
-option(USE_FBGEMM "Use FBGEMM" ON)
-option(USE_DOXYGEN "Build documentation with Doxygen" ON)
-option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" off)
-option(COMPILE_WEBSOCKET_SERVER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" off)
 option(COMPILE_REST_SERVER "Compile Marian REST server" ON)
-option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module" ON)
+option(COMPILE_SERVER "Compile marian-server" OFF)
+option(COMPILE_TESTS "Compile tests" OFF)
+option(COMPILE_WEBSOCKET_SERVER "Compile Marian Websocket Server" off)
+option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
+option(USE_CUDNN "Use CUDNN library" OFF)
+option(USE_DOXYGEN "Build documentation with Doxygen" ON)
+option(USE_FBGEMM "Use FBGEMM" OFF)
+option(USE_MPI "Use MPI library" OFF)
+option(USE_NCCL "Use NCCL library" ON)
+option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
+option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
+
+# use ccache (https://ccache.dev) for faster compilation if requested and available
+if(USE_CCACHE)
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+else(CCACHE_PROGRAM)
+  message(WARNING "Compilation with ccache requested but no ccache found.")
+endif(CCACHE_PROGRAM)
+endif(USE_CCACHE)
 
 # Project versioning
 find_package(Git QUIET)
@@ -76,6 +82,11 @@ if(MSVC)
   find_library(SHLWAPI Shlwapi.lib)
   set(EXT_LIBS ${EXT_LIBS} SHLWAPI)
 else(MSVC)
+
+  # Check we are using at least g++ 5.0
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0)
+    message(FATAL_ERROR "FATAL ERROR: Compiling Marian requires at least g++ 5.0, your version is ${CMAKE_CXX_COMPILER_VERSION}")
+  endif()
 
   # Detect support CPU instrinsics for the current platform. This will
   # only by used with BUILD_ARCH=native. For overridden BUILD_ARCH we
@@ -169,6 +180,8 @@ set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
 
 if(COMPILE_CUDA)
 
+LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61;)
+
 if(USE_STATIC_LIBS)
   # link statically to stdlib libraries
   set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
@@ -187,6 +200,10 @@ if(CUDA_FOUND)
   # CUDA >= 10.0 requires CMake >= 3.12.2
   if((CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0") AND (CMAKE_VERSION VERSION_LESS "3.12.2"))
       message(WARNING "On some Unix systems CUDA 10.0+ requires CMake 3.12.2+; you use CMake ${CMAKE_VERSION}")
+  endif()
+
+  if(CUDA_VERSION VERSION_GREATER "8.0")
+    LIST(APPEND COMPUTE -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70)
   endif()
 
   if(USE_STATIC_LIBS)
@@ -250,9 +267,9 @@ endif(COMPILE_CUDA)
 
 # TODO: make compatible with older CUDA versions
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; --use_fast_math; -arch=sm_35; -gencode=arch=compute_35,code=sm_35; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70 ;)
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; --use_fast_math; ${COMPUTE})
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; -arch=sm_35; -gencode=arch=compute_35,code=sm_35; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70 ;)
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; ${COMPUTE})
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
   # @TODO: add warnings here too
@@ -311,14 +328,6 @@ if(COMPILE_CPU)
 endif(COMPILE_CPU)
 
 set(BOOST_COMPONENTS "")
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
-  add_definitions(-DUSE_BOOST_REGEX=1)
-  set(BOOST_COMPONENTS ${BOOST_COMPONENTS} regex)
-  message(STATUS "Using boost::regex")
-else()
-  message(STATUS "Using std::regex")
-endif()
-
 if(COMPILE_SERVER)
   find_package(OpenSSL)
   if(OpenSSL_FOUND)

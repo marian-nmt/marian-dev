@@ -41,16 +41,16 @@ public:
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
                                  Ptr<DecoderState> state,
-                                 const std::vector<IndexType>& hypIndices,
-                                 const Words& words,
-                                 int dimBatch,
+                                 const std::vector<IndexType>& hypIndices,   // [beamIndex * activeBatchSize + batchIndex]
+                                 const Words& words,                         // [beamIndex * activeBatchSize + batchIndex]
+                                 const std::vector<IndexType>& batchIndices, // [batchIndex]
                                  int beamSize)
       = 0;
 
   virtual Ptr<Options> getOptions() = 0;
 
   virtual void setShortlistGenerator(
-      Ptr<data::ShortlistGenerator const> shortlistGenerator)
+      Ptr<data::ShortlistGenerator> shortlistGenerator)
       = 0;
 
   virtual Ptr<data::Shortlist> getShortlist() = 0;
@@ -60,7 +60,7 @@ public:
 
 class EncoderDecoder : public IEncoderDecoder, public LayerBase {
 protected:
-  Ptr<data::ShortlistGenerator const> shortlistGenerator_;
+  Ptr<data::ShortlistGenerator> shortlistGenerator_;
 
   const std::string prefix_;
   const bool inference_{ false };
@@ -120,7 +120,7 @@ public:
   }
 
   virtual void setShortlistGenerator(
-      Ptr<data::ShortlistGenerator const> shortlistGenerator) override {
+      Ptr<data::ShortlistGenerator> shortlistGenerator) override {
     shortlistGenerator_ = shortlistGenerator;
   };
 
@@ -148,7 +148,7 @@ public:
                                  Ptr<DecoderState> state,
                                  const std::vector<IndexType>& hypIndices,
                                  const Words& words,
-                                 int dimBatch,
+                                 const std::vector<IndexType>& batchIndices,
                                  int beamSize) override;
 
   virtual Ptr<DecoderState> stepAll(Ptr<ExpressionGraph> graph,

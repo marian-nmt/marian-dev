@@ -1,9 +1,10 @@
 #pragma once
 #include "common/logging.h" // for ABORT and ABORT_IF
+#include "common/shape.h"
 
 #if __GNUC__ >= 7
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#pragma GCC diagnostic ignored "-Wint-in-bool-context" // gcc-7 introduces this warning, triggered in 3rd-party code
 #endif
 #include "half_float/umHalf.h"
 #if __GNUC__ >= 7
@@ -15,18 +16,26 @@
 #include <functional>
 #include <type_traits>
 
-#ifndef __CUDA_ARCH__
+#ifndef __CUDACC__ // NVCC is very unreliable when it comes to CPU intrinsics, we hide them completely from NVCC-compiled code
 #include <immintrin.h>
 #endif
 
 #ifdef __CUDACC__ // nvcc is compiling this code
-  #if (__CUDA_ARCH__ >= 600 || !defined(__CUDA_ARCH__))
-    #define COMPILE_FP16 1 // we are in GPU code and we know what to do with FP16 code
-  #else
-    #define COMPILE_FP16 0 // we are in GPU code, but compute capability is too low to use FP16
-  #endif
-#else // other compiler, likely host code. Sould be fine with seeing the correct includes with host code
-  #define COMPILE_FP16 1
+#include <cuda.h> // required to see CUDA_VERSION
+#if (CUDA_VERSION > 9000 && (__CUDA_ARCH__ >= 600 || !defined(__CUDA_ARCH__)))
+#define COMPILE_FP16 1 // we are in GPU code and we know what to do with FP16 code
+#else
+#define COMPILE_FP16 0 // we are in GPU code, but compute capability is too low to use FP16
+#endif
+#elif CUDA_FOUND // other compiler, likely host code. Should be fine with seeing the correct includes with host code
+#include <cuda.h> // required to see CUDA_VERSION
+#if (CUDA_VERSION > 9000)
+#define COMPILE_FP16 1
+#else 
+#define COMPILE_FP16 0
+#endif
+#else
+#define COMPILE_FP16 0
 #endif
 
 #ifdef _MSC_VER
@@ -125,7 +134,17 @@ do { \
 
 namespace marian {
 
-#ifndef __CUDA_ARCH__
+// small struct to enable templating based on types use for packing
+struct packed8 {
+  uint8_t x;
+};
+
+// small struct to enable templating based on types use for packing
+struct packed16 {
+  uint16_t x;
+};
+
+#ifndef __CUDACC__ // vectorized types not available from .cu files
 
 // @TODO: check what intrinsics are actually available.
 struct float32x4 {
@@ -182,31 +201,38 @@ public:
 };
 #endif
 
+// Internal to types.h, don't use. Use test functions below.
 enum class TypeClass : size_t {
-  signed_type = 0x100,
+  signed_type   = 0x100,
   unsigned_type = 0x200,
-  float_type = 0x400,
-  size_mask = 0x0FF
+  float_type    = 0x400,
+  packed_type   = 0x800, // special packed (CPU cache friendly) type class, used in FBGEMM, not meant to be used anywhere else
+            
+  size_mask     = 0x0FF
 };
 
 constexpr inline size_t operator+(TypeClass typeClass, size_t val) {
   return (size_t)typeClass + val;
 }
 
+// @TODO: rename to ElementType when things become stable, so it's easier to review
 enum class Type : size_t {
-  int8  = TypeClass::signed_type + 1u,
-  int16 = TypeClass::signed_type + 2u,
-  int32 = TypeClass::signed_type + 4u,
-  int64 = TypeClass::signed_type + 8u,
+  int8     = TypeClass::signed_type + 1u,
+  int16    = TypeClass::signed_type + 2u,
+  int32    = TypeClass::signed_type + 4u,
+  int64    = TypeClass::signed_type + 8u,
 
-  uint8  = TypeClass::unsigned_type + 1u,
-  uint16 = TypeClass::unsigned_type + 2u,
-  uint32 = TypeClass::unsigned_type + 4u,
-  uint64 = TypeClass::unsigned_type + 8u,
+  uint8    = TypeClass::unsigned_type + 1u,
+  uint16   = TypeClass::unsigned_type + 2u,
+  uint32   = TypeClass::unsigned_type + 4u,
+  uint64   = TypeClass::unsigned_type + 8u,
 
-  float16 = TypeClass::float_type + 2u,
-  float32 = TypeClass::float_type + 4u,
-  float64 = TypeClass::float_type + 8u
+  float16  = TypeClass::float_type + 2u,
+  float32  = TypeClass::float_type + 4u,
+  float64  = TypeClass::float_type + 8u,
+
+  packed8  = TypeClass::packed_type + 1u, // special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
+  packed16 = TypeClass::packed_type + 2u  // special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
 };
 
 static inline size_t operator&(TypeClass typeClass, Type type) {
@@ -233,23 +259,33 @@ static inline bool isFloat(Type type) {
   return (TypeClass::float_type & type) != 0;
 }
 
+static inline bool isPacked(Type type) {
+  return (TypeClass::packed_type & type) != 0;
+}
+
+size_t requiredBytes(const Shape& shape, Type type); // towards Frank's vision of joint Shape/Type
+
 template <typename T>
 inline bool matchType(Type type);
 
 // clang-format off
-template <> inline bool matchType<int8_t>(Type type)   { return type == Type::int8; }
-template <> inline bool matchType<int16_t>(Type type)  { return type == Type::int16; }
-template <> inline bool matchType<int32_t>(Type type)  { return type == Type::int32; }
-template <> inline bool matchType<int64_t>(Type type)  { return type == Type::int64; }
+template <> inline bool matchType<int8_t>(Type type)   { return type == Type::int8;     }
+template <> inline bool matchType<int16_t>(Type type)  { return type == Type::int16;    }
+template <> inline bool matchType<int32_t>(Type type)  { return type == Type::int32;    }
+template <> inline bool matchType<int64_t>(Type type)  { return type == Type::int64;    }
 
-template <> inline bool matchType<uint8_t>(Type type)  { return type == Type::uint8; }
-template <> inline bool matchType<uint16_t>(Type type) { return type == Type::uint16; }
-template <> inline bool matchType<uint32_t>(Type type) { return type == Type::uint32; }
-template <> inline bool matchType<uint64_t>(Type type) { return type == Type::uint64; }
+// In case of packed type, it uses uint8 as underlying memory type
+template <> inline bool matchType<uint8_t>(Type type)  { return type == Type::uint8;    }
+template <> inline bool matchType<uint16_t>(Type type) { return type == Type::uint16;   }
+template <> inline bool matchType<uint32_t>(Type type) { return type == Type::uint32;   }
+template <> inline bool matchType<uint64_t>(Type type) { return type == Type::uint64;   }
 
-template <> inline bool matchType<float16>(Type type)  { return type == Type::float16; }
-template <> inline bool matchType<float>(Type type)    { return type == Type::float32; }
-template <> inline bool matchType<double>(Type type)   { return type == Type::float64; }
+template <> inline bool matchType<float16>(Type type)  { return type == Type::float16;  }
+template <> inline bool matchType<float>(Type type)    { return type == Type::float32;  }
+template <> inline bool matchType<double>(Type type)   { return type == Type::float64;  }
+
+template <> inline bool matchType<packed8>(Type type)  { return type == Type::packed8;  }
+template <> inline bool matchType<packed16>(Type type) { return type == Type::packed16; }
 // clang-format on
 
 static inline std::ostream& operator<<(std::ostream& out, Type type) {
@@ -267,6 +303,9 @@ static inline std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::float16 : out << "float16"; break;
     case Type::float32 : out << "float32"; break;
     case Type::float64 : out << "float64"; break;
+
+    case Type::packed8 : out << "packed8"; break;
+    case Type::packed16: out << "packed16"; break;
   }
   return out;
 }
@@ -288,6 +327,9 @@ template <> inline std::string request<uint64_t>() { return "uint64"; }
 template <> inline std::string request<float16>()  { return "float16"; }
 template <> inline std::string request<float>()    { return "float32"; }
 template <> inline std::string request<double>()   { return "float64"; }
+
+template <> inline std::string request<packed8>()  { return "packed8"; }
+template <> inline std::string request<packed16>() { return "packed16"; }
 // clang-format on
 
 static Type inline typeFromString(const std::string& str) {
@@ -390,3 +432,12 @@ public:
 };
 
 }  // namespace marian
+
+// custom specialization of std::hash can be injected in namespace std
+namespace std {
+  template<> struct hash<::marian::Type> {
+    size_t operator()(const ::marian::Type& type) const noexcept {
+      return (size_t)type; // type is already a unique value of type size_t
+    }
+  };
+}

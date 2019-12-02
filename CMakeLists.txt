@@ -51,10 +51,6 @@ else(CCACHE_PROGRAM)
 endif(CCACHE_PROGRAM)
 endif(USE_CCACHE)
 
-if(COMPILE_REST_SERVER)
-  find_package(PCRECPP)
-endif(COMPILE_REST_SERVER)
-
 # Project versioning
 find_package(Git QUIET)
 include(GetVersionFromFile)
@@ -439,14 +435,15 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp.in
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
+
+# rest server / amqp worker need pcrecpp (perl-compatible regex engine,
+# needed for integrated sentence splitter ssplit)
 if(COMPILE_REST_SERVER)
-  set(PCRECPP)
+  set(NEED_PCRECPP)
 endif(COMPILE_REST_SERVER)
-
 if(COMPILE_AMQP_WORKER)
-  set(PCRECPP)
+  set(NEED_PCRECPP)
 endif(COMPILE_AMQP_WORKER)
-
 if (NEED_PCRECPP)
   find_package(PCRECPP)
 endif(NEED_PCRECPP)

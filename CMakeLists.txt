@@ -387,6 +387,13 @@ if(COMPILE_REST_SERVER)
   set(PCRECPP)
 endif(COMPILE_REST_SERVER)
 
+if(COMPILE_AMQP_WORKER)
+  set(PCRECPP)
+endif(COMPILE_AMQP_WORKER)
+
+if (NEED_PCRECPP)
+  find_package(PCRECPP)
+endif(NEED_PCRECPP)
 if(USE_DOXYGEN)
 # Add a target to generate API documentation with Doxygen
 find_package(Doxygen)

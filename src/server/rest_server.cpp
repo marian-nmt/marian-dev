@@ -1,19 +1,19 @@
-#include "marian.h"
-#include "crow.h"
-#include "translator/beam_search.h"
-#include "translator/output_printer.h"
+#include "3rd_party/rapidjson/include/rapidjson/document.h"
+#include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
+#include "3rd_party/rapidjson/include/rapidjson/writer.h"
+#include "api/json_request_handler.h"
 #include "common/timer.h"
 #include "common/utils.h"
-#include "3rd_party/rapidjson/include/rapidjson/document.h"
-#include "3rd_party/rapidjson/include/rapidjson/writer.h"
-#include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
+#include "crow.h"
+#include "marian.h"
 #include "translation_service.h"
-#include <sstream>
+#include "translator/beam_search.h"
+#include "translator/output_printer.h"
 #include <cstdlib>
-#include <cuda.h>
-#include <driver_types.h>
-#include <cuda_runtime.h>
-#include "api/json_request_handler.h"
+// #include <cuda.h>
+// #include <cuda_runtime.h>
+// #include <driver_types.h>
+#include <sstream>
 // #include "api/elg/json_request_handler.h"
 
 class LogHandler : public crow::ILogHandler {

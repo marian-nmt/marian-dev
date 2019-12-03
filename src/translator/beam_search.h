@@ -68,21 +68,21 @@ public:
       // They can be between 0 and (vocabSize * nBestBeamSize * batchSize)-1.
       // (beamHypIdx refers to the GPU tensors, *not* the beams[] array; they are not the same in case of purging)
       const auto  key       = nBestKeys[i];
-      
+
       // decompose key into individual indices (batchIdx, beamHypIdx, wordIdx)
       const auto beamHypIdx      = (key / vocabSize) % nBestBeamSize;
       const auto currentBatchIdx = (key / vocabSize) / nBestBeamSize;
       const auto origBatchIdx    = reverseBatchIdxMap.empty() ? currentBatchIdx : reverseBatchIdxMap[currentBatchIdx]; // map currentBatchIdx back into original position within starting maximal batch size, required to find correct beam
 
       bool dropHyp = !dropBatchEntries.empty() && dropBatchEntries[origBatchIdx] && factorGroup == 0;
-      
+
       WordIndex wordIdx;
       if(dropHyp) { // if we force=drop the hypothesis, assign EOS, otherwise the expected word id.
         if(factoredVocab) { // when using factoredVocab, extract the EOS lemma index from the word id, we predicting factors one by one here, hence lemma only
           std::vector<size_t> eosFactors;
           factoredVocab->word2factors(factoredVocab->getEosId(), eosFactors);
           wordIdx = (WordIndex)eosFactors[0];
-        } else { // without factoredVocab lemma index and word index are the same. Safe cruising. 
+        } else { // without factoredVocab lemma index and word index are the same. Safe cruising.
           wordIdx = trgVocab_->getEosId().toWordIndex();
         }
       } else { // we are not dropping anything, just assign the normal index
@@ -90,9 +90,9 @@ public:
       }
 
       // @TODO: We currently assign a log probability of 0 to all beam entries of the dropped batch entry, instead it might be a good idea to use
-      // the per Hyp pathScore without the current expansion (a bit hard to obtain). 
-      // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better. 
-      // For the empty hyp this would naturally result in 0, too. 
+      // the per Hyp pathScore without the current expansion (a bit hard to obtain).
+      // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better.
+      // For the empty hyp this would naturally result in 0, too.
       const float pathScore = dropHyp ? 0.f : nBestPathScores[i]; // 0 (Prob = 1, maximum score) if dropped or expanded path score for (batchIdx, beamHypIdx, word)
 
       const auto& beam = beams[origBatchIdx];
@@ -102,7 +102,7 @@ public:
         continue;
       if(pathScore == INVALID_PATH_SCORE) // (dummy slot or word that cannot be expanded by current factor)
         continue;
-      
+
       ABORT_IF(pathScore < INVALID_PATH_SCORE, "Actual pathScore ({}) is lower than INVALID_PATH_SCORE ({})??", pathScore, INVALID_PATH_SCORE); // This should not happen in valid situations. Currently the only smaller value would be -inf (effect of overflow in summation?)
       ABORT_IF(beamHypIdx >= beam.size(), "Out of bounds beamHypIdx??"); // effectively this is equivalent to ABORT_IF(beams[origBatchIdx].empty(), ...)
 
@@ -306,6 +306,8 @@ public:
       states.push_back(scorer->startState(graph, batch));
     }
 
+    const auto srcEosId = batch->front()->vocab()->getEosId();
+
     // create one beam per batch entry with sentence-start hypothesis
     Beams beams(origDimBatch, Beam(beamSize_, Hypothesis::New())); // array [origDimBatch] of array [maxBeamSize] of Hypothesis, keeps full size through search.
                                                                    // batch purging is determined from an empty sub-beam.
@@ -319,9 +321,18 @@ public:
       auto& beam = beams[origBatchIdx];
       histories[origBatchIdx]->add(beam, trgEosId); // add beams with start-hypotheses to traceback grid
 
-      // Mark batch entries that consist only of source <EOS> i.e. these are empty lines. They will be forced to EOS and purged from batch
-      const auto& srcEosId = batch->front()->vocab()->getEosId();
-      const_cast<std::vector<bool>&>(emptyBatchEntries).push_back(batch->front()->data()[origBatchIdx] == srcEosId); // const_cast during construction
+      // Handle batch entries that consist only of source <EOS> i.e. these are empty lines
+      if(batch->front()->data()[origBatchIdx] == srcEosId) {
+        // create a target <EOS> hypothesis that extends the start-hypothesis
+        auto eosHyp = Hypothesis::New(/*prevHyp=*/    beam[0],
+                                      /*currWord=*/   trgEosId,
+                                      /*prevHypIdx=*/ 0,
+                                      /*pathScore=*/  0.f);
+        auto eosBeam = Beam(beamSize_, eosHyp);      // create a dummy beam filled with <EOS>-hyps
+        histories[origBatchIdx]->add(eosBeam, trgEosId); // push dummy <EOS>-beam to traceback grid
+        beam.clear(); // Zero out current beam, so it does not get used for further symbols as empty beams get omitted everywhere.
+                      // The corresponding neural states will be purged further down.
+      }
     }
 
     // determine index of UNK in the log prob vectors if we want to suppress it in the decoding process
@@ -506,7 +517,6 @@ public:
                        states,    // used for keeping track of per-ensemble-member path score
                        batch,     // only used for propagating alignment info
                        factoredVocab, factorGroup,
-                       emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
                        batchIdxMap); // used to create a reverse batch index map to recover original batch indices for this step
       } // END FOR factorGroup = 0 .. numFactorGroups-1
 

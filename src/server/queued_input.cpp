@@ -1,5 +1,5 @@
-#include "data/text_input.h"
 #include "common/utils.h"
+#include "data/text_input.h"
 #include "queued_input.h"
 #include <ctime>
 
@@ -52,7 +52,7 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
       for(size_t i = 0; i < snt.size(); ++i) {
         Words words = vocabs_[i]->encode(snt[i],true,inference_);
         if(words.empty())
-          words.push_back(DEFAULT_EOS_ID);
+          words.push_back(Word::DEFAULT_EOS_ID);
         tup.push_back(words);
       }
       // auto lapsed = float(std::clock()-start)/CLOCKS_PER_SEC;

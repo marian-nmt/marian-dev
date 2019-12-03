@@ -37,7 +37,7 @@ public:
 
   size_t size() const { return history_.size(); } // number of time steps
 
-  NBestList nBest(size_t n) const {
+  NBestList nBest(size_t n, bool skip_empty = false) const {
     NBestList nbest;
     for (auto topHypsCopy = topHyps_; nbest.size() < n && !topHypsCopy.empty(); topHypsCopy.pop()) {
       auto bestHypCoord = topHypsCopy.top();
@@ -48,7 +48,8 @@ public:
 
       // trace back best path
       Words targetWords = bestHyp->tracebackWords();
-
+      if (skip_empty && targetWords.size() == 0)
+        continue; // skip empty translation
       // note: bestHyp->getPathScore() is not normalized, while bestHypCoord.normalizedPathScore is
       nbest.emplace_back(targetWords, bestHyp, bestHypCoord.normalizedPathScore);
     }

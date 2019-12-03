@@ -87,7 +87,7 @@ public:
   {
     // auto starttime = clock();
     history = h;
-    auto nbest_histories = h->NBest(nbestlist_size,true);
+    auto nbest_histories = h->nBest(nbestlist_size,true);
     for (auto& hyp: nbest_histories) {
       auto& snt = std::get<0>(hyp);
       if (R2L) std::reverse(snt.begin(), snt.end());

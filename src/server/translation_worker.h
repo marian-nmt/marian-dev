@@ -51,8 +51,8 @@ private:
   bool keep_going_{true};
 
   void init_() {
-    bool optimize = options_->get<bool>("optimize");
-    graph_ = New<ExpressionGraph>(true, optimize);
+    // bool optimize = options_->get<bool>("optimize");
+    graph_ = New<ExpressionGraph>(true); //, optimize);
     graph_->setDevice(device_);
     graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
@@ -76,13 +76,10 @@ private:
     keep_going_ = true;
     while(keep_going_) { // will be set to false by stop()
       data::BatchGenerator<data::QueuedInput> bgen(job_queue_, options_);
-      bgen.prepare(false);
-      // size_t i = 0;
-      auto eos_id = vocabs_.back()->getEosId();
-      auto unk_id = vocabs_.back()->getUnkId();
+      bgen.prepare();
       auto trgVocab = vocabs_.back();
       for (auto b: bgen) {
-        auto search = New<Search>(options_, scorers_, eos_id, unk_id);
+        auto search = New<Search>(options_, scorers_, trgVocab);
         auto histories = search->search(graph_, b);
         for (auto h: histories)
           callback_(h);

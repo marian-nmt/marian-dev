@@ -96,7 +96,7 @@ private:
     JobEntry entry;
     { // remove the job / promise pair from the pool of scheduled jobs
       std::lock_guard<std::mutex> lock(lock_);
-      auto m = scheduled_jobs_.find(h->GetLineNum());
+      auto m = scheduled_jobs_.find(h->getLineNum());
       if (m == scheduled_jobs_.end()) return; // job was cancelled (not yet implemented)
       entry = std::move(m->second);
       scheduled_jobs_.erase(m);

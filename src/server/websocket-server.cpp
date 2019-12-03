@@ -12,7 +12,6 @@
 
 #include "3rd_party/simple-websocket-server/server_ws.hpp"
 #include "3rd_party/threadpool.h"
-// #include "3rd_party/rapidjson/include/rapid"
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"

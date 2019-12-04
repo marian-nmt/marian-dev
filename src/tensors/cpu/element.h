@@ -99,7 +99,7 @@ void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors
 
   if(div8) {
     // std::cerr << "8: " << functor.to_string() << std::endl;
-#ifdef USE_AVX
+#ifndef NO_AVX
     element<float32x8>(functor, out, tensors...);
     return;
 #endif

@@ -38,7 +38,7 @@ public:
   ValidatorBase(bool lowerIsBetter) : lowerIsBetter_(lowerIsBetter), lastBest_{initScore()} {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                         const TrainingState& state) = 0;
+                         Ptr<const TrainingState> state) = 0;
   virtual std::string type() = 0;
 
   float lastBest() { return lastBest_; }
@@ -85,7 +85,7 @@ protected:
 public:
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                         const TrainingState& ) override {
+                         Ptr<const TrainingState> /*ignored*/) override {
     for(auto graph : graphs)
       graph->setInference(true);
 
@@ -179,7 +179,7 @@ public:
   ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                         const TrainingState& /*ignored*/) override;
+                         Ptr<const TrainingState> /*ignored*/) override;
 
   std::string type() override { return "valid-script"; }
 
@@ -195,7 +195,7 @@ public:
   TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                         const TrainingState& state) override;
+                         Ptr<const TrainingState> state) override;
 
   std::string type() override { return "translation"; }
 
@@ -214,7 +214,7 @@ public:
   BleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool detok = false);
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                         const TrainingState& state) override;
+                         Ptr<const TrainingState> state) override;
 
   // @TODO: why do we return this string, but not pass it to the constructor?
   std::string type() override { return detok_ ? "bleu-detok" : "bleu"; }

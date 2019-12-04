@@ -76,7 +76,7 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
   E<0>::element(functor, gTensors, indices);
 }
 
-// Dispatch elementwise functions with float element type based on number of 
+// Dispatch elementwise functions with float element type based on number of
 // elements. If dividable by 8 and AVX2 is available (TODO: check this?) use
 // AVX2 specific intrinsics. Similar for 4 and AVX. TODO: Add AVX512 support.
 template <class Functor, class... Tensors>
@@ -99,7 +99,7 @@ void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors
 
   if(div8) {
     // std::cerr << "8: " << functor.to_string() << std::endl;
-#ifdef __AVX__
+#ifdef USE_AVX
     element<float32x8>(functor, out, tensors...);
     return;
 #endif

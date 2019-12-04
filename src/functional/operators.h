@@ -322,7 +322,7 @@ struct Ops<float32x4> {
 
 } // end namespace functional
 } // end namespace marian
-#ifdef __AVX__
+#ifdef USE_AVX
 #include "3rd_party/avx_mathfun.h"
 
 namespace marian {

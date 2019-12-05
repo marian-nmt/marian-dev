@@ -241,7 +241,7 @@ void CorpusBase::addWeightsToSentenceTuple(const std::string& line, SentenceTupl
   if(!elements.empty()) {
     std::vector<float> weights;
     for(auto& e : elements) {
-      if(maxLengthCrop_ && weights.size() > maxLength_)
+      if(maxLengthCrop_ && weights.size() >= maxLength_)
         break;
       weights.emplace_back(std::stof(e));
     }

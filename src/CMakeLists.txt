@@ -236,7 +236,9 @@ if (COMPILE_WEBSOCKET_SERVER)
   add_executable(websocket-server server/websocket-server.cpp)
   set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
   target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
-  target_link_libraries(websocket-server marian marian-service amqpcpp ev ssplit pcre pcrecpp)
+  # TODO: use of static vs shared pcre and pcrecpp libraries should depend on USE_STATIC_LIBS,
+  # but I couldn't get that to work.
+  target_link_libraries(websocket-server marian marian-service amqpcpp ev ssplit pcrecpp.a pcre.a)
   set(EXECUTABLES ${EXECUTABLES} websocket-server)
 endif(COMPILE_WEBSOCKET_SERVER)
 
@@ -245,7 +247,9 @@ if (COMPILE_AMQP_WORKER)
   set_target_properties(amqp-worker PROPERTIES OUTPUT amqp-worker)
   target_compile_options(amqp-worker PUBLIC ${ALL_WARNINGS})
   set(EXECUTABLES ${EXECUTABLES} amqp-worker)
-  target_link_libraries(amqp-worker marian marian-service amqpcpp ev ssplit pcre pcrecpp)
+  # TODO: use of static vs shared pcre and pcrecpp libraries should depend on USE_STATIC_LIBS,
+  # but I couldn't get that to work.
+  target_link_libraries(amqp-worker marian marian-service amqpcpp ev ssplit pcrecpp.a pcre.a)
 endif(COMPILE_AMQP_WORKER)
 
 if (COMPILE_REST_SERVER)
@@ -253,7 +257,9 @@ if (COMPILE_REST_SERVER)
   set_target_properties(rest-server PROPERTIES OUTPUT rest-server)
   target_compile_options(rest-server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
   set(EXECUTABLES ${EXECUTABLES} rest-server)
-  target_link_libraries(rest-server marian marian-service ssplit pcre pcrecpp)
+  # TODO: use of static vs shared pcre and pcrecpp libraries should depend on USE_STATIC_LIBS,
+  # but I couldn't get that to work.
+  target_link_libraries(rest-server marian marian-service ssplit pcrecpp.a pcre.a)
 endif(COMPILE_REST_SERVER)
 
 

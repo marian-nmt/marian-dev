@@ -25,7 +25,7 @@ if( WIN32 )
 else (WIN32)
 
  FIND_LIBRARY( PCRE_LIBRARY
-               NAMES pcrecpp
+               NAMES pcrecpp.a pcrecpp
                PATHS /lib /usr/lib /usr/local/lib )
 
 endif( WIN32)

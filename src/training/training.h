@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/config.h"
+#include "common/utils.h"
 #include "data/batch_generator.h"
 #ifndef _MSC_VER // @TODO: include SqLite in Visual Studio project
 #include "data/corpus_sqlite.h"
@@ -48,7 +49,7 @@ public:
       auto model = New<ModelWrapper>(options_, mpi);
       model->setScheduler(scheduler); // collectStats() needs to know about dynamic MB scaling
       stats = model->collectStats(dataset->getVocabs());
-      LOG(info, "[batching] Done. Typical MB size is {} target words", stats->estimateTypicalTrgWords());
+      LOG(info, "[batching] Done. Typical MB size is {} target words", utils::withCommas(stats->estimateTypicalTrgWords()));
     }
 
     if((options_->hasAndNotEmpty("valid-sets") || options_->hasAndNotEmpty("valid-script-path"))

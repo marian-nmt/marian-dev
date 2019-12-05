@@ -139,7 +139,7 @@ class FakeMPIWrapper : public IMPIWrapper
 {
 public:
   FakeMPIWrapper(bool) {
-    LOG(warn, "Compiled without MPI support. Falling back to FakeMPIWrapper");
+    LOG(debug, "[comm] Compiled without MPI support. Falling back to FakeMPIWrapper");
   }
 
   virtual size_t myMPIRank() const override { return 0; };

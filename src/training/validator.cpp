@@ -355,13 +355,8 @@ float TranslationValidator::validate(const std::vector<Ptr<ExpressionGraph>>& gr
 
   if(options_->hasAndNotEmpty("valid-translation-output")) {
     fileName = options_->get<std::string>("valid-translation-output");
-    // The formatting below uses fmtlib, which is included with spdlog
-    // and is included via the logger.
-    fileName = fmt::format(fileName.c_str(),
-                           fmt::arg("E", state->epochs),
-                           fmt::arg("U", state->batches),
-                           fmt::arg("B", state->batchesEpoch),
-                           fmt::arg("T", state->labelsTotal));
+    // fileName can be a template with fields for training state parameters:
+    fileName = state->fillTemplate(fileName);
   } else {
     tempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
     fileName = tempFile->getFileName();
@@ -465,7 +460,7 @@ BleuValidator::BleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> option
 }
 
 float BleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                              Ptr<const TrainingState> /*ignored*/) {
+                              Ptr<const TrainingState> state) {
   using namespace data;
 
   // Generate batches
@@ -505,6 +500,8 @@ float BleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
     Ptr<OutputCollector> collector;
     if(options_->hasAndNotEmpty("valid-translation-output")) {
       auto fileName = options_->get<std::string>("valid-translation-output");
+      // fileName can be a template with fields for training state parameters:
+      fileName = state->fillTemplate(fileName);
       collector = New<OutputCollector>(fileName);  // for debugging
     } else {
       collector = New<OutputCollector>(/* null */);  // don't print, but log

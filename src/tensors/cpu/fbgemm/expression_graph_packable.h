@@ -20,7 +20,7 @@ public:
 
   // Convert model weights into packed format and save to IO items.
   // @TODO: review this
-  void packAndSave(const std::string& name, const std::string& meta, std::string& saveGemmType, Type saveElementType = Type::float32) {
+  void packAndSave(const std::string& name, const std::string& meta, Type gemmElementType = Type::float32, Type saveElementType = Type::float32) {
     std::vector<io::Item> ioItems;
 
     // sorted by name in std::map
@@ -34,13 +34,11 @@ public:
 
       Tensor val = p.second->val();
 
-#if USE_FBGEMM
       // save as packed format
       // @TODO Hardcoded to find packable weights - all the weights used for affine op (fp16), all the weights used for affine op and dot op (int8)
-      if (saveGemmType == "int8packed" && (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2))
-      {
+      if (gemmElementType == Type::packed8 && (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2)) {
+  #if USE_FBGEMM
         using namespace marian::cpu::variant;
-
         // packing information - size
         int nrow;
         int ncol;
@@ -68,7 +66,7 @@ public:
         io::Item item;
         item.name = pName;
         item.shape = val->shape();
-        item.type = Type::packed8;
+        item.type = gemmElementType;
 
         // Use the actual memory as this will be aligned and padded.
         // When memory mapping this is required. Shape keeps track of
@@ -78,9 +76,11 @@ public:
         copy(backend_, mem->data<char>(), mem->data<char>() + mem->size(), item.bytes.data());
 
         ioItems.emplace_back(std::move(item));
-
-      } else if (saveGemmType == "fp16packed" && pName.find("_W") == pName.length() - 3)
-      {
+#else
+        ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
+#endif
+      } else if (gemmElementType == Type::packed16 && pName.find("_W") == pName.length() - 3) {
+#if USE_FBGEMM
         using namespace marian::cpu::variant;
 
         // packing information
@@ -120,7 +120,7 @@ public:
         io::Item item;
         item.name = pName;
         item.shape = val->shape();
-        item.type = Type::packed16;
+        item.type = gemmElementType;
 
         // Use the actual memory as this will be aligned and padded.
         // When memory mapping this is required. Shape keeps track of
@@ -130,9 +130,10 @@ public:
         copy(backend_, mem->data<char>(), mem->data<char>() + mem->size(), item.bytes.data());
 
         ioItems.emplace_back(std::move(item));
-      } else
-#endif  // USE_FBGEMM
-      {
+#else
+        ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
+#endif
+      } else {
         io::Item item;
         val->get(item, pName);
         item.convert(saveElementType);

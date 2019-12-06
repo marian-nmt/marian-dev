@@ -191,7 +191,7 @@ public:
     groupEnd();
 
     mpiBarrier(); // (synchronize the log messages)
-    LOG(debug, "[comm] NCCLCommunicator constructed successfully");
+    LOG(info, "[comm] NCCLCommunicator constructed successfully");
     mpiBarrier(); // (synchronize the log messages)
   }
 

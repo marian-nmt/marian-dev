@@ -38,7 +38,7 @@ Ptr<ICommunicator> createCommunicator(
   }
 
   // the actual implementation is inside communicator.cu
-  return New<NCCLCommunicator>(graphs, mpi); 
+  return New<NCCLCommunicator>(graphs, mpi);
 #else // no CUDA or no NCCL
   noNccl; // (unused)
   return New<DefaultCommunicator>(graphs, mpi);
@@ -139,7 +139,7 @@ class FakeMPIWrapper : public IMPIWrapper
 {
 public:
   FakeMPIWrapper(bool) {
-    LOG(debug, "[comm] Compiled without MPI support. Falling back to FakeMPIWrapper");
+    LOG(info, "[comm] Compiled without MPI support. Running as a single process on {}", utils::hostnameAndProcessId().first);
   }
 
   virtual size_t myMPIRank() const override { return 0; };

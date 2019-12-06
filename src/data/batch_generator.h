@@ -66,10 +66,10 @@ protected:
   Ptr<Options> options_;
   bool restored_{false};
 
-  // replacing old shuffle_ with two variants that determine more fine-grained shuffling behavior. 
-  // Both set to false is equivalent to old shuffle_ == false. 
+  // replacing old shuffle_ with two variants that determine more fine-grained shuffling behavior.
+  // Both set to false is equivalent to old shuffle_ == false.
   // Now we can not shuffle the data, but shuffle batches. Useful for linear reading of very large data sets with pre-reading.
-  // Parameters like maxi-batch determine how much data is pre-read and sorted by length or other criteria. 
+  // Parameters like maxi-batch determine how much data is pre-read and sorted by length or other criteria.
   bool shuffleData_{false};    // determine if full data should be shuffled before reading and batching.
   bool shuffleBatches_{false}; // determine if batches should be shuffled after batching.
 
@@ -103,7 +103,7 @@ private:
     };
 
     auto cmpNone = [](const Sample& a, const Sample& b) { return a.getId() < b.getId(); }; // sort in order of original ids = original data order unless shuffling
-    
+
     typedef std::function<bool(const Sample&, const Sample&)> cmp_type;
     typedef std::priority_queue<Sample, Samples, cmp_type> sample_queue;
 
@@ -259,7 +259,7 @@ public:
                  Ptr<Options> options,
                  Ptr<BatchStats> stats = nullptr)
       : data_(data), options_(options), stats_(stats), threadPool_(1) {
-    auto shuffle = options_->get<std::string>("shuffle");
+    auto shuffle = options_->get<std::string>("shuffle", "none");
     shuffleData_ = shuffle == "data";
     shuffleBatches_ = shuffleData_ || shuffle == "batches";
   }

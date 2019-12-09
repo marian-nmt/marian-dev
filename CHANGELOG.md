@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - An option to print word-level translation scores
 - An option to turn off automatic detokenization from SentencePiece
+- Support for lexical shortlists in marian-server
 - Support for 8-bit matrix multiplication with FBGEMM
 - CMakeLists.txt now looks for SSE 4.2
 - Purging of finished hypotheses during beam-search. A lot faster for large batches.
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Gradient-checkpointing
 
 ### Fixed
+- Fixed compilation on CPUs without support for AVX
 - FastOpt now reads "n" and "y" values as strings, not as boolean values
 - Fixed multiple reduction kernels on GPU
 - Fixed guided-alignment training with cross-entropy

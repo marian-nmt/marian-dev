@@ -13,15 +13,28 @@ set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 # Custom CMake options
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
+option(COMPILE_EXAMPLES "Compile examples" OFF)
+option(COMPILE_SERVER "Compile marian-server" OFF)
+option(COMPILE_TESTS "Compile tests" OFF)
+option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
+option(USE_CUDNN "Use CUDNN library" OFF)
+option(USE_DOXYGEN "Build documentation with Doxygen" ON)
+option(USE_FBGEMM "Use FBGEMM" OFF)
+option(USE_MPI "Use MPI library" OFF)
+option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
-option(USE_CUDNN "Use CUDNN library" OFF)
-option(USE_NCCL "Use NCCL library" ON)
-option(USE_MPI "Use MPI library" OFF)
-option(COMPILE_EXAMPLES "Compile examples" OFF)
-option(COMPILE_TESTS "Compile tests" OFF)
-option(COMPILE_SERVER "Compile marian-server" ON)
-option(USE_FBGEMM "Use FBGEMM" ON)
+
+# use ccache (https://ccache.dev) for faster compilation if requested and available
+if(USE_CCACHE)
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+else(CCACHE_PROGRAM)
+  message(WARNING "Compilation with ccache requested but no ccache found.")
+endif(CCACHE_PROGRAM)
+endif(USE_CCACHE)
 
 # Project versioning
 find_package(Git QUIET)
@@ -66,32 +79,49 @@ if(MSVC)
   set(EXT_LIBS ${EXT_LIBS} SHLWAPI)
 else(MSVC)
 
+  # Check we are using at least g++ 5.0
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0)
+    message(FATAL_ERROR "FATAL ERROR: Compiling Marian requires at least g++ 5.0, your version is ${CMAKE_CXX_COMPILER_VERSION}")
+  endif()
+
   # Detect support CPU instrinsics for the current platform. This will
   # only by used with BUILD_ARCH=native. For overridden BUILD_ARCH we
   # minimally use -msse4.1. This seems to work with MKL.
   set(INTRINSICS "")
+  list(APPEND INTRINSICS_NVCC)
+
   if(BUILD_ARCH STREQUAL "native")
     message(STATUS "Checking support for CPU intrinsics")
     include(FindSSE)
     if(SSE2_FOUND)
       message(STATUS "SSE2 support found")
       set(INTRINSICS "${INTRINSICS} -msse2")
+      list(APPEND INTRINSICS_NVCC -Xcompiler\ -msse2)
     endif(SSE2_FOUND)
     if(SSE3_FOUND)
       message(STATUS "SSE3 support found")
       set(INTRINSICS "${INTRINSICS} -msse3")
+      list(APPEND INTRINSICS_NVCC -Xcompiler\ -msse3)
     endif(SSE3_FOUND)
     if(SSE4_1_FOUND)
       message(STATUS "SSE4.1 support found")
       set(INTRINSICS "${INTRINSICS} -msse4.1")
+      list(APPEND INTRINSICS_NVCC -Xcompiler\ -msse4.1)
     endif(SSE4_1_FOUND)
+    if(SSE4_2_FOUND)
+      message(STATUS "SSE4.2 support found")
+      set(INTRINSICS "${INTRINSICS} -msse4.2")
+      list(APPEND INTRINSICS_NVCC -Xcompiler\ -msse4.2)
+    endif(SSE4_2_FOUND)
     if(AVX_FOUND)
       message(STATUS "AVX support found")
       set(INTRINSICS "${INTRINSICS} -mavx")
+      list(APPEND INTRINSICS_NVCC -Xcompiler\ -mavx)
     endif(AVX_FOUND)
     if(AVX2_FOUND)
       message(STATUS "AVX2 support found")
       set(INTRINSICS "${INTRINSICS} -mavx2")
+      list(APPEND INTRINSICS_NVCC -Xcompiler\ -mavx2)
     endif(AVX2_FOUND)
     if(AVX512_FOUND)
       message(STATUS "AVX512 support found")
@@ -151,6 +181,8 @@ set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
 
 if(COMPILE_CUDA)
 
+LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61;)
+
 if(USE_STATIC_LIBS)
   # link statically to stdlib libraries
   set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
@@ -164,11 +196,15 @@ if(USE_STATIC_LIBS)
   endif()
 endif()
 
-find_package(CUDA "8.0")
+find_package(CUDA "9.0") # TODO: only enable FP16-related options for compute_70 and higher.
 if(CUDA_FOUND)
   # CUDA >= 10.0 requires CMake >= 3.12.2
   if((CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0") AND (CMAKE_VERSION VERSION_LESS "3.12.2"))
       message(WARNING "On some Unix systems CUDA 10.0+ requires CMake 3.12.2+; you use CMake ${CMAKE_VERSION}")
+  endif()
+
+  if(CUDA_VERSION VERSION_GREATER "8.0")
+    LIST(APPEND COMPUTE -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70)
   endif()
 
   if(USE_STATIC_LIBS)
@@ -216,21 +252,30 @@ if(CUDA_FOUND)
   endif()
 
 else(CUDA_FOUND)
-  message(FATAL_ERROR "CUDA has not been found, set -DCOMPILE_CUDA=off to avoid this check and to compile the CPU version only")
+  message("
+Cannot find suitable CUDA libraries. Specify the path explicitly with
+  -DCUDA_TOOLKIT_ROOT_DIR=/path/to/appropriate/cuda/installation
+   (hint: try /usr/local/$(readlink /usr/local/cuda))
+OR compile the CPU-only version of Marian with
+  -DCOMPILE_CUDA=off
+")
+  message(FATAL_ERROR "FATAL ERROR: No suitable CUDA library found.")
 endif(CUDA_FOUND)
 
 else(COMPILE_CUDA)
   message(WARNING "COMPILE_CUDA=off : Building only CPU version")
 endif(COMPILE_CUDA)
 
+# TODO: make compatible with older CUDA versions
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; -arch=sm_30; -gencode=arch=compute_30,code=sm_30; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_61,code=compute_61 ;)
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; --use_fast_math; ${COMPUTE})
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; -arch=sm_30; -gencode=arch=compute_30,code=sm_30; -gencode=arch=compute_50,code=sm_50; -gencode=arch=compute_52,code=sm_52; -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61; -gencode=arch=compute_61,code=compute_61 ;)
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; ${COMPUTE})
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
   # @TODO: add warnings here too
   list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
+  list(APPEND CUDA_NVCC_FLAGS ${INTRINSICS_NVCC})
 else()
   list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; )
 endif()
@@ -283,21 +328,14 @@ if(COMPILE_CPU)
   endif(MKL_FOUND)
 endif(COMPILE_CPU)
 
-set(BOOST_COMPONENTS timer iostreams filesystem system chrono)
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
-  add_definitions(-DUSE_BOOST_REGEX=1)
-  set(BOOST_COMPONENTS ${BOOST_COMPONENTS} regex)
-  message(STATUS "Using boost::regex")
-else()
-  message(STATUS "Using std::regex")
-endif()
-
+set(BOOST_COMPONENTS "")
 if(COMPILE_SERVER)
   find_package(OpenSSL)
   if(OpenSSL_FOUND)
     message(STATUS "Found OpenSSL")
     include_directories(${OPENSSL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${OPENSSL_CRYPTO_LIBRARY})
+    set(BOOST_COMPONENTS ${BOOST_COMPONENTS} system)
   else(OpenSSL_FOUND)
     message(WARNING "Cannot find OpenSSL library. Not compiling server.")
     set(COMPILE_SERVER "off")
@@ -312,14 +350,16 @@ if(USE_STATIC_LIBS)
   set(Boost_USE_STATIC_LIBS ON)
 endif()
 
-find_package(Boost COMPONENTS ${BOOST_COMPONENTS})
-if(Boost_FOUND)
-  include_directories(${Boost_INCLUDE_DIRS})
-  set(EXT_LIBS ${EXT_LIBS} ${Boost_LIBRARIES})
-  set(EXT_LIBS ${EXT_LIBS} ${ZLIB_LIBRARIES}) # hack for static compilation
-else(Boost_FOUND)
-  message(SEND_ERROR "Cannot find Boost libraries. Terminating.")
-endif(Boost_FOUND)
+if(BOOST_COMPONENTS)
+  find_package(Boost COMPONENTS ${BOOST_COMPONENTS})
+  if(Boost_FOUND)
+    include_directories(${Boost_INCLUDE_DIRS})
+    set(EXT_LIBS ${EXT_LIBS} ${Boost_LIBRARIES})
+    set(EXT_LIBS ${EXT_LIBS} ${ZLIB_LIBRARIES}) # hack for static compilation
+  else(Boost_FOUND)
+    message(SEND_ERROR "Cannot find Boost libraries. Terminating.")
+  endif(Boost_FOUND)
+endif(BOOST_COMPONENTS)
 
 if(COMPILE_TESTS)
   enable_testing()
@@ -337,7 +377,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
 
-
+if(USE_DOXYGEN)
 # Add a target to generate API documentation with Doxygen
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
@@ -346,7 +386,7 @@ if(DOXYGEN_FOUND)
   add_custom_target(doc
     ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Generating API documentation with Doxygen" VERBATIM
+   COMMENT "Generating API documentation with Doxygen" VERBATIM
   )
 endif(DOXYGEN_FOUND)
-
+endif(USE_DOXYGEN)

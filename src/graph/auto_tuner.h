@@ -24,7 +24,6 @@ private:
   // the autotuner runs each algorithm at least this 'collectStatMax' number of times and
   // collects the statistics.
   const size_t collectStatMax = 50;
-
   UPtr<timer::CPUTimer> timer_;
 
   // This structure holds a hash key an algorithm function (e.g. int16, packed gemm, mkl gemm)
@@ -99,17 +98,16 @@ public:
     if(stop && done_.count(hash) == 0) {
       timer_->stop();
 
-      typedef std::chrono::duration<double> sec;
-      sec seconds = std::chrono::nanoseconds(timer_->elapsed().user);
+      auto seconds = timer_->elapsed();
 
       auto it = stats_.find(hash);
       if(it != stats_.end()) {
         if(it->second.runs < collectStatMax) {
-          it->second.time += seconds.count();
+          it->second.time += seconds;
           it->second.runs += 1;
         }
       } else {
-        stats_.emplace(hash, Stat({seconds.count(), 1}));
+        stats_.emplace(hash, Stat({seconds, 1}));
       }
 
       timer_.reset(nullptr);

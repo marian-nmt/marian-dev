@@ -45,8 +45,8 @@ private:
 
     ABORT_IF(maxLines == 0, "Sample needs to be larger 0");
 
-    std::unique_ptr<io::InputFileStream> trainStrm(
-      trainPath == "stdin" ? new io::InputFileStream(std::cin)
+    std::unique_ptr<std::istream> trainStrm(
+			    trainPath == "stdin" ? new std::istream(std::cin.rdbuf())
                            : new io::InputFileStream(trainPath)
     );
 
@@ -80,9 +80,8 @@ private:
       reservoirSampling(sample, seenLines, trainPath, maxLines, maxBytes);
     std::shuffle(sample.begin(), sample.end(), generator_);
 
-    io::OutputFileStream out(temp);
     for(const auto& line : sample)
-        out << line << std::endl;
+        temp << line << std::endl;
 
     LOG(info, "[SentencePiece] Selected {} lines", sample.size());
     return sample.size();
@@ -96,12 +95,11 @@ private:
 
     size_t seenLines = 0;
     std::string line;
-    io::OutputFileStream out(temp);
     for(const auto& trainPath : trainPaths) {
       io::InputFileStream in(trainPath);
       while(getline(in, line)) {
         if(line.size() > 0 && line.size() < maxBytes) {
-          out << line << std::endl;
+          temp << line << std::endl;
           seenLines++;
         }
       }

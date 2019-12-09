@@ -47,6 +47,12 @@ namespace marian {
     std::map<std::string,std::set<std::string>> factorTypeMap; // [type name] -> {factor-type names}
     std::vector<std::string> deferredFactorVocab; // factor surface forms are presently expected to be at the end of factorVocab_, so collect them here first
     while(io::getline(in, line)) {
+#if 1 // workaround for a bug fix in FactoredSegmenter that made old .fsv files incompatible
+      if (line      == "\xef\xb8\x8f : _lemma _has_wb")         // old vocabs have a wrong factor in here
+        line         = "\xef\xb8\x8f : _lemma _has_gl _has_gr"; // patch it to the correct one
+      else if (line == "\xef\xb8\x8e : _lemma _has_wb")
+        line         = "\xef\xb8\x8e : _lemma _has_gl _has_gr";
+#endif
       utils::splitAny(line, tokBuf, " \t");
       if (tokBuf.empty() || tokBuf[0][0] == '#') // skip comments and blank lines
         continue;
@@ -617,10 +623,11 @@ std::string FactoredVocab::surfaceForm(const Words& sentence) const /*override f
     unescapeHexEscapes(lemma); // unescape \x.. and \u....
     if (utils::beginsWith(lemma, "\xE2\x96\x81"))  // remove leading _ (\u2581, for DistinguishInitialAndInternalPieces mode)
         lemma = lemma.substr(3);
-    if      (has("ci")) lemma = utils::utf8Capitalized(lemma);
-    else if (has("ca")) lemma = utils::utf8ToUpper    (lemma);
-    else if (has("cn")) lemma = utils::utf8ToLower    (lemma);
-    else                lemma =                        lemma ;
+    if      (has("ci"))  lemma = utils::utf8Capitalized(lemma);
+    else if (has("ca"))  lemma = utils::utf8ToUpper    (lemma);
+    else if (has("cn"))  lemma = utils::utf8ToLower    (lemma);
+    else if (has("scu")) lemma = utils::utf8ToUpper    (lemma);
+    else if (has("scl")) lemma = utils::utf8ToLower    (lemma);
     res.append(lemma);
   }
   //std::cerr << "\n" << res << "\n";

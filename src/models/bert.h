@@ -283,7 +283,7 @@ public:
                     .push_back(mlp::dense()                           //
                                  ("prefix", prefix_ + "_ff_logit_l1") //
                                  ("dim", dimModel)                    //
-                                 ("activation", mlp::act::tanh))      // @TODO: do we actually need this?
+                                 ("activation", (int)mlp::act::tanh))      // @TODO: do we actually need this?
                     .push_back(mlp::output()                          //
                                  ("dim", dimTrgCls))                  //
                                  ("prefix", prefix_ + "_ff_logit_l2") //
@@ -349,8 +349,8 @@ public:
     else
       ABORT("Activation function {} not supported in BERT masked LM", activationType);
 
-    auto gamma = graph->param(prefix_ + "_ff_ln_scale", {1, dimModel}, inits::ones);
-    auto beta  = graph->param(prefix_ + "_ff_ln_bias",  {1, dimModel}, inits::zeros);
+    auto gamma = graph->param(prefix_ + "_ff_ln_scale", {1, dimModel}, inits::ones());
+    auto beta  = graph->param(prefix_ + "_ff_ln_bias",  {1, dimModel}, inits::zeros());
     intermediate = layerNorm(intermediate, gamma, beta);
 
     auto layer2 = mlp::mlp()

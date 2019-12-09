@@ -13,7 +13,7 @@ namespace marian {
 
 class OutputPrinter {
 public:
-  OutputPrinter(Ptr<Options> options, Ptr<Vocab> vocab)
+  OutputPrinter(Ptr<const Options> options, Ptr<const Vocab> vocab)
       : vocab_(vocab),
         reverse_(options->get<bool>("right-left")),
         nbest_(options->get<bool>("n-best", false)
@@ -24,9 +24,10 @@ public:
         wordScores_(options->get<bool>("word-scores")) {}
 
   template <class OStream>
-  void print(Ptr<History> history, OStream& best1, OStream& bestn) {
+  void print(Ptr<const History> history, OStream& best1, OStream& bestn) {
     const auto& nbl = history->nBest(nbest_);
 
+    // prepare n-best list output
     for(size_t i = 0; i < nbl.size(); ++i) {
       const auto& result = nbl[i];
       const auto& hypo = std::get<1>(result);
@@ -85,7 +86,7 @@ public:
   }
 
 private:
-  Ptr<Vocab> vocab_;
+  Ptr<Vocab const> vocab_;
   bool reverse_{false};
   size_t nbest_{0};
   std::string alignment_;
@@ -93,9 +94,9 @@ private:
   bool wordScores_{false};
 
   // Get word alignment pairs
-  std::string getAlignment(const Ptr<Hypothesis>& hyp);
+  std::string getAlignment(const Hypothesis::PtrType& hyp);
   // Get word-level scores
-  std::string getWordScores(const Ptr<Hypothesis>& hyp);
+  std::string getWordScores(const Hypothesis::PtrType& hyp);
 
   float getAlignmentThreshold(const std::string& str) {
     try {

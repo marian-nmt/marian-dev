@@ -10,11 +10,48 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - An option to print word-level translation scores
 - An option to turn off automatic detokenization from SentencePiece
+- Support for 8-bit matrix multiplication with FBGEMM
+- CMakeLists.txt now looks for SSE 4.2
+- Purging of finished hypotheses during beam-search. A lot faster for large batches.
+- Faster option look-up, up to 20-30% faster translation
+- Added --cite and --authors flag
+- Added optional support for ccache
+- Switch to change abort to exception, only to be used in library mode
+- Support for 16-bit packed models with FBGEMM
+- Multiple separated parameter types in ExpressionGraph, currently inference-only
+- Safe handling of sigterm signal
+- Automatic vectorization of elementwise operations on CPU for tensors dims that 
+  are divisible by 4 (AVX) and 8 (AVX2)
+- Replacing std::shared_ptr<T> with custom IntrusivePtr<T> for small objects like 
+  Tensors, Hypotheses and Expressions.
+- Fp16 inference working for translation
+- Gradient-checkpointing
 
 ### Fixed
+- FastOpt now reads "n" and "y" values as strings, not as boolean values
+- Fixed multiple reduction kernels on GPU
+- Fixed guided-alignment training with cross-entropy
+- Replace IntrusivePtr with std::uniq_ptr in FastOpt, fixes random segfaults 
+  due to thread-non-safty of reference counting.
+- Make sure that items are 256-byte aligned during saving
+- Make explicit matmul functions respect setting of cublasMathMode
+- Fix memory mapping for mixed paramter models
+- Removed naked pointer and potential memory-leak from file_stream.{cpp,h}
+- Compilation for GCC >= 7 due to exception thrown in destructor
+- Sort parameters by lexicographical order during allocation to ensure consistent 
+  memory-layout during allocation, loading, saving.
 - Output empty line when input is empty line. Previous behavior might result in 
   hallucinated outputs.
 - Compilation with CUDA 10.1
+
+### Changed
+- Return error signal on SIGTERM
+- Dropped support for CUDA 8.0, CUDA 9.0 is now minimal requirement
+- Removed autotuner for now, will be switched back on later
+- Boost depdendency is now optional and only required for marian_server 
+- Dropped support for g++-4.9
+- Simplified file stream and temporary file handling
+- Unified node intializers, same function API.
 
 ## [1.8.0] - 2019-09-04
 

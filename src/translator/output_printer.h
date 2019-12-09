@@ -87,13 +87,13 @@ public:
 
 private:
   Ptr<Vocab const> vocab_;
-  bool reverse_{false};
-  size_t nbest_{0};
-  std::string alignment_;
-  float alignmentThreshold_{0.f};
-  bool wordScores_{false};
+  bool reverse_{false};            // If it is a right-to-left model that needs reversed word order
+  size_t nbest_{0};                // Size of the n-best list to print
+  std::string alignment_;          // A non-empty string indicates the type of word alignment
+  float alignmentThreshold_{0.f};  // Threshold for converting attention into hard word alignment
+  bool wordScores_{false};         // Whether to print word-level scores or not
 
-  // Get word alignment pairs
+  // Get word alignment pairs or soft alignment
   std::string getAlignment(const Hypothesis::PtrType& hyp);
   // Get word-level scores
   std::string getWordScores(const Hypothesis::PtrType& hyp);

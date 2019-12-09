@@ -42,7 +42,7 @@ public:
   float getPathScore() const { return pathScore_; }
 
   const std::vector<float>& getScoreBreakdown() { return scoreBreakdown_; }
-  void setScoreBreakdown(const std::vector<float>& scoreBreaddown) { scoreBreakdown_ = scoreBreaddown; }
+  void setScoreBreakdown(const std::vector<float>& scoreBreakdown) { scoreBreakdown_ = scoreBreakdown; }
 
   const std::vector<float>& getAlignment() { return alignment_; }
   void setAlignment(const std::vector<float>& align) { alignment_ = align; };
@@ -57,7 +57,7 @@ public:
     return targetWords;
   }
 
-  // calculate word-level scores
+  // calculate word-level scores for each target word by de-aggregating the path score
   std::vector<float> tracebackWordScores() {
     std::vector<float> scores;
     // traverse hypotheses backward

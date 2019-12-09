@@ -42,6 +42,9 @@ public:
       if(!alignment_.empty())
         bestn << " ||| " << getAlignment(hypo);
 
+      if(wordScores_)
+        bestn << " ||| WordScores=" << getWordScores(hypo);
+
       bestn << " |||";
       if(hypo->getScoreBreakdown().empty()) {
         bestn << " F0=" << hypo->getPathScore();
@@ -50,9 +53,6 @@ public:
           bestn << " F" << j << "= " << hypo->getScoreBreakdown()[j];
         }
       }
-
-      if(wordScores_)
-        bestn << " WordScores=" << getWordScores(hypo);
 
       float realScore = std::get<2>(result);
       bestn << " ||| " << realScore;

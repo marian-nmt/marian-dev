@@ -14,3 +14,6 @@
 	path = src/3rd_party/fbgemm
 	url = https://github.com/marian-nmt/FBGEMM
 	branch = master
+[submodule "src/3rd_party/intgemm"]
+	path = src/3rd_party/intgemm
+	url = https://github.com/kpu/intgemm/

@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
   auto graph = New<ExpressionGraphPackable>();
   graph->setDevice(CPU0);
   graph->getBackend()->setOptimized(false);
+  graph->getBackend()->setOptimized8(false);
 
   graph->load(modelFrom);
   graph->forward();

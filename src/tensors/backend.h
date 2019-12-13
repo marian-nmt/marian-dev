@@ -32,6 +32,8 @@ public:
   // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
   virtual void setOptimized(bool optimize) = 0;
   virtual bool isOptimized() = 0;
+  virtual void setOptimized8(bool optimize) = 0;
+  virtual bool isOptimized8() = 0;
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

@@ -54,8 +54,16 @@ public:
   void setOptimized(bool optimize) override {
     LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
   }
-  
+
   bool isOptimized() override {
+    return false;
+  }
+
+  void setOptimized8(bool optimize) override {
+    LOG_ONCE(info, "setOptimized8() not supported for GPU_{}", optimize);
+  }
+
+  bool isOptimized8() override {
     return false;
   }
 

@@ -79,6 +79,10 @@ public:
         graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
       }
 
+      if (device.type == DeviceType::cpu) {
+        graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
+      }
+
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
     }

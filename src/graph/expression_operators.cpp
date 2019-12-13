@@ -424,7 +424,13 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
+      if(a->graph()->getBackend()->isOptimized8()) {
+        ABORT("Optimized8 is not yet implemented");
+        return cpu::int16::dot(
+          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+          scale);
+      } else if(a->graph()->getBackend()->isOptimized()) {
         // dotInt16 computes A * B.T, hence the transpose for B to get A * B
         // if transA = false and transB = false.
 
@@ -500,7 +506,14 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
+      if(a->graph()->getBackend()->isOptimized8()) {
+        ABORT("Optimized8 is not yet implemented");
+        return cpu::int16::affine(
+          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+          bias,
+          scale);
+      } else if(a->graph()->getBackend()->isOptimized()) {
         // cpu int16 version
         return cpu::int16::affine(
           cpu::int16::quantize(transA ? transpose(a) : a, clipValue),

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "graph/node.h"
+#include "graph/node_operators_unary.h"
 #include "3rd_party/intgemm/intgemm.h"
 
 namespace marian {
@@ -71,16 +72,20 @@ float clipValue_;
 
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
-    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
+    ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
   }
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      intgemm::Int8::PrepareB(child(0)->val()->data(), /*input*/
-                              val_->data<int8_t>(), /*output*/
-                              *child(1)->val()->data(), /*Quant Mult*/
-                              rows(child(0)->val()),
-                              cols(child(0)->val()));
+      if (child(0)->type() == "int8SelectColumnsB") {
+        val_ = child(0)->val();
+      } else {
+        intgemm::Int8::PrepareB(child(0)->val()->data(), /*input*/
+                                val_->data<int8_t>(), /*output*/
+                                *child(1)->val()->data(), /*Quant Mult*/
+                                rows(child(0)->val()),
+                                cols(child(0)->val()));
+      }
     )};
   }
 
@@ -90,6 +95,58 @@ float clipValue_;
   }
 
   const std::string type() override { return "int8PrepareB"; }
+};
+
+struct SelectColumnsBNodeOp : UnaryNodeOp {
+public:
+  SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
+      : UnaryNodeOp(input, newShape(input, indices), Type::int8), indices_(indices) {
+    // Check if arguments are not null
+    ABORT_IF(child(0) == nullptr, "B cannot be null");
+
+    // Check number of selected columns
+    assert(indices.size() % 8 == 0);
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+
+      auto input = child(0)->val();
+      intgemm::Int8::SelectColumnsB(
+          input->data<int8_t>(),
+          val_->data<int8_t>(),
+          rows(input),
+          &*indices_.begin(),
+          &*indices_.end());
+    )};
+  }
+
+  const std::string type() override { return "int8SelectColumnsB"; }
+
+  size_t hash() override {
+    if (!hash_) {
+      hash_ = NaryNodeOp::hash();
+      for(auto i : indices_)
+        util::hash_combine(hash_, i);
+    }
+    return hash_;
+  }
+
+  bool equal(Expr node) override {
+    if(!UnaryNodeOp::equal(node)) return false;
+    auto cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
+    if (!cnode) return false;
+    return indices_ == cnode->indices_;
+  }
+
+private:
+  static Shape newShape(Expr a, const std::vector<uint_least32_t>& indices) {
+    Shape ret = a->shape();
+    ret.set(1, indices.size());
+    return ret;
+  }
+
+  std::vector<uint_least32_t> indices_;
 };
 
 class DotNodeOp : public NaryNodeOp {
@@ -210,6 +267,10 @@ static inline Expr prepareA(Expr a, Expr quantMult, float clipValue) {
 
 static inline Expr prepareB(Expr b, Expr quantMult, float clipValue) {
   return Expression<cpu::int8::PrepareBNodeOp>(b, quantMult, clipValue);
+}
+
+static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &cols) {
+  return Expression<SelectColumnsBNodeOp>(b, cols);
 }
 
 }  // namespace int8

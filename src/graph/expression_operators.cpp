@@ -7,6 +7,7 @@
 
 #include "graph/auto_tuner.h"
 #include "tensors/cpu/int16.h"
+#include "tensors/cpu/intgemm_interface.h"
 #include "tensors/cpu/fbgemm/expanded_gemm.h"
 
 #if USE_FBGEMM
@@ -425,10 +426,15 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized8()) {
-        ABORT("Optimized8 is not yet implemented");
-        return cpu::int16::dot(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+        auto aQuantMult = cpu::int8::quantMult(a);
+        auto bQuantMult = cpu::int8::quantMult(b);
+        auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
+        auto bQuant = cpu::int8::prepareB(transB ? b : transpose(b), bQuantMult, clipValue);
+        return cpu::int8::dot(
+          aQuant,
+          bQuant,
+          aQuantMult,
+          bQuantMult,
           scale);
       } else if(a->graph()->getBackend()->isOptimized()) {
         // dotInt16 computes A * B.T, hence the transpose for B to get A * B
@@ -507,10 +513,15 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized8()) {
-        ABORT("Optimized8 is not yet implemented");
-        return cpu::int16::affine(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+        auto aQuantMult = cpu::int8::quantMult(a);
+        auto bQuantMult = cpu::int8::quantMult(b);
+        auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
+        auto bQuant = cpu::int8::prepareB(transB ? b : transpose(b), bQuantMult, clipValue);
+        return cpu::int8::affine(
+          aQuant,
+          bQuant,
+          aQuantMult,
+          bQuantMult,
           bias,
           scale);
       } else if(a->graph()->getBackend()->isOptimized()) {

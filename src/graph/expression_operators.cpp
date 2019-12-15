@@ -429,7 +429,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
         auto aQuantMult = cpu::int8::quantMult(a);
         auto bQuantMult = cpu::int8::quantMult(b);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
-        auto bQuant = cpu::int8::prepareB(transB ? b : transpose(b), bQuantMult, clipValue);
+        auto bQuant = cpu::int8::prepareB(transpose(transB ? b : transpose(b)), bQuantMult, clipValue);
         return cpu::int8::dot(
           aQuant,
           bQuant,
@@ -516,7 +516,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         auto aQuantMult = cpu::int8::quantMult(a);
         auto bQuantMult = cpu::int8::quantMult(b);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
-        auto bQuant = cpu::int8::prepareB(transB ? b : transpose(b), bQuantMult, clipValue);
+        auto bQuant = cpu::int8::prepareB(transpose(transB ? b : transpose(b)), bQuantMult, clipValue);
         return cpu::int8::affine(
           aQuant,
           bQuant,

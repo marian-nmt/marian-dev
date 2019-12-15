@@ -98,15 +98,14 @@ float scalar_;
 
 public:
   DotNodeOp(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, float scalar)
-      : NaryNodeOp({a, b, aQuantMult, bQuantMult}, newShape(a, b), Type::float32), scalar_(scalar) {
+      : NaryNodeOp({a, b, aQuantMult, bQuantMult}, newShape(a, b), Type::float32), scalar_(scalar) {}
 
-        // Check if arguments are not null
-        ABORT_IF(child(0) == nullptr, "A cannot be null");
-        ABORT_IF(child(1) == nullptr, "B cannot be null");
-        ABORT_IF(child(2) == nullptr, "QuantMult of A cannot be null");
-        ABORT_IF(child(3) == nullptr, "QuantMult of B cannot be null");
-      }
-
+  Shape newShape(Expr a, Expr b) {
+    Shape result = a->shape();
+    result.set(-1, b->shape()[-1]);
+    return result;
+  }
+  /*
   Shape newShape(Expr a, Expr b) {
     auto shapeA = a->shape();
     auto shapeB = b->shape();
@@ -121,15 +120,15 @@ public:
              "matrix product requires dimensions to match");
     return outShape;
   }
-
+*/
   NodeOps forwardOps() override {
     return {NodeOp(
           float unquant_mult = 1.0f / (*child(2)->val()->data() * *child(3)->val()->data());
-          //unquant_mult = unquant_mult*scalar_;
+          unquant_mult = unquant_mult*scalar_;
           intgemm::Int8::Multiply(child(0)->val()->data<int8_t>(), /*A*/
                                   child(1)->val()->data<int8_t>(), /*B*/
                                    rows(child(0)->val()),
-                                   rows(child(1)->val()),
+                                   cols(child(0)->val()),
                                    cols(child(1)->val()),
                                    intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
     )};
@@ -149,16 +148,14 @@ private:
 
 public:
   AffineNodeOp(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, Expr Bias, float scalar)
-      : NaryNodeOp({a, b, aQuantMult, bQuantMult, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {
+      : NaryNodeOp({a, b, aQuantMult, bQuantMult, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {}
 
-        // Check if arguments are not null
-        ABORT_IF(child(0) == nullptr, "A cannot be null");
-        ABORT_IF(child(1) == nullptr, "B cannot be null");
-        ABORT_IF(child(2) == nullptr, "QuantMult of A cannot be null");
-        ABORT_IF(child(3) == nullptr, "QuantMult of B cannot be null");
-        ABORT_IF(child(4) == nullptr, "Bias cannot be null");
-      }
-
+  Shape newShape(Expr a, Expr b) {
+    Shape result = a->shape();
+    result.set(-1, b->shape()[-1]);
+    return result;
+  }
+/*
   Shape newShape(Expr a, Expr b) {
     auto shapeA = a->shape();
     auto shapeB = b->shape();
@@ -172,16 +169,16 @@ public:
     ABORT_IF(shapeA[-1] != shapeB[-2],
              "matrix product requires dimensions to match");
     return outShape;
-  }
+  }*/
 
   NodeOps forwardOps() override {
     return {NodeOp(
           float unquant_mult = 1.0f / (*child(2)->val()->data() * *child(3)->val()->data());
-          //unquant_mult = unquant_mult*scalar_;
+          unquant_mult = unquant_mult*scalar_;
           intgemm::Int8::Multiply(child(0)->val()->data<int8_t>(), /*A*/
                                   child(1)->val()->data<int8_t>(), /*B*/
                                    rows(child(0)->val()),
-                                   rows(child(1)->val()),
+                                   cols(child(0)->val()),
                                    cols(child(1)->val()),                                          /*child(4) is bias*/
                                    intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(4)->val()->data(), val_->data()));
     )};

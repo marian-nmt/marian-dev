@@ -19,7 +19,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      *val_->data() = intgemm::MaxAbsolute(child(0)->val()->data(),
+      *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(),
                          child(0)->val()->data() + child(0)->val()->shape().elements());
     )};
   }
@@ -98,7 +98,7 @@ float scalar_;
 
 public:
   DotNodeOp(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, float scalar)
-      : NaryNodeOp({a, b}, newShape(a, b), Type::float32), scalar_(scalar) {
+      : NaryNodeOp({a, b, aQuantMult, bQuantMult}, newShape(a, b), Type::float32), scalar_(scalar) {
 
         // Check if arguments are not null
         ABORT_IF(child(0) == nullptr, "A cannot be null");
@@ -124,7 +124,8 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-          float unquant_mult = scalar_ * (1 / (*child(2)->val()->data() * *child(3)->val()->data()));
+          float unquant_mult = 1.0f / (*child(2)->val()->data() * *child(3)->val()->data());
+          //unquant_mult = unquant_mult*scalar_;
           intgemm::Int8::Multiply(child(0)->val()->data<int8_t>(), /*A*/
                                   child(1)->val()->data<int8_t>(), /*B*/
                                    rows(child(0)->val()),
@@ -175,7 +176,8 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-          float unquant_mult = scalar_ * (1 / (*child(2)->val()->data() * *child(3)->val()->data()));
+          float unquant_mult = 1.0f / (*child(2)->val()->data() * *child(3)->val()->data());
+          //unquant_mult = unquant_mult*scalar_;
           intgemm::Int8::Multiply(child(0)->val()->data<int8_t>(), /*A*/
                                   child(1)->val()->data<int8_t>(), /*B*/
                                    rows(child(0)->val()),

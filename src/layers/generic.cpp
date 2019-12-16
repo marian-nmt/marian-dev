@@ -255,7 +255,7 @@ namespace marian {
       lazyConstruct(input->shape()[-1]);
 
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
-        if (graph_->isOptimized8() && graph_->getDeviceId().type == DeviceType::cpu) {
+        if (graph_->getBackend()->isOptimized8() && graph_->getDeviceId().type == DeviceType::cpu) {
           if (!isLegacyUntransposedW) {
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;

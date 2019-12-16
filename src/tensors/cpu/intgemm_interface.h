@@ -110,7 +110,6 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-
       auto input = child(0)->val();
       intgemm::Int8::SelectColumnsB(
           input->data<int8_t>(),

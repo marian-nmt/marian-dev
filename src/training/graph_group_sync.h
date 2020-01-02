@@ -39,6 +39,38 @@ class SyncGraphGroup : public GraphGroup, public ExponentialSmoothing {
   bool tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuff, std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches);
   void update(std::vector<Ptr<data::Batch>> subBatches, size_t numReadBatches);
 
+  // update cycle
+  size_t update_cycle_ = 1;
+  size_t iter_ = 0;
+  std::vector<Tensor> gradient_acc_;
+
+  void lazyInit() {
+    if(gradient_acc_.size() == 0) {
+      int totalSize = (int)graphs_[0]->params()->vals()->size();
+      int shardSize = (int)ceil(totalSize / (float)graphs_.size());
+
+      int pos = 0;
+      for(auto graph : graphs_) {
+        int __size__ = std::min(shardSize, totalSize);
+        //int __size__ = totalSize;
+
+        auto paramsAlloc = New<TensorAllocator>(graph->getBackend());
+        paramsAllocs_.push_back(paramsAlloc);
+
+        paramsAlloc->reserveExact(__size__ * sizeof(float));
+
+        Tensor tmp;
+
+        paramsAlloc->allocate(tmp, {1, __size__});
+        gradient_acc_.push_back(tmp);
+
+        // move to next shard
+        pos += __size__;
+        totalSize -= __size__;
+      }
+    }
+  }
+
 public:
   SyncGraphGroup(Ptr<Options> config, Ptr<IMPIWrapper> mpi);
 

@@ -503,6 +503,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Overlap model computations with MPI communication",
      true);
 
+  cli.add<size_t>("--update-cycle", "How many times of computing-gradient in each step.", 1);
+
   // add ULR settings
   addSuboptionsULR(cli);
 

@@ -28,6 +28,10 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> config, Ptr<IMPIWrapper> mpi)
     LOG(info, "[training] Using {} {}, distributed over {} MPI processes", mpi_->numMPIProcesses() * devices_.size(), formattedDeviceType, mpi_->numMPIProcesses());
   else
     LOG(info, "[training] Using {} {}", devices_.size(), formattedDeviceType);
+
+  // update cycle
+  update_cycle_ = options_->get<size_t>("update-cycle");
+  LOG(info, "[Training] Update Cycles:{}", update_cycle_);
 }
 
 void SyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) /*override*/ {
@@ -382,6 +386,13 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     auto curGrad = graphs_[idx]->params()->grads()->subtensor(begin, end-begin);
     auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
 
+    // update_cycle
+    if(update_cycle_ != 1) {
+      using namespace functional;
+      Element(_1 = _1 + _2, curGrad, gradient_acc_[idx]);
+      Element(_1 = _1 / (float)update_cycle_, curGrad);
+    }
+
     if(div != 1.f) {
       using namespace functional;
       Element(_1 = _1 / div, curGrad);   // average if overstuffed
@@ -408,16 +419,39 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   // model update
   if (std::isfinite(localLoss.loss) || mpi_->numMPIProcesses() > 1) { // guard against NaN (except with MPI, as this simple way could hang it)
-    comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices and MPI nodes into shards
-    comm_->foreach(update);              // per-shard model-update
-    comm_->allGatherParams();            // distribute param value shards back
+    if (iter_ == 0){
+      lazyInit();
+      comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices and MPI nodes into shards
+    }
+
+    if (update_cycle_ > 1 && (iter_ + 1) % update_cycle_){
+      // gradient_acc
+      auto gradient_acc_update = [&](size_t idx, size_t begin, size_t end) {
+          auto curGrad = graphs_[idx]->params()->grads()->subtensor(begin, end-begin);
+          if (!iter_)
+            gradient_acc_[idx]->copyFrom(curGrad);
+          else{
+            using namespace functional;
+            Element(_1 = _1 + _2, gradient_acc_[idx], curGrad);
+          }
+      };
+      comm_->foreach(gradient_acc_update);
+      iter_++;
+    }else{
+      // last iter
+      comm_->foreach(update);              // per-shard model-update
+      comm_->allGatherParams();            // distribute param value shards back
+      iter_ = 0;
+    }
+
   }
   else
     LOG(info, "[training] skipping {}-th update due to loss being {}", scheduler_->numberOfBatches(), localLoss.loss);
 
   if(scheduler_) {
+    bool islastiter = !((iter_ + 1) % update_cycle_);
     // track and log localLoss
-    scheduler_->update(localLoss, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
+    scheduler_->update(localLoss, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_, islastiter);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())

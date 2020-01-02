@@ -281,7 +281,8 @@ public:
               size_t numReadBatches, // number of batches read by the reader (for seeking in case of restart)
               size_t batchSize,      // total number of sentences in batch
               size_t batchLabels,    // total number of target words in batch
-              Ptr<IMPIWrapper> mpi = nullptr) {
+              Ptr<IMPIWrapper> mpi = nullptr,
+              bool IsLastIter = true) {
     state_->rememberPreviousProgress();  // note: epoch increases happen at the wrong place, hence
                                          // -freq parameters do not support epoch units
     state_->validated = false;
@@ -304,14 +305,19 @@ public:
     // @BUGBUG: rationalLoss.count is float, not a count
     state_->labelsTotal  += (size_t)rationalLoss.count; // total labels processed
 
-    state_->newUpdate(numReadBatches);
+    bool update_log = false;
+    if (IsLastIter)
+      state_->newUpdate(numReadBatches);
+    else if (options_->get<std::string>("disp-freq") == "1" || options_->get<std::string>("disp-freq") == "1u" )
+      update_log = true;
+
 
     // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
     auto lossType = options_->get<std::string>("cost-type");
     auto dispLabelCounts = options_->get<bool>("disp-label-counts");  // if true then show as "cost per label * number of labels"
 
     if(state_->enteredNewPeriodOf(options_->get<std::string>("disp-freq")) ||
-       state_->batches <= options_->get<size_t>("disp-first")) {
+       state_->batches <= options_->get<size_t>("disp-first") || update_log) {
       // if MPI then aggregate precise cost across workers
       if(mpi) {
         state_->costSum /= mpi->numMPIProcesses(); // undo the extra scaling

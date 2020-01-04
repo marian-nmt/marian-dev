@@ -260,6 +260,11 @@ static inline size_t operator&(TypeClass typeClass, Type type) {
   return (size_t)typeClass & (size_t)type;
 }
 
+static inline bool sameTypeClass(Type type1, Type type2) {
+  size_t classMask = 0xFF00;
+  return ((size_t)type1 & classMask) == ((size_t)type2 & classMask);
+}
+
 static inline size_t sizeOf(Type type) {
   return TypeClass::size_mask & type;
 }

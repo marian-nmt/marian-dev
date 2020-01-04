@@ -504,7 +504,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      true);
 
   // add ULR settings
-  addSuboptionsULR(cli);
+  // addSuboptionsULR(cli); @TODO: figure out if this should be here at all. Commenting out for now until someone complains, to-be-removed later.
 
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
@@ -749,29 +749,31 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
       "Sorting strategy for maxi-batch: none, src, trg (not available for decoder)",
       defaultMaxiBatchSort);
 
-  cli.add<bool>("--shuffle-in-ram",
-      "Keep shuffled corpus in RAM, do not write to temp file");
-  // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
-  cli.add<size_t>("--all-caps-every",
-      "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
-  cli.add<size_t>("--english-title-case-every",
-      "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
+  if(mode_ == cli::mode::training) {
+    cli.add<bool>("--shuffle-in-ram",
+        "Keep shuffled corpus in RAM, do not write to temp file");
+    // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
+    cli.add<size_t>("--all-caps-every",
+        "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
+    cli.add<size_t>("--english-title-case-every",
+        "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
 
-  cli.add<int>("--mini-batch-words-ref",
-      "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
-      "--learn-rate, --optimizer-params, --exponential-smoothing, --mini-batch-warmup");
-  cli.add<std::string/*SchedulerPeriod*/>("--mini-batch-warmup",
-      "Linear ramp-up of MB size, up to this #updates (append 't' for up to this #target labels). "
-      "Auto-adjusted to --mini-batch-words-ref if given",
-      {"0"});
-  cli.add<bool>("--mini-batch-track-lr",
-      "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
-  cli.add<size_t>("--mini-batch-overstuff",
-      "[experimental] Stuff this much more data into a minibatch, but scale down the LR and progress counter",
-      1);
-  cli.add<size_t>("--mini-batch-understuff",
-      "[experimental] Break each batch into this many updates",
-      1);
+    cli.add<int>("--mini-batch-words-ref",
+        "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
+        "--learn-rate, --optimizer-params, --exponential-smoothing, --mini-batch-warmup");
+    cli.add<std::string/*SchedulerPeriod*/>("--mini-batch-warmup",
+        "Linear ramp-up of MB size, up to this #updates (append 't' for up to this #target labels). "
+        "Auto-adjusted to --mini-batch-words-ref if given",
+        {"0"});
+    cli.add<bool>("--mini-batch-track-lr",
+        "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
+    cli.add<size_t>("--mini-batch-overstuff",
+        "[experimental] Stuff this much more data into a minibatch, but scale down the LR and progress counter",
+        1);
+    cli.add<size_t>("--mini-batch-understuff",
+        "[experimental] Break each batch into this many updates",
+        1);
+  }
   // clang-format on
 }
 

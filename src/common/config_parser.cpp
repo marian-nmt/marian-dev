@@ -504,7 +504,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      true);
 
   // add ULR settings
-  // addSuboptionsULR(cli); @TODO: figure out if this should be here at all. Commenting out for now until someone complains, to-be-removed later.
+  addSuboptionsULR(cli); 
 
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
@@ -638,8 +638,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      "Noise output layer with gumbel noise",
       false);
 
+#if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
   addSuboptionsULR(cli);
+#endif
 
   cli.switchGroup(previous_group);
   // clang-format on

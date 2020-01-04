@@ -498,6 +498,8 @@ public:
       if(pName.substr(0, 8) == "special:")
         continue;
       
+      // if during loading the loaded type is of the same type class as the default element type, allow conversion;
+      // otherwise keep the loaded type. This is used when e.g. loading a float32 model as a float16 model.
       auto loadElementType = sameTypeClass(item.type, defaultElementType_) ? defaultElementType_ : item.type;
       param(pName, item.shape, inits::fromItem(item), loadElementType, /*fixed=*/false);
     }

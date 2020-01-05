@@ -106,7 +106,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
 
     auto buildRnn = [&graph] (std::string prefix,
                               Expr input, Expr mask,
-                              int dimRnn=32,
+                              size_t dimRnn=32,
                               int depth=1,
                               int cellDepth=1,
                               std::string type="bidirectional",
@@ -114,7 +114,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
                               bool layerNorm=false,
                               bool skip=false) {
 
-      int dimEmb = input->shape()[-1];
+      size_t dimEmb = input->shape()[-1];
 
       int first, second;
       if(type == "bidirectional" || type == "alternating") {
@@ -211,9 +211,9 @@ void tests(DeviceType type, Type floatType = Type::float32) {
       return context;
     };
 
-    int dimEmb = 16;
-    int dimBatch = 4;
-    int dimTime = 8;
+    size_t dimEmb = 16;
+    size_t dimBatch = 4;
+    size_t dimTime = 8;
 
     auto emb = graph->param("Embeddings",
                             {128, dimEmb},
@@ -223,7 +223,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
     auto mask = graph->constant({dimTime, dimBatch, 1},
                                 inits::fromVector(vMask));
 
-    int dimRnn = 32;
+    size_t dimRnn = 32;
     auto context1 = buildRnn("enc1", input, mask, dimRnn);
     auto contextSum1 = sum(context1, /*axis*/2);
 

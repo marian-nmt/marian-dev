@@ -397,15 +397,15 @@ void tests(DeviceType device, Type floatType = Type::float32) {
       auto STxSxDd = dot(S, SxDd, /*transA=*/true);
       auto SxDs = csr_dot( // sparse x dense
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
-            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
+            graph->constant({SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({SO.size()}, inits::fromVector(SO), Type::uint32),
             D);
       auto STxSxDs = csr_dot(   // transpose(sparse) x dense; we use result of previous since dimensions match
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
-            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
+            graph->constant({SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({SO.size()}, inits::fromVector(SO), Type::uint32),
             SxDd, /*transS=*/true);
 
       auto DTxSTd   = dot(DT,     S, /*transA=*/false, /*transB=*/true);
@@ -413,16 +413,16 @@ void tests(DeviceType device, Type floatType = Type::float32) {
       auto DTxSTs = dot_csr( // dense x sparse
             DT,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
-            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
+            graph->constant({SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({SO.size()}, inits::fromVector(SO), Type::uint32),
             /*transS=*/true);
       auto DTxSTxSs = dot_csr( // dense x transpose(sparse)
             DTxSTd,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
-            graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
-            graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32));
+            graph->constant({SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({SI.size()}, inits::fromVector(SI), Type::uint32),
+            graph->constant({SO.size()}, inits::fromVector(SO), Type::uint32));
 
       CHECK(SxDs->shape() == SxDd->shape());
       CHECK(STxSxDs->shape() == STxSxDd->shape());

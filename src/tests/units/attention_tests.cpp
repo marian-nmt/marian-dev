@@ -57,9 +57,9 @@ void tests(DeviceType type, Type floatType = Type::float32) {
 
     std::vector<T> values;
 
-    int dimEmb = 16;
-    int dimBatch = 4;
-    int dimTime = 8;
+    size_t dimEmb = 16;
+    size_t dimBatch = 4;
+    size_t dimTime = 8;
 
     auto emb = graph->param("Embeddings",
                             {128, dimEmb},
@@ -92,7 +92,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
                   [](){ static int n = -32; return n++ / 64.f; });
 
     rnn::State state({graph->constant({1, 1, 4, 16},
-                                     inits::fromVector(vState)),
+                                      inits::fromVector(vState)),
                       nullptr});
 
     auto aligned = att->apply(state);

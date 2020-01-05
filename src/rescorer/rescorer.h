@@ -179,8 +179,8 @@ public:
               && id % 1000 == 0)  // hard beat once every 1000 batches
           {
             auto progress = id / 10000.f; //fake progress for now, becomes >100 after 1M batches
-            fprintf(stdout, "PROGRESS: %.2f%%\n", progress);
-            fflush(stdout);
+            fprintf(stderr, "PROGRESS: %.2f%%\n", progress);
+            fflush(stderr);
           }
         };
 

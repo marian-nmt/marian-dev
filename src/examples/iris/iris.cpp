@@ -17,7 +17,7 @@ Expr buildIrisClassifier(Ptr<ExpressionGraph> graph,
                          std::vector<IndexType> outputData = {},
                          bool train = false) {
   // The number of input data
-  int N = inputData.size() / NUM_FEATURES;
+  size_t N = inputData.size() / NUM_FEATURES;
 
   graph->clear();
 

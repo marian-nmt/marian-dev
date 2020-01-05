@@ -356,10 +356,10 @@ public:
     using namespace std::chrono;
     if((!mpi || mpi->myMPIRank() == 0) && getenv("PHILLY_JOB_ID")
        && heartBeatTimer_.elapsed<std::chrono::minutes>() >= 10) {
-      printf("PROGRESS: %.2f%%\nEVALERR: %.7f%%\n",
-          (double)state_->epochs,
-          state_->costSum / (state_->costCount ? state_->costCount : 1) / (mpi ? mpi->numMPIProcesses() : 1));
-      fflush(stdout);
+      fprintf(stderr, "PROGRESS: %.2f%%\nEVALERR: %.7f%%\n",
+              (double)state_->epochs,
+              state_->costSum / (state_->costCount ? state_->costCount : 1) / (mpi ? mpi->numMPIProcesses() : 1));
+      fflush(stderr);
       std::cout << "MBSIZE: " << batchLabels << " after " << state_->batches << " updates = " << state_->labelsTotal << " labels" << std::endl << std::flush;
       heartBeatTimer_.start();
     }

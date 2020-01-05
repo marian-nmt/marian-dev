@@ -24,12 +24,12 @@ int main(int argc, char** argv) {
   graph->setDevice({0, DeviceType::gpu});
   graph->reserveWorkspaceMB(128);
 
-  int dimBatch = 2;
-  int dimWord = 4;
-  int batchLength = 5;
-  int numLayers = 1;
+  size_t dimBatch = 2;
+  size_t dimWord = 4;
+  size_t batchLength = 5;
+  size_t numLayers = 1;
 
-  int elemNum = dimBatch * dimWord * batchLength * numLayers;
+  size_t elemNum = dimBatch * dimWord * batchLength * numLayers;
 
   std::vector<float> embData(elemNum);
   std::vector<float> embMask(elemNum);

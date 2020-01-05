@@ -534,7 +534,7 @@ public:
                              layer, // values
                              layerMask); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
       layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
-      checkpoint(layer);
+      checkpoint(layer); // sets a manually specified checkpoint if gradient checkpointing is enabled, does nothing otherwise.
     }
 
     // restore organization of batch and time steps. This is currently required

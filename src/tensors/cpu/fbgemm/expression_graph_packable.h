@@ -56,7 +56,7 @@ public:
 
         // buffer tensor to save packed matrix
         Tensor packedTensor;
-        allocator->allocate(packedTensor, { 1, (int32_t)packsize }, Type::uint8);
+        allocator->allocate(packedTensor, { 1, packsize }, Type::uint8);
 
         //Pack B matrix into int8
         fbgemmPacked8Pack(packedTensor,
@@ -105,7 +105,7 @@ public:
         auto allocator = New<TensorAllocator>(getBackend());
 
         Tensor packedTensor;
-        allocator->allocate(packedTensor, { 1, (int32_t)packsize }, Type::uint8);
+        allocator->allocate(packedTensor, { 1, packsize }, Type::uint8);
 
         // fbgemmPacked16Pack
         fbgemmPacked16Pack(packedTensor,

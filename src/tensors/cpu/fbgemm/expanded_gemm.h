@@ -114,7 +114,7 @@ struct FbgemmPacked16PackNodeOp : public UnaryNodeOp {
                            nbcol_,
                            packsize_);
 
-    Shape outShape({(int)packsize_});
+    Shape outShape({packsize_});
 
     return outShape;
 #else // USE_FBGEMM
@@ -183,7 +183,7 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
   Shape newShape(Expr a, bool transpose) {
 #if USE_FBGEMM
     fbgemmPacked8PackInfo(a->shape(), packType_, transpose, nrow_, ncol_, packsize_);
-    Shape outShape({(int)packsize_});
+    Shape outShape({packsize_});
 
     return outShape;
 #else // USE_FBGEMM

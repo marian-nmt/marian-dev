@@ -18,7 +18,7 @@ protected:
 
   std::vector<Ptr<TensorAllocator>> allocators;
 
-  Tensor newTensor(int size, Ptr<Backend> backend) {
+  Tensor newTensor(size_t size, Ptr<Backend> backend) {
     Tensor t;
     Ptr<TensorAllocator> allocator_ = New<TensorAllocator>(backend);
     allocator_->reserveExact(size * sizeof(float));

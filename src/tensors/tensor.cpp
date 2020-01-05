@@ -39,7 +39,7 @@ std::string TensorBase::debug(int precision, int dispCols) {
   strm << "min: " << minv << " max: " << maxv << " l2-norm: " << sqrt(l2Sum) << std::endl;
 
   for(int i = 0; i < values.size(); ++i) {
-    std::vector<int> dims;
+    std::vector<size_t> dims;
     shape().dims(i, dims);
 
     bool disp = true;

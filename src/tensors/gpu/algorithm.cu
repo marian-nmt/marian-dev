@@ -31,11 +31,11 @@ template void copy<double>(Ptr<Backend>, const double*, const double*, double*);
 // clang-format on
 
 template <typename T>
-__global__ void gFill(T* d_in, int size, T val) {
+__global__ void gFill(T* d_in, size_t size, T val) {
   //auto blocks = gridDim.x;
   auto threadsPerBlock = blockDim.x;
-  //for(int bid = 0; bid < size; bid += threadsPerBlock * blocks) {
-    int index = /*bid +*/ threadIdx.x + threadsPerBlock * blockIdx.x;
+  //for(size_t bid = 0; bid < size; bid += threadsPerBlock * blocks) {
+    size_t index = /*bid +*/ threadIdx.x + threadsPerBlock * blockIdx.x;
     if(index < size) {
       d_in[index] = val;
     }
@@ -44,25 +44,25 @@ __global__ void gFill(T* d_in, int size, T val) {
 
 template <typename T>
 void fill(Ptr<Backend> backend, T* begin, T* end, T value) {
-  int size = end - begin;
+  size_t size = end - begin;
   if (size == 0)
     return;
   CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
-  int threadsPerBlock = std::min(MAX_THREADS, size);
-  int blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
+  size_t threadsPerBlock = std::min(MAX_THREADS, size);
+  size_t blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
   gFill<<<blocks, threadsPerBlock>>>(begin, size, value);
   CUDA_CHECK(cudaStreamSynchronize(0));
 }
 
 template <>
 void fill<float16>(Ptr<Backend> backend, float16* begin, float16* end, float16 value) {
-  int size = end - begin;
+  size_t size = end - begin;
   if (size == 0)
     return;
 #if COMPILE_FP16
   CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
-  int threadsPerBlock = std::min(MAX_THREADS, size);
-  int blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
+  size_t threadsPerBlock = std::min(MAX_THREADS, size);
+  size_t blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
   gFill<<<blocks, threadsPerBlock>>>((__half*)begin, size, (__half)value);
   CUDA_CHECK(cudaStreamSynchronize(0));
 #else
@@ -94,9 +94,9 @@ void setSparse(Ptr<Backend> backend,
 }
 
 template <typename T>
-__global__ void gSwap(T* d_v1, T* d_v2, int size) {
+__global__ void gSwap(T* d_v1, T* d_v2, size_t size) {
   auto threadsPerBlock = blockDim.x;
-  int index = threadIdx.x + threadsPerBlock * blockIdx.x;
+  size_t index = threadIdx.x + threadsPerBlock * blockIdx.x;
   if(index < size) {
     T temp = d_v1[index];
     d_v1[index] = d_v2[index];
@@ -106,27 +106,27 @@ __global__ void gSwap(T* d_v1, T* d_v2, int size) {
 
 template <typename T>
 void swap_ranges(Ptr<Backend> backend, T* begin, T* end, T* dest) {
-  int size = end - begin;
+  size_t size = end - begin;
   if (size == 0)
     return;
 
   CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
-  int threadsPerBlock = std::min(MAX_THREADS, size);
-  int blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
+  size_t threadsPerBlock = std::min(MAX_THREADS, size);
+  size_t blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
   gSwap<<<blocks, threadsPerBlock>>>(begin, dest, size);
   CUDA_CHECK(cudaStreamSynchronize(0));
 }
 
 template <>
 void swap_ranges<float16>(Ptr<Backend> backend, float16* begin, float16* end, float16* dest) {
-  int size = end - begin;
+  size_t size = end - begin;
   if (size == 0)
     return;
 
 #if COMPILE_FP16
   CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
-  int threadsPerBlock = std::min(MAX_THREADS, size);
-  int blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
+  size_t threadsPerBlock = std::min(MAX_THREADS, size);
+  size_t blocks = (size / threadsPerBlock) + (size % threadsPerBlock != 0); // @TODO: (size+threadsPerBlock-1)/threadsPerBlock or CeilDiv(a,b)
   gSwap<<<blocks, threadsPerBlock>>>((__half*)begin, (__half*)dest, size);
   CUDA_CHECK(cudaStreamSynchronize(0));
 #else

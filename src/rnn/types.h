@@ -13,7 +13,7 @@ struct State {
   Expr cell;
 
   State select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
-               int beamSize, bool isBatchMajor) const {
+               size_t beamSize, bool isBatchMajor) const {
     return{ select(output, selIdx, beamSize, isBatchMajor),
             select(cell,   selIdx, beamSize, isBatchMajor) };
   }
@@ -21,19 +21,18 @@ struct State {
   // this function is also called by Logits
   static Expr select(Expr sel, // [beamSize, dimTime, dimBatch, dimDepth] or [beamSize, dimBatch, dimTime, dimDepth] (dimTime = 1 for RNN)
                      const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
-                     int beamSize, bool isBatchMajor)
-  {
+                     size_t beamSize, bool isBatchMajor) {
     if (!sel)
       return sel; // keep nullptr untouched
 
     sel = atleast_4d(sel);
 
-    int dimBatch = (int)selIdx.size() / beamSize;
-    int dimDepth = sel->shape()[-1];
-    int dimTime  = isBatchMajor ? sel->shape()[-2] : sel->shape()[-3];
+    size_t dimBatch = selIdx.size() / beamSize;
+    size_t dimDepth = sel->shape()[-1];
+    size_t dimTime  = isBatchMajor ? sel->shape()[-2] : sel->shape()[-3];
 
     ABORT_IF(dimTime != 1 && !isBatchMajor, "unexpected time extent for RNN state"); // (the reshape()/rows() trick won't work in this case)
-    int numCols = isBatchMajor ? dimDepth * dimTime : dimDepth;
+    size_t numCols = isBatchMajor ? dimDepth * dimTime : dimDepth;
     // @TODO: Can this complex operation be more easily written using index_select()?
     sel = reshape(sel, { sel->shape().elements() / numCols, numCols }); // [beamSize * dimBatch, dimDepth] or [beamSize * dimBatch, dimTime * dimDepth]
     sel = rows(sel, selIdx);
@@ -81,7 +80,7 @@ public:
 
   // create updated set of states that reflect reordering and dropping of hypotheses
   States select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
-                int beamSize, bool isBatchMajor) const {
+                size_t beamSize, bool isBatchMajor) const {
     States selected;
     for(auto& state : states_)
       selected.push_back(state.select(selIdx, beamSize, isBatchMajor));
@@ -136,7 +135,7 @@ public:
   CellInput(Ptr<Options> options) : Stackable(options) {}
 
   virtual Expr apply(State) = 0;
-  virtual int dimOutput() = 0;
+  virtual size_t dimOutput() = 0;
 };
 
 class RNN;
@@ -192,8 +191,8 @@ public:
       return outputs[0];
   }
 
-  virtual int dimOutput() override {
-    int sum = 0;
+  virtual size_t dimOutput() override {
+    size_t sum = 0;
     for(auto input : inputs_)
       sum += input->dimOutput();
     return sum;

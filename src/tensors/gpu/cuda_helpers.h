@@ -20,8 +20,8 @@
 
 // fixes a missing constant in CUDA device code
 #define CUDA_FLT_MAX 1.70141e+38; // note: 'static __constant__' causes a warning on gcc; non-static fails CUDA, so #define instead
-const int MAX_THREADS = 512;
-const int MAX_BLOCKS = 65535;
+const size_t MAX_THREADS = 512;
+const size_t MAX_BLOCKS = 65535;
 
 #define CUDA_CHECK(expr) do {                                                                      \
   cudaError_t rc = (expr);                                                                         \

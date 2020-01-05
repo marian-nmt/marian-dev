@@ -475,7 +475,7 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   // in the future when we explore better ways to handle this.
   float clipValue = a->graph()->getBackend()->getClip();
 
-  int rows = a->shape().elements() / a->shape()[-1];
+  size_t rows = a->shape().elements() / a->shape()[-1];
   Expr ones = a->graph()->ones({ rows, 1 });
   std::vector<Expr> nodes
     = { clip(a, clipValue), clip(b, clipValue), bias, ones };
@@ -614,8 +614,8 @@ Expr cross_entropy(Expr logits, Expr indices) {
 
 // Unlikelihood loss based on https://arxiv.org/abs/1908.04319
 Expr unlikelihood(Expr logits, Expr indices) {
-  int dimBatch = logits->shape()[-2];
-  int dimTime  = logits->shape()[-3];
+  size_t dimBatch = logits->shape()[-2];
+  size_t dimTime  = logits->shape()[-3];
 
   // @TODO: fix this outside of this function in decoder.h etc. 
   auto indicesWithLayout = reshape(indices, {1, dimTime, dimBatch, 1});

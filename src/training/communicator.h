@@ -97,12 +97,12 @@ private:
 
   void lazyInit() {
     if(tmpTensors_.size() == 0) {
-      int totalSize = (int)graphs_[0]->params()->vals()->size();
-      int shardSize = (int)ceil(totalSize / (float)graphs_.size());
+      size_t totalSize = graphs_[0]->params()->vals()->size();
+      size_t shardSize = ceil(totalSize / (float)graphs_.size());
 
-      int pos = 0;
+      size_t pos = 0;
       for(auto graph : graphs_) {
-        int __size__ = std::min(shardSize, totalSize);
+        size_t __size__ = std::min(shardSize, totalSize);
 
         auto paramsAlloc = New<TensorAllocator>(graph->getBackend());
         paramsAllocs_.push_back(paramsAlloc);
@@ -156,8 +156,8 @@ public:
   void scatterReduceAndResetGrads() const override {
     const_cast<DefaultCommunicator*>(this)->lazyInit();
 
-    int totalSize = (int)graphs_[0]->params()->vals()->size();
-    int shardSize = (int)ceil(totalSize / (float)graphs_.size());
+    size_t totalSize = graphs_[0]->params()->vals()->size();
+    size_t shardSize = (size_t)ceil(totalSize / (float)graphs_.size());
 
     // Gather gradients from different devices into current gradient shards
     auto scatter = [this, shardSize](size_t idx, size_t begin, size_t end) {
@@ -189,8 +189,8 @@ public:
   }
 
   void allGatherParams() const override {
-    int totalSize = (int)graphs_[0]->params()->vals()->size();
-    int shardSize = (int)ceil(totalSize / (float)graphs_.size());
+    size_t totalSize = (size_t)graphs_[0]->params()->vals()->size();
+    size_t shardSize = (size_t)ceil(totalSize / (float)graphs_.size());
 
     // Update all graphs with parameter shard
     auto gather = [this, shardSize](size_t idx, size_t begin, size_t end) {

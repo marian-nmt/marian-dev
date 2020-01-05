@@ -260,6 +260,7 @@ static inline size_t operator&(TypeClass typeClass, Type type) {
   return (size_t)typeClass & (size_t)type;
 }
 
+// check if two types have the same type class, i.e. float16 and float32 returns true
 static inline bool sameTypeClass(Type type1, Type type2) {
   size_t classMask = 0xFF00;
   return ((size_t)type1 & classMask) == ((size_t)type2 & classMask);

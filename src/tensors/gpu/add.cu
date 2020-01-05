@@ -20,19 +20,19 @@ __global__ void gAggregateGeneric(Functor functor,                              
                                   functional::Tensor<T> out,                       // output tensor
                                   functional::Array<functional::Tensor<T>, K> ins, // input tensors
                                   AccType scale = 1.0) {                           // scale accumulation result by scale. e.g. used for computing mean from sum over N elements with scale 1/N
-  int outLength = out.shape().elements();
+  size_t outLength = out.shape().elements();
   bool same = outLength == full.elements();
-  for(int i = 0; i < K; ++i)
+  for(size_t i = 0; i < K; ++i)
     same = same && outLength == ins[i].shape().elements();
 
   constexpr size_t N = functional::Shape::size();
-  functional::Array<int, N> len;
-  for(int i = 0; i < N; ++i)
+  functional::Array<size_t, N> len;
+  for(size_t i = 0; i < N; ++i)
     len[i] = full[i] / out.shape()[i];
 
-  functional::Array<int, N> dims;
-  for(int bid = 0; bid < outLength; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  functional::Array<size_t, N> dims;
+  for(size_t bid = 0; bid < outLength; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < outLength) {
       if(same) {
         out[index] = (T)aggFunctor((AccType)out[index], functional::applyWithCast<AccType>(functor, ins, index) * scale); // apply functors to with arguments cast to AccType
@@ -50,13 +50,13 @@ __global__ void gAggregateEqual(Functor functor, AggFunctor aggFunctor,
                                 functional::Array<functional::Tensor<T>, K> ins,
                                 AccType scale,
                                 bool broadcast) {
-  int length = out.shape().elements();
-  functional::Array<int, functional::Shape::size()> dims;
+  size_t length = out.shape().elements();
+  functional::Array<size_t, functional::Shape::size()> dims;
 
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
-      functional::Array<int, K> indices;
+      functional::Array<size_t, K> indices;
       indices.fill(index);
 
       if(broadcast) {
@@ -76,15 +76,15 @@ __global__ void gAggregateReduce(Functor functor, AccType aggInit, AggFunctor ag
                                  functional::Tensor<T> out,
                                  functional::Array<functional::Tensor<T>, K> ins,
                                  AccType scale = 1.0) {
-  int rows = full.elements() / full.back();
-  int cols = full.back();
+  size_t rows = full.elements() / full.back();
+  size_t cols = full.back();
 
   bool same = true; // do all inputs have the same number of elements?
-  for(int i = 0; i < K; ++i)
+  for(size_t i = 0; i < K; ++i)
     same = same && ins[i].shape().elements() == full.elements();
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       // make sure shared memory is the same for different types
       // by using bytes instead of type T
@@ -93,31 +93,31 @@ __global__ void gAggregateReduce(Functor functor, AccType aggInit, AggFunctor ag
 
       if(same) {
         _sum[threadIdx.x] = aggInit;
-        for(int tid = 0; tid < cols; tid += blockDim.x) {
-          int id = tid + threadIdx.x;
+        for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+          size_t id = tid + threadIdx.x;
           if(id < cols)
             _sum[threadIdx.x] = aggFunctor(_sum[threadIdx.x], functional::applyWithCast<AccType>(functor, ins, j * cols + id)); // casts to AccType before applying functor which then performs operation in AccType
         }
       } else {
-        functional::Array<int, functional::Shape::size()> dims;
+        functional::Array<size_t, functional::Shape::size()> dims;
         _sum[threadIdx.x] = aggInit;
 
-        for(int tid = 0; tid < cols; tid += blockDim.x) {
-          int id = tid + threadIdx.x;
+        for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+          size_t id = tid + threadIdx.x;
           if(id < cols) {
             full.dims(j * cols + id, dims);
-            functional::Array<int, K> indices;
-            for(int i = 0; i < K; ++i)
+            functional::Array<size_t, K> indices;
+            for(size_t i = 0; i < K; ++i)
               indices[i] = ins[i].shape().bindex(dims);
             _sum[threadIdx.x] = aggFunctor(_sum[threadIdx.x], functional::applyWithCast<AccType>(functor, ins, indices));// casts to AccType before applying functor which then performs operation in AccType
           }
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           _sum[threadIdx.x] = aggFunctor(_sum[threadIdx.x], _sum[threadIdx.x + skip]);
         }
@@ -137,7 +137,7 @@ void AggregateTyped(Functor functor, AccType aggInit, AggFunctor aggFunctor, Acc
 
   auto full = marian::Shape::broadcast({out, tensors...});
 
-  int length = out->shape().elements();
+  size_t length = out->shape().elements();
 
   constexpr size_t K = sizeof...(Tensors);
 
@@ -150,21 +150,21 @@ void AggregateTyped(Functor functor, AccType aggInit, AggFunctor aggFunctor, Acc
     size_t m = full.elements() / full.back(); // how many rows are we iterating over?
     size_t k = full.back();                   // how many columns are being reduced to 1 in each row?
 
-    int blocks  = std::min(MAX_BLOCKS,  (int)m);
-    int threads = std::min(MAX_THREADS, (int)k);
-    int shared  = sizeof(AccType) * threads;
+    size_t blocks  = std::min(MAX_BLOCKS,  (size_t)m);
+    size_t threads = std::min(MAX_THREADS, (size_t)k);
+    size_t shared  = sizeof(AccType) * threads;
     gAggregateReduce<K, Functor, AggFunctor, T, AccType><<<blocks, threads, shared>>>(functor, aggInit, aggFunctor, full, gOut, gIns, scale);
   } else if(out->shape() == full) {
-    int threads = std::min(MAX_THREADS, length);
-    int blocks  = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+    size_t threads = std::min(MAX_THREADS, length);
+    size_t blocks  = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     bool broadcast = false;
-    for(int i = 0; i < K; ++i)
+    for(size_t i = 0; i < K; ++i)
       broadcast = broadcast || gOut.shape() != gIns[i].shape();
     gAggregateEqual<<<blocks, threads>>>(functor, aggFunctor, gOut, gIns, scale, broadcast);
   } else {
-    int threads = std::min(MAX_THREADS, length);
-    int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+    size_t threads = std::min(MAX_THREADS, length);
+    size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     gAggregateGeneric<<<blocks, threads>>>(functor, aggInit, aggFunctor, full, gOut, gIns, scale);
   }

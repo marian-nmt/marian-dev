@@ -381,7 +381,7 @@ public:
   // shortcut to turn vector of indices to integer tensor, to be used with operators
   // like rows or select
   Expr indices(const std::vector<IndexType>& indicesVector) {
-    return constant({(int)indicesVector.size()},
+    return constant({indicesVector.size()},
                     inits::fromVector(indicesVector),
                     Type::uint32);
   }

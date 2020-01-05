@@ -55,9 +55,9 @@ static inline  __device__ void atomicAdd(half *address, half val) {
 }
 
 template <typename T>
-__global__ void gIsNaN(const T* in, int length, bool* isNaN, bool* isInf) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+__global__ void gIsNaN(const T* in, size_t length, bool* isNaN, bool* isInf) {
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       if(isnan((float)in[index])) *isNaN = true;
       if(isinf((float)in[index])) *isInf = true;
@@ -68,10 +68,10 @@ __global__ void gIsNaN(const T* in, int length, bool* isNaN, bool* isInf) {
 void IsNaN(const Tensor in, Ptr<Allocator> allocator, bool& isNaN, bool& isInf) {
   cudaSetDevice(in->getDeviceId().no);
 
-  int length = in->size();
+  size_t length = in->size();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   auto mem = allocator->alloc<bool>(2);
   bool* dIsNaN = &mem->data<bool>()[0];
@@ -97,9 +97,9 @@ void IsNaN(const Tensor in, Ptr<Allocator> allocator, bool& isNaN, bool& isInf) 
 }
 
 template <typename To, typename From>
-__global__ void gCopyCastTo(To* out, const From* in, int length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+__global__ void gCopyCastTo(To* out, const From* in, size_t length) {
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       out[index] = in[index];
     }
@@ -107,14 +107,14 @@ __global__ void gCopyCastTo(To* out, const From* in, int length) {
 }
 
 template <typename To, typename From>
-void CopyCastTo(To* out, const From* in, int length) {
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+void CopyCastTo(To* out, const From* in, size_t length) {
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
   gCopyCastTo<<<blocks, threads>>>(out, in, length);
 }
 
 template <typename T>
-void CopyCastFrom(Tensor out, const T* in, int length) {
+void CopyCastFrom(Tensor out, const T* in, size_t length) {
   if(out->type() == Type::float32) {
     CopyCastTo(out->data<float>(), in, length);
 #if COMPILE_FP16
@@ -132,13 +132,13 @@ void CopyCast(Tensor out, const Tensor in) {
   cudaSetDevice(out->getDeviceId().no);
 
   if(in->type() == Type::float32) {
-    CopyCastFrom(out, in->data<float>(), (int)in->size());
+    CopyCastFrom(out, in->data<float>(), in->size());
 #if COMPILE_FP16
   } else if(in->type() == Type::float16) {
-    CopyCastFrom(out, in->data<half>(), (int)in->size());
+    CopyCastFrom(out, in->data<half>(), in->size());
 #endif
   } else if(in->type() == Type::float64) {
-    CopyCastFrom(out, in->data<double>(), (int)in->size());
+    CopyCastFrom(out, in->data<double>(), in->size());
   } else {
     ABORT("CopyCastFrom from type {} not implemented", in->type());
   }
@@ -146,7 +146,7 @@ void CopyCast(Tensor out, const Tensor in) {
 
 void ConcatCont(Tensor out, const std::vector<Tensor>& inputs, int axis) {
   cudaSetDevice(out->getDeviceId().no);
-  int step = 1;
+  size_t step = 1;
   for(int i = 0; i < axis; ++i)
     step *= out->shape()[i];
 
@@ -176,14 +176,14 @@ __global__ void gInsertCols(T* out,
                             size_t cols_in,
                             size_t offset_out,
                             size_t offset_in) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) { // @TODO: change to if j == rows then break, as that's what it means. In 4 functions in here.
       T* rowOut = out + j * cols_out + offset_out;
       const T* rowIn = in + j * cols_in + offset_in;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols)
           if(add)
             rowOut[i] += rowIn[i];
@@ -198,18 +198,18 @@ __global__ void gInsertCols(T* out,
 void Concatenate1(Tensor out, const std::vector<Tensor>& inputs) {
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = out->shape().elements() / out->shape().back();
+  size_t rows = out->shape().elements() / out->shape().back();
 
   size_t offset = 0;
-  int cols_out = out->shape().back();
+  size_t cols_out = out->shape().back();
 
   for(auto in : inputs) {
     ABORT_IF(rows != in->shape().elements() / in->shape().back(),
              "First dimension must be equal");
-    int cols_in = in->shape().back();
+    size_t cols_in = in->shape().back();
 
-    int blocks = std::min(MAX_BLOCKS, rows);
-    int threads = std::min(MAX_THREADS, cols_in);
+    size_t blocks = std::min(MAX_BLOCKS, rows);
+    size_t threads = std::min(MAX_THREADS, cols_in);
 
     if(out->type() == Type::float32) {
       gInsertCols<false><<<blocks, threads>>>(out->data<float>(), in->data<float>(), rows, cols_in, cols_out, cols_in, offset, 0);
@@ -233,25 +233,25 @@ __global__ void gJoin2(T* out,
                        size_t inStride1,
                        const T* in2,
                        size_t inStride2) {
-  int outStride = inStride1 + inStride2;
-  int rows = rowBatch * outStride;
+  size_t outStride = inStride1 + inStride2;
+  size_t rows = rowBatch * outStride;
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* rowOut = out + j * cols;
 
-      int curBatch = j / outStride;
-      int curPos = j % outStride;
+      size_t curBatch = j / outStride;
+      size_t curPos = j % outStride;
 
-      int jIn1 = (curBatch * inStride1) + curPos;
-      int jIn2 = (curBatch * inStride2) + curPos - inStride1;
+      size_t jIn1 = (curBatch * inStride1) + curPos;
+      size_t jIn2 = (curBatch * inStride2) + curPos - inStride1;
 
       const T* rowIn1 = in1 + jIn1 * cols;
       const T* rowIn2 = in2 + jIn2 * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           if(curPos < inStride1)
             rowOut[i] = rowIn1[i];
@@ -275,8 +275,8 @@ void Concatenate2(Tensor out, Tensor in1, Tensor in2) {
 
   size_t rowBatch = rows / out->shape()[-2];
 
-  int blocks = std::min(MAX_BLOCKS, (int)rows);
-  int threads = std::min(MAX_THREADS, (int)cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  int threads = std::min(MAX_THREADS, cols);
 
   if(out->type() == Type::float32) {
      gJoin2<<<blocks, threads>>>(out->data<float>(),
@@ -316,15 +316,15 @@ void Split1(std::vector<Tensor>& outputs, const Tensor in) {
   cudaSetDevice(in->getDeviceId().no);
 
   size_t offset = 0;
-  int rows = in->shape().elements() / in->shape().back();
-  int cols_in = in->shape().back();
+  size_t rows = in->shape().elements() / in->shape().back();
+  size_t cols_in = in->shape().back();
   for(auto out : outputs) {
     ABORT_IF(rows != out->shape().elements() / out->shape().back(),
              "First dimension must be equal");
-    int cols_out = out->shape().back();
+    size_t cols_out = out->shape().back();
 
-    int blocks = std::min(MAX_BLOCKS, rows);
-    int threads = std::min(MAX_THREADS, cols_out);
+    size_t blocks = std::min(MAX_BLOCKS, rows);
+    size_t threads = std::min(MAX_THREADS, cols_out);
 
     if(out->type() == Type::float32) {
       gInsertCols<true><<<blocks, threads>>>(
@@ -346,9 +346,9 @@ void Split1(std::vector<Tensor>& outputs, const Tensor in) {
 // @TODO: this function is just a temporary fix until I come up with
 // something better for the situation below.
 template <typename T>
-__global__ void gAddRow(T* out, const T* in, int length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+__global__ void gAddRow(T* out, const T* in, size_t length) {
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       out[index] = in[index] + out[index];
     }
@@ -358,15 +358,15 @@ __global__ void gAddRow(T* out, const T* in, int length) {
 void SplitCont(std::vector<Tensor>& outputs, const Tensor in, int axis) {
   cudaSetDevice(in->getDeviceId().no);
 
-  int step = 1;
+  size_t step = 1;
   for(int i = 0; i < axis; ++i)
     step *= in->shape()[i];
 
-  int offset1 = 0;
-  for(int i = 0; i < step; ++i) {
+  size_t offset1 = 0;
+  for(size_t i = 0; i < step; ++i) {
     for(auto out : outputs) {
-      int size = out->shape().elements() / step;
-      int offset2 = i * size;
+      size_t size = out->shape().elements() / step;
+      size_t offset2 = i * size;
 
       // BUG: this is does not add gradients
       // cudaMemcpyAsync(out->data() + offset2,
@@ -375,8 +375,8 @@ void SplitCont(std::vector<Tensor>& outputs, const Tensor in, int axis) {
       //                cudaMemcpyDeviceToDevice);
 
       // @TODO: this is a quick but bad fix for the above bug
-      int threads = std::min(MAX_THREADS, size);
-      int blocks = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
+      size_t threads = std::min(MAX_THREADS, size);
+      size_t blocks = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
 
       if(out->type() == Type::float32) {
         gAddRow<<<blocks, threads>>>(out->data<float>() + offset2, in->data<float>() + offset1, size);
@@ -406,18 +406,18 @@ __global__ void gTransposeND(
     const functional::Tensor<T> in,
     const functional::Array<int, functional::Shape::size()> permute) {
   constexpr size_t N = functional::Shape::size();
-  functional::Array<int, N> oDims;
-  functional::Array<int, N> pDims;
+  functional::Array<size_t, N> oDims;
+  functional::Array<size_t, N> pDims;
 
-  int length = out.shape().elements();
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  size_t length = out.shape().elements();
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       out.shape().dims(index, oDims);
-      for(int i = 0; i < N; ++i)
+      for(size_t i = 0; i < N; ++i)
         pDims[permute[i]] = oDims[i];
 
-      int inIndex = in.shape().index(pDims);
+      size_t inIndex = in.shape().index(pDims);
 
       // TODO: operates on raw indices, change to
       // converting Tensor::operator[]
@@ -432,25 +432,25 @@ __global__ void gTransposeND(
 template <bool add, typename T>
 __global__ void gTranspose0213(T* out,
                                const T* in,
-                               int rows,
-                               int cols,
-                               int stride1,
-                               int stride2) {
-  int stride = stride1 * stride2;
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+                               size_t rows,
+                               size_t cols,
+                               size_t stride1,
+                               size_t stride2) {
+  size_t stride = stride1 * stride2;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* rowOut = out + j * cols;
 
-      int z = j / stride;
-      int y = (j % stride) / stride1;
-      int x = (j % stride) % stride1;
-      int j2 = z * stride + x * stride2 + y;
+      size_t z = j / stride;
+      size_t y = (j % stride) / stride1;
+      size_t x = (j % stride) % stride1;
+      size_t j2 = z * stride + x * stride2 + y;
 
       const T* rowIn = in + j2 * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           if(add)
             rowOut[i] += rowIn[i];
@@ -465,14 +465,14 @@ __global__ void gTranspose0213(T* out,
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   cudaSetDevice(out->getDeviceId().no);
   if(vAxis == std::vector<int>({0, 2, 1, 3})) {
-    int rows = out->shape().elements() / out->shape().back();
-    int cols = out->shape().back();
+    size_t rows = out->shape().elements() / out->shape().back();
+    size_t cols = out->shape().back();
 
-    int blocks = std::min(MAX_BLOCKS, rows);
-    int threads = std::min(MAX_THREADS, cols);
+    size_t blocks = std::min(MAX_BLOCKS, rows);
+    size_t threads = std::min(MAX_THREADS, cols);
 
-    int stride1 = out->shape()[-2];
-    int stride2 = out->shape()[-3];
+    size_t stride1 = out->shape()[-2];
+    size_t stride2 = out->shape()[-3];
 
     if(in->type() == Type::float32) {
       gTranspose0213<false><<<blocks, threads>>>(out->data<float>(), in->data<float>(), rows, cols, stride1, stride2);
@@ -485,16 +485,16 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     }
   } else {
     functional::Array<int, functional::Shape::size()> axes;
-    int diff = functional::Shape::size() - vAxis.size();
-    for(int i = 0; i < axes.size(); ++i)
+    size_t diff = functional::Shape::size() - vAxis.size();
+    for(size_t i = 0; i < axes.size(); ++i)
       if(i < diff)
         axes[i] = i;
       else
         axes[i] = vAxis[i - diff] + diff;
 
-    int length = out->shape().elements();
-    int threads = std::min(MAX_THREADS, length);
-    int blocks
+    size_t length = out->shape().elements();
+    size_t threads = std::min(MAX_THREADS, length);
+    size_t blocks
         = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     if(in->type() == Type::float32) {
@@ -513,14 +513,14 @@ void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
 void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   cudaSetDevice(out->getDeviceId().no);
   if(vAxis == std::vector<int>({0, 2, 1, 3})) {
-    int rows = out->shape().elements() / out->shape().back();
-    int cols = out->shape().back();
+    size_t rows = out->shape().elements() / out->shape().back();
+    size_t cols = out->shape().back();
 
-    int blocks = std::min(MAX_BLOCKS, rows);
-    int threads = std::min(MAX_THREADS, cols);
+    size_t blocks = std::min(MAX_BLOCKS, rows);
+    size_t threads = std::min(MAX_THREADS, cols);
 
-    int stride1 = out->shape()[-2];
-    int stride2 = out->shape()[-3];
+    size_t stride1 = out->shape()[-2];
+    size_t stride2 = out->shape()[-3];
 
     if(in->type() == Type::float32) {
       gTranspose0213<true><<<blocks, threads>>>(out->data<float>(), in->data<float>(), rows, cols, stride1, stride2);
@@ -533,16 +533,16 @@ void TransposeNDGrad(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     }
   } else {
     functional::Array<int, functional::Shape::size()> axes;
-    int diff = functional::Shape::size() - vAxis.size();
-    for(int i = 0; i < axes.size(); ++i)
+    size_t diff = functional::Shape::size() - vAxis.size();
+    for(size_t i = 0; i < axes.size(); ++i)
       if(i < diff)
         axes[i] = i;
       else
         axes[i] = vAxis[i - diff] + diff;
 
-    int length = out->shape().elements();
-    int threads = std::min(MAX_THREADS, length);
-    int blocks  = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+    size_t length = out->shape().elements();
+    size_t threads = std::min(MAX_THREADS, length);
+    size_t blocks  = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
     if(in->type() == Type::float32) {
       gTransposeND<true, float><<<blocks, threads>>>(out, in, axes);
@@ -570,11 +570,11 @@ __global__ void gSoftmax(T* out,
                          const T* in) {
   using namespace functional;
 
-  int rows = outShape.elements() / outShape.back();
-  int cols = outShape.back();
+  size_t rows = outShape.elements() / outShape.back();
+  size_t cols = outShape.back();
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) { // loop over blocks of rows
-    int j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) { // loop over blocks of rows
+    size_t j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
     if(j < rows) { // compute softmax over one row, row elements distributed over threads
       T* so = out + j * cols; // pointer to row input data
       const T* sp = in + j * cols;
@@ -590,9 +590,9 @@ __global__ void gSoftmax(T* out,
       // @TODO: what's going on here with fp16?
       _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
       // find max over column indices that have the same relative column index (=threadIdx.x) across all blocks of columns
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
         // threadIdx.x = column index within block of columns; we reduce over columns within a block, then over blocks
-        int i = tid + threadIdx.x;
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           if(sp[i] > _max[threadIdx.x])
             _max[threadIdx.x] = sp[i];
@@ -600,10 +600,10 @@ __global__ void gSoftmax(T* out,
       }
       __syncthreads();
       // max over columns within a column block via tree reduction
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
             _max[threadIdx.x] = _max[threadIdx.x + skip];
@@ -618,8 +618,8 @@ __global__ void gSoftmax(T* out,
       // compute denominator
       AccType* _sum = _shareAccType; // accumulate into AccType
       _sum[threadIdx.x] = 0.0;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           // @TODO: is it faster to cache the result of expf() in GPU RAM, or would it be faster to recompute it below?
           T ex = Ops<T>::exp(sp[i] - max);
@@ -632,7 +632,7 @@ __global__ void gSoftmax(T* out,
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip];
         len = (len + 1) >> 1;
@@ -641,8 +641,8 @@ __global__ void gSoftmax(T* out,
 
       // produce final output data
       AccType sum = _sum[0];
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           so[i] = (T)((AccType)so[i] / sum); // divide as AccType then convert
         }
@@ -658,9 +658,9 @@ void Softmax(Tensor out, Tensor in) {
   size_t m = out->shape().elements() / out->shape().back();
   size_t k = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, (int)m);
-  int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads;  // accumulate into float
+  size_t blocks = std::min(MAX_BLOCKS, m);
+  size_t threads = std::min(MAX_THREADS, k);
+  size_t shared = sizeof(float) * threads;  // accumulate into float
 
   if(in->type() == Type::float32) {
     gSoftmax<float, float><<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
@@ -681,11 +681,11 @@ __global__ void gLogSoftmax(T* out,
 
   using namespace functional;
 
-  int rows = outShape.elements() / outShape.back();
-  int cols = outShape.back();
+  size_t rows = outShape.elements() / outShape.back();
+  size_t cols = outShape.back();
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* so = out + j * cols;
       const T* sp = in + j * cols;
@@ -697,18 +697,18 @@ __global__ void gLogSoftmax(T* out,
 
       T* _max = _share; // 16-bit is ok for max if applicable
       _max[threadIdx.x] = sp[threadIdx.x];
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           if(sp[id] > _max[threadIdx.x])
             _max[threadIdx.x] = sp[id];
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
             _max[threadIdx.x] = _max[threadIdx.x + skip];
@@ -723,8 +723,8 @@ __global__ void gLogSoftmax(T* out,
       AccType* _sum = _shareAccType; // keep AccType for accumulation
 
       _sum[threadIdx.x] = 0.0;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           T sm = sp[id] - max;
           AccType ex = Ops<AccType>::exp(sm); // sum with AccType
@@ -736,15 +736,15 @@ __global__ void gLogSoftmax(T* out,
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip];
         len = (len + 1) >> 1;
       }
       __syncthreads();
       AccType sum = _sum[0];
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols)
           so[id] -= (T)Ops<AccType>::log(sum); // take log at the end and convert
       }
@@ -759,9 +759,9 @@ void LogSoftmax(Tensor out, Tensor in) {
   size_t m = out->shape().elements() / out->shape().back();
   size_t k = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, (int)m);
-  int threads = std::min(MAX_THREADS, (int)k);
-  int shared = sizeof(float) * threads; // use float32 as accumulation type
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)m);
+  size_t threads = std::min(MAX_THREADS, (size_t)k);
+  size_t shared = sizeof(float) * threads; // use float32 as accumulation type
 
   if(in->type() == Type::float32) {
     gLogSoftmax<float, float><<<blocks, threads, shared>>>(out->data<float>(), out->shape(), in->data<float>());
@@ -780,10 +780,10 @@ template <typename T, typename AccType = float>
 __global__ void gSoftmaxGrad(T* grad,
                              const T* adj,
                              const T* val,
-                             const int rows,
-                             const int cols) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+                             const size_t rows,
+                             const size_t cols) {
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
 
       extern __shared__ uint8_t _sharedBytes[];
@@ -793,24 +793,24 @@ __global__ void gSoftmaxGrad(T* grad,
       const T* adjRow = adj + j * cols;
       const T* valRow = val + j * cols;
       _sum[threadIdx.x] = (AccType)0.0f;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           _sum[threadIdx.x] += (AccType)valRow[id] * (AccType)adjRow[id];
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip]; // accumulates in AccType
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType val = (AccType)valRow[id] * ((AccType)adjRow[id] - _sum[0]);
           if(val)
@@ -829,12 +829,12 @@ void SoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
   // A weighted average of each row of grad (according to the weights
   // specified in val) is computed and subtracted from Out.
   // adj is multiplied for each element to get backward step in autodiff
-  int m = grad->shape().elements() / grad->shape().back();
-  int k = grad->shape().back();
+  size_t m = grad->shape().elements() / grad->shape().back();
+  size_t k = grad->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, m);
-  int threads = std::min(MAX_THREADS, k);
-  int shared = sizeof(float) * threads;
+  size_t blocks = std::min(MAX_BLOCKS, m);
+  size_t threads = std::min(MAX_THREADS, k);
+  size_t shared = sizeof(float) * threads;
 
   if(grad->type() == Type::float32) {
     gSoftmaxGrad<float, float><<<blocks, threads, shared>>>(
@@ -854,10 +854,10 @@ template <typename T, typename AccType = float>
 __global__ void gLogSoftmaxGrad(T* grad,
                                 const T* adj,
                                 const T* val,
-                                const int rows,
-                                const int cols) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+                                const size_t rows,
+                                const size_t cols) {
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       extern __shared__ uint8_t _sharedBytes[];
       AccType* _sum = (AccType*)_sharedBytes;
@@ -866,24 +866,24 @@ __global__ void gLogSoftmaxGrad(T* grad,
       const T* adjRow = adj + j * cols;
       const T* valRow = val + j * cols;
       _sum[threadIdx.x] = 0.0;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           _sum[threadIdx.x] += (AccType)adjRow[id];
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip]; // AccType
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols)
           gradRow[id] += (T)((AccType)adjRow[id] - (functional::Ops<AccType>::exp((AccType)valRow[id]) * _sum[0]));
       }
@@ -899,12 +899,12 @@ void LogSoftmaxGrad(Tensor grad, Tensor adj, Tensor val) {
   // A weighted average of each row of grad (according to the weights
   // specified in val) is computed and subtracted from Out.
   // adj is multiplied for each element to get backward step in autodiff
-  int m = grad->shape().elements() / grad->shape().back();
-  int k = grad->shape().back();
+  size_t m = grad->shape().elements() / grad->shape().back();
+  size_t k = grad->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, m);
-  int threads = std::min(MAX_THREADS, k);
-  int shared = sizeof(float) * threads; // Use float32 as accumulation type
+  size_t blocks = std::min(MAX_BLOCKS, m);
+  size_t threads = std::min(MAX_THREADS, k);
+  size_t shared = sizeof(float) * threads; // Use float32 as accumulation type
 
   if(grad->type() == Type::float32) {
     gLogSoftmaxGrad<float, float><<<blocks, threads, shared>>>(
@@ -928,8 +928,8 @@ __global__ void gCopyRows(T* out,
                           size_t cols,
                           const IndexType* sourceRowIdx,
                           size_t rows) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       size_t dstId = j;
       size_t srcId = sourceRowIdx[j];
@@ -937,8 +937,8 @@ __global__ void gCopyRows(T* out,
       T* rowOut = out + dstId * cols;
       const T* rowIn = in + srcId * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols)
           rowOut[i] = rowIn[i];
       }
@@ -957,8 +957,8 @@ void CopyRows(Tensor out,
   size_t cols = in->shape().back();
   size_t rowsToCopy = indices->size();
 
-  int threads = std::min(MAX_THREADS, (int)cols);
-  int blocks = std::min(MAX_BLOCKS, (int)rowsToCopy);
+  size_t threads = std::min(MAX_THREADS, (size_t)cols);
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rowsToCopy);
 
   if(out->type() == Type::float32) {
     gCopyRows<<<blocks, threads>>>(
@@ -979,8 +979,8 @@ __global__ void gPasteRows(T* out,
                            size_t cols,
                            const IndexType* targetRowIdx,
                            size_t rows) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x; // index into 'indices' vector
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x; // index into 'indices' vector
     if(j < rows) {
       size_t dstId = targetRowIdx[j];
       size_t srcId = j;
@@ -989,8 +989,8 @@ __global__ void gPasteRows(T* out,
       const T* rowIn = in + srcId * cols;
 
       // aggregate the entire row
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x; // column index   --@TODO: column index should be called 'j'
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x; // column index   --@TODO: column index should be called 'j'
         if(i < cols) {
           // Note: atomicAdd() not needed if number of blocks is 1. Avoid it because it is slow for fp16.
           if (gridDim.x == 1)
@@ -1014,15 +1014,15 @@ void PasteRows(Tensor out,
   size_t cols = in->shape().back();
   size_t rowsToCopy = indices->size();
 
-  int threads = std::min(MAX_THREADS, (int)cols);
+  size_t threads = std::min(MAX_THREADS, (size_t)cols);
 #if 1   // @TODO: make this configurable with a 'deterministic' flag
   // If we only use one block, then each core operates on a different column,
   // hence the summation becomes deterministic.
   // However, we only use e.g. 512 cores out of possibly 3000+, so this will be
   // 6 x slower in this example.
-  int blocks = 1;
+  size_t blocks = 1;
 #else
-  int blocks = std::min(MAX_BLOCKS, (int)rowsToCopy);
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rowsToCopy);
 #endif
 
   if(out->type() == Type::float32) {
@@ -1047,14 +1047,14 @@ __global__ void gCopyCols(T* out,
                           size_t colsIn,
                           const IndexType* sourceColIdx,
                           size_t colsOut) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       const T* rowIn = in + j * colsIn;
       T* rowOut = out + j * colsOut;
 
-      for(int tid = 0; tid < colsOut; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < colsOut; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < colsOut)
           rowOut[i] = rowIn[sourceColIdx[i]];
       }
@@ -1072,8 +1072,8 @@ void CopyCols(Tensor out, const Tensor in, const Tensor indices) {
 
   size_t colsToCopy = indices->size();
 
-  int threads = std::min(MAX_THREADS, (int)colsToCopy);
-  int blocks = std::min(MAX_BLOCKS, (int)rows);
+  size_t threads = std::min(MAX_THREADS, (size_t)colsToCopy);
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rows);
 
   if(out->type() == Type::float32) {
     gCopyCols<<<blocks, threads>>>(
@@ -1095,14 +1095,14 @@ __global__ void gPasteCols(T* out,
                            size_t colsOut,
                            const IndexType* targetColIdx,
                            size_t colsIn) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       const T* rowIn = in + j * colsIn;
       T* rowOut = out + j * colsOut;
 
-      for(int tid = 0; tid < colsIn; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < colsIn; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < colsIn)
           rowOut[targetColIdx[i]] += rowIn[i]; // @TODO: atomicAdd?
       }
@@ -1122,8 +1122,8 @@ void PasteCols(Tensor out,
 
   size_t colsToCopy = indices->size();
 
-  int threads = std::min(MAX_THREADS, (int)colsToCopy);
-  int blocks = std::min(MAX_BLOCKS, (int)rows);
+  size_t threads = std::min(MAX_THREADS, (size_t)colsToCopy);
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rows);
 
   if(out->type() == Type::float32) {
     gPasteCols<<<blocks, threads>>>(
@@ -1146,16 +1146,16 @@ __global__ void gSelect(T* out,
                         int axis,
                         const IndexType* d_indices,
                         const functional::Shape idxShape) {
-  int length = outShape.elements();
-  functional::Array<int, functional::Shape::size()> dims;
+  size_t length = outShape.elements();
+  functional::Array<size_t, functional::Shape::size()> dims;
 
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       outShape.dims(index, dims);
-      int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
-      dims[axis] = (int)d_indices[idxIndex];    
-      int inIndex = inShape.index(dims);
+      size_t idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
+      dims[axis] = (size_t)d_indices[idxIndex];    
+      size_t inIndex = inShape.index(dims);
       out[index] = in[inIndex];
     }
   }
@@ -1169,16 +1169,16 @@ __global__ void gInsert(T* out,
                         int axis,
                         const IndexType* d_indices,
                         const functional::Shape idxShape) {
-  int length = inShape.elements();
-  functional::Array<int, functional::Shape::size()> dims;
+  size_t length = inShape.elements();
+  functional::Array<size_t, functional::Shape::size()> dims;
 
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       inShape.dims(index, dims);
-      int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
-      dims[axis] = (int)d_indices[idxIndex];    
-      int outIndex = outShape.index(dims);
+      size_t idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
+      dims[axis] = (size_t)d_indices[idxIndex];    
+      size_t outIndex = outShape.index(dims);
       out[outIndex] += in[index]; // this is probably wrong, atomicAdd?
     }
   }
@@ -1192,10 +1192,10 @@ void Select(Tensor out,
 
   cudaSetDevice(out->getDeviceId().no);
 
-  int length = out->shape().elements();
+  size_t length = out->shape().elements();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   int axisGPU = axis + functional::Shape::size() - out->shape().size();
 
@@ -1229,10 +1229,10 @@ void Insert(Tensor out,
   matchOrAbort<IndexType>(indices->type());
   cudaSetDevice(in->getDeviceId().no);
 
-  int length = in->shape().elements();
+  size_t length = in->shape().elements();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   int axisGPU = axis + functional::Shape::size() - out->shape().size();
 
@@ -1269,8 +1269,8 @@ __global__ void gGRUFastForward(T* out,
                                 size_t rows,
                                 size_t cols,
                                 bool final) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T m = !mask || mask[j];
       T* rowOut = out + j * cols;
@@ -1279,16 +1279,16 @@ __global__ void gGRUFastForward(T* out,
       const T* xWrow = xW + j * cols * 3;
       const T* sUrow = sU + j * cols * 3;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           T r = functional::Ops<T>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
-          int k = i + cols;
+          size_t k = i + cols;
 
           T z = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
-          int l = i + 2 * cols;
+          size_t l = i + 2 * cols;
           T h;
           if(final)
             h = functional::Ops<T>::tanh(xWrow[l] + (sUrow[l] + b[l]) * r);
@@ -1306,11 +1306,11 @@ __global__ void gGRUFastForward(T* out,
 void GRUFastForward(Tensor out, std::vector<Tensor> inputs, bool final) {
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = out->shape().elements() / out->shape().back();
-  int cols = out->shape().back();
+  size_t rows = out->shape().elements() / out->shape().back();
+  size_t cols = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, rows);
-  int threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
 
   if(out->type() == Type::float32) {
     gGRUFastForward<<<blocks, threads>>>(
@@ -1355,8 +1355,8 @@ __global__ void gGRUFastBackward(T* outState,
                                  size_t rows,
                                  size_t cols,
                                  bool final) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T m = !mask || mask[j];
 
@@ -1369,11 +1369,11 @@ __global__ void gGRUFastBackward(T* outState,
       const T* rowSU = sU + j * cols * 3;
       const T* rowAdj = adj + j * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
-          int k = i + cols;
-          int l = i + 2 * cols;
+          size_t k = i + cols;
+          size_t l = i + 2 * cols;
 
           T r = functional::Ops<T>::sigmoid(rowXW[i] + rowSU[i] + b[i]);
           T z = functional::Ops<T>::sigmoid(rowXW[k] + rowSU[k] + b[k]);
@@ -1437,11 +1437,11 @@ void GRUFastBackward(std::vector<Tensor> outputs,
                      bool final) {
   cudaSetDevice(adj->getDeviceId().no);
 
-  int rows = adj->shape().elements() / adj->shape().back();
-  int cols = adj->shape().back();
+  size_t rows = adj->shape().elements() / adj->shape().back();
+  size_t cols = adj->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, rows);
-  int threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
 
   if(adj->type() == Type::float32) {
     gGRUFastBackward<<<blocks, threads>>>(
@@ -1486,30 +1486,30 @@ __global__ void gCrossEntropyPick(T* out,
                                   const T* in,
                                   const functional::Shape inShape,
                                   const IndexType* pick) {
-  int rows = inShape.elements() / inShape.back();
-  int cols = inShape.back();
+  size_t rows = inShape.elements() / inShape.back();
+  size_t cols = inShape.back();
 
   extern __shared__ uint8_t _sharedBytes[];
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       const T* sp = in + j * cols;
 
       T* _max = (T*)_sharedBytes;
       _max[threadIdx.x] = sp[threadIdx.x];
-      for(int tid = 1; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 1; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           if(sp[id] > _max[threadIdx.x])
             _max[threadIdx.x] = sp[id];
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
             _max[threadIdx.x] = _max[threadIdx.x + skip];
@@ -1524,8 +1524,8 @@ __global__ void gCrossEntropyPick(T* out,
       AccType* _sum = (AccType*)_sharedBytes;
       _sum[threadIdx.x] = (AccType)0.0f;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           _sum[threadIdx.x] += functional::Ops<AccType>::exp(sp[id] - max);
         }
@@ -1534,7 +1534,7 @@ __global__ void gCrossEntropyPick(T* out,
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip];
         len = (len + 1) >> 1;
@@ -1543,9 +1543,9 @@ __global__ void gCrossEntropyPick(T* out,
 
       // cross-entropy
       auto sum = _sum[0];
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
-        if(id == (int)pick[j])
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
+        if(id == (size_t)pick[j])
           out[j] = (T)functional::Ops<AccType>::log(sum) - sp[id] + max;
       }
     }
@@ -1562,12 +1562,12 @@ void CrossEntropyPick(Tensor out, Tensor in, Tensor indices) {
 
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = in->shape().elements() / in->shape().back();
-  int cols = in->shape().back();
+  size_t rows = in->shape().elements() / in->shape().back();
+  size_t cols = in->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, (int)rows);
-  int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = sizeof(float) * threads; // Use float32 as accumulation type
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rows);
+  size_t threads = std::min(MAX_THREADS, (size_t)cols);
+  size_t shared = sizeof(float) * threads; // Use float32 as accumulation type
 
   if(out->type() == Type::float32) {
     gCrossEntropyPick<float, float><<<blocks, threads, shared>>>(
@@ -1588,30 +1588,30 @@ __global__ void gCrossEntropyPickBackward(T* out,
                                           const T* adj,
                                           const T* in,
                                           const IndexType* pick) {
-  int rows = outShape.elements() / outShape.back();
-  int cols = outShape.back();
+  size_t rows = outShape.elements() / outShape.back();
+  size_t cols = outShape.back();
 
   extern __shared__ uint8_t _sharedBytes[];
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       const T* sp = in + j * cols;
       T* so = out + j * cols;
       T* _max = (T*)_sharedBytes;
       _max[threadIdx.x] = sp[threadIdx.x];
-      for(int tid = 1; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 1; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           if(sp[id] > _max[threadIdx.x])
             _max[threadIdx.x] = sp[id];
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           if(_max[threadIdx.x + skip] > _max[threadIdx.x]) {
             _max[threadIdx.x] = _max[threadIdx.x + skip];
@@ -1625,8 +1625,8 @@ __global__ void gCrossEntropyPickBackward(T* out,
 
       AccType* _sum = (AccType*)_sharedBytes;
       _sum[threadIdx.x] = 0.0;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType ex = functional::Ops<AccType>::exp(sp[id] - max);
           _sum[threadIdx.x] += ex;
@@ -1636,7 +1636,7 @@ __global__ void gCrossEntropyPickBackward(T* out,
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip];
         len = (len + 1) >> 1;
@@ -1644,10 +1644,10 @@ __global__ void gCrossEntropyPickBackward(T* out,
       __syncthreads();
 
       // cross-entropy
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
-          AccType sub = (AccType)(id == (int)pick[j]);
+          AccType sub = (AccType)(id == (size_t)pick[j]);
           auto softmax = functional::Ops<AccType>::exp(sp[id] - max) / _sum[0];
           so[id] += (AccType)adj[j] * (softmax - sub);
         }
@@ -1662,12 +1662,12 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) 
 
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = out->shape().elements() / out->shape().back();
-  int cols = out->shape().back();
+  size_t rows = out->shape().elements() / out->shape().back();
+  size_t cols = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, (int)rows);
-  int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = sizeof(float) * threads; // use float as accumulation type
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rows);
+  size_t threads = std::min(MAX_THREADS, (size_t)cols);
+  size_t shared = sizeof(float) * threads; // use float as accumulation type
 
   if(out->type() == Type::float32) {
     gCrossEntropyPickBackward<float, float><<<blocks, threads, shared>>>(
@@ -1687,9 +1687,9 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices) 
 float L2Norm(Tensor in, Ptr<Allocator> allocator) { // @TODO: reverse order of arguments
   cudaSetDevice(in->getDeviceId().no);
 
-  int size = in->shape().elements();
-  int threads = std::min(MAX_THREADS, size);
-  int blocks  = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
+  size_t size = in->shape().elements();
+  size_t threads = std::min(MAX_THREADS, size);
+  size_t blocks  = std::min(MAX_BLOCKS, size / threads + (size % threads != 0));
 
   using namespace functional;
   float l2Norm;
@@ -1710,16 +1710,16 @@ __global__ void gAtt(T* out,
                      const T* va,
                      const T* ctx,
                      const T* state,
-                     int m,  // total rows (batch x time x beam)
-                     int k,  // depth
-                     int b,  // batch size
-                     int t   // time of ctx
+                     size_t m,  // total rows (batch x time x beam)
+                     size_t k,  // depth
+                     size_t b,  // batch size
+                     size_t t   // time of ctx
 ) {
-  int rows = m;
-  int cols = k;
+  size_t rows = m;
+  size_t cols = k;
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       const T* vaRow = va;
       const T* ctxRow = ctx + (j % (b * t)) * cols;
@@ -1729,8 +1729,8 @@ __global__ void gAtt(T* out,
       AccType* _sum = _share;
 
       _sum[threadIdx.x] = 0.f;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType z = (AccType)ctxRow[id] + (AccType)stateRow[id];
           AccType ex = functional::Ops<AccType>::tanh(z) * (AccType)vaRow[id];
@@ -1738,10 +1738,10 @@ __global__ void gAtt(T* out,
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sum[threadIdx.x] += _sum[threadIdx.x + skip];
         len = (len + 1) >> 1;
@@ -1761,9 +1761,9 @@ void Att(Tensor out, Tensor va, Tensor context, Tensor state) {
   size_t batchDim        = context->shape()[-2];
   size_t contextWordsDim = context->shape()[-3];
 
-  int blocks = std::min(MAX_BLOCKS, (int)totalRows);   
-  int threads = std::min(MAX_THREADS, (int)modelDim);
-  int shared = sizeof(float) * threads;
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)totalRows);   
+  size_t threads = std::min(MAX_THREADS, (size_t)modelDim);
+  size_t shared = sizeof(float) * threads;
 
   if(out->type() == Type::float32) {
     gAtt<float, float><<<blocks, threads, shared>>>(
@@ -1786,14 +1786,14 @@ __global__ void gAttBack(T* gVa,
                          const T* context,
                          const T* state,
                          const T* adj,
-                         int m,  // rows
-                         int k,  // cols
-                         int n   // batch size
+                         size_t m,  // rows
+                         size_t k,  // cols
+                         size_t n   // batch size
 ) {
-  int rows = m;
-  int cols = k;
-  for(int bid = 0; bid < m; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  size_t rows = m;
+  size_t cols = k;
+  for(size_t bid = 0; bid < m; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* gcRow = gContext + j * cols;
       T* gsRow = gState + (j % n) * cols;
@@ -1801,8 +1801,8 @@ __global__ void gAttBack(T* gVa,
       const T* cRow = context + j * cols;
       const T* sRow = state + (j % n) * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           T z = cRow[id] + sRow[id];
 
@@ -1831,8 +1831,8 @@ void AttBack(Tensor gVa,
   size_t k = context->shape()[-1];
   size_t n = context->shape()[-2];
 
-  int blocks = std::min(MAX_BLOCKS, (int)n);
-  int threads = std::min(MAX_THREADS, (int)k);
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)n);
+  size_t threads = std::min(MAX_THREADS, (size_t)k);
 
   if(gVa->type() == Type::float32) {
     gAttBack<<<blocks, threads>>>(gVa->data<float>(),
@@ -1868,33 +1868,33 @@ __global__ void gLNormalization(T* out,
                                 const T* in,
                                 const T* gamma,
                                 const T* beta,
-                                int rows,
-                                int cols,
+                                size_t rows,
+                                size_t cols,
                                 AccType eps = 1e-9) {
   extern __shared__ uint8_t _sharedBytes[];
   AccType* _shareAccType = (AccType*)_sharedBytes;
 
   AccType N = cols;
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* yRow       = out + j * cols;
       const T* xRow =  in + j * cols;
 
       AccType* _sum = _shareAccType; // accumulate into floats
       _sum[threadIdx.x] = (AccType)0.0f;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           _sum[threadIdx.x] += (AccType)xRow[id];
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           _sum[threadIdx.x] += _sum[threadIdx.x + skip];
         }
@@ -1907,8 +1907,8 @@ __global__ void gLNormalization(T* out,
       AccType* _sqSum = _shareAccType;
 
       _sqSum[threadIdx.x] = (AccType)0.0f;
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType xv = (AccType)xRow[id];
           AccType ex = xv - mean;
@@ -1919,7 +1919,7 @@ __global__ void gLNormalization(T* out,
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           _sqSum[threadIdx.x] += _sqSum[threadIdx.x + skip];
         len = (len + 1) >> 1;
@@ -1928,8 +1928,8 @@ __global__ void gLNormalization(T* out,
       AccType sigma = functional::Ops<AccType>::sqrt(_sqSum[0] / N); // all AccType
       __syncthreads();
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType gammav = (AccType)gamma[id];
           AccType xv     = (AccType)xRow[id];
@@ -1951,12 +1951,12 @@ void LayerNormalization(Tensor out,
                         float eps) {
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = in->shape().elements() / in->shape().back();
-  int cols = in->shape().back();
+  size_t rows = in->shape().elements() / in->shape().back();
+  size_t cols = in->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, (int)rows);
-  int threads = std::min(MAX_THREADS, (int)cols);
-  int shared = threads * sizeof(float);
+  size_t blocks = std::min(MAX_BLOCKS, (size_t)rows);
+  size_t threads = std::min(MAX_THREADS, (size_t)cols);
+  size_t shared = threads * sizeof(float);
 
   if(out->type() == Type::float32) {
     gLNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
@@ -1989,16 +1989,16 @@ __global__ void gLayerNormalizationGrad(T* gradX,
                                         T* x,
                                         T* gamma,
                                         T* beta,
-                                        int rows,
-                                        int cols,
+                                        size_t rows,
+                                        size_t cols,
                                         AccType eps = 1e-9) {
   extern __shared__ uint8_t sharedBytes[];
   AccType* shared = (AccType*)sharedBytes;
 
   AccType N = cols;
 
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       AccType* sum_adj   = shared;                   // sum of gradient coming in
       AccType* sum_adj_l = shared +     blockDim.x;  // sum of gradient coming in times layerNorm from value
@@ -2014,8 +2014,8 @@ __global__ void gLayerNormalizationGrad(T* gradX,
       sum_adj_l[threadIdx.x] = (AccType)0.0f;
       sum_sqr[threadIdx.x]   = (AccType)0.0f;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType xv     = xRow[id];
           AccType yv     = yRow[id];
@@ -2030,10 +2030,10 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         }
       }
       __syncthreads();
-      int len = blockDim.x;
+      size_t len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1)) {
           sum_x[threadIdx.x]     += sum_x[threadIdx.x     + skip]; // Accumulates in AccType
           sum_adj[threadIdx.x]   += sum_adj[threadIdx.x   + skip]; // Accumulates in AccType
@@ -2045,8 +2045,8 @@ __global__ void gLayerNormalizationGrad(T* gradX,
       AccType mean = sum_x[0] / N;
       __syncthreads();
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
           AccType xv = xRow[id];
           AccType ex = xv - mean;
@@ -2058,7 +2058,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
-        int skip = (len + 1) >> 1;
+        size_t skip = (len + 1) >> 1;
         if(threadIdx.x < (len >> 1))
           sum_sqr[threadIdx.x] += sum_sqr[threadIdx.x + skip]; // Accumulates in AccType
         len = (len + 1) >> 1;
@@ -2071,8 +2071,8 @@ __global__ void gLayerNormalizationGrad(T* gradX,
       // J = [ \frac{1}{N\sigma} (N\delta_{ij} - l_i l_j - 1) ]_{ij}
       // J * a = dC/dx_i = ( N a_i - l_i \sum_j l_j a_j - \sum_j a_j ) / (N \sigma)
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t id = tid + threadIdx.x;
         if(id < cols) {
 
           AccType xv     = xRow[id];
@@ -2116,11 +2116,11 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
                             Tensor beta,
                             float eps) {
   cudaSetDevice(adj->getDeviceId().no);
-  int rows = y->shape().elements() / y->shape()[-1];
-  int cols = y->shape()[-1];
+  size_t rows = y->shape().elements() / y->shape()[-1];
+  size_t cols = y->shape()[-1];
 
-  int threads = std::min(MAX_THREADS, cols);
-  int blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
 
   auto tempGradGammaMemory = allocator->alloc(adj->memory()->size());
   Tensor tempGradGamma = TensorBase::New(tempGradGammaMemory, adj->shape(), adj->type(), adj->getBackend());
@@ -2131,7 +2131,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   tempOnes->set(1.f);
 
   if(gradX->type() == Type::float32) {
-    int shared = sizeof(float) * threads * 4;
+    size_t shared = sizeof(float) * threads * 4;
     gLayerNormalizationGrad<float, float><<<blocks, threads, shared>>>(
       gradX->data<float>(),
       tempGradGamma->data<float>(),
@@ -2146,7 +2146,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
 #if COMPILE_FP16
   } else if (gradX->type() == Type::float16) {
     // accumulate in float
-    int shared = sizeof(float) * threads * 4;
+    size_t shared = sizeof(float) * threads * 4;
     gLayerNormalizationGrad<half, float><<<blocks, threads, shared>>>(
       gradX->data<half>(),
       tempGradGamma->data<half>(),
@@ -2177,11 +2177,11 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
 template <bool add, typename T>
 __global__ void gShift(T* out,
                        const T* in,
-                       int length,
-                       int offset,
+                       int64_t length,
+                       int64_t offset,
                        float padValue) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    int64_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       if(add) {
         if(index - offset >= 0 && index - offset < length)
@@ -2205,8 +2205,8 @@ void Shift(Tensor out,
 
   // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the
   // last axis cannot be implemented this way.
-  int offset = 0;
-  for(int i = 0; i < shift.size(); ++i)
+  size_t offset = 0;
+  for(size_t i = 0; i < shift.size(); ++i)
     offset += in->shape().stride(i) * shift[i];
 
   if(invert)
@@ -2214,18 +2214,16 @@ void Shift(Tensor out,
 
   cudaSetDevice(out->getDeviceId().no);
 
-  int length = out->shape().elements();
+  size_t length = out->shape().elements();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   if(out->type() == Type::float32) {
-    gShift<false>
-        <<<blocks, threads>>>(out->data<float>(), in->data<float>(), length, offset, padValue);
+    gShift<false><<<blocks, threads>>>(out->data<float>(), in->data<float>(), (int64_t)length, (int64_t)offset, padValue);
 #if COMPILE_FP16
   } else if(out->type() == Type::float16) {
-    gShift<false>
-        <<<blocks, threads>>>(out->data<half>(), in->data<half>(), length, offset, padValue);
+    gShift<false><<<blocks, threads>>>(out->data<half>(), in->data<half>(), (int64_t)length, (int64_t)offset, padValue);
 #endif
   } else {
     ABORT("Shift not implemented for type {}", out->type());
@@ -2237,8 +2235,8 @@ void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
 
   // BUGBUG: This can only shift along the first axis. Shifting, e.g., along the
   // last axis cannot be implemented this way.
-  int offset = 0;
-  for(int i = 0; i < shift.size(); ++i)
+  size_t offset = 0;
+  for(size_t i = 0; i < shift.size(); ++i)
     offset += in->shape().stride(i) * shift[i];
 
   if(invert)
@@ -2246,18 +2244,18 @@ void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
 
   cudaSetDevice(out->getDeviceId().no);
 
-  int length = out->shape().elements();
+  size_t length = out->shape().elements();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   if(out->type() == Type::float32) {
     gShift<true>
-        <<<blocks, threads>>>(out->data<float>(), in->data<float>(), length, offset, 0.f); // @TODO: What about padValue?
+        <<<blocks, threads>>>(out->data<float>(), in->data<float>(), (int64_t)length, (int64_t)offset, 0.f); // @TODO: What about padValue?
 #if COMPILE_FP16
   } else if(out->type() == Type::float16) {
     gShift<true>
-        <<<blocks, threads>>>(out->data<half>(), in->data<half>(), length, offset, 0.f);
+        <<<blocks, threads>>>(out->data<half>(), in->data<half>(), (int64_t)length, (int64_t)offset, 0.f);
 #endif
   } else {
     ABORT("Shift not implemented for type {}", out->type());
@@ -2267,9 +2265,9 @@ void ShiftGrad(Tensor out, Tensor in, marian::Shape shift, bool invert) {
 __global__ void gSetSparse(float* out,
                            const size_t* indices,
                            const float* values,
-                           int length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+                           size_t length) {
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       out[indices[index]] = values[index];
     }
@@ -2279,10 +2277,10 @@ __global__ void gSetSparse(float* out,
 void SetSparse(float* out,
                const std::vector<size_t>& indices,
                const std::vector<float>& values) {
-  int length = indices.size();
+  size_t length = indices.size();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   size_t* d_indices;
   CUDA_CHECK(cudaMalloc(&d_indices, length * sizeof(size_t)));
@@ -2313,8 +2311,8 @@ __global__ void gLSTMCellForward(T* out,
                                  const T* mask,
                                  size_t rows,
                                  size_t cols) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T m = !mask || mask[j];
 
@@ -2324,15 +2322,15 @@ __global__ void gLSTMCellForward(T* out,
       const T* xWrow = xW + j * cols * 4;
       const T* sUrow = sU + j * cols * 4;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           T gf = functional::Ops<T>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
-          int k = i + cols;
+          size_t k = i + cols;
           T gi = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
-          int l = i + 2 * cols;
+          size_t l = i + 2 * cols;
           T gc = functional::Ops<T>::tanh(xWrow[l] + sUrow[l] + b[l]);
 
           T cout = gf * rowCell[i] + gi * gc;
@@ -2346,11 +2344,11 @@ __global__ void gLSTMCellForward(T* out,
 void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = out->shape().elements() / out->shape().back();
-  int cols = out->shape().back();
+  size_t rows = out->shape().elements() / out->shape().back();
+  size_t cols = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, rows);
-  int threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
 
   if(out->type() == Type::float32) {
    gLSTMCellForward<<<blocks, threads>>>(
@@ -2387,8 +2385,8 @@ __global__ void gLSTMOutputForward(T* out,
                                    const T* b,
                                    size_t rows,
                                    size_t cols) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* rowOut = out + j * cols;
       const T* rowCell = cell + j * cols;
@@ -2396,10 +2394,10 @@ __global__ void gLSTMOutputForward(T* out,
       const T* xWrow = xW + j * cols * 4;
       const T* sUrow = sU + j * cols * 4;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
-          int k = i + 3 * cols;
+          size_t k = i + 3 * cols;
           T go = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
           rowOut[i] = go * functional::Ops<T>::tanh(rowCell[i]);
         }
@@ -2411,11 +2409,11 @@ __global__ void gLSTMOutputForward(T* out,
 void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
   cudaSetDevice(out->getDeviceId().no);
 
-  int rows = out->shape().elements() / out->shape().back();
-  int cols = out->shape().back();
+  size_t rows = out->shape().elements() / out->shape().back();
+  size_t cols = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, rows);
-  int threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
 
   if(out->type() == Type::float32) {
     gLSTMOutputForward<<<blocks, threads>>>(out->data<float>(),        // output
@@ -2453,8 +2451,8 @@ __global__ void gLSTMCellBackward(T* outCell,
                                   const T* adj,
                                   size_t rows,
                                   size_t cols) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T m = !mask || mask[j];
 
@@ -2468,15 +2466,15 @@ __global__ void gLSTMCellBackward(T* outCell,
 
       const T* rowAdj = adj + j * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
           T gf = functional::Ops<T>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
 
-          int k = i + cols;
+          size_t k = i + cols;
           T gi = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
-          int l = i + 2 * cols;
+          size_t l = i + 2 * cols;
           T gc = functional::Ops<T>::tanh(xWrow[l] + sUrow[l] + b[l]);
 
           T adj = rowAdj[i];
@@ -2522,11 +2520,11 @@ void LSTMCellBackward(std::vector<Tensor> outputs,
                       Tensor adj) {
   cudaSetDevice(adj->getDeviceId().no);
 
-  int rows = adj->shape().elements() / adj->shape().back();
-  int cols = adj->shape().back();
+  size_t rows = adj->shape().elements() / adj->shape().back();
+  size_t cols = adj->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, rows);
-  int threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
 
   if(adj->type() == Type::float32) {
     gLSTMCellBackward<<<blocks, threads>>>(
@@ -2576,8 +2574,8 @@ __global__ void gLSTMOutputBackward(T* outCell,
                                     const T* adj,
                                     size_t rows,
                                     size_t cols) {
-  for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+  for(size_t bid = 0; bid < rows; bid += gridDim.x) {
+    size_t j = bid + blockIdx.x;
     if(j < rows) {
       T* rowOutCell = outCell + j * cols;
       T* rowOutXW = outXW + j * cols * 4;
@@ -2589,10 +2587,10 @@ __global__ void gLSTMOutputBackward(T* outCell,
 
       const T* rowAdj = adj + j * cols;
 
-      for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+      for(size_t tid = 0; tid < cols; tid += blockDim.x) {
+        size_t i = tid + threadIdx.x;
         if(i < cols) {
-          int k = i + 3 * cols;
+          size_t k = i + 3 * cols;
           T go = functional::Ops<T>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
 
           T t = functional::Ops<T>::tanh(rowCell[i]);
@@ -2622,11 +2620,11 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
                         Tensor adj) {
   cudaSetDevice(adj->getDeviceId().no);
 
-  int rows = adj->shape().elements() / adj->shape().back();
-  int cols = adj->shape().back();
+  size_t rows = adj->shape().elements() / adj->shape().back();
+  size_t cols = adj->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, rows);
-  int threads = std::min(MAX_THREADS, cols);
+  size_t blocks = std::min(MAX_BLOCKS, rows);
+  size_t threads = std::min(MAX_THREADS, cols);
 
   if(adj->type() == Type::float32) {
     gLSTMOutputBackward<<<blocks, threads>>>(
@@ -2667,8 +2665,8 @@ __global__ void gHighwayForward(T* out,
                                 const T* in2,
                                 const T* t,
                                 size_t length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       T sigma = functional::Ops<T>::sigmoid(t[index]);
       out[index] = in1[index] * sigma + in2[index] * ((T)1.f - sigma);
@@ -2682,10 +2680,10 @@ void HighwayForward(Tensor out,
                     const Tensor t) {
   cudaSetDevice(out->getDeviceId().no);
 
-  int length = out->shape().elements();
+  size_t length = out->shape().elements();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   if(out->type() == Type::float32) {
     gHighwayForward<<<blocks, threads>>>(
@@ -2709,8 +2707,8 @@ __global__ void gHighwayBackward(T* out1,
                                  const T* t,
                                  const T* adj,
                                  size_t length) {
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       T sigma = functional::Ops<T>::sigmoid(t[index]);
       out1[index] = sigma * adj[index];
@@ -2730,10 +2728,10 @@ void HighwayBackward(Tensor out1,
                      const Tensor adj) {
   cudaSetDevice(out1->getDeviceId().no);
 
-  int length = out1->shape().elements();
+  size_t length = out1->shape().elements();
 
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   if(out1->type() == Type::float32) {
     gHighwayBackward<<<blocks, threads>>>(out1->data<float>(),
@@ -2761,23 +2759,23 @@ void HighwayBackward(Tensor out1,
 }
 
 __global__ void gMaxPoolingForward(float* out,
-                                   int outRows,
-                                   int outCols,
+                                   size_t outRows,
+                                   size_t outCols,
                                    float* in,
-                                   int inRows,
-                                   int inCols,
+                                   size_t inRows,
+                                   size_t inCols,
                                    float* mask,
-                                   int numKernels,
-                                   int maskCols,
-                                   int width,
-                                   int lastWidth) {
-  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+                                   size_t numKernels,
+                                   size_t maskCols,
+                                   size_t width,
+                                   size_t lastWidth) {
+  size_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
   if(tid >= outRows * outCols)
     return;
 
-  int rowId = tid / outRows;
-  int colId = tid % outRows;
+  size_t rowId = tid / outRows;
+  size_t colId = tid % outRows;
 
   float* b = in + (rowId * inCols) + (colId * width);
   float* localMask = mask + (rowId / numKernels) * maskCols + colId * width;
@@ -2787,7 +2785,7 @@ __global__ void gMaxPoolingForward(float* out,
   }
 
   float currentMax = b[0] * localMask[0];
-  for(int i = 1; i < width; ++i) {
+  for(size_t i = 1; i < width; ++i) {
     if(b[i] * localMask[i] > currentMax) {
       currentMax = b[i] * localMask[i];
     }
@@ -2799,22 +2797,22 @@ __global__ void gMaxPoolingForward(float* out,
 void PoolingWithMaskingForward(Tensor out,
                                Tensor in,
                                Tensor mask,
-                               int width,
+                               size_t width,
                                bool isEven) {
   matchOrAbort<float>(out->type());
-  int n = out->shape().elements();
-  int threads = std::min(n, MAX_THREADS);
-  int blocks = n / threads + (n % threads != 0);
+  size_t n = out->shape().elements();
+  size_t threads = std::min(n, MAX_THREADS);
+  size_t blocks = n / threads + (n % threads != 0);
 
   auto& inShape = in->shape();
-  int inRows = inShape[0] * inShape[1];
-  int inCols = inShape[2];
+  size_t inRows = inShape[0] * inShape[1];
+  size_t inCols = inShape[2];
 
   auto& outShape = out->shape();
-  int outRows = outShape[2];
-  int outCols = outShape[0] * outShape[1];
+  size_t outRows = outShape[2];
+  size_t outCols = outShape[0] * outShape[1];
 
-  int lastWidth
+  size_t lastWidth
       = ((inCols - isEven) % width == 0) ? width : (inCols - isEven) % width;
 
   gMaxPoolingForward<<<blocks, threads>>>(out->data(),
@@ -2831,24 +2829,24 @@ void PoolingWithMaskingForward(Tensor out,
 }
 
 __global__ void gMaxPoolingBackward(float* adj,
-                                    int adjRows,
-                                    int adjCols,
+                                    size_t adjRows,
+                                    size_t adjCols,
                                     float* in,
                                     float* adjIn,
-                                    int inRows,
-                                    int inCols,
+                                    size_t inRows,
+                                    size_t inCols,
                                     float* mask,
-                                    int numKernels,
-                                    int maskCols,
-                                    int width,
-                                    int lastWidth) {
-  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+                                    size_t numKernels,
+                                    size_t maskCols,
+                                    size_t width,
+                                    size_t lastWidth) {
+  size_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
   if(tid >= adjRows * adjCols)
     return;
 
-  int rowId = tid / adjRows;
-  int colId = tid % adjRows;
+  size_t rowId = tid / adjRows;
+  size_t colId = tid % adjRows;
 
   float* b = in + (rowId * inCols) + (colId * width);
 
@@ -2858,7 +2856,7 @@ __global__ void gMaxPoolingBackward(float* adj,
 
   float* localMask = mask + (rowId / numKernels) * maskCols + colId * width;
   size_t currentMaxIdx = 0;
-  for(int i = 1; i < width; ++i) {
+  for(size_t i = 1; i < width; ++i) {
     if(b[i] * localMask[i] > b[currentMaxIdx] * localMask[currentMaxIdx]) {
       currentMaxIdx = i;
     }
@@ -2872,22 +2870,22 @@ void PoolingWithMaskingBackward(Tensor adj,
                                 Tensor adjIn,
                                 Tensor in,
                                 Tensor mask,
-                                int width,
+                                size_t width,
                                 bool isEven) {
   matchOrAbort<float>(adj->type());
-  int n = adj->shape().elements();
-  int threads = std::min(n, 512);
-  int blocks = n / threads + (n % threads != 0);
+  size_t n = adj->shape().elements();
+  size_t threads = std::min(n, MAX_THREADS);
+  size_t blocks = n / threads + (n % threads != 0);
 
   auto& inShape = in->shape();
-  int inRows = inShape[0] * inShape[1];
-  int inCols = inShape[2];
+  size_t inRows = inShape[0] * inShape[1];
+  size_t inCols = inShape[2];
 
   auto& adjShape = adj->shape();
-  int adjRows = adjShape[2];
-  int adjCols = adjShape[0] * adjShape[1];
+  size_t adjRows = adjShape[2];
+  size_t adjCols = adjShape[0] * adjShape[1];
 
-  int lastWidth
+  size_t lastWidth
       = ((inCols - isEven) % width == 0) ? width : (inCols - isEven) % width;
 
   gMaxPoolingBackward<<<blocks, threads>>>(adj->data(),

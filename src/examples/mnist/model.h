@@ -107,7 +107,7 @@ protected:
   virtual Expr apply(Ptr<ExpressionGraph> g,
                      Ptr<data::Batch> batch,
                      bool /*inference*/ = false) {
-    const std::vector<int> dims = {784, 2048, 2048, 10};
+    const std::vector<size_t> dims = {784, 2048, 2048, 10};
 
     // Start with an empty expression graph
     clear(g);
@@ -116,15 +116,15 @@ protected:
     // with training features
     auto features
         = std::static_pointer_cast<data::DataBatch>(batch)->features();
-    auto x = g->constant({(int)batch->size(), dims[0]},
+    auto x = g->constant({batch->size(), dims[0]},
                          inits::fromVector(features));
 
     // Construct hidden layers
     std::vector<Expr> layers, weights, biases;
 
     for(size_t i = 0; i < dims.size() - 1; ++i) {
-      int in = dims[i];
-      int out = dims[i + 1];
+      size_t in = dims[i];
+      size_t out = dims[i + 1];
 
       if(i == 0) {
         // Create a dropout node as the parent of x,

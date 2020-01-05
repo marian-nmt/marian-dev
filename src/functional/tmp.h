@@ -19,7 +19,7 @@ struct FApply<1, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 1>& in,
-      const functional::Array<int, 1>& indices) {
+      const functional::Array<size_t, 1>& indices) {
     return functor((AccType)in[0].data()[indices[0]]); // indices is an array of offsets into multiple tensors, index[i] corresponds in[i] based on up to arity K
   }
 
@@ -27,7 +27,7 @@ struct FApply<1, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 1>& in,
-      int index) {
+      size_t index) {
     return functor((AccType)in[0].data()[index]);
   }
 };
@@ -38,7 +38,7 @@ struct FApply<2, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 2>& in,
-      const functional::Array<int, 2>& indices) {
+      const functional::Array<size_t, 2>& indices) {
     return functor((AccType)in[0].data()[indices[0]],
                    (AccType)in[1].data()[indices[1]]);
   }
@@ -47,7 +47,7 @@ struct FApply<2, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 2>& in,
-      int index) {
+      size_t index) {
     return functor((AccType)in[0].data()[index],
                    (AccType)in[1].data()[index]);
   }
@@ -59,7 +59,7 @@ struct FApply<3, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 3>& in,
-      const functional::Array<int, 3>& indices) {
+      const functional::Array<size_t, 3>& indices) {
     return functor((AccType)in[0].data()[indices[0]],
                    (AccType)in[1].data()[indices[1]],
                    (AccType)in[2].data()[indices[2]]);
@@ -69,7 +69,7 @@ struct FApply<3, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 3>& in,
-      int index) {
+      size_t index) {
     return functor((AccType)in[0].data()[index],
                    (AccType)in[1].data()[index],
                    (AccType)in[2].data()[index]);
@@ -82,7 +82,7 @@ struct FApply<4, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 4>& in,
-      const functional::Array<int, 4>& indices) {
+      const functional::Array<size_t, 4>& indices) {
     return functor((AccType)in[0].data()[indices[0]],
                    (AccType)in[1].data()[indices[1]],
                    (AccType)in[2].data()[indices[2]],
@@ -93,7 +93,7 @@ struct FApply<4, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 4>& in,
-      int index) {
+      size_t index) {
     return functor((AccType)in[0].data()[index],
                    (AccType)in[1].data()[index],
                    (AccType)in[2].data()[index],
@@ -107,7 +107,7 @@ struct FApply<5, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 5>& in,
-      const functional::Array<int, 5>& indices) {
+      const functional::Array<size_t, 5>& indices) {
     return functor((AccType)in[0].data()[indices[0]],
                    (AccType)in[1].data()[indices[1]],
                    (AccType)in[2].data()[indices[2]],
@@ -119,7 +119,7 @@ struct FApply<5, Functor, AccType> {
   HOST_DEVICE_INLINE static AccType apply(
       Functor functor,
       functional::Array<functional::Tensor<ElementType>, 5>& in,
-      int index) {
+      size_t index) {
     return functor((AccType)in[0].data()[index], 
                    (AccType)in[1].data()[index], 
                    (AccType)in[2].data()[index], 
@@ -133,21 +133,21 @@ struct FApply<5, Functor, AccType> {
 template <typename ElementType, size_t K, class Functor>
 HOST_DEVICE_INLINE ElementType apply(Functor functor,
                     functional::Array<functional::Tensor<ElementType>, K>& in,
-                    const functional::Array<int, K>& indices) {
+                    const functional::Array<size_t, K>& indices) {
   return FApply<K, Functor, ElementType>::apply(functor, in, indices); // functor is applied to same type as input ElementType, no casting required
 }
 
 template <typename ElementType, size_t K, class Functor>
 HOST_DEVICE_INLINE ElementType apply(Functor functor,
                     functional::Array<functional::Tensor<ElementType>, K>& in,
-                    int index) {
+                    size_t index) {
   return FApply<K, Functor, ElementType>::apply(functor, in, index); // functor is applied to same type as input ElementType, no casting required
 }
 
 template <typename AccType, typename ElementType, size_t K, class Functor>
 HOST_DEVICE_INLINE AccType applyWithCast(Functor functor,
                     functional::Array<functional::Tensor<ElementType>, K>& in,
-                    const functional::Array<int, K>& indices) {
+                    const functional::Array<size_t, K>& indices) {
   return FApply<K, Functor, AccType>::apply(functor, in, indices); // ElementType and AccType are potentially different, cast to AccType before applying functor.
                                                                    // This is useful when accumulating e.g. 16-bit into 32-bit and we want to case to 32-bit before
                                                                    // the functor is applied. L2-Norm is a good use-case since the square can be large. 
@@ -156,7 +156,7 @@ HOST_DEVICE_INLINE AccType applyWithCast(Functor functor,
 template <typename AccType, typename ElementType, size_t K, class Functor>
 HOST_DEVICE_INLINE AccType applyWithCast(Functor functor,
                     functional::Array<functional::Tensor<ElementType>, K>& in,
-                    int index) {
+                    size_t index) {
   return FApply<K, Functor, AccType>::apply(functor, in, index); // ElementType and AccType are potentially different, cast to AccType before applying functor
 }
 
@@ -169,12 +169,12 @@ struct Loop {
   HOST_DEVICE_INLINE static AccType result(
       Functor functor, AccType aggInit, AggFunctor aggFunctor,
       functional::Array<functional::Tensor<ElementType>, K>& in,
-      const functional::Array<int, K>& pAcc,
-      const functional::Array<int, N>& length,
-      const functional::Array<int, N>& dim) {
+      const functional::Array<size_t, K>& pAcc,
+      const functional::Array<size_t, N>& length,
+      const functional::Array<size_t, N>& dim) {
     AccType agg = aggInit;
-    functional::Array<int, K> acc;
-    for(int i = 0; i < length[N - n]; ++i) {
+    functional::Array<size_t, K> acc;
+    for(size_t i = 0; i < length[N - n]; ++i) {
       for(size_t j = 0; j < K; ++j) {
         acc[j] = pAcc[j] + (dim[N - n] + i) * in[j].shape().bstride(N - n);
       }
@@ -190,12 +190,12 @@ struct Loop<1, N, K> {
   HOST_DEVICE_INLINE static AccType result(
       Functor functor, AccType aggInit, AggFunctor aggFunctor,
       functional::Array<functional::Tensor<ElementType>, K>& in,
-      const functional::Array<int, K>& pAcc,
-      const functional::Array<int, N>& length,
-      const functional::Array<int, N>& dim) {
+      const functional::Array<size_t, K>& pAcc,
+      const functional::Array<size_t, N>& length,
+      const functional::Array<size_t, N>& dim) {
     AccType agg = aggInit;
-    functional::Array<int, K> acc;
-    for(int i = 0; i < length[N - 1]; ++i) {
+    functional::Array<size_t, K> acc;
+    for(size_t i = 0; i < length[N - 1]; ++i) {
       for(size_t j = 0; j < K; ++j) {
         acc[j] = pAcc[j] + (dim[N - 1] + i) * in[j].shape().bstride(N - 1);
       }
@@ -209,9 +209,9 @@ struct Loop<1, N, K> {
 template <size_t N, size_t K, class Functor, class AggFunctor, typename ElementType, typename AccType>
 HOST_DEVICE_INLINE AccType loops(Functor functor, AccType aggInit, AggFunctor aggFunctor,
                                      functional::Array<functional::Tensor<ElementType>, K>& in,
-                    const functional::Array<int, N>& length,
-                    const functional::Array<int, N>& dim) {
-  functional::Array<int, K> acc = {0};
+                    const functional::Array<size_t, N>& length,
+                    const functional::Array<size_t, N>& dim) {
+  functional::Array<size_t, K> acc = {0};
   return Loop<N, N, K>::result(functor, aggInit, aggFunctor, in, acc, length, dim);
 }
 }  // namespace functional

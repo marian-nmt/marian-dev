@@ -52,9 +52,9 @@ struct AttentionNodeOp : public NaryNodeOp {
 Expr attOps(Expr va, Expr context, Expr state) {
   std::vector<Expr> nodes{va, context, state};
 
-  int dimBatch = context->shape()[-2];
-  int dimWords = context->shape()[-3];
-  int dimBeam = 1;
+  size_t dimBatch = context->shape()[-2];
+  size_t dimWords = context->shape()[-3];
+  size_t dimBeam = 1;
   if(state->shape().size() > 3)
     dimBeam = state->shape()[-4];
 

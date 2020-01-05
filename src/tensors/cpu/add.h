@@ -21,18 +21,18 @@ void gAggregateGeneric(Functor functor, float aggInit, AggFunctor aggFunctor,
                  functional::Tensor<float> out,
                  functional::Array<functional::Tensor<float>, K> ins,
                  float scale = 1.0) {
-  int outLength = out.shape().elements();
+  size_t outLength = out.shape().elements();
   bool same = outLength == full.elements();
   for(size_t i = 0; i < K; ++i)
     same = same && outLength == ins[i].shape().elements();
 
   constexpr size_t N = functional::Shape::size();
-  functional::Array<int, N> len;
-  for(int i = 0; i < N; ++i)
+  functional::Array<size_t, N> len;
+  for(size_t i = 0; i < N; ++i)
     len[i] = full[i] / out.shape()[i];
 
-  functional::Array<int, N> dims;
-  for(int index = 0; index < outLength; ++index) {
+  functional::Array<size_t, N> dims;
+  for(size_t index = 0; index < outLength; ++index) {
     if(same) {
       out[index] = aggFunctor(out[index], functional::apply(functor, ins, index) * scale);
     } else {
@@ -48,11 +48,11 @@ void gAggregateEqual(Functor functor, AggFunctor aggFunctor,
                functional::Array<functional::Tensor<float>, K> ins,
                float scale,
                bool broadcast) {
-  int length = out.shape().elements();
-  functional::Array<int, functional::Shape::size()> dims;
+  size_t length = out.shape().elements();
+  functional::Array<size_t, functional::Shape::size()> dims;
 
-  for(int index = 0; index < length; ++index) {
-    functional::Array<int, K> indices;
+  for(size_t index = 0; index < length; ++index) {
+    functional::Array<size_t, K> indices;
     indices.fill(index);
 
     if(broadcast) {
@@ -71,23 +71,23 @@ void gAggregateReduce(Functor functor, float aggInit, AggFunctor aggFunctor,
                 functional::Tensor<float> out,
                 functional::Array<functional::Tensor<float>, K> ins,
                 float scale = 1.0) {
-  int rows = full.elements() / full.back();
-  int cols = full.back();
+  size_t rows = full.elements() / full.back();
+  size_t cols = full.back();
 
   bool same = true;
   for(size_t i = 0; i < K; ++i)
     same = same && ins[i].shape().elements() == full.elements();
 
-  for(int j = 0; j < rows; ++j) {
+  for(size_t j = 0; j < rows; ++j) {
     float colSum = aggInit;
     if(same) {
-      for(int id = 0; id < cols; ++id)
+      for(size_t id = 0; id < cols; ++id)
         colSum = aggFunctor(colSum, functional::apply(functor, ins, j * cols + id));
     } else {
-      functional::Array<int, functional::Shape::size()> dims;
-      for(int id = 0; id < cols; ++id) {
+      functional::Array<size_t, functional::Shape::size()> dims;
+      for(size_t id = 0; id < cols; ++id) {
         full.dims(j * cols + id, dims);
-        functional::Array<int, K> indices;
+        functional::Array<size_t, K> indices;
         for(size_t i = 0; i < K; ++i)
           indices[i] = ins[i].shape().bindex(dims);
         colSum = aggFunctor(colSum, functional::apply(functor, ins, indices));
@@ -101,7 +101,7 @@ template <class Functor, class AggFunctor, class... Tensors>
 void Aggregate(Functor functor, float aggInit, AggFunctor aggFunctor, float scale, marian::Tensor out, Tensors... tensors) {
   auto full = marian::Shape::broadcast({out, tensors...});
 
-  //int length = out->shape().elements();
+  //size_t length = out->shape().elements();
 
   constexpr size_t K = sizeof...(Tensors);
 

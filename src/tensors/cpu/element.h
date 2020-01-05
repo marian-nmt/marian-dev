@@ -26,11 +26,11 @@ struct E {
   static inline void element(
       const Functor& functor,
       F::Array<F::Tensor<ElementType>, numArg>& tensors,
-      F::Array<int, numArg> indices) {
+      F::Array<size_t, numArg> indices) {
     const auto& shape = tensors[0].shape();
 
     // loop over outer-most dimension
-    for(int i = 0; i < shape[I]; ++i) {
+    for(size_t i = 0; i < shape[I]; ++i) {
       // call loop for next-inner dimension
       E<I + 1>::element(functor, tensors, indices);
 
@@ -38,7 +38,7 @@ struct E {
       // bstride(i) is look-up value, either equal to stride if the
       // corresponding dim is larger 1 or 0 if the dim is 1.
       for(size_t k = 0; k < numArg; ++k) {
-        //int stride = tensors[k].shape().stride(I);
+        //size_t stride = tensors[k].shape().stride(I);
         //indices[k] += stride == 1 ? 0 : stride;
         indices[k] += tensors[k].shape().bstride(I);
       }
@@ -54,7 +54,7 @@ struct E<F::Shape::size()> {
   static inline void element(
       const Functor& functor,
       F::Array<F::Tensor<ElementType>, numArg>& tensors,
-      const F::Array<int, numArg>& indices) {
+      const F::Array<size_t, numArg>& indices) {
     // just apply the function for all indexed elements across all tensors
     // @TODO: use converting operator[] on tensor
     tensors[0].data()[indices[0]] = F::apply(functor, tensors, indices);
@@ -67,7 +67,7 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
   // Number of input tensors + 1 (output tensor)
   constexpr size_t argNum = sizeof...(tensors) + 1;
   // create and initialize indices to 0, one index per tensor
-  F::Array<int, argNum> indices;
+  F::Array<size_t, argNum> indices;
   indices.fill(0);
 
   // call elementwise operation going from outer-most dimension

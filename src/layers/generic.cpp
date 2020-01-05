@@ -90,7 +90,7 @@ namespace marian {
 
     // if selIdx are given, then we must reshuffle accordingly
     if (!hypIndices.empty()) // use the same function that shuffles decoder state
-      sel = rnn::State::select(sel, hypIndices, (int)beamSize, /*isBatchMajor=*/false);
+      sel = rnn::State::select(sel, hypIndices, beamSize, /*isBatchMajor=*/false);
     return sel;
   }
 
@@ -125,14 +125,14 @@ namespace marian {
     y = dot_csr(
         y,  // [B x U]
         factorMatrix.shape,
-        graph->constant({(int)factorMatrix.weights.size()}, inits::fromVector(factorMatrix.weights), Type::float32),
-        graph->constant({(int)factorMatrix.indices.size()}, inits::fromVector(factorMatrix.indices), Type::uint32),
-        graph->constant({(int)factorMatrix.offsets.size()}, inits::fromVector(factorMatrix.offsets), Type::uint32),
+        graph->constant({factorMatrix.weights.size()}, inits::fromVector(factorMatrix.weights), Type::float32),
+        graph->constant({factorMatrix.indices.size()}, inits::fromVector(factorMatrix.indices), Type::uint32),
+        graph->constant({factorMatrix.offsets.size()}, inits::fromVector(factorMatrix.offsets), Type::uint32),
         /*transB=*/ true); // -> [B x V]
 
     // mask out gaps
     auto gapLogMask = factoredVocab_->getGapLogMask(); // [V]
-    y = y + graph->constant({ (int)gapLogMask.size() }, inits::fromVector(gapLogMask), Type::float32);
+    y = y + graph->constant({ gapLogMask.size() }, inits::fromVector(gapLogMask), Type::float32);
 
     return y;
 #else
@@ -213,17 +213,17 @@ namespace marian {
   }
 
   namespace mlp {
-    /*private*/ void Output::lazyConstruct(int inputDim) {
+    /*private*/ void Output::lazyConstruct(size_t inputDim) {
       // We must construct lazily since we won't know tying nor input dim in constructor.
       if (Wt_)
         return;
 
       auto name = options_->get<std::string>("prefix");
-      auto numOutputClasses = options_->get<int>("dim");
+      auto numOutputClasses = options_->get<size_t>("dim");
 
       factoredVocab_ = FactoredVocab::tryCreateAndLoad(options_->get<std::string>("vocab", ""));
       if (factoredVocab_) {
-        numOutputClasses = (int)factoredVocab_->factorVocabSize();
+        numOutputClasses = factoredVocab_->factorVocabSize();
         LOG_ONCE(info, "[embedding] Factored outputs enabled");
       }
 
@@ -240,7 +240,7 @@ namespace marian {
 
       b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
-      /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
+      /*const*/ size_t lemmaDimEmb = options_->get<size_t>("lemma-dim-emb", 0);
       ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
       if (lemmaDimEmb > 0) { // > 0 means to embed the (expected) word with a different embedding matrix
 #define HARDMAX_HACK
@@ -248,7 +248,7 @@ namespace marian {
         lemmaDimEmb = lemmaDimEmb & 0xfffffffe; // hack to select hard-max: use an odd number
 #endif
         auto range = factoredVocab_->getGroupRange(0);
-        auto lemmaVocabDim = (int)(range.second - range.first);
+        auto lemmaVocabDim = (size_t)(range.second - range.first);
         auto initFunc = inits::glorotUniform(/*fanIn=*/true, /*fanOut=*/false); // -> embedding vectors have roughly unit length
         lemmaEt_ = graph_->param(name + "_lemmaEt", {lemmaDimEmb, lemmaVocabDim}, initFunc); // [L x U] L=lemmaDimEmb; transposed for speed
       }
@@ -286,7 +286,7 @@ namespace marian {
             factorWt = slice(Wt_, isLegacyUntransposedW ? -1 : 0, Slice((int)range.first, (int)range.second));
             factorB  = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
           }
-          /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
+          /*const*/ size_t lemmaDimEmb = options_->get<size_t>("lemma-dim-emb", 0);
           if ((lemmaDimEmb == -2 || lemmaDimEmb == -3) && g > 0) { // -2/-3 means a gated transformer-like structure (-3 = hard-max)
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate");
             // this mimics one transformer layer
@@ -298,16 +298,16 @@ namespace marian {
             //  - add & norm, for gradient flow and scaling
             //  - FF layer   --this is expensive; it is per-factor
             // multi-head attention
-            int inputDim = input->shape()[-1];
-            int heads = 8;
+            size_t inputDim = input->shape()[-1];
+            size_t heads = 8;
             auto name = options_->get<std::string>("prefix") + "_factor" + std::to_string(g);
             auto Wq = graph_->param(name + "_Wq", { inputDim,  inputDim }, inits::glorotUniform());
             auto Wk = graph_->param(name + "_Wk", { inputDim,  inputDim }, inits::glorotUniform());
             auto Wv = graph_->param(name + "_Wv", { inputDim,  inputDim }, inits::glorotUniform());
-            auto toMultiHead = [&](Expr x, int heads) {
+            auto toMultiHead = [&](Expr x, size_t heads) {
               const auto& shape = x->shape();
-              int inputDim = shape[-1];
-              int otherDim = shape.elements() / inputDim;
+              size_t inputDim = shape[-1];
+              size_t otherDim = shape.elements() / inputDim;
               ABORT_IF(inputDim / heads * heads != inputDim, "inputDim ({}) must be multiple of number of heads ({})", inputDim, heads);
               return reshape(x, { otherDim, heads, 1, inputDim / heads });
             };
@@ -336,8 +336,8 @@ namespace marian {
           auto factorLogits = affine(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true, /*scale=*/1.0f); // [B... x U] factor logits
           // optionally add lemma-dependent bias
           if (Plemma) { // [B... x U0]
-            int lemmaVocabDim = Plemma->shape()[-1];
-            int factorVocabDim = factorLogits->shape()[-1];
+            size_t lemmaVocabDim = Plemma->shape()[-1];
+            size_t factorVocabDim = factorLogits->shape()[-1];
             auto name = options_->get<std::string>("prefix");
             Expr lemmaBt = graph_->param(name + "_lemmaBt_" + std::to_string(g), {factorVocabDim, lemmaVocabDim}, inits::zeros()); // [U x U0] U0=#lemmas one bias per class per lemma
             auto b = dot(Plemma, lemmaBt, false, true); // [B... x U]
@@ -386,7 +386,7 @@ namespace marian {
               cachedShortLemmaEt_ = index_select(lemmaEt_, -1, shortlist_->indices());
             auto e = dot(factorSoftmax, cachedShortLemmaEt_ ? cachedShortLemmaEt_ : lemmaEt_, false, true); // [B... x L]
             // project it back to regular hidden dim
-            int inputDim = input1->shape()[-1];
+            size_t inputDim = input1->shape()[-1];
             auto name = options_->get<std::string>("prefix");
             // note: if the lemmaEt[:,w] have unit length (var = 1/L), then lemmaWt @ lemmaEt is also length 1
             Expr lemmaWt = inputDim == lemmaDimEmb ? nullptr : graph_->param(name + "_lemmaWt", { inputDim,  lemmaDimEmb }, inits::glorotUniform()); // [D x L] D=hidden-vector dimension
@@ -406,14 +406,14 @@ namespace marian {
 
   Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options) : LayerBase(graph, options) {
     std::string name = opt<std::string>("prefix");
-    int dimVoc = opt<int>("dimVocab");
-    int dimEmb = opt<int>("dimEmb");
+    size_t dimVoc = opt<size_t>("dimVocab");
+    size_t dimEmb = opt<size_t>("dimEmb");
 
     bool fixed = opt<bool>("fixed", false);
 
     factoredVocab_ = FactoredVocab::tryCreateAndLoad(options_->get<std::string>("vocab", ""));
     if (factoredVocab_) {
-      dimVoc = (int)factoredVocab_->factorVocabSize();
+      dimVoc = factoredVocab_->factorVocabSize();
       LOG_ONCE(info, "[embedding] Factored embeddings enabled");
     }
 
@@ -438,11 +438,11 @@ namespace marian {
     auto factoredData = factoredVocab_->csr_rows(data);
     // multi-hot factor vectors are represented as a sparse CSR matrix
     // [row index = word position index] -> set of factor indices for word at this position
-    ABORT_IF(factoredData.shape != Shape({(int)factoredData.offsets.size()-1/*=rows of CSR*/, E_->shape()[0]}), "shape mismatch??");
+    ABORT_IF(factoredData.shape != Shape({factoredData.offsets.size()-1/*=rows of CSR*/, E_->shape()[0]}), "shape mismatch??");
     // the CSR matrix is passed in pieces
-    auto weights = graph->constant({ (int)factoredData.weights.size() }, inits::fromVector(factoredData.weights), Type::float32);
-    auto indices = graph->constant({ (int)factoredData.indices.size() }, inits::fromVector(factoredData.indices), Type::uint32);
-    auto offsets = graph->constant({ (int)factoredData.offsets.size() }, inits::fromVector(factoredData.offsets), Type::uint32);
+    auto weights = graph->constant({ factoredData.weights.size() }, inits::fromVector(factoredData.weights), Type::float32);
+    auto indices = graph->constant({ factoredData.indices.size() }, inits::fromVector(factoredData.indices), Type::uint32);
+    auto offsets = graph->constant({ factoredData.offsets.size() }, inits::fromVector(factoredData.offsets), Type::uint32);
     // apply dropout
     // We apply it to the weights, i.e. factors get dropped out separately, but always as entire vectors.
     weights = dropout(weights, dropProb);
@@ -452,9 +452,9 @@ namespace marian {
 
   std::tuple<Expr/*embeddings*/, Expr/*mask*/> Embedding::apply(Ptr<data::SubBatch> subBatch) const /*override final*/ {
     auto graph = E_->graph();
-    int dimBatch = (int)subBatch->batchSize();
-    int dimEmb = E_->shape()[-1];
-    int dimWidth = (int)subBatch->batchWidth();
+    size_t dimBatch = (size_t)subBatch->batchSize();
+    size_t dimEmb = E_->shape()[-1];
+    size_t dimWidth = (size_t)subBatch->batchWidth();
 
     // factored embeddings:
     //  - regular:
@@ -520,8 +520,8 @@ namespace marian {
   // standard encoder word embeddings
   /*private*/ Ptr<IEmbeddingLayer> EncoderDecoderLayerBase::createEmbeddingLayer() const {
     auto options = New<Options>(
-        "dimVocab", opt<std::vector<int>>("dim-vocabs")[batchIndex_],
-        "dimEmb",   opt<int>("dim-emb"),
+        "dimVocab", opt<std::vector<size_t>>("dim-vocabs")[batchIndex_],
+        "dimEmb",   opt<size_t>("dim-emb"),
         "dropout",  dropout_,
         "prefix",   (opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all")) ? "Wemb" : prefix_ + "_Wemb",
         "fixed",    embeddingFix_,
@@ -538,10 +538,10 @@ namespace marian {
   // ULR word embeddings
   /*private*/ Ptr<IEmbeddingLayer> EncoderDecoderLayerBase::createULREmbeddingLayer() const {
     return New<ULREmbedding>(graph_, New<Options>(
-        "dimSrcVoc",         opt<std::vector<int>>("dim-vocabs")[0],  // ULR multi-lingual src
-        "dimTgtVoc",         opt<std::vector<int>>("dim-vocabs")[1],  // ULR monon tgt
-        "dimUlrEmb",         opt<int>("ulr-dim-emb"),
-        "dimEmb",            opt<int>("dim-emb"),
+        "dimSrcVoc",         opt<std::vector<size_t>>("dim-vocabs")[0],  // ULR multi-lingual src
+        "dimTgtVoc",         opt<std::vector<size_t>>("dim-vocabs")[1],  // ULR monon tgt
+        "dimUlrEmb",         opt<size_t>("ulr-dim-emb"),
+        "dimEmb",            opt<size_t>("dim-emb"),
         "ulr-dropout",       opt<float>("ulr-dropout"),
         "dropout",           dropout_,
         "ulrTrainTransform", opt<bool>("ulr-trainable-transformation"),

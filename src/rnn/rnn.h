@@ -64,11 +64,11 @@ private:
 
     auto xWs = cell_->applyInput({input});
 
-    auto timeSteps = input->shape()[-3];
+    size_t timeSteps = input->shape()[-3];
 
     States outputs;
-    for(int i = 0; i < timeSteps; ++i) {
-      int j = i;
+    for(size_t i = 0; i < timeSteps; ++i) {
+      size_t j = i;
 
       if(direction_ == dir::backward)
         j = timeSteps - i - 1;
@@ -97,8 +97,8 @@ private:
   States apply(const Expr input, const Expr mask = nullptr) {
     auto graph = input->graph();
 
-    int dimBatch = input->shape()[-2];
-    int dimState = cell_->getOptions()->get<int>("dimState");
+    size_t dimBatch = input->shape()[-2];
+    size_t dimState = cell_->getOptions()->get<size_t>("dimState");
 
     auto output = graph->zeros({1, dimBatch, dimState});
     Expr cell = output;

@@ -101,15 +101,15 @@ public:
   void shuffle() override { std::shuffle(examples_.begin(), examples_.end(), eng_); }
 
   batch_ptr toBatch(const Examples& batchVector) override {
-    int batchSize = (int)batchVector.size();
+    size_t batchSize = batchVector.size();
 
-    std::vector<int> maxDims;
+    std::vector<size_t> maxDims;
     for(auto& ex : batchVector) {
       if(maxDims.size() < ex.size())
         maxDims.resize(ex.size(), 0);
       for(size_t i = 0; i < ex.size(); ++i) {
         if(ex[i].size() > (size_t)maxDims[i])
-          maxDims[i] = (int)ex[i].size();
+          maxDims[i] = ex[i].size();
       }
     }
 

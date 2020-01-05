@@ -65,7 +65,7 @@ public:
   // @TODO: should this be a constructor? Then derived classes can call this without the New<> in the loop
   virtual Ptr<DecoderState> select(const std::vector<IndexType>& hypIndices,   // [beamIndex * activeBatchSize + batchIndex]
                                    const std::vector<IndexType>& batchIndices, // [batchIndex]
-                                   int beamSize) const {
+                                   size_t beamSize) const {
 
     std::vector<Ptr<EncoderState>> newEncStates;
     for(auto& es : encStates_) 

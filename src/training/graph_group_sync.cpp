@@ -80,7 +80,7 @@ void SyncGraphGroup::initializeAvg() {
   }
 
   auto init = [&](size_t localDeviceIndex, size_t begin, size_t end) {
-    size_t size = end-begin;
+    size_t size = end - begin;
 
     // get the device-specific allocator
     auto paramsAllocator = New<TensorAllocator>(graphs_[localDeviceIndex]->getBackend());
@@ -89,7 +89,7 @@ void SyncGraphGroup::initializeAvg() {
     paramsAllocator->reserveExact(size * sizeof(float));
 
     Tensor paramAvg;
-    paramsAllocator->allocate(paramAvg, {1, (int)size});
+    paramsAllocator->allocate(paramAvg, {1, size});
     paramsAvg_[localDeviceIndex] = paramAvg;
 
     if(graphAvg)

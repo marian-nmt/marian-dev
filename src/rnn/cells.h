@@ -28,8 +28,8 @@ private:
 
 public:
   Tanh(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = options_->get<int>("dimInput");
-    int dimState = options_->get<int>("dimState");
+    size_t dimInput = options_->get<size_t>("dimInput");
+    size_t dimState = options_->get<size_t>("dimState");
     std::string prefix = options_->get<std::string>("prefix");
 
     layerNorm_ = options_->get<bool>("layer-normalization", false);
@@ -120,8 +120,8 @@ private:
 
 public:
   ReLU(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = options_->get<int>("dimInput");
-    int dimState = options_->get<int>("dimState");
+    size_t dimInput = options_->get<size_t>("dimInput");
+    size_t dimState = options_->get<size_t>("dimState");
     std::string prefix = options_->get<std::string>("prefix");
 
     layerNorm_ = options_->get<bool>("layer-normalization", false);
@@ -216,8 +216,8 @@ protected:
 
 public:
   GRU(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = opt<int>("dimInput");
-    int dimState = opt<int>("dimState");
+    size_t dimInput = opt<size_t>("dimInput");
+    size_t dimState = opt<size_t>("dimState");
     std::string prefix = opt<std::string>("prefix");
 
     layerNorm_ = opt<bool>("layer-normalization", false);
@@ -358,8 +358,8 @@ protected:
 
 public:
   GRUNematus(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = opt<int>("dimInput");
-    int dimState = opt<int>("dimState");
+    size_t dimInput = opt<size_t>("dimInput");
+    size_t dimState = opt<size_t>("dimState");
 
     auto prefix = opt<std::string>("prefix");
     encoder_ = prefix.substr(0, 7) == "encoder";
@@ -559,8 +559,8 @@ protected:
 
 public:
   FastLSTM(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = opt<int>("dimInput");
-    int dimState = opt<int>("dimState");
+    size_t dimInput = opt<size_t>("dimInput");
+    size_t dimState = opt<size_t>("dimState");
     std::string prefix = opt<std::string>("prefix");
 
     layerNorm_ = opt<bool>("layer-normalization", false);
@@ -662,8 +662,8 @@ protected:
 public:
   Multiplicative(Ptr<ExpressionGraph> graph, Ptr<Options> options)
       : CellType(graph, options) {
-    int dimInput = options->get<int>("dimInput");
-    int dimState = options->get<int>("dimState");
+    size_t dimInput = options->get<size_t>("dimInput");
+    size_t dimState = options->get<size_t>("dimState");
     std::string prefix = options->get<std::string>("prefix");
 
     Um_ = graph->param(
@@ -731,8 +731,8 @@ private:
 
 public:
   SlowLSTM(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = options_->get<int>("dimInput");
-    int dimState = options_->get<int>("dimState");
+    size_t dimInput = options_->get<size_t>("dimInput");
+    size_t dimState = options_->get<size_t>("dimState");
     std::string prefix = options->get<std::string>("prefix");
 
     Uf_ = graph->param(
@@ -813,8 +813,8 @@ private:
 
 public:
   TestLSTM(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = options_->get<int>("dimInput");
-    int dimState = options_->get<int>("dimState");
+    size_t dimInput = options_->get<size_t>("dimInput");
+    size_t dimState = options_->get<size_t>("dimState");
     std::string prefix = options->get<std::string>("prefix");
 
     auto Uf = graph->param(
@@ -898,8 +898,8 @@ private:
 
 public:
   SRU(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = opt<int>("dimInput");
-    int dimState = opt<int>("dimState");
+    size_t dimInput = opt<size_t>("dimInput");
+    size_t dimState = opt<size_t>("dimState");
     std::string prefix = opt<std::string>("prefix");
 
     ABORT_IF(dimInput != dimState,
@@ -992,8 +992,8 @@ private:
 
 public:
   SSRU(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-    int dimInput = options_->get<int>("dimInput");
-    int dimState = options_->get<int>("dimState");
+    size_t dimInput = options_->get<size_t>("dimInput");
+    size_t dimState = options_->get<size_t>("dimState");
 
     std::string prefix = options->get<std::string>("prefix");
 
@@ -1075,8 +1075,8 @@ public:
 
 // public:
 //   LSSRU(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Cell(options) {
-//     int dimInput = options_->get<int>("dimInput");
-//     int dimState = options_->get<int>("dimState");
+//     size_t dimInput = options_->get<size_t>("dimInput");
+//     size_t dimState = options_->get<size_t>("dimState");
 //     std::string prefix = options->get<std::string>("prefix");
 
 //     ABORT_IF(dimInput != dimState, "For SRU state and input dims have to be equal");

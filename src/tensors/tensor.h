@@ -88,7 +88,7 @@ public:
 
   Tensor subtensor(size_t offset, size_t size) {
     auto mem = MemoryPiece::New(memory_->data() + sizeOf(type_) * offset, sizeOf(type_) * size);
-    return TensorBase::New(mem, Shape{1, (int)size}, type(), backend_);
+    return TensorBase::New(mem, Shape{1, size}, type(), backend_);
   }
 
   // @TODO: review if we can eliminate GPU-specific code here, 

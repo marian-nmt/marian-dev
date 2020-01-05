@@ -24,7 +24,7 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
     alloc_ = New<TensorAllocator>(params->getBackend());
 
   if(!gt_) {
-    int elements = (int)params->size();
+    size_t elements = params->size();
     alloc_->reserveExact(params->memory()->size());
     alloc_->allocate(gt_, {1, elements});
     gt_->set(0.f);
@@ -77,9 +77,9 @@ void Adagrad::load(const std::string& name,
     if(!opt->gt_) {
       if(!opt->alloc_)
         opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
-      auto size = end - begin;
+      size_t size = (size_t)(end - begin);
       opt->alloc_->reserveExact(sizeof(float) * size);
-      opt->alloc_->allocate(opt->gt_, {1, (int)size});
+      opt->alloc_->allocate(opt->gt_, {1, size});
     }
     opt->gt_->set(std::vector<float>(begin, end));
   });
@@ -106,7 +106,7 @@ void Adagrad::save(const std::string& name,
   // save to file
   io::Item item;
   item.name = "adagrad_gt";
-  item.shape = Shape({1, (int)vGt.size()});
+  item.shape = Shape({1, vGt.size()});
   item.type = Type::float32;
   item.bytes.resize(vGt.size() * sizeOf(item.type));
   std::copy((char*)vGt.data(), (char*)(vGt.data() + vGt.size()), item.bytes.begin());
@@ -127,7 +127,7 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
     alloc_ = New<TensorAllocator>(params->getBackend());
 
   if(!mt_) {
-    int elements = (int)params->size();
+    size_t elements = params->size();
     alloc_->reserveExact(2 * params->memory()->size());
     alloc_->allocate(mt_, {1, elements});
     mt_->set(0.f);
@@ -218,10 +218,10 @@ void Adam::load(const std::string& name,
     if(!opt->mt_ || !opt->vt_) { // lazily allocate
       if(!opt->alloc_)
         opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
-      auto size = end-begin;
+      auto size = (size_t)(end - begin);
       opt->alloc_->reserveExact(2 * sizeof(float) * size);
-      opt->alloc_->allocate(opt->mt_, {1, (int)size});
-      opt->alloc_->allocate(opt->vt_, {1, (int)size});
+      opt->alloc_->allocate(opt->mt_, {1, size});
+      opt->alloc_->allocate(opt->vt_, {1, size});
     }
     opt->mt_->set(std::vector<float>(begin, end)); // set the value
   });
@@ -266,7 +266,7 @@ void Adam::save(const std::string& name,
   // save to file
   io::Item itemMt;
   itemMt.name = "adam_mt";
-  itemMt.shape = Shape({1, (int)vMt.size()});
+  itemMt.shape = Shape({1, vMt.size()});
   itemMt.type = Type::float32;
   itemMt.bytes.resize(vMt.size() * sizeOf(itemMt.type));
   std::copy(
@@ -274,7 +274,7 @@ void Adam::save(const std::string& name,
 
   io::Item itemVt;
   itemVt.name = "adam_vt";
-  itemVt.shape = Shape({1, (int)vVt.size()});
+  itemVt.shape = Shape({1, vVt.size()});
   itemVt.type = Type::float32;
   itemVt.bytes.resize(vVt.size() * sizeOf(itemVt.type));
   std::copy(
@@ -284,7 +284,7 @@ void Adam::save(const std::string& name,
   std::array<double, 2> vDenoms{denom1_, denom2_};
   io::Item itemDenoms;
   itemDenoms.name = "adam_denoms";
-  itemDenoms.shape = Shape({1, (int)vDenoms.size()});
+  itemDenoms.shape = Shape({1, vDenoms.size()});
   itemDenoms.type = Type::float64;
   itemDenoms.bytes.resize(vDenoms.size() * sizeOf(itemDenoms.type));
   std::copy(

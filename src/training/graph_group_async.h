@@ -33,7 +33,7 @@ protected:
 
   std::vector<Ptr<OptimizerBase>> shardOpt_;
 
-  int shardSize_;
+  size_t shardSize_;
 
   std::vector<Tensor> paramsAvg_;
   std::vector<Ptr<TensorAllocator>> paramsAllocAvg_;

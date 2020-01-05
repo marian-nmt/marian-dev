@@ -63,7 +63,7 @@ void addMetaToItems(const std::string& meta,
   item.name = varName;
 
   // increase size by 1 to add \0
-  item.shape = Shape({(int)meta.size() + 1});
+  item.shape = Shape({meta.size() + 1});
 
   item.bytes.resize(item.shape.elements());
   std::copy(meta.begin(), meta.end(), item.bytes.begin());

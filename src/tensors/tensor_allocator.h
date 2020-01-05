@@ -85,7 +85,7 @@ public:
   Tensor asTensor(Type type = Type::float32) {
     auto mem = allocator_->memory();
     auto size = mem->size() / sizeOf(type);
-    return TensorBase::New(mem, Shape({1, (int)size}), type, backend_);
+    return TensorBase::New(mem, Shape({1, size}), type, backend_);
   }
 
   size_t size(Type type = Type::float32) { return allocator_->size() / sizeOf(type); }

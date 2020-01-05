@@ -14,18 +14,18 @@ template <size_t K, bool broadcast, class Functor, typename T>
 __global__ void gElement(
     Functor functor,
     functional::Array<functional::Tensor<T>, K> tensors) {
-  int length = tensors[0].shape().elements();
-  functional::Array<int, functional::Shape::size()> dims;
-  functional::Array<int, K> indices;
+  size_t length = tensors[0].shape().elements();
+  functional::Array<size_t, functional::Shape::size()> dims;
+  functional::Array<size_t, K> indices;
 
-  for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
-    int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
+  for(size_t bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
+    size_t index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       indices.fill(index);
 
       if(broadcast) {
         tensors[0].shape().dims(index, dims);
-        for(int i = 1; i < K; ++i)
+        for(size_t i = 1; i < K; ++i)
           indices[i] = tensors[i].shape().bindex(dims);
       }
 
@@ -41,15 +41,15 @@ void ElementTyped(Functor functor, Tensor out, Tensors... tensors) {
 
   cudaSetDevice(out->getDeviceId().no);
 
-  int length = out->shape().elements();
-  int threads = std::min(MAX_THREADS, length);
-  int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
+  size_t length = out->shape().elements();
+  size_t threads = std::min(MAX_THREADS, length);
+  size_t blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
   constexpr size_t K = sizeof...(tensors) + 1;
   functional::Array<functional::Tensor<T>, K> gTensors = {out, tensors...};
 
   bool broadcast = false;
-  for(int i = 1; i < K; ++i)
+  for(size_t i = 1; i < K; ++i)
     broadcast = broadcast || gTensors[0].shape() != gTensors[i].shape();
   if(broadcast)
     gElement<K, true><<<blocks, threads>>>(functor, gTensors);

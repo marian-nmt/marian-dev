@@ -464,7 +464,7 @@ enum class ReduceNodeOpCode {
 struct ReduceNodeOp : public UnaryNodeOp {
   int axis_;
   ReduceNodeOpCode opCode_;
-  int reducedDim_; // dimension of axis being reduced, e.g. used in mean()
+  size_t reducedDim_; // dimension of axis being reduced, e.g. used in mean()
 
   ReduceNodeOp(Expr a, int axis, ReduceNodeOpCode opCode)
       : UnaryNodeOp(a, newShape(a, axis)), opCode_(opCode)
@@ -1005,12 +1005,12 @@ struct ShiftNodeOp : public UnaryNodeOp {
 class PoolingOp : public UnaryNodeOp {
 public:
   PoolingOp(Expr x,
-            int height,
-            int width,
-            int padHeight,
-            int padWidth,
-            int strideHeight,
-            int strideWidth,
+            size_t height,
+            size_t width,
+            size_t padHeight,
+            size_t padWidth,
+            size_t strideHeight,
+            size_t strideWidth,
             std::string mode)
       : UnaryNodeOp(x),
         pooling_(height,
@@ -1039,13 +1039,13 @@ protected:
 
 class PoolingWithMaskingOp : public UnaryNodeOp {
 public:
-  PoolingWithMaskingOp(Expr x, Expr mask, int width, bool isEven = false)
+  PoolingWithMaskingOp(Expr x, Expr mask, size_t width, bool isEven = false)
       : UnaryNodeOp(x), mask_(mask), width_(width), isEven_(isEven) {
     auto xShape = x->shape();
-    int dimBatch = xShape[0];
-    int dimWord = xShape[1];
-    int cols = (isEven_) ? xShape[2] - 1 : xShape[2];
-    int dimSentence = (cols / width_) + (cols % width_ != 0);
+    size_t dimBatch = xShape[0];
+    size_t dimWord = xShape[1];
+    size_t cols = (isEven_) ? xShape[2] - 1 : xShape[2];
+    size_t dimSentence = (cols / width_) + (cols % width_ != 0);
     shape_ = {dimBatch, dimWord, dimSentence};
   }
 
@@ -1067,7 +1067,7 @@ public:
 
 protected:
   Expr mask_;
-  int width_;
+  size_t width_;
   bool isEven_;
 };
 }  // namespace marian

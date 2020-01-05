@@ -24,7 +24,7 @@ void MultiNodeGraphGroup::setScheduler(Ptr<Scheduler> scheduler) {
 /**
  * Allocate new tensor on given GPU and store allocator.
  */
-Tensor MultiNodeGraphGroup::newTensor(int size, Ptr<Backend> backend) {
+Tensor MultiNodeGraphGroup::newTensor(size_t size, Ptr<Backend> backend) {
   Tensor t;
   Ptr<TensorAllocator> allocator = New<TensorAllocator>(backend);
   allocator->reserveExact(size * sizeof(float));

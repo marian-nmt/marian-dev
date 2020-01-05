@@ -71,7 +71,7 @@ public:
             const std::string& maskSymbol,
             const std::string& sepSymbol,
             const std::string& clsSymbol,
-            int dimTypeVocab)
+            size_t dimTypeVocab)
     : CorpusBatch(*batch),
       maskSymbol_(maskSymbol), sepSymbol_(sepSymbol), clsSymbol_(clsSymbol) {
 
@@ -106,15 +106,15 @@ public:
     dontMask_.insert(vocab.getEosId()); // don't mask </s>
     // it's ok to mask <unk>
 
-    std::vector<int> selected;
+    std::vector<size_t> selected;
     selected.reserve(words.size());
-    for(int i = 0; i < words.size(); ++i) // collect words among which we will mask
+    for(size_t i = 0; i < words.size(); ++i) // collect words among which we will mask
       if(dontMask_.count(words[i]) == 0)  // do not add indices of special words
         selected.push_back(i);
     std::shuffle(selected.begin(), selected.end(), engine); // randomize positions
     selected.resize((size_t)std::ceil(selected.size() * maskFraction)); // select first x percent from shuffled indices
 
-    for(int i : selected) {
+    for(size_t i : selected) {
       maskedPositions_.push_back(i);                // where is the original word?
       maskedWords_.push_back(words[i]);             // what is the original word?
       words[i] = maskOut(words[i], maskId, engine); // mask that position
@@ -126,13 +126,13 @@ public:
   BertBatch(Ptr<CorpusBatch> batch,
             const std::string& sepSymbol,
             const std::string& clsSymbol,
-            int dimTypeVocab)
+            size_t dimTypeVocab)
     : CorpusBatch(*batch),
       maskSymbol_("dummy"), sepSymbol_(sepSymbol), clsSymbol_(clsSymbol) {
     annotateSentenceIndices(dimTypeVocab);
   }
 
-  void annotateSentenceIndices(int dimTypeVocab) {
+  void annotateSentenceIndices(size_t dimTypeVocab) {
     // BERT expects a textual first stream and a second stream with class labels
     auto subBatch = subBatches_.front();
     const auto& vocab = *subBatch->vocab();
@@ -143,17 +143,17 @@ public:
     ABORT_IF(sepId == vocab.getUnkId(),
              "BERT separator symbol {} not found in vocabulary", sepSymbol_);
 
-    int dimBatch = (int)subBatch->batchSize();
-    int dimWords = (int)subBatch->batchWidth();
+    size_t dimBatch = subBatch->batchSize();
+    size_t dimWords = subBatch->batchWidth();
 
     const size_t maxSentPos = dimTypeVocab;
 
     // create indices for BERT sentence embeddings A and B
     sentenceIndices_.resize(words.size()); // each word is either in sentence A or B
     std::vector<IndexType> sentPos(dimBatch, 0); // initialize each batch entry with being A [0]
-    for(int i = 0; i < dimWords; ++i) {   // advance word-wise
-      for(int j = 0; j < dimBatch; ++j) { // scan batch-wise
-        int k = i * dimBatch + j;
+    for(size_t i = 0; i < dimWords; ++i) {   // advance word-wise
+      for(size_t j = 0; j < dimBatch; ++j) { // scan batch-wise
+        size_t k = i * dimBatch + j;
         sentenceIndices_[k] = sentPos[j]; // set to current sentence position for batch entry, max position 1.
         if(words[k] == sepId && sentPos[j] < maxSentPos) { // if current word is a separator and not beyond range
           sentPos[j]++;                   // then increase sentence position for batch entry (to B [1])
@@ -180,7 +180,7 @@ public:
 
   std::vector<Ptr<ClassifierState>> apply(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, bool clearGraph) override {
     std::string modelType = opt<std::string>("type");
-    int dimTypeVocab = opt<int>("bert-type-vocab-size");
+    size_t dimTypeVocab = opt<size_t>("bert-type-vocab-size");
 
     // intercept batch and annotate with BERT-specific concepts
     Ptr<data::BertBatch> bertBatch;
@@ -226,11 +226,11 @@ public:
     Ptr<data::BertBatch> bertBatch = std::dynamic_pointer_cast<data::BertBatch>(batch);
     ABORT_IF(!bertBatch, "Batch must be BertBatch for BERT training or fine-tuning");
 
-    int dimEmb = embeddings->shape()[-1];
-    int dimBatch = embeddings->shape()[-2];
-    int dimWords = embeddings->shape()[-3];
+    size_t dimEmb = embeddings->shape()[-1];
+    size_t dimBatch = embeddings->shape()[-2];
+    size_t dimWords = embeddings->shape()[-3];
 
-    int dimTypeVocab = opt<int>("bert-type-vocab-size", 2);
+    size_t dimTypeVocab = opt<size_t>("bert-type-vocab-size", 2);
 
     Expr signal;
     if(learnedPosEmbeddings) {
@@ -251,7 +251,7 @@ public:
     return embeddings + signal;
   }
 
-  virtual Expr addSpecialEmbeddings(Expr input, int start = 0, Ptr<data::CorpusBatch> batch = nullptr) const override {
+  virtual Expr addSpecialEmbeddings(Expr input, size_t start = 0, Ptr<data::CorpusBatch> batch = nullptr) const override {
     bool trainPosEmbeddings = opt<bool>("transformer-train-position-embeddings", true);
     bool trainTypeEmbeddings = opt<bool>("bert-train-type-embeddings", true);
     input = addPositionalEmbeddings(input, start, trainPosEmbeddings);
@@ -276,8 +276,8 @@ public:
     auto context = encoderStates[0]->getContext();
     auto classEmbeddings = slice(context, /*axis=*/-3, /*i=*/0); // [CLS] symbol is first symbol in each sequence
 
-    int dimModel = classEmbeddings->shape()[-1];
-    int dimTrgCls = opt<std::vector<int>>("dim-vocabs")[batchIndex_]; // Target vocab is used as class labels
+    size_t dimModel = classEmbeddings->shape()[-1];
+    size_t dimTrgCls = opt<std::vector<size_t>>("dim-vocabs")[batchIndex_]; // Target vocab is used as class labels
 
     auto output = mlp::mlp()                                          //
                     .push_back(mlp::dense()                           //
@@ -323,13 +323,13 @@ public:
     auto bertMaskedPositions    = graph->indices(bertBatch->bertMaskedPositions()); // positions in batch of masked entries
     const auto& bertMaskedWords = bertBatch->bertMaskedWords();   // vocab ids of entries that have been masked
 
-    int dimModel = context->shape()[-1];
-    int dimBatch = context->shape()[-2];
-    int dimTime  = context->shape()[-3];
+    size_t dimModel = context->shape()[-1];
+    size_t dimBatch = context->shape()[-2];
+    size_t dimTime  = context->shape()[-3];
 
     auto maskedContext = rows(reshape(context, {dimBatch * dimTime, dimModel}), bertMaskedPositions); // subselect stuff that has actually been masked out
 
-    int dimVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+    size_t dimVoc = opt<std::vector<size_t>>("dim-vocabs")[batchIndex_];
 
     auto layer1 = mlp::mlp()
       .push_back(mlp::dense()

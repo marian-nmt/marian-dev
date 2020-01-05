@@ -60,12 +60,12 @@ public:
   virtual void embeddingsFromPrediction(Ptr<ExpressionGraph> graph,
                                         Ptr<DecoderState> state,
                                         const Words& words,
-                                        int dimBatch,
-                                        int dimBeam) {
+                                        size_t dimBatch,
+                                        size_t dimBeam) {
     graph_ = graph;
     auto embeddingLayer = getEmbeddingLayer();
     Expr selectedEmbs;
-    int dimEmb = opt<int>("dim-emb");
+    size_t dimEmb = opt<size_t>("dim-emb");
     if(words.empty())
       selectedEmbs = graph_->constant({1, 1, dimBatch, dimEmb}, inits::zeros());
     else

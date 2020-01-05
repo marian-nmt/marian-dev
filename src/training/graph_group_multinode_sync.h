@@ -78,7 +78,7 @@ private:
   /**
    * Allocate new tensor on given GPU and store allocator.
    */
-  Tensor newTensor(int size, Ptr<Backend> backend);
+  Tensor newTensor(size_t size, Ptr<Backend> backend);
 
   /*
    * exponential smoothing

@@ -38,9 +38,9 @@ void AggregateAll(Ptr<Allocator> allocator,
   functional::Array<functional::Tensor<T>, K> gIns = {tensors...}; // convert to array of K objects of type functional::Tensor<T>
   functional::Shape full = marian::Shape::broadcast({tensors...}); // compute maximal broadcasted shape
 
-  int size = full.elements();
-  int threads = (size < MAX_THREADS * 2) ? nextPow2((size + 1) / 2) : MAX_THREADS; // suggested in NVidia example for the all_reduce kernel
-  int blocks  = std::min(MAX_BLOCKS, (size + (threads * 2 - 1)) / (threads * 2));  // suggested in NVidia example for the all_reduce kernel
+  size_t size = full.elements();
+  size_t threads = (size < MAX_THREADS * 2) ? nextPow2((size + 1) / 2) : MAX_THREADS; // suggested in NVidia example for the all_reduce kernel
+  size_t blocks  = std::min(MAX_BLOCKS, (size + (threads * 2 - 1)) / (threads * 2));  // suggested in NVidia example for the all_reduce kernel
 
   // The all_reduce kernel by nivida needs to perform multiple passes if the number of blocks needed to perform the reduction is larger than 1.
   // Here we allocate the memory for the intermediate reductions for each block.

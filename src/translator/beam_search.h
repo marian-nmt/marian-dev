@@ -53,7 +53,7 @@ public:
     size_t currentDimBatch = beams.size();
     if(PURGE_BATCH) {
       currentDimBatch = 0;
-      for(int i = 0; i < batchIdxMap.size(); ++i) {
+      for(size_t i = 0; i < batchIdxMap.size(); ++i) {
         reverseBatchIdxMap[batchIdxMap[i]] = i; // reverse batch index mapping, multiple occurences get overwritten with the last one, 
                                                 // which is expected due to down-shifting
         if(!beams[i].empty())
@@ -137,9 +137,9 @@ public:
           size_t flattenedLogitIndex = (beamHypIdx * currentDimBatch + currentBatchIdx) * vocabSize + wordIdx;  // (beam idx, batch idx, word idx); note: beam and batch are transposed, compared to 'key'
           
           // @TODO: use a function on shape() to index, or new method val->at({i1, i2, i3, i4}) with broadcasting
-          ABORT_IF(lval->shape() != Shape({(int)nBestBeamSize, 1, (int)currentDimBatch, (int)vocabSize}) &&
-                   (beamHypIdx == 0 && lval->shape() != Shape({1, 1, (int)currentDimBatch, (int)vocabSize})),
-                   "Unexpected shape of logits?? {} != {}", lval->shape(), Shape({(int)nBestBeamSize, 1, (int)currentDimBatch, (int)vocabSize}));
+          ABORT_IF(lval->shape() != Shape({nBestBeamSize, 1, currentDimBatch, vocabSize}) &&
+                   (beamHypIdx == 0 && lval->shape() != Shape({1, 1, currentDimBatch, vocabSize})),
+                   "Unexpected shape of logits?? {} != {}", lval->shape(), Shape({nBestBeamSize, 1, currentDimBatch, vocabSize}));
           
           breakDown[j] += lval->get(flattenedLogitIndex);
         }
@@ -148,7 +148,7 @@ public:
 
       // Set alignments
       if(!align.empty())
-        hyp->setAlignment(getAlignmentsForHypothesis(align, batch, (int)beamHypIdx, (int)currentBatchIdx, (int)origBatchIdx, (int)currentDimBatch));
+        hyp->setAlignment(getAlignmentsForHypothesis(align, batch, beamHypIdx, currentBatchIdx, origBatchIdx, currentDimBatch));
       else // not first factor: just copy
         hyp->setAlignment(beam[beamHypIdx]->getAlignment());
 
@@ -185,10 +185,10 @@ public:
   std::vector<float> getAlignmentsForHypothesis( // -> P(s|t) for current t and given beam and batch dim
       const std::vector<float> alignAll, // [beam depth, max src length, batch size, 1], flattened vector of all attention probablities
       Ptr<data::CorpusBatch> batch,
-      int beamHypIdx,
-      int currentBatchIdx,
-      int origBatchIdx,
-      int currentDimBatch) const {
+      size_t beamHypIdx,
+      size_t currentBatchIdx,
+      size_t origBatchIdx,
+      size_t currentDimBatch) const {
     // Let's B be the beam size, N be the number of batched sentences,
     // and L the number of words in the longest sentence in the batch.
     // The alignment vector:
@@ -263,7 +263,7 @@ public:
 
     // We will use the prefix "origBatch..." whenever we refer to batch dimensions of the original batch. These do not change during search.
     // We will use the prefix "currentBatch.." whenever we refer to batch dimension that can change due to batch-pruning.
-    const int origDimBatch = (int)batch->size();
+    const size_t origDimBatch = batch->size();
     const auto trgEosId = trgVocab_->getEosId();
     const auto trgUnkId = trgVocab_->getUnkId();
 
@@ -274,7 +274,7 @@ public:
     }
 
     Histories histories(origDimBatch);
-    for(int i = 0; i < origDimBatch; ++i) {
+    for(size_t i = 0; i < origDimBatch; ++i) {
       size_t sentId = batch->getSentenceIds()[i];
       histories[i] = New<History>(sentId,
                                   options_->get<float>("normalize"),
@@ -295,7 +295,7 @@ public:
     std::vector<IndexType> batchIdxMap(origDimBatch); // Record at which batch entry a beam is looking. 
                                                       // By default that corresponds to position in array, 
                                                       // but shifts in the course of removing batch entries when they are finished.
-    for(int origBatchIdx = 0; origBatchIdx < origDimBatch; ++origBatchIdx) {
+    for(size_t origBatchIdx = 0; origBatchIdx < origDimBatch; ++origBatchIdx) {
       batchIdxMap[origBatchIdx] = origBatchIdx; // map to same position on initialization
       auto& beam = beams[origBatchIdx];
       histories[origBatchIdx]->add(beam, trgEosId); // add beams with start-hypotheses to traceback grid
@@ -371,13 +371,13 @@ public:
           std::iota(batchIndices.begin(), batchIndices.end(), 0);
         } else {
           if(factorGroup == 0)                                                              // only factorGroup==0 can subselect neural state
-            for(int currentBatchIdx = 0; currentBatchIdx < beams.size(); ++currentBatchIdx) // loop over batch entries (active sentences)
+            for(size_t currentBatchIdx = 0; currentBatchIdx < beams.size(); ++currentBatchIdx) // loop over batch entries (active sentences)
               if(!beams[currentBatchIdx].empty() || !PURGE_BATCH)                           // for each beam check
                 batchIndices.push_back(prevBatchIdxMap[currentBatchIdx]);                   // which batch entries were active in previous step
             
           std::vector<float> prevScores;
           for(size_t beamHypIdx = 0; beamHypIdx < maxBeamSize; ++beamHypIdx) { // loop over globally maximal beam-size (maxBeamSize)
-            for(int origBatchIdx = 0; origBatchIdx < origDimBatch; ++origBatchIdx) { // loop over all batch entries (active and inactive)
+            for(size_t origBatchIdx = 0; origBatchIdx < origDimBatch; ++origBatchIdx) { // loop over all batch entries (active and inactive)
               auto& beam = beams[origBatchIdx];
               if(beamHypIdx < beam.size()) {
                 auto hyp = beam[beamHypIdx];
@@ -412,7 +412,7 @@ public:
           }
           if(factorGroup == 0) 
             currentDimBatch = (IndexType) batchIndices.size(); // keep batch size constant for all factor groups in a time step
-          prevPathScores = graph->constant({(int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores));
+          prevPathScores = graph->constant({maxBeamSize, 1, currentDimBatch, 1}, inits::fromVector(prevScores));
         }
         if (!anyCanExpand) // all words cannot expand this factor: skip
           continue;
@@ -434,7 +434,7 @@ public:
             //  LOG(info, "prevWords[{},{}]={} -> {}", t/numFactorGroups, factorGroup,
             //      factoredVocab ? factoredVocab->word2string(prevWords[kk]) : (*batch->back()->vocab())[prevWords[kk]],
             //      prevScores[kk]);
-            states[i] = scorers_[i]->step(graph, states[i], hypIndices, prevWords, batchIndices, (int)maxBeamSize);
+            states[i] = scorers_[i]->step(graph, states[i], hypIndices, prevWords, batchIndices, maxBeamSize);
             if (numFactorGroups == 1) // @TODO: this branch can go away
               logProbs = states[i]->getLogProbs().getLogits(); // [maxBeamSize, 1, currentDimBatch, dimVocab]
             else
@@ -479,6 +479,7 @@ public:
         // perform beam search
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
+        // @TODO: change type from unsigned int to size_t
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
         getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
@@ -508,7 +509,7 @@ public:
 
       // add updated search space (beams) to our return value
       bool maxLengthReached = false;
-      for(int batchIdx = 0; batchIdx < origDimBatch; ++batchIdx) {
+      for(size_t batchIdx = 0; batchIdx < origDimBatch; ++batchIdx) {
         // if this batch entry has surviving hyps then add them to the traceback grid
         if(!beams[batchIdx].empty()) { // if the beam is not empty expand the history object associated with the beam
           if (histories[batchIdx]->size() >= options_->get<float>("max-length-factor") * batch->front()->batchWidth())

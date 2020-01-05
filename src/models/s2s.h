@@ -39,7 +39,7 @@ public:
         ("type", opt<std::string>("enc-cell"))                     //
         ("direction", (int)forward)                                //
         ("dimInput", embeddings->shape()[-1])                      //
-        ("dimState", opt<int>("dim-rnn"))                          //
+        ("dimState", opt<size_t>("dim-rnn"))                          //
         ("dropout", dropoutRnn)                                    //
         ("layer-normalization", opt<bool>("layer-normalization"))  //
         ("skip", opt<bool>("skip"));
@@ -65,7 +65,7 @@ public:
         ("type", opt<std::string>("enc-cell"))                     //
         ("direction", (int)backward)                               //
         ("dimInput", embeddings->shape()[-1])                      //
-        ("dimState", opt<int>("dim-rnn"))                          //
+        ("dimState", opt<size_t>("dim-rnn"))                          //
         ("dropout", dropoutRnn)                                    //
         ("layer-normalization", opt<bool>("layer-normalization"))  //
         ("skip", opt<bool>("skip"));
@@ -98,8 +98,8 @@ public:
       // construct RNN first
       auto rnnUni = rnn::rnn()                                       //
           ("type", opt<std::string>("enc-cell"))                     //
-          ("dimInput", 2 * opt<int>("dim-rnn"))                      //
-          ("dimState", opt<int>("dim-rnn"))                          //
+          ("dimInput", 2 * opt<size_t>("dim-rnn"))                      //
+          ("dimState", opt<size_t>("dim-rnn"))                          //
           ("dropout", dropoutRnn)                                    //
           ("layer-normalization", opt<bool>("layer-normalization"))  //
           ("skip", opt<bool>("skip"));
@@ -143,7 +143,7 @@ class DecoderS2S : public DecoderBase {
 private:
   Ptr<rnn::RNN> rnn_;
   Ptr<mlp::MLP> output_;
-  int lastDimBatch_{-1}; // monitor dimBatch to take into account batch-pruning during decoding
+  size_t lastDimBatch_{std::numeric_limits<size_t>::max()}; // monitor dimBatch to take into account batch-pruning during decoding
                          // may require to lazily rebuild decoder RNN
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
@@ -152,8 +152,8 @@ private:
 
     auto rnn = rnn::rnn()                                          //
         ("type", opt<std::string>("dec-cell"))                     //
-        ("dimInput", opt<int>("dim-emb"))                          //
-        ("dimState", opt<int>("dim-rnn"))                          //
+        ("dimInput", opt<size_t>("dim-emb"))                          //
+        ("dimState", opt<size_t>("dim-rnn"))                          //
         ("dropout", dropoutRnn)                                    //
         ("layer-normalization", opt<bool>("layer-normalization"))  //
         ("nematus-normalization",
@@ -227,7 +227,7 @@ public:
       auto mlp = mlp::mlp().push_back(
           mlp::dense()                                               //
           ("prefix", prefix_ + "_ff_state")                          //
-          ("dim", opt<int>("dim-rnn"))                               //
+          ("dim", opt<size_t>("dim-rnn"))                               //
           ("activation", (int)mlp::act::tanh)                        //
           ("layer-normalization", opt<bool>("layer-normalization"))  //
           ("nematus-normalization",
@@ -238,8 +238,8 @@ public:
 
       start = mlp->apply(meanContexts);
     } else {
-      int dimBatch = (int)batch->size();
-      int dimRnn = opt<int>("dim-rnn");
+      size_t dimBatch = (size_t)batch->size();
+      size_t dimRnn = opt<size_t>("dim-rnn");
 
       start = graph->constant({dimBatch, dimRnn}, inits::zeros());
     }
@@ -256,7 +256,7 @@ public:
     // The batch dimension of the inputs can change due to batch-pruning, in that case
     // cached elements need to be rebuilt, in this case the mapped encoder context in the 
     // attention mechanism of the decoder RNN.
-    int currDimBatch = embeddings->shape()[-2];
+    size_t currDimBatch = embeddings->shape()[-2];
     if(!rnn_ || lastDimBatch_ != currDimBatch)  // if currDimBatch is different, rebuild the cached RNN
       rnn_ = constructDecoderRNN(graph, state); // @TODO: add a member to encoder/decoder state `bool batchDimChanged()`
     lastDimBatch_ = currDimBatch;
@@ -296,14 +296,14 @@ public:
 
       auto hidden = mlp::dense()                                     //
           ("prefix", prefix_ + "_ff_logit_l1")                       //
-          ("dim", opt<int>("dim-emb"))                               //
+          ("dim", opt<size_t>("dim-emb"))                               //
           ("activation", (int)mlp::act::tanh)                        //
           ("layer-normalization", opt<bool>("layer-normalization"))  //
           ("nematus-normalization",
            options_->has("original-type")
                && opt<std::string>("original-type") == "nematus");
 
-      int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
+      size_t dimTrgVoc = opt<std::vector<size_t>>("dim-vocabs")[batchIndex_];
 
       auto last = mlp::output()                 //
           ("prefix", prefix_ + "_ff_logit_l2")  //
@@ -316,7 +316,7 @@ public:
         last.tieTransposed(tiedPrefix);
       }
       last("vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_]); // for factored outputs
-      last("lemma-dim-emb", opt<int>("lemma-dim-emb", 0)); // for factored outputs
+      last("lemma-dim-emb", opt<size_t>("lemma-dim-emb", 0)); // for factored outputs
 
       // assemble layers into MLP and apply to embeddings, decoder context and
       // aligned source context

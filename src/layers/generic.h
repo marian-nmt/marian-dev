@@ -134,7 +134,7 @@ private:
     Ptr<ExpressionGraph> graph() const;
     Expr constant(const Shape& shape, const std::vector<float>&    data) const { return graph()->constant(shape, inits::fromVector(data), Type::float32); }
     Expr constant(const Shape& shape, const std::vector<uint32_t>& data) const { return graph()->constant(shape, inits::fromVector(data), Type::uint32);  }
-    template<typename T> Expr constant(const std::vector<T>& data) const { return constant(Shape{(int)data.size()}, data); } // same as constant() but assuming vector
+    template<typename T> Expr constant(const std::vector<T>& data) const { return constant(Shape{data.size()}, data); } // same as constant() but assuming vector
     Expr indices(const std::vector<uint32_t>& data) const { return graph()->indices(data); } // actually the same as constant(data) for this data type
     std::vector<float> getFactorMasks(size_t factorGroup, const std::vector<WordIndex>& indices) const;
 private:
@@ -169,7 +169,7 @@ public:
     ABORT_IF(inputs.empty(), "No inputs");
 
     auto name = opt<std::string>("prefix");
-    auto dim = opt<int>("dim");
+    auto dim  = opt<size_t>("dim");
 
     auto useLayerNorm = opt<bool>("layer-normalization", false);
     auto useNematusNorm = opt<bool>("nematus-normalization", false);
@@ -242,7 +242,7 @@ private:
   Expr tiedParam_;
   Ptr<data::Shortlist> shortlist_;
 
-  void lazyConstruct(int inputDim);
+  void lazyConstruct(size_t inputDim);
 public:
   Output(Ptr<ExpressionGraph> graph, Ptr<Options> options)
       : LayerBase(graph, options) {
@@ -303,10 +303,10 @@ class ULREmbedding : public LayerBase, public IEmbeddingLayer {
 public:
   ULREmbedding(Ptr<ExpressionGraph> graph, Ptr<Options> options) : LayerBase(graph, options) {
     std::string name = "url_embed"; //opt<std::string>("prefix");
-    int dimKeys = opt<int>("dimTgtVoc");
-    int dimQueries = opt<int>("dimSrcVoc");
-    int dimEmb = opt<int>("dimEmb");
-    int dimUlrEmb =  opt<int>("dimUlrEmb"); // ULR mono embed size
+    size_t dimKeys = opt<size_t>("dimTgtVoc");
+    size_t dimQueries = opt<size_t>("dimSrcVoc");
+    size_t dimEmb = opt<size_t>("dimEmb");
+    size_t dimUlrEmb =  opt<size_t>("dimUlrEmb"); // ULR mono embed size
     bool fixed = opt<bool>("fixed", false);
 
     // Embedding layer initialization should depend only on embedding size, hence fanIn=false
@@ -367,9 +367,9 @@ public:
     auto srcEmbed     = ulrEmbeddings_[3]; // I : dimQueries*dimEmb
     auto ulrTransform = ulrEmbeddings_[4]; // A : dimUlrEmb *dimUlrEmb
     auto ulrSharable  = ulrEmbeddings_[5]; // alpha : dimQueries*1
-    int dimBatch = (int)subBatch->batchSize();
-    int dimEmb = uniEmbed->shape()[-1];
-    int dimWords = (int)subBatch->batchWidth();
+    size_t dimBatch   = subBatch->batchSize();
+    size_t dimEmb     = uniEmbed->shape()[-1];
+    size_t dimWords   = subBatch->batchWidth();
     // D = K.A.QT
     // dimm(K) = univ_tok_vocab*uni_embed_size
     // dim A = uni_embed_size*uni_embed_size
@@ -418,7 +418,7 @@ public:
 
 // like affine() but with built-in parameters, activation, and dropout
 static inline
-Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
+Expr denseInline(Expr x, std::string prefix, std::string suffix, size_t outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
 {
   auto graph = x->graph();
 
@@ -434,7 +434,7 @@ Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, con
 
 static inline
 Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) {
-  int dimModel = x->shape()[-1];
+  size_t dimModel = x->shape()[-1];
   auto scale = x->graph()->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
   auto bias  = x->graph()->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
   return marian::layerNorm(x, scale, bias, 1e-6f);

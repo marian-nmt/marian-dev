@@ -285,9 +285,9 @@ void FactoredVocab::constructGroupInfoFromFactorVocab() {
 
 // create factorShape_ and factorStrides_, for mapping between flat (non-dense) ids and factor arrays
 void FactoredVocab::constructFactorIndexConversion() {
-  std::vector<int> shape;
+  std::vector<size_t> shape;
   for (const auto& r : groupRanges_)
-    shape.push_back((int)(r.second - r.first + 1)); // +1 to reserve the last value for either "factor not used" or "factor not present"
+    shape.push_back(r.second - r.first + 1); // +1 to reserve the last value for either "factor not used" or "factor not present"
   factorShape_ = Shape(std::move(shape));
   factorStrides_.resize(factorShape_.size(), 1);
   for (size_t g = factorStrides_.size() - 1; g --> 0; )
@@ -686,7 +686,7 @@ FactoredVocab::CSRData FactoredVocab::csr_rows(const Words& words) const {
     }
     offsets.push_back((IndexType)indices.size()); // next matrix row begins at this offset
   }
-  return { Shape({(int)words.size(), (int)factorVocabSize()}), weights, indices, offsets };
+  return { Shape({words.size(), factorVocabSize()}), weights, indices, offsets };
 }
 
 // Helper to construct and load a FactordVocab from a path is given (non-empty) and if it specifies a factored vocab.

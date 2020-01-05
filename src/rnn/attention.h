@@ -42,13 +42,13 @@ public:
       : CellInput(options),
         encState_(encState),
         contextDropped_(encState->getContext()) {
-    int dimDecState = options_->get<int>("dimState");
+    size_t dimDecState = options_->get<size_t>("dimState");
     dropout_ = options_->get<float>("dropout", 0);
     layerNorm_ = options_->get<bool>("layer-normalization", false);
     nematusNorm_ = options_->get<bool>("nematus-normalization", false);
     std::string prefix = options_->get<std::string>("prefix");
 
-    int dimEncState = encState_->getContext()->shape()[-1];
+    size_t dimEncState = encState_->getContext()->shape()[-1];
 
     Wa_ = graph->param(prefix + "_W_comb_att",
                        {dimDecState, dimEncState},
@@ -108,9 +108,9 @@ public:
   Expr apply(State state) override {
     auto recState = state.output;
 
-    int dimBatch = contextDropped_->shape()[-2];
-    int srcWords = contextDropped_->shape()[-3];
-    int dimBeam = 1;
+    size_t dimBatch = contextDropped_->shape()[-2];
+    size_t srcWords = contextDropped_->shape()[-3];
+    size_t dimBeam = 1;
     if(recState->shape().size() > 3)
       dimBeam = recState->shape()[-4];
 
@@ -151,7 +151,7 @@ public:
     alignments_.clear();
   }
 
-  int dimOutput() override { return encState_->getContext()->shape()[-1]; }
+  size_t dimOutput() override { return encState_->getContext()->shape()[-1]; }
 };
 
 using Attention = GlobalAttention;

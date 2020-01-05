@@ -14,33 +14,33 @@ namespace marian {
 
 struct Slice // Python-like slice/index descriptor
 {
-  Slice(int b, int e, int s) : begin(b), end(e), stride(s) {}
-  Slice(int b, int e) : Slice(b, e, 1) {}
+  Slice(int64_t b, int64_t e, int64_t s) : begin(b), end(e), stride(s) {}
+  Slice(int64_t b, int64_t e) : Slice(b, e, 1) {}
   Slice() : Slice(0, END) {}
-  explicit Slice(int i) : Slice(i, i + 1) {}
+  explicit Slice(int64_t i) : Slice(i, i + 1) {}
   Slice(const Slice& other) : Slice(other.begin, other.end, other.stride) {}
   const Slice& operator=(const Slice& other) { begin = other.begin; end = other.end; stride = other.stride; return *this; }
-  const Slice& operator=(int i) { begin = i; end = i + 1; stride = 1; return *this; }
+  const Slice& operator=(int64_t i) { begin = i; end = i + 1; stride = 1; return *this; }
   bool operator==(const Slice& other) const { return begin == other.begin && end == other.end && stride == other.stride; }
   bool operator!=(const Slice& other) const { return !(*this == other); }
-  /*const*/ int begin, end, stride;
-  static const int END = INT_MAX;
+  /*const*/ int64_t begin, end, stride;
+  static const int64_t END = std::numeric_limits<int64_t>::max();
 };
 typedef std::vector<Slice> Slices;
 
 struct Shape {
 private:
-  std::vector<int> shape_;
+  std::vector<size_t> shape_;
 
 public:
   Shape() : shape_({1}) {}
 
-  Shape(std::initializer_list<int> il) : Shape() {
+  Shape(std::initializer_list<size_t> il) : Shape() {
     shape_.resize(il.size());
     std::copy(il.begin(), il.end(), begin());
   }
 
-  Shape(std::vector<int>&& shape) : shape_(std::move(shape)) {}
+  Shape(std::vector<size_t>&& shape) : shape_(std::move(shape)) {}
 
   Shape(const Shape& shape) : Shape() {
     shape_.resize(shape.size());
@@ -53,15 +53,13 @@ public:
 
   void resize(size_t n) { shape_.resize(n, 1); }
 
-  const int* data() const { return shape_.data(); }
-  int* data() { return shape_.data(); }
+  const size_t* data() const { return shape_.data(); }
+  size_t* data() { return shape_.data(); }
 
-  inline void set(int    i, int val) { dim(i) = val; }
-  inline void set(size_t i, int val) { dim(i) = val; }
-  inline void set(int    i, size_t val) { dim(i) = (int)val; }
-  inline void set(size_t i, size_t val) { dim(i) = (int)val; }
+  inline void set(int    i, size_t val) { dim(i) = val; }
+  inline void set(size_t i, size_t val) { dim(i) = val; }
 
-  inline int& dim(int i) {
+  inline size_t& dim(int i) {
     if(i >= 0) {
       ABORT_IF(i >= (int)size(),
                "Index {} is out of bounds, shape has {} dimension",
@@ -76,23 +74,23 @@ public:
       return shape_[size() + i];
     }
   }
-  inline const int& dim(int i) const {
+  inline const size_t& dim(int i) const {
     return const_cast<Shape&>(*this).dim(i);
   }
 
-  inline       int& dim(size_t i)       { return dim(int(i)); }
-  inline const int& dim(size_t i) const { return dim(int(i)); }
+  inline       size_t& dim(size_t i)       { return dim(int(i)); }
+  inline const size_t& dim(size_t i) const { return dim(int(i)); }
 
-  inline int operator[](int i) const { return dim(i); }
-  inline int operator[](int i)       { return dim(i); }
-  inline int operator[](size_t i) const { return dim(i); }
-  inline int operator[](size_t i)       { return dim(i); }
+  inline size_t operator[](int i) const { return dim(i); }
+  inline size_t operator[](int i)       { return dim(i); }
+  inline size_t operator[](size_t i) const { return dim(i); }
+  inline size_t operator[](size_t i)       { return dim(i); }
 
-  inline int back() const { return shape_.back(); }
-  inline int& back() { return shape_.back(); }
+  inline size_t back() const { return shape_.back(); }
+  inline size_t& back() { return shape_.back(); }
 
-  inline int stride(int i) const {
-    std::vector<int> stride(shape_.size(), 1);
+  inline size_t stride(int i) const {
+    std::vector<size_t> stride(shape_.size(), 1);
     for(int j = (int)shape_.size() - 2; j >= 0; --j)
       stride[j] = stride[j + 1] * shape_[j + 1];
 
@@ -102,18 +100,17 @@ public:
       return stride[size() + i];
   }
 
-  template<typename T = int> // using a template so that FactoredSegmenter, which uses this as well, can pass size_t
-  inline T elements() const {
-    T el = 1;
+  inline size_t elements() const {
+    size_t el = 1;
     for(auto s : shape_)
-      el *= (T)s;
+      el *= s;
     return el;
   }
 
-  inline void dims(int i, std::vector<int>& d) const {
+  inline void dims(size_t i, std::vector<size_t>& d) const {
     d.resize(shape_.size());
 
-    std::vector<int> stride(shape_.size(), 1);
+    std::vector<size_t> stride(shape_.size(), 1);
     for(int j = (int)shape_.size() - 2; j >= 0; --j)
       stride[j] = stride[j + 1] * shape_[j + 1];
 
@@ -167,7 +164,7 @@ public:
   }
 
   Slice slice(Slice slice, int ax) const { // interpret negative and special values in Slice
-    int n = dim(ax);
+    size_t n = dim(ax);
     if (slice.begin < 0)
       slice.begin += n;
     if (slice.end < 0)

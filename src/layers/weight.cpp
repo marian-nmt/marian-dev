@@ -13,8 +13,8 @@ Expr DataWeighting::getWeights(Ptr<ExpressionGraph> graph,
   ABORT_IF(batch->getDataWeights().empty(),
            "Vector of weights is unexpectedly empty!");
   bool sentenceWeighting = weightingType_ == "sentence";
-  int dimBatch = (int)batch->size();
-  int dimWords = sentenceWeighting ? 1 : (int)batch->back()->batchWidth();
+  size_t dimBatch = batch->size();
+  size_t dimWords = sentenceWeighting ? 1 : batch->back()->batchWidth();
 
   // This would abort anyway in fromVector(...), but has clearer error message
   // here for this particular case

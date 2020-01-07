@@ -239,6 +239,25 @@ public:
     return output;
   }
 
+  size_t find_layer_depth(std::string prefix) const{
+    int t2 = prefix.find('_', 8) - 9;
+    return std::stoi(prefix.substr(9, t2));
+  }
+
+  Expr create_glorot_weights(std::string prefix, const Shape &shape) const{
+    // get current depth of layer
+    float depth = (float)find_layer_depth(prefix);
+    Expr W;
+    if(opt<bool>("transformer-depth-scaling")){
+      float alpha = 1.;
+      float depth_scale = alpha / sqrtf(depth);
+      W = graph_->param(prefix, shape, inits::glorotUniform(false, false, depth_scale));
+    }
+    else
+      W = graph_->param(prefix, shape, inits::glorotUniform());
+    return W;
+  }
+
   Expr MultiHead(std::string prefix,
                  int dimOut,
                  int dimHeads,
@@ -250,7 +269,7 @@ public:
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
     // @TODO: good opportunity to implement auto-batching here or do something manually?
-    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform());
+    auto Wq = create_glorot_weights(prefix + "_Wq", {dimModel, dimModel});
     auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -265,7 +284,7 @@ public:
       kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
     }
     else {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform());
+      auto Wk = create_glorot_weights(prefix + "_Wk", {dimModel, dimModel});
       auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
@@ -279,7 +298,7 @@ public:
         && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
       vh = cache_[prefix + "_values"];
     } else {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform());
+      auto Wv = create_glorot_weights(prefix + "_Wv", {dimModel, dimModel});
       auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -300,7 +319,7 @@ public:
     bool project = !opt<bool>("transformer-no-projection");
     if(project || dimAtt != dimOut) {
       auto Wo
-        = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform());
+        = create_glorot_weights(prefix + "_Wo", {dimAtt, dimOut});
       auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
       output = affine(output, Wo, bo);
     }
@@ -360,6 +379,20 @@ public:
     else if (actName == "gelu")
       return (ActivationFunction*)gelu;
     ABORT("Invalid activation name '{}'", actName);
+  }
+
+  Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f) const
+  {
+    auto graph = x->graph();
+
+    auto W = create_glorot_weights(prefix + "_W" + suffix, { x->shape()[-1], outDim });
+    auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
+
+    x = affine(x, W, b);
+    if (actFn)
+      x = actFn(x);
+    x = dropout(x, dropProb);
+    return x;
   }
 
   Expr LayerFFN(std::string prefix, Expr input) const {

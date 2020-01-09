@@ -258,6 +258,12 @@ public:
       for(auto& it : data_[i])
         indexSet.insert(it.first);
     }
+    //TODO better solution here? This could potentially be very slow
+    WordIndex i = firstNum_;
+    while (indexSet.size() % 8 != 0) {
+      indexSet.insert(i);
+      i++;
+    }
 
     // turn into vector and sort (selected indices)
     std::vector<WordIndex> indices(indexSet.begin(), indexSet.end());

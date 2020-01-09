@@ -108,6 +108,7 @@ public:
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 
     // Check number of selected columns
+    // @TODO remove asserts
     assert(indices.size() % 8 == 0);
   }
 

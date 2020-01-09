@@ -433,8 +433,6 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
         return cpu::int8::dot(
           aQuant,
           bQuant,
-          aQuantMult,
-          bQuantMult,
           scale);
       } else if(a->graph()->getBackend()->isOptimized()) {
         // dotInt16 computes A * B.T, hence the transpose for B to get A * B
@@ -520,8 +518,6 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         return cpu::int8::affine(
           aQuant,
           bQuant,
-          aQuantMult,
-          bQuantMult,
           bias,
           scale);
       } else if(a->graph()->getBackend()->isOptimized()) {

@@ -35,7 +35,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 
 struct PrepareANodeOp : public NaryNodeOp {
 float clipValue_;
-
+float quantMult;
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), clipValue_{clipValue} {
     ABORT_IF(children().size() != 2, "expected 2 children");
@@ -47,6 +47,7 @@ float clipValue_;
 
   NodeOps forwardOps() override {
     return {NodeOp(
+      quantMult = *child(1)->val()->data();
       intgemm::Int8::PrepareA(child(0)->val()->data(), /*input*/
                               val_->data<int8_t>(), /*output*/
                               *child(1)->val()->data(), /*Quant Mult*/
@@ -65,6 +66,7 @@ float clipValue_;
 
 struct PrepareBNodeOp : public NaryNodeOp {
 float clipValue_;
+float quantMult;
 
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), clipValue_{clipValue} {
@@ -77,6 +79,7 @@ float clipValue_;
 
   NodeOps forwardOps() override {
     return {NodeOp(
+      quantMult = *child(1)->val()->data();
       if (child(0)->type() == "int8SelectColumnsB") {
         val_ = child(0)->val();
       } else {
@@ -131,6 +134,7 @@ public:
     return hash_;
   }
 
+  //@TODO Simplify this once shortlist is working. The Dynamic cast is expensive.
   bool equal(Expr node) override {
     if(!UnaryNodeOp::equal(node)) return false;
     auto cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
@@ -153,8 +157,8 @@ private:
 float scalar_;
 
 public:
-  DotNodeOp(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, float scalar)
-      : NaryNodeOp({a, b, aQuantMult, bQuantMult}, newShape(a, b), Type::float32), scalar_(scalar) {}
+  DotNodeOp(Expr a, Expr b, float scalar)
+      : NaryNodeOp({a, b}, newShape(a, b), Type::float32), scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b) {
     Shape result = a->shape();
@@ -179,7 +183,10 @@ public:
 */
   NodeOps forwardOps() override {
     return {NodeOp(
-          float unquant_mult = 1.0f / (*child(2)->val()->data() * *child(3)->val()->data());
+          float aQuantMult = std::static_pointer_cast<PrepareANodeOp>(child(0))->quantMult;
+          float bQuantMult = std::static_pointer_cast<PrepareBNodeOp>(child(1))->quantMult;
+          float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
+
           unquant_mult = unquant_mult*scalar_;
           intgemm::Int8::Multiply(child(0)->val()->data<int8_t>(), /*A*/
                                   child(1)->val()->data<int8_t>(), /*B*/
@@ -203,8 +210,8 @@ private:
   float scalar_;
 
 public:
-  AffineNodeOp(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, Expr Bias, float scalar)
-      : NaryNodeOp({a, b, aQuantMult, bQuantMult, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {}
+  AffineNodeOp(Expr a, Expr b, Expr Bias, float scalar)
+      : NaryNodeOp({a, b, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {}
 
   Shape newShape(Expr a, Expr b) {
     Shape result = a->shape();
@@ -229,14 +236,17 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-          float unquant_mult = 1.0f / (*child(2)->val()->data() * *child(3)->val()->data());
+          float aQuantMult = std::static_pointer_cast<PrepareANodeOp>(child(0))->quantMult;
+          float bQuantMult = std::static_pointer_cast<PrepareBNodeOp>(child(1))->quantMult;
+          float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
+
           unquant_mult = unquant_mult*scalar_;
           intgemm::Int8::Multiply(child(0)->val()->data<int8_t>(), /*A*/
                                   child(1)->val()->data<int8_t>(), /*B*/
                                    rows(child(0)->val()),
                                    cols(child(0)->val()),
-                                   cols(child(1)->val()),                                          /*child(4) is bias*/
-                                   intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(4)->val()->data(), val_->data()));
+                                   cols(child(1)->val()),                                          /*child(2) is bias*/
+                                   intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
     )};
   }
 
@@ -248,12 +258,12 @@ public:
   const std::string type() override { return "affineInt8"; }
 };
 
-static inline Expr dot(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, float scalar) {
-  return Expression<cpu::int8::DotNodeOp>(a, b, aQuantMult, bQuantMult, scalar);
+static inline Expr dot(Expr a, Expr b, float scalar) {
+  return Expression<cpu::int8::DotNodeOp>(a, b, scalar);
 }
 
-static inline Expr affine(Expr a, Expr b, Expr aQuantMult, Expr bQuantMult, Expr c, float scalar) {
-  return Expression<cpu::int8::AffineNodeOp>(a, b, aQuantMult, bQuantMult, c, scalar);
+static inline Expr affine(Expr a, Expr b, Expr c, float scalar) {
+  return Expression<cpu::int8::AffineNodeOp>(a, b, c, scalar);
 }
 
 static inline Expr quantMult(Expr a) {

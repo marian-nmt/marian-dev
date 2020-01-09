@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
         "  ./marian-conv -f model.npz -t model.bin --gemm-type packed16");
     cli->add<std::string>("--from,-f", "Input model", "model.npz");
     cli->add<std::string>("--to,-t", "Output model", "model.bin");
-    cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8", "float32");
+    cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512", "float32");
     cli->parse(argc, argv);
     options->merge(config);
   }
@@ -33,10 +33,12 @@ int main(int argc, char** argv) {
   Type saveGemmType;
   if(saveGemmTypeStr == "float32") {
     saveGemmType = Type::float32;
-  } else if(saveGemmTypeStr == "packed16") {
+  } else if(saveGemmTypeStr == "packed16") {  // packed16 only supports AVX2. AVX512 might be added later
     saveGemmType = Type::packed16;
-  } else if(saveGemmTypeStr == "packed8") {
-    saveGemmType = Type::packed8;
+  } else if(saveGemmTypeStr == "packed8avx2") { // packed8 for AVX2
+    saveGemmType = Type::packed8avx2;
+  } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512
+    saveGemmType = Type::packed8avx512;
   } else {
     ABORT("Unknown gemm-type: {}", saveGemmTypeStr);
   }

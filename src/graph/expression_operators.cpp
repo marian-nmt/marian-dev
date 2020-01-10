@@ -423,9 +423,14 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized8()) {
         auto aQuantMult = cpu::int8::quantMult(a);
-        auto bQuantMult = cpu::int8::quantMult(b);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
-        auto bQuant = cpu::int8::prepareB(!transB ? b : transpose(b), bQuantMult, clipValue); // Note difference from int16 case
+        Expr bQuant;
+        if (b->value_type() == Type::int8) {
+          bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit.
+        } else {
+          auto bQuantMult = cpu::int8::quantMult(b);
+          bQuant = cpu::int8::prepareB(!transB ? b : transpose(b), bQuantMult, clipValue); // Note difference from int16 case
+        }
         return cpu::int8::dot(
           aQuant,
           bQuant,
@@ -508,9 +513,14 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized8()) {
         auto aQuantMult = cpu::int8::quantMult(a);
-        auto bQuantMult = cpu::int8::quantMult(b);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
-        auto bQuant = cpu::int8::prepareB(!transB ? b : transpose(b), bQuantMult, clipValue); // Note difference from int16 case
+        Expr bQuant;
+        if (b->value_type() == Type::int8) {
+          bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit and in the proper shape.
+        } else {
+          auto bQuantMult = cpu::int8::quantMult(b);
+          bQuant = cpu::int8::prepareB(!transB ? b : transpose(b), bQuantMult, clipValue); // Note difference from int16 case
+        }
         return cpu::int8::affine(
           aQuant,
           bQuant,

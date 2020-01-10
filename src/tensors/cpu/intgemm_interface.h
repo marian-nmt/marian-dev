@@ -33,9 +33,13 @@ struct QuantMultNodeOp : public UnaryNodeOp {
   const std::string type() override { return "quantMult"; }
 };
 
-struct PrepareANodeOp : public NaryNodeOp {
+class QuantMultField {
+  public:
+  float quantMult_;
+};
+
+struct PrepareANodeOp : public NaryNodeOp, public QuantMultField {
 float clipValue_;
-float quantMult;
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), clipValue_{clipValue} {
     ABORT_IF(children().size() != 2, "expected 2 children");
@@ -47,7 +51,7 @@ float quantMult;
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      quantMult = *child(1)->val()->data();
+      quantMult_ = *child(1)->val()->data();
       intgemm::Int8::PrepareA(child(0)->val()->data(), /*input*/
                               val_->data<int8_t>(), /*output*/
                               *child(1)->val()->data(), /*Quant Mult*/
@@ -64,9 +68,8 @@ float quantMult;
   const std::string type() override { return "int8PrepareA"; }
 };
 
-struct PrepareBNodeOp : public NaryNodeOp {
+struct PrepareBNodeOp : public NaryNodeOp, public QuantMultField {
 float clipValue_;
-float quantMult;
 
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), clipValue_{clipValue} {
@@ -79,16 +82,12 @@ float quantMult;
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      quantMult = *child(1)->val()->data();
-      if (child(0)->type() == "int8SelectColumnsB") {
-        val_ = child(0)->val();
-      } else {
-        intgemm::Int8::PrepareB(child(0)->val()->data(), /*input*/
+      quantMult_ = *child(1)->val()->data();
+      intgemm::Int8::PrepareB(child(0)->val()->data(), /*input*/
                                 val_->data<int8_t>(), /*output*/
                                 *child(1)->val()->data(), /*Quant Mult*/
                                 rows(child(0)->val()),
                                 cols(child(0)->val()));
-      }
     )};
   }
 
@@ -100,7 +99,7 @@ float quantMult;
   const std::string type() override { return "int8PrepareB"; }
 };
 
-struct SelectColumnsBNodeOp : UnaryNodeOp {
+struct SelectColumnsBNodeOp : public UnaryNodeOp, public QuantMultField {
 public:
   SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
       : UnaryNodeOp(input, newShape(input, indices), Type::int8), indices_(indices) {
@@ -114,6 +113,8 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
+      //We get the quantization multiplier from a PrepareB
+      quantMult_ = std::static_pointer_cast<PrepareBNodeOp>(child(0))->quantMult_;
       auto input = child(0)->val();
       intgemm::Int8::SelectColumnsB(
           input->data<int8_t>(),
@@ -128,19 +129,11 @@ public:
 
   size_t hash() override {
     if (!hash_) {
-      hash_ = NaryNodeOp::hash();
+      hash_ = UnaryNodeOp::hash();
       for(auto i : indices_)
         util::hash_combine(hash_, i);
     }
     return hash_;
-  }
-
-  //@TODO Simplify this once shortlist is working. The Dynamic cast is expensive.
-  bool equal(Expr node) override {
-    if(!UnaryNodeOp::equal(node)) return false;
-    auto cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp>(node);
-    if (!cnode) return false;
-    return indices_ == cnode->indices_;
   }
 
 private:
@@ -184,8 +177,13 @@ public:
 */
   NodeOps forwardOps() override {
     return {NodeOp(
-          float aQuantMult = std::static_pointer_cast<PrepareANodeOp>(child(0))->quantMult;
-          float bQuantMult = std::static_pointer_cast<PrepareBNodeOp>(child(1))->quantMult;
+          float aQuantMult = std::static_pointer_cast<PrepareANodeOp>(child(0))->quantMult_;
+          float bQuantMult;
+          if (child(1)->type() == "int8SelectColumnsB") {
+            bQuantMult = std::static_pointer_cast<SelectColumnsBNodeOp>(child(1))->quantMult_;
+          } else {
+            bQuantMult = std::static_pointer_cast<PrepareBNodeOp>(child(1))->quantMult_;
+          }
           float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
 
           unquant_mult = unquant_mult*scalar_;
@@ -237,8 +235,13 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-          float aQuantMult = std::static_pointer_cast<PrepareANodeOp>(child(0))->quantMult;
-          float bQuantMult = std::static_pointer_cast<PrepareBNodeOp>(child(1))->quantMult;
+          float aQuantMult = std::static_pointer_cast<PrepareANodeOp>(child(0))->quantMult_;
+          float bQuantMult;
+          if (child(1)->type() == "int8SelectColumnsB") {
+            bQuantMult = std::static_pointer_cast<SelectColumnsBNodeOp>(child(1))->quantMult_;
+          } else {
+            bQuantMult = std::static_pointer_cast<PrepareBNodeOp>(child(1))->quantMult_;
+          }
           float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
 
           unquant_mult = unquant_mult*scalar_;

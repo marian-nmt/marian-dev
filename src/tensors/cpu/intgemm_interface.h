@@ -33,13 +33,9 @@ struct QuantMultNodeOp : public UnaryNodeOp {
   const std::string type() override { return "quantMult"; }
 };
 
-class QuantMultField {
-  public:
-  float quantMult_;
-};
-
-struct PrepareANodeOp : public NaryNodeOp, public QuantMultField {
+struct PrepareANodeOp : public NaryNodeOp {
 float clipValue_;
+float quantMult_;
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), clipValue_{clipValue} {
     ABORT_IF(children().size() != 2, "expected 2 children");
@@ -68,8 +64,9 @@ float clipValue_;
   const std::string type() override { return "int8PrepareA"; }
 };
 
-struct PrepareBNodeOp : public NaryNodeOp, public QuantMultField {
+struct PrepareBNodeOp : public NaryNodeOp {
 float clipValue_;
+float quantMult_;
 
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), clipValue_{clipValue} {
@@ -99,8 +96,10 @@ float clipValue_;
   const std::string type() override { return "int8PrepareB"; }
 };
 
-struct SelectColumnsBNodeOp : public UnaryNodeOp, public QuantMultField {
+struct SelectColumnsBNodeOp : public UnaryNodeOp {
 public:
+  float clipValue_;
+  float quantMult_;
   SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
       : UnaryNodeOp(input, newShape(input, indices), Type::int8), indices_(indices) {
     // Check if arguments are not null
@@ -114,7 +113,9 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
       //We get the quantization multiplier from a PrepareB
-      quantMult_ = std::static_pointer_cast<PrepareBNodeOp>(child(0))->quantMult_;
+      auto bPreppedNode = std::static_pointer_cast<PrepareBNodeOp>(child(0));
+      clipValue_ = bPreppedNode->clipValue_;
+      quantMult_ = bPreppedNode->quantMult_;
       auto input = child(0)->val();
       intgemm::Int8::SelectColumnsB(
           input->data<int8_t>(),

@@ -128,14 +128,11 @@ public:
 
   const std::string type() override { return "int8SelectColumnsB"; }
 
-  size_t hash() override {
-    if (!hash_) {
-      hash_ = UnaryNodeOp::hash();
-      for(auto i : indices_)
-        util::hash_combine(hash_, i);
-    }
-    return hash_;
-  }
+  /* The only point of caching shortlists is if we have the same sentence(s) over and over again.
+   * Since this is not a realistic scenario, disable hashing and matching by always returning false */
+  size_t hash() override {return 0;}
+
+  bool equal(Expr node) override {return false;}
 
 private:
   static Shape newShape(Expr a, const std::vector<uint_least32_t>& indices) {

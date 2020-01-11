@@ -420,7 +420,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && isFloat(bElementType)) {
+    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
       if(a->graph()->getBackend()->isOptimized8()) {
         auto aQuantMult = cpu::int8::quantMult(a);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
@@ -510,7 +510,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && isFloat(bElementType)) {
+    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
       if(a->graph()->getBackend()->isOptimized8()) {
         auto aQuantMult = cpu::int8::quantMult(a);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);

@@ -500,7 +500,7 @@ public:
       // skip over special parameters starting with "special:"
       if(pName.substr(0, 8) == "special:")
         continue;
-      
+      //std::cerr << "Parameter name: " << pName << std::endl;
       // if during loading the loaded type is of the same type class as the default element type, allow conversion;
       // otherwise keep the loaded type. This is used when e.g. loading a float32 model as a float16 model as both
       // have type class TypeClass::float_type.

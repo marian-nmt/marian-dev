@@ -78,6 +78,8 @@ float quantMult_;
   }
 
   NodeOps forwardOps() override {
+    //float qm = *(reinterpret_cast<float *>(child(1)->val()->data<int8_t>() + child(1)->val()->shape().elements() + 1));
+    //std::cerr << "Argument name: " << this->name() << " type " << this->type() << " QuantMult: " << qm << std::endl;
     return {NodeOp(
       quantMult_ = *child(1)->val()->data();
       intgemm::Int8::PrepareB(child(0)->val()->data(), /*input*/

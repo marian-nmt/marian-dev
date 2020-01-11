@@ -223,6 +223,9 @@ enum class TypeClass : size_t {
   avx2_type     = 0x1000, // processor-specific layout for avx2, currently used for FBGEMM only
   avx512_type   = 0x2000, // processor-specific layout for avx512, currently used for FBGEMM only
 
+  intgemm_type = 0x3000, // intgemm quantized architecture agnostic models
+
+
   size_mask     = 0x00FF,
   class_mask    = 0xFF00
 };
@@ -254,6 +257,9 @@ enum class Type : size_t {
   packed16      = TypeClass::packed_type + 2u,                          // special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
   packed8avx2   = TypeClass::packed_type + 1u + TypeClass::avx2_type,   // special type for FBGEMM with AVX2, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
   packed8avx512 = TypeClass::packed_type + 1u + TypeClass::avx512_type, // special type for FBGEMM with AVX512, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
+
+  intgemm8      = TypeClass::signed_type + 1u + TypeClass::intgemm_type, // Int8 quantized (not packed) matrices for intgemm
+  intgemm16     = TypeClass::signed_type + 2u + TypeClass::intgemm_type // Int16 quantized (not packed) matrices for intgemm
   
 };
 
@@ -295,6 +301,10 @@ static inline bool isAvx2(Type type) {
 
 static inline bool isAvx512(Type type) {
   return (TypeClass::avx512_type & type) != 0;
+}
+
+static inline bool isIntgemm(Type type) {
+  return (TypeClass::intgemm_type & type) != 0;
 }
 
 size_t requiredBytes(const Shape& shape, Type type); // towards Frank's vision of joint Shape/Type
@@ -342,6 +352,9 @@ static inline std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::packed16      : out << "packed16"; break;
     case Type::packed8avx2   : out << "packed8avx2"; break;
     case Type::packed8avx512 : out << "packed8avx512"; break;
+
+    case Type::intgemm8   : out << "intgemm8"; break;
+    case Type::intgemm16 : out << "intgemm16"; break;
   }
   return out;
 }

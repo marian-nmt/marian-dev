@@ -39,6 +39,10 @@ int main(int argc, char** argv) {
     saveGemmType = Type::packed8avx2;
   } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512
     saveGemmType = Type::packed8avx512;
+  } else if(saveGemmTypeStr == "intgemm8") { // packed8 for AVX512
+    saveGemmType = Type::intgemm8;
+  } else if(saveGemmTypeStr == "intgemm16") { // packed8 for AVX512
+    saveGemmType = Type::intgemm16;
   } else {
     ABORT("Unknown gemm-type: {}", saveGemmTypeStr);
   }
@@ -52,8 +56,10 @@ int main(int argc, char** argv) {
 
   auto graph = New<ExpressionGraphPackable>();
   graph->setDevice(CPU0);
-  graph->getBackend()->setOptimized(false);
-  graph->getBackend()->setOptimized8(false);
+  if (saveGemmType != Type::intgemm16)
+    graph->getBackend()->setOptimized(false);
+  if (saveGemmType != Type::intgemm8)
+    graph->getBackend()->setOptimized8(false);
 
   graph->load(modelFrom);
   graph->forward();

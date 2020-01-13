@@ -142,7 +142,7 @@ public:
 #else
         ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
 #endif
-      } else if (gemmElementType == Type::intgemm8 && 
+      } else if (gemmElementType == Type::intgemm8 &&
       (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 /* || pName.find("Wemb") != std::string::npos*/)) {
 
         auto allocator = New<TensorAllocator>(getBackend());

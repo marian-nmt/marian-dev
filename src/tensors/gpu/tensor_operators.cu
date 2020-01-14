@@ -980,7 +980,7 @@ __global__ void gPasteRows(T* out,
                            const IndexType* targetRowIdx,
                            size_t rows) {
   for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+    int j = bid + blockIdx.x; // index into 'indices' vector
     if(j < rows) {
       size_t dstId = targetRowIdx[j];
       size_t srcId = j;
@@ -988,11 +988,15 @@ __global__ void gPasteRows(T* out,
       T* rowOut = out + dstId * cols;
       const T* rowIn = in + srcId * cols;
 
+      // aggregate the entire row
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int i = tid + threadIdx.x;
+        int i = tid + threadIdx.x; // column index   --@TODO: column index should be called 'j'
         if(i < cols) {
-          // @TODO: Do we need to get rid of this atomic add? It seems slow for fp16
-          atomics::atomicAdd(rowOut + i, rowIn[i]);
+          // Note: atomicAdd() not needed if number of blocks is 1. Avoid it because it is slow for fp16.
+          if (gridDim.x == 1)
+            rowOut[i] += rowIn[i];
+          else
+            atomics::atomicAdd(rowOut + i, rowIn[i]);
         }
       }
     }
@@ -1011,7 +1015,15 @@ void PasteRows(Tensor out,
   size_t rowsToCopy = indices->size();
 
   int threads = std::min(MAX_THREADS, (int)cols);
+#if 1   // @TODO: make this configurable with a 'deterministic' flag
+  // If we only use one block, then each core operates on a different column,
+  // hence the summation becomes deterministic.
+  // However, we only use e.g. 512 cores out of possibly 3000+, so this will be
+  // 6 x slower in this example.
+  int blocks = 1;
+#else
   int blocks = std::min(MAX_BLOCKS, (int)rowsToCopy);
+#endif
 
   if(out->type() == Type::float32) {
     gPasteRows<<<blocks, threads>>>(
@@ -1132,7 +1144,8 @@ __global__ void gSelect(T* out,
                         const T* in,
                         const functional::Shape inShape,
                         int axis,
-                        IndexType* d_indices) {
+                        const IndexType* d_indices,
+                        const functional::Shape idxShape) {
   int length = outShape.elements();
   functional::Array<int, functional::Shape::size()> dims;
 
@@ -1140,7 +1153,8 @@ __global__ void gSelect(T* out,
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       outShape.dims(index, dims);
-      dims[axis] = d_indices[dims[axis]];
+      int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
+      dims[axis] = (int)d_indices[idxIndex];    
       int inIndex = inShape.index(dims);
       out[index] = in[inIndex];
     }
@@ -1153,7 +1167,8 @@ __global__ void gInsert(T* out,
                         const T* in,
                         const functional::Shape inShape,
                         int axis,
-                        IndexType* d_indices) {
+                        const IndexType* d_indices,
+                        const functional::Shape idxShape) {
   int length = inShape.elements();
   functional::Array<int, functional::Shape::size()> dims;
 
@@ -1161,7 +1176,8 @@ __global__ void gInsert(T* out,
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
       inShape.dims(index, dims);
-      dims[axis] = d_indices[dims[axis]];
+      int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
+      dims[axis] = (int)d_indices[idxIndex];    
       int outIndex = outShape.index(dims);
       out[outIndex] += in[index]; // this is probably wrong, atomicAdd?
     }
@@ -1189,7 +1205,8 @@ void Select(Tensor out,
                                 in->data<float>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());
+                                indices->data<IndexType>(), 
+                                indices->shape());
 #if COMPILE_FP16
   } else if (out->type() == Type::float16) {
     gSelect<<<blocks, threads>>>(out->data<half>(),
@@ -1197,7 +1214,8 @@ void Select(Tensor out,
                                 in->data<half>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());
+                                indices->data<IndexType>(),
+                                indices->shape());
 #endif
   } else {
     ABORT("Select not implemented for type {}", out->type());
@@ -1224,7 +1242,8 @@ void Insert(Tensor out,
                                 in->data<float>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());
+                                indices->data<IndexType>(),
+                                indices->shape());
 #if COMPILE_FP16
   } else if (out->type() == Type::float16) {
     gInsert<<<blocks, threads>>>(out->data<half>(),
@@ -1232,7 +1251,8 @@ void Insert(Tensor out,
                                 in->data<half>(),
                                 in->shape(),
                                 axisGPU,
-                                indices->data<IndexType>());
+                                indices->data<IndexType>(),
+                                indices->shape());
 #endif
   } else {
     ABORT("Insert not implemented for type {}", out->type());
@@ -1522,11 +1542,11 @@ __global__ void gCrossEntropyPick(T* out,
       __syncthreads();
 
       // cross-entropy
+      auto sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
-        if(id == (int)pick[j]) {
-          out[j] = (T)functional::Ops<AccType>::log(_sum[0]) - sp[id] + max;
-        }
+        if(id == (int)pick[j])
+          out[j] = (T)functional::Ops<AccType>::log(sum) - sp[id] + max;
       }
     }
     __syncthreads();
@@ -1628,7 +1648,8 @@ __global__ void gCrossEntropyPickBackward(T* out,
         int id = tid + threadIdx.x;
         if(id < cols) {
           AccType sub = (AccType)(id == (int)pick[j]);
-          so[id] += (AccType)adj[j] * (functional::Ops<AccType>::exp(sp[id] - max) / _sum[0] - sub);
+          auto softmax = functional::Ops<AccType>::exp(sp[id] - max) / _sum[0];
+          so[id] += (AccType)adj[j] * (softmax - sub);
         }
       }
     }
@@ -1904,7 +1925,7 @@ __global__ void gLNormalization(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      AccType sigma = functional::Ops<AccType>::sqrt(_sqSum[0] / N); // all AccType
+      AccType sigma = functional::Ops<AccType>::sqrt(_sqSum[0] / N + eps); // all AccType
       __syncthreads();
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
@@ -1913,7 +1934,7 @@ __global__ void gLNormalization(T* out,
           AccType gammav = (AccType)gamma[id];
           AccType xv     = (AccType)xRow[id];
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
-          AccType lv     = (xv - mean) / (sigma + eps);
+          AccType lv     = (xv - mean) / sigma;
           AccType y      = gammav * lv + betav;
           yRow[id]       = (T)y;
         }
@@ -2001,7 +2022,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
           AccType gammav = (AccType)gamma[id];
           AccType adjv   = adjRow[id];
-          AccType lv     = (yv - betav) / (gammav + eps); // go back to LN(x) from scaled and shifted version for accumulation
+          AccType lv     = (yv - betav) / gammav; // go back to LN(x) from scaled and shifted version for accumulation
 
           sum_x[threadIdx.x]     += xv;
           sum_adj_l[threadIdx.x] += adjv * lv;
@@ -2043,7 +2064,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      AccType sigma = functional::Ops<AccType>::sqrt(sum_sqr[0] / N);
+      AccType sigma = functional::Ops<AccType>::sqrt(sum_sqr[0] / N + eps);
       __syncthreads();
 
       // Jacobian of layer norm
@@ -2057,10 +2078,10 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType xv     = xRow[id];
           AccType gammav = (AccType)gamma[id];
           AccType adjv   = adjRow[id];
-          AccType lv     = (xv - mean) / (sigma + eps);
+          AccType lv     = (xv - mean) / sigma;
 
           AccType gradLv = N * adjv - lv * sum_adj_l[0] - sum_adj[0];
-          gradLv        /= N * (sigma + eps); // eps has to be inside parentheses for correct gradient
+          gradLv        /= N * sigma; 
 
           AccType gradXv = gammav * gradLv;
 

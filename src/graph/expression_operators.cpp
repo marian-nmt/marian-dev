@@ -421,7 +421,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isOptimized8()) {
+      if(a->graph()->getBackend()->isOptimized8() || matchType<intgemm8>(bElementType)) {
         auto aQuantMult = cpu::int8::quantMult(a);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
         Expr bQuant;
@@ -511,7 +511,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isOptimized8()) {
+      if(a->graph()->getBackend()->isOptimized8()  || matchType<intgemm8>(bElementType) ) {
         auto aQuantMult = cpu::int8::quantMult(a);
         auto aQuant = cpu::int8::prepareA(transA ? transpose(a) : a, aQuantMult, clipValue);
         Expr bQuant;
@@ -526,7 +526,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           bQuant,
           bias,
           scale);
-      } else if(a->graph()->getBackend()->isOptimized()) {
+      } else if(a->graph()->getBackend()->isOptimized()  || matchType<intgemm16>(bElementType) ) {
         // cpu int16 version
         return cpu::int16::affine(
           cpu::int16::quantize(transA ? transpose(a) : a, clipValue),

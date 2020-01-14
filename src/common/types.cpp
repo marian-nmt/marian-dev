@@ -26,12 +26,14 @@ size_t requiredBytes(const Shape& shape, Type type) {
       ABORT("Not a supported data type: {}", type);
       return 0;
     }
+  } else if (isIntgemm(type)) {
+  return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
   } else {
     return shape.elements() * sizeOf(type);
   }
 #else
 if (isIntgemm(type)) {
-  return shape.elements() * sizeOf(type) + sizeOf(Type::float32); //@TODO this doesn't work
+  return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
 }
   return shape.elements() * sizeOf(type);
 #endif  // USE_FBGEMM

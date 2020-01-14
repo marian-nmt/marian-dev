@@ -147,38 +147,21 @@ public:
 
         auto allocator = New<TensorAllocator>(getBackend());
 
-        // Allocate a tensor
-        Tensor quantMult;
-        allocator->allocate(quantMult, { 1, 1 }, Type::float32);
-
         // Compute QuantMultiplier
-        *quantMult->data() = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+        float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
 
-        //Save... Same as the fbgemm case
-        io::Item itemQ;
-        itemQ.name = pName + "_QuantMult";
-        itemQ.shape = val->shape();
-        itemQ.type = gemmElementType;
-
-        auto memQ = quantMult->memory();
-        itemQ.bytes.resize(memQ->size());
-        copy(backend_, memQ->data<char>(), memQ->data<char>() + memQ->size(), itemQ.bytes.data());
-
-        ioItems.emplace_back(std::move(itemQ));
-
-        Tensor paramMat;
+        Tensor paramMat; //This allocates extra 4 bytes at the end
         allocator->allocate(paramMat, val->shape(), gemmElementType);
 
         // Compress matrix. @TODO make this independent of architecture
         intgemm::Int8::PrepareB(val->data(), /*input*/
                                 paramMat->data<int8_t>(), /*output*/
-                                *quantMult->data(), /*Quant Mult*/
+                                quantMult, /*Quant Mult*/
                                 rows(val),
                                 cols(val));
 
         //Put the quantMult at the back of the tensor
-        //std::cerr << "QuantMult is: " << (127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements())) << std::endl;
-        //*(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements()) + 1) = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+        *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
 
         //Save... Same as the fbgemm case
         io::Item item;
@@ -189,7 +172,6 @@ public:
         auto mem = paramMat->memory();
         item.bytes.resize(mem->size());
         copy(backend_, mem->data<char>(), mem->data<char>() + mem->size(), item.bytes.data());
-
         ioItems.emplace_back(std::move(item));
 
       } else if (gemmElementType == Type::intgemm16 &&

@@ -139,6 +139,10 @@ struct packed16 {
   uint16_t x;
 };
 
+struct intgemm16 {
+  int16_t x;
+};
+
 // small struct to enable templating based on types use for packing. This is a memory holder.
 // There's no difference between packed8avx2 and packed8avx512. But, they are separately defined to be distinguished.
 struct packed8avx2 {
@@ -149,6 +153,11 @@ struct packed8avx2 {
 struct packed8avx512 {
   uint8_t x;
 };
+
+struct intgemm8 {
+  int8_t x;
+};
+
 
 #ifndef __CUDACC__ // vectorized types not available from .cu files
 
@@ -331,6 +340,9 @@ template <> inline bool matchType<double>(Type type)   { return type == Type::fl
 template <> inline bool matchType<packed16>(Type type)       { return type == Type::packed16;       }
 template <> inline bool matchType<packed8avx2>(Type type)    { return type == Type::packed8avx2;    }
 template <> inline bool matchType<packed8avx512>(Type type)  { return type == Type::packed8avx512;  }
+
+template <> inline bool matchType<intgemm8>(Type type)    { return type == Type::intgemm8;    }
+template <> inline bool matchType<intgemm16>(Type type)   { return type == Type::intgemm16;  }
 // clang-format on
 
 static inline std::ostream& operator<<(std::ostream& out, Type type) {
@@ -354,7 +366,7 @@ static inline std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::packed8avx512 : out << "packed8avx512"; break;
 
     case Type::intgemm8   : out << "intgemm8"; break;
-    case Type::intgemm16 : out << "intgemm16"; break;
+    case Type::intgemm16  : out << "intgemm16"; break;
   }
   return out;
 }
@@ -380,6 +392,9 @@ template <> inline std::string request<double>()   { return "float64"; }
 template <> inline std::string request<packed16>() { return "packed16"; }
 template <> inline std::string request<packed8avx2>()  { return "packed8avx2"; }
 template <> inline std::string request<packed8avx512>()  { return "packed8avx512"; }
+
+template <> inline std::string request<intgemm8>()  { return "intgemm8"; }
+template <> inline std::string request<intgemm16>()  { return "intgemm16"; }
 // clang-format on
 
 static Type inline typeFromString(const std::string& str) {
@@ -415,6 +430,11 @@ static Type inline typeFromString(const std::string& str) {
   if(str == "packed8avx512")
     return Type::packed8avx512;
 
+  if(str == "intgemm8")
+    return Type::intgemm8;
+  if(str == "intgemm16")
+    return Type::intgemm16;
+
   ABORT("Unknown type {}", str);
 }
 
@@ -438,6 +458,9 @@ template <> inline Type typeId<double>()   { return Type::float64; }
 template <> inline Type typeId<packed16>()      { return Type::packed16; }
 template <> inline Type typeId<packed8avx2>()   { return Type::packed8avx2; }
 template <> inline Type typeId<packed8avx512>() { return Type::packed8avx512; }
+
+template <> inline Type typeId<intgemm8>()   { return Type::intgemm8; }
+template <> inline Type typeId<intgemm16>()  { return Type::intgemm16; }
 
 // Abort if given C++ does not correspond to runtime type
 template <typename T>

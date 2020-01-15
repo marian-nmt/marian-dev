@@ -265,8 +265,15 @@ namespace marian {
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;
           }
-          cachedShortWt_ = marian::cpu::int8::prepareB(Wt_, marian::cpu::int8::quantMult(Wt_), -1000.0 /*clip_value currently unused */);
-          cachedShortWt_ = marian::cpu::int8::selectColumnsB(cachedShortWt_, shortlist_->indices()); //@TODO int16 version with new intgemm
+          cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */);
+          cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices()); //@TODO int16 version with new intgemm
+        } else if ((graph_->getBackend()->isOptimized() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
+          if (!isLegacyUntransposedW) {
+            Wt_ = transpose(Wt_);
+            isLegacyUntransposedW = true;
+          }
+          cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */);
+          cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices());
         }
         cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());

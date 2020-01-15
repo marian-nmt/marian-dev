@@ -2,7 +2,7 @@
 
 #include "graph/node.h"
 #include "packed_gemm.h"
-#include "tensors/cpu/sharp/int_gemm.h"
+#include "tensors/cpu/integer_common.h"
 
 #if USE_FBGEMM
 #ifdef __GNUC__
@@ -338,7 +338,7 @@ public:
                                            k_,
                                            transA_,
                                            transB_);
-                       marian::cpu::int16::AddBias(val_, child(2)->val())) };
+                       marian::cpu::integer::AddBias(val_, child(2)->val())) };
     } else {
       nodeOps = { NodeOp(fbgemmPacked8Gemm(val_,
                                            child(0)->val(),

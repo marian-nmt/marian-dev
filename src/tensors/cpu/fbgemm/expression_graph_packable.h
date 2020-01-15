@@ -2,14 +2,10 @@
 
 #include "graph/expression_graph.h"
 #include "packed_gemm.h"
-#include "3rd_party/intgemm/intgemm.h"
+#include "tensors/cpu/integer_common.h"
 
 namespace marian {
 
-namespace { //Convenient function to get rows and columns of a tensor, shadowed by namespace.
-  inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
-  inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
-}
 
 // When FBGEMM based packed GEMM is used, some weight matrices need to be packed offline.
 // The decision which weights can be packed or not should be done walking through the graph.
@@ -142,26 +138,36 @@ public:
 #else
         ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
 #endif
-      } else if (gemmElementType == Type::intgemm8 &&
+      } else if ((gemmElementType == Type::intgemm8 || gemmElementType == Type::intgemm16) &&
       (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 /* || pName.find("Wemb") != std::string::npos*/)) {
 
+        using cpu::integer::cols;
+        using cpu::integer::rows;
         auto allocator = New<TensorAllocator>(getBackend());
 
-        // Compute QuantMultiplier
-        float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
-
-        Tensor paramMat; //This allocates extra 4 bytes at the end
+        Tensor paramMat; //This allocates extra 4 bytes at the end because of gemmElementType
         allocator->allocate(paramMat, val->shape(), gemmElementType);
 
-        // Compress matrix. @TODO make this independent of architecture
-        intgemm::Int8::PrepareB(val->data(), /*input*/
+        // Compute QuantMultiplier, compress matrix and store quantMult at the end.
+        if (gemmElementType == Type::intgemm8) {
+          float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+          intgemm::Int8::PrepareB(val->data(), /*input*/
                                 paramMat->data<int8_t>(), /*output*/
                                 quantMult, /*Quant Mult*/
                                 rows(val),
                                 cols(val));
-
-        //Put the quantMult at the back of the tensor
-        *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
+          //Put the quantMult at the back of the tensor
+          *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
+        } else {
+          float quantMult = 1024.0f;
+          intgemm::Int16::PrepareB(val->data(), /*input*/
+                                paramMat->data<int16_t>(), /*output*/
+                                quantMult, /*Quant Mult*/
+                                rows(val),
+                                cols(val));
+          //Put the quantMult at the back of the tensor
+          *(reinterpret_cast<float *>(paramMat->data<int16_t>() + val->shape().elements())) = quantMult;
+        }
 
         //Save... Same as the fbgemm case
         io::Item item;
@@ -173,10 +179,6 @@ public:
         item.bytes.resize(mem->size());
         copy(backend_, mem->data<char>(), mem->data<char>() + mem->size(), item.bytes.data());
         ioItems.emplace_back(std::move(item));
-
-      } else if (gemmElementType == Type::intgemm16 &&
-      (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 || pName.find("Wemb") != std::string::npos)) {
-        ABORT("Packed type {} not supported yet", gemmElementType);
       } else {
         io::Item item;
         val->get(item, pName);

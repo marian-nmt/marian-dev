@@ -2,20 +2,9 @@
 
 #include "graph/node.h"
 #include "graph/node_operators_unary.h"
-#include "3rd_party/intgemm/intgemm.h"
+#include "integer_common.h"
 
 namespace marian {
-
-namespace { //Convenient function to get rows and columns of a tensor, shadowed by namespace.
-  inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
-  inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
-
-  template<Type type> struct intgemm_;
-  template <> struct intgemm_<Type::int8> {using width = intgemm::Int8;
-                                           using type = int8_t;};
-  template <> struct intgemm_<Type::int16> {using width = intgemm::Int16;
-                                            using type = int16_t;};
-}
 
 namespace cpu {
 namespace integer {

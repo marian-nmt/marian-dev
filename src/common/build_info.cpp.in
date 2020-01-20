@@ -1,0 +1,18 @@
+#include "common/build_info.h"
+
+/*
+ * File build_info.cpp is generated using CMake. Do NOT modify it manually! Edit
+ * build_info.cpp.in file instead.
+ */
+
+std::string marian::cmake_cache() {
+  return ""
+@PROJECT_CMAKE_CACHE@
+  ;
+}
+
+std::string marian::cmake_cache_advanced() {
+  return ""
+@PROJECT_CMAKE_CACHE_ADVANCED@
+  ;
+}

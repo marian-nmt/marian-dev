@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- An option to print cached variables from CMake
 - Add CMAKE options to disable compilation for specific GPU SM types
 - An option to print word-level translation scores
 - An option to turn off automatic detokenization from SentencePiece

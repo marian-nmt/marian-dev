@@ -1,7 +1,7 @@
 #pragma once
 
 #include "graph/expression_graph.h"
-#include "packed_gemm.h"
+#include "fbgemm/packed_gemm.h"
 #include "tensors/cpu/integer_common.h"
 
 namespace marian {

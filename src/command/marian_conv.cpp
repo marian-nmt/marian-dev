@@ -4,7 +4,7 @@
 
 #include <sstream>
 
-#include "tensors/cpu/fbgemm/expression_graph_packable.h"
+#include "tensors/cpu/expression_graph_packable.h"
 
 int main(int argc, char** argv) {
   using namespace marian;

@@ -334,7 +334,7 @@ class NodeTranslation {
     if (n->IsObject()){
       auto x = n->FindMember(options_field.c_str());
       if (x != n->MemberEnd() && x->value.IsObject()){
-        auto y = x->value.FindMember("input-format");
+        auto y = x->value.FindMember("inputFormat");
         if (y != x->value.MemberEnd() && y->value.IsString()){
           std::string m = y->value.GetString();
           if (m == "sentence")

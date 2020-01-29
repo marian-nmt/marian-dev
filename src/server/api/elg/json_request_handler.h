@@ -23,7 +23,7 @@ class ElgJsonRequestHandlerV1
 
   ug::ssplit::SentenceStream::splitmode
   getSentenceSplitMode(rapidjson::Value const& request) const {
-    auto n = get(&request, {"request","params","input-format"});
+    auto n = get(&request, {"request","params","inputFormat"});
     splitmode smode = splitmode::wrapped_text;
     if (n && n->IsString())
       {

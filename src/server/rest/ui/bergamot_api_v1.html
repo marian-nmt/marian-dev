@@ -37,7 +37,7 @@
                   break;
               }
           }
-          var payload = { "text"  : input, "options" : { "input-format" : input_format} };
+          var payload = { "text"  : input, "options" : { "inputFormat" : input_format} };
           console.log(JSON.stringify(payload));
           job.send(JSON.stringify(payload));
           document.getElementById('input').focus();

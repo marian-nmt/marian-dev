@@ -75,7 +75,7 @@ float clipValue_;
 float quantMult_;
 
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
-      : NaryNodeOp({input, quant_mult}, input->shape(), vtype), clipValue_{clipValue} {
+      : NaryNodeOp({input, quant_mult}, input->shape(), intgemm_<vtype>::intgemmType), clipValue_{clipValue} {
     ABORT_IF(children().size() != 2, "expected 2 children");
 
     // Check if arguments are not null
@@ -113,7 +113,7 @@ public:
   float clipValue_;
   float quantMult_;
   SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
-      : UnaryNodeOp(input, newShape(input, indices), vtype), indices_(indices) {
+      : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), indices_(indices) {
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 

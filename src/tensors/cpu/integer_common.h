@@ -21,9 +21,11 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
 
 template<Type type> struct intgemm_;
 template <> struct intgemm_<Type::int8> {using width = intgemm::Int8;
-                                        using type = int8_t;};
+                                         using type = int8_t;
+                                         constexpr static const Type intgemmType = Type::intgemm8;};
 template <> struct intgemm_<Type::int16> {using width = intgemm::Int16;
-                                        using type = int16_t;};
+                                          using type = int16_t;
+                                          constexpr static const Type intgemmType = Type::intgemm16;};
 
 // This operates on floats after processing so doesn't care about int8_t vs int16_t.
 void AddBias(marian::Tensor C, const marian::Tensor Bias);

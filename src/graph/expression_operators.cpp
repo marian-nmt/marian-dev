@@ -520,7 +520,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         auto aQuantMult = cpu::integer::quantMult<Type::int8>(a);
         auto aQuant = cpu::integer::prepareA<Type::int8>(transA ? transpose(a) : a, aQuantMult, clipValue);
         Expr bQuant;
-        if (b->value_type() == Type::int8) {
+        if (matchType<intgemm8>(bElementType)) {
           bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit and in the proper shape.
         } else {
           auto bQuantMult = cpu::integer::quantMult<Type::int8>(b);
@@ -535,7 +535,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
         auto aQuantMult = cpu::integer::quantMult<Type::int16>(a);
         auto aQuant = cpu::integer::prepareA<Type::int16>(transA ? transpose(a) : a, aQuantMult, clipValue);
         Expr bQuant;
-        if (b->value_type() == Type::int16) {
+        if (matchType<intgemm16>(bElementType)) {
           bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit and in the proper shape.
         } else {
           auto bQuantMult = cpu::integer::quantMult<Type::int16>(b);

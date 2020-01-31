@@ -114,11 +114,11 @@ public:
       if(options_->get<size_t>("beam-size") > 1)
         LOG(warn,
             "[warning] Output sampling and beam search (beam-size > 1) are contradictory methods "
-            "and using them together is highly not recommended. Set beam-size to 1");
+            "and using them together is not recommended. Set beam-size to 1");
       if(options_->get<std::vector<std::string>>("models").size() > 1)
         LOG(warn,
             "[warning] Output sampling and model ensembling are contradictory methods and using "
-            "them together is highly not recommended. Use a single model");
+            "them together is not recommended. Use a single model");
     }
   }
 

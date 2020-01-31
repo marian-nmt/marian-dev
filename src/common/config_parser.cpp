@@ -113,7 +113,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<bool>("--cite",
     "Print citation and exit");
   cli.add<std::string>("--build-info",
-    "Print CMake cache variables and exit. Set to 'all' to print advanced variables")
+    "Print CMake build options and exit. Set to 'all' to print advanced options")
     ->implicit_val("basic");
   cli.add<std::vector<std::string>>("--config,-c",
     "Configuration file(s). If multiple, later overrides earlier");
@@ -845,9 +845,9 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   auto buildInfo = get<std::string>("build-info");
   if(!buildInfo.empty() && buildInfo != "false") {
     if(buildInfo == "all")
-      std::cerr << cmake_cache_advanced() << std::endl;
+      std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
     else
-      std::cerr << cmake_cache() << std::endl;
+      std::cerr << cmakeBuildOptions() << std::endl;
     exit(0);
   }
 

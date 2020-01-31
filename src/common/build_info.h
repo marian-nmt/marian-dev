@@ -5,9 +5,9 @@
 namespace marian {
 
 // Returns list of non-advanced cache variables used by CMake
-std::string cmake_cache();
+std::string cmakeBuildOptions();
 
 // Returns list of advanced cache variables used by CMake
-std::string cmake_cache_advanced();
+std::string cmakeBuildOptionsAdvanced();
 
 } // namespace marian

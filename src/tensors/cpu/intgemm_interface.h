@@ -118,14 +118,13 @@ public:
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 
     // Check number of selected columns
-    // @TODO remove asserts
     assert(indices.size() % 8 == 0);
   }
 
   NodeOps forwardOps() override {
     return {NodeOp(
       //We get the quantization multiplier from a PrepareB
-      auto bPreppedNode = std::static_pointer_cast<PrepareBNodeOp<vtype>>(child(0));
+      auto bPreppedNode = std::static_pointer_cast<PrepareBNodeOp<vtype> >(child(0));
       clipValue_ = bPreppedNode->clipValue_;
       quantMult_ = bPreppedNode->quantMult_;
       auto input = child(0)->val();
@@ -142,10 +141,28 @@ public:
   const std::string type() override { return "intgemmSelectColumnsB"; }
 
   /* The only point of caching shortlists is if we have the same sentence(s) over and over again.
-   * Since this is not a realistic scenario, disable hashing and matching by always returning false */
-  size_t hash() override {return 0;}
+   * Since this is not a realistic scenario, we return the current object address as the hash key
+   * and matching should always be returning false */
 
   bool equal(Expr node) override {return false;}
+
+  size_t hash() override {return (size_t)this;}
+/*
+  size_t hash() override {
+    if (!hash_) {
+      hash_ = NaryNodeOp::hash();
+      for(auto i : indices_)
+        util::hash_combine(hash_, i);
+    }
+    return hash_;
+  }
+
+  bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node)) return false;
+    auto cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp<vtype> >(node);
+    if (!cnode) return false;
+    return indices_ == cnode->indices_;
+  }*/
 
 private:
   static Shape newShape(Expr a, const std::vector<uint_least32_t>& indices) {

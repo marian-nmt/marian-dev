@@ -274,8 +274,9 @@ namespace marian {
           }
           cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */);
           cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices());
+        } else {
+          cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
-        cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices()); //IndexSelect here does a transformation which is apparently necessary
         cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
       }
 

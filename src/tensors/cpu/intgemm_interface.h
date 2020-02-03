@@ -9,33 +9,6 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
-//@TODO template it for A, B 8bit and 16bit
-template<Type vtype>
-struct QuantMultNodeOp : public UnaryNodeOp {
-  QuantMultNodeOp(Expr input) : UnaryNodeOp(input, Shape({1}), Type::float32) {}
-
-  NodeOps forwardOps() override {
-    return {NodeOp(
-      if (vtype == Type::int16) {
-        *val_->data() = 1024.0f;
-      } else if (isIntgemm(child(0)->value_type())) {                    /* So we can template*/
-        typedef typename intgemm_<vtype>::type Integer;
-        *val_->data() = *(reinterpret_cast<float *>(child(0)->val()->data<Integer>() + child(0)->val()->shape().elements()));
-      } else {
-        *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(),
-                            child(0)->val()->data() + child(0)->val()->shape().elements());
-      }
-    )};
-  }
-
-  NodeOps backwardOps() override {
-    ABORT("Only used for inference");
-    return {NodeOp(0)};
-  }
-
-  const std::string type() override { return "intgemmQuantMult"; }
-};
-
 template<Type vtype>
 struct PrepareANodeOp : public NaryNodeOp {
 float clipValue_;
@@ -175,6 +148,34 @@ private:
 };
 
 template<Type vtype>
+struct QuantMultNodeOp : public UnaryNodeOp {
+  QuantMultNodeOp(Expr input) : UnaryNodeOp(input, Shape({1}), Type::float32) {}
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      if (vtype == Type::int16) {
+        *val_->data() = 1024.0f;
+      } else if (child(0)->type() == "intgemmSelectColumnsB") {
+        *val_->data() = std::static_pointer_cast<SelectColumnsBNodeOp<vtype> >(child(0))->quantMult_;
+      } else if (isIntgemm(child(0)->value_type())) {                    /* So we can template*/
+        typedef typename intgemm_<vtype>::type Integer;
+        *val_->data() = *(reinterpret_cast<float *>(child(0)->val()->data<Integer>() + child(0)->val()->shape().elements()));
+      } else {
+        *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(),
+                            child(0)->val()->data() + child(0)->val()->shape().elements());
+      }
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Only used for inference");
+    return {NodeOp(0)};
+  }
+
+  const std::string type() override { return "intgemmQuantMult"; }
+};
+
+template<Type vtype>
 class DotNodeOp : public NaryNodeOp {
 private:
 float scalar_;
@@ -295,16 +296,6 @@ public:
 };
 
 template<Type vtype>
-static inline Expr dot(Expr a, Expr b, float scalar) {
-  return Expression<DotNodeOp<vtype> >(a, b, scalar);
-}
-
-template<Type vtype>
-static inline Expr affine(Expr a, Expr b, Expr c, float scalar) {
-  return Expression<AffineNodeOp<vtype> >(a, b, c, scalar);
-}
-
-template<Type vtype>
 static inline Expr quantMult(Expr a) {
   return Expression<QuantMultNodeOp<vtype> >(a);
 }
@@ -322,6 +313,31 @@ static inline Expr prepareB(Expr b, Expr quantMult, float clipValue) {
 template<Type vtype>
 static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &cols) {
   return Expression<SelectColumnsBNodeOp<vtype > >(b, cols);
+}
+
+template<Type vtype>
+static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float clipValue) {
+  Type bElementType = b->value_type();
+  auto aQuantMult = quantMult<vtype>(a);
+  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, clipValue);
+  Expr bQuant;
+  auto bQuantMult = quantMult<vtype>(b);
+  if (isIntgemm(bElementType)) {
+    //This is the case where we already run SelectColumnB or we loaded a prepacked model.
+    //We can therefore ignore tranpose. Preparing is a dummy operation necessary for... Hashing?
+    bQuant = prepareB<vtype>(b, bQuantMult, clipValue);
+  } else {
+    bQuant = prepareB<vtype>(!transB ? b : transpose(b), bQuantMult, clipValue);
+  }
+  if (bias)
+    return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, clipValue);
+  else
+    return Expression<DotNodeOp<vtype> >(aQuant, bQuant, clipValue);
+}
+
+template<Type vtype>
+static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float clipValue) {
+  return affine<vtype>(a, b, nullptr, transA, transB, clipValue);
 }
 
 }  // namespace integer

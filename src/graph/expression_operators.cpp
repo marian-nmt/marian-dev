@@ -421,32 +421,18 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
       if(a->graph()->getBackend()->isOptimized8() || matchType<intgemm8>(bElementType)) {
-        auto aQuantMult = cpu::integer::quantMult<Type::int8>(a);
-        auto aQuant = cpu::integer::prepareA<Type::int8>(transA ? transpose(a) : a, aQuantMult, clipValue);
-        Expr bQuant;
-        if (matchType<intgemm8>(bElementType)) {
-          bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit.
-        } else {
-          auto bQuantMult = cpu::integer::quantMult<Type::int8>(b);
-          bQuant = cpu::integer::prepareB<Type::int8>(!transB ? b : transpose(b), bQuantMult, clipValue);
-        }
         return cpu::integer::dot<Type::int8>(
-          aQuant,
-          bQuant,
+          a,
+          b,
+          transA,
+          transB,
           scale);
       } else if(a->graph()->getBackend()->isOptimized() || matchType<intgemm16>(bElementType)) {
-        auto aQuantMult = cpu::integer::quantMult<Type::int16>(a);
-        auto aQuant = cpu::integer::prepareA<Type::int16>(transA ? transpose(a) : a, aQuantMult, clipValue);
-        Expr bQuant;
-        if (matchType<intgemm16>(bElementType)) {
-          bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit.
-        } else {
-          auto bQuantMult = cpu::integer::quantMult<Type::int16>(b);
-          bQuant = cpu::integer::prepareB<Type::int16>(!transB ? b : transpose(b), bQuantMult, clipValue);
-        }
         return cpu::integer::dot<Type::int16>(
-          aQuant,
-          bQuant,
+          a,
+          b,
+          transA,
+          transB,
           scale);
       } else {
         return Expression<DotNodeOp>(
@@ -517,34 +503,20 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
       if(a->graph()->getBackend()->isOptimized8()  || matchType<intgemm8>(bElementType) ) {
-        auto aQuantMult = cpu::integer::quantMult<Type::int8>(a);
-        auto aQuant = cpu::integer::prepareA<Type::int8>(transA ? transpose(a) : a, aQuantMult, clipValue);
-        Expr bQuant;
-        if (matchType<intgemm8>(bElementType)) {
-          bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit and in the proper shape.
-        } else {
-          auto bQuantMult = cpu::integer::quantMult<Type::int8>(b);
-          bQuant = cpu::integer::prepareB<Type::int8>(!transB ? b : transpose(b), bQuantMult, clipValue);
-        }
         return cpu::integer::affine<Type::int8>(
-          aQuant,
-          bQuant,
+          a,
+          b,
           bias,
+          transA,
+          transB,
           scale);
       } else if(a->graph()->getBackend()->isOptimized()  || matchType<intgemm16>(bElementType) ) {
-        auto aQuantMult = cpu::integer::quantMult<Type::int16>(a);
-        auto aQuant = cpu::integer::prepareA<Type::int16>(transA ? transpose(a) : a, aQuantMult, clipValue);
-        Expr bQuant;
-        if (matchType<intgemm16>(bElementType)) {
-          bQuant = b; //This is the case where we already run SelectColumnB so b is already 8bit and in the proper shape.
-        } else {
-          auto bQuantMult = cpu::integer::quantMult<Type::int16>(b);
-          bQuant = cpu::integer::prepareB<Type::int16>(!transB ? b : transpose(b), bQuantMult, clipValue);
-        }
         return cpu::integer::affine<Type::int16>(
-          aQuant,
-          bQuant,
+          a,
+          b,
           bias,
+          transA,
+          transB,
           scale);
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);

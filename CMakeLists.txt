@@ -380,6 +380,8 @@ endif(COMPILE_CPU)
 
 if(COMPILE_AMQP_WORKER)
   set(BOOST_COMPONENTS filesystem system)
+elseif (COMPILE_REST_SERVER)
+  set(BOOST_COMPONENTS system)
 else(COMPILE_AMQP_WORKER)
   set(BOOST_COMPONENTS "")
 endif(COMPILE_AMQP_WORKER)
@@ -452,6 +454,7 @@ add_subdirectory(src)
 # rest server / amqp worker need pcrecpp (perl-compatible regex engine,
 # needed for integrated sentence splitter ssplit)
 if(COMPILE_REST_SERVER)
+  
   set(NEED_PCRECPP ON)
 endif(COMPILE_REST_SERVER)
 if(COMPILE_AMQP_WORKER)

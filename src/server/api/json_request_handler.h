@@ -10,11 +10,10 @@ namespace server{
 
 template<class Service>
 class JsonRequestHandlerBaseClass{
-protected:
-  Service& service_;
 public:
-  JsonRequestHandlerBaseClass(Service& service)
-    : service_(service){}
+  Service& service;
+  JsonRequestHandlerBaseClass(Service& translation_service)
+    : service(translation_service){}
 
   virtual
   Ptr<rapidjson::Document>

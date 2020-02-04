@@ -8,7 +8,7 @@ namespace rapidjson {
     auto m = node.FindMember(key);
     if (m != node.MemberEnd())
       return &(m->value);
-    return &(m->value.AddMember(StringRef(key),{},alloc)[key]);
+    return &(node.AddMember(StringRef(key),{},alloc)[key]);
   }
 
 }

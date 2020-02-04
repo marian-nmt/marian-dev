@@ -12,7 +12,7 @@ set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
 # Custom CMake options
 option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module" ON)
-option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" ON)
+option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" OFF)
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
 option(COMPILE_CUDA_SM35 "Compile GPU version with SM35 support" ON)
@@ -23,7 +23,7 @@ option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_REST_SERVER "Compile Marian REST server" ON)
 option(COMPILE_SERVER "Compile marian-server" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
-option(COMPILE_WEBSOCKET_SERVER "Compile websocket server" ON)
+option(COMPILE_WEBSOCKET_SERVER "Compile websocket server" OFF)
 option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
 option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_DOXYGEN "Build documentation with Doxygen" ON)
@@ -210,7 +210,7 @@ if(CUDA_FOUND)
   if((CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0") AND (CMAKE_VERSION VERSION_LESS "3.12.2"))
       message(WARNING "On some Unix systems CUDA 10.0+ requires CMake 3.12.2+; you use CMake ${CMAKE_VERSION}")
   endif()
-  
+
   if(COMPILE_CUDA_SM35)
     LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35;)                             # Tesla K40 and above
   endif(COMPILE_CUDA_SM35)

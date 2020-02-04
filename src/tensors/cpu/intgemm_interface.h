@@ -120,22 +120,6 @@ public:
   bool equal(Expr node) override {return false;}
 
   size_t hash() override {return (size_t)this;}
-/*
-  size_t hash() override {
-    if (!hash_) {
-      hash_ = NaryNodeOp::hash();
-      for(auto i : indices_)
-        util::hash_combine(hash_, i);
-    }
-    return hash_;
-  }
-
-  bool equal(Expr node) override {
-    if(!NaryNodeOp::equal(node)) return false;
-    auto cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp<vtype> >(node);
-    if (!cnode) return false;
-    return indices_ == cnode->indices_;
-  }*/
 
 private:
   static Shape newShape(Expr a, const std::vector<uint_least32_t>& indices) {
@@ -189,22 +173,7 @@ public:
     result.set(-1, b->shape()[-1]);
     return result;
   }
-  /*
-  Shape newShape(Expr a, Expr b) {
-    auto shapeA = a->shape();
-    auto shapeB = b->shape();
 
-    // Computing A * B^T
-    shapeB.set(-2, b->shape()[-1]);
-    shapeB.set(-1, b->shape()[-2]);
-
-    Shape outShape = shapeA;
-    outShape.set(-1, shapeB[-1]);
-    ABORT_IF(shapeA[-1] != shapeB[-2],
-             "matrix product requires dimensions to match");
-    return outShape;
-  }
-*/
   NodeOps forwardOps() override {
     return {NodeOp(
           float aQuantMult = std::static_pointer_cast<PrepareANodeOp<vtype> >(child(0))->quantMult_;
@@ -249,21 +218,6 @@ public:
     result.set(-1, b->shape()[-1]);
     return result;
   }
-/*
-  Shape newShape(Expr a, Expr b) {
-    auto shapeA = a->shape();
-    auto shapeB = b->shape();
-
-    // Computing A * B^T
-    shapeB.set(-2, b->shape()[-1]);
-    shapeB.set(-1, b->shape()[-2]);
-
-    Shape outShape = shapeA;
-    outShape.set(-1, shapeB[-1]);
-    ABORT_IF(shapeA[-1] != shapeB[-2],
-             "matrix product requires dimensions to match");
-    return outShape;
-  }*/
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -324,10 +278,11 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   auto bQuantMult = quantMult<vtype>(b);
   if (isIntgemm(bElementType)) {
     //This is the case where we already run SelectColumnB or we loaded a prepacked model.
-    //We can therefore ignore tranpose. Preparing is a dummy operation necessary for... Hashing?
+    //We ignore a transpose argument here, because we do not support it.
+    ABORT_IF(transB, "Transpose on prepareB not currently supported");
     bQuant = prepareB<vtype>(b, bQuantMult, clipValue);
   } else {
-    bQuant = prepareB<vtype>(!transB ? b : transpose(b), bQuantMult, clipValue);
+    bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, clipValue);
   }
   if (bias)
     return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, clipValue);

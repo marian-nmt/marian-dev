@@ -37,6 +37,9 @@ void AddBias(marian::Tensor C, const marian::Tensor Bias) {
   }
 }
 
+//template void prepareAndTranspose<intgemm8>;//(io::Item& item, const char * input);
+//template void prepareAndTranspose<intgemm16>(io::Item&, const char *);
+
 } //integer
 } //cpu
 } //marian

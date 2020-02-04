@@ -4,6 +4,51 @@
 #include "fbgemm/packed_gemm.h"
 #include "tensors/cpu/integer_common.h"
 
+namespace { //Temporary annonymous transposition, until we figure out how to access the proper one
+inline void transpose4x4_SSE(const float* A,
+                             float* B,
+                             const int lda,
+                             const int ldb) {
+  __m128 row1 = _mm_load_ps(&A[0 * lda]);
+  __m128 row2 = _mm_load_ps(&A[1 * lda]);
+  __m128 row3 = _mm_load_ps(&A[2 * lda]);
+  __m128 row4 = _mm_load_ps(&A[3 * lda]);
+  _MM_TRANSPOSE4_PS(row1, row2, row3, row4);
+  _mm_store_ps(&B[0 * ldb], row1);
+  _mm_store_ps(&B[1 * ldb], row2);
+  _mm_store_ps(&B[2 * ldb], row3);
+  _mm_store_ps(&B[3 * ldb], row4);
+}
+
+// from
+// https://stackoverflow.com/questions/16737298/what-is-the-fastest-way-to-transpose-a-matrix-in-c
+#define ROUND_UP(x, s) (((x) + ((s)-1)) & -(s))
+
+void Transpose10(marian::Tensor out, const marian::Tensor in) {
+  const float* A = in->data();
+  float* B = out->data();
+
+  const int n = in->shape().elements() / in->shape()[-1];
+  const int m = in->shape()[-1];
+
+  const int block_size = 16;
+  int lda = ROUND_UP(m, block_size);
+  int ldb = ROUND_UP(n, block_size);
+
+  for(int i = 0; i < n; i += block_size) {
+    for(int j = 0; j < m; j += block_size) {
+      int max_i2 = i + block_size < n ? i + block_size : n;
+      int max_j2 = j + block_size < m ? j + block_size : m;
+      for(int i2 = i; i2 < max_i2; i2 += 4) {
+        for(int j2 = j; j2 < max_j2; j2 += 4) {
+          transpose4x4_SSE(&A[i2 * lda + j2], &B[j2 * ldb + i2], lda, ldb);
+        }
+      }
+    }
+  }
+}
+}
+
 namespace marian {
 
 
@@ -149,9 +194,13 @@ public:
         allocator->allocate(paramMat, val->shape(), gemmElementType);
 
         // Compute QuantMultiplier, compress matrix and store quantMult at the end.
+        // We need to tranpose first, because of our architecture independet format requiring a transposed matrix
+        Tensor tmp;
+        allocator->allocate(tmp, val->shape(), val->type());
+        Transpose10(tmp, val);
         if (gemmElementType == Type::intgemm8) {
           float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
-          intgemm::Int8::PrepareB(val->data(), /*input*/
+          intgemm::Int8::PrepareA(tmp->data(), /*input*/
                                 paramMat->data<int8_t>(), /*output*/
                                 quantMult, /*Quant Mult*/
                                 rows(val),
@@ -160,7 +209,7 @@ public:
           *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
         } else {
           float quantMult = 1024.0f;
-          intgemm::Int16::PrepareB(val->data(), /*input*/
+          intgemm::Int16::PrepareA(tmp->data(), /*input*/
                                 paramMat->data<int16_t>(), /*output*/
                                 quantMult, /*Quant Mult*/
                                 rows(val),

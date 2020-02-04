@@ -28,7 +28,7 @@ public:
     }
     LOG(debug, "PARSED: {}", server::serialize(*D));
     NodeTranslation<typename Service::SearchType>
-      job(D.get(), this->service_, payload_field_name, options_field_name);
+      job(D.get(), this->service, payload_field_name, options_field_name);
     job.finish(D->GetAllocator());
     return D;
   }

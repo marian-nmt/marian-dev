@@ -23,7 +23,7 @@
                       msg = "<b>ERROR</b><br>" + response.errors.join("<br>");
                   }
                   else{
-                      chunks = response.response.texts[0]["text"].split(/[\r\n]+/);
+                      chunks = response.response.texts[0]["content"].split(/[\r\n]+/);
                       msg = "<p>"+chunks.join("</p>\n<p>")+"</p>\n";
                   }
                   document.getElementById(destination).innerHTML = msg;
@@ -46,11 +46,11 @@
               }
           }
           var payload = { "metadata" : { "id": "0" },
-                          "request"  : { "type" : "text",
-                                         "mimeType" : "text/plain",
-                                         "characterEncoding" : "UTF-8",
-                                         "params" : {"inputFormat":input_format},
-                                         "content" : input}};
+                          "type" : "text",
+                          "mimeType" : "text/plain",
+                          "characterEncoding" : "UTF-8",
+                          "params" : {"inputFormat": input_format},
+                          "content" : input };
           console.log(JSON.stringify(payload));
           job.send(JSON.stringify(payload));
           document.getElementById('input').focus();

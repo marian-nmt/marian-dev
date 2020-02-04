@@ -23,7 +23,7 @@ class ElgJsonRequestHandlerV1
 
   ug::ssplit::SentenceStream::splitmode
   getSentenceSplitMode(rapidjson::Value const& request) const {
-    auto n = get(&request, {"request","params","inputFormat"});
+    auto n = get(&request, {"params","inputFormat"});
     splitmode smode = splitmode::wrapped_text;
     if (n && n->IsString())
       {
@@ -36,28 +36,114 @@ class ElgJsonRequestHandlerV1
     return splitmode::wrapped_text;
   }
 
-  void apiError(rapidjson::Document& D, std::string const errmsg) const {
-    auto& alloc = D.GetAllocator();
-    rapidjson::Value& n = D;
-    auto e = rapidjson::ensure_path(n, alloc, "failure", "errors");
-    e->SetArray().PushBack(rapidjson::Value(errmsg.c_str(),alloc).Move(), alloc);
+  // void apirEror(rapidjson::Document& D, std::string const errmsg) const {
+  //   auto& alloc = D.GetAllocator();
+  //   rapidjson::Value& n = D;
+  //   auto e = rapidjson::ensure_path(n, alloc, "failure", "errors");
+    
+  //   e->SetArray().PushBack(rapidjson::Value(errmsg.c_str(),alloc).Move(), alloc);
+  // }
+
+  // template<typename Search>
+  class NodeWrapper {
+    typedef typename Service::SearchType SearchType;
+    typedef PlainTextTranslation<SearchType> tjob;
+    std::vector<NodeWrapper> children_;
+    Ptr<tjob> translation_;
+  public:
+    NodeWrapper(rapidjson::Value const& n,
+                Service& service,
+                ug::ssplit::SentenceStream::splitmode const& smode) {
+      if (n.IsObject()) {
+        auto x = n.FindMember("content");
+        if (x != n.MemberEnd() && x->value.IsString()) {
+          std::string input = x->value.GetString();
+          translation_.reset(new tjob(input, service, smode));
+        }
+        auto y = n.FindMember("texts");
+        if (y != n.MemberEnd() && y->value.IsArray()) {
+          for (auto c = y->value.Begin(); c != y->value.End(); ++c) {
+            auto z = NodeWrapper(*c, service, smode);
+            children_.push_back(std::move(z));
+          }
+        }
+      }
+    }
+
+    void finish(rapidjson::Value& n, rapidjson::Document::AllocatorType& alloc) {
+      rapidjson::Value x(rapidjson::kObjectType);
+      if (translation_) {
+        std::string t = translation_->await();
+        x.AddMember("content", {}, alloc)["content"].SetString(t.c_str(), t.size(), alloc);
+        // x.AddMember("content", translation_->await(), alloc);
+      }
+      if (children_.size()) {
+        auto& a = x.AddMember("texts",{},alloc)["texts"].SetArray();
+        for (auto& c: children_) {
+          c.finish(a, alloc);
+        }
+      }
+      n.PushBack(x.Move(),alloc);
+    }
+  };
+
+  enum class ElgErrCode { internal_server_error,
+                          invalid_request,
+                          missing_request,
+                          unsupported_request_type,
+                          unsupported_mime_type,
+                          request_too_large };
+
+  // We use a function below instead of static members
+  // because of the move semantics of the assignment operator
+  // in rapidjson. See rapidjson documentation.
+  rapidjson::Value api_error(ElgErrCode errCode, rapidjson::Document::AllocatorType& alloc) const {
+    rapidjson::Value n(rapidjson::kObjectType);
+    if (errCode == ElgErrCode::invalid_request){
+      n.AddMember("code","elg.request.invalid", alloc);
+      n.AddMember("text","Invalid request message.", alloc);
+    }
+    else if (errCode == ElgErrCode::missing_request){
+      n.AddMember("code","elg.request.missing", alloc);
+      n.AddMember("text","No request provided in message.", alloc);
+    }
+    else if (errCode == ElgErrCode::unsupported_request_type){
+      n.AddMember("code","elg.request.type.unsupported", alloc);
+      n.AddMember("text","Request type {0} not supported by this service.", alloc);
+    }
+    else if (errCode == ElgErrCode::request_too_large){
+      n.AddMember("code","elg.request.too.large", alloc);
+      n.AddMember("text","Request size too large.", alloc);
+    }
+    else if (errCode == ElgErrCode::unsupported_mime_type){
+      n.AddMember("code","elg.request.text.mimeType.unsupported", alloc);
+      n.AddMember("text","MIME type {0} not supported by this service.", alloc);
+    }
+    else {
+      n.AddMember("code","elg.service.internalError", alloc);
+      n.AddMember("text","Internal error during processing: {0}", alloc);
+    }
+    return n;
   }
+
 
 public:
   typedef ug::ssplit::SentenceStream::splitmode splitmode;
   ElgJsonRequestHandlerV1(Service& service)
-    : JsonRequestHandlerBaseClass<Service>(service) { }
-
-
+    : JsonRequestHandlerBaseClass<Service>(service) {
+  }
 
   Ptr<rapidjson::Document>
   operator()(char const* body) const {
     Ptr<rapidjson::Document> D(new rapidjson::Document());
     D->Parse(body);
     if (!D->IsObject()) {
-      apiError(*D, "Invalid Json");
-      LOG(debug, "INVALID JSON: {}", body);
-      return D;
+      Ptr<rapidjson::Document> R;
+      auto& alloc = R->GetAllocator();
+      auto e = rapidjson::ensure_path(*R, alloc, "failure", "errors");
+      auto n = api_error(ElgErrCode::invalid_request, alloc);
+      e->SetArray().PushBack(n, alloc);
+      return R;
     }
     LOG(debug, "PARSED: {}", serialize(*D));
     return (*this)(*D);
@@ -77,9 +163,16 @@ public:
     D->SetObject();
 
     // Copy metadata from request.
-    if (request.HasMember("metadata")){
-      D->AddMember("metadata", {}, alloc);
-      (*D)["metadata"].CopyFrom(request["metadata"], alloc);
+    if (request.HasMember("metaData")){
+      D->AddMember("metaData", {}, alloc);
+      (*D)["metaData"].CopyFrom(request["metaData"], alloc);
+    }
+
+    if (!request.HasMember("content") && !request.HasMember("texts")){
+      auto e = rapidjson::ensure_path(*D, alloc, "failure", "errors");
+      auto n = api_error(ElgErrCode::missing_request, D->GetAllocator());
+      e->SetArray().PushBack(n, D->GetAllocator());
+      return D;
     }
 
     // get translation parameters; currently, the only parameter
@@ -88,24 +181,16 @@ public:
     // (with emptly lines demarcating paragraph boundaries)
     auto smode = getSentenceSplitMode(request);
 
-    // get the actual payload
-    auto payload = get(&request, {"request", "content"});
-    if (!payload){
-      apiError(*D, "No content to translate provided.");
-    }
-    if (!payload->IsString()){
-      apiError(*D, "Translation payload ('request|content') is not a string.");
-    }
-    std::string translation
-      = this->service_.translate(payload->GetString(),smode)->await();
-
-    auto& r = D->AddMember("response",{},alloc)["response"].SetObject();
-    r.AddMember("type", "texts", alloc);
-    rapidjson::Value x(rapidjson::kObjectType);
-    x.AddMember("text", {}, alloc)["text"]
-      .SetString(translation.c_str(), translation.size(), alloc);
-    r.AddMember("texts", {}, alloc)["texts"]
-      .SetArray().PushBack(x.Move(),alloc);
+    // Perform translation. NodeWrappers constructor recurses through
+    // the request's possibly hierarchical structure and pushes all
+    // chunks that need to be translated into the service's input queue.
+    // Each node has a std::future to the eventual translation.
+    // NodeWrapper::finish recurses through the structure and adds the
+    // translations to the response document D.
+    auto r = rapidjson::ensure_path(*D, alloc, "response", "texts");
+    rapidjson::Value n(rapidjson::kArrayType);
+    NodeWrapper(request, this->service, smode).finish(n, alloc);
+    *r = n;
     return D;
   }
 };

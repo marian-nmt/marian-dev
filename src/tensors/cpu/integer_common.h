@@ -41,7 +41,6 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
     typedef typename intgemm_<vtype>::type Integer;
     Integer * output_tensor = reinterpret_cast<Integer *>(&(*item.bytes.begin()));
     intgemm_<vtype>::width::PrepareBQuantizedTransposed(reinterpret_cast<const Integer *>(input),
-                                               //reinterpret_cast<Integer *>(&(*item.bytes.begin())),
                                                output_tensor,
                                                rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 
                                                cols(item.shape)); //rows here returns the columns of the transposed input matrix, and cols -> the rows

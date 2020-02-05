@@ -270,10 +270,10 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 }
 
 template<Type vtype>
-static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float clipValue) {
+static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
   Type bElementType = b->value_type();
   auto aQuantMult = quantMult<vtype>(a);
-  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, clipValue);
+  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale);
   Expr bQuant;
   auto bQuantMult = quantMult<vtype>(b);
   if (isIntgemm(bElementType)) {
@@ -282,17 +282,17 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
     ABORT_IF(transB, "Transpose on prepareB not currently supported");
     bQuant = prepareB<vtype>(b, bQuantMult, clipValue);
   } else {
-    bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, clipValue);
+    bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }
   if (bias)
-    return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, clipValue);
+    return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, scale);
   else
-    return Expression<DotNodeOp<vtype> >(aQuant, bQuant, clipValue);
+    return Expression<DotNodeOp<vtype> >(aQuant, bQuant, scale);
 }
 
 template<Type vtype>
-static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float clipValue) {
-  return affine<vtype>(a, b, nullptr, transA, transB, clipValue);
+static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
+  return affine<vtype>(a, b, nullptr, transA, transB, scale);
 }
 
 }  // namespace integer

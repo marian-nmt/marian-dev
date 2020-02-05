@@ -509,7 +509,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           bias,
           transA,
           transB,
-          scale);
+          scale,
+          clipValue);
       } else if(a->graph()->getBackend()->isOptimized()  || matchType<intgemm16>(bElementType) ) {
         return cpu::integer::affine<Type::int16>(
           a,
@@ -517,7 +518,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           bias,
           transA,
           transB,
-          scale);
+          scale,
+          clipValue);
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }

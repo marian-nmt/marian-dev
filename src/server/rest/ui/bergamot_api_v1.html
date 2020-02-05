@@ -71,16 +71,16 @@
     <input type="radio" name="format" value="paragraph">
     <label for="paragraph">one paragraph per line</label>
     <p><textarea id="input" wrap="on" cols=120 rows=10 oninput="resizeInputBox()"
-                 placeholder="Enter some German text here. Indicate the input format above. Then press the 'translate' button."></textarea></p>
+                 placeholder="Enter some {{SOURCE_LANGUAGE}} text here. Indicate the input format above. Then press the 'translate' button."></textarea></p>
 
     <button id=translate onclick="go('input','translation')">translate</button>
     from
     <select id=srclang>
-      <option value=de>German</option>
+      <option value={{SOURCE_LANGUAGE}}>{{SOURCE_LANGUAGE}}</option>
     </select>
     to
     <select id=trglang>
-      <option value=en>English</option>
+      <option value={{TARGET_LANGUAGE}}>{{TARGET_LANGUAGE}}</option>
     </select>
 
     <h2>Translation:</h2>

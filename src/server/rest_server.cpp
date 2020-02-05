@@ -37,12 +37,16 @@ typedef marian::server::TranslationService<marian::BeamSearch> tservice_t;
 
 class RequestHandler{
   const std::string gui_file_;
-
+  const std::string src_lang_;
+  const std::string trg_lang_;
+  
   std::string
-  get(const crow::request& req) const{
-    crow::mustache::context ctx;
-    ctx["URL"] = req.get_header_value("Host");
-    return crow::mustache::load(gui_file_).render(ctx);
+  get(const crow::request& req) const {
+    crow::mustache::context ctx_;
+    ctx_["URL"] = req.get_header_value("Host");
+    ctx_["SOURCE_LANGUAGE"] = src_lang_;
+    ctx_["TARGET_LANGUAGE"] = trg_lang_;
+    return crow::mustache::load(gui_file_).render(ctx_);
   }
 
   virtual
@@ -50,8 +54,13 @@ class RequestHandler{
   post(const crow::request& req) const = 0;
 
 protected:
-  RequestHandler(const std::string gui_file)
-    : gui_file_(gui_file){}
+  RequestHandler(const std::string gui_file,
+                 const std::string src_lang,
+                 const std::string trg_lang)
+    : gui_file_(gui_file),
+      src_lang_(src_lang),
+      trg_lang_(trg_lang) {
+  }
 
 public:
 
@@ -108,8 +117,11 @@ class BergamotRequestHandler : public RequestHandler {
     return response;
   }
 public:
-  BergamotRequestHandler(tservice_t& service, const std::string gui_file)
-    : RequestHandler(gui_file), process_(service){}
+  BergamotRequestHandler(tservice_t& service,
+                         const std::string gui_file,
+                         const std::string src_lang,
+                         const std::string trg_lang)
+    : RequestHandler(gui_file, src_lang, trg_lang), process_(service){}
 };
 
 class ElgRequestHandler : public RequestHandler {
@@ -120,8 +132,11 @@ class ElgRequestHandler : public RequestHandler {
     return marian::server::serialize(*D);
   }
 public:
-  ElgRequestHandler(tservice_t& service, const std::string gui_file)
-    : RequestHandler(gui_file), process_(service){}
+  ElgRequestHandler(tservice_t& service,
+                    const std::string gui_file,
+                    const std::string src_lang,
+                    const std::string trg_lang)
+    : RequestHandler(gui_file, src_lang, trg_lang), process_(service){}
 };
 
 
@@ -141,7 +156,11 @@ int main(int argc, char* argv[])
                             "server's document root directory","./rest");
   cp.addOption<std::string>("--ssplit-prefix-file","Server Options",
                             "File with nonbreaking prefixes for sentence splitting.");
-
+  cp.addOption<std::string>("--source-language","Server Options",
+                            "source language of translation service");
+  cp.addOption<std::string>("--target-language","Server Options",
+                            "target language of translation service");
+  
   auto options = cp.parseOptions(argc, argv, true);
   auto service = New<tservice_t>(options);
   service->start();
@@ -151,22 +170,24 @@ int main(int argc, char* argv[])
   if (doc_root.back() == '/') doc_root.pop_back();
   crow::mustache::set_base(doc_root+"/ui");
 
-  BergamotRequestHandler bergamot_handler(*service,"bergamot_api_v1.html");
-  ElgRequestHandler elg_handler(*service,"elg_api_v1.html");
+  const std::string src = options->get<std::string>("source-language","");
+  const std::string trg = options->get<std::string>("target-language","");
+  BergamotRequestHandler bmot_handler(*service,"bergamot_api_v1.html", src, trg);
+  ElgRequestHandler elg_handler(*service,"elg_api_v1.html", src, trg);
 
   // For some odd reason (probably a bug in crow), a GET
   // on a path not ending in a parameter specification
   // or slash results in a 404 (not found) error.
   // This is a hack to prevent that. Unfortunately
   CROW_ROUTE(app, "/api/bergamot/v1")
-    .methods("POST"_method)(bergamot_handler);
+    .methods("POST"_method)(bmot_handler);
 
   // Google Chrome automatically appends a slash to the path
   // ending in /v1 above.
   CROW_ROUTE(app, "/api/bergamot/v1/") // legacy path, deprecated ...
-    .methods("GET"_method)(bergamot_handler);
+    .methods("GET"_method)(bmot_handler);
   CROW_ROUTE(app, "/api/bergamot/demo.html")
-    .methods("GET"_method)(bergamot_handler);
+    .methods("GET"_method)(bmot_handler);
 
 
   CROW_ROUTE(app, "/api/elg/v1")

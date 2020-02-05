@@ -103,7 +103,7 @@ public:
       auto input = child(0)->val();
       typedef typename intgemm_<vtype>::type Integer;
       intgemm_<vtype>::width::SelectColumnsB(
-                    input->data<Integer>(),
+                    reinterpret_cast<Integer *>(input->data()),
                     val_->data<Integer>(),
                     rows(input),
                     &*indices_.begin(),
@@ -143,7 +143,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         *val_->data() = std::static_pointer_cast<SelectColumnsBNodeOp<vtype> >(child(0))->quantMult_;
       } else if (isIntgemm(child(0)->value_type())) {                    /* So we can template*/
         typedef typename intgemm_<vtype>::type Integer;
-        *val_->data() = *(reinterpret_cast<float *>(child(0)->val()->data<Integer>() + child(0)->val()->shape().elements()));
+        *val_->data() = *(reinterpret_cast<float *>(reinterpret_cast<Integer *>(child(0)->val()->data()) + child(0)->val()->shape().elements()));
       } else {
         *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(),
                             child(0)->val()->data() + child(0)->val()->shape().elements());
@@ -187,8 +187,8 @@ public:
 
           unquant_mult = unquant_mult*scalar_;
           typedef typename intgemm_<vtype>::type Integer;
-          intgemm_<vtype>::width::Multiply(child(0)->val()->data<Integer>(), /*A*/
-                                           child(1)->val()->data<Integer>(), /*B*/
+          intgemm_<vtype>::width::Multiply(reinterpret_cast<Integer *>(child(0)->val()->data()), /*A*/
+                                           reinterpret_cast<Integer *>(child(1)->val()->data()), /*B*/
                                            rows(child(0)->val()),
                                            cols(child(0)->val()),
                                            cols(child(1)->val()),
@@ -232,8 +232,8 @@ public:
 
           unquant_mult = unquant_mult*scalar_;
           typedef typename intgemm_<vtype>::type Integer;
-          intgemm_<vtype>::width::Multiply(child(0)->val()->data<Integer>(), /*A*/
-                                           child(1)->val()->data<Integer>(), /*B*/
+          intgemm_<vtype>::width::Multiply(reinterpret_cast<Integer *>(child(0)->val()->data()), /*A*/
+                                           reinterpret_cast<Integer *>(child(1)->val()->data()), /*B*/
                                            rows(child(0)->val()),
                                            cols(child(0)->val()),
                                            cols(child(1)->val()),                                          /*child(2) is bias*/

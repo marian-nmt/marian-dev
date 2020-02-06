@@ -14,7 +14,6 @@ static inline std::string InterpolateEnvVars(std::string str) {
   // temporary workaround for MS-internal PhillyOnAzure cluster: warm storage
   // presently has the form /hdfs/VC instead of /{gfs,hdfs}/CLUSTER/VC
 
-  // Catch stdin/stdout and do not process
   if(str == "stdin" || str == "stdout") {
     return str;
   }

@@ -144,10 +144,16 @@ private:
 public:
   TranslationService(Ptr<Options> options)
     : options_(options) {
-    auto ssplit_prefix_file = options_->get<std::string>("ssplit-prefix_file","");
+    auto ssplit_prefix_file = options_->get<std::string>("ssplit-prefix-file","");
     if (ssplit_prefix_file.size()) {
-      ssplit_prefix_file = cli::InterpolateEnvVars(prefix_file);
+      ssplit_prefix_file = cli::InterpolateEnvVars(ssplit_prefix_file);
+      LOG(info, "Loading protected prefixes for sentence splitting from {}",
+          ssplit_prefix_file);
       ssplit_.load(ssplit_prefix_file);
+    }
+    else {
+      LOG(warn, "Missing list of protected prefixes for sentence splitting. "
+          "Set with --ssplit-prefix-file.");
     }
     chooseDevice_(options);
   }

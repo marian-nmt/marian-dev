@@ -143,8 +143,12 @@ private:
 
 public:
   TranslationService(Ptr<Options> options)
-    : options_(options)
-    , ssplit_(options_->get<std::string>("ssplit-prefix_file","")) {
+    : options_(options) {
+    auto ssplit_prefix_file = options_->get<std::string>("ssplit-prefix_file","");
+    if (ssplit_prefix_file.size()) {
+      ssplit_prefix_file = cli::InterpolateEnvVars(prefix_file);
+      ssplit_.load(ssplit_prefix_file);
+    }
     chooseDevice_(options);
   }
 

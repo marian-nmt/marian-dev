@@ -54,6 +54,7 @@ float quantMult_;
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
     ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
+    ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
   }
 
   NodeOps forwardOps() override {
@@ -91,7 +92,7 @@ public:
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 
     // Check number of selected columns
-    assert(indices.size() % 8 == 0);
+    ABORT_IF(indices.size() % 8 != 0, "Shortlist selected vocabulary must be a multiple of 8.");
   }
 
   NodeOps forwardOps() override {

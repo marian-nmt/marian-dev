@@ -88,6 +88,7 @@ template struct As<std::vector<int>>;
 // So, we need an explicit definition for uint64_t. Otherwise, there's a linking error on windows.
 // https://software.intel.com/en-us/articles/size-of-long-integer-type-on-different-architecture-and-os/
 template struct As<std::vector<uint64_t>>;
+template struct As<std::vector<size_t>>; //MacOS support
 template struct As<std::vector<float>>;
 template struct As<std::vector<double>>;
 template struct As<std::vector<std::string>>;

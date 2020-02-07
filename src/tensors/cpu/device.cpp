@@ -17,6 +17,15 @@ namespace cpu {
 // functions which tests for alignment. 
 #ifdef _WIN32
 #define MALLOC(size) _aligned_malloc(size, alignment_)
+#elif __APPLE__
+//On macos, aligned_alloc is available only on c++17
+//Furthermore, it requires that the memory requested is an exact multiple of the alignment, otherwise it fails
+void * apple_aligned_alloc(size_t alignment_, size_t size) {
+    void * mem_;
+    posix_memalign(&mem_, alignment_, size);
+    return mem_;
+}
+#define MALLOC(size) apple_aligned_alloc(alignment_, size)
 #elif __GNUC__
 #define MALLOC(size) aligned_alloc(alignment_, size)
 #else

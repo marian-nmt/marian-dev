@@ -144,15 +144,23 @@ else(MSVC)
   set(DISABLE_GLOBALLY "-Wno-unused-result")
 
   # These are used in src/CMakeLists.txt on a per-target basis
-  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated; -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND ALL_WARNINGS -Wall; -Wno-unused-result; -Wno-deprecated; -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
                           -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare; -Wno-missing-field-initializers;)
-
+  else()
+    list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated; -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
+                          -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare; -Wno-missing-field-initializers;)
+  endif()
   # This warning does not exist prior to gcc 5.0
   if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
     list(APPEND ALL_WARNINGS -Wsuggest-override)
   endif()
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread -Wl,--no-as-needed -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread -Wl, -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  else()
+    set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread -Wl,--no-as-needed -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  endif()
   set(CMAKE_CXX_FLAGS_RELEASE         "-Ofast -m64 -funroll-loops -ffinite-math-only -g -rdynamic")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g -rdynamic")
   set(CMAKE_CXX_FLAGS_SLIM            "-Ofast -m64 -funroll-loops -ffinite-math-only -DNDEBUG")
@@ -162,7 +170,11 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 "-pthread -Wl,--no-as-needed -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_C_FLAGS                 "-pthread -Wl, -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  else()
+    set(CMAKE_C_FLAGS                 "-pthread -Wl,--no-as-needed -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  endif()
   set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -ffinite-math-only -g -rdynamic")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g -rdynamic")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -ffinite-math-only -DNDEBUG")

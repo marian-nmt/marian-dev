@@ -114,13 +114,21 @@ public:
 
   const std::string type() override { return "intgemmSelectColumnsB"; }
 
-  /* The only point of caching shortlists is if we have the same sentence(s) over and over again.
-   * Since this is not a realistic scenario, we return the current object address as the hash key
-   * and matching should always be returning false */
+  size_t hash() override {
+    if (!hash_) {
+      hash_ = NaryNodeOp::hash();
+      for(auto i : indices_)
+        util::hash_combine(hash_, i);
+    }
+    return hash_;
+  }
 
-  bool equal(Expr node) override {return false;}
-
-  size_t hash() override {return (size_t)this;}
+  bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node)) return false;
+    auto cnode = std::dynamic_pointer_cast<SelectColumnsBNodeOp<vtype>>(node);
+    if (!cnode) return false;
+    return indices_ == cnode->indices_;
+  }
 
 private:
   static Shape newShape(Expr a, const std::vector<uint_least32_t>& indices) {

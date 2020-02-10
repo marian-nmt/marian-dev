@@ -10,12 +10,9 @@
 #include "translator/beam_search.h"
 #include "translator/output_printer.h"
 #include <cstdlib>
-// #include <cuda.h>
-// #include <cuda_runtime.h>
-// #include <driver_types.h>
 #include <sstream>
-// #include "api/elg/json_request_handler.h"
 
+// Wrapper class for CROW (HTTP server) logging
 class LogHandler : public crow::ILogHandler {
     public:
         void log(std::string msg, crow::LogLevel loglevel) override {
@@ -35,6 +32,8 @@ class LogHandler : public crow::ILogHandler {
 
 typedef marian::server::TranslationService<marian::BeamSearch> tservice_t;
 
+// Base class for handling requests. API-specific handlers (e.g. for Bergamot,
+// ELG) are derived from this class.
 class RequestHandler{
   const std::string gui_file_;
   const std::string src_lang_;
@@ -69,12 +68,14 @@ public:
     LOG(debug, "{} REQUEST: {}",
         req.method == "GET"_method ? "GET" : "POST",
         req.url);
-    std::string body;
+    std::string body, http_content_type;
     if (req.method == "GET"_method){
       body = get(req);
+      http_content_type = "text/html; charset=UTF-8";
     }
     else if (req.method == "POST"_method){
       body = post(req);
+      http_content_type = "application/json; charset=UTF-8";
       LOG(debug, "RESPONSE: {}", body);
     }
     else{
@@ -83,6 +84,7 @@ public:
     auto res = crow::response(200, body);
     res.add_header("Access-Control-Allow-Origin", "*");
     res.add_header("Access-Control-Allow-Headers", "Content-Type");
+    res.add_header("Content-Type", http_content_type);
     return res;
   }
 

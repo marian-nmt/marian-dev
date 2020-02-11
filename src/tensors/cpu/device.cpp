@@ -18,7 +18,7 @@ namespace cpu {
 // Furthermore, it requires that the memory requested is an exact multiple of the alignment, otherwise it fails.
 // posix_memalign is available both Mac (Since 2016) and Linux and in both gcc and clang
 void * posix_aligned_alloc(size_t alignment_, size_t size) {
-    void * mem_;
+    void * mem_ = nullptr;
     posix_memalign(&mem_, alignment_, size);
     return mem_;
 }

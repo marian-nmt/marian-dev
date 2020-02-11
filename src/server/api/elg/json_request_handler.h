@@ -36,15 +36,6 @@ class ElgJsonRequestHandlerV1
     return splitmode::wrapped_text;
   }
 
-  // void apirEror(rapidjson::Document& D, std::string const errmsg) const {
-  //   auto& alloc = D.GetAllocator();
-  //   rapidjson::Value& n = D;
-  //   auto e = rapidjson::ensure_path(n, alloc, "failure", "errors");
-    
-  //   e->SetArray().PushBack(rapidjson::Value(errmsg.c_str(),alloc).Move(), alloc);
-  // }
-
-  // template<typename Search>
   class NodeWrapper {
     typedef typename Service::SearchType SearchType;
     typedef PlainTextTranslation<SearchType> tjob;
@@ -138,9 +129,9 @@ public:
     Ptr<rapidjson::Document> D(new rapidjson::Document());
     D->Parse(body);
     if (!D->IsObject()) {
-      Ptr<rapidjson::Document> R;
+      Ptr<rapidjson::Document> R(new rapidjson::Document());
       auto& alloc = R->GetAllocator();
-      auto e = rapidjson::ensure_path(*R, alloc, "failure", "errors");
+      auto e = rapidjson::ensure_path(R->SetObject(), alloc, "failure", "errors");
       auto n = api_error(ElgErrCode::invalid_request, alloc);
       e->SetArray().PushBack(n, alloc);
       return R;
@@ -191,6 +182,7 @@ public:
     rapidjson::Value n(rapidjson::kArrayType);
     NodeWrapper(request, this->service, smode).finish(n, alloc);
     *r = n;
+    (*D)["response"].AddMember("type","texts",alloc);
     return D;
   }
 };

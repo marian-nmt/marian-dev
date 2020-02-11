@@ -87,8 +87,12 @@ template struct As<std::vector<int>>;
 // Windows and Unix based OS have different type definitions for 'unsigned long'.
 // So, we need an explicit definition for uint64_t. Otherwise, there's a linking error on windows.
 // https://software.intel.com/en-us/articles/size-of-long-integer-type-on-different-architecture-and-os/
+// We need an explicit size_t definition as well, as it is implementation defined and on MacOS we experience linker issues without it. More: https://stackoverflow.com/questions/32021860/c-should-you-size-t-with-a-regular-array
+// However, since on other platforms/implemenations size_t == uint64_t this means we get a duplicate init, so we need to wrap it in __APPLE__
 template struct As<std::vector<uint64_t>>;
-template struct As<std::vector<size_t>>; //MacOS support
+#ifdef __APPLE__
+template struct As<std::vector<size_t>>;
+#endif
 template struct As<std::vector<float>>;
 template struct As<std::vector<double>>;
 template struct As<std::vector<std::string>>;

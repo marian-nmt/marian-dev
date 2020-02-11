@@ -14,7 +14,7 @@
 #include <codecvt>
 #include <cwctype>
 
-//MACOS lacks HOST_NAME_MAX
+// MACOS lacks HOST_NAME_MAX
 #ifndef HOST_NAME_MAX
 # if defined(_POSIX_HOST_NAME_MAX)
 #  define HOST_NAME_MAX _POSIX_HOST_NAME_MAX

@@ -367,12 +367,8 @@ public:
   }
 
   const FastOpt& operator[](const char* const key) const {
-#ifdef __APPLE__
-    size_t key_ = crc::crc(key);
-    return operator[](key_);
-#else
-    return operator[](crc::crc(key));
-#endif
+    // MacOS requires explicit cast to size_t before we can use it.
+    return operator[]((size_t)crc::crc(key));
   }
 
   const FastOpt& operator[](const std::string& key) const {

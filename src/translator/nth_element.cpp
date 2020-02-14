@@ -8,7 +8,6 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
-#include <iostream>
 
 namespace marian {
 

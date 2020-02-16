@@ -43,12 +43,12 @@ public:
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
 
       std::vector<int>::iterator begin = idxs.begin() + batchIdx * inputN * vocabSize;
-      std::vector<int>::iterator middle = begin + (int)N;
+      std::vector<int>::iterator middle = begin + N;
       std::vector<int>::iterator end = idxs.begin() + (batchIdx + 1) * inputN * vocabSize;
       std::partial_sort(
           begin, middle, end, [&](int a, int b) { return scoresData[a] > scoresData[b]; });
 
-      int pos = batchIdx * (int)N;
+      size_t pos = batchIdx * N;
       while(begin != middle) {
         int idx = *begin++;
         h_res_idx[pos] = idx;

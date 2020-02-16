@@ -36,25 +36,29 @@ public:
     size_t maxSize = N * dimBatch;
     h_res.resize(maxSize);
     h_res_idx.resize(maxSize);
+    size_t pos = 0; // iterates through h_res and h_res_idx
 
-    std::vector<int> idxs(dimBatch * inputN * vocabSize);
+    size_t batchOffset = inputN * vocabSize;
+    std::vector<int> idxs(batchOffset); // re-used for each batch
     std::iota(idxs.begin(), idxs.end(), 0);
 
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
 
-      std::vector<int>::iterator begin = idxs.begin() + batchIdx * inputN * vocabSize;
-      std::vector<int>::iterator middle = begin + N;
-      std::vector<int>::iterator end = idxs.begin() + (batchIdx + 1) * inputN * vocabSize;
       std::partial_sort(
-          begin, middle, end, [&](int a, int b) { return scoresData[a] > scoresData[b]; });
+        idxs.begin(),
+        idxs.begin() + N,
+        idxs.end(),
+        [&](int a, int b) { return scoresData[a] > scoresData[b]; }
+      );
 
-      size_t pos = batchIdx * N;
-      while(begin != middle) {
-        int idx = *begin++;
-        h_res_idx[pos] = idx;
+      for(int temp = 0; temp < N; ++temp) {
+        int idx = idxs[temp];
+        h_res_idx[pos] = idx + batchIdx * batchOffset;
         h_res[pos] = scoresData[idx];
         ++pos;
       }
+
+      scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
   }

@@ -20,7 +20,7 @@ namespace marian {
 
 namespace cpu {
 
-void IsNaN(const Tensor in, Ptr<Allocator> allocator, bool& /*isNaN*/, bool& /*isInf*/) {
+  void IsNaN(const Tensor /*in*/, Ptr<Allocator> /*allocator*/, bool& /*isNaN*/, bool& /*isInf*/) {
   ABORT("Not implemented");
 }
 
@@ -216,7 +216,7 @@ void Transpose0213(Tensor out, Tensor in) {
 
 // Given a 4D array, transpose (swap) the initial 3 dimensions while keeping the last dimension.
 // e.g. 1234 --> 2134, 1234 --> 3214 (4 is always kept).
-// This is an optimized version for swapping first 3 dimensions 
+// This is an optimized version for swapping first 3 dimensions
 // assuming the last dimension is large enough to get benefits from vectorized copy.
 //
 // @param out output tensor
@@ -232,7 +232,7 @@ void TransposeFirst3In4(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   int l2 = in->shape()[vAxis[1]];
   int l3 = in->shape()[vAxis[2]];
 
-  // find the mapping between the transposed output dimensional indices (oi, oj, ok) 
+  // find the mapping between the transposed output dimensional indices (oi, oj, ok)
   // and original input dimensional indices (i, j, k)
   int oi, oj, ok;
 #pragma omp parallel for
@@ -656,7 +656,7 @@ void SelectAxis2(Tensor out,
 
   functional::Shape outShape = out->shape();
   functional::Shape inShape = in->shape();
-  
+
   auto idxData = indices->data<IndexType>();
   auto odata = out->data();
   const auto idata = in->data();

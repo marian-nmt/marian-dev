@@ -53,6 +53,7 @@ protected:
 
 public:
   ScorerWrapperState(Ptr<DecoderState> state) : state_(state) {}
+  virtual ~ScorerWrapperState() {}
 
   virtual Ptr<DecoderState> getState() { return state_; }
 
@@ -87,6 +88,8 @@ public:
       : Scorer(name, weight),
         encdec_(std::static_pointer_cast<IEncoderDecoder>(encdec)),
         ptr_{ptr} {}
+
+  virtual ~ScorerWrapper() {}
 
   virtual void init(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());

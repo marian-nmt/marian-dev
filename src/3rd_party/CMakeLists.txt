@@ -39,7 +39,7 @@ if(USE_SENTENCEPIECE)
     message(WARNING "You are compiling SentencePiece binaries with -DUSE_STATIC_LIBS=on. \
     This will cause spm_train to segfault. No need to worry if you do not intend to use that binary. \
     Marian support for SentencePiece will work fine.")
-    
+
     set(SPM_ENABLE_SHARED OFF CACHE BOOL "Builds shared libaries in addition to static libraries." FORCE)
     set(SPM_TCMALLOC_STATIC ON CACHE BOOL "Link static library of TCMALLOC." FORCE)
   else(USE_STATIC_LIBS)
@@ -51,8 +51,13 @@ if(USE_SENTENCEPIECE)
   include_directories(./sentencepiece)
 
   set_target_properties(spm_encode spm_decode spm_train spm_normalize spm_export_vocab
-                        PROPERTIES
-                        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_target_properties(spm_encode spm_decode spm_train spm_normalize spm_export_vocab
+      sentencepiece_train sentencepiece_train-static sentencepiece
+      PROPERTIES COMPILE_FLAGS "-Wno-tautological-compare -Wno-unused-const-variable")
+  endif()
 
   if(USE_STATIC_LIBS)
     set(CMAKE_FIND_LIBRARY_SUFFIXES ${_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -62,6 +67,17 @@ endif(USE_SENTENCEPIECE)
 include_directories(./SQLiteCpp/include)
 include_directories(./CLI)
 include_directories(./pathie-cpp/include)
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_target_properties(SQLiteCpp
+    PROPERTIES COMPILE_FLAGS "-fPIC -Wno-parentheses-equality -Wno-unused-value")
+  set_target_properties(libyaml-cpp
+    PROPERTIES COMPILE_FLAGS "-fPIC -Wno-unused-value")
+  set_target_properties(pathie-cpp
+    PROPERTIES COMPILE_FLAGS "-fPIC -Wno-unused-value")
+endif()
+
+
 
 include_directories(./zlib)
 

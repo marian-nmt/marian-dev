@@ -144,17 +144,25 @@ else(MSVC)
   set(DISABLE_GLOBALLY "-Wno-unused-result")
 
   # These are used in src/CMakeLists.txt on a per-target basis
-  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated; -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
-                          -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare; -Wno-missing-field-initializers;)
+  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated;
+    -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
+    -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare;
+    -Wno-missing-field-initializers;)
 
   # This warning does not exist prior to gcc 5.0
   if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
     list(APPEND ALL_WARNINGS -Wsuggest-override)
   endif()
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread -Wl,--no-as-needed -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
-  set(CMAKE_CXX_FLAGS_RELEASE         "-Ofast -m64 -funroll-loops -ffinite-math-only -g -rdynamic")
-  set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g -rdynamic")
+  if(CMAKE_COMPILER_IS_GNUCC)
+    # these flags are not known to clang
+    set(CMAKE_GCC_FLAGS "-Wl,--no-as-needed")
+    set(CMAKE_RDYNAMIC_FLAG "-rdynamic")
+  endif(CMAKE_COMPILER_IS_GNUCC)
+
+  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_CXX_FLAGS_RELEASE         "-Ofast -m64 -funroll-loops -ffinite-math-only -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-Ofast -m64 -funroll-loops -ffinite-math-only -DNDEBUG")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS_RELEASE}")
   set(CMAKE_CXX_FLAGS_PROFILE         "${CMAKE_CXX_FLAGS_RELEASE} -pg")
@@ -162,9 +170,9 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 "-pthread -Wl,--no-as-needed -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
-  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -ffinite-math-only -g -rdynamic")
-  set(CMAKE_C_FLAGS_DEBUG           "-O0 -g -rdynamic")
+  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -ffinite-math-only -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -ffinite-math-only -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO  "${CMAKE_C_FLAGS_RELEASE}")
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
@@ -204,7 +212,7 @@ if(CUDA_FOUND)
   if((CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0") AND (CMAKE_VERSION VERSION_LESS "3.12.2"))
       message(WARNING "On some Unix systems CUDA 10.0+ requires CMake 3.12.2+; you use CMake ${CMAKE_VERSION}")
   endif()
-  
+
   if(COMPILE_CUDA_SM35)
     LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35;)                             # Tesla K40 and above
   endif(COMPILE_CUDA_SM35)

@@ -214,6 +214,8 @@ void Transpose0213(Tensor out, Tensor in) {
   }
 }
 
+// This function is called only when MKL is available.
+#if MKL_FOUND
 // Given a 4D array, transpose (swap) the initial 3 dimensions while keeping the last dimension.
 // e.g. 1234 --> 2134, 1234 --> 3214 (4 is always kept).
 // This is an optimized version for swapping first 3 dimensions
@@ -225,7 +227,6 @@ void Transpose0213(Tensor out, Tensor in) {
 template <bool add>
 void TransposeFirst3In4(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   ABORT_IF(vAxis.size() != 4, "This function handles only 4D arrays.");
-#if MKL_FOUND
   int innermost = in->shape()[-1];
 
   int l1 = in->shape()[vAxis[0]];
@@ -275,11 +276,8 @@ void TransposeFirst3In4(Tensor out, Tensor in, const std::vector<int>& vAxis) {
       }
     }
   }
-#else
-  // it shouldn't come into here. This function is called only when MKL is available.
-  ABORT("Should not get here");
-#endif  // MKL_FOUND
 }
+#endif  // MKL_FOUND
 
 inline void transpose4x4_SSE(const float* A,
                              float* B,

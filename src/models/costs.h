@@ -184,6 +184,8 @@ public:
   Scorer(Ptr<IModel> model, Ptr<ILogProb> cost)
       : model_(model), logProb_(cost) {}
 
+  virtual ~Scorer(){}
+
   Ptr<IModel> getModel() { return model_; }
 
   virtual void load(Ptr<ExpressionGraph> graph,

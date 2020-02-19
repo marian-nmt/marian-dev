@@ -8,7 +8,7 @@
 #include <fstream>
 
 int main(int argc, char** argv) {
-    ABORT_IF(argc != 3, "FATAL ERROR: Incorrect number of command line arguments"
+    ABORT_IF(argc != 3, "FATAL ERROR: Incorrect number of command line arguments "
              "(expected: 2) for command {}.",argv[0]);
 
     SQLite::Database db("corpus.db", SQLite::OPEN_READWRITE|SQLite::OPEN_CREATE);

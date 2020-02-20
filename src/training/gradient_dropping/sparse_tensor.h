@@ -118,11 +118,7 @@ public:
   }
 
   // Convert a tensor into a sparse tensor format
-#ifdef CUDA_FOUND
-  void fromDense(Tensor t) {
-#else
-  void fromDense(Tensor) {
-#endif
+  void fromDense(Tensor MAYBE_UNUSED t) {
     if(backend_->getDeviceId().type == DeviceType::cpu) {
       ABORT("Gradient Dropping for CPU is not yet supported");
     }

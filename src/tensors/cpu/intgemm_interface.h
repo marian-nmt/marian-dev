@@ -15,8 +15,9 @@ float clipValue_;
 float quantMult_;
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), vtype), clipValue_{clipValue} {
-    ABORT_IF(children().size() != 2, "expected 2 children");
 
+    set_name(input->name());
+    setMemoize(false);
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
     ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
@@ -49,8 +50,8 @@ float quantMult_;
 
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
       : NaryNodeOp({input, quant_mult}, input->shape(), intgemm_<vtype>::intgemmType), clipValue_{clipValue} {
-    ABORT_IF(children().size() != 2, "expected 2 children");
 
+    set_name(input->name());
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
     ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
@@ -88,6 +89,9 @@ public:
   float quantMult_;
   SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
       : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), indices_(indices) {
+
+    set_name(input->name());
+    //setMemoize(false); //This *should* prevent it from going into the long term memory and remain in the shorterm. In practise, it crashes.
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 
@@ -142,7 +146,15 @@ private:
 
 template<Type vtype>
 struct QuantMultNodeOp : public UnaryNodeOp {
-  QuantMultNodeOp(Expr input) : UnaryNodeOp(input, Shape({1}), Type::float32) {}
+  bool isA_;
+  QuantMultNodeOp(Expr input, bool isA) : UnaryNodeOp(input, Shape({1}), Type::float32), isA_(isA) {
+    if (isA_) {
+      setMemoize(false);
+      set_name(input->name() + "_QuantMultA");
+    } else {
+      set_name(input->name() + "_QuantMultB");
+    }
+  }
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -165,7 +177,12 @@ struct QuantMultNodeOp : public UnaryNodeOp {
     return {NodeOp(0)};
   }
 
-  const std::string type() override { return "intgemmQuantMult"; }
+  const std::string type() override {
+    if (isA_)
+      return "intgemmQuantMultA";
+    else
+      return "intgemmQuantMultB";
+  }
 };
 
 template<Type vtype>
@@ -175,7 +192,9 @@ float scalar_;
 
 public:
   DotNodeOp(Expr a, Expr b, float scalar)
-      : NaryNodeOp({a, b}, newShape(a, b), Type::float32), scalar_(scalar) {}
+      : NaryNodeOp({a, b}, newShape(a, b), Type::float32), scalar_(scalar) {
+        setMemoize(false); // AFAIK dot is never called with the same matrices
+      }
 
   Shape newShape(Expr a, Expr b) {
     Shape result = a->shape();
@@ -220,7 +239,9 @@ private:
 
 public:
   AffineNodeOp(Expr a, Expr b, Expr Bias, float scalar)
-      : NaryNodeOp({a, b, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {}
+      : NaryNodeOp({a, b, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {
+        setMemoize(false); // AFAIK affine is never called with the same matrices
+      }
 
   Shape newShape(Expr a, Expr b) {
     Shape result = a->shape();
@@ -259,8 +280,8 @@ public:
 };
 
 template<Type vtype>
-static inline Expr quantMult(Expr a) {
-  return Expression<QuantMultNodeOp<vtype> >(a);
+static inline Expr quantMult(Expr a, bool isA=false) {
+  return Expression<QuantMultNodeOp<vtype> >(a, isA);
 }
 
 template<Type vtype>
@@ -281,7 +302,7 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
   Type bElementType = b->value_type();
-  auto aQuantMult = quantMult<vtype>(a);
+  auto aQuantMult = quantMult<vtype>(a, true);
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale);
   Expr bQuant;
   auto bQuantMult = quantMult<vtype>(b);
@@ -290,6 +311,7 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
     //We ignore a transpose argument here, because we do not support it.
     ABORT_IF(transB, "Transpose on prepareB not currently supported");
     bQuant = prepareB<vtype>(b, bQuantMult, clipValue);
+    //bQuant = b; //This crashes the decoder, due to hashing? issues
   } else {
     bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }

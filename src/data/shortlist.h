@@ -184,7 +184,7 @@ public:
                             Ptr<const Vocab> srcVocab,
                             Ptr<const Vocab> trgVocab,
                             size_t srcIdx = 0,
-                            size_t /*trgIdx*/ = 1, // not used in this class
+                            size_t /*trgIdx*/ = 1,
                             bool shared = false)
       : options_(options),
         srcVocab_(srcVocab),

@@ -21,6 +21,12 @@ if(USE_FBGEMM)
   set(FBGEMM_BUILD_TESTS OFF CACHE BOOL "Disable fbgemm tests")
   set(FBGEMM_BUILD_BENCHMARKS OFF CACHE BOOL "Disable fbgemm benchmark")
   add_subdirectory(./fbgemm)
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_target_properties(fbgemm fbgemm_generic fbgemm_avx2 fbgemm_avx512
+      PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter")
+    set_target_properties(asmjit
+      PROPERTIES COMPILE_FLAGS "-Wno-unused")
+  endif()
 endif(USE_FBGEMM)
 
 if(USE_SENTENCEPIECE)

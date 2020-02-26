@@ -44,20 +44,24 @@ public:
 
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
 
-      std::partial_sort(
+      std::partial_sort( 
+        // sorts the top N (beam size) idxs by score to the front
         idxs.begin(),
         idxs.begin() + N,
         idxs.end(),
         [&](int a, int b) { return scoresData[a] > scoresData[b]; }
       );
 
-      for(int temp = 0; temp < N; ++temp) {
-        int idx = idxs[temp];
+      // copy top N idxs and scores to return vectors
+      for(size_t i = 0; i < N; ++i) {
+        int idx = idxs[i];
+        // since idxs is re-used for each batch, add batch offset to each idx to get absolute position
         h_res_idx[pos] = idx + batchIdx * batchOffset;
         h_res[pos] = scoresData[idx];
         ++pos;
       }
 
+      // advance pointer to next batch's beginning
       scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);

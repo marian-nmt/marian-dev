@@ -96,8 +96,8 @@ struct FbgemmPacked16PackNodeOp : public UnaryNodeOp {
 
   const std::string type() override { return "packMatFp16"; }
 
-  Shape newShape(Expr a, bool transpose) {
 #if USE_FBGEMM
+  Shape newShape(Expr a, bool transpose) {
     auto shapeMat = a->shape();
     // Should be 2D - weight matrix
     ABORT_IF(shapeMat.size() != 2,
@@ -115,13 +115,16 @@ struct FbgemmPacked16PackNodeOp : public UnaryNodeOp {
                            packsize_);
 
     Shape outShape({(int)packsize_});
-
     return outShape;
-#else // USE_FBGEMM
-    ABORT("Packed GEMM requires a build with USE_FBGEMM enabled");
-    return Shape();
-#endif  // USE_FBGEMM
   }
+};
+#else
+ Shape newShape(Expr /*a*/, bool /*transpose*/) {
+   ABORT("Packed GEMM requires a build with USE_FBGEMM enabled");
+   return Shape();
+ }
+#endif  // USE_FBGEMM
+
 };
 
 // Pack a matrix (int8) into cache utilization efficient way (block format) together with quantization into int8
@@ -180,18 +183,20 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
 
   const std::string type() override { return "packMatInt8"; }
 
-  Shape newShape(Expr a, bool transpose) {
 #if USE_FBGEMM
+  Shape newShape(Expr a, bool transpose) {
     fbgemmPacked8PackInfo(a->shape(), packType_, transpose, nrow_, ncol_, packsize_);
     Shape outShape({(int)packsize_});
-
     return outShape;
-#else // USE_FBGEMM
+  }
+#else
+  Shape newShape(Expr /*a*/, bool /*transpose*/) {
     ABORT("Packed GEMM requires a build with USE_FBGEMM enabled");
     return Shape();
-#endif  // USE_FBGEMM
   }
+#endif  // USE_FBGEMM
 };
+
 
 // Affine transform (matrix multiplication) using packed B matrix
 // float scalar_: scalar multiplier
@@ -202,7 +207,6 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
 // bool transB_: transpose B
 class FbgemmPacked16AffineNodeOp : public NaryNodeOp {
 private:
-  float scalar_;
   size_t m_;
   size_t n_;
   size_t k_;
@@ -210,9 +214,8 @@ private:
   bool transB_;
 
 public:
-  FbgemmPacked16AffineNodeOp(const std::vector<Expr>& nodes, Shape bShape, bool transA, bool transB, float scalar)
-      : NaryNodeOp(nodes, newShape(nodes[0], bShape, transA, transB), Type::float32),
-        scalar_(scalar) {
+  FbgemmPacked16AffineNodeOp(const std::vector<Expr>& nodes, Shape bShape, bool transA, bool transB, float /*scalar*/)
+    : NaryNodeOp(nodes, newShape(nodes[0], bShape, transA, transB), Type::float32)/*, scalar_(scalar)*/ {
     transA_ = transA;
     transB_ = transB;
     m_ = nodes[0]->shape().elements() / nodes[0]->shape()[-1];
@@ -281,7 +284,6 @@ public:
 // bool transB_: transpose B
 class FbgemmPacked8AffineNodeOp : public NaryNodeOp {
 private:
-  float scalar_;
   size_t m_;
   size_t n_;
   size_t k_;
@@ -289,9 +291,8 @@ private:
   bool transB_;
 
 public:
-  FbgemmPacked8AffineNodeOp(const std::vector<Expr>& nodes, Shape bShape, bool transA, bool transB, float scalar)
-      : NaryNodeOp(nodes, newShape(nodes[0], bShape, transA, transB), Type::float32),
-        scalar_(scalar) {
+ FbgemmPacked8AffineNodeOp(const std::vector<Expr>& nodes, Shape bShape, bool transA, bool transB, float /*scalar*/)
+   : NaryNodeOp(nodes, newShape(nodes[0], bShape, transA, transB), Type::float32)/*, scalar_(scalar) */ {
     transA_ = transA;
     transB_ = transB;
     m_ = nodes[0]->shape().elements() / nodes[0]->shape()[-1];
@@ -302,7 +303,7 @@ public:
     size_t l = bShape.elements() / bShape[-1];
     n_ = bShape[-1];
     if(transB)
-     std::swap(l, n_);
+      std::swap(l, n_);
   }
 
   Shape newShape(Expr a, Shape bShape, bool transA, bool transB) {

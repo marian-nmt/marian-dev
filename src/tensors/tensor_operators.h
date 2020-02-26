@@ -24,15 +24,20 @@
 
 namespace marian {
 
-template <typename InIt, typename OutIt>
-void copy(Ptr<Backend> backend, const InIt beg, const InIt end, OutIt it) {
 #ifdef CUDA_FOUND
+template <typename InIt, typename OutIt>
+void copy(Ptr<Backend>& backend, const InIt beg, const InIt end, OutIt it) {
   if(backend->getDeviceId().type == DeviceType::gpu)
     gpu::copy(backend, beg, end, it);
   else
-#endif
     std::copy(beg, end, it);
 }
+#else
+template <typename InIt, typename OutIt>
+void copy(Ptr<Backend>& , const InIt beg, const InIt end, OutIt it) {
+  std::copy(beg, end, it);
+}
+#endif
 
 DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor);
 DISPATCH4(IsNaN, const Tensor, Ptr<Allocator>, bool&, bool&);
@@ -119,7 +124,7 @@ DISPATCH3(Concatenate, marian::Tensor, const std::vector<marian::Tensor>&, int)
 
 // clang-format on
 
-// Bernoulli(tensor, 0.5f, 2.f, -1.f) generates a tensor composed of 50% of 1 and 50% of -1. 
+// Bernoulli(tensor, 0.5f, 2.f, -1.f) generates a tensor composed of 50% of 1 and 50% of -1.
 static inline void Bernoulli(Tensor resultTensor, float keepProb, float scale = 1.f, float shift = 0.f) {
   // in-place uniform distribution
   auto rnd = resultTensor->getBackend()->getRandomGenerator();
@@ -189,6 +194,7 @@ void LayerNormalizationGrad(Tensor gradX,
                             float eps);
 }
 
+#ifdef CUDA_FOUND
 static inline void LayerNormalizationGrad(
                             Ptr<Allocator> allocator,
                             Tensor gradX,
@@ -200,13 +206,26 @@ static inline void LayerNormalizationGrad(
                             Tensor gamma,
                             Tensor beta,
                             float eps) {
-#ifdef CUDA_FOUND
   if(gradX->getBackend()->getDeviceId().type == DeviceType::gpu)
     gpu::LayerNormalizationGrad(allocator, gradX, gradGamma, gradBeta, adj, y, x, gamma, beta, eps);
   else
-#endif
     cpu::LayerNormalizationGrad(gradX, gradGamma, gradBeta, adj, y, x, gamma, beta, eps);
 }
+#else
+static inline void LayerNormalizationGrad(
+                            Ptr<Allocator> /*allocator*/,
+                            Tensor gradX,
+                            Tensor gradGamma,
+                            Tensor gradBeta,
+                            Tensor adj,
+                            Tensor y,
+                            Tensor x,
+                            Tensor gamma,
+                            Tensor beta,
+                            float eps) {
+  cpu::LayerNormalizationGrad(gradX, gradGamma, gradBeta, adj, y, x, gamma, beta, eps);
+}
+#endif
 
 DISPATCH4(HighwayForward, marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor)
 DISPATCH7(HighwayBackward, marian::Tensor, marian::Tensor, marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor)

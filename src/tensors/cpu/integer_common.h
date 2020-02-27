@@ -45,7 +45,7 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
                                                rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 
                                                cols(item.shape)); //rows here returns the columns of the transposed input matrix, and cols -> the rows
     //Copy the quantMult
-    float quantMult = *(reinterpret_cast<const float *>(input + item.shape.elements()));
+    float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements()));
     *(reinterpret_cast<float *>(&(*(output_tensor + item.shape.elements())))) = quantMult;
 }
 

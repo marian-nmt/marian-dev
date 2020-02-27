@@ -34,7 +34,7 @@ option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 if(USE_CCACHE)
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
-  message(STATUS "Found and will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
+  message(STATUS "Will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
 else(CCACHE_PROGRAM)
   message(WARNING "Compilation with ccache requested but no ccache found.")
@@ -142,7 +142,11 @@ else(MSVC)
     add_definitions(-DUSE_FBGEMM=1)
   endif(USE_FBGEMM)
 
-  set(DISABLE_GLOBALLY "-Wno-unused-result")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.0)
+    # Clang-10.0.0 complains when CUDA is newer than 10.1
+    set(CLANG_IGNORE_UNKNOWN_CUDA "-Wno-unknown-cuda-version")
+  endif()
+  set(DISABLE_GLOBALLY "-Wno-unused-result -Wno-unknown-warning-option ${CLANG_IGNORE_UNKNOWN_CUDA}")
 
   # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated;
@@ -152,7 +156,7 @@ else(MSVC)
 
   # This warning does not exist prior to gcc 5.0
   if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
-    list(APPEND ALL_WARNINGS -Wsuggest-override)
+    list(APPEND ALL_WARNINGS -Wsuggest-override -Wno-int-in-bool-context)
   endif()
 
   if(CMAKE_COMPILER_IS_GNUCC)

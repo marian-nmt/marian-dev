@@ -130,10 +130,6 @@ class ExpressionGraph : public std::enable_shared_from_this<ExpressionGraph> {
 
   bool inferenceOnly_{false};
 
-  // during inference, use optimizations that might lead to precision loss, e.g. 8-bit MatMul.
-  // At this moment, this is used for int16 qunatized Matmul. optimized8_ is used for int8 intgemm. 13/12/19
-  bool optimized_{false};
-  bool optimized8_{false};
   bool checkpointing_{false}; // use gradient checkpointing if true
 
   bool reloaded_{false};
@@ -178,11 +174,6 @@ public:
 
   void setInference(bool inference) { inferenceOnly_ = inference; }
   bool isInference() { return inferenceOnly_; }
-
-  void setOptimized(bool optimized) { optimized_ = optimized; }
-  void setOptimized8(bool optimized) { optimized8_ = optimized; }
-  bool isOptimized() { return (optimized_ && inferenceOnly_); }
-  bool isOptimized8() { return (optimized8_ && inferenceOnly_); }
 
   void setCheckpointing(bool checkpointing) { checkpointing_ = checkpointing; }
   bool isCheckpointing() { return checkpointing_; }
@@ -500,6 +491,7 @@ public:
       // skip over special parameters starting with "special:"
       if(pName.substr(0, 8) == "special:")
         continue;
+      
       // if during loading the loaded type is of the same type class as the default element type, allow conversion;
       // otherwise keep the loaded type. This is used when e.g. loading a float32 model as a float16 model as both
       // have type class TypeClass::float_type.

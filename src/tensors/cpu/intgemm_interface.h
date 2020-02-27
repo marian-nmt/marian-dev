@@ -87,8 +87,8 @@ struct SelectColumnsBNodeOp : public UnaryNodeOp {
 public:
   float clipValue_;
   float quantMult_;
-  SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
-      : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), indices_(indices) {
+  SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices, float clipValue)
+      : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), clipValue_(clipValue), indices_(indices) {
 
     set_name(input->name());
     //setMemoize(false); //This *should* prevent it from going into the long term memory and remain in the shorterm. In practise, it crashes.
@@ -101,10 +101,14 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      //We get the quantization multiplier from a PrepareB
-      auto bPreppedNode = std::static_pointer_cast<PrepareBNodeOp<vtype> >(child(0));
-      clipValue_ = bPreppedNode->clipValue_;
-      quantMult_ = bPreppedNode->quantMult_;
+      //We get the quantization multiplier from a PrepareB or directly from the input
+      if (child(0)->type() == "intgemmPrepareB") {
+        auto bPreppedNode = std::static_pointer_cast<PrepareBNodeOp<vtype> >(child(0));
+        quantMult_ = bPreppedNode->quantMult_;
+      } else {
+        typedef typename intgemm_<vtype>::type Integer;
+        quantMult_ = *(reinterpret_cast<float *>(reinterpret_cast<Integer *>(child(0)->val()->data()) + child(0)->val()->shape().elements()));
+      }
       auto input = child(0)->val();
       typedef typename intgemm_<vtype>::type Integer;
       intgemm_<vtype>::width::SelectColumnsB(
@@ -208,8 +212,11 @@ public:
           float bQuantMult;
           if (child(1)->type() == "intgemmSelectColumnsB") {
             bQuantMult = std::static_pointer_cast<SelectColumnsBNodeOp<vtype> >(child(1))->quantMult_;
-          } else {
+          } else if (child(1)->type() == "intgemmPrepareB") {
             bQuantMult = std::static_pointer_cast<PrepareBNodeOp<vtype> >(child(1))->quantMult_;
+          } else {
+            typedef typename intgemm_<vtype>::type Integer;
+            bQuantMult = *(reinterpret_cast<float *>(reinterpret_cast<Integer *>(child(1)->val()->data()) + child(1)->val()->shape().elements()));
           }
           float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
 
@@ -255,8 +262,11 @@ public:
           float bQuantMult;
           if (child(1)->type() == "intgemmSelectColumnsB") {
             bQuantMult = std::static_pointer_cast<SelectColumnsBNodeOp<vtype> >(child(1))->quantMult_;
-          } else {
+          } else if (child(1)->type() == "intgemmPrepareB") {
             bQuantMult = std::static_pointer_cast<PrepareBNodeOp<vtype> >(child(1))->quantMult_;
+          } else {
+            typedef typename intgemm_<vtype>::type Integer;
+            bQuantMult = *(reinterpret_cast<float *>(reinterpret_cast<Integer *>(child(1)->val()->data()) + child(1)->val()->shape().elements()));
           }
           float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
 
@@ -295,8 +305,8 @@ static inline Expr prepareB(Expr b, Expr quantMult, float clipValue) {
 }
 
 template<Type vtype>
-static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &cols) {
-  return Expression<SelectColumnsBNodeOp<vtype > >(b, cols);
+static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &cols, float clipValue) {
+  return Expression<SelectColumnsBNodeOp<vtype > >(b, cols, clipValue);
 }
 
 template<Type vtype>
@@ -305,14 +315,13 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   auto aQuantMult = quantMult<vtype>(a, true);
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale);
   Expr bQuant;
-  auto bQuantMult = quantMult<vtype>(b);
   if (isIntgemm(bElementType)) {
     //This is the case where we already run SelectColumnB or we loaded a prepacked model.
     //We ignore a transpose argument here, because we do not support it.
     ABORT_IF(transB, "Transpose on prepareB not currently supported");
-    bQuant = prepareB<vtype>(b, bQuantMult, clipValue);
-    //bQuant = b; //This crashes the decoder, due to hashing? issues
+    bQuant = b;
   } else {
+    auto bQuantMult = quantMult<vtype>(b);
     bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }
   if (bias)

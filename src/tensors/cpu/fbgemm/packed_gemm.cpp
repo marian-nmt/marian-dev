@@ -147,6 +147,27 @@ inline const fbgemm::BlockingFactors* getBlockingFactors(marian::Type packType) 
   }
 }
 
+void FindMeanStdDev(float* data, float& mean, float& stddev, size_t length) {
+#if MKL_FOUND
+  float* ones = new float[length];
+  for(int ii = 0; ii < length; ii++)
+    ones[ii] = 1.f;
+  float* muls = new float[length];
+
+  float sum = cblas_sdot(length, data, 1, ones, 1);
+  vsMul(length, data, data, muls);
+  float sqrSum = cblas_sdot(length, muls, 1, ones, 1);
+
+  mean = sum / length;
+  stddev = sqrt(sqrSum / length - mean * mean);
+
+  delete[] muls;
+  delete[] ones;
+#else
+  ABORT("FindMeanStdDev is only available with MKL.");
+#endif
+}
+
 void fbgemmPacked16PackInfo(const marian::Shape& shape,
                             const bool transpose,
                             uint64_t& packsize) {
@@ -271,7 +292,8 @@ void fbgemmPacked8Pack(marian::Tensor out,
                        const bool transpose,
                        const int nrow,
                        const int ncol,
-                       const uint64_t packsize) {
+                       const uint64_t packsize,
+                       const float quantizeRange) {
   int k = nrow;
   int n = ncol;
   int len = k * n;
@@ -297,8 +319,8 @@ void fbgemmPacked8Pack(marian::Tensor out,
       sqrsum -= mean * mean;
       sqrsum = sqrt(sqrsum);
 
-      min = (float)(mean - 7.0f*sqrsum);
-      max = (float)(mean + 7.0f*sqrsum);
+      min = (float)(mean - quantizeRange * sqrsum);
+      max = (float)(mean + quantizeRange * sqrsum);
       bqScale[jj] = (max - min) / 255;
       bqZeropoint[jj] = (int32_t)(127 - max / bqScale[jj]);
     }
@@ -316,8 +338,8 @@ void fbgemmPacked8Pack(marian::Tensor out,
       sqrsum -= mean * mean;
       sqrsum = sqrt(sqrsum);
 
-      min = (float)(mean - 7.0f*sqrsum);
-      max = (float)(mean + 7.0f*sqrsum);
+      min = (float)(mean - quantizeRange * sqrsum);
+      max = (float)(mean + quantizeRange * sqrsum);
       bqScale[jj] = (max - min) / 255;
       bqZeropoint[jj] = (int32_t)(127 - max / bqScale[jj]);
     }
@@ -461,7 +483,8 @@ void fbgemmPacked16Gemm(marian::Tensor C,
 // k: the number of columns in A and the number of rows in B
 // transA: whether A matrix is transposed or not
 // transB: whether B matrix is transposed or not
-void fbgemmPacked8Gemm(marian::Tensor C,
+void fbgemmPacked8Gemm(Type packType,
+                       marian::Tensor C,
                        const marian::Tensor A,
                        const marian::Tensor B,
                        const size_t m,
@@ -469,9 +492,6 @@ void fbgemmPacked8Gemm(marian::Tensor C,
                        const size_t k,
                        const int transA,
                        const int transB) {
-  // pack type
-  marian::Type packType = B->type();
-
   const fbgemm::BlockingFactors* params = getBlockingFactors(packType);
 
   if((packType == Type::packed8avx2 && fbgemmHasAvx512Support())
@@ -488,9 +508,17 @@ void fbgemmPacked8Gemm(marian::Tensor C,
   float* data = A->data();
   // AVX based find min/max
   FindMinMax(data, &min_est, &max_est, elem);
+  //float mean = 0.f, stdDev = 1.f;
+  //FindMeanStdDev(data, mean, stdDev, elem);
+  //min_est = mean - 12.f * stdDev;
+  //max_est = mean + 12.f * stdDev;
+  //std::cout << "m: " << m << ", n: " << n << ", k: " << k << ", mean: " << mean << ", stddev: " << stdDev << ", min_est: " << min_est
+  //          << ", max_est: " << max_est << ", min 3 sigma: " << mean - 3.f * stdDev
+  //          << ", max 3 sigma: " << mean + 3.f * stdDev << std::endl;
 
-  float ascale = (max_est - min_est) / 255;
-  int32_t azeropoint = (int32_t)(255 - max_est / ascale);
+  int quantizeMax = 127;
+  float ascale = (max_est - min_est) / quantizeMax;
+  int32_t azeropoint = (int32_t)(quantizeMax - max_est / ascale);
 
   std::vector<int32_t> row_offset_buf(PackAWithQuantRowOffset<uint8_t>::rowOffsetBufferSize());
   PackAWithQuantRowOffset<uint8_t> packAN(

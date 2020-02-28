@@ -100,7 +100,8 @@ void fbgemmPacked8Pack(marian::Tensor out,
                        const bool transpose,
                        const int nrow,
                        const int ncol,
-                       const uint64_t packsize); // @TODO: change to size_t where appropriate
+                       const uint64_t packsize,
+                       const float quantizeRange = 7.f); // @TODO: change to size_t where appropriate
 
 // GEMM operation on the packed B matrix
 // C: output matrix
@@ -127,7 +128,8 @@ void fbgemmPacked16Gemm(marian::Tensor C,
 // k: the number of columns in A and rows in B
 // transA: transpose of A matrix
 // transB: transpose of B matrix
-void fbgemmPacked8Gemm(marian::Tensor C,
+void fbgemmPacked8Gemm(Type packType,
+                       marian::Tensor C,
                        const marian::Tensor A,
                        const marian::Tensor B,
                        const size_t m,

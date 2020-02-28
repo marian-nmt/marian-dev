@@ -5,6 +5,15 @@
 
 namespace marian {
 
+// GEMM type enum
+typedef enum {
+  Auto = 0,            // auto tuning between available GEMMs
+  Float32 = 1,         // MKL based GEMM, fp32
+  IntrinInt16 = 2,     // Intrinsic implementation of Int 16 GEMM
+  FbFp16Packed = 10,   // FBGEMM based fp16 GEMM with packing
+  FbInt8Packed = 11    // FBGEMM based int8 GEMM with packing
+} GemmType;
+
 class Backend {
 protected:
   DeviceId deviceId_;
@@ -32,6 +41,14 @@ public:
   // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
   virtual void setOptimized(bool optimize) = 0;
   virtual bool isOptimized() = 0;
+  // for CPU, selects different GEMM types for the inference.
+  // for GPU, there's no gemm type. so, it does nothing.
+  virtual void setGemmType(std::string gemmType) = 0;
+  virtual GemmType getGemmType() = 0;
+  // for CPU, sets quantization range of weight matrices for the inference.
+  // for GPU, there's no quantization. so, it does nothing.
+  virtual void setQuantizeRange(float range) = 0;
+  virtual float getQuantizeRange() = 0;
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

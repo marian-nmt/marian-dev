@@ -420,14 +420,49 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
-        // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-        // if transA = false and transB = false.
-
+      if(a->graph()->getBackend()->getGemmType() == GemmType::IntrinInt16) {
+        // cpu int16 version
         return cpu::int16::dot(
           cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
           cpu::int16::quantize(transB ? b : transpose(b), clipValue),
           scale);
+      } else if(b->memoize() && (a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed ||
+        a->graph()->getBackend()->getGemmType() == GemmType::FbInt8Packed)) {
+#if USE_FBGEMM
+        if(a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed) {
+          auto packedB = cpu::variant::pack(
+              marian::Type::packed16, b, cpu::variant::PackMatrix::B, transB, clipValue);
+          return cpu::variant::dot(marian::Type::packed16,
+              clip(a, clipValue), packedB, b->shape(), transA, transB, scale);
+        } else {
+          float quantizeRange = b->graph()->getBackend()->getQuantizeRange();
+          if(fbgemm::fbgemmHasAvx512Support()) {
+            auto packedB = cpu::variant::pack(marian::Type::packed8avx512,
+                                              b,
+                                              cpu::variant::PackMatrix::B,
+                                              transB,
+                                              clipValue,
+                                              quantizeRange);
+            return cpu::variant::dot(marian::Type::packed8avx512,
+                clip(a, clipValue), packedB, b->shape(), transA, transB, scale);
+          } else if(fbgemm::fbgemmHasAvx2Support()) {
+            auto packedB = cpu::variant::pack(marian::Type::packed8avx2,
+                                              b,
+                                              cpu::variant::PackMatrix::B,
+                                              transB,
+                                              clipValue,
+                                              quantizeRange);
+            return cpu::variant::dot(marian::Type::packed8avx2,
+                clip(a, clipValue), packedB, b->shape(), transA, transB, scale);
+          } else {
+            ABORT(
+                "AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed "
+                "GEMM");
+          }
+        }
+#else
+        ABORT("Packed GEMM is not available in this build");
+#endif  // USE_FBGEMM
       } else {
         return Expression<DotNodeOp>(
           clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
@@ -441,7 +476,8 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of dot product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::dot(clip(a, clipValue),
+        return cpu::variant::dot(b->value_type(),
+                                 clip(a, clipValue),
                                  b,
                                  b->shape(),
                                  transA,
@@ -497,12 +533,53 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized()) {
-        // cpu int16 version
-        return cpu::int16::affine(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-          bias,
-          scale);
+        if(a->graph()->getBackend()->getGemmType() == GemmType::IntrinInt16) {
+          // cpu int16 version
+          return cpu::int16::affine(
+            cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+            cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+            bias,
+            scale);
+        } else if(b->memoize() && (a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed ||
+          a->graph()->getBackend()->getGemmType() == GemmType::FbInt8Packed)) {
+#if USE_FBGEMM
+          if(a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed) {
+            auto packedB = cpu::variant::pack(
+                marian::Type::packed16, b, cpu::variant::PackMatrix::B, transB, clipValue);
+            return cpu::variant::affine(marian::Type::packed16,
+                clip(a, clipValue), packedB, b->shape(), bias, transA, transB, scale);
+          } else {
+            float quantizeRange = b->graph()->getBackend()->getQuantizeRange();
+            if(fbgemm::fbgemmHasAvx512Support()) {
+              auto packedB = cpu::variant::pack(marian::Type::packed8avx512,
+                                                b,
+                                                cpu::variant::PackMatrix::B,
+                                                transB,
+                                                clipValue,
+                                                quantizeRange);
+              return cpu::variant::affine(marian::Type::packed8avx512,
+                  clip(a, clipValue), packedB, b->shape(), bias, transA, transB, scale);
+            } else if(fbgemm::fbgemmHasAvx2Support()) {
+              auto packedB = cpu::variant::pack(marian::Type::packed8avx2,
+                                                b,
+                                                cpu::variant::PackMatrix::B,
+                                                transB,
+                                                clipValue,
+                                                quantizeRange);
+              return cpu::variant::affine(marian::Type::packed8avx2,
+                  clip(a, clipValue), packedB, b->shape(), bias, transA, transB, scale);
+            } else {
+              ABORT(
+                  "AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed "
+                  "GEMM");
+            }
+          }
+#else
+          ABORT("Packed GEMM is not available in this build");
+#endif  // USE_FBGEMM
+        } else {
+          return affineDefault(a, b, bias, transA, transB, scale);
+        }
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }
@@ -515,7 +592,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::affine(clip(a, clipValue),
+        return cpu::variant::affine(b->value_type(),
+                                    clip(a, clipValue),
                                     b,
                                     b->shape(),
                                     bias,

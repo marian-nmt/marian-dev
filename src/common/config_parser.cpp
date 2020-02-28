@@ -641,6 +641,13 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      "Noise output layer with gumbel noise",
       false);
 
+  // parameters for on-line quantization
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation",
+     7.f);
+
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
   addSuboptionsULR(cli);
@@ -690,6 +697,13 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
+
+  // parameters for on-line quantization
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation",
+     7.f);
 
   cli.switchGroup(previous_group);
   // clang-format on

@@ -147,7 +147,7 @@ inline const fbgemm::BlockingFactors* getBlockingFactors(marian::Type packType) 
   }
 }
 
-void FindMeanStdDev(float* data, float& mean, float& stddev, size_t length) {
+void FindMeanStdDev(float* data, float& mean, float& stdDev, size_t length) {
 #if MKL_FOUND
   float* ones = new float[length];
   for(int ii = 0; ii < length; ii++)
@@ -159,7 +159,7 @@ void FindMeanStdDev(float* data, float& mean, float& stddev, size_t length) {
   float sqrSum = cblas_sdot(length, muls, 1, ones, 1);
 
   mean = sum / length;
-  stddev = sqrt(sqrSum / length - mean * mean);
+  stdDev = sqrt(sqrSum / length - mean * mean);
 
   delete[] muls;
   delete[] ones;
@@ -305,41 +305,65 @@ void fbgemmPacked8Pack(marian::Tensor out,
   const float* data = inData;
   float val = 0;
 
+  // Use half of the quantization range to prevent overflow of VPMADDUBSW
+  constexpr static int quantizedMax = 127;
+  constexpr static int quantizedZero = 63;
+
   if (transpose) {
     for (int jj = 0; jj < n; jj++) {
       float min = std::numeric_limits<float>::max(), max = std::numeric_limits<float>::min();
       double mean = 0, sqrsum = 0;
-      for (int ii = 0; ii < k; ii++) {
+      for(int ii = 0; ii < k; ii++) {
         val = data[jj * k + ii];
-        mean += val;
-        sqrsum += val * val;
+        // min/max quantization
+        if(quantizeRange == 0.f) {
+          if(min > val)
+            min = val;
+          if(max < val)
+            max = val;
+        } else {
+          // Quantize by range
+          mean += val;
+          sqrsum += val * val;
+        }
       }
-      mean /= k;
-      sqrsum /= k;
-      sqrsum -= mean * mean;
-      sqrsum = sqrt(sqrsum);
-
-      min = (float)(mean - quantizeRange * sqrsum);
-      max = (float)(mean + quantizeRange * sqrsum);
-      bqScale[jj] = (max - min) / 255;
-      bqZeropoint[jj] = (int32_t)(127 - max / bqScale[jj]);
+      if(quantizeRange != 0.f) {
+        mean /= k;
+        sqrsum /= k;
+        sqrsum -= mean * mean;
+        sqrsum = sqrt(sqrsum);
+        min = (float)(mean - quantizeRange * sqrsum);
+        max = (float)(mean + quantizeRange * sqrsum);
+      }
+      bqScale[jj] = (max - min) / quantizedMax;
+      bqZeropoint[jj] = (int32_t)(quantizedZero - max / bqScale[jj]);
     }
   } else {
-    for (int jj = 0; jj < n; jj++) {
+    for(int jj = 0; jj < n; jj++) {
       float min = std::numeric_limits<float>::max(), max = std::numeric_limits<float>::min();
       double mean = 0, sqrsum = 0;
-      for (int ii = 0; ii < k; ii++) {
+      for(int ii = 0; ii < k; ii++) {
         val = data[jj + ii * n];
-        mean += val;
-        sqrsum += val * val;
+        // min/max quantization
+        if(quantizeRange == 0.f) {
+          if(min > val)
+            min = val;
+          if(max < val)
+            max = val;
+        } else {
+          // Quantize by range
+          mean += val;
+          sqrsum += val * val;
+        }
       }
-      mean /= k;
-      sqrsum /= k;
-      sqrsum -= mean * mean;
-      sqrsum = sqrt(sqrsum);
-
-      min = (float)(mean - quantizeRange * sqrsum);
-      max = (float)(mean + quantizeRange * sqrsum);
+      if(quantizeRange != 0.f) {
+        mean /= k;
+        sqrsum /= k;
+        sqrsum -= mean * mean;
+        sqrsum = sqrt(sqrsum);
+        min = (float)(mean - quantizeRange * sqrsum);
+        max = (float)(mean + quantizeRange * sqrsum);
+      }
       bqScale[jj] = (max - min) / 255;
       bqZeropoint[jj] = (int32_t)(127 - max / bqScale[jj]);
     }

@@ -643,10 +643,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 
   // parameters for on-line quantization
   cli.add<std::string>("--gemm-type,-g",
-     "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512", "float32");
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
   cli.add<float>("--quantize-range",
-     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation",
-     7.f);
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
@@ -700,10 +700,10 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
 
   // parameters for on-line quantization
   cli.add<std::string>("--gemm-type,-g",
-     "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512", "float32");
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
   cli.add<float>("--quantize-range",
-     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation",
-     7.f);
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
 
   cli.switchGroup(previous_group);
   // clang-format on

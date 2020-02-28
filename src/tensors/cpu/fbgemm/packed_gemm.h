@@ -101,7 +101,7 @@ void fbgemmPacked8Pack(marian::Tensor out,
                        const int nrow,
                        const int ncol,
                        const uint64_t packsize,
-                       const float quantizeRange = 7.f); // @TODO: change to size_t where appropriate
+                       const float quantizeRange = 0.f); // @TODO: change to size_t where appropriate
 
 // GEMM operation on the packed B matrix
 // C: output matrix

@@ -145,7 +145,7 @@ void AggregateTyped(Functor functor, AccType aggInit, AggFunctor aggFunctor, Acc
   functional::Array<functional::Tensor<T>, K> gIns = {tensors...};
 
   if(out->shape().elements() == 1) { // reduce everything into a single element
-    //AggregateAll<T, AccType>(nullptr, functor, aggInit, aggFunctor, scale, out, tensors...); // @TODO: pass allocator in here, currently uses cudaMalloc
+    AggregateAll<T, AccType>(nullptr, functor, aggInit, aggFunctor, scale, out, tensors...); // @TODO: pass allocator in here, currently uses cudaMalloc
   } else if(full.back() != 1 && out->shape().back() == 1 && full.elements() / full.back() == length) { // element number of out and full shape on axis that are not reduced must match
     size_t m = full.elements() / full.back(); // how many rows are we iterating over?
     size_t k = full.back();                   // how many columns are being reduced to 1 in each row?

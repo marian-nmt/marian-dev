@@ -540,7 +540,7 @@ void fbgemmPacked8Gemm(Type packType,
   //          << ", max_est: " << max_est << ", min 3 sigma: " << mean - 3.f * stdDev
   //          << ", max 3 sigma: " << mean + 3.f * stdDev << std::endl;
 
-  int quantizeMax = 127;
+  int quantizeMax = 255;
   float ascale = (max_est - min_est) / quantizeMax;
   int32_t azeropoint = (int32_t)(quantizeMax - max_est / ascale);
 

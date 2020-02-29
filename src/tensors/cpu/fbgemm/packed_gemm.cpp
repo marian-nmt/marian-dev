@@ -364,8 +364,8 @@ void fbgemmPacked8Pack(marian::Tensor out,
         min = (float)(mean - quantizeRange * sqrsum);
         max = (float)(mean + quantizeRange * sqrsum);
       }
-      bqScale[jj] = (max - min) / 255;
-      bqZeropoint[jj] = (int32_t)(127 - max / bqScale[jj]);
+      bqScale[jj] = (max - min) / quantizedMax;
+      bqZeropoint[jj] = (int32_t)(quantizedZero - max / bqScale[jj]);
     }
   }
 

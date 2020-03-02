@@ -23,6 +23,12 @@ if(USE_FBGEMM)
   add_subdirectory(./fbgemm)
 endif(USE_FBGEMM)
 
+add_subdirectory(./trieannosaurus)
+add_library(trieannosaurus INTERFACE)
+target_include_directories(trieannosaurus
+    INTERFACE
+        ${trieannosaurus_SOURCE_DIR}/)
+
 if(USE_SENTENCEPIECE)
   if(USE_STATIC_LIBS)
     set(_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})

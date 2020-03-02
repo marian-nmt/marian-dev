@@ -614,9 +614,13 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
     ->implicit_val("1");
   cli.add<bool>("--word-scores",
       "Print word-level scores");
+  cli.add<std::string>("--trie-pruning-path",
+     "Use trie pruning during translation. Provide path to the monolingual corpora.")
+    ->implicit_val("");
 #ifdef USE_SENTENCEPIECE
   cli.add<bool>("--no-spm-decode",
       "Keep the output segmented into SentencePiece subwords");
+      
 #endif
 
   addSuboptionsDevices(cli);

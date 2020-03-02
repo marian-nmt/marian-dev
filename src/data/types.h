@@ -14,9 +14,9 @@ namespace marian {
 // Type for all vocabulary items, based on IndexType
 typedef IndexType WordIndex;    // WordIndex is used for words or tokens arranged in consecutive order
 class Word {                    // Word is an abstraction of a unique id, not necessarily consecutive
+public:
   WordIndex wordId_;
   explicit Word(std::size_t wordId) : wordId_((WordIndex)wordId) {}
-public:
   static Word fromWordIndex(std::size_t wordId) { return Word(wordId); }
   const WordIndex& toWordIndex() const { return wordId_; }
   std::string toString() const { return std::to_string(wordId_); }

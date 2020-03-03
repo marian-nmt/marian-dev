@@ -13,7 +13,7 @@ class Backend : public marian::Backend {
 protected:
   bool optimized_{false};
   GemmType gemmType_{GemmType::Float32};
-  float quantizeRange_{7.f};
+  float quantizeRange_{0.f};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}

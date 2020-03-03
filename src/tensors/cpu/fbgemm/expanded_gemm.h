@@ -403,7 +403,7 @@ static inline Expr affine(Type elementType,
   }
 }
 
-static inline Expr pack(Type elementType, Expr a, PackMatrix packMat, bool transpose, float clipValue, float quantizeRange = 7.f) {
+static inline Expr pack(Type elementType, Expr a, PackMatrix packMat, bool transpose, float clipValue, float quantizeRange = 0.f) {
   if (elementType == Type::packed16)
     return Expression<cpu::variant::FbgemmPacked16PackNodeOp>(a, packMat, transpose, clipValue);
   else if (isPacked(elementType) && sizeOf(elementType) == 1)

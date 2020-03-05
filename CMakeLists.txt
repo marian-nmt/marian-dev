@@ -149,8 +149,8 @@ else(MSVC)
   set(DISABLE_GLOBALLY "-Wno-unused-result -Wno-unknown-warning-option ${CLANG_IGNORE_UNKNOWN_CUDA}")
 
   # These are used in src/CMakeLists.txt on a per-target basis
-  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wno-unused-result; -Wno-deprecated;
-    -Wno-pragmas; -Wno-unused-parameter; -Wextra; -Wno-unused-function;
+  list(APPEND ALL_WARNINGS -Wall; -Werror; -Wextra; -Wno-unused-result; -Wno-deprecated;
+    -Wno-pragmas; -Wno-unused-parameter; -Wno-unused-function;
     -Wno-unused-value; -Wno-unknown-pragmas; -Wno-sign-compare;
     -Wno-missing-field-initializers;)
 

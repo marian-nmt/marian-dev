@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <iostream>
 
 #include "marian.h"
 #include "translator/history.h"
@@ -8,6 +9,10 @@
 
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
+
+#include <fstream>
+#include <map>
+#include <boost/algorithm/string.hpp>
 
 namespace marian {
 
@@ -18,17 +23,44 @@ private:
   size_t beamSize_;
   Ptr<const Vocab> trgVocab_;
 
+  bool triePrune_ = false;
+  std::vector<trieannosaurus::Node>* trie_;
+
   static constexpr auto INVALID_PATH_SCORE = -9999; // (@TODO: change to -9999.0 once C++ allows that)
   static constexpr auto PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
 
 public:
   BeamSearch(Ptr<Options> options,
              const std::vector<Ptr<Scorer>>& scorers,
-             const Ptr<const Vocab> trgVocab)
+             const Ptr<const Vocab> trgVocab,
+             std::vector<trieannosaurus::Node>* trie=nullptr)
       : options_(options),
         scorers_(scorers),
         beamSize_(options_->get<size_t>("beam-size")),
-        trgVocab_(trgVocab) {}
+        trgVocab_(trgVocab),
+        trie_(trie) {
+          if (options_->get<std::string>("trie-pruning-path") != "") {
+            triePrune_ = true;
+          }
+        }
+  
+
+  Beams advanceTriePointers(const Beams& beams) {
+    Beams newBeams;
+    for(auto beam : beams) {
+      Beam newBeam;
+      for (auto hyp : beam) {
+        if (hyp->hasTrieContinuatuions()) {
+        } else {
+          std::cout << "WARNING. A sentence generated is not in the trie.\n";
+        }
+        newBeam.push_back(hyp);
+      }
+      newBeams.push_back(newBeam);
+    }
+    return newBeams;
+  }
+
 
   // combine new expandedPathScores and previous beams into new set of beams
   Beams toHyps(const std::vector<unsigned int>& nBestKeys, // [currentDimBatch, beamSize] flattened -> ((batchIdx, beamHypIdx) flattened, word idx) flattened
@@ -296,7 +328,7 @@ public:
     }
 
     // create one beam per batch entry with sentence-start hypothesis
-    Beams beams(origDimBatch, Beam(beamSize_, Hypothesis::New())); // array [origDimBatch] of array [maxBeamSize] of Hypothesis, keeps full size through search.
+    Beams beams(origDimBatch, Beam(beamSize_, triePrune_?Hypothesis::New(trie_):Hypothesis::New(nullptr))); // array [origDimBatch] of array [maxBeamSize] of Hypothesis, keeps full size through search.
                                                                    // batch purging is determined from an empty sub-beam.
     std::vector<IndexType> batchIdxMap(origDimBatch); // Record at which batch entry a beam is looking.
                                                       // By default that corresponds to position in array,
@@ -477,20 +509,65 @@ public:
         //**********************************************************************
         // perform beam search
 
+        // std::map<int, std::string> vocabMap;
+        // std::string delimiter = ": ";
+        // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+        // int count = 0;
+        // for( std::string line; getline( input, line ); ) {
+        //   boost::trim_right(line);
+        //   std::string token = line.substr(0, line.find(delimiter));
+          // std::cout << token << " is " << count << ", ";
+        //   vocabMap[count] = token;
+        //   ++count;
+        // }
+        int vocabSize = expandedPathScores->shape()[-1];  // vocab size
+        std::vector<std::vector<int>> trieVocabIdxs(1);
+
+        // the line below is actually (num of sentences) * (num of hyps)
+        std::cout << beams.size() << " by " << beams[0].size() << std::endl;
+        for (int i = 0; i < dimBatch; ++i) { // loop over sentences
+          // std::cout << "i: " << i << std::endl;
+          for (int j = 0; j < localBeamSize; ++j) { // loop over hypotheses
+            //std::cout << beams[i][j]->GetWord() << std::endl;
+            // std::cout << "j: " << j << std::endl;
+            // std::cout << "size of first batch (sent): " << beams[i].size() << "\n";
+            // std::cout << "size of first hyp: " << beams[i][j]->GetLength() << "\n";
+            auto curTrieNode = beams[i][j]->GetTrieNode();
+            // std::cout << "retrieved continuations:";
+            if (curTrieNode != nullptr) { // check for null pointers
+              // std::cout << curTrieNode->size() << std::endl ;
+              std::cout << "hyp " << j << " vocab: ";
+              for(auto&& node : *curTrieNode) {
+                // auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
+                auto index = node.id_ + j * vocabSize; 
+                // std::cout << vocabMap[node.id_] << " | ";
+                trieVocabIdxs[i].push_back(index);
+              }
+              std::cout << "\n";
+            }
+            if (first) {
+              break;
+            }
+          }
+          std::cout << "\n";
+          // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
+        }
+
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
         getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
-                    /*first=*/t == 0 && factorGroup == 0); // @TODO: this is only used for checking presently, and should be removed altogether
+                    /*first=*/t == 0 && factorGroup == 0,
+                    /*trieVocabs=*/trieVocabIdxs); // @TODO: this is only used for checking presently, and should be removed altogether
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
         // and nBestKeys for each their original location (batchIdx, beamHypIdx, word).
 
         // combine N-best sets with existing search space (beams) to updated search space
         beams = toHyps(nBestKeys, nBestPathScores,
                        /*nBestBeamSize*/expandedPathScores->shape()[-2], // used for interpretation of keys
-                       /*vocabSize=*/expandedPathScores->shape()[-1],    // used for interpretation of keys
+                       /*vocabSize=*/vocabSize,    // used for interpretation of keys
                        beams,
                        states,    // used for keeping track of per-ensemble-member path score
                        batch,     // only used for propagating alignment info

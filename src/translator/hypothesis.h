@@ -3,6 +3,7 @@
 
 #include "common/definitions.h"
 #include "data/alignment.h"
+#include "3rd_party/trieannosaurus/trieMe.h"
 
 namespace marian {
 
@@ -18,13 +19,13 @@ public:
 private:
   // Constructors are private, use Hypothesis::New(...)
 
-  Hypothesis() : prevHyp_(nullptr), prevBeamHypIdx_(0), word_(Word::ZERO), pathScore_(0.0) {}
+  Hypothesis(std::vector<trieannosaurus::Node>* currTrieNode) : prevHyp_(nullptr), prevBeamHypIdx_(0), word_(Word::ZERO), pathScore_(0.0), currTrieNode_(currTrieNode), length_(0) {}
 
   Hypothesis(const PtrType prevHyp,
              Word word,
              size_t prevBeamHypIdx, // beam-hyp index that this hypothesis originated from
              float pathScore)
-      : prevHyp_(prevHyp), prevBeamHypIdx_(prevBeamHypIdx), word_(word), pathScore_(pathScore) {}
+      : prevHyp_(prevHyp), prevBeamHypIdx_(prevBeamHypIdx), word_(word), pathScore_(pathScore), currTrieNode_(prevHyp_->currTrieNode_), length_(prevHyp_->GetLength() + 1) {}
 
 public:
  // Use this whenever creating a pointer to MemoryPiece
@@ -36,6 +37,21 @@ public:
   const PtrType getPrevHyp() const { return prevHyp_; }
 
   Word getWord() const { return word_; }
+
+  /* @TODO this one has the side effect of updating the trie node */
+  bool hasTrieContinuatuions() {
+    //Assume matching vocabulary IDs. Will break otherwise.
+    currTrieNode_ = trieannosaurus::trieMeARiver::find(word_.wordId_, currTrieNode_);
+    if (currTrieNode_) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  std::vector<trieannosaurus::Node>* GetTrieNode() { return currTrieNode_; }
+
+  size_t GetLength() const { return length_; }
 
   size_t getPrevStateIndex() const { return prevBeamHypIdx_; }
 
@@ -87,9 +103,11 @@ private:
   const size_t prevBeamHypIdx_;
   const Word word_;
   const float pathScore_;
+  std::vector<trieannosaurus::Node>* currTrieNode_;
 
   std::vector<float> scoreBreakdown_; // [num scorers]
   std::vector<float> alignment_;
+  const size_t length_;
 
   ENABLE_INTRUSIVE_PTR(Hypothesis)
 };

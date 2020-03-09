@@ -37,6 +37,10 @@ private:
 
   size_t numDevices_;
 
+   // trie stuff
+  std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_;
+  std::vector<trieannosaurus::Node>* trie_;
+
 #if MMAP
   std::vector<mio::mmap_source> mmaps_;
 #endif
@@ -60,6 +64,36 @@ public:
     if(options_->hasAndNotEmpty("shortlist"))
       shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
           options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
+
+    // Triennasaurus
+
+    if (options_->get<std::string>("trie-pruning-path") != "") {
+      std::string inputTrieFile = options_->get<std::string>("trie-pruning-path");
+      std::unordered_map<std::string, uint16_t> dict;
+      std::unordered_map<uint16_t, std::string> vocab;
+      {
+        /* Since our vocabulary could sentence piece and what not, this allows us to not care for the vocab format
+         * the downside is that we read through the corpora twice
+         * but more importantly @TODO unk handling might potentially lead to wrong results
+         * @TODO to really fix the unk handling and do this better */
+        trieannosaurus::MakeVocab vocabTMP;
+        trieannosaurus::readFileByLine(inputTrieFile, vocabTMP, "Building vocabulary...");
+        auto maps = vocabTMP.getMaps();
+
+        for (auto&& item : maps.first) {
+          std::string key = item.first;
+          // @TODO should use a method but not retrieve attr directly
+          dict[key] = (*trgVocab_)[key].wordId_;
+          vocab[(*trgVocab_)[key].wordId_] = key;
+        }
+      trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
+      trieannosaurus::readFileByLine(inputTrieFile,
+                                    *trieConstructor_, "Constructing monolingual trie...");
+      trie_ = trieConstructor_->getTrie();
+      }
+    } else {
+      trie_ = nullptr;
+    }
 
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
@@ -146,7 +180,7 @@ public:
           scorers = scorers_[id % numDevices_];
         }
 
-        auto search = New<Search>(options_, scorers, trgVocab_);
+        auto search = New<Search>(options_, scorers, trgVocab_, trie_);
         auto histories = search->search(graph, batch);
 
         for(auto history : histories) {

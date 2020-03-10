@@ -20,6 +20,7 @@ add_library(marian STATIC
   common/config_validator.cpp
   common/options.cpp
   common/binary.cpp
+  common/build_info.cpp
   common/io.cpp
   common/filesystem.cpp
   common/file_stream.cpp
@@ -214,6 +215,10 @@ if(COMPILE_SERVER)
   target_compile_options(marian_server PUBLIC ${ALL_WARNINGS})
   set(EXECUTABLES ${EXECUTABLES} marian_server)
 endif(COMPILE_SERVER)
+
+if(APPLE) # This is a dependency of pathie but I can't seem to link it into that CMakeLists because we're not compiling it as a library.
+   set(EXT_LIBS ${EXT_LIBS} iconv)
+endif()
 
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})

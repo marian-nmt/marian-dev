@@ -537,7 +537,7 @@ public:
             }
           }
           // std::cout << "\n";
-          std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
+          // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
         }
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses

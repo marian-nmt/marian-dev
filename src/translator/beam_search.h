@@ -43,24 +43,6 @@ public:
             triePrune_ = true;
           }
         }
-  
-
-  Beams advanceTriePointers(const Beams& beams) {
-    Beams newBeams;
-    for(auto beam : beams) {
-      Beam newBeam;
-      for (auto hyp : beam) {
-        if (hyp->hasTrieContinuatuions()) {
-        } else {
-          std::cout << "WARNING. A sentence generated is not in the trie.\n";
-        }
-        newBeam.push_back(hyp);
-      }
-      newBeams.push_back(newBeam);
-    }
-    return newBeams;
-  }
-
 
   // combine new expandedPathScores and previous beams into new set of beams
   Beams toHyps(const std::vector<unsigned int>& nBestKeys, // [currentDimBatch, beamSize] flattened -> ((batchIdx, beamHypIdx) flattened, word idx) flattened
@@ -520,14 +502,19 @@ public:
         //   vocabMap[count] = token;
         //   ++count;
         // }
-        int vocabSize = expandedPathScores->shape()[-1];  // vocab size
+        
+        int vocabSize = expandedPathScores->shape()[-1];
+        int maxBeamSize = expandedPathScores->shape()[-2];
+        // @TODO use single batch for now
+        // int dimBatch = expandedPathScores->shape()[-4];
+        int dimBatch = 1;
         std::vector<std::vector<int>> trieVocabIdxs(1);
 
         // the line below is actually (num of sentences) * (num of hyps)
-        std::cout << beams.size() << " by " << beams[0].size() << std::endl;
+        // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
         for (int i = 0; i < dimBatch; ++i) { // loop over sentences
           // std::cout << "i: " << i << std::endl;
-          for (int j = 0; j < localBeamSize; ++j) { // loop over hypotheses
+          for (int j = 0; j < maxBeamSize; ++j) { // loop over hypotheses
             //std::cout << beams[i][j]->GetWord() << std::endl;
             // std::cout << "j: " << j << std::endl;
             // std::cout << "size of first batch (sent): " << beams[i].size() << "\n";
@@ -536,21 +523,21 @@ public:
             // std::cout << "retrieved continuations:";
             if (curTrieNode != nullptr) { // check for null pointers
               // std::cout << curTrieNode->size() << std::endl ;
-              std::cout << "hyp " << j << " vocab: ";
+              // std::cout << "hyp " << j << " vocab: ";
               for(auto&& node : *curTrieNode) {
                 // auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
                 auto index = node.id_ + j * vocabSize; 
                 // std::cout << vocabMap[node.id_] << " | ";
                 trieVocabIdxs[i].push_back(index);
               }
-              std::cout << "\n";
+              // std::cout << "\n";
             }
-            if (first) {
+            if (t == 0) {
               break;
             }
           }
-          std::cout << "\n";
-          // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
+          // std::cout << "\n";
+          std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
         }
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
@@ -574,6 +561,16 @@ public:
                        factoredVocab, factorGroup,
                        emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
                        batchIdxMap); // used to create a reverse batch index map to recover original batch indices for this step
+        
+        // advance trie pointers
+        for(auto beam : beams) {
+          for (auto hyp : beam) {
+            if (!hyp->hasTrieContinuatuions()) {
+              std::cout << "WARNING. A sentence generated is not in the trie.\n";
+            }
+          }
+        }
+  
       } // END FOR factorGroup = 0 .. numFactorGroups-1
 
       prevBatchIdxMap = batchIdxMap; // save current batchIdx map to be used in next step; we are then going to look one step back

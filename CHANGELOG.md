@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - An option to print cached variables from CMake
+- Add support for compiling on Mac (and clang)
+- An option for resetting stalled validation metrics
 - Add CMAKE options to disable compilation for specific GPU SM types
 - An option to print word-level translation scores
 - An option to turn off automatic detokenization from SentencePiece
@@ -35,6 +37,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Gradient-checkpointing
 
 ### Fixed
+- Replace value for INVALID_PATH_SCORE with std::numer_limits<float>::lowest() 
+  to avoid overflow with long sequences
+- Break up potential circular references for GraphGroup*
 - Fix empty source batch entries with batch purging
 - Clear RNN chache in transformer model, add correct hash functions to nodes
 - Gather-operation for all index sizes
@@ -57,6 +62,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Compilation with CUDA 10.1
 
 ### Changed
+- Combine two for-loops in nth_element.cpp on CPU
 - Revert LayerNorm eps to old position, i.e. sigma' = sqrt(sigma^2 + eps)
 - Downgrade NCCL to 2.3.7 as 2.4.2 is buggy (hangs with larger models)
 - Return error signal on SIGTERM
@@ -66,6 +72,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Dropped support for g++-4.9
 - Simplified file stream and temporary file handling
 - Unified node intializers, same function API.
+- Remove overstuff/understuff code
 
 ## [1.8.0] - 2019-09-04
 

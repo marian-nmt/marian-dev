@@ -6,7 +6,6 @@
 #include "3rd_party/ssplit-cpp/src/ssplit/ssplit.h"
 #include "3rd_party/threadpool.h"
 #include "common/logging.h"
-
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/shortlist.h"
@@ -14,12 +13,6 @@
 #include "models/model_task.h"
 #include "queue.h"
 #include "queued_input.h"
-#include <map>
-#include <ctime>
-
-#include <string>
-#include "translation_worker.h"
-
 #include "translation_job.h"
 #include "translation_worker.h"
 #include "translation_worker.h"
@@ -394,8 +387,6 @@ class NodeTranslation {
         auto x = NodeTranslation(c, service, payload_field, options_field, this);
         children_.push_back(std::move(x));
       }
-    else if (n->IsObject() && n->HasMember(field.c_str())) {
-      children_.push_back(NodeTranslation(&((*n)[field.c_str()]),service));
     }
   }
 

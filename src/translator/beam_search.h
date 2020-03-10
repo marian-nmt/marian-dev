@@ -306,8 +306,6 @@ public:
       states.push_back(scorer->startState(graph, batch));
     }
 
-    const auto srcEosId = batch->front()->vocab()->getEosId();
-
     // create one beam per batch entry with sentence-start hypothesis
     Beams beams(origDimBatch, Beam(beamSize_, Hypothesis::New())); // array [origDimBatch] of array [maxBeamSize] of Hypothesis, keeps full size through search.
                                                                    // batch purging is determined from an empty sub-beam.
@@ -321,18 +319,9 @@ public:
       auto& beam = beams[origBatchIdx];
       histories[origBatchIdx]->add(beam, trgEosId); // add beams with start-hypotheses to traceback grid
 
-      // Handle batch entries that consist only of source <EOS> i.e. these are empty lines
-      if(batch->front()->data()[origBatchIdx] == srcEosId) {
-        // create a target <EOS> hypothesis that extends the start-hypothesis
-        auto eosHyp = Hypothesis::New(/*prevHyp=*/    beam[0],
-                                      /*currWord=*/   trgEosId,
-                                      /*prevHypIdx=*/ 0,
-                                      /*pathScore=*/  0.f);
-        auto eosBeam = Beam(beamSize_, eosHyp);      // create a dummy beam filled with <EOS>-hyps
-        histories[origBatchIdx]->add(eosBeam, trgEosId); // push dummy <EOS>-beam to traceback grid
-        beam.clear(); // Zero out current beam, so it does not get used for further symbols as empty beams get omitted everywhere.
-                      // The corresponding neural states will be purged further down.
-      }
+      // Mark batch entries that consist only of source <EOS> i.e. these are empty lines. They will be forced to EOS and purged from batch
+      const auto& srcEosId = batch->front()->vocab()->getEosId();
+      const_cast<std::vector<bool>&>(emptyBatchEntries).push_back(batch->front()->data()[origBatchIdx] == srcEosId); // const_cast during construction
     }
 
     // determine index of UNK in the log prob vectors if we want to suppress it in the decoding process
@@ -517,6 +506,7 @@ public:
                        states,    // used for keeping track of per-ensemble-member path score
                        batch,     // only used for propagating alignment info
                        factoredVocab, factorGroup,
+                       emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
                        batchIdxMap); // used to create a reverse batch index map to recover original batch indices for this step
       } // END FOR factorGroup = 0 .. numFactorGroups-1
 

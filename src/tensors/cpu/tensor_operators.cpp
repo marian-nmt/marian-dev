@@ -423,7 +423,7 @@ void Softmax(Tensor out, Tensor in) {
   matchOrAbort<float>(out->type());
   matchOrAbort<float>(in->type());
 
-#ifndef NO_AVX
+#ifdef __AVX__
   if(out->shape()[-1] % 8 == 0) {
     Softmax<float32x8>(out, in);
     return;
@@ -479,7 +479,7 @@ void LogSoftmax(Tensor out, Tensor in) {
   matchOrAbort<float>(out->type());
   matchOrAbort<float>(in->type());
 
-#ifndef NO_AVX
+#ifdef __AVX__
   if(out->shape()[-1] % 8 == 0) {
     LogSoftmax<float32x8>(out, in);
     return;

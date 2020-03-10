@@ -31,19 +31,6 @@ if __name__ == "__main__":
     else:        
         for line in sys.stdin:
             count += 1
-            ws.send('{ "id": %d, "text": "%s"}'%(count, line.decode('utf8').strip()))
-
-    if args.file:
-        text = regex.sub(r'\n',r'\\n',args.file.read())
-        count = 1
-        payload = '{"id": %d, "text": "%s"}'%(count, text)
-        print(payload)
-        ws.send(payload)
-        result = ws.recv()
-        print(result)
-    else:        
-        for line in sys.stdin:
-            count += 1
             payload = '{"id": %d, "text": "%s"}'%(count, line.strip())
             print(payload)
             ws.send(payload)

@@ -10,12 +10,6 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
-# use ccache for faster compilation if available
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-endif()
-
 # Custom CMake options
 option(AMQP-CPP_LINUX_TCP "Compile AMQP with Linux TCP module" ON)
 option(COMPILE_AMQP_WORKER "Compile Marian Advanced Message Queue Protocol Worker (marian-amqp-worker)" OFF)
@@ -451,10 +445,9 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp.in
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
 
-# rest server / amqp worker need pcrecpp (perl-compatible regex engine,
-# needed for integrated sentence splitter ssplit)
+# rest server and other service back-ends need pcrecpp (perl-compatible regex engine),
+# for integrated sentence splitting. On Ubuntu, pcrecpp is available via apt-get.
 if(COMPILE_REST_SERVER)
-  
   set(NEED_PCRECPP ON)
 endif(COMPILE_REST_SERVER)
 if(COMPILE_AMQP_WORKER)
@@ -464,8 +457,8 @@ if (NEED_PCRECPP)
   find_package(PCRECPP)
 endif(NEED_PCRECPP)
 
-# Add a target to generate API documentation with Doxygen
 if(USE_DOXYGEN)
+# Add a target to generate API documentation with Doxygen
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in

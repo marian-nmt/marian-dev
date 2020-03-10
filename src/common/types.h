@@ -180,7 +180,7 @@ public:
 };
 
 // @TODO: consider how code can be shared via templating
-#ifndef NO_AVX
+#ifdef __AVX__
 struct float32x8 {
 private:
   __m256 f_;
@@ -215,13 +215,16 @@ struct float32x8 {
 
 // Internal to types.h, don't use. Use test functions below.
 enum class TypeClass : size_t {
-  signed_type   = 0x100,
-  unsigned_type = 0x200,
-  float_type    = 0x400,
-  packed_type   = 0x800, // special packed (CPU cache friendly) type class, used in FBGEMM, not meant to be used anywhere else
+  signed_type   = 0x0100,
+  unsigned_type = 0x0200,
+  float_type    = 0x0400,
 
-  size_mask     = 0x0FF
+  packed_type   = 0x0800, // special packed (CPU cache friendly) type class, used in FBGEMM, not meant to be used anywhere else
+  avx2_type     = 0x1000, // processor-specific layout for avx2, currently used for FBGEMM only
+  avx512_type   = 0x2000, // processor-specific layout for avx512, currently used for FBGEMM only
 
+  size_mask     = 0x00FF,
+  class_mask    = 0xFF00
 };
 
 constexpr inline size_t operator+(TypeClass typeClass, size_t val) {

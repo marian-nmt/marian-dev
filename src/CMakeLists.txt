@@ -8,9 +8,6 @@ include_directories(3rd_party/rapidjson/include)
 include_directories(3rd_party/amqp-cpp/include)
 include_directories(3rd_party/crow/include)
 include_directories(3rd_party/fbgemm/include)
-include_directories(3rd_party/rapidjson/include)
-include_directories(3rd_party/amqp-cpp/include)
-include_directories(3rd_party/crow/include)
 include_directories(3rd_party/ssplit/include)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
@@ -22,7 +19,6 @@ add_library(marian STATIC
   common/logging.cpp
   common/cli_helper.cpp
   common/cli_wrapper.cpp
-  common/aliases.cpp
   common/config.cpp
   common/config_parser.cpp
   common/config_validator.cpp

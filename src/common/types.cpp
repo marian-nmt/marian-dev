@@ -27,12 +27,14 @@ size_t requiredBytes(const Shape& shape, Type type) {
       return 0;
     }
   } else if (isIntgemm(type)) {
-  return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
+    /* Intgemm tensors have an extra float at the back that stores the quantization multiplier */
+    return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
   } else {
     return shape.elements() * sizeOf(type);
   }
 #else
 if (isIntgemm(type)) {
+  /* Intgemm tensors have an extra float at the back that stores the quantization multiplier */
   return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
 }
   return shape.elements() * sizeOf(type);

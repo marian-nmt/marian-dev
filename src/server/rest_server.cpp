@@ -37,7 +37,7 @@ class RequestHandler{
   const std::string gui_file_;
   const std::string src_lang_;
   const std::string trg_lang_;
-  
+
   std::string
   get(const crow::request& req) const {
     crow::mustache::context ctx_;
@@ -87,16 +87,6 @@ public:
     return res;
   }
 
-  // The following is a wrapper function to accommodate the hack necessary
-  // to deal with Google Chrome being 'smart' about URLs and automatically
-  // adding a slash when it thinks the URL is a path to a directory and not
-  // a file.
-  // crow::response
-  // operator()(const crow::request& req, const std::string& zilch) const{
-  //   return (*this)(req);
-  // }
-
-
 };
 
 class BergamotRequestHandler : public RequestHandler {
@@ -107,7 +97,7 @@ class BergamotRequestHandler : public RequestHandler {
   post(const crow::request& req) const{
     auto payload_field = req.url_params.get("payload");
     auto options_field = req.url_params.get("options");
-    // to be used lated, with multi-model engines
+    // to be used later, with multi-model engines
     // auto srclang = req.url_params.get("src");
     // auto trglang = req.url_params.get("trg");
     std::string payload = payload_field ? payload_field : "text";
@@ -161,7 +151,7 @@ int main(int argc, char* argv[])
                             "source language of translation service");
   cp.addOption<std::string>("--target-language","Server Options",
                             "target language of translation service");
-  
+
   auto options = cp.parseOptions(argc, argv, true);
   auto service = New<tservice_t>(options);
   service->start();

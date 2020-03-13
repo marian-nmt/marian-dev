@@ -51,8 +51,7 @@ private:
   bool keep_going_{true};
 
   void init_() {
-    // bool optimize = options_->get<bool>("optimize");
-    graph_ = New<ExpressionGraph>(true); //, optimize);
+    graph_ = New<ExpressionGraph>(true); // always optimize
     graph_->setDevice(device_);
     graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
@@ -86,7 +85,6 @@ private:
       }
     }
   }
-
 
 public:
   TranslationWorker(DeviceId const device,

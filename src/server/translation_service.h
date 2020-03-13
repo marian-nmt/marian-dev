@@ -3,6 +3,13 @@
 
 // @TODO: - priority handling of translation requests (for faster premium service)
 
+#include <ctime>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <string>
+#include <thread>
+
 #include "3rd_party/ssplit-cpp/src/ssplit/ssplit.h"
 #include "3rd_party/threadpool.h"
 #include "common/logging.h"
@@ -21,12 +28,6 @@
 #include "translator/output_collector.h"
 #include "translator/output_printer.h"
 #include "translator/scorers.h"
-#include <ctime>
-#include <functional>
-#include <map>
-#include <mutex>
-#include <string>
-#include <thread>
 
 #ifdef __CUDA_ARCH__
 #include <cuda.h>
@@ -64,16 +65,14 @@ template<class Search=BeamSearch> class NodeTranslation;
 template<class Search>
 class TranslationService {
 public:
-  typedef std::function<void (uint64_t ejid, Ptr<History const> h)>
-  ResponseHandler;
+  // see https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
+  // for ResponseHandler below
+  typedef std::function<void (uint64_t ejid, Ptr<History const> h)>  ResponseHandler;
+
   typedef ug::ssplit::SentenceStream::splitmode splitmode;
   typedef Search SearchType;
 private:
-  // Note to callback n00bs: see this:
-  // https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
-
-  typedef TranslationWorker<Search>
-  Worker;
+  typedef TranslationWorker<Search> Worker;
 
   // bits and pieces for translating
   Ptr<Options> options_;
@@ -94,6 +93,7 @@ private:
     // This function is called by the workers once translations are available.
 
     JobEntry entry;
+
     { // remove the job / promise pair from the pool of scheduled jobs
       std::lock_guard<std::mutex> lock(lock_);
       auto m = scheduled_jobs_.find(h->getLineNum());
@@ -135,6 +135,8 @@ private:
   }
 
 public:
+  typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
+
   TranslationService(Ptr<Options> options)
     : options_(options) {
     auto ssplit_prefix_file = options_->get<std::string>("ssplit-prefix-file","");
@@ -188,9 +190,8 @@ public:
        size_t const priority=0,
        std::function<void (Ptr<Job> j)> callback
        =[=](Ptr<Job> j){return;}) {
-    // auto starttime = std::clock();
     auto job = New<Job>(ejid, input, nbest, priority);
-    if (input.empty()){//nothing to do
+    if (input.empty()){ // return empty result immediately
       std::promise<Ptr<Job const>> prom;
       prom.set_value(job);
       return std::make_pair(job->unique_id,prom.get_future());
@@ -208,10 +209,6 @@ public:
       entry = &scheduled_jobs_[job->unique_id];
     }
     entry->first = job;
-    // LOG(debug, "Pushed job No {}; {} jobs queued up.",
-    //     job->unique_id, jq_->size());
-    // auto pushtime = float(std::clock()-starttime)/CLOCKS_PER_SEC;
-    // LOG(debug,"[service] Pushing job took {}ms", 1000.* pushtime);
     return std::make_pair(job->unique_id, entry->second.get_future());
   }
 
@@ -232,39 +229,6 @@ public:
     return ret;
   }
 
-  // std::string
-  // translate(std::string const& srcText) {
-  //   // @TODO: add priority for QoS differentiation [UG]
-  //   std::vector<std::future<Ptr<Job const>>> ftrans;
-  //   std::istringstream buf(srcText);
-  //   std::string line;
-
-  //   // auto starttime = clock();
-  //   for (size_t linectr = 0; getline(buf,line); ++linectr) {
-  //     ftrans.push_back(push(linectr,line).second);
-  //   }
-  //   // auto pushtime = (clock()-starttime)*1000./CLOCKS_PER_SEC;
-  //   // LOG(debug, "[service] Pushing translation job took {} msec.", pushtime);
-  //   std::ostringstream obuf;
-  //   for (auto& t: ftrans) {
-  //     Ptr<Job const> j = t.get();
-  //     // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f} seconds:\n{}\n{}",
-  //     //     j->unique_id, j->translationTime(), j->totalTime(), j->input[0], j->translation);
-  //     // LOG(debug, "[service] Translated job {} in {:.2f}/{:.2f}/{:.2f}/{:.2f} seconds:",
-  //     //     j->unique_id,
-  //     //     j->timeBeforeQueue(),
-  //     //     j->timeInQueue(),
-  //     //     j->translationTime(),
-  //     //     j->totalTime());
-  //     obuf << j->translation << std::endl;
-  //   }
-  //   std::string translation = obuf.str();
-  //   if (srcText.size() && srcText.back() != '\n')
-  //     translation.pop_back();
-  //   return translation;
-  // }
-
-  typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
   ug::ssplit::SentenceStream
   createSentenceStream(std::string const& input, ssplitmode const& mode)
   {

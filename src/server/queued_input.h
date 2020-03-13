@@ -1,8 +1,5 @@
 // -*- mode: c++; indent-tabs-mode: nil; tab-width: 2 -*-
 #pragma once
-
-// "Corpus" that gets its content from a queue.
-
 #include "data/iterator_facade.h"
 #include "data/corpus.h"
 #include "server/queue.h"
@@ -17,7 +14,8 @@ namespace data {
 
 class QueuedInput;
 
-class QueuedInputIterator : public IteratorFacade<QueuedInputIterator, SentenceTuple const> {
+class QueuedInputIterator
+  : public IteratorFacade<QueuedInputIterator, SentenceTuple const> {
 public:
   QueuedInputIterator();
   explicit QueuedInputIterator(QueuedInput& corpus);
@@ -51,8 +49,7 @@ public:
               Ptr<Options> options);
 
   Sample next() override { return next(false); }
-  Sample next(bool starts_batch);
-  // starts_batch == true => use longer timeout for first in batch
+  Sample next(bool starts_batch); // if true, use longer timeout
 
   QueuedInput::batch_ptr toBatch(const std::vector<Sample>& batchVector) override;
   iterator begin() override { return iterator(*this); }

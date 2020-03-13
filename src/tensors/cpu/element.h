@@ -76,7 +76,7 @@ void element(const Functor& functor, marian::Tensor out, Tensors... tensors) {
   E<0>::element(functor, gTensors, indices);
 }
 
-// Dispatch elementwise functions with float element type based on number of
+// Dispatch elementwise functions with float element type based on number of 
 // elements. If dividable by 8 and AVX2 is available (TODO: check this?) use
 // AVX2 specific intrinsics. Similar for 4 and AVX. TODO: Add AVX512 support.
 template <class Functor, class... Tensors>

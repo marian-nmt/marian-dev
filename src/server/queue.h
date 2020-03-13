@@ -1,19 +1,16 @@
 // -*- mode: c++; indent-tabs-mode: nil; tab-width: 2 -*-
 // Generic thread-safe, locking queue with timeout for push and pop.
-// Written by Ulrich Germann.
 
 #pragma once
 
-#include<vector>
-#include<deque>
-#include<mutex>
 #include<chrono>
 #include<condition_variable>
+#include<deque>
 #include<iostream>
+#include<mutex>
+#include<vector>
 
 #include"common/logging.h"
-
-// extern Logger logger;
 
 namespace marian {
 namespace server {
@@ -32,14 +29,13 @@ class Queue {
   bool queue_open_;   // queue allows pushing of new items
   bool queue_active_; // queue is open or still has items in it
 
-  // Logger logger_;
 public:
   enum STATUS_CODE { SUCCESS=0, EMPTY=1, FULL=2, CLOSED=4, ERROR=8 };
   typedef typename std::chrono::duration<double> timeout_t;
   Queue(size_t capacity=0);
-  // STATUS_CODE pop(item_t& item);
   STATUS_CODE pop(item_t& item, timeout_t timeout = timeout_t(0));
-  STATUS_CODE push(item_t item, timeout_t timeout = timeout_t(0));
+  STATUS_CODE push(item_t item, timeout_t timeout = timeout_t(0),
+                   Logger* logger=NULL);
   void close();  // prohibit push, allow pop until empty
   void cancel(); // prohibit push, drop everything in the queue
   bool ready() const; // ready to accept more?
@@ -63,30 +59,31 @@ ready() const { // ready to accept more items?
 template<typename item_t>
 typename Queue<item_t>::STATUS_CODE
 Queue<item_t>::
-push(item_t item, timeout_t timeout) {
+push(item_t item, timeout_t timeout, Logger* logger) {
   std::unique_lock<std::mutex> lock(mutex_);
 
   // If the queue has limited capacity and is full, wait for for a free slot
   while (queue_open_ and capacity_ and queue_.size() == capacity_) {
-    // logger->debug("Waiting for slot for item {}", item);
+    if (logger)
+      logger->trace("Waiting for slot for item {}", item);
     if (timeout.count() > 0)
       have_room_.wait_for(lock, timeout);
     else
       have_room_.wait(lock); // NOT recommended, you may deadlock
   }
 
-  // logger->debug("Got slot for item {}", item);
+  if (logger)
+    logger->debug("Got slot for item {}", item);
   if (!queue_open_) {
-    // logger->debug("Queue is closed");
+    if (logger) logger->debug("Queue is closed");
     return CLOSED; // queue is closed for new business
   }
 
   queue_.push_back(std::move(item));
-  // logger->debug("Queue now has {} item{}.", queue_.size(),
-  //               queue_.size() ==  1 ? "" : "s");
-
+  if (logger)
+    logger->debug("Queue now has {} item{}.", queue_.size(),
+                  queue_.size() ==  1 ? "" : "s");
   lock.unlock();
-
   ready_.notify_one();
   return SUCCESS;
 }
@@ -132,5 +129,5 @@ cancel() {
   queue_.clear();
 }
 
-}// end of namespace ug::threading
-}// end of namespace ug
+}// end of namespace marian::server
+}// end of namespace marian

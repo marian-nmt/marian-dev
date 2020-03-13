@@ -1,7 +1,7 @@
+#include <ctime>
 #include "common/utils.h"
 #include "data/text_input.h"
 #include "queued_input.h"
-#include <ctime>
 
 namespace marian {
 namespace data {
@@ -23,8 +23,7 @@ const SentenceTuple& QueuedInputIterator::dereference() const {
   return tup_;
 }
 
-QueuedInput::
-QueuedInput(std::vector<Ptr<Vocab const>> const& vocabs, Ptr<Options> options)
+QueuedInput::QueuedInput(std::vector<Ptr<Vocab const>> const& vocabs, Ptr<Options> options)
   : DatasetBase(options), vocabs_(vocabs),
     timeout_(options ? options->get<int>("queue-timeout", 5) : 5)
 { }
@@ -36,29 +35,23 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
   // Use a longer timeout when starting a batch, because if there's no
   // input in that case, no one is waiting for a reponse, so response
   // latency isn't an issue.
-  // LOG(info, "timeout is {}", starts_batch ? 1000 : timeout_);
   auto timeout = std::chrono::milliseconds(starts_batch ? 1000 : timeout_);
 
   Ptr<server::Job> job;
   JobQueue::STATUS_CODE success;
   do {
     success = job_queue_.pop(job,timeout);
-    // LOG(info, "job queue status code: {} [{} batch]", success, (starts_batch ? "new" : "old"));
     if (success == JobQueue::SUCCESS) {
       // fill up the sentence tuple with source and/or target sentences
       SentenceTuple tup(job->unique_id); // job ID should be unique
       std::vector<std::string> const& snt = job->input;
-      // auto start = std::clock();
       for(size_t i = 0; i < snt.size(); ++i) {
         Words words = vocabs_[i]->encode(snt[i],true,inference_);
         if(words.empty())
           words.push_back(Word::DEFAULT_EOS_ID);
         tup.push_back(words);
       }
-      // auto lapsed = float(std::clock()-start)/CLOCKS_PER_SEC;
-      // LOG(trace, "[service] Shipped job {} for translation after {}ms prep time.",
-      // job->unique_id, 1000.*lapsed);
-      job->dequeued();
+      job->dequeued(); // keep track of timing stats
       return tup;
     }
   } while(starts_batch and success == JobQueue::EMPTY);
@@ -68,9 +61,7 @@ SentenceTuple QueuedInput::next(bool starts_batch) {
 // TODO: There are half dozen functions called toBatch(), which are very
 // similar. Factor them.
 // Why is this even a member function?
-QueuedInput::batch_ptr
-QueuedInput::
-toBatch(const std::vector<Sample>& batchVector) {
+QueuedInput::batch_ptr QueuedInput::toBatch(const std::vector<Sample>& batchVector) {
   size_t batchSize = batchVector.size();
 
   std::vector<size_t> sentenceIds;
@@ -111,9 +102,7 @@ toBatch(const std::vector<Sample>& batchVector) {
   return batch;
 }
 
-bool
-QueuedInput::
-push(Ptr<server::Job> job) {
+bool QueuedInput::push(Ptr<server::Job> job) {
   // push a new item for translation
   std::chrono::milliseconds timeout(5000);
   auto status = job_queue_.push(job,timeout);

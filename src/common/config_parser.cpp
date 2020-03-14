@@ -133,6 +133,9 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
     "Suppress logging for translation");
   cli.add<size_t>("--seed",
     "Seed for all random number generators. 0 means initialize randomly");
+  cli.add<bool>("--check-nan",
+    "Check for NaNs or Infs in forward and backward pass. Will abort when found. "
+    "This is a diagnostic options that will slow down computation significantly");
   cli.add<float>("--clip-gemm",
     "If not 0 clip GEMM input values to +/- arg");
   cli.add<bool>("--interpolate-env-vars",
@@ -498,6 +501,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
       "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+  cli.add<std::vector<std::string>>("--check-gradient-norm", 
+      "Skip parameter update based on gradient norm size")->implicit_val("100 4.f");
+  cli.add<bool>("--check-gradient-nan", "Skip parameter update based on NaN in gradient");
   cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
 
   // multi-node training

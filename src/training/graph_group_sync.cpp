@@ -59,19 +59,6 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
       graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
     return true; // dummy success
   });
-  //ThreadPool pool(graphs_.size() - 1, graphs_.size() - 1);
-  //for(size_t i = 1; i < graphs_.size(); ++i) {
-  //  auto init = [&](size_t i) {
-  //    // initialize i-th graph and weights
-  //    models_[i]->build(graphs_[i], exampleBatch);
-  //    graphs_[i]->forward();
-  //    // overwrite weights of i-th graph with weights from 0-th graph
-  //    graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
-  //  };
-  //  pool.enqueue(init, i);
-  //}
-  //// ThreadPool destructor waits until completion of all tasks.
-  //// @TODO: can we use comm_->foreach()?
 }
 
 Ptr<data::BatchStats> SyncGraphGroup::collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
@@ -252,7 +239,6 @@ void SyncGraphGroup::update(Ptr<data::Batch> newBatch) /*override*/ {
 }
 
 void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t numReadBatches) {
-
   size_t batchSize = 0;
   size_t batchTrgWords = 0;
   for (const auto& batch : subBatches) {
@@ -286,7 +272,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   // Compute gradients
   // This happens in multiple steps in case of delay > 1.
   std::vector<StaticLoss> localDeviceLosses(devices_.size()); // [local device index] aggregate cost for each local device
-
   comm_->foreach([&](size_t localDeviceIndex, size_t /*begin*/, size_t /*end*/) { // parallel across devices. Aggregate for warp > 1.
     auto graph = graphs_[localDeviceIndex];
     // reset gradient  --presently done outside
@@ -308,30 +293,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         localDeviceLosses[localDeviceIndex] += *rationalLoss;
       }
 
-      auto gradType = graph->params()->grads()->type();
-#if 0
-      auto clipValue = sizeOf(gradType) < sizeOf(Type::float32) ? options_->get<float>("clip-norm") * costScaleFactor_ : 0.f;
-#else
-      gradType;
-      auto clipValue = 0.f;
-#endif
-      graph->backward(/*zero=*/false, clipValue); // (gradients are reset before we get here)
-
-#if 0
-      if(sizeOf(gradType) < sizeOf(Type::float32)) {
-        auto vals   = graph->params()->vals();
-        auto grads  = graph->params()->grads();
-        auto size   = vals->size();
-        auto memory = graph->allocator()->alloc(size * sizeOf(Type::float32));
-        auto tensor = TensorBase::New(memory, vals->shape(), Type::float32, graph->getBackend());
-        CopyCastStochastic(tensor, grads, graph->allocator());
-        CopyCastStochastic(grads, tensor, graph->allocator());
-
-        CopyCastStochastic(tensor, vals, graph->allocator());
-        CopyCastStochastic(vals, tensor, graph->allocator());
-        graph->allocator()->free(memory);
-      }
-#endif
+      graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
 
 #if 0
@@ -402,7 +364,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       return normalizer;
     
     if(checkGradientNorm_) {
-      // make invariant to changes in costScaleFactor_, luckily norm(c*g) = c*norm(g)
+      // make invariant to changes in costScaleFactor_, luckily norm(c * g) = c * norm(g)
       if(costScale_)
         gNorm = gNorm / costScaleFactor_;
       

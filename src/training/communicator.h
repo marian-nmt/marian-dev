@@ -5,6 +5,7 @@
 #include "functional/functional.h"
 #include "tensors/tensor_operators.h"
 #include "optimizers/optimizers.h"
+#include "3rd_party/threadpool.h"
 #if MPI_FOUND
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -16,6 +17,8 @@
 #endif
 #endif
 // clang-format on
+
+#include <future>
 
 namespace marian {
 
@@ -33,8 +36,14 @@ public:
   virtual ~ICommunicator() {}
 
   // helper to apply a function to each local graph, in parallel threads
-  typedef std::function<void(size_t, size_t /*shardBegin*/, size_t /*shardEnd*/)> ForeachFunc;
-  virtual void foreach(const ForeachFunc& func, bool parallel = true) const = 0;
+  template <typename ReturnType>
+  using ForeachFunc = std::function<ReturnType(size_t, size_t /*shardBegin*/, size_t /*shardEnd*/)>;
+
+  template <typename ReturnType>
+  using AccFunc = std::function<void(ReturnType&, ReturnType)>;
+
+  virtual bool foreach(const ForeachFunc<bool>& func, bool parallel = true) const = 0;
+  virtual float foreach(const ForeachFunc<float>& func, AccFunc<float> acc, float init, bool parallel = true) const = 0;
   // @TODO: We probably can still share foreach() between the two implementations. Just need to move some helper functions from the .cu file.
 
   virtual void scatterReduceAndResetGrads() const = 0; // reduce param gradients and scatter into gradient shards
@@ -42,8 +51,8 @@ public:
 
   virtual void swapParams(const std::vector<Tensor>& paramShards) const = 0;
 
-  virtual void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const = 0;
-  virtual std::vector<float> gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const = 0;
+  virtual void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const = 0;
+  virtual io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const = 0;
 };
 
 // Abstracts MPI operations, allowing alternative implementations (specifically fake (for debugging) and NCCL.
@@ -53,7 +62,7 @@ public:
 #if MPI_FOUND
 #else
 enum MPI_Comm { MPI_COMM_WORLD };
-enum MPI_Datatype { MPI_FLOAT, MPI_UNSIGNED_LONG_LONG, MPI_UNSIGNED_LONG, MPI_BYTE };
+enum MPI_Datatype { MPI_FLOAT, MPI_UNSIGNED_LONG_LONG, MPI_UNSIGNED_LONG, MPI_BYTE, MPI_INT };
 enum MPI_Op { MPI_SUM };
 struct MPI_Status { int MPI_SOURCE; };
 #define MPI_ANY_SOURCE ((size_t)-2)
@@ -72,6 +81,8 @@ struct/*interface*/ IMPIWrapper
   static const size_t RECV_ANY_SOURCE = (size_t)MPI_ANY_SOURCE;
   // helper templates
 private:
+  static MPI_Datatype getDataType(const char*)               { return MPI_BYTE; }
+  static MPI_Datatype getDataType(const int*)                { return MPI_INT; }
   static MPI_Datatype getDataType(const float*)              { return MPI_FLOAT; }
   static MPI_Datatype getDataType(const unsigned long*)      { return MPI_UNSIGNED_LONG; }
   static MPI_Datatype getDataType(const unsigned long long*) { return MPI_UNSIGNED_LONG_LONG; }
@@ -83,6 +94,23 @@ public:
     v.resize(vecLen);
     bCast(v.data(), v.size(), getDataType(v.data()), rootRank, comm);
   }
+
+  void bCast(io::Item& item, size_t rootRank = 0, MPI_Comm comm = MPI_COMM_WORLD) {
+    unsigned long long bytesLen = item.bytes.size();
+    bCast(&bytesLen, 1, getDataType(&bytesLen), rootRank, comm);
+    item.bytes.resize(bytesLen);
+    bCast(item.bytes.data(), item.bytes.size(), getDataType(item.bytes.data()), rootRank, comm);
+
+    unsigned long long shapeLen = item.shape.size();
+    bCast(&shapeLen, 1, getDataType(&shapeLen), rootRank, comm);
+    bCast(item.shape.data(), item.shape.size(), getDataType(item.shape.data()), rootRank, comm);
+
+    // @TODO: is this correct?
+    unsigned long long type = (unsigned long long)item.type;
+    bCast(&type, 1, getDataType(&type), rootRank, comm);
+    item.type = (Type)type;
+  }
+
   std::string idStr() const;
 };
 
@@ -94,6 +122,7 @@ class DefaultCommunicator : public ICommunicator {
 private:
   std::vector<Ptr<TensorAllocator>> paramsAllocs_;
   std::vector<Tensor> tmpTensors_;
+  mutable ThreadPool threadPool_;
 
   void lazyInit() {
     if(tmpTensors_.size() == 0) {
@@ -107,11 +136,11 @@ private:
         auto paramsAlloc = New<TensorAllocator>(graph->getBackend());
         paramsAllocs_.push_back(paramsAlloc);
 
-        paramsAlloc->reserveExact(__size__ * sizeof(float));
+        paramsAlloc->reserveExact(__size__ * sizeOf(graph->getDefaultElementType()));
 
         Tensor tmp;
 
-        paramsAlloc->allocate(tmp, {1, __size__});
+        paramsAlloc->allocate(tmp, {1, __size__}, graph->getDefaultElementType());
         tmpTensors_.push_back(tmp);
 
         // move to next shard
@@ -123,41 +152,77 @@ private:
 
 public:
   DefaultCommunicator(const std::vector<Ptr<ExpressionGraph>>& graphs, Ptr<IMPIWrapper> mpi)
-      : ICommunicator(graphs) {
+      : ICommunicator(graphs),
+        threadPool_(graphs.size(), graphs.size()) {
     ABORT_IF(mpi && mpi->numMPIProcesses() != 1, "DefaultCommunicator does not support multi-process MPI");
   }
 
   ~DefaultCommunicator() override {}
 
-  void foreach(const ForeachFunc& func, bool parallel = true) const override {
+  size_t dataSize() const { // total number of floats that comprise the concatenated parameter and gradient vector
+    return graphs_[0]->params()->vals()->size();
+  }
+
+  // determine the (max) shard size
+  // All shards except the last one have this size.
+  // Presently, even all shards must have identical size, due to a limitation in NCCL we have not yet worked around.
+  size_t shardSize() const {
+    size_t numShards = graphs_.size();
+    size_t size = (dataSize() + numShards - 1) / numShards;
+#if 1 // for now, all shards must have the same size, since NCCL does not allow a sub-slice for the last shard
+    ABORT_IF(size * numShards != dataSize(), "presently, all shards must have the same size");
+#endif
+    return size;
+  }
+
+  // determine the index range (begin, end) of a shard
+  std::pair<size_t, size_t> localShardRange(size_t localDeviceIndex) const {
+    size_t size = shardSize();
+    size_t begin = localDeviceIndex * size;
+    size_t end = begin + size;
+    end = std::min(end, dataSize()); // clip last shard. Note: Presently this never happens, since shardSize() enforces uniform shard size.
+    return { begin, end };
+  }
+
+  // @TODO: function is now the same is in NCCLCommunicator, move up to base class if possible
+  template <typename Ret>
+  Ret foreachAcc(const ForeachFunc<Ret>& func, const AccFunc<Ret>& acc, Ret init, bool parallel = true) const {
     parallel &= graphs_.size() > 1;
 
-    size_t totalSize = graphs_[0]->params()->vals()->size();
-    size_t shardSize = (size_t)ceil(totalSize / (float)graphs_.size());
-
-    size_t pos = 0;
-    std::vector<std::thread> group;
-    // iterate over all shards
-    for(size_t idx = 0; idx < graphs_.size(); ++idx) {
-      size_t size = std::min(shardSize, totalSize);
-
-      if (parallel)
-        group.emplace_back(func, idx, pos, pos+size);
+    Ret retValue = init;
+    std::vector<std::future<Ret>> threadResults(graphs_.size()); // [device index]
+    for(size_t i = 0; i < graphs_.size(); ++i) {
+      size_t begin, end; std::tie
+      (begin, end) = localShardRange(i);
+      if(parallel)
+        threadResults[i] = threadPool_.enqueue(func, i, begin, end);
       else
-        func(idx, pos, pos+size);
-
-      pos += size;
-      totalSize -= size;
+        acc(retValue, func(i, begin, end));
     }
-    for(auto& t : group) // (note: group is empty is not parallel)
-      t.join();
+    if(parallel)
+      for(auto& task : threadResults)
+        acc(retValue, task.get());
+
+    return retValue;
+  }
+
+  float foreach(const ForeachFunc<float>& func, AccFunc<float> acc, float init, bool parallel = true) const override {
+    return foreachAcc(func, acc, init, parallel);
+  }
+
+  bool foreach(const ForeachFunc<bool>& func, bool parallel = true) const override {
+    AccFunc<bool> allTrue = [](bool& x, bool y) { x = x && y; };
+    return foreachAcc(func, allTrue, true, parallel);
   }
 
   void scatterReduceAndResetGrads() const override {
     const_cast<DefaultCommunicator*>(this)->lazyInit();
 
+    int totalSize = (int)graphs_[0]->params()->vals()->size();
+    int shardSize = (int)ceil(totalSize / (float)graphs_.size());
+
     // Gather gradients from different devices into current gradient shards
-    auto scatter = [this](size_t idx, size_t begin, size_t end) {
+    auto scatter = [this, shardSize](size_t idx, size_t begin, size_t end) {
       auto curGrad = graphs_[idx]->params()->grads()->subtensor(begin, end-begin);
 
       // collect and sum gradients
@@ -170,25 +235,33 @@ public:
           Element(_1 = _1 + _2, curGrad, tmpTensors_[idx]);
         }
       }
-    };
-
-    // reset gradients outside current shard
-    auto reset = [this](size_t idx, size_t begin, size_t end) {
-      auto grad = graphs_[idx]->params()->grads();
-      if (begin > 0)
-        grad->subtensor(0, begin)->set(0);
-      if (end < grad->size())
-        grad->subtensor(end, grad->size()-end)->set(0);
+      return true; // dummy success
     };
 
     foreach(scatter);
-    foreach(reset);
+
+    // reset gradients
+    // @TODO: all the different places where gradients get reset are confusing
+    auto resetGrads = [&](size_t i, size_t begin, size_t end) {
+      auto grads = graphs_[i]->params()->grads();
+      auto size = grads->size();
+      // reset everything outside the shard that we reduce in
+      if (begin > 0)
+        grads->subtensor(0, begin)->set(0.f);
+      if (end < size)
+        grads->subtensor(end, size - end)->set(0.f);
+
+      return true; // dummy success
+    };
+    foreach(resetGrads);
   }
 
   void allGatherParams() const override {
+    int totalSize = (int)graphs_[0]->params()->vals()->size();
+    int shardSize = (int)ceil(totalSize / (float)graphs_.size());
 
     // Update all graphs with parameter shard
-    auto gather = [this](size_t idx, size_t begin, size_t end) {
+    auto gather = [this, shardSize](size_t idx, size_t begin, size_t end) {
       auto getShard = [&](Ptr<ExpressionGraph> graph) {
         return graph->params()->vals()->subtensor(begin, end-begin);
       };
@@ -201,6 +274,8 @@ public:
           subShard->copyFrom(curShard);
         }
       }
+
+      return true; // dummy success
     };
 
     foreach(gather);
@@ -219,29 +294,31 @@ public:
       // Swap shard with corresponding share from last graph
       auto subParamLast = graphs_.back()->params()->vals()->subtensor(begin, paramShards[idx]->size());
       paramShards[idx]->swap(subParamLast);
+
+      return true; // dummy success
     };
     // Execute for each shard
     foreach(gather);
   }
 
-  void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
+  void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
     size_t dataSize = data.size();
     size_t numLocalDevices = graphs_.size();
     size_t shardSize = (dataSize + numLocalDevices - 1) / numLocalDevices;// (size_t)(ceil(dataSize / (float)numLocalDevices));
     for(size_t localDeviceIndex = 0; localDeviceIndex < numLocalDevices; localDeviceIndex++) {
       size_t begin = localDeviceIndex * shardSize;
       size_t end   = std::min(begin + shardSize, dataSize);
-      setFn(localDeviceIndex, data.begin() + begin, data.begin() + end);
+      setFn(localDeviceIndex, data.bytes.data() + begin, data.bytes.data() + end);
     }
   }
 
-  std::vector<float> gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const override {
-    std::vector<float> data; // we know the size here
-    for (size_t localDeviceIndex = 0; localDeviceIndex < graphs_.size(); localDeviceIndex++) {
-      std::vector<float> tmp = getFn(localDeviceIndex);
-      data.insert(data.end(), tmp.begin(), tmp.end());
-    }
-    ABORT_IF(data.size() != graphs_[0]->params()->vals()->size(), "gathering wrong amount of data??");
+  io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const override {
+    io::Item data = getFn(0);
+    for (size_t localDeviceIndex = 1; localDeviceIndex < graphs_.size(); localDeviceIndex++)
+      data.append(getFn(localDeviceIndex));
+
+    size_t elements = data.bytes.size() / sizeOf(data.type);
+    ABORT_IF(elements != graphs_[0]->params()->vals()->size(), "gathering wrong amount of data??");
     return data;
   }
 };

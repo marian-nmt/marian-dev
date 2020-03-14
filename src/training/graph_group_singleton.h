@@ -2,7 +2,6 @@
 
 #include "training/graph_group.h"
 #include "common/filesystem.h"
-#include "training/exponential_smoothing.h"
 
 #include <future>
 
@@ -11,34 +10,31 @@ namespace marian {
 /**
  * Single GPU training
  */
-class SingletonGraph : public GraphGroup, public ExponentialSmoothing {
+class SingletonGraph : public GraphGroup {
 public:
   virtual void setScheduler(Ptr<Scheduler> scheduler) override;
 
 private:
-  Ptr<models::ICriterionFunction> builder_;
-  Ptr<ExpressionGraph> graph_;
-  Ptr<ExpressionGraph> graphAvg_;
-
   void execute(Ptr<data::Batch> batch);
+  void barrier() const override {} // dummy barrier
 
 public:
-  SingletonGraph(Ptr<Options> config, Ptr<IMPIWrapper> mpi)
-      : GraphGroup(config),
-        ExponentialSmoothing(config) {
+  SingletonGraph(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
+      : GraphGroup(options) {
     ABORT_IF(mpi->numMPIProcesses() != 1, "SingletonGraph does not support multiple MPI processes");
-    // Get device ID
-    auto devices = Config::getDevices(options_);
-    ABORT_IF(devices.size() != 1, "Only one device ID should be provided for singleton training");
-    auto deviceId = devices[0];
+    ABORT_IF(devices_.size() != 1, "Only one device ID should be provided for singleton training");
+    auto deviceId = devices_[0];
     // Initialize graph
-    graph_ = New<ExpressionGraph>();
-    graph_->setDevice(deviceId);
-    graph_->setCheckpointing(options_->get<bool>("gradient-checkpointing"));
-    graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
-    graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-    opt_ = Optimizer(options_);
-    builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+
+    graphs_.push_back(New<ExpressionGraph>());
+
+    auto graph = graphs_[0]; // only one graph
+    graph->setDevice(deviceId);
+
+    GraphGroup::initGraphs();
+
+    optimizerShards_.push_back(Optimizer(options_));
+    models_.push_back(models::createCriterionFunctionFromOptions(options_, models::usage::training));
   }
 
   void update(Ptr<data::Batch> batch) override {
@@ -47,88 +43,26 @@ public:
   }
 
   void load() override {
-    if(!options_->get<bool>("no-reload")) {
-      std::string name = options_->get<std::string>("model");
+    auto scatterFn = [&](const io::Item& optimizerState, const OptimizerBase::ScatterStateSetFunc& setFn) {
+      setFn(/*localDeviceIndex=*/0, optimizerState.bytes.data(), optimizerState.bytes.data() + optimizerState.size());
+    };
 
-      if(filesystem::exists(name)) {
-        if(scheduler_)
-          scheduler_->load(name);
-
-        if(mvAvg_ && filesystem::exists(name + ".orig.npz")) {
-          // Load the original parameters from model.npz
-          builder_->load(graph_, name + ".orig.npz");
-
-          // Load the averaged parameters from model.npz
-          graphAvg_ = New<ExpressionGraph>();
-          graphAvg_->setDevice(graph_->getDeviceId());
-          builder_->load(graphAvg_, name);
-          graphAvg_->forward();
-        } else {
-          builder_->load(graph_, name);
-        }
-
-        opt_->load(name + ".optimizer.npz", {opt_}, {graph_->getBackend()},
-          /*scatterStateFn=*/[&](const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) {
-            setFn(/*localDeviceIndex=*/0, data.begin(), data.end());
-          });
-      } else if(options_->hasAndNotEmpty("pretrained-model")) {
-        std::string init = options_->get<std::string>("pretrained-model");
-        LOG(info,
-            "Initialize model weights with the pre-trained model {}",
-            init);
-        builder_->load(graph_, init, false);
-      }
-    }
+    // This function loads the main parameters in the graphs.
+    GraphGroup::load(scatterFn);
   }
 
-  void save(bool final = false) override {
-    auto saveGraph = graph_;
-    if(mvAvg_) {
-      // The model with averaged parameters will be saved into model.npz as
-      // it's a model which should be used for decoding
-      saveGraph = graphAvg_;
-      // Save the original parameters in model.npz.orig.npz
-      std::string name = options_->get<std::string>("model");
-      builder_->save(graph_, name + ".orig.npz");
-    }
+  void save(bool isFinal = false) override {
+    auto distParams = [](){}; // do nothing, only one process and GPU
 
-    if(final && scheduler_)
-      scheduler_->validate({saveGraph}, true);
+    auto gatherOpt  = [&](const OptimizerBase::GatherStateGetFunc& getFn) {
+      return getFn(/*localDeviceIndex=*/0); // dummy
+    };
 
-    save(saveGraph, final);
-  }
-
-  void save(Ptr<ExpressionGraph> graph, bool final = false) {
-    std::string name = options_->get<std::string>("model");
-
-    if(options_->get<bool>("overwrite")) {
-      builder_->save(graph, name, true);
-      if(scheduler_)
-        scheduler_->save(name);
-    } else {
-      if(!final) {
-        std::string numberOfBatches
-            = scheduler_ ? std::to_string(scheduler_->numberOfBatches())
-                         : "unknown";
-        std::string nameOverwrite = name;
-        nameOverwrite.replace(
-            name.size() - 4, 4, ".iter" + numberOfBatches + ".npz");
-        builder_->save(graph, nameOverwrite);
-      }
-
-      builder_->save(graph, name, true);
-      if(scheduler_)
-        scheduler_->save(name);
-    }
-
-    opt_->save(name + ".optimizer.npz", {opt_},
-      /*gatherStateFn=*/[&](const OptimizerBase::GatherStateGetFunc& getFn) {
-        return getFn(/*localDeviceIndex=*/0);
-      });
+    GraphGroup::save(isFinal, distParams, gatherOpt, /*isMainProcess=*/true);
   }
 
   Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
-    return GraphGroup::collectStats(graph_, builder_, vocabs);
+    return GraphGroup::collectStats(graphs_[0], models_[0], vocabs);
   }
 
   virtual void finalize() override { finalized_ = true; }

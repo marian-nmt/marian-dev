@@ -446,6 +446,8 @@ public:
     defaultElementType_ = defaultElementType;
   }
 
+  Type getDefaultElementType() { return defaultElementType_; }
+
   Expr add(Expr node);
 
   void allocateForward(Expr node) {

@@ -15,10 +15,10 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
   auto model = models_[0];
   auto opt   = optimizerShards_[0];
 
-  auto loss = model->build(graph, batch);
+  auto lossNode = model->build(graph, batch);
   if(costScaleFactor_ != 1.f) {
     // for fp16 training, it's ok to go out of scope, we do not use the scaled version for anything
-    auto costNode = loss->loss() * costScaleFactor_;
+    auto scaledLoss = lossNode->loss() * costScaleFactor_;
   }
 
   graph->forward();
@@ -42,7 +42,7 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
                 costScaleFactor_);
 
   if(scheduler_) {
-    scheduler_->update(*loss, batch);
+    scheduler_->update(*lossNode, batch);
 
     if(scheduler_->validating()) {
       swapWithSmoothed(graphs_, optimizerShards_);

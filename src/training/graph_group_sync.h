@@ -18,7 +18,6 @@ class SyncGraphGroup : public GraphGroup {
   // state for update()
   bool first_{ true };                           // gets interpreted and cleared by update()
   std::vector<Ptr<data::Batch>> pendingBatches_; // in case of dynamic MB-size scaling, we temporarly buffer up batches across update() calls until enough
-  size_t typicalTrgWords_{};                     // typical batch size in words (labels), 0 if unknown (e.g. specified in sentences)
   double updateMultiplier_{1};                  // multiplier not applied in collectStats() (no multiplier if not mini-batch-fit)
 
   void initialize(const Ptr<data::Batch>& exampleBatch);
@@ -26,7 +25,7 @@ class SyncGraphGroup : public GraphGroup {
   bool isMainProcess() const { return mpi_->myMPIRank() == 0; } // (we need this test a few times)
   void barrier() const override { mpi_->barrier(); } // (we need this several times)
 
-  bool tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuff, std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches);
+  bool tryGetSubBatches(Ptr<data::Batch> newBatch, std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches);
   void update(std::vector<Ptr<data::Batch>> subBatches, size_t numReadBatches);
 
 public:

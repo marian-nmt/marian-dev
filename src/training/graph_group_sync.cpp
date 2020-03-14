@@ -114,7 +114,7 @@ static double roundUpRatio(double ratio) {
 // helper routine that handles accumulation and load-balancing of sub-batches to fill all devices
 // It adds 'newBatch' to 'pendingBatches_', and if sufficient batches have been queued, then
 // returns 'pendingBatches_' in 'subBatches' and resets it. If not, it returns false.
-bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuff,
+bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
     std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches) {
   // The reader delivers in chunks of these sizes, according to case:
   //  - no dynamic MB-size scaling:
@@ -165,12 +165,14 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuf
     LOG_ONCE(info, "[scheduler] Scaling to {} reference labels, using actual-batch-word estimate of {}", refBatchLabels, typicalTrgBatchWords_);
     ABORT_IF(typicalTrgBatchWords_ == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
 
-    typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * newBatch->wordsTrg();
+    // @TODO: MJD review
+    // typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * newBatch->wordsTrg();
     ratio *= (double)refBatchLabels / (double)(typicalTrgBatchWords_ * updateMultiplier_);
   }
 
+  // @TODO: MJD review
   // round up to full batches if within a certain error margin  --@BUGBUG: Not invariant w.r.t. GPU size, as ratio is relative to what fits into 1 GPU
-  // ratio = roundUpRatio(ratio);
+  ratio = roundUpRatio(ratio);
 
   if (pendingBatches_.size() < ratio)
     return false; // not enough data yet
@@ -240,7 +242,7 @@ void SyncGraphGroup::update(Ptr<data::Batch> newBatch) /*override*/ {
 
   std::vector<Ptr<data::Batch>> subBatches;
   size_t numReadBatches; // actual #batches delivered by reader, for restoring from checkpoint   --@TODO: reader should checkpoint itself; should not go via the scheduler
-  bool gotSubBatches = tryGetSubBatches(newBatch, 1, subBatches, numReadBatches);
+  bool gotSubBatches = tryGetSubBatches(newBatch, subBatches, numReadBatches);
 
   // not enough data yet: return right away
   if (!gotSubBatches)
@@ -303,8 +305,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
           rationalLoss->loss() * costScaleFactor_;
         graph->forward();
 
-        StaticLoss tempLoss = *rationalLoss; // needed for overstuff
-        localDeviceLosses[localDeviceIndex] += tempLoss;
+        localDeviceLosses[localDeviceIndex] += *rationalLoss;
       }
 
       auto gradType = graph->params()->grads()->type();

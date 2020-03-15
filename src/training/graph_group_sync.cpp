@@ -312,96 +312,17 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     return true; // dummy success
   });
 
-  // With -Ofast enabled gcc will fail to identify NaN or Inf. Safeguard here.
-  auto isFinite = [](float x) -> bool {
-    ABORT_IF(std::isfinite(0.f / 0.f), "NaN detection unreliable. Disable -Ofast compiler option.");
-    return std::isfinite(x);
-  };
-
   // At this point, each device on each MPI process has a gradient aggregated over a subset of the sub-batches.
   // check for Nan or Inf in all summed up shards
-  auto checkNanOrNorm = [&](size_t i, size_t begin, size_t end) -> float {
-    auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
-    
-    if(checkGradientNan_ || costScale_) {
-      bool hasNan = false, hasInf = false;
-      IsNaN(curGrad, graphs_[i]->allocator(), hasNan, hasInf); // @TODO: make safe with different compiler options
-      if(hasNan || hasInf) {
-        LOG(debug, "Found Nan ({}) or Inf ({})", hasNan, hasInf);
-        return std::numeric_limits<float>::quiet_NaN();
-      }
-    }
-    
-    if(checkGradientNorm_) {
-      auto gNorm = L2Norm(curGrad, graphs_[i]->allocator());
-      if(isFinite(gNorm) && gNorm > 0.0)
-        return gNorm;
-      else 
-        return std::numeric_limits<float>::quiet_NaN();
-    }
-
-    return 0.f;
-  };
-
-  auto accNanOrNorm = [&](float& lhs, float rhs) {
-    if(isFinite(lhs) && isFinite(rhs)) {
-      lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, re-apply sqrt.
-    } else
-      lhs = std::numeric_limits<float>::quiet_NaN();
-  };
-
-  // @TODO: make member of GraphGroup
-  auto normalize = [&](float gNorm, size_t updateTrgWords) -> float {
-    float normalizer = 1.f;
-
-    if(costScale_)
-      normalizer *= costScaleFactor_;
-
-    if(options_->get<bool>("normalize-gradient"))
-      normalizer *= updateTrgWords;
-
-    if(!isFinite(gNorm))
-      return normalizer;
-    
-    if(checkGradientNorm_) {
-      // make invariant to changes in costScaleFactor_, luckily norm(c * g) = c * norm(g)
-      if(costScale_)
-        gNorm = gNorm / costScaleFactor_;
-      
-      // Normalize gradient norm w.r.t. number of labels in batch for statistics, 
-      // there should be no gradient normalization before this point, @TODO: check this
-      gNorm = gNorm / updateTrgWords;
-    
-      static size_t t = 0; // @TODO: replace by scheduler batches seen
-      float alpha = 2.f / (checkGradientNormWindow_ + 1);
-      float factor = checkGradientNormFactor_;
-      
-      auto logGNorm = std::log(gNorm); 
-      static auto logGNormAvg = logGNorm;
-      static decltype(logGNorm) logGNormVar = 0.0;
-      
-      auto delta = logGNorm - logGNormAvg;
-      auto logGNormStd = std::sqrt(logGNormVar);
-
-      // delta of log gradient norm vs log gradient norm average is larger than N standard deviations
-      // hence rescale gradient using norm
-      if(t >= checkGradientNormWindow_ && delta > factor * logGNormStd) {
-        LOG(debug, "{:.4f} - {:.4f} -> logGNorm delta {:.4f} > {:.4f} * std {:.4f}", gNorm, std::exp(logGNormAvg), delta, factor, logGNormStd);
-        normalizer *= std::exp(delta); // @TODO: normalize to avg + 1 sigma instead of to avg (exp(delta - logGNormStd)?)
-        delta = logGNormStd;
-      }
-
-      t++;
-      logGNormAvg = logGNormAvg + alpha * delta;
-      logGNormVar = (1.0 - alpha) * (logGNormVar + alpha * delta * delta);
-    }
-  
-    return normalizer;
-  };
-
   comm_->scatterReduceAndResetGrads();      // reduce gradients across all devices (globally) into shards
   
   bool checkGradient = costScale_ || checkGradientNorm_ || checkGradientNan_;
+
+  // Wrapping member function
+  auto checkNanOrNorm = [&](size_t i, size_t begin, size_t end) {
+    return GraphGroup::checkNanOrNorm(i, begin, end);
+  };
+
   float gradNorm = checkGradient ? comm_->foreach(checkNanOrNorm, accNanOrNorm, 0.f) : 0.f; // @TODO: does this work with MPI?
   bool saneGradient = isFinite(gradNorm);
 
@@ -417,8 +338,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         /*else*/:
           OptimizerBase::mbSizeNotProvided;
 
-    ABORT_IF(checkGradient && updateTrgWords == OptimizerBase::mbSizeNotProvided, "Various norm-based gradient-checking mechanisms only correct with ce-sum");
-    float gradientNormalizer = normalize(gradNorm, updateTrgWords);
+    ABORT_IF(checkGradient && updateTrgWords == OptimizerBase::mbSizeNotProvided, 
+             "Various norm-based gradient-checking mechanisms only correct with ce-sum");
+    float gradientNormalizer = GraphGroup::normalize(gradNorm, updateTrgWords);
 
     // Update parameter shard with gradient shard
     auto update = [&](size_t i, size_t begin, size_t end) -> float {
@@ -461,7 +383,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   if(scheduler_) {
     // track and log localLoss
-    scheduler_->update(localLoss, numReadBatches, batchSize, batchTrgWords, /*gradNorm,*/ mpi_);
+    scheduler_->update(localLoss, numReadBatches, batchSize, batchTrgWords, gradNorm, mpi_);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())

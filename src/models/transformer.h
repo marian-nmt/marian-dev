@@ -32,11 +32,12 @@ protected:
   // If enabled, it is set once per batch during training, and once per step during translation.
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
   std::vector<Expr> alignments_; // [max tgt len or 1][beam depth, max src length, batch size, 1]
-
+  
   // Load information how many heads are there in every layer of the model
   std::unordered_map<std::string, size_t> numHeads_;
   bool setHeads_ = false;
 
+  // @TODO: make this go away
   template <typename T> 
   T opt(const char* const key) const { Ptr<Options> options = options_; return options->get<T>(key); }  
 
@@ -50,46 +51,18 @@ protected:
   T opt(const std::string& key, const T& def) const { opt<T>(key.c_str(), def); }
 
 public:
-
-  virtual void setHeads() { };
-  // void createNumHeadsYAML(const std::string& name, std::string type, size_t numLayers, size_t defaultHeads) {
-    // std::string pruningYAML = name + "." + type + "_pruning.yml";
-
-    // std::ofstream fout(pruningYAML);
-    // YAML::Node config;
-
-    // if (type == "encoder") {
-      // for (size_t i = 1; i < numLayers + 1; i++) {
-        // std::string selfLayer = type + "_l" + std::to_string(i) + "_self";
-        // config[selfLayer] = defaultHeads;
-      // }
-    // }
-    // else if (type == "decoder") {
-      // for (size_t i = 1; i < numLayers + 1; i++) {
-        // auto selfLayer = type + "_l" + std::to_string(i) + "_self";
-        // auto contextLayer = type + "_l" + std::to_string(i) + "_context";
-        // config[selfLayer] = defaultHeads;
-        // config[contextLayer] = defaultHeads;
-      // }
-    // }
-    
-    // fout << config;
-
-  // }
   
+  virtual void setNumHeads() { };
+ 
   void loadNumHeads(const std::string& name, std::string type, size_t numLayers) {
     std::string pruningYAML = name + "." + type + "_pruning.yml";
-    // if(!filesystem::exists(pruningYAML)) {
-      // createNumHeadsYAML(name, type, opt("transformer-heads"));
-      // return;
-
     YAML::Node config = YAML::LoadFile(pruningYAML);
+    LOG(info, "Loaded YAML file with the number of attention heads!");
 
     if (type == "encoder") {
       for (size_t i = 1; i < numLayers + 1; i++) {
         std::string selfLayer = type + "_l" + std::to_string(i) + "_self";
         numHeads_[selfLayer] = config[selfLayer].as<size_t>();
-        // LOG(info, "{} {}", selfLayer, numHeads_[selfLayer]);
       }
     }
     else if (type == "decoder") {
@@ -98,14 +71,11 @@ public:
         auto contextLayer = type + "_l" + std::to_string(i) + "_context";
         numHeads_[selfLayer] = config[selfLayer].as<size_t>();
         numHeads_[contextLayer] = config[contextLayer].as<size_t>();
-        // LOG(info, "{} {}", selfLayer, numHeads_[selfLayer]);
-        // LOG(info, "{} {}", contextLayer, numHeads_[contextLayer]);
       }
     }
-    // LOG(info, "Loaded heads from YAML {}", type);
   }
 
-public:
+
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
 
   Expr addPositionalEmbeddings(Expr input, int start = 0, bool trainPosEmbeddings = false) const {
@@ -264,7 +234,7 @@ public:
 
   // determine the multiplicative-attention probability and performs the associative lookup as well
   // q, k, and v have already been split into multiple heads, undergone any desired linear transform.
-  Expr Attention(std::string prefix,
+  Expr Attention(std::string /*prefix*/,
                  Expr q,              // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
                  Expr k,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
                  Expr v,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
@@ -272,7 +242,6 @@ public:
                  bool saveAttentionWeights = false,
                  int dimBeam = 1) {
     int dk = k->shape()[-1];
-    int dimHeads = q->shape()[-3];
 
     // softmax over batched dot product of query and keys (applied over all
     // time steps and batch entries), also add mask for illegal connections
@@ -287,52 +256,6 @@ public:
     // take softmax along src sequence axis (-1)
     auto weights = softmax(z); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
     
-     // calculate mean weight returned by a head in this batch
-     
-      Expr binMask;
-      Expr transBinMask;
-  
-      //LOG(info, "{} weights shape = {}", prefix, weights->shape());
-  
-  //    if(prefix.find("decoder") != std::string::npos && prefix.find("self") != std::string::npos) {
-      if(prefix.find("decoder") != std::string::npos) {
-        binMask = 1 - eq(max(weights, -1), 0);
-        transBinMask = transpose(binMask, {0, 1, 3, 2});
-      }
-      else {
-        binMask = eq(mask, 0);
-        transBinMask = transpose(binMask, {0, 1, 3, 2});
-      }
-      //debug(mask, prefix + "_mask");
-      //debug(binMask, prefix + "_binary_mask");
-      //debug(transBinMask, prefix + "_trans_bin_mask");
-  
-      auto maskedWeights = weights * binMask * transBinMask;
-      auto maxWeights = max(maskedWeights, -1);
-      //LOG(info, "{} maxWeights shape = {}", prefix, maxWeights->shape());
-      //debug(maxWeights, prefix + "_max");
-      auto maskMaxWeights = 1 - eq(maxWeights, 0);
-      auto countSentence = sum(maskMaxWeights, -2);
-      auto countMask = mean(reshape(sum(countSentence, -4), {1, dimHeads}), -1);
-      auto sumSentence = sum(maxWeights, -4);
-      auto sumWeight = reshape(sum(sumSentence, -2), {1, dimHeads});
-  
-      //
-      //
-      //if(prefix.find("encoder") != std::string::npos) {
-      //  debug(z, prefix + "_z");
-      //}
-      //debug(weights, prefix + "_weights");
-  
-      //debug(maskedWeights, prefix + "_masked");
-      //debug(maxWeights, prefix + "_max");
-      //debug(maskMaxWeights, prefix + "_max_mask");
-      debug(countMask, prefix + "_count");
-      //debug(sumSentence, prefix + "_sentence");
-      debug(sumWeight, prefix + "");
-      
-      //debug(meanWeight, prefix + " meanWeight");
- 
     if(saveAttentionWeights)
       collectOneHead(weights, dimBeam);
 
@@ -355,13 +278,7 @@ public:
                  const Expr &mask,   // [-4: batch size, -3: num heads broadcast=1, -2: max length broadcast=1, -1: max length]
                  bool cache = false,
                  bool saveAttentionWeights = false) {
-    int dimBeam = q->shape()[-4];
-    // int dimBatch = q->shape()[-3];
-    // int dimMaxSen = q->shape()[-2];
     int dimModel = q->shape()[-1];
-
-    Expr output;
-
     // @TODO: good opportunity to implement auto-batching here or do something manually?
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform());
     auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
@@ -400,11 +317,13 @@ public:
       cache_[prefix + "_values"] = vh;
     }
 
-      // apply multi-head attention to downscaled inputs
-      output
-          = Attention(prefix, qh, kh, vh, mask, saveAttentionWeights, dimBeam); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
+    int dimBeam = q->shape()[-4];
 
-      output = JoinHeads(output, dimBeam); // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
+    // apply multi-head attention to downscaled inputs
+    auto output
+        = Attention(prefix, qh, kh, vh, mask, saveAttentionWeights, dimBeam); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
+
+    output = JoinHeads(output, dimBeam); // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
 
     int dimAtt = output->shape()[-1];
 
@@ -432,9 +351,7 @@ public:
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
-    // auto heads = opt<int>("transformer-heads");
     auto heads = numHeads_[prefix];
-    // LOG(info, "{} heads = {}", prefix, heads);
     auto headDim = opt<int>("transformer-head-dim");
 
     // multi-head self-attention over previous input
@@ -442,7 +359,7 @@ public:
       output = MultiHead(prefix, dimModel, heads, headDim, output, keys, values, mask, cache, saveAttentionWeights);
     else
       output = input;
-
+    
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
 
@@ -609,61 +526,22 @@ class EncoderTransformer : public Transformer<EncoderBase> {
   typedef Transformer<EncoderBase> Base;
   using Base::Base;
 public:
-  // EncoderTransformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : graph_(graph), options_(options) {
-    void setNumHeads() {
-        std::string modelPath;
-        if (options_->has("models"))
-          modelPath = opt<std::vector<std::string>>("models")[0];
-        else
-          modelPath = opt<std::string>("model");
-    
-        LOG(info, "modelPath = {}", modelPath);
-        auto encLayers = opt<int>("enc-depth");
-        loadNumHeads(modelPath, "encoder", encLayers);
-   }
-
-  virtual ~EncoderTransformer() {}
-
-  // returns the embedding matrix based on options
-  // and based on batchIndex_.
-
-  Ptr<IEmbeddingLayer> createULREmbeddingLayer() const {
-    // standard encoder word embeddings
-    int dimSrcVoc = opt<std::vector<int>>("dim-vocabs")[0];  //ULR multi-lingual src
-    int dimTgtVoc = opt<std::vector<int>>("dim-vocabs")[1];  //ULR monon tgt
-    int dimEmb = opt<int>("dim-emb");
-    int dimUlrEmb = opt<int>("ulr-dim-emb");
-    auto embFactory = ulr_embedding()("dimSrcVoc", dimSrcVoc)("dimTgtVoc", dimTgtVoc)
-                                     ("dimUlrEmb", dimUlrEmb)("dimEmb", dimEmb)
-                                     ("ulrTrainTransform", opt<bool>("ulr-trainable-transformation"))
-                                     ("ulrQueryFile", opt<std::string>("ulr-query-vectors"))
-                                     ("ulrKeysFile", opt<std::string>("ulr-keys-vectors"));
-    return embFactory.construct(graph_);
-  }
-
-  Ptr<IEmbeddingLayer> createWordEmbeddingLayer(size_t subBatchIndex) const {
-    // standard encoder word embeddings
-    int dimVoc = opt<std::vector<int>>("dim-vocabs")[subBatchIndex];
-    int dimEmb = opt<int>("dim-emb");
-    auto embFactory = embedding()("dimVocab", dimVoc)("dimEmb", dimEmb);
-    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
-      embFactory("prefix", "Wemb");
+   void setNumHeads() override {
+    std::string modelPath;
+    if (options_->has("models"))
+      modelPath = opt<std::vector<std::string>>("models")[0];
     else
-      embFactory("prefix", prefix_ + "_Wemb");
-    if(options_->has("embedding-fix-src"))
-      embFactory("fixed", opt<bool>("embedding-fix-src"));
-    if(options_->hasAndNotEmpty("embedding-vectors")) {
-      auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
-      embFactory("embFile", embFiles[subBatchIndex])
-                ("normalization", opt<bool>("embedding-normalization"));
-    }
-    return embFactory.construct(graph_);
+      modelPath = opt<std::string>("model");
+    
+    auto encLayers = opt<int>("enc-depth");
+    loadNumHeads(modelPath, "encoder", encLayers);
+    setHeads_ = true;
   }
 
   virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
                                   Ptr<data::CorpusBatch> batch) override {
     if (!setHeads_)
-      setHeads();
+      setNumHeads();
     graph_ = graph;
     return apply(batch);
   }
@@ -778,8 +656,8 @@ private:
     output_ = std::dynamic_pointer_cast<mlp::Output>(outputFactory.construct(graph_)); // (construct() returns only the underlying interface)
   }
 
-public:
-   void setNumHeads() {
+public: 
+  void setNumHeads() override {
       std::string modelPath;
       if (options_->has("models"))
         modelPath = opt<std::vector<std::string>>("models")[0];
@@ -788,7 +666,8 @@ public:
   
       LOG(info, "modelPath = {}", modelPath);
       auto decLayers = opt<int>("dec-depth");
-      loadNumHeads(modelPath, "deccoder", decLayers);
+      loadNumHeads(modelPath, "decoder", decLayers);
+      setHeads_ = true;
   }
 
   virtual Ptr<DecoderState> startState(
@@ -796,10 +675,10 @@ public:
       Ptr<data::CorpusBatch> batch,
       std::vector<Ptr<EncoderState>>& encStates) override {
     graph_ = graph;
-    
-    if (!setHeads_)
-      setHeads();
 
+    if (!setHeads_)
+      setNumHeads();
+    
     std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if (layerType == "rnn") {
       int dimBatch = (int)batch->size();

@@ -234,7 +234,7 @@ public:
 
   // determine the multiplicative-attention probability and performs the associative lookup as well
   // q, k, and v have already been split into multiple heads, undergone any desired linear transform.
-  Expr Attention(std::string /*prefix*/,
+  Expr Attention(std::string prefix,
                  Expr q,              // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
                  Expr k,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
                  Expr v,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
@@ -242,6 +242,7 @@ public:
                  bool saveAttentionWeights = false,
                  int dimBeam = 1) {
     int dk = k->shape()[-1];
+    int dimHeads = q->shape()[-3];
 
     // softmax over batched dot product of query and keys (applied over all
     // time steps and batch entries), also add mask for illegal connections
@@ -255,7 +256,32 @@ public:
 
     // take softmax along src sequence axis (-1)
     auto weights = softmax(z); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
-    
+     
+    if(inference_ && opt<bool>("transformer-head-print")) {
+      Expr binMask;
+      Expr transBinMask;
+
+      if(prefix.find("decoder") != std::string::npos) {
+        binMask = 1 - eq(max(weights, -1), 0);
+        transBinMask = transpose(binMask, {0, 1, 3, 2});
+      }
+      else {
+        binMask = eq(mask, 0);
+        transBinMask = transpose(binMask, {0, 1, 3, 2});
+      }
+      auto maskedWeights = weights * binMask * transBinMask;
+      auto maxWeights = max(maskedWeights, -1);
+      
+      auto maskMaxWeights = 1 - eq(maxWeights, 0);
+      auto countSentence = sum(maskMaxWeights, -2);
+      auto countMask = mean(reshape(sum(countSentence, -4), {1, dimHeads}), -1);
+      auto sumSentence = sum(maxWeights, -4);
+      auto sumWeight = reshape(sum(sumSentence, -2), {1, dimHeads});
+      
+      debug(countMask, prefix + "_count");
+      debug(sumWeight, prefix + "");
+    }
+
     if(saveAttentionWeights)
       collectOneHead(weights, dimBeam);
 
@@ -535,13 +561,15 @@ public:
     
     auto encLayers = opt<int>("enc-depth");
     loadNumHeads(modelPath, "encoder", encLayers);
-    setHeads_ = true;
   }
 
   virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
                                   Ptr<data::CorpusBatch> batch) override {
-    if (!setHeads_)
+    if (!setHeads_) {
       setNumHeads();
+      setHeads_ = true;
+      LOG(info, "Set heads in {}...", prefix_);
+    }
     graph_ = graph;
     return apply(batch);
   }
@@ -581,7 +609,13 @@ public:
                              layer, // keys
                              layer, // values
                              layerMask); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
-      layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+
+      if(opt<bool>("transformer-tied-ffn"))
+        layer = LayerFFN(prefix_ + "_ffn", layer);
+      else
+        layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+
+
       checkpoint(layer); // sets a manually specified checkpoint if gradient checkpointing is enabled, does nothing otherwise.
     }
 
@@ -667,7 +701,6 @@ public:
       LOG(info, "modelPath = {}", modelPath);
       auto decLayers = opt<int>("dec-depth");
       loadNumHeads(modelPath, "decoder", decLayers);
-      setHeads_ = true;
   }
 
   virtual Ptr<DecoderState> startState(
@@ -676,8 +709,11 @@ public:
       std::vector<Ptr<EncoderState>>& encStates) override {
     graph_ = graph;
 
-    if (!setHeads_)
+    if (!setHeads_) {
       setNumHeads();
+      setHeads_ = true;
+      LOG(info, "Set heads in {}...", prefix_);
+    }
     
     std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if (layerType == "rnn") {

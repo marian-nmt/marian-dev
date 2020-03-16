@@ -236,8 +236,12 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Number of heads in multi-head attention (transformer)",
       8);
   cli.add<int>("--transformer-head-dim",
-      "Number of heads in multi-head attention (transformer)",
+      "Dimension heads in multi-head attention (transformer)",
       64);
+  cli.add<bool>("--transformer-head-print",
+      "Print statistics in multi-head attention (transformer)");
+  cli.add<bool>("--transformer-tied-ffn",
+      "Tie FFN layers in an encoder");
   cli.add<bool>("--transformer-no-projection",
       "Omit linear projection after multi-head attention (transformer)");
   cli.add<int>("--transformer-dim-ffn",

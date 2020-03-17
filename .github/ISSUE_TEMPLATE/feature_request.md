@@ -8,8 +8,8 @@ assignees: ''
 ---
 
 ### Feature description
-Please add a concise description of what the problem is and describe the solution you'd like.
+Please add a concise description of what the problem is and describe the solution you would like to see.
 Add links to a paper, another toolkit, etc. if relevant.
 
 ### Example
-Add usage examples for the new feature, e.g. a command line.
+Add a usage examples for the new feature, e.g. a command line.

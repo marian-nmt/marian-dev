@@ -8,14 +8,14 @@ assignees: ''
 ---
 
 ### Bug description
-Please add a clear and concise description of what the bug is, including the actual and expected behavior.
+Please add a clear and concise description of the bug, including observed and if possible expected behavior.
 
 ### How to reproduce
-Describe steps and/or add a command to reproduce the behavior.
+Describe steps or include command to reproduce the behavior.
 
 ### Context
 * Marian version: Paste the output of `--version` here
-* CMake command: Type the cmake command you used and/or attach the output of `--build-info`
+* CMake command: Type the cmake command you used and attach the output of `--build-info all`
 * Log file: Attach your training/decoding logs
 
-Add any other context about the problem here.
+Add any other information about the problem here.

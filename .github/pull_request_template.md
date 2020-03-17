@@ -19,7 +19,7 @@ Describe how you have tested your code, including OS and the cmake command.
 
 ### Checklist
 
-- [ ] I've tested the code manually
-- [ ] I've run regression tests
-- [ ] I've read and followed CONTRIBUTING.md
-- [ ] I've updated the CHANGELOG.md
+- [ ] I have tested the code manually
+- [ ] I have run regression tests
+- [ ] I have read and followed CONTRIBUTING.md
+- [ ] I have updated CHANGELOG.md

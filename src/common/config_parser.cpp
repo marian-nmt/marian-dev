@@ -39,16 +39,14 @@ const std::set<std::string> PATHS = {
   "valid-script-args",
   "valid-log",
   "valid-translation-output",
-  "input",            // except: stdin
-  "output",           // except: stdout
+  "input",            // except: 'stdin', handled in makeAbsolutePaths and InterpolateEnvVars
+  "output",           // except: 'stdout', handled in makeAbsolutePaths and InterpolateEnvVars
   "pretrained-model",
   "data-weighting",
-  "log"
-  // TODO: Handle the special value in helper functions
-  //"sqlite",         // except: temporary
-  // TODO: This is a vector with a path and some numbers, handle this in helper
-  // functions or separate shortlist path to a separate command-line option
-  //"shortlist",
+  "log",
+  "sqlite",           // except: 'temporary', handled in the processPaths function
+  "shortlist",        // except: only the first element in the sequence is a path, handled in the
+                      //  processPaths function
 };
 // clang-format on
 

@@ -58,12 +58,13 @@ static inline std::string InterpolateEnvVars(std::string str) {
   }
 }
 
-// helper to implement interpolate-env-vars and relative-paths options
+// Helper to implement interpolate-env-vars and relative-paths options
 static inline void processPaths(
     YAML::Node& node,
     const std::function<std::string(std::string)>& TransformPath,
     const std::set<std::string>& PATHS,
-    bool isPath = false) {
+    bool isPath = false,
+    const std::string parentKey = "") {
   // For a scalar node, just transform the path
   if(isPath && node.IsScalar()) {
     std::string nodePath = node.as<std::string>();
@@ -74,13 +75,22 @@ static inline void processPaths(
   else if(node.IsSequence()) {
     for(auto&& sub : node) {
       processPaths(sub, TransformPath, PATHS, isPath);
+
+      // Exception for the shortlist option, which keeps a path and three numbers; we want to
+      // process the path only and keep the rest untouched
+      if(isPath && parentKey == "shortlist")
+        break;
     }
   }
-  // For a map node that, recursively iterate each value if not a path
+  // For a map node that is not a path, recursively iterate each value.
+  // In a Marian config file, it is usually only the root node
   else if(!isPath && node.IsMap()) {
     for(auto&& sub : node) {
       std::string key = sub.first.as<std::string>();
-      processPaths(sub.second, TransformPath, PATHS, PATHS.count(key) > 0);
+      // Exception for the sqlite option, which has a special value of 'temporary'
+      if(key == "sqlite" && sub.second.as<std::string>() == "temporary")
+        continue;
+      processPaths(sub.second, TransformPath, PATHS, PATHS.count(key) > 0, key);
     }
   }
 }

@@ -39,8 +39,8 @@ const std::set<std::string> PATHS = {
   "valid-script-args",
   "valid-log",
   "valid-translation-output",
-  "input",            // except: 'stdin', handled in makeAbsolutePaths and InterpolateEnvVars
-  "output",           // except: 'stdout', handled in makeAbsolutePaths and InterpolateEnvVars
+  "input",            // except: 'stdin', handled in makeAbsolutePaths and interpolateEnvVars
+  "output",           // except: 'stdout', handled in makeAbsolutePaths and interpolateEnvVars
   "pretrained-model",
   "data-weighting",
   "log",
@@ -856,7 +856,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   }
 
   if(get<bool>("interpolate-env-vars")) {
-    cli::processPaths(config_, cli::InterpolateEnvVars, PATHS);
+    cli::processPaths(config_, cli::interpolateEnvVars, PATHS);
   }
 
   if(doValidate) {
@@ -896,12 +896,12 @@ std::vector<std::string> ConfigParser::findConfigPaths() {
     for(auto& path : paths) {
       // (note: this updates the paths array)
       if(interpolateEnvVars)
-        path = cli::InterpolateEnvVars(path);
+        path = cli::interpolateEnvVars(path);
     }
   } else if(mode_ == cli::mode::training) {
     auto path = config_["model"].as<std::string>() + ".yml";
     if(interpolateEnvVars)
-      path = cli::InterpolateEnvVars(path);
+      path = cli::interpolateEnvVars(path);
 
     bool reloadConfig = filesystem::exists(path) && !get<bool>("no-reload");
     if(reloadConfig)
@@ -927,7 +927,7 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
                                  && config["interpolate-env-vars"].as<bool>())
                                 || get<bool>("interpolate-env-vars");
       if(interpolateEnvVars)
-        cli::processPaths(config, cli::InterpolateEnvVars, PATHS);
+        cli::processPaths(config, cli::interpolateEnvVars, PATHS);
 
       // replace relative path w.r.t. the config file
       cli::makeAbsolutePaths(config, path, PATHS);

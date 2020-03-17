@@ -64,35 +64,23 @@ static inline void processPaths(
     const std::function<std::string(std::string)>& TransformPath,
     const std::set<std::string>& PATHS,
     bool isPath = false) {
-  if(isPath) {
-    if(node.Type() == YAML::NodeType::Scalar) {
-      std::string nodePath = node.as<std::string>();
-      // transform the path
-      if(!nodePath.empty())
-        node = TransformPath(nodePath);
+  // For a scalar node, just transform the path
+  if(isPath && node.IsScalar()) {
+    std::string nodePath = node.as<std::string>();
+    if(!nodePath.empty())
+      node = TransformPath(nodePath);
+  }
+  // For a sequence node, recursively iterate each value
+  else if(node.IsSequence()) {
+    for(auto&& sub : node) {
+      processPaths(sub, TransformPath, PATHS, isPath);
     }
-
-    if(node.Type() == YAML::NodeType::Sequence) {
-      for(auto&& sub : node) {
-        processPaths(sub, TransformPath, PATHS, true);
-      }
-    }
-  } else {
-    switch(node.Type()) {
-      case YAML::NodeType::Sequence:
-        for(auto&& sub : node) {
-          processPaths(sub, TransformPath, PATHS, false);
-        }
-        break;
-      case YAML::NodeType::Map:
-        for(auto&& sub : node) {
-          std::string key = sub.first.as<std::string>();
-          processPaths(sub.second, TransformPath, PATHS, PATHS.count(key) > 0);
-        }
-        break;
-      default:
-        // it is OK
-        break;
+  }
+  // For a map node that, recursively iterate each value if not a path
+  else if(!isPath && node.IsMap()) {
+    for(auto&& sub : node) {
+      std::string key = sub.first.as<std::string>();
+      processPaths(sub.second, TransformPath, PATHS, PATHS.count(key) > 0);
     }
   }
 }

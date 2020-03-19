@@ -65,7 +65,7 @@ static inline void processPaths(
     const std::set<std::string>& PATHS,
     bool isPath = false,
     const std::string parentKey = "") {
-  // For a scalar node, just transform the path
+  // For a scalar node (leaves in the config), just transform the path
   if(isPath && node.IsScalar()) {
     std::string nodePath = node.as<std::string>();
     if(!nodePath.empty())
@@ -76,14 +76,13 @@ static inline void processPaths(
     for(auto&& sub : node) {
       processPaths(sub, TransformPath, PATHS, isPath);
 
-      // Exception for the shortlist option, which keeps a path and three numbers; we want to
-      // process the path only and keep the rest untouched
+      // Exception for the shortlist option, which keeps a path and three numbers;
+      // we want to process the path only and keep the rest untouched
       if(isPath && parentKey == "shortlist")
         break;
     }
   }
-  // For a map node that is not a path, recursively iterate each value.
-  // In a Marian config file, it is usually only the root node
+  // For a map node that is not a path, recursively iterate each value
   else if(!isPath && node.IsMap()) {
     for(auto&& sub : node) {
       std::string key = sub.first.as<std::string>();

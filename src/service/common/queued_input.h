@@ -1,9 +1,8 @@
-// -*- mode: c++; indent-tabs-mode: nil; tab-width: 2 -*-
 #pragma once
 #include "data/iterator_facade.h"
 #include "data/corpus.h"
-#include "server/queue.h"
-#include "server/translation_job.h"
+#include "service/common/queue.h"
+#include "service/common/translation_job.h"
 #include <stdint.h>
 #include <vector>
 #include <atomic>

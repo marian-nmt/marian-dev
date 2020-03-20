@@ -1,16 +1,21 @@
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
-#include "api/json_request_handler.h"
 #include "common/timer.h"
 #include "common/utils.h"
-#include "crow.h"
 #include "marian.h"
-#include "translation_service.h"
+#include "service/api/json_request_handler.h"
+#include "service/common/translation_service.h"
 #include "translator/beam_search.h"
 #include "translator/output_printer.h"
 #include <cstdlib>
 #include <sstream>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-override"
+#include "crow.h"
+#pragma GCC diagnostic pop
+
 
 // Wrapper class for CROW (HTTP server) logging
 class LogHandler : public crow::ILogHandler {
@@ -94,7 +99,7 @@ class BergamotRequestHandler : public RequestHandler {
   marian::server::BergamotJsonRequestHandlerV1<tservice_t> process_;
 
   std::string
-  post(const crow::request& req) const{
+  post(const crow::request& req) const override {
     auto payload_field = req.url_params.get("payload");
     auto options_field = req.url_params.get("options");
     // to be used later, with multi-model engines
@@ -118,7 +123,7 @@ public:
 class ElgRequestHandler : public RequestHandler {
   marian::server::ElgJsonRequestHandlerV1<tservice_t> process_;
   std::string
-  post(const crow::request& req) const {
+  post(const crow::request& req) const override {
     marian::Ptr<rapidjson::Document> D = process_(req.body.c_str());
     return marian::server::serialize(*D);
   }

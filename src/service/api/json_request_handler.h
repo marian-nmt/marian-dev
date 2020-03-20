@@ -1,5 +1,5 @@
 #pragma once
-#include "../translation_service.h"
+#include "service/common/translation_service.h"
 #include "rapidjson_utils.h"
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"

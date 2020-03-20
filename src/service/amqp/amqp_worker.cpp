@@ -15,15 +15,15 @@
 #include <amqpcpp/libev.h>
 #include "marian.h"
 #include "3rd_party/threadpool.h"
-#include "server/queue.h"
-#include "server/translation_service.h"
-#include "server/translation_job.h"
+#include "service/common/queue.h"
+#include "service/common/translation_service.h"
+#include "service/common/translation_job.h"
 #include "translator/beam_search.h"
 #include "3rd_party/rapidjson/include/rapidjson/document.h"
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
-#include "server/amqp/event_handler.h"
-#include "server/amqp/request.h"
+#include "service/amqp/event_handler.h"
+#include "service/amqp/request.h"
 
 using namespace marian;
 using namespace marian::amqp;

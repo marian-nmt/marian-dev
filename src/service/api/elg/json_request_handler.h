@@ -24,7 +24,7 @@ class ElgJsonRequestHandlerV1
   ug::ssplit::SentenceStream::splitmode
   getSentenceSplitMode(rapidjson::Value const& request) const {
     auto n = get(&request, {"params","inputFormat"});
-    splitmode smode = splitmode::wrapped_text;
+    // splitmode smode = splitmode::wrapped_text;
     if (n && n->IsString())
       {
         std::string input_format = n->GetString();

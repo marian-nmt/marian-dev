@@ -65,7 +65,7 @@ push(item_t item, timeout_t timeout, Logger* logger) {
   // If the queue has limited capacity and is full, wait for for a free slot
   while (queue_open_ and capacity_ and queue_.size() == capacity_) {
     if (logger)
-      logger->trace("Waiting for slot for item {}", item);
+      (*logger)->trace("Waiting for slot for item {}", item);
     if (timeout.count() > 0)
       have_room_.wait_for(lock, timeout);
     else
@@ -73,15 +73,15 @@ push(item_t item, timeout_t timeout, Logger* logger) {
   }
 
   if (logger)
-    logger->debug("Got slot for item {}", item);
+    (*logger)->debug("Got slot for item {}", item);
   if (!queue_open_) {
-    if (logger) logger->debug("Queue is closed");
+    if (logger) (*logger)->debug("Queue is closed");
     return CLOSED; // queue is closed for new business
   }
 
   queue_.push_back(std::move(item));
   if (logger)
-    logger->debug("Queue now has {} item{}.", queue_.size(),
+    (*logger)->debug("Queue now has {} item{}.", queue_.size(),
                   queue_.size() ==  1 ? "" : "s");
   lock.unlock();
   ready_.notify_one();

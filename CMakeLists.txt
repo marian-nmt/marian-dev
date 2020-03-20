@@ -373,13 +373,13 @@ if(COMPILE_CPU)
 endif(COMPILE_CPU)
 
 if(COMPILE_AMQP_WORKER)
-  set(BOOST_COMPONENTS filesystem system)
-elseif (COMPILE_REST_SERVER)
-  set(BOOST_COMPONENTS system)
-else(COMPILE_AMQP_WORKER)
-  set(BOOST_COMPONENTS "")
+  list(APPEND BOOST_COMPONENTS filesystem system)
 endif(COMPILE_AMQP_WORKER)
-
+  
+if (COMPILE_REST_SERVER)
+  list(APPEND BOOST_COMPONENTS system)
+endif(COMPILE_REST_SERVER)
+  
 if (COMPILE_SERVER)
   set(NEED_OPENSSL ON)
 endif(COMPILE_SERVER)
@@ -412,6 +412,7 @@ endif()
 ###############################################################################
 # Find Boost if required
 if(BOOST_COMPONENTS)
+  list(REMOVE_DUPLICATES BOOST_COMPONENTS)
   find_package(Boost COMPONENTS ${BOOST_COMPONENTS})
   if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS})
@@ -444,18 +445,6 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp.in
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)
 add_subdirectory(src)
-
-# rest server and other service back-ends need pcrecpp (perl-compatible regex engine),
-# for integrated sentence splitting. On Ubuntu, pcrecpp is available via apt-get.
-if(COMPILE_REST_SERVER)
-  set(NEED_PCRECPP ON)
-endif(COMPILE_REST_SERVER)
-if(COMPILE_AMQP_WORKER)
-  set(NEED_PCRECPP ON)
-endif(COMPILE_AMQP_WORKER)
-if (NEED_PCRECPP)
-  find_package(PCRECPP)
-endif(NEED_PCRECPP)
 
 if(USE_DOXYGEN)
 # Add a target to generate API documentation with Doxygen

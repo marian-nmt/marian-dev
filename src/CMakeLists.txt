@@ -29,7 +29,7 @@ add_library(marian STATIC
   common/filesystem.cpp
   common/file_stream.cpp
   common/types.cpp
-  
+
   data/alignment.cpp
   data/vocab.cpp
   data/default_vocab.cpp
@@ -108,14 +108,6 @@ add_library(marian STATIC
 )
 target_compile_options(marian PUBLIC ${ALL_WARNINGS})
 
-add_library(marian-service STATIC
-  server/queued_input.cpp
-  server/translation_job.cpp
-  server/api/rapidjson_utils.cpp
-)
-target_compile_options(marian-service PUBLIC ${ALL_WARNINGS})
-
-
 # Generate git_revision.h to reflect current git revision information
 # [https://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake]
 # Git updates .git/logs/HEAD file whenever you pull or commit something.
@@ -151,7 +143,7 @@ cuda_add_library(marian_cuda
   tensors/gpu/algorithm.cu
   tensors/gpu/prod.cpp
   tensors/gpu/element.cu
-  tensors/gpu/add.cu  
+  tensors/gpu/add.cu
   tensors/gpu/add_all.cu
   tensors/gpu/tensor_operators.cu
   tensors/gpu/cudnn_wrappers.cu
@@ -232,42 +224,6 @@ if(APPLE) # This is a dependency of pathie but I can't seem to link it into that
    set(EXT_LIBS ${EXT_LIBS} iconv)
 endif()
 
-# temporary additions by UG for server development
-# add_executable(server-test server/server-test.cpp)
-# set_target_properties(server-test PROPERTIES OUTPUT server-test)
-# target_compile_options(server-test PUBLIC ${ALL_WARNINGS})
-# set(EXECUTABLES ${EXECUTABLES} server-test)
-
-if (COMPILE_WEBSOCKET_SERVER)
-  add_executable(websocket-server server/websocket-server.cpp)
-  set_target_properties(websocket-server PROPERTIES OUTPUT websocket-server)
-  target_compile_options(websocket-server PUBLIC ${ALL_WARNINGS})
-  # TODO: use of static vs shared pcre and pcrecpp libraries should depend on USE_STATIC_LIBS,
-  # but I couldn't get that to work.
-  target_link_libraries(websocket-server marian marian-service amqpcpp ev ssplit pcrecpp.a pcre.a)
-  set(EXECUTABLES ${EXECUTABLES} websocket-server)
-endif(COMPILE_WEBSOCKET_SERVER)
-
-if (COMPILE_AMQP_WORKER)
-  add_executable(amqp-worker server/amqp_worker.cpp)
-  set_target_properties(amqp-worker PROPERTIES OUTPUT amqp-worker)
-  target_compile_options(amqp-worker PUBLIC ${ALL_WARNINGS})
-  set(EXECUTABLES ${EXECUTABLES} amqp-worker)
-  # TODO: use of static vs shared pcre and pcrecpp libraries should depend on USE_STATIC_LIBS,
-  # but I couldn't get that to work.
-  target_link_libraries(amqp-worker marian marian-service amqpcpp ev ssplit pcrecpp.a pcre.a)
-endif(COMPILE_AMQP_WORKER)
-
-if (COMPILE_REST_SERVER)
-  add_executable(rest-server server/rest_server.cpp)
-  set_target_properties(rest-server PROPERTIES OUTPUT rest-server)
-  target_compile_options(rest-server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
-  set(EXECUTABLES ${EXECUTABLES} rest-server)
-  # TODO: use of static vs shared pcre and pcrecpp libraries should depend on USE_STATIC_LIBS,
-  # but I couldn't get that to work.
-  target_link_libraries(rest-server marian marian-service ssplit pcrecpp.a pcre.a)
-endif(COMPILE_REST_SERVER)
-
 foreach(exec ${EXECUTABLES})
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   if(CUDA_FOUND)
@@ -275,7 +231,6 @@ foreach(exec ${EXECUTABLES})
   endif(CUDA_FOUND)
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endforeach(exec)
-# target_link_libraries(websocket-server marian amqpcpp ev)
 
 if(COMPILE_TESTS)
   set(CATCH_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rd_party)
@@ -288,3 +243,5 @@ endif(COMPILE_TESTS)
 if(COMPILE_EXAMPLES)
   add_subdirectory(examples)
 endif(COMPILE_EXAMPLES)
+
+add_subdirectory(service)

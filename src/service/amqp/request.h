@@ -11,9 +11,9 @@
 #include "3rd_party/rapidjson/include/rapidjson/writer.h"
 #include "3rd_party/rapidjson/include/rapidjson/stringbuffer.h"
 
-#include "server/translation_job.h"
-#include "server/translation_service.h"
-#include "server/api/json_request_handler.h"
+#include "service/common/translation_job.h"
+#include "service/common/translation_service.h"
+#include "service/api/json_request_handler.h"
 
 namespace marian {
 namespace amqp {

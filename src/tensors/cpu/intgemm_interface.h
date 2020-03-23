@@ -321,11 +321,6 @@ public:
                                   cols(child(1)->val()),                                          /*child(2) is bias*/
                                   intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
           }
-          //static int i = 0;
-          //std::cerr << child(1)->name() << " " << val_->data()[0] << " " << val_->data()[1] << std::endl;
-          //i++;
-          //if (i>20)
-          //  exit(0);
     )};
   }
 

@@ -17,7 +17,11 @@ bool shifted_;
   PrepareANodeOp(Expr input, Expr quant_mult, float clipValue, bool shifted)
       : NaryNodeOp({input, quant_mult}, input->shape(), vtype), clipValue_(clipValue), shifted_(shifted) {
 
-    set_name(input->name());
+    if (!shifted) {
+      set_name(input->name());
+    } else {
+      set_name(input->name() + "_shifted");
+    }
     setMemoize(false);
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");

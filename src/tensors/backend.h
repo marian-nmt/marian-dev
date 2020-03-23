@@ -34,6 +34,8 @@ public:
   virtual bool isOptimized() = 0;
   virtual void setOptimized8(bool optimize) = 0;
   virtual bool isOptimized8() = 0;
+  virtual void setShifted(bool shifted) = 0;
+  virtual bool isShifted() = 0;
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

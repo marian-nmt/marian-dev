@@ -13,8 +13,9 @@ template<Type vtype>
 struct PrepareANodeOp : public NaryNodeOp {
 float clipValue_;
 float quantMult_;
-  PrepareANodeOp(Expr input, Expr quant_mult, float clipValue)
-      : NaryNodeOp({input, quant_mult}, input->shape(), vtype), clipValue_{clipValue} {
+bool shifted_;
+  PrepareANodeOp(Expr input, Expr quant_mult, float clipValue, bool shifted)
+      : NaryNodeOp({input, quant_mult}, input->shape(), vtype), clipValue_(clipValue), shifted_(shifted) {
 
     set_name(input->name());
     setMemoize(false);
@@ -27,11 +28,19 @@ float quantMult_;
     return {NodeOp(
       quantMult_ = *child(1)->val()->data();
       typedef typename intgemm_<vtype>::type Integer;
-      intgemm_<vtype>::width::PrepareA(child(0)->val()->data(), /*input*/
-                                    val_->data<Integer>(), /*output*/
-                                    *child(1)->val()->data(), /*Quant Mult*/
-                                    rows(child(0)->val()),
-                                    cols(child(0)->val()));
+      if (!shifted_) {
+        intgemm_<vtype>::width::PrepareA(child(0)->val()->data(), /*input*/
+                                      val_->data<Integer>(), /*output*/
+                                      *child(1)->val()->data(), /*Quant Mult*/
+                                      rows(child(0)->val()),
+                                      cols(child(0)->val()));
+      } else {
+        intgemm::Int8Shift::PrepareA(child(0)->val()->data(), /*input*/
+                                      val_->data<int8_t>(), /*output*/
+                                      *child(1)->val()->data(), /*Quant Mult*/
+                                      rows(child(0)->val()),
+                                      cols(child(0)->val()));
+      }
     )};
   }
 
@@ -49,7 +58,7 @@ float clipValue_;
 float quantMult_;
 
   PrepareBNodeOp(Expr input, Expr quant_mult, float clipValue)
-      : NaryNodeOp({input, quant_mult}, input->shape(), intgemm_<vtype>::intgemmType), clipValue_{clipValue} {
+      : NaryNodeOp({input, quant_mult}, input->shape(), intgemm_<vtype>::intgemmType), clipValue_(clipValue) {
 
     set_name(input->name());
     // Check if arguments are not null
@@ -189,6 +198,30 @@ struct QuantMultNodeOp : public UnaryNodeOp {
   }
 };
 
+class PrepareBiasForBNodeOp : public NaryNodeOp {
+public:
+  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
+      : NaryNodeOp({bias, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type::float32) {
+
+    set_name(bias->name() + "_Prepared");
+    setMemoize(false);
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+    auto bias = this->child(0)->val();
+    auto b = this->child(1)->val();
+    auto quant_mult_a = this->child(2)->val();
+    auto quant_mult_b = this->child(3)->val();
+
+    float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
+    intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
+    )};
+  }
+
+  const std::string type() override { return "prepareBias"; }
+};
+
 template<Type vtype>
 class DotNodeOp : public NaryNodeOp {
 private:
@@ -243,10 +276,11 @@ template<Type vtype>
 class AffineNodeOp : public NaryNodeOp {
 private:
   float scalar_;
+  bool shifted_;
 
 public:
-  AffineNodeOp(Expr a, Expr b, Expr Bias, float scalar)
-      : NaryNodeOp({a, b, Bias}, newShape(a, b), Type::float32), scalar_(scalar) {
+  AffineNodeOp(Expr a, Expr b, Expr Bias, float scalar, bool shifted=false)
+      : NaryNodeOp({a, b, Bias}, newShape(a, b), Type::float32), scalar_(scalar), shifted_(shifted) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
 
@@ -272,12 +306,26 @@ public:
 
           unquant_mult = unquant_mult*scalar_;
           typedef typename intgemm_<vtype>::type Integer;
-          intgemm_<vtype>::width::Multiply(reinterpret_cast<Integer *>(child(0)->val()->data()), /*A*/
-                                           reinterpret_cast<Integer *>(child(1)->val()->data()), /*B*/
-                                           rows(child(0)->val()),
-                                           cols(child(0)->val()),
-                                           cols(child(1)->val()),                                          /*child(2) is bias*/
-                                           intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
+          if (!shifted_) {
+            intgemm_<vtype>::width::Multiply(reinterpret_cast<Integer *>(child(0)->val()->data()), /*A*/
+                                             reinterpret_cast<Integer *>(child(1)->val()->data()), /*B*/
+                                             rows(child(0)->val()),
+                                             cols(child(0)->val()),
+                                             cols(child(1)->val()),                                          /*child(2) is bias*/
+                                             intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
+          } else {
+            intgemm::Int8Shift::Multiply(reinterpret_cast<int8_t *>(child(0)->val()->data()), /*A*/
+                                  reinterpret_cast<int8_t *>(child(1)->val()->data()), /*B*/
+                                  rows(child(0)->val()),
+                                  cols(child(0)->val()),
+                                  cols(child(1)->val()),                                          /*child(2) is bias*/
+                                  intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
+          }
+          //static int i = 0;
+          //std::cerr << child(1)->name() << " " << val_->data()[0] << " " << val_->data()[1] << std::endl;
+          //i++;
+          //if (i>20)
+          //  exit(0);
     )};
   }
 
@@ -295,8 +343,8 @@ static inline Expr quantMult(Expr a, bool isA=false) {
 }
 
 template<Type vtype>
-static inline Expr prepareA(Expr a, Expr quantMult, float clipValue) {
-  return Expression<PrepareANodeOp<vtype> >(a, quantMult, clipValue);
+static inline Expr prepareA(Expr a, Expr quantMult, float clipValue, bool shifted=false) {
+  return Expression<PrepareANodeOp<vtype> >(a, quantMult, clipValue, shifted);
 }
 
 template<Type vtype>
@@ -310,29 +358,33 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 }
 
 template<Type vtype>
-static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
+static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool shiftedBias=false) {
   Type bElementType = b->value_type();
   auto aQuantMult = quantMult<vtype>(a, true);
-  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale);
-  Expr bQuant;
+  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale, shiftedBias);
+  Expr bQuantMult = quantMult<vtype>(b);
+  Expr bQuant = nullptr;
   if (isIntgemm(bElementType)) {
     //This is the case where we already run SelectColumnB or we loaded a prepacked model.
     //We ignore a transpose argument here, because we do not support it.
     ABORT_IF(transB, "Transpose on prepareB not currently supported");
     bQuant = b;
   } else {
-    auto bQuantMult = quantMult<vtype>(b);
     bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }
+  if (shiftedBias) {
+    bias = Expression<PrepareBiasForBNodeOp>(bias, bQuant, aQuantMult, bQuantMult);
+  }
+
   if (bias)
-    return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, scale);
+    return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, scale, shiftedBias);
   else
     return Expression<DotNodeOp<vtype> >(aQuant, bQuant, scale);
 }
 
 template<Type vtype>
-static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
-  return affine<vtype>(a, b, nullptr, transA, transB, scale);
+static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale, bool shiftedBias=false) {
+  return affine<vtype>(a, b, nullptr, transA, transB, scale, 0 /*currently unused clipValue*/, shiftedBias);
 }
 
 }  // namespace integer

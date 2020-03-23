@@ -631,6 +631,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Optimize speed aggressively sacrificing memory or precision by using 16bit integer CPU multiplication. Only available on CPU");
   cli.add<bool>("--optimize8",
       "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer CPU multiplication. Only available on CPU");
+  cli.add<bool>("--intgemm-shifted",
+      "Use a shifted GEMM implementation. Only available with intgemm8.");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<bool>("--fp16",

@@ -89,6 +89,7 @@ public:
         if (device.type == DeviceType::cpu) {
           graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
           graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
+          graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
         }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
@@ -232,6 +233,7 @@ public:
       if (device.type == DeviceType::cpu) {
         graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
         graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
+        graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
       }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

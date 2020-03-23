@@ -13,6 +13,7 @@ class Backend : public marian::Backend {
 protected:
   bool optimized_{false};
   bool optimized8_{false};
+  bool shifted_{false};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
@@ -25,6 +26,9 @@ public:
 
   void setOptimized8(bool optimize) override { optimized8_ = optimize; }
   bool isOptimized8() override { return optimized8_; }
+
+  void setShifted(bool shifted) override { shifted_ = shifted; }
+  bool isShifted() override { return shifted_; }
 };
 }  // namespace cpu
 }  // namespace marian

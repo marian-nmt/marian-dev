@@ -421,13 +421,14 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
       if(a->graph()->getBackend()->isOptimized8() || matchType<intgemm8>(bElementType)) {
-        //bool shiftedBias = a->graph()->getBackend()->isShifted(); //@TODO
+        bool shiftedAll = a->graph()->getBackend()->isShiftedAll(); //@TODO
         return cpu::integer::dot<Type::int8>(
           a,
           b,
           transA,
           transB,
-          scale);
+          scale,
+          shiftedAll);
       } else if(a->graph()->getBackend()->isOptimized() || matchType<intgemm16>(bElementType)) {
         return cpu::integer::dot<Type::int16>(
           a,

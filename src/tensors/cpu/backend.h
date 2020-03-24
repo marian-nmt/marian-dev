@@ -14,6 +14,7 @@ protected:
   bool optimized_{false};
   bool optimized8_{false};
   bool shifted_{false};
+  bool shiftedAll_{false};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
@@ -29,6 +30,18 @@ public:
 
   void setShifted(bool shifted) override { shifted_ = shifted; }
   bool isShifted() override { return shifted_; }
+
+  void setShiftedAll(bool shiftedAll) override {
+    shiftedAll_ = shiftedAll;
+    if (shiftedAll_) {
+      shifted_ = true;
+    }
+  }
+
+  bool isShiftedAll() override {
+    return shiftedAll_;
+  }
+
 };
 }  // namespace cpu
 }  // namespace marian

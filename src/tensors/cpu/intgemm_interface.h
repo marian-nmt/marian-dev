@@ -226,6 +226,29 @@ public:
   const std::string type() override { return "prepareBias"; }
 };
 
+class PrepareFakeBiasForBNodeOp : public NaryNodeOp {
+public:
+  PrepareFakeBiasForBNodeOp(Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
+      : NaryNodeOp({inputB_preppd, a_quant_mult, b_quant_mult}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
+
+    set_name(inputB_preppd->name() + "_FakeBias");
+    setMemoize(false);
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+    auto b = this->child(0)->val();
+    auto quant_mult_a = this->child(1)->val();
+    auto quant_mult_b = this->child(2)->val();
+
+    float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
+    intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
+    )};
+  }
+
+  const std::string type() override { return "prepareFakeBias"; }
+};
+
 template<Type vtype>
 class DotNodeOp : public NaryNodeOp {
 private:
@@ -371,14 +394,17 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   } else {
     bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }
-  if (shiftedBias) {
+  if (shiftedBias && bias) {
     bias = Expression<PrepareBiasForBNodeOp>(bias, bQuant, aQuantMult, bQuantMult);
+  } else if (shiftedBias) {
+    bias = Expression<PrepareFakeBiasForBNodeOp>(bQuant, aQuantMult, bQuantMult);
   }
 
-  if (bias)
+  if (bias) {
     return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, scale, shiftedBias);
-  else
+  } else {
     return Expression<DotNodeOp<vtype> >(aQuant, bQuant, scale);
+  }
 }
 
 template<Type vtype>

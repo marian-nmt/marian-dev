@@ -78,6 +78,7 @@ public:
         graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
         graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
         graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
+        graph->getBackend()->setShiftedAll(options_->get<bool>("intgemm-shifted-all"));
       }
 
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));

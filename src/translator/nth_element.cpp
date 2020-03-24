@@ -34,8 +34,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     const bool isFirst,
                     std::vector<std::vector<int>> trieVocabIdxs) {
     
-    /* used for debugging
-
+    // vocabMap used for debugging
     std::map<int, std::string> vocabMap;
     std::string delimiter = ": ";
     std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
@@ -47,15 +46,15 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
       vocabMap[count] = token;
       ++count;
     }
-    */
+
 
     const auto vocabSize = scores->shape()[-1];
-    const auto inputN    = scores->shape()[-4];
+    const auto inputN    = scores->shape()[-2];
     // const auto dimBatch  = scores->shape()[-4];
     const size_t dimBatch = 1;
 
-    // std::cout << scores->shape() << std::endl;
-    // std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
+    std::cout << scores->shape() << std::endl;
+    std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
@@ -89,12 +88,12 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
       // int pos = batchIdx * N; // iterates through h_res and h_res_idx
       for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
         int idx = idxs[temp];
-        //std::cout << "(" << idx << ", " << idx % vocabSize << ", " << vocabMap[idx % vocabSize] << ") ";
+        std::cout << "(" << idx << ", " << idx % vocabSize << ", " << vocabMap[idx % vocabSize] << ") ";
         h_res_idx.push_back(idx + batchIdx * batchOffset);
         h_res.push_back(scoresData[idx]);
         // ++pos;
       }
-      //std::cout << std::endl;
+      std::cout << std::endl;
       //std::cout << "finished copying to h_res and h_res_idx\n";
       scoresData += batchOffset;
     }

@@ -404,9 +404,10 @@ public:
                   if(factorGroup == 0)
                     currentBatchIdx = prevBatchIdxMap[origBatchIdx]; // subselection may happen for factorGroup == 0
                   else
-                    currentBatchIdx = batchIdxMap[origBatchIdx];     // no subselection happens for factorGroup > 0,
-                                                                     // but we treat it like a next step, since a step
-                                                                     // happened for factorGroup == 0
+                    currentBatchIdx = batchIdxMap[origBatchIdx];
+                    // no subselection happens for factorGroup > 0,
+                    // but we treat it like a next step, since a step
+                    // happened for factorGroup == 0
                 }
 
                 auto hypIndex = (IndexType)(hyp->getPrevStateIndex() * currentDimBatch + currentBatchIdx); // (beamHypIdx, batchIdx), flattened, for index_select() operation
@@ -491,24 +492,22 @@ public:
         //**********************************************************************
         // perform beam search
 
-        // std::map<int, std::string> vocabMap;
-        // std::string delimiter = ": ";
-        // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
-        // int count = 0;
-        // for( std::string line; getline( input, line ); ) {
-        //   boost::trim_right(line);
-        //   std::string token = line.substr(0, line.find(delimiter));
-          // std::cout << token << " is " << count << ", ";
-        //   vocabMap[count] = token;
-        //   ++count;
-        // }
+        std::map<int, std::string> vocabMap;
+        std::string delimiter = ": ";
+        std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+        int count = 0;
+        for( std::string line; getline( input, line ); ) {
+          boost::trim_right(line);
+          std::string token = line.substr(0, line.find(delimiter));
+          vocabMap[count] = token;
+          ++count;
+        }
         
         int vocabSize = expandedPathScores->shape()[-1];
-        int maxBeamSize = expandedPathScores->shape()[-2];
         // @TODO use single batch for now
         // int dimBatch = expandedPathScores->shape()[-4];
         int dimBatch = 1;
-        std::vector<std::vector<int>> trieVocabIdxs(1);
+        std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
 
         // the line below is actually (num of sentences) * (num of hyps)
         // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
@@ -537,7 +536,7 @@ public:
             }
           }
           // std::cout << "\n";
-          // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
+          std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
         }
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses

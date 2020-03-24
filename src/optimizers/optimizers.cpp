@@ -437,7 +437,7 @@ void Adam::load(std::vector<io::Item>& items,
     } else if(item.name == "adam_vt") {
       iVt = std::move(item);
     } else if(item.name == "adam_denoms") {
-      ABORT_IF(item.size() != 2 * sizeof(double), "adam_denoms should have 2 entries");
+      ABORT_IF(item.size() != 2 * sizeof(double), "adam_denoms should have 2 entries not {} bytes", item.size());
       std::copy((double*)item.data(), ((double*)item.data()) + 2, vDenoms.begin());
       // Back compat note: Old files lacked "adam_denoms". For those, vDenoms will remain 0, which reproduces the old behavior.
     }
@@ -455,10 +455,14 @@ void Adam::load(std::vector<io::Item>& items,
 
   ABORT_IF(iMt.size() != iVt.size(), "mt and vt have different sizes??");
 
-  //LOG(info, "loading Adam params");
   scatterFn(iMt,
     [&](size_t localDeviceIndex, const char* begin, const char* end) {
       auto opt = std::dynamic_pointer_cast<Adam>(opts[localDeviceIndex]);
+
+      // denominators need to be set in all shards, hijack this scatter
+      opt->denom1_ = vDenoms[0];
+      opt->denom2_ = vDenoms[1];
+
       if(!opt->mt_ || !opt->vt_) { // lazily allocate
         if(!opt->alloc_)
           opt->alloc_ = New<TensorAllocator>(backends[localDeviceIndex]);
@@ -476,10 +480,6 @@ void Adam::load(std::vector<io::Item>& items,
       auto opt = std::dynamic_pointer_cast<Adam>(opts[id]);
       opt->vt_->set(begin, end, iVt.type);
     });
-
-  denom1_ = vDenoms[0];
-  denom2_ = vDenoms[1];
-  //LOG(info, "done loading Adam params");
 }
 
 void Adam::save(std::vector<io::Item>& items,

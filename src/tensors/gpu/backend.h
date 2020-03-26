@@ -93,10 +93,18 @@ public:
   }
 
   void setShiftedAll(bool shiftedAll) override {
-    LOG_ONCE(info, "setShifted() not supported for GPU_{}", shiftedAll);
+    LOG_ONCE(info, "setShiftedAll() not supported for GPU_{}", shiftedAll);
   }
 
   bool isShiftedAll() override {
+    return false;
+  }
+
+  void setDumpQuantMult(bool dump) override {
+    LOG_ONCE(info, "setDumpQuantMult() not supported for GPU_{}", dump);
+  }
+
+  bool DumpQuantMult() override {
     return false;
   }
 

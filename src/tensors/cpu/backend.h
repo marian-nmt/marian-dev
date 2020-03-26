@@ -15,6 +15,7 @@ protected:
   bool optimized8_{false};
   bool shifted_{false};
   bool shiftedAll_{false};
+  bool dumpMatrices_{false};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
@@ -40,6 +41,14 @@ public:
 
   bool isShiftedAll() override {
     return shiftedAll_;
+  }
+
+  void setDumpQuantMult(bool dump) override {
+    dumpMatrices_ = dump;
+  }
+
+  bool DumpQuantMult() override {
+    return dumpMatrices_;
   }
 
 };

@@ -164,10 +164,10 @@ private:
 template<Type vtype>
 struct QuantMultNodeOp : public UnaryNodeOp {
   bool isA_;
-  QuantMultNodeOp(Expr input, bool isA) : UnaryNodeOp(input, Shape({1}), Type::float32), isA_(isA) {
+  QuantMultNodeOp(Expr input, std::string& bname, bool isA) : UnaryNodeOp(input, Shape({1}), Type::float32), isA_(isA) {
     if (isA_) {
       setMemoize(false);
-      set_name(input->name() + "_QuantMultA");
+      set_name(bname + "_QuantMultA");
     } else {
       set_name(input->name() + "_QuantMultB");
     }
@@ -183,8 +183,13 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         typedef typename intgemm_<vtype>::type Integer;
         *val_->data() = *(reinterpret_cast<float *>(reinterpret_cast<Integer *>(child(0)->val()->data()) + child(0)->val()->shape().elements()));
       } else {
-        *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(),
-                            child(0)->val()->data() + child(0)->val()->shape().elements());
+        if (child(0)->graph()->getBackend()->DumpQuantMult()) {
+          intgemm::MeanStd meanstd = intgemm::GetQuantizerStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements(), true);
+          intgemm::MeanStd meanstd2 = intgemm::GetQuantizerStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
+          std::cerr << "Name: " << name() << "MeanAbs: " << meanstd.mean << " stddevAbs: " << meanstd.stddev << "Mean: " << meanstd2.mean << " stddev: "
+          << meanstd2.stddev << "MaxAbs: " << intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements()) << std::endl;
+        }
+        *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
       }
     )};
   }
@@ -360,8 +365,8 @@ public:
 };
 
 template<Type vtype>
-static inline Expr quantMult(Expr a, bool isA=false) {
-  return Expression<QuantMultNodeOp<vtype> >(a, isA);
+static inline Expr quantMult(Expr a, std::string Bname, bool isA=false) {
+  return Expression<QuantMultNodeOp<vtype> >(a, Bname, isA);
 }
 
 template<Type vtype>
@@ -382,9 +387,10 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool shiftedBias=false) {
   Type bElementType = b->value_type();
-  auto aQuantMult = quantMult<vtype>(a, true);
+  std::string bname = b->name();
+  auto aQuantMult = quantMult<vtype>(a, bname, true);
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale, shiftedBias);
-  Expr bQuantMult = quantMult<vtype>(b);
+  Expr bQuantMult = quantMult<vtype>(b, bname);
   Expr bQuant = nullptr;
   if (isIntgemm(bElementType)) {
     //This is the case where we already run SelectColumnB or we loaded a prepacked model.

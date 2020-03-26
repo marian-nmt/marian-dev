@@ -38,6 +38,8 @@ public:
   virtual bool isShifted() = 0;
   virtual void setShiftedAll(bool shifted) = 0;
   virtual bool isShiftedAll() = 0;
+  virtual void setDumpQuantMult(bool dump) = 0;
+  virtual bool DumpQuantMult() = 0;
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

@@ -635,6 +635,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Use a shifted GEMM implementation. Only available with intgemm8.");
   cli.add<bool>("--intgemm-shifted-all",
       "Use a shifted GEMM implementation even for operations without biases. Only available with intgemm8.");
+  cli.add<bool>("--dump-quantmult",
+      "Dump the quantization multipliers during an avarage run.");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<bool>("--fp16",

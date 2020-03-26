@@ -121,7 +121,8 @@ void Corpus::shuffle() {
 
 // reset to regular, non-shuffled reading
 // Call either reset() or shuffle().
-// @TODO: make shuffle() private, instad pass a shuffle() flag to reset(), to clarify mutual exclusiveness with shuffle()
+// @TODO: make shuffle() private, instad pass a shuffle() flag to reset(), to clarify mutual
+// exclusiveness with shuffle()
 void Corpus::reset() {
   corpusInRAM_.clear();
   ids_.clear();
@@ -151,6 +152,10 @@ void Corpus::restore(Ptr<TrainingState> ts) {
 
 void Corpus::shuffleData(const std::vector<std::string>& paths) {
   LOG(info, "[data] Shuffling data");
+
+  ABORT_IF(tsv_ && paths[0] == "stdin",
+           "Shuffling training data from STDIN is not supported. Remove the --shuffle option or "
+           "provide training sets using --train-sets");
 
   size_t numStreams = paths.size();
 

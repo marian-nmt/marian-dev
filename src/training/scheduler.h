@@ -153,7 +153,6 @@ public:
   }
 
   bool keepGoing() {
-
     if(getSigtermFlag()) // received signal SIGERM => exit gracefully
       return false;
 
@@ -169,8 +168,13 @@ public:
 
     // stop if the first validator did not improve for a given number of checks
     size_t stopAfterStalled = options_->get<size_t>("early-stopping");
-    if(stopAfterStalled > 0 && !validators_.empty()
-       && stalled() >= stopAfterStalled)
+    if(stopAfterStalled > 0 && !validators_.empty() && stalled() >= stopAfterStalled)
+      return false;
+
+    // stop if data streaming from STDIN is stopped for a TSV input
+    bool tsvFromStdin = options_->get<bool>("tsv", false)
+                        && (options_->get<std::vector<std::string>>("train-sets")[0] == "stdin");
+    if(tsvFromStdin && state_->epochs > 1)
       return false;
 
     return true;

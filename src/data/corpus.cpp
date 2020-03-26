@@ -78,13 +78,22 @@ SentenceTuple Corpus::next() {
         }
       }
 
-      if(i > 0 && i == alignFileIdx_) { // @TODO: alignFileIdx == 0 possible?
+      if(i > 0 && i == alignFileIdx_) {
         addAlignmentToSentenceTuple(line, tup);
       } else if(i > 0 && i == weightFileIdx_) {
         addWeightsToSentenceTuple(line, tup);
       } else {
-        preprocessLine(line, i);
-        addWordsToSentenceTuple(line, i, tup);
+        if(tsv_) {  // split TSV input and add each field into the sentence tuple
+          std::vector<std::string> fields(tsvNumFields_);
+          utils::splitTsv(line, fields, tsvNumFields_);
+          for(size_t j = 0; j < tsvNumFields_; ++j) {
+            preprocessLine(fields[j], j);
+            addWordsToSentenceTuple(fields[j], j, tup);
+          }
+        } else {
+          preprocessLine(line, i);
+          addWordsToSentenceTuple(line, i, tup);
+        }
       }
     }
 

@@ -36,9 +36,16 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       vocabs_(vocabs),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
-      rightLeft_(options_->get<bool>("right-left")) {
-  ABORT_IF(paths_.size() != vocabs_.size(),
-           "Number of corpus files and vocab files does not agree");
+      rightLeft_(options_->get<bool>("right-left")),
+      tsv_(options_->get<bool>("tsv", false)),
+      tsvNumFields_(options->get<size_t>("tsv-size", 0)) {
+  if(tsv_) {
+    ABORT_IF(tsvNumFields_ != vocabs_.size(),
+             "Number of TSV fields and vocab files does not agree");
+  } else {
+    ABORT_IF(paths_.size() != vocabs_.size(),
+             "Number of corpus files and vocab files does not agree");
+  }
 
   for(auto path : paths_) {
     UPtr<io::InputFileStream> strm(new io::InputFileStream(path));
@@ -53,7 +60,9 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     : DatasetBase(options),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
-      rightLeft_(options_->get<bool>("right-left")) {
+      rightLeft_(options_->get<bool>("right-left")),
+      tsv_(options_->get<bool>("tsv", false)),
+      tsvNumFields_(options->get<size_t>("tsv-size", 0)) {
   bool training = !translate;
 
   if(training)
@@ -68,8 +77,13 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     vocabPaths = options_->get<std::vector<std::string>>("vocabs");
 
   if(training) {
-    ABORT_IF(!vocabPaths.empty() && paths_.size() != vocabPaths.size(),
-             "Number of corpus files and vocab files does not agree");
+    if(tsv_) {
+      ABORT_IF(!vocabPaths.empty() && tsvNumFields_ != vocabPaths.size(),
+               "Number of TSV fields and vocab files does not agree");
+    } else {
+      ABORT_IF(!vocabPaths.empty() && paths_.size() != vocabPaths.size(),
+               "Number of corpus files and vocab files does not agree");
+    }
   }
 
   // @TODO: check if size_t can be used instead of int
@@ -78,6 +92,9 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
   // training or scoring
   if(training) {
     if(vocabPaths.empty()) {
+      // TODO: implement
+      ABORT_IF(tsv_, "Creating vocabularies from a TSV input is not yet supported.");
+
       if(maxVocabs.size() < paths_.size())
         maxVocabs.resize(paths_.size(), 0);
 
@@ -99,23 +116,28 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       // creation functionality from the class.
       options_->set("dim-vocabs", vocabDims, "vocabs", vocabPaths1);
     } else {
+
+      // TODO: add an attribute for numStreams in CorpusBAse
+      size_t numStreams = tsv_ ? tsvNumFields_ : paths_.size();
+
       // Load all vocabs
       size_t numVocs = vocabPaths.size();
       if(maxVocabs.size() < numVocs)
-        maxVocabs.resize(paths_.size(), 0);
+        maxVocabs.resize(numStreams, 0);
 
-      // Helper object to for grouping training data based on vocabulary file name
+      // Helper object for grouping training data based on vocabulary file name
       struct PathsAndSize {
         std::set<std::string> paths; // contains all paths that are used for training the vocabulary
         size_t size;                 // contains the maximum vocabulary size
       };
 
-      // Group training files based on vocabulary path. If the same
-      // vocab path corresponds to different training files, this means
-      // that a single vocab should combine tokens from all files.
-      std::map<std::string, PathsAndSize> groupVocab;
+      // Group training files based on vocabulary path. If the same vocab path corresponds to
+      // different training files, this means that a single vocab should combine tokens from all
+      // files.
+      std::map<std::string, PathsAndSize> groupVocab; // vocabPath -> (trainPaths[], vocabSize)
       for(size_t i = 0; i < numVocs; ++i) {
-        groupVocab[vocabPaths[i]].paths.insert(paths_[i]);
+        // TSV input is always a single file
+        groupVocab[vocabPaths[i]].paths.insert(paths_[tsv_ ? 0 : i]);
         if(groupVocab[vocabPaths[i]].size < maxVocabs[i])
           groupVocab[vocabPaths[i]].size = maxVocabs[i];
       }
@@ -123,11 +145,18 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
       vocabDims.resize(numVocs, 0);
       for(size_t i = 0; i < numVocs; ++i) {
+        // Creating the vocabulary from TSV input is not supported
+        // TODO: support the case for joint/separate vocabs unless -t stdin
+        ABORT_IF(tsv_ && (vocabPaths[i].empty() || !filesystem::exists(vocabPaths[i])),
+            "Creating vocabulary automatically from a TSV input is currently not supported. "
+            "Create vocabularies first and provide them using --vocabs");
+
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
 
         // Get the set of files that corresponds to the vocab. If the next file is the same vocab,
-        // it wild not be created again, but just correctly loaded.
+        // it will not be created again, but just correctly loaded.
         auto pathsAndSize = groupVocab[vocabPaths[i]];
+
         std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
         vocabDims[i] = (int) vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
         vocabs_.emplace_back(vocab);
@@ -170,7 +199,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     }
   }
 
-  ABORT_IF(vocabs_.size() != files_.size(),
+  ABORT_IF(!tsv_ && vocabs_.size() != files_.size(),
            "Number of {} files ({}) and vocab files ({}) does not agree",
            training ? "corpus" : "input",
            files_.size(),
@@ -206,7 +235,6 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
 void CorpusBase::addWordsToSentenceTuple(const std::string& line,
                                          size_t batchIndex,
                                          SentenceTuple& tup) const {
-
   // This turns a string in to a sequence of numerical word ids. Depending
   // on the vocabulary type, this can be non-trivial, e.g. when SentencePiece
   // is used.
@@ -298,26 +326,28 @@ void CorpusBase::addWeightsToBatch(Ptr<CorpusBatch> batch,
 
 void CorpusBase::initEOS(bool training = true) {
   // Labels fed into sub-batches that are just class-labels, not sequence labels do not require to
-  // add a EOS symbol. Hence decision to add EOS is now based on input stream positions and correspoding
-  // input type.
+  // add a EOS symbol. Hence decision to add EOS is now based on input stream positions and
+  // correspoding input type.
 
-  addEOS_.resize(paths_.size(), true);
+  size_t numStreams = tsv_ ? tsvNumFields_ : paths_.size(); // determine number of streams
+
+  addEOS_.resize(numStreams, true);
   // @TODO: think if this should be checked and processed here or in a validation step in config?
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
 
   // make sure there is an input type for each path
-  ABORT_IF(inputTypes.size() > 0 && inputTypes.size() < paths_.size(),
+  ABORT_IF(inputTypes.size() > 0 && inputTypes.size() < numStreams,
            "Input types have been specified ({}), you need to specify one per input ({})",
            inputTypes.size(),
-           paths_.size());
+           numStreams);
 
   // make sure there is an equal number of input types and paths when training
-  ABORT_IF(training && inputTypes.size() > 0 && inputTypes.size() != paths_.size(),
+  ABORT_IF(training && inputTypes.size() > 0 && inputTypes.size() != numStreams,
            "Input types have been specified ({}), you need to specify one per input ({})",
            inputTypes.size(),
-           paths_.size());
+           numStreams);
 
-  for(int i = 0; i < paths_.size(); ++i)
+  for(int i = 0; i < numStreams; ++i)
     if(inputTypes.size() > i) {
       if(inputTypes[i] == "class")
         addEOS_[i] = false;

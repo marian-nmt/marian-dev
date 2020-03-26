@@ -375,6 +375,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "10000u");
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
 
   // data management options
   cli.add<std::string>("--shuffle",
@@ -497,8 +498,10 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       {"float32", "float32", "float32"});
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
-      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
-  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
+      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
+    ->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+  cli.add<bool>("--normalize-gradient",
+      "Normalize gradient by multiplying with no. devices / total labels");
 
   // multi-node training
   cli.add<bool>("--multi-node",
@@ -623,8 +626,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Keep the output segmented into SentencePiece subwords");
 #endif
 
-  addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
+  addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
   cli.add<bool>("--optimize",
@@ -684,6 +688,7 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
      ->implicit_val("1"),
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
@@ -788,6 +793,15 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
       "Crop a sentence to max-length instead of omitting it if longer than max-length");
+  // clang-format on
+}
+
+void ConfigParser::addSuboptionsTSV(cli::CLIWrapper& cli) {
+  // clang-format off
+  cli.add<bool>("--tsv",
+      "Tab-separated input");
+  cli.add<size_t>("--tsv-size",
+      "Number of fields in the TSV input");
   // clang-format on
 }
 

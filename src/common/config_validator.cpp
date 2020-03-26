@@ -70,9 +70,14 @@ void ConfigValidator::validateOptionsParallelData() const {
   auto trainSets = get<std::vector<std::string>>("train-sets");
   ABORT_IF(trainSets.empty(), "No train sets given in config file or on command line");
 
-  auto vocabs = get<std::vector<std::string>>("vocabs");
-  ABORT_IF(!vocabs.empty() && vocabs.size() != trainSets.size(),
+  auto numVocabs = get<std::vector<std::string>>("vocabs").size();
+  auto numStreams = get<bool>("tsv") ? get<size_t>("tsv-size") : trainSets.size();
+
+  ABORT_IF(numVocabs > 0 && numVocabs != numStreams,
            "There should be as many vocabularies as training sets");
+
+  ABORT_IF(get<bool>("tsv") && trainSets.size() != 1,
+      "A single file can be provided with --train-sets (or stdin) for a tab-separated input");
 }
 
 void ConfigValidator::validateOptionsScoring() const {

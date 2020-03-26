@@ -67,6 +67,24 @@ void split(const std::string& line,
   }
 }
 
+void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t numFields){
+  fields.clear();
+  if(fields.capacity() != numFields) // make sure the number of fields is always as requested
+    fields.resize(numFields);
+
+  size_t begin = 0;
+  size_t pos = 0;
+  for(size_t i = 0; i < numFields; ++i) {
+    pos = line.find('\t', begin);
+    if(pos == std::string::npos) {
+      fields.push_back(line.substr(begin));
+      break;
+    }
+    fields.push_back(line.substr(begin, pos - begin));
+    begin = pos + 1;
+  }
+}
+
 std::vector<std::string> split(const std::string& line,
                                const std::string& del /*= " "*/,
                                bool keepEmpty /*= false*/,

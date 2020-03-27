@@ -92,8 +92,10 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
   // training or scoring
   if(training) {
     if(vocabPaths.empty()) {
-      // TODO: implement
-      ABORT_IF(tsv_, "Creating vocabularies from a TSV input is not yet supported.");
+      // Creating a vocabulary from stdin is not supported
+      ABORT_IF(tsv_ && paths_[0] == "stdin",
+               "Creating vocabularies automatically from a data stream from STDIN is not supported. "
+               "Create vocabularies first and provide them with --vocabs");
 
       if(maxVocabs.size() < paths_.size())
         maxVocabs.resize(paths_.size(), 0);
@@ -145,10 +147,10 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
       vocabDims.resize(numVocs, 0);
       for(size_t i = 0; i < numVocs; ++i) {
-        // Creating the vocabulary from TSV input is not supported
-        // TODO: support the case for joint/separate vocabs unless -t stdin
-        ABORT_IF(tsv_ && (vocabPaths[i].empty() || !filesystem::exists(vocabPaths[i])),
-            "Creating vocabulary automatically from a TSV input is currently not supported. "
+        // Creating a vocabulary from stdin is not supported
+        ABORT_IF(tsv_ && paths_[0] == "stdin"
+                 && (vocabPaths[i].empty() || !filesystem::exists(vocabPaths[i])),
+            "Creating vocabulary automatically from a data stream from STDIN is not supported. "
             "Create vocabularies first and provide them using --vocabs");
 
         Ptr<Vocab> vocab = New<Vocab>(options_, i);

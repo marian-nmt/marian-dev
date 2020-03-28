@@ -91,7 +91,51 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
 
   // training or scoring
   if(training) {
+    // Marian can create vocabularies automatically if no vocabularies are given or they do not
+    // exists under the specified paths.
+    //
+    // Possible cases:
+    //  * -t train1 train2 -v vocab1 vocab2
+    //    If vocab1 or vocab2 exists, they are loaded, otherwise separate .yml vocabularies are
+    //    created only from train1 or train2 respectively.
+    //
+    //  * -t train1 train2 -v vocab vocab
+    //    If vocab exists, it is loaded, otherwise it is created from concatenated train1 and train2
+    //    files.
+    //
+    //  * -t train1 train2
+    //    If no path is given, separate vocabularies train1.yml and train2.yml are created from
+    //    train1 and train2 respectively.
+    //
+    //  * --tsv -t train.tsv -v vocab1 vocab2
+    //    If vocab1 or vocab2 exists, it is loaded; otherwise each vocabulary is created from all
+    //    fields in train.tsv.
+    //    Note that this is different than the behavior above, where separate vocabularies are
+    //    created.
+    //    // TODO: implement creation of separate vocabularies
+    //
+    //  * --tsv -t train.tsv -v vocab vocab
+    //    If vocab exist, it is loaded; otherwise it is created from all fields in train.tsv.
+    //
+    //  * --tsv -t train.tsv
+    //    If no path is given, a train.tsv.yml is created from all fields in train.tsv.
+    //
+    //  * cat file.tsv | --tsv -t stdin -v vocab1 vocab2
+    //    If either vocab1 or vocab2 does not exist, an error is shown that creation of vocabularies
+    //    from stdin is not supported.
+    //
+    //  * cat file.tsv | --tsv -t stdin -v vocab vocab
+    //    If vocab does not exist, an error is shown that creation of a vocabulary from stdin is not
+    //    supported.
+    //
+    //  * cat file.tsv | --tsv -t stdin
+    //    As above, an error is shown that creation of a vocabulary from stdin is not supported.
+    //
+    //  There is more cases for multi-encoder models not listed above.
+    //
     if(vocabPaths.empty()) {
+      size_t numStreams = tsv_ ? tsvNumFields_ : paths_.size();
+
       // Creating a vocabulary from stdin is not supported
       ABORT_IF(tsv_ && paths_[0] == "stdin",
                "Creating vocabularies automatically from a data stream from STDIN is not supported. "
@@ -100,26 +144,33 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       if(maxVocabs.size() < paths_.size())
         maxVocabs.resize(paths_.size(), 0);
 
-      LOG(info, "No vocabulary files given, trying to find or build based on training data. "
-                "Vocabularies will be built separately for each file.");
+      LOG(info,
+          "[data] No vocabulary files given, trying to find or build based on training data.");
+      if(!tsv_)
+        LOG(info, "[data] Vocabularies will be built separately for each file.");
+      else
+        LOG(info, "[data] A joint vocabulary will be built from the TSV file.");
 
-      std::vector<int> vocabDims(paths_.size(), 0);
-      std::vector<std::string> vocabPaths1(paths_.size());
+      std::vector<int> vocabDims(numStreams, 0);
+      std::vector<std::string> vocabPaths1(numStreams);
+
       // Create vocabs if not provided
-      for(size_t i = 0; i < paths_.size(); ++i) {
+      for(size_t i = 0; i < numStreams; ++i) {
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
-        std::vector<std::string> trainPaths = { paths_[i] };
+
+        const auto& path = paths_[tsv_ ? 0 : i];  // there is always only one TSV file
+        std::vector<std::string> trainPaths = {path};
+        vocabPaths1[i] = path + ".yml";
+
         vocabDims[i] = (int) vocab->loadOrCreate("", trainPaths, maxVocabs[i]);
-        vocabPaths1[i] = paths_[i] + ".yml";
         vocabs_.emplace_back(vocab);
       }
       // TODO: this is not nice as it modifies the option object and needs to expose the changes
       // outside the corpus as models need to know about the vocabulary size; extract the vocab
       // creation functionality from the class.
       options_->set("dim-vocabs", vocabDims, "vocabs", vocabPaths1);
-    } else {
 
-      // TODO: add an attribute for numStreams in CorpusBAse
+    } else { // Vocabulary paths are given
       size_t numStreams = tsv_ ? tsvNumFields_ : paths_.size();
 
       // Load all vocabs
@@ -144,14 +195,27 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
           groupVocab[vocabPaths[i]].size = maxVocabs[i];
       }
 
+      // Creating vocabularies from selected fields in the TSV file is not yet supported.
+      // TODO: handle this case
+      if(tsv_ && groupVocab.size() > 1
+         && std::any_of(vocabPaths.begin(), vocabPaths.end(), [](const std::string& p) {
+              return !filesystem::exists(p);
+            })) {
+        LOG(warn,
+            "[data] A joint vocabulary will be built from the entire TSV file. "
+            "If you want to have separate vocabularies, built it outside Marian or provide the "
+            "training sets as separate files for source(s) and target.");
+      }
+
       auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
-      vocabDims.resize(numVocs, 0);
+      vocabDims.resize(numVocs, 0); // make sure there is as many dims as vocab paths
+
       for(size_t i = 0; i < numVocs; ++i) {
         // Creating a vocabulary from stdin is not supported
         ABORT_IF(tsv_ && paths_[0] == "stdin"
                  && (vocabPaths[i].empty() || !filesystem::exists(vocabPaths[i])),
             "Creating vocabulary automatically from a data stream from STDIN is not supported. "
-            "Create vocabularies first and provide them using --vocabs");
+            "Create vocabularies first and provide them with --vocabs");
 
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
 
@@ -171,8 +235,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
   }
 
   if(translate) {
-    ABORT_IF(vocabPaths.empty(),
-             "Translating, but vocabularies are not given!");
+    ABORT_IF(vocabPaths.empty(), "Translating, but vocabularies are not given!");
 
     size_t numVocs = vocabPaths.size();
     if(maxVocabs.size() < numVocs)

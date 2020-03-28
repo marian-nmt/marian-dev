@@ -71,9 +71,7 @@ void ConfigValidator::validateOptionsParallelData() const {
   ABORT_IF(trainSets.empty(), "No train sets given in config file or on command line");
 
   auto numVocabs = get<std::vector<std::string>>("vocabs").size();
-  auto numStreams = get<bool>("tsv") ? get<size_t>("tsv-size") : trainSets.size();
-
-  ABORT_IF(numVocabs > 0 && numVocabs != numStreams,
+  ABORT_IF(!get<bool>("tsv") && numVocabs > 0 && numVocabs != trainSets.size(),
            "There should be as many vocabularies as training sets");
 
   ABORT_IF(get<bool>("tsv") && trainSets.size() != 1,

@@ -71,6 +71,20 @@ void Config::initialize(ConfigParser const& cp) {
     }
   }
 
+  // guess --tsv-size if not set
+  if(get<bool>("tsv") && get<size_t>("tsv-size") == 0) {
+    auto modelType = get<std::string>("type");
+
+    size_t tsvSize = 1;
+    if(modelType.find("multi-", 0) != std::string::npos) // is a dual-source model
+      tsvSize += 1;
+    if(mode == cli::mode::training || mode == cli::mode::scoring)
+      if(modelType.rfind("lm", 0) != 0) // unless it is a language model
+        tsvSize += 1;
+
+    config_["tsv-size"] = tsvSize;
+  }
+
   // echo full configuration
   log();
 

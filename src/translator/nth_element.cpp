@@ -35,24 +35,24 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     std::vector<std::vector<int>> trieVocabIdxs) {
     
     // vocabMap used for debugging
-    std::map<int, std::string> vocabMap;
-    std::string delimiter = ": ";
-    std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
-    int count = 0;
-    for( std::string line; getline( input, line ); ) {
-      boost::trim_right(line);
-      std::string token = line.substr(0, line.find(delimiter));
-      // std::cout << token << " is " << count << ", ";
-      vocabMap[count] = token;
-      ++count;
-    }
+    // std::map<int, std::string> vocabMap;
+    // std::string delimiter = ": ";
+    // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+    // int count = 0;
+    // for( std::string line; getline( input, line ); ) {
+    //   boost::trim_right(line);
+    //   std::string token = line.substr(0, line.find(delimiter));
+    //   // std::cout << token << " is " << count << ", ";
+    //   vocabMap[count] = token;
+    //   ++count;
+    // }
 
     const auto vocabSize = scores->shape()[-1];
     const auto inputN    = scores->shape()[-2];
     const auto dimBatch  = scores->shape()[-4];
 
-    std::cout << scores->shape() << std::endl;
-    std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
+    // std::cout << scores->shape() << std::endl;
+    // std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
@@ -66,15 +66,15 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
     // std::iota(idxs.begin(), idxs.end(), 0);
     // std::cout << "before batch loop\n";
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
-      std::cout << batchIdx << std::endl;
+      // std::cout << batchIdx << std::endl;
       std::vector<int> idxs = trieVocabIdxs[batchIdx]; // idxs for all hyps
-      //std::cout << "size of idxs for current batch: " << idxs.size() << std::endl;
+      // std::cout << "size of idxs for current batch: " << idxs.size() << std::endl;
       //for(size_t i = 0; i < idxs.size(); ++i) {
         // if (vocabMap[idxs[i] % vocabSize] == "around" || vocabMap[idxs[i] % vocabSize] == "(" || vocabMap[idxs[i] % vocabSize] == "<unk>" || vocabMap[idxs[i] % vocabSize] == "," ) {
           // std::cout << "idx, vocab and score: " << idxs[i] << ", " << vocabMap[idxs[i] % vocabSize] << ", " << scoresData[idxs[i]] << " | ";
         // }
       //}
-      //std::cout << "\n";
+      // std::cout << "\n";
       // std::cout << "loop1\n";
       std::partial_sort(
         idxs.begin(),
@@ -86,20 +86,20 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
 
       // std::cout << "selected idxs: ";
       // int pos = batchIdx * N; // iterates through h_res and h_res_idx
-      std::cout << "sentence (batch) " << batchIdx << ":" << std::endl;
+      // std::cout << "sentence (batch) " << batchIdx << ":" << std::endl;
       for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
         int idx = idxs[temp];
-        std::cout << "(" << idx + batchIdx * batchOffset << ", " << (idx + batchIdx * batchOffset) % vocabSize << ", " << vocabMap[(idx + batchIdx * batchOffset) % vocabSize] << ") ";
+        // std::cout << "(" << idx + batchIdx * batchOffset << ", " << (idx + batchIdx * batchOffset) % vocabSize << ", " << vocabMap[(idx + batchIdx * batchOffset) % vocabSize] << ") ";
         h_res_idx.push_back(idx + batchIdx * batchOffset);
         // scores do not need offset because the pointer gets advanced each time
         h_res.push_back(scoresData[idx]);
       }
-      std::cout << "size of h_res: " << h_res.size() << std::endl;
-      //std::cout << "finished copying to h_res and h_res_idx\n";
+      // std::cout << "size of h_res: " << h_res.size() << std::endl;
+      // std::cout << "finished copying to h_res and h_res_idx\n";
       scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
-    //std::cout << "finished getPairs(). Size of h_res is:" << outKeys.size() << "\n";
+    // std::cout << "finished getPairs(). Size of h_res is:" << outKeys.size() << "\n";
   }
 
 private:

@@ -56,8 +56,8 @@ public:
                const std::vector<bool>& dropBatchEntries, // [origDimBatch] - empty source batch entries are marked with true, should be cleared after first use.
                const std::vector<IndexType>& batchIdxMap) const { // [origBatchIdx -> currentBatchIdx]
 
-    std::cout << "size of keys and scores: "<< nBestKeys.size() << " and " << nBestPathScores.size() << std::endl;
-    std::cout << "nBestBeamSize: " << nBestBeamSize << std::endl;
+    // std::cout << "size of keys and scores: "<< nBestKeys.size() << " and " << nBestPathScores.size() << std::endl;
+    // std::cout << "nBestBeamSize: " << nBestBeamSize << std::endl;
     std::vector<float> align; // collects alignment information from the last executed time step
     if(options_->hasAndNotEmpty("alignment") && factorGroup == 0)
       align = scorers_[0]->getAlignment(); // [beam depth * max src length * current batch size] -> P(s|t); use alignments from the first scorer, even if ensemble,
@@ -495,30 +495,30 @@ public:
         //**********************************************************************
         // perform beam search
 
-        std::map<int, std::string> vocabMap;
-        std::string delimiter = ": ";
-        std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
-        int count = 0;
-        for( std::string line; getline( input, line ); ) {
-          boost::trim_right(line);
-          std::string token = line.substr(0, line.find(delimiter));
-          vocabMap[count] = token;
-          ++count;
-        }
+        // std::map<int, std::string> vocabMap;
+        // std::string delimiter = ": ";
+        // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+        // int count = 0;
+        // for( std::string line; getline( input, line ); ) {
+        //   boost::trim_right(line);
+        //   std::string token = line.substr(0, line.find(delimiter));
+        //   vocabMap[count] = token;
+        //   ++count;
+        // }
         
         int dimBatch = expandedPathScores->shape()[-4];
         int vocabSize = expandedPathScores->shape()[-1];
         std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
 
-        std::cout << "sizes of trie vocab: " << trieVocabIdxs.size() << std::endl;
+        // std::cout << "sizes of trie vocab: " << trieVocabIdxs.size() << std::endl;
 
         // the line below is actually (num of sentences) * (num of hyps)
         // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
         for (int i = 0; i < dimBatch; i++) { // loop over sentences
-          std::cout << "dimBatch i: " << i << std::endl;
+          // std::cout << "dimBatch i: " << i << std::endl;
           // loop over hypotheses, beams[i].size() instead of maxBeamSize because beam size shrinks
           for (int j = 0; j < beams[i].size(); j++) { 
-            //std::cout << beams[i][j]->GetWord() << std::endl;
+            // std::cout << beams[i][j]->GetWord() << std::endl;
             // std::cout << "j: " << j << std::endl;
             // std::cout << "size of first batch (sent): " << beams[i].size() << "\n";
             // std::cout << "size of first hyp: " << beams[i][j]->GetLength() << "\n";
@@ -537,9 +537,9 @@ public:
             }
           }
           // std::cout << "\n";
-          std::cout << "batch " <<  i << ": num of continuations: " << trieVocabIdxs[i].size() << std::endl;
+          // std::cout << "batch " <<  i << ": num of continuations: " << trieVocabIdxs[i].size() << std::endl;
         }
-        std::cout << "maxBeamSize: " << maxBeamSize << std::endl;
+        // std::cout << "maxBeamSize: " << maxBeamSize << std::endl;
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
@@ -566,6 +566,7 @@ public:
         for(auto beam : beams) {
           for (auto hyp : beam) {
             if (!hyp->hasTrieContinuatuions()) {
+              // should never reach here
               std::cout << "WARNING. A sentence generated is not in the trie.\n";
             }
           }

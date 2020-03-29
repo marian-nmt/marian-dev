@@ -74,8 +74,15 @@ void ConfigValidator::validateOptionsParallelData() const {
   ABORT_IF(!get<bool>("tsv") && numVocabs > 0 && numVocabs != trainSets.size(),
            "There should be as many vocabularies as training sets");
 
+  // disallow, for example --tsv --train-sets file1.tsv file2.tsv
   ABORT_IF(get<bool>("tsv") && trainSets.size() != 1,
       "A single file can be provided with --train-sets (or stdin) for a tab-separated input");
+
+  // disallow, for example --train-sets stdin stdin or --train-sets stdin file.tsv
+  ABORT_IF(trainSets.size() > 1 && std::any_of(trainSets.begin(),
+                                               trainSets.end(),
+                                               [](const std::string& s) { return s == "stdin"; }),
+           "Only one 'stdin' in --train-sets is allowed");
 }
 
 void ConfigValidator::validateOptionsScoring() const {

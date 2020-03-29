@@ -16,6 +16,7 @@ protected:
   bool shifted_{false};
   bool shiftedAll_{false};
   bool dumpMatrices_{false};
+  bool alpha_{false};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
@@ -49,6 +50,13 @@ public:
 
   bool DumpQuantMult() override {
     return dumpMatrices_;
+  }
+
+  void setPrecomputedAlpha(bool alpha) override {
+    alpha_ = alpha;
+  }
+  bool isPrecomputedAlpha() override {
+    return alpha_;
   }
 
 };

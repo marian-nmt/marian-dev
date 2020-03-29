@@ -186,8 +186,8 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         if (child(0)->graph()->getBackend()->DumpQuantMult()) {
           intgemm::MeanStd meanstd = intgemm::GetQuantizerStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements(), true);
           intgemm::MeanStd meanstd2 = intgemm::GetQuantizerStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
-          std::cerr << "Name: " << name() << "MeanAbs: " << meanstd.mean << " stddevAbs: " << meanstd.stddev << "Mean: " << meanstd2.mean << " stddev: "
-          << meanstd2.stddev << "MaxAbs: " << intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements()) << std::endl;
+          std::cerr << "Name: " << name() << " MeanAbs: " << meanstd.mean << " stddevAbs: " << meanstd.stddev << " Mean: " << meanstd2.mean << " stddev: "
+          << meanstd2.stddev << " MaxAbs: " << intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements()) << std::endl;
         }
         *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
       }
@@ -213,10 +213,11 @@ public:
       : NaryNodeOp({bias, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type::float32) {
 
     set_name(bias->name() + "_Prepared");
-    setMemoize(false);
+    //setMemoize(false);
   }
 
   NodeOps forwardOps() override {
+    //@TODO need2hack b_quant_mult for none, because it's not getting matched. Maybe hack bQuantMult's hash
     return {NodeOp(
     auto bias = this->child(0)->val();
     auto b = this->child(1)->val();
@@ -384,13 +385,35 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
   return Expression<SelectColumnsBNodeOp<vtype > >(b, cols, clipValue);
 }
 
+static inline Expr fetchAlphaFromModel(Expr b) {
+  std::string bname = b->name();
+  Expr aQuantMult = nullptr;
+  static auto map = b->graph()->params()->getMap();
+  std::string aQuantKey = b->name() + "_QuantMultA";
+  //Very Hacky Bit. Unnamed matrix is notpart of the F0 parameter namespace
+  if (aQuantKey.at(0) != 'F') {
+    aQuantKey = "F0::" + aQuantKey;
+  }
+  auto mapiter = map.find(aQuantKey);
+  if (mapiter != map.end()) {
+    return mapiter->second;
+  } else {
+    ABORT("We did not find an alpha in the model named: {}.", aQuantKey);
+  }
+}
+
 template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool shiftedBias=false) {
   Type bElementType = b->value_type();
-  std::string bname = b->name();
-  auto aQuantMult = quantMult<vtype>(a, bname, true);
+  Expr aQuantMult = nullptr;
+  static bool precomputedAlphas = b->graph()->getBackend()->isPrecomputedAlpha();
+  if (bias && precomputedAlphas) { //Shifting here maybe should check?
+    aQuantMult = fetchAlphaFromModel(b);
+  } else {
+    aQuantMult = quantMult<vtype>(a, b->name(), true); /*@TODO Do something about b->name() here*/
+  }
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale, shiftedBias);
-  Expr bQuantMult = quantMult<vtype>(b, bname);
+  Expr bQuantMult = quantMult<vtype>(b, b->name()); /*@TODO Do something about b->name() here*/
   Expr bQuant = nullptr;
   if (isIntgemm(bElementType)) {
     //This is the case where we already run SelectColumnB or we loaded a prepacked model.

@@ -38,7 +38,7 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumFields_(options->get<size_t>("tsv-size", 0)) {
+      tsvNumFields_(options->get<size_t>("tsv-fields", 0)) {
   if(tsv_) {
     ABORT_IF(tsvNumFields_ != vocabs_.size(),
              "Number of TSV fields and vocab files does not agree");
@@ -62,7 +62,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumFields_(options->get<size_t>("tsv-size", 0)) {
+      tsvNumFields_(options->get<size_t>("tsv-fields", 0)) {
   bool training = !translate;
 
   if(training)

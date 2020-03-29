@@ -800,7 +800,7 @@ void ConfigParser::addSuboptionsTSV(cli::CLIWrapper& cli) {
   // clang-format off
   cli.add<bool>("--tsv",
       "Tab-separated input");
-  cli.add<size_t>("--tsv-size",
+  cli.add<size_t>("--tsv-fields",
       "Number of fields in the TSV input, guessed based on the model type");
   // clang-format on
 }

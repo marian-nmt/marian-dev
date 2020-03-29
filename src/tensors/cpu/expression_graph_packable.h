@@ -189,7 +189,6 @@ public:
         using cpu::integer::cols;
         using cpu::integer::rows;
         auto allocator = New<TensorAllocator>(getBackend());
-        std::cerr << "pName: " << pName << std::endl;
 
         Tensor paramMat; //This allocates extra 4 bytes at the end because of gemmElementType
         allocator->allocate(paramMat, val->shape(), gemmElementType);

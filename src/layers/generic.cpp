@@ -268,7 +268,7 @@ namespace marian {
           if (isIntgemm(Wt_->value_type())) {
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           } else {
-            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_, Wt_->name()), -1000.0 /*clip_value currently unused */);
+            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */);
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
         } else if ((graph_->getBackend()->isOptimized() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
@@ -279,7 +279,7 @@ namespace marian {
           if (isIntgemm(Wt_->value_type())) {
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           } else {
-            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_, Wt_->name()), -1000.0 /*clip_value currently unused */);
+            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */);
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
         } else {

@@ -164,7 +164,7 @@ private:
 template<Type vtype>
 struct QuantMultNodeOp : public UnaryNodeOp {
   bool isA_;
-  QuantMultNodeOp(Expr input, std::string& bname, bool isA) : UnaryNodeOp(input, Shape({1}), Type::float32), isA_(isA) {
+  QuantMultNodeOp(Expr input, bool isA, std::string& bname) : UnaryNodeOp(input, Shape({1}), Type::float32), isA_(isA) {
     if (isA_) {
       setMemoize(false);
       set_name(bname + "_QuantMultA");
@@ -213,11 +213,13 @@ public:
       : NaryNodeOp({bias, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type::float32) {
 
     set_name(bias->name() + "_Prepared");
-    //setMemoize(false);
+    if (!bias->graph()->getBackend()->isPrecomputedAlpha() || bias->name() == "none") {
+      setMemoize(false);
+    }
   }
 
   NodeOps forwardOps() override {
-    //@TODO need2hack b_quant_mult for none, because it's not getting matched. Maybe hack bQuantMult's hash
+    //std::cerr << "TrueBias: " << child(0)->name() << " bQuantMult: " << this->child(3)->val()->data()[0] << std::endl;
     return {NodeOp(
     auto bias = this->child(0)->val();
     auto b = this->child(1)->val();
@@ -238,10 +240,13 @@ public:
       : NaryNodeOp({inputB_preppd, a_quant_mult, b_quant_mult}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
 
     set_name(inputB_preppd->name() + "_FakeBias");
-    setMemoize(false);
+    if (!inputB_preppd->graph()->getBackend()->isPrecomputedAlpha()) {
+      setMemoize(false);
+    }
   }
 
   NodeOps forwardOps() override {
+    //std::cerr << "FakeBias: " << child(0)->name() << " bQuantMult: " << this->child(2)->val()->data()[0] << " aQuantMult: " << this->child(1)->val()->data()[0] << std::endl;
     return {NodeOp(
     auto b = this->child(0)->val();
     auto quant_mult_a = this->child(1)->val();
@@ -366,8 +371,8 @@ public:
 };
 
 template<Type vtype>
-static inline Expr quantMult(Expr a, std::string Bname, bool isA=false) {
-  return Expression<QuantMultNodeOp<vtype> >(a, Bname, isA);
+static inline Expr quantMult(Expr a, bool isA=false, std::string Bname="") {
+  return Expression<QuantMultNodeOp<vtype> >(a, isA, Bname);
 }
 
 template<Type vtype>
@@ -407,13 +412,13 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   Type bElementType = b->value_type();
   Expr aQuantMult = nullptr;
   static bool precomputedAlphas = b->graph()->getBackend()->isPrecomputedAlpha();
-  if (bias && precomputedAlphas) { //Shifting here maybe should check?
+  if (precomputedAlphas) { //Shifting here maybe should check?
     aQuantMult = fetchAlphaFromModel(b);
   } else {
-    aQuantMult = quantMult<vtype>(a, b->name(), true); /*@TODO Do something about b->name() here*/
+    aQuantMult = quantMult<vtype>(a, true, b->name()); /*@TODO Do something about b->name() here*/
   }
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale, shiftedBias);
-  Expr bQuantMult = quantMult<vtype>(b, b->name()); /*@TODO Do something about b->name() here*/
+  Expr bQuantMult = quantMult<vtype>(b);
   Expr bQuant = nullptr;
   if (isIntgemm(bElementType)) {
     //This is the case where we already run SelectColumnB or we loaded a prepacked model.

@@ -57,7 +57,7 @@ public:
   void loadNumHeads(const std::string& name, std::string type, size_t numLayers) {
     std::string pruningYAML = name + "." + type + "_pruning.yml";
     YAML::Node config = YAML::LoadFile(pruningYAML);
-    LOG(info, "Loaded YAML file with the number of attention heads!");
+    // LOG(info, "Loaded YAML file with the number of attention heads!");
 
     if (type == "encoder") {
       for (size_t i = 1; i < numLayers + 1; i++) {
@@ -306,8 +306,8 @@ public:
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
     // @TODO: good opportunity to implement auto-batching here or do something manually?
-    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform());
-    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
+    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform());
+    auto bq = graph_->param(prefix + "_bq", {       1, dimHeads * dimHeadSize}, inits::zeros());
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
@@ -321,8 +321,8 @@ public:
       kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
     }
     else {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform());
-      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
+      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform());
+      auto bk = graph_->param(prefix + "_bk", {1,        dimHeads * dimHeadSize}, inits::zeros());
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -335,8 +335,8 @@ public:
         && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
       vh = cache_[prefix + "_values"];
     } else {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform());
-      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
+      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform());
+      auto bv = graph_->param(prefix + "_bv", {1,        dimHeads * dimHeadSize}, inits::zeros());
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
@@ -568,7 +568,7 @@ public:
     if (!setHeads_) {
       setNumHeads();
       setHeads_ = true;
-      LOG(info, "Set heads in {}...", prefix_);
+      // LOG(info, "Set heads in {}...", prefix_);
     }
     graph_ = graph;
     return apply(batch);
@@ -712,7 +712,7 @@ public:
     if (!setHeads_) {
       setNumHeads();
       setHeads_ = true;
-      LOG(info, "Set heads in {}...", prefix_);
+      // LOG(info, "Set heads in {}...", prefix_);
     }
     
     std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");

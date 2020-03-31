@@ -208,27 +208,40 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 };
 
 class PrepareBiasForBNodeOp : public NaryNodeOp {
+  bool alreadyPrepared_ = false;
 public:
   PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
       : NaryNodeOp({bias, inputB_preppd, a_quant_mult, b_quant_mult}, bias->shape(), Type::float32) {
 
     set_name(bias->name() + "_Prepared");
-    if (!bias->graph()->getBackend()->isPrecomputedAlpha() || bias->name() == "none") {
+    if (bias->type() == "cols" && bias->graph()->getBackend()->isPrecomputedAlpha()) {
+      ABORT("We shouldn't ever be here");
+      alreadyPrepared_ = true;
+    } else if (!bias->graph()->getBackend()->isPrecomputedAlpha()){
       setMemoize(false);
     }
   }
 
   NodeOps forwardOps() override {
-    //std::cerr << "TrueBias: " << child(0)->name() << " bQuantMult: " << this->child(3)->val()->data()[0] << std::endl;
+    //std::cerr << "TrueBias: " << child(0)->name() << " type: " << child(0)->type() << " bQuantMult: " << this->child(3)->val()->data()[0] <<  " aQuantMult: " << this->child(2)->val()->data()[0] << std::endl;
+    //std::cerr << "Bias name and val: " << child(0)->name() << " " << child(0)->val()->data()[0] << std::endl;
     return {NodeOp(
-    auto bias = this->child(0)->val();
-    auto b = this->child(1)->val();
-    auto quant_mult_a = this->child(2)->val();
-    auto quant_mult_b = this->child(3)->val();
+      if (alreadyPrepared_) {
+        //God Knows why trying to assign the bias tensor to this node causes a crash, the second time it's referenced
+        //even though it's supposed to work fine. We use a memory copy instead.
+        ABORT("We shouldn't ever be here.");
+        std::memcpy(val_->data(), child(0)->val()->data(), child(0)->shape()[-1]*sizeof(float));
+        //val_ = child(0)->val();
+      } else {
+        auto bias = this->child(0)->val();
+        auto b = this->child(1)->val();
+        auto quant_mult_a = this->child(2)->val();
+        auto quant_mult_b = this->child(3)->val();
 
-    float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
-    intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
-    )};
+        float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
+        intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
+      }
+      )};
   }
 
   const std::string type() override { return "prepareBias"; }
@@ -428,7 +441,10 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   } else {
     bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }
-  if (shiftedBias && bias) {
+  if (bias && precomputedAlphas && bias->name() == "none") {
+    // This is the case of the preprocessed bias. It's hacky but otherwise node caching is broken.
+    // The bias node is the shortlisted bias and it has been prepared before index_select was run
+  } else if (shiftedBias && bias) {
     bias = Expression<PrepareBiasForBNodeOp>(bias, bQuant, aQuantMult, bQuantMult);
   } else if (shiftedBias) {
     bias = Expression<PrepareFakeBiasForBNodeOp>(bQuant, aQuantMult, bQuantMult);

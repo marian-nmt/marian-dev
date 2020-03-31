@@ -260,15 +260,26 @@ namespace marian {
       lazyConstruct(input->shape()[-1]);
 
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
+        Expr preparedBias = nullptr;
         if ((graph_->getBackend()->isOptimized8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
           if (!isLegacyUntransposedW) {
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;
           }
+          Expr aQuantMult = nullptr;
+          Expr bQuantMult = marian::cpu::integer::quantMult<Type::int8>(Wt_);
           if (isIntgemm(Wt_->value_type())) {
+            if (graph_->getBackend()->isPrecomputedAlpha()) {
+              aQuantMult = marian::cpu::integer::fetchAlphaFromModel(Wt_);
+              preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, Wt_, aQuantMult, bQuantMult);
+            }
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           } else {
             cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */);
+            if (graph_->getBackend()->isPrecomputedAlpha()) {
+              aQuantMult = marian::cpu::integer::fetchAlphaFromModel(cachedShortWt_);
+              preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, cachedShortWt_, aQuantMult, bQuantMult);
+            }
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
         } else if ((graph_->getBackend()->isOptimized() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
@@ -285,7 +296,11 @@ namespace marian {
         } else {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
-        cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+        if (preparedBias) {
+          cachedShortb_  = index_select(preparedBias ,                             -1, shortlist_->indices());
+        } else {
+          cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+        }
       }
 
       if (factoredVocab_) {

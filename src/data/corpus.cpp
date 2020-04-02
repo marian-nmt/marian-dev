@@ -154,8 +154,8 @@ void Corpus::shuffleData(const std::vector<std::string>& paths) {
   LOG(info, "[data] Shuffling data");
 
   ABORT_IF(tsv_ && paths[0] == "stdin",
-           "Shuffling training data from STDIN is not supported. Remove the --shuffle option or "
-           "provide training sets using --train-sets");
+           "Shuffling training data from STDIN is not supported. Add --no-shuffle or provide "
+           "training sets with --train-sets");
 
   size_t numStreams = paths.size();
 

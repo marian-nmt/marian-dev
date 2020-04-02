@@ -67,7 +67,7 @@ void split(const std::string& line,
   }
 }
 
-void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t numFields){
+void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t numFields) {
   fields.clear();
   if(fields.capacity() != numFields) // make sure the number of fields is always as requested
     fields.resize(numFields);

@@ -1,5 +1,6 @@
 #include <random>
 
+#include "common/file_utils.h"
 #include "data/corpus.h"
 #include "data/factored_vocab.h"
 
@@ -108,11 +109,8 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
     //    train1 and train2 respectively.
     //
     //  * --tsv -t train.tsv -v vocab1 vocab2
-    //    If vocab1 or vocab2 exists, it is loaded; otherwise each vocabulary is created from all
-    //    fields in train.tsv.
-    //    Note that this is different than the behavior above, where separate vocabularies are
-    //    created.
-    //    // TODO: implement creation of separate vocabularies
+    //    If vocab1 or vocab2 exists, it is loaded; otherwise each vocabulary is created from the
+    //    appropriate fields in train.tsv.
     //
     //  * --tsv -t train.tsv -v vocab vocab
     //    If vocab exist, it is loaded; otherwise it is created from all fields in train.tsv.
@@ -158,7 +156,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       for(size_t i = 0; i < numStreams; ++i) {
         Ptr<Vocab> vocab = New<Vocab>(options_, i);
 
-        const auto& path = paths_[tsv_ ? 0 : i];  // there is always only one TSV file
+        const auto& path = paths_[tsv_ ? 0 : i];  // idx 0 because there is always only one TSV file
         std::vector<std::string> trainPaths = {path};
         vocabPaths1[i] = path + ".yml";
 
@@ -179,32 +177,22 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
         maxVocabs.resize(numStreams, 0);
 
       // Helper object for grouping training data based on vocabulary file name
-      struct PathsAndSize {
-        std::set<std::string> paths; // contains all paths that are used for training the vocabulary
-        size_t size;                 // contains the maximum vocabulary size
+      struct VocabDetails {
+        std::set<std::string> paths;    // all paths that are used for training the vocabulary
+        std::vector<size_t> positions;  // all position of the vocabulary in --vocab
+        size_t size;                    // the maximum vocabulary size
       };
 
       // Group training files based on vocabulary path. If the same vocab path corresponds to
       // different training files, this means that a single vocab should combine tokens from all
       // files.
-      std::map<std::string, PathsAndSize> groupVocab; // vocabPath -> (trainPaths[], vocabSize)
+      std::map<std::string, VocabDetails> groupVocab; // vocabPath -> (trainPaths[], vocabSize)
       for(size_t i = 0; i < numVocs; ++i) {
-        // TSV input is always a single file
+        // Index 0 because there is always only a single TSV input file
         groupVocab[vocabPaths[i]].paths.insert(paths_[tsv_ ? 0 : i]);
+        groupVocab[vocabPaths[i]].positions.push_back(i);
         if(groupVocab[vocabPaths[i]].size < maxVocabs[i])
           groupVocab[vocabPaths[i]].size = maxVocabs[i];
-      }
-
-      // Creating vocabularies from selected fields in the TSV file is not yet supported.
-      // TODO: handle this case
-      if(tsv_ && groupVocab.size() > 1
-         && std::any_of(vocabPaths.begin(), vocabPaths.end(), [](const std::string& p) {
-              return !filesystem::exists(p);
-            })) {
-        LOG(warn,
-            "[data] A joint vocabulary will be built from the entire TSV file. "
-            "If you want to have separate vocabularies, built it outside Marian or provide the "
-            "training sets as separate files for source(s) and target.");
       }
 
       auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
@@ -217,15 +205,42 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
             "Creating vocabulary automatically from a data stream from STDIN is not supported. "
             "Create vocabularies first and provide them with --vocabs");
 
-        Ptr<Vocab> vocab = New<Vocab>(options_, i);
-
         // Get the set of files that corresponds to the vocab. If the next file is the same vocab,
         // it will not be created again, but just correctly loaded.
-        auto pathsAndSize = groupVocab[vocabPaths[i]];
+        auto vocabDetails = groupVocab[vocabPaths[i]];
+        std::vector<std::string> groupedPaths(vocabDetails.paths.begin(), vocabDetails.paths.end());
+        Ptr<io::TemporaryFile> tsvTempFile;  // temporary handler for cut fields from TSV input
 
-        std::vector<std::string> groupedPaths(pathsAndSize.paths.begin(), pathsAndSize.paths.end());
-        vocabDims[i] = (int) vocab->loadOrCreate(vocabPaths[i], groupedPaths, pathsAndSize.size);
+        // For a TSV input, multiple vocabularies with different names mean separate
+        // vocabularies for source(s) and target.
+        // If a vocabulary does not exist, it will be created in the next step. To be able to create
+        // a separate vocabulary, we cut tab-separated field(s) from the TSV file, e.g. all source
+        // or target sentences, into a temporary file.
+        if(tsv_ && groupVocab.size() > 1 && !filesystem::exists(vocabPaths[i])) {
+          ABORT_IF(groupedPaths.size() > 1, "There should not be multiple TSV input files!");
+
+          tsvTempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
+          fileutils::cut(groupedPaths[0],  // 0 is safe because there is always a single TSV file
+                         tsvTempFile,
+                         vocabDetails.positions,
+                         tsvNumFields_,
+                         " ");  // merge tab-separated fields
+          groupedPaths.clear();
+          groupedPaths.push_back(tsvTempFile->getFileName());
+
+          LOG(info,
+              "[data] Cutting fields {} into a temporary file {}",
+              vocabDetails.positions[0],  // TODO print all
+              tsvTempFile->getFileName());
+        }
+
+        // Load or create the vocabulary
+        Ptr<Vocab> vocab = New<Vocab>(options_, i);
+        vocabDims[i] = (int) vocab->loadOrCreate(vocabPaths[i], groupedPaths, vocabDetails.size);
         vocabs_.emplace_back(vocab);
+
+        if(tsvTempFile)
+          tsvTempFile.reset();
       }
       // TODO: this is not nice as it modifies the option object and needs to expose the changes
       // outside the corpus as models need to know about the vocabulary size; extract the vocab

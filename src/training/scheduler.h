@@ -18,6 +18,7 @@ private:
   std::vector<Ptr<ValidatorBase>> validators_;
 
   bool first_{true};
+  bool endOfStdin_{false};
 
   timer::Timer timer_;
   timer::Timer heartBeatTimer_;
@@ -171,10 +172,8 @@ public:
     if(stopAfterStalled > 0 && !validators_.empty() && stalled() >= stopAfterStalled)
       return false;
 
-    // stop if data streaming from STDIN is stopped for a TSV input
-    bool tsvFromStdin = options_->get<bool>("tsv", false)
-                        && (options_->get<std::vector<std::string>>("train-sets")[0] == "stdin");
-    if(tsvFromStdin && state_->epochs > 1)
+    // stop if data streaming from STDIN is stopped
+    if(endOfStdin_)
       return false;
 
     return true;
@@ -409,6 +408,11 @@ public:
   }
 
   void actAfterEpoch(TrainingState& state) override {
+    // stop if data streaming from STDIN is stopped for a TSV input
+    if(options_->get<bool>("tsv", false)
+       && (options_->get<std::vector<std::string>>("train-sets")[0] == "stdin"))
+      endOfStdin_ = true;
+
     float factor = options_->get<float>("lr-decay");
 
     updateLearningRate(state);

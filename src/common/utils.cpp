@@ -121,6 +121,12 @@ std::string join(const std::vector<std::string>& words, const std::string& del /
   return ss.str();
 }
 
+std::string join(const std::vector<size_t>& nums, const std::string& del /*= " "*/) {
+  std::vector<std::string> words(nums.size());
+  std::transform(nums.begin(), nums.end(), words.begin(), [](int i) { return std::to_string(i); });
+  return join(words, del);
+}
+
 // escapes a string for passing to popen, which uses /bin/sh to parse its argument string
 static std::string escapeForPOpen(const std::string& arg) {
   // e.g. abc -> 'abc'; my file.txt -> 'my file.txt'; $10 -> '$10'; it's -> 'it'\''s'

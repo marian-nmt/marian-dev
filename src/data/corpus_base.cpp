@@ -220,18 +220,20 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
           ABORT_IF(groupedPaths.size() > 1, "There should not be multiple TSV input files!");
 
           tsvTempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
-          fileutils::cut(groupedPaths[0],  // 0 is safe because there is always a single TSV file
+          LOG(info,
+              "[data] Cutting field(s) {} from {} into a temporary file {}",
+              utils::join(vocabDetails.positions, ", "),
+              groupedPaths[0],
+              tsvTempFile->getFileName());
+
+          fileutils::cut(groupedPaths[0],  // Index 0 because there is only one TSV file
                          tsvTempFile,
                          vocabDetails.positions,
                          tsvNumFields_,
-                         " ");  // merge tab-separated fields
+                         " ");  // Notice that tab-separated fields are joined with a whitespace
+
           groupedPaths.clear();
           groupedPaths.push_back(tsvTempFile->getFileName());
-
-          LOG(info,
-              "[data] Cutting fields {} into a temporary file {}",
-              vocabDetails.positions[0],  // TODO print all
-              tsvTempFile->getFileName());
         }
 
         // Load or create the vocabulary

@@ -9,10 +9,11 @@ void cut(const std::string& tsvIn,
          const std::vector<size_t>& fields,
          size_t numFields,
          const std::string& sep /*= "\t"*/) {
-  io::InputFileStream ioIn(tsvIn);
+  std::vector<std::string> tsvFields(numFields);
   std::string line;
+  io::InputFileStream ioIn(tsvIn);
   while(getline(ioIn, line)) {
-    std::vector<std::string> tsvFields(numFields);
+    tsvFields.clear();
     utils::splitTsv(line, tsvFields, numFields);  // split tab-separated fields
     for(size_t i = 0; i < fields.size(); ++i) {
       *tsvOut << tsvFields[fields[i]];

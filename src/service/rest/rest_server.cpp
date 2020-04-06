@@ -69,25 +69,38 @@ public:
 
   crow::response
   operator()(const crow::request& req) const{
-    LOG(debug, "{} REQUEST: {}",
-        req.method == "GET"_method ? "GET" : "POST",
-        req.url);
+    std::string method=crow::method_name(req.method);
+    LOG(debug, "{} REQUEST: {}", method, req.url);
     std::string body, http_content_type;
-    if (req.method == "GET"_method){
-      body = get(req);
-      http_content_type = "text/html; charset=UTF-8";
+    auto res = crow::response(200);
+    res.add_header("Access-Control-Allow-Origin", "*");
+    res.add_header("Access-Control-Allow-Headers", "Content-Type");
+
+    if (method == "GET"){
+      res.write(body=get(req));
+      res.add_header("Content-Type", "text/html; charset=UTF-8");
     }
-    else if (req.method == "POST"_method){
-      body = post(req);
-      http_content_type = "application/json; charset=UTF-8";
+
+    else if (method == "POST"){
+      res.write(body=post(req));
+      res.add_header("Content-Type", "application/json; charset=UTF-8");
       LOG(debug, "RESPONSE: {}", body);
+    }
+
+    else if (method == "OPTIONS"){
+      // The list of response headers below is take from this article:
+      // https://developer.mozilla.org/en-US/docs/Web/HTTP/Server-Side_Access_Control
+
+      // res.add_header("Access-Control-Allow-Origin","*");
+      res.add_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+      // res.add_header("Access-Control-Allow-Headers", "X-PINGARUNER");
+      // res.add_header("Access-Control-Max-Age","1728000"); // 20 days
+      res.add_header("Content-Type", "text/plain; charset=UTF-8");
+      res.add_header("Content-Length", "0");
     }
     else{
       return crow::response(501);
     }
-    auto res = crow::response(200, body);
-    res.add_header("Access-Control-Allow-Origin", "*");
-    res.add_header("Access-Control-Allow-Headers", "Content-Type");
     res.add_header("Content-Type", http_content_type);
     return res;
   }

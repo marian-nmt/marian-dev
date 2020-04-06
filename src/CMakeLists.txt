@@ -24,8 +24,9 @@ add_library(marian STATIC
   common/io.cpp
   common/filesystem.cpp
   common/file_stream.cpp
+  common/signal_handling.cpp
   common/types.cpp
-  
+
   data/alignment.cpp
   data/vocab.cpp
   data/default_vocab.cpp
@@ -92,7 +93,6 @@ add_library(marian STATIC
   training/graph_group_multinode_sync.cpp
   training/validator.cpp
   training/communicator.cpp
-  training/scheduler.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
@@ -139,7 +139,7 @@ cuda_add_library(marian_cuda
   tensors/gpu/algorithm.cu
   tensors/gpu/prod.cpp
   tensors/gpu/element.cu
-  tensors/gpu/add.cu  
+  tensors/gpu/add.cu
   tensors/gpu/add_all.cu
   tensors/gpu/tensor_operators.cu
   tensors/gpu/cudnn_wrappers.cu

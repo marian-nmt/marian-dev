@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/options.h"
+#include "common/signal_handling.h"
 #include "data/batch_stats.h"
 #include "data/rng_engine.h"
 #include "training/training_state.h"
@@ -132,8 +133,14 @@ private:
       if(current_ != data_->end())
         ++current_;
     }
+
+    std::deque<BatchPtr> tempBatches;
+
     size_t sets = 0;
     while(current_ != data_->end() && maxiBatch->size() < maxSize) { // loop over data
+      if (getSignalFlag(SIGTERM)) { // received SIGTERM, abandon ship ...
+        return tempBatches;
+      }
       maxiBatch->push(*current_);
       sets = current_->size();
       // do not consume more than required for the maxi batch as this causes
@@ -149,8 +156,6 @@ private:
     size_t currentWords = 0;
     std::vector<size_t> lengths(sets, 0); // records maximum length observed within current batch
 
-    std::deque<BatchPtr> tempBatches;
-
     // process all loaded sentences in order of increasing length
     // @TODO: we could just use a vector and do a sort() here; would make the cost more explicit
     const size_t mbWords = options_->get<size_t>("mini-batch-words", 0);
@@ -158,7 +163,13 @@ private:
     BatchStats::const_iterator cachedStatsIter;
     if (stats_)
       cachedStatsIter = stats_->begin();
+
     while(!maxiBatch->empty()) { // while there are sentences in the queue
+
+      if (getSignalFlag(SIGTERM)) { // received SIGTERM, abandon ship ...
+        return tempBatches;
+      }
+
       // push item onto batch
       batchVector.push_back(maxiBatch->top());
       maxiBatch->pop(); // fetch next-shortest
@@ -242,13 +253,13 @@ private:
       ABORT_IF(!futureBufferedBatches_.valid(), "Attempted to wait for futureBufferedBatches_ when none pending.\n"
           "This error often occurs when Marian tries to restore the training data iterator, but the corpus has been changed or replaced.\n"
           "If you have changed the training corpus, add --no-restore-corpus to the training command and run it again.");
+
       bufferedBatches_ = std::move(futureBufferedBatches_.get());
-      // if bg thread returns an empty swath, we hit the end of the epoch
-      if (bufferedBatches_.empty()) {
+      if (bufferedBatches_.empty() // i.e., end of Epoch
+          || getSignalFlag(SIGTERM)) { // process received SIGTERM, abandon ship ...
         return nullptr;
       }
-      // and kick off the next bg operation
-      fetchBatchesAsync();
+      fetchBatchesAsync(); // pre-fetch next slew of batches in separate thread
     }
     auto batch = bufferedBatches_.front();
     bufferedBatches_.pop_front();

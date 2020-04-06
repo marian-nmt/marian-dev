@@ -883,7 +883,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
     if(get<bool>("tsv") && trainSets.empty()) {
       config["train-sets"].push_back("stdin");
     // Assume the input is in TSV format if --train-sets is set to "stdin"
-    } else if(trainSets.size() == 1 && trainSets[0] == "stdin") {
+    } else if(trainSets.size() == 1 && (trainSets[0] == "stdin" || trainSets[0] == "-")) {
       config["tsv"] = true;
     }
     if(!config.IsNull())

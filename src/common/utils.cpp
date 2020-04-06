@@ -67,10 +67,9 @@ void split(const std::string& line,
   }
 }
 
+// the function guarantees that the output has as many elements as requested
 void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t numFields) {
   fields.clear();
-  if(fields.capacity() != numFields) // make sure the number of fields is always as requested
-    fields.resize(numFields);
 
   size_t begin = 0;
   size_t pos = 0;
@@ -83,6 +82,12 @@ void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t 
     fields.push_back(line.substr(begin, pos - begin));
     begin = pos + 1;
   }
+
+  if(fields.size() < numFields)  // make sure there is as many elements as requested
+    fields.resize(numFields);
+
+  if(pos != std::string::npos)
+    LOG(warn, "[warning] Excessive field(s) in the tab-separated line: '{}'", line);
 }
 
 std::vector<std::string> split(const std::string& line,

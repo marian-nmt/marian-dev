@@ -135,7 +135,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
       size_t numStreams = tsv_ ? tsvNumFields_ : paths_.size();
 
       // Creating a vocabulary from stdin is not supported
-      ABORT_IF(tsv_ && paths_[0] == "stdin",
+      ABORT_IF(tsv_ && (paths_[0] == "stdin" || paths_[0] == "-"),
                "Creating vocabularies automatically from a data stream from STDIN is not supported. "
                "Create vocabularies first and provide them with --vocabs");
 
@@ -178,19 +178,19 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
 
       // Helper object for grouping training data based on vocabulary file name
       struct VocabDetails {
-        std::set<std::string> paths;    // all paths that are used for training the vocabulary
-        std::vector<size_t> positions;  // all position of the vocabulary in --vocab
-        size_t size;                    // the maximum vocabulary size
+        std::set<std::string> paths;  // all paths that are used for training the vocabulary
+        std::vector<size_t> streams;  // index of the vocabulary in the --vocab option
+        size_t size;                  // the maximum vocabulary size
       };
 
-      // Group training files based on vocabulary path. If the same vocab path corresponds to
-      // different training files, this means that a single vocab should combine tokens from all
-      // files.
+      // Group training files based on vocabulary path. If the same
+      // vocab path corresponds to different training files, this means
+      // that a single vocab should combine tokens from all files.
       std::map<std::string, VocabDetails> groupVocab; // vocabPath -> (trainPaths[], vocabSize)
       for(size_t i = 0; i < numVocs; ++i) {
         // Index 0 because there is always only a single TSV input file
         groupVocab[vocabPaths[i]].paths.insert(paths_[tsv_ ? 0 : i]);
-        groupVocab[vocabPaths[i]].positions.push_back(i);
+        groupVocab[vocabPaths[i]].streams.push_back(i);
         if(groupVocab[vocabPaths[i]].size < maxVocabs[i])
           groupVocab[vocabPaths[i]].size = maxVocabs[i];
       }
@@ -200,7 +200,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
 
       for(size_t i = 0; i < numVocs; ++i) {
         // Creating a vocabulary from stdin is not supported
-        ABORT_IF(tsv_ && paths_[0] == "stdin"
+        ABORT_IF(tsv_ && (paths_[0] == "stdin" || paths_[0] == "-")
                  && (vocabPaths[i].empty() || !filesystem::exists(vocabPaths[i])),
             "Creating vocabulary automatically from a data stream from STDIN is not supported. "
             "Create vocabularies first and provide them with --vocabs");
@@ -222,13 +222,13 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
           tsvTempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
           LOG(info,
               "[data] Cutting field(s) {} from {} into a temporary file {}",
-              utils::join(vocabDetails.positions, ", "),
+              utils::join(vocabDetails.streams, ", "),
               groupedPaths[0],
               tsvTempFile->getFileName());
 
           fileutils::cut(groupedPaths[0],  // Index 0 because there is only one TSV file
                          tsvTempFile,
-                         vocabDetails.positions,
+                         vocabDetails.streams,
                          tsvNumFields_,
                          " ");  // Notice that tab-separated fields are joined with a whitespace
 
@@ -272,7 +272,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate)
   }
 
   for(auto path : paths_) {
-    if(path == "stdin")
+    if(path == "stdin" || path == "-")
       files_.emplace_back(new std::istream(std::cin.rdbuf()));
     else {
       io::InputFileStream *strm = new io::InputFileStream(path);
@@ -417,13 +417,13 @@ void CorpusBase::initEOS(bool training = true) {
   // @TODO: think if this should be checked and processed here or in a validation step in config?
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
 
-  // make sure there is an input type for each path
+  // make sure there is an input type for each stream
   ABORT_IF(inputTypes.size() > 0 && inputTypes.size() < numStreams,
            "Input types have been specified ({}), you need to specify one per input ({})",
            inputTypes.size(),
            numStreams);
 
-  // make sure there is an equal number of input types and paths when training
+  // make sure there is an equal number of input types and streams when training
   ABORT_IF(training && inputTypes.size() > 0 && inputTypes.size() != numStreams,
            "Input types have been specified ({}), you need to specify one per input ({})",
            inputTypes.size(),

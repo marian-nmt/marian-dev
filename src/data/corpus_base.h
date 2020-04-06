@@ -545,8 +545,8 @@ protected:
   bool maxLengthCrop_{false};
   bool rightLeft_{false};
 
-  bool tsv_{false};          // if the input is a single file with tab-separated values
-  size_t tsvNumFields_{0};   // number of fields in the TSV input
+  bool tsv_{false};          // true if the input is a single file with tab-separated values
+  size_t tsvNumFields_{0};   // number of fields in the TSV input (only if tsv_)
 
   /**
    * @brief Index of the file with weights in paths_ and files_; zero means no

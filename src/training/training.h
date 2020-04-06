@@ -77,6 +77,12 @@ public:
     bool restored = !options_->get<bool>("no-restore-corpus")
                     && batchGenerator->restore(trainState);
 
+    // Install custom handler for SIGTERM, to allow for a graceful
+    // shutdown that saves the current state of training before exiting.
+    // This signal handler simply sets a flag that can be checked from
+    // everywhere (getSignalFLAG(SIGTERM); #include common/signal_handling.h)
+    signal(SIGTERM,setSignalFlag);
+
     // -- main training loop
     scheduler->started();
     while(scheduler->keepGoing()) {

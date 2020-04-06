@@ -1,6 +1,7 @@
 #include <signal.h>
 #include "marian.h"
 
+#include "common/signal_handling.h"
 #include "training/graph_group_async.h"
 #include "training/graph_group_singleton.h"
 #include "training/graph_group_sync.h"
@@ -51,5 +52,5 @@ int main(int argc, char** argv) {
   // returns for timeout -s SIGTERM <seconds> ...., because exiting after SIGTERM
   // is not technically a fatal error (which is what the 128+x convention usually
   // stands for).
-  return getSigtermFlag() ? (128 + SIGTERM) : 0;
+  return getSignalFlag(SIGTERM) ? (128 + SIGTERM) : 0;
 }

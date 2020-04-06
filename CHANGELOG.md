@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Changed compile flags -Ofast to -O3 and remove --ffinite-math
 - Moved old graph groups to depracated folder
 - Make cublas and cusparse handle inits lazy to save memory when unused
+- Improved handling for graceful shutdown upon receiving SIGTERM.
+  SIGTERM now also interrupts batch prefetching, which runs in a separate thread.
 
 ## [1.9.0] - 2020-03-10
 

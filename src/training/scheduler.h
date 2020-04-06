@@ -1,15 +1,13 @@
 #pragma once
 
 #include "common/options.h"
+#include "common/signal_handling.h"
 #include "training/training_state.h"
 #include "training/validator.h"
 #include "training/communicator.h"
 #include "layers/loss.h"
 
 namespace marian {
-
-bool getSigtermFlag();
-void installSignalHandlers();
 
 class Scheduler : public TrainingObserver {
 private:
@@ -154,11 +152,10 @@ public:
       : options_(options), state_(state) {
     ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
     updateLearningRate(*state);
-    installSignalHandlers();
   }
 
   bool keepGoing() {
-    if(getSigtermFlag()) // received signal SIGERM => exit gracefully
+    if(getSignalFlag(SIGTERM)) // received signal SIGERM => exit gracefully
       return false;
 
     // stop if it reached the maximum number of epochs
@@ -192,7 +189,7 @@ public:
 
   void started() { LOG(info, "Training started"); }
   void finished() {
-    if (getSigtermFlag())
+    if (getSignalFlag(SIGTERM))
       LOG(info, "Training interrupted (SIGTERM).");
     else
       LOG(info, "Training finished");
@@ -225,7 +222,7 @@ public:
                 bool isFinal = false) {
     // Do not validate if already validated (for instance, after the model is
     // loaded) or if validation is scheduled for another update, or when signal SIGTERM was received
-    if(getSigtermFlag() // SIGTERM was received
+    if(getSignalFlag(SIGTERM) // SIGTERM was received
        || state_->validated // already validated (in resumed training, for example)
        || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !isFinal)) // not now
       return;

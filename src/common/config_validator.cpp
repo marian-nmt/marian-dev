@@ -72,17 +72,18 @@ void ConfigValidator::validateOptionsParallelData() const {
 
   auto numVocabs = get<std::vector<std::string>>("vocabs").size();
   ABORT_IF(!get<bool>("tsv") && numVocabs > 0 && numVocabs != trainSets.size(),
-           "There should be as many vocabularies as training sets");
+           "There should be as many vocabularies as training files");
 
   // disallow, for example --tsv --train-sets file1.tsv file2.tsv
   ABORT_IF(get<bool>("tsv") && trainSets.size() != 1,
-      "A single file can be provided with --train-sets (or stdin) for a tab-separated input");
+      "A single file must be provided with --train-sets (or stdin) for a tab-separated input");
 
   // disallow, for example --train-sets stdin stdin or --train-sets stdin file.tsv
-  ABORT_IF(trainSets.size() > 1 && std::any_of(trainSets.begin(),
-                                               trainSets.end(),
-                                               [](const std::string& s) { return s == "stdin"; }),
-           "Only one 'stdin' in --train-sets is allowed");
+  ABORT_IF(trainSets.size() > 1
+               && std::any_of(trainSets.begin(),
+                              trainSets.end(),
+                              [](const std::string& s) { return (s == "stdin") || (s == "-"); }),
+           "Only one 'stdin' or '-' in --train-sets is allowed");
 }
 
 void ConfigValidator::validateOptionsScoring() const {
@@ -104,7 +105,7 @@ void ConfigValidator::validateOptionsTraining() const {
   ABORT_IF(has("embedding-vectors")
                && get<std::vector<std::string>>("embedding-vectors").size() != trainSets.size()
                && !get<std::vector<std::string>>("embedding-vectors").empty(),
-           "There should be as many embedding vector files as training sets");
+           "There should be as many embedding vector files as training files");
 
   filesystem::Path modelPath(get<std::string>("model"));
 
@@ -115,15 +116,14 @@ void ConfigValidator::validateOptionsTraining() const {
   ABORT_IF(!modelDir.empty() && !filesystem::isDirectory(modelDir),
            "Model directory does not exist");
 
-  std::string errorMessage = get<bool>("tsv")
-            ? "There should be as many validation sets as training sets. "
-              "If the training set is in the TSV format, validation sets have to also be a TSV file"
-            : "There should be as many validation sets as training sets";
+  std::string errorMsg = "There should be as many validation files as training files";
+  if(get<bool>("tsv"))
+    errorMsg += ". If the training set is in the TSV format, validation sets have to also be a single TSV file";
 
   ABORT_IF(has("valid-sets")
                && get<std::vector<std::string>>("valid-sets").size() != trainSets.size()
                && !get<std::vector<std::string>>("valid-sets").empty(),
-           errorMessage);
+           errorMsg);
 
   // validations for learning rate decaying
   ABORT_IF(get<float>("lr-decay") > 1.f, "Learning rate decay factor greater than 1.0 is unusual");

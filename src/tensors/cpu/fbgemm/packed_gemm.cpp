@@ -381,7 +381,7 @@ void fbgemmPacked8Pack(marian::Tensor out,
     TensorQuantizationParams bQuantParam;
     bQuantParam.scale = bqScale[jj];
     bQuantParam.zero_point = bqZeropoint[jj];
-    bQuantParam.precision = 8;
+    bQuantParam.precision = 7;  // Use half of the quantization range to prevent overflow of VPMADDUBSW
 
     if (transpose)
       fbgemm::Quantize<int8_t>(data + jj * k, quantized + jj * k, k, bQuantParam);

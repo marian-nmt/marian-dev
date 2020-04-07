@@ -13,13 +13,13 @@ if (CUDA_FOUND)
   set(MARIAN_CUDA_LIB marian_cuda)
 endif(CUDA_FOUND)
 if (COMPILE_REST_SERVER)
-  add_executable(rest-server rest/rest_server.cpp)
-  set_target_properties(rest-server PROPERTIES OUTPUT marian-rest-server)
-  target_compile_options(rest-server PUBLIC ${ALL_WARNINGS})
-  set(EXECUTABLES ${EXECUTABLES} rest-server)
+  add_executable(marian-rest-server rest/rest_server.cpp)
+  set_target_properties(marian-rest-server PROPERTIES OUTPUT marian-rest-server)
+  target_compile_options(marian-rest-server PUBLIC ${ALL_WARNINGS})
+  set(EXECUTABLES ${EXECUTABLES} marian-rest-server)
   # TODO: use of static vs shared pcre and pcrecpp libraries should
   # depend on USE_STATIC_LIBS, but I couldn't get that to work.
-  target_link_libraries(rest-server marian ${MARIAN_CUDA_LIB} ${EXT_LIBS} marian-service ssplit pcrecpp.a pcre.a)
+  target_link_libraries(marian-rest-server marian ${MARIAN_CUDA_LIB} ${EXT_LIBS} marian-service ssplit pcrecpp.a pcre.a)
 endif(COMPILE_REST_SERVER)
 
 if (COMPILE_AMQP_WORKER)

@@ -115,6 +115,13 @@ public:
     return false;
   }
 
+  void setLegacyBatchedGemm(bool legacyBatch) override {
+    LOG_ONCE(info, "setLegacyBatchedGemm() not supported for GPU_{}", legacyBatch);;
+  }
+  bool isLegacyBatchedGemm() override {
+    return false;
+  }
+
 private:
   cublasHandle_t cublasHandle_{0};     // make sure it's 0, so it can be initalized lazily
   cusparseHandle_t cusparseHandle_{0}; // as above

@@ -17,6 +17,7 @@ protected:
   bool shiftedAll_{false};
   bool dumpMatrices_{false};
   bool alpha_{false};
+  bool legacyBatch_{false};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
@@ -57,6 +58,13 @@ public:
   }
   bool isPrecomputedAlpha() override {
     return alpha_;
+  }
+
+  void setLegacyBatchedGemm(bool legacyBatch) override {
+    legacyBatch_ = legacyBatch;
+  }
+  bool isLegacyBatchedGemm() override {
+    return legacyBatch_;
   }
 
 };

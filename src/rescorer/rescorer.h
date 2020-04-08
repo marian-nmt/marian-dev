@@ -81,6 +81,7 @@ public:
         graph->getBackend()->setShiftedAll(options_->get<bool>("intgemm-shifted-all"));
         graph->getBackend()->setDumpQuantMult(options_->get<bool>("dump-quantmult"));
         graph->getBackend()->setPrecomputedAlpha(options_->get<bool>("use-precomputed-alphas"));
+        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
       }
 
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));

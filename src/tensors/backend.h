@@ -42,6 +42,8 @@ public:
   virtual bool DumpQuantMult() = 0;
   virtual void setPrecomputedAlpha(bool alpha) = 0;
   virtual bool isPrecomputedAlpha() = 0;
+  virtual void setLegacyBatchedGemm(bool legacyBatch) = 0;
+  virtual bool isLegacyBatchedGemm() = 0;
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

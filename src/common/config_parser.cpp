@@ -639,6 +639,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Dump the quantization multipliers during an avarage run.");
   cli.add<bool>("--use-precomputed-alphas",
       "Use precomputed alphas for bias calculation.");
+  cli.add<bool>("--use-legacy-batching",
+      "Use legacy codepath with a for loop of cblas_sgemm, instead of cblas_sgemm_batched.");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<bool>("--fp16",

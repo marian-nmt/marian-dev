@@ -40,6 +40,7 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       rightLeft_(options_->get<bool>("right-left")),
       tsv_(options_->get<bool>("tsv", false)),
       tsvNumFields_(options->get<size_t>("tsv-fields", 0)) {
+  // TODO: support passing only one vocab file if we have fully-tied embeddings
   if(tsv_) {
     ABORT_IF(tsvNumFields_ != vocabs_.size(),
              "Number of TSV fields and vocab files does not agree");

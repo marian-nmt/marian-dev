@@ -86,8 +86,7 @@ void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t 
   if(fields.size() < numFields)  // make sure there is as many elements as requested
     fields.resize(numFields);
 
-  if(pos != std::string::npos)
-    LOG(warn, "[warning] Excessive field(s) in the tab-separated line: '{}'", line);
+  ABORT_IF(pos != std::string::npos, "Excessive field(s) in the tab-separated line: '{}'", line);
 }
 
 std::vector<std::string> split(const std::string& line,

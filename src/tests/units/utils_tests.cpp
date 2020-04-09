@@ -32,9 +32,5 @@ TEST_CASE("utils::splitTsv", "[utils]") {
     CHECK( fields == std::vector<std::string>({"foo bar", ""}) );
   }
 
-  SECTION("excessive tab-separated fields are ignored") {
-    utils::splitTsv(line3, fields, 2);
-    CHECK( fields.size() == 2 );
-    CHECK( fields == std::vector<std::string>({"foo bar", "bazz"}) );
-  }
+  //SECTION("excessive tab-separated fields abort the execution") {}
 }

@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [1.9.0] - 2020-03-10
 
 ### Added
+- Training and scoring from STDIN
+- Support for tab-separated inputs, added ptions --tsv and --tsv-fields
 - An option to print cached variables from CMake
 - Add support for compiling on Mac (and clang)
 - An option for resetting stalled validation metrics

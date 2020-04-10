@@ -22,7 +22,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
   }
 #endif
 
-  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).margin(0.001f); };
+  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).epsilon(0.01f).scale(1.f); };
   auto floatEqual  = [](T x, T y) -> bool { return x == y; };
 
   Config::seed = 1234;
@@ -794,8 +794,8 @@ TEST_CASE("Expression graph supports basic math operations (cpu)", "[operator]")
 #ifdef CUDA_FOUND
 
 TEST_CASE("Compare aggregate operator", "[graph]") {
-  auto floatApprox = [](float x, float y) -> bool { return x == Approx(y).margin(0.001f); };
-  
+  auto floatApprox = [](float x, float y) -> bool { return x == Approx(y).epsilon(0.01f).scale(1.f); };
+
   Config::seed = 1234;
 
   std::vector<float> initc;
@@ -817,7 +817,7 @@ TEST_CASE("Compare aggregate operator", "[graph]") {
   SECTION("initializing with zero (cpu)") {
     std::vector<float> values1;
     std::vector<float> values2;
-    
+
     auto graph1 = New<ExpressionGraph>();
     graph1->setDevice({0, DeviceType::cpu});
     graph1->reserveWorkspaceMB(40);
@@ -825,7 +825,7 @@ TEST_CASE("Compare aggregate operator", "[graph]") {
     auto graph2 = New<ExpressionGraph>();
     graph2->setDevice({0, DeviceType::gpu});
     graph2->reserveWorkspaceMB(40);
-  
+
     auto chl1 = graph1->param("1x10x512x2048", {1, 10, 512, 2048}, inits::fromVector(initc));
     auto adj1 = graph1->param("1x1x512x2048",  {1,  1, 512, 2048}, inits::fromVector(inita));
     auto prod1 = scalar_product(chl1, adj1, -1);

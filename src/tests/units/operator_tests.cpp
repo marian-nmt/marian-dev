@@ -22,7 +22,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
   }
 #endif
 
-  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).epsilon(0.01f).scale(1.f); };
+  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).margin(0.001f); };
   auto floatEqual  = [](T x, T y) -> bool { return x == y; };
 
   Config::seed = 1234;

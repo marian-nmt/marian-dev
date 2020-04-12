@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
   else {
     auto devices = Config::getDevices(options);
     if(devices.size() == 1) {
-      LOG(info, "Using single-device training");
+      LOG(info, "[training] Using single-device training");
       New<Train<SingletonGraph>>(options)->run();
     } else {
       LOG(info, "Using asynchronous training");

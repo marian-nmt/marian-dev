@@ -39,16 +39,14 @@ const std::set<std::string> PATHS = {
   "valid-script-args",
   "valid-log",
   "valid-translation-output",
-  "input",            // except: stdin
-  "output",           // except: stdout
+  "input",            // except: 'stdin', handled in makeAbsolutePaths and interpolateEnvVars
+  "output",           // except: 'stdout', handled in makeAbsolutePaths and interpolateEnvVars
   "pretrained-model",
   "data-weighting",
-  "log"
-  // TODO: Handle the special value in helper functions
-  //"sqlite",         // except: temporary
-  // TODO: This is a vector with a path and some numbers, handle this in helper
-  // functions or separate shortlist path to a separate command-line option
-  //"shortlist",
+  "log",
+  "sqlite",           // except: 'temporary', handled in the processPaths function
+  "shortlist",        // except: only the first element in the sequence is a path, handled in the
+                      //  processPaths function
 };
 // clang-format on
 
@@ -382,6 +380,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "10000u");
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
 
   // data management options
   cli.add<std::string>("--shuffle",
@@ -504,8 +503,10 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       {"float32", "float32", "float32"});
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
-      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
-  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
+      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
+    ->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+  cli.add<bool>("--normalize-gradient",
+      "Normalize gradient by multiplying with no. devices / total labels");
 
   // multi-node training
   cli.add<bool>("--multi-node",
@@ -630,8 +631,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Keep the output segmented into SentencePiece subwords");
 #endif
 
-  addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
+  addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
   cli.add<bool>("--optimize",
@@ -691,6 +693,7 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
      ->implicit_val("1"),
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
@@ -798,6 +801,15 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
+void ConfigParser::addSuboptionsTSV(cli::CLIWrapper& cli) {
+  // clang-format off
+  cli.add<bool>("--tsv",
+      "Tab-separated input");
+  cli.add<size_t>("--tsv-fields",
+      "Number of fields in the TSV input, guessed based on the model type");
+  // clang-format on
+}
+
 void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format off
   // support for universal encoder ULR https://arxiv.org/pdf/1802.05368.pdf
@@ -848,11 +860,15 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
 
   auto buildInfo = get<std::string>("build-info");
   if(!buildInfo.empty() && buildInfo != "false") {
+#ifndef _MSC_VER // cmake build options are not available on MSVC based build.
     if(buildInfo == "all")
       std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
     else
       std::cerr << cmakeBuildOptions() << std::endl;
     exit(0);
+#else // _MSC_VER
+    ABORT("build-info is not available on MSVC based build.");
+#endif // _MSC_VER
   }
 
   // get paths to extra config files
@@ -865,7 +881,22 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   }
 
   if(get<bool>("interpolate-env-vars")) {
-    cli::processPaths(config_, cli::InterpolateEnvVars, PATHS);
+    cli::processPaths(config_, cli::interpolateEnvVars, PATHS);
+  }
+
+  // Option shortcuts for input from STDIN for trainer and scorer
+  if(mode_ == cli::mode::training || mode_ == cli::mode::scoring) {
+    auto trainSets = get<std::vector<std::string>>("train-sets");
+    YAML::Node config;
+    // Assume the input will come from STDIN if --tsv is set but no --train-sets are given
+    if(get<bool>("tsv") && trainSets.empty()) {
+      config["train-sets"].push_back("stdin");
+    // Assume the input is in TSV format if --train-sets is set to "stdin"
+    } else if(trainSets.size() == 1 && (trainSets[0] == "stdin" || trainSets[0] == "-")) {
+      config["tsv"] = true;
+    }
+    if(!config.IsNull())
+      cli_.updateConfig(config, cli::OptionPriority::CommandLine, "A shortcut for STDIN failed.");
   }
 
   if(doValidate) {
@@ -905,12 +936,12 @@ std::vector<std::string> ConfigParser::findConfigPaths() {
     for(auto& path : paths) {
       // (note: this updates the paths array)
       if(interpolateEnvVars)
-        path = cli::InterpolateEnvVars(path);
+        path = cli::interpolateEnvVars(path);
     }
   } else if(mode_ == cli::mode::training) {
     auto path = config_["model"].as<std::string>() + ".yml";
     if(interpolateEnvVars)
-      path = cli::InterpolateEnvVars(path);
+      path = cli::interpolateEnvVars(path);
 
     bool reloadConfig = filesystem::exists(path) && !get<bool>("no-reload");
     if(reloadConfig)
@@ -936,7 +967,7 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
                                  && config["interpolate-env-vars"].as<bool>())
                                 || get<bool>("interpolate-env-vars");
       if(interpolateEnvVars)
-        cli::processPaths(config, cli::InterpolateEnvVars, PATHS);
+        cli::processPaths(config, cli::interpolateEnvVars, PATHS);
 
       // replace relative path w.r.t. the config file
       cli::makeAbsolutePaths(config, path, PATHS);

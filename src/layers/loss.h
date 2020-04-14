@@ -437,13 +437,45 @@ protected:
 
 /**
  * @brief Cross entropy in rescorer used for computing sentences-level log probabilities
+ *
+ * This class differs from CrossEntropy in the different 'axes' setting, and that label smoothing
+ * is disabled.
  */
 class RescorerLoss : public CrossEntropyLoss {
 public:
   // sentence-wise CE, hence reduce only over time axis
-  // This class differs from CrossEntropy in the different 'axes' setting, and that label smoothing is disabled.
   RescorerLoss() : CrossEntropyLoss(/*axes=*/{-3} /*time axis*/, /*smoothing=*/0.f, /*factorWeight=*/1.0f) {}
 };
+
+/**
+ * @brief Cross entropy in rescorer used for computing word-level log probabilities
+ *
+ * This class differs from CrossEntropy that it does not reduce the loss over any axis (counts are
+ * still reduced to get sentence lengths), and that label smoothing is disabled.
+ */
+class RescorerUnreducedLoss : public CrossEntropyLoss {
+public:
+  // word-level CE, hence do not reduce over any axis
+  RescorerUnreducedLoss() : CrossEntropyLoss(/*axes=*/{}, /*smoothing=*/0.f, /*factorWeight=*/1.0f) {}
+
+  virtual RationalLoss apply(Logits logits, const Words& labels,
+                             Expr mask = nullptr, Expr labelWeights = nullptr) override {
+    auto loss = CrossEntropyLoss::compute(logits, labels, mask, labelWeights);
+    ABORT_IF(!mask, "Word-level CE from rescorer must have mask");
+    return reduceLabels(loss, mask);  // reduce labels to get sentence lengths
+  }
+
+  RationalLoss reduceLabels(Expr loss, Expr labels) {
+    ABORT_IF(!loss, "Loss has not been computed");
+    ABORT_IF(!labels, "Labels have not been computed");
+
+    Expr labelsSum = cast(labels, Type::float32);  // accumulate in float32
+    labelsSum = sum(labelsSum, -3);                // reduce over time axis to get sentence lengths
+
+    return RationalLoss(loss, labelsSum);
+  }
+};
+
 
 /**
  * @brief Factory for label-wise loss functions

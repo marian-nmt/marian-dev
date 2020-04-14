@@ -33,7 +33,7 @@ public:
     // that these hyper-parameters were originally tuned for, then the learning-rate gets
     // adjusted accordingly. Note: Requires user to also use ce-sum criterion.
     if (refMBWordsParam_ != 0)
-      LOG(info, "[optimizers] Learning rate gets automatically adjusted as if minibatch size was {}", refMBWordsParam_);
+      LOG_ONCE(info, "[optimizers] Learning rate gets automatically adjusted as if minibatch size was {}", refMBWordsParam_);
   }
 
   virtual ~OptimizerBase() {}

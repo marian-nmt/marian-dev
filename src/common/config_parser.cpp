@@ -308,13 +308,6 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         "Dropout source words (0 = no dropout)");
     cli.add<float>("--dropout-trg",
         "Dropout target words (0 = no dropout)");
-    cli.add<float>("--grad-dropping-rate",
-        "Gradient Dropping rate (0 = no gradient Dropping)");
-    cli.add<float>("--grad-dropping-momentum",
-        "Gradient Dropping momentum decay rate (0.0 to 1.0)");
-    cli.add<size_t>("--grad-dropping-warmup",
-        "Do not apply gradient dropping for the first arg steps",
-        100);
     cli.add<float>("--transformer-dropout",
         "Dropout between transformer layers (0 = no dropout)");
     cli.add<float>("--transformer-dropout-attention",
@@ -778,7 +771,7 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
     cli.add<size_t>("--english-title-case-every",
         "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
 
-    cli.add<int>("--mini-batch-words-ref",
+    cli.add<size_t>("--mini-batch-words-ref",
         "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
         "--learn-rate, --optimizer-params, --exponential-smoothing, --mini-batch-warmup");
     cli.add<std::string/*SchedulerPeriod*/>("--mini-batch-warmup",

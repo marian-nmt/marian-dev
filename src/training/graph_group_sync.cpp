@@ -152,8 +152,7 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
     LOG_ONCE(info, "[scheduler] Scaling to {} reference labels, using actual-batch-word estimate of {}", refBatchLabels, typicalTrgBatchWords_);
     ABORT_IF(typicalTrgBatchWords_ == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
 
-    // @TODO: MJD review
-    // typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * newBatch->wordsTrg();
+    typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * newBatch->wordsTrg();
     ratio *= (double)refBatchLabels / (double)(typicalTrgBatchWords_ * updateMultiplier_);
   }
 

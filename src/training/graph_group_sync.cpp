@@ -147,7 +147,7 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
   // If a reference is given, then at progress == mbWarmup.n (ratio=1), we would like to have refBatchLabels instead of whichever
   // the actual batch size is. Since we cannot know the future actual batch sizes that will be delivered
   // by the reader, we approximate them with (typicalTrgBatchWords * updateMultiplier), and scale ratio accordingly.
-  auto refBatchLabels = options_->get<size_t>("mini-batch-words-ref");
+  auto refBatchLabels = options_->get<size_t>("mini-batch-words");
   if (refBatchLabels != 0) {
     LOG_ONCE(info, "[scheduler] Scaling to {} reference labels, using actual-batch-word estimate of {}", refBatchLabels, typicalTrgBatchWords_);
     ABORT_IF(typicalTrgBatchWords_ == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
@@ -334,7 +334,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     // actual model update
     auto updateTrgWords =
         /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
-          batchTrgWords // if overstuffing then bring the count back to the original value
+          batchTrgWords // total number of labels across all GPUs and nodes
         /*else*/:
           OptimizerBase::mbSizeNotProvided;
 
@@ -377,9 +377,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   }
 
   // cost across all local devices (scheduler will aggregate cross-process)
-  StaticLoss localLoss;
-  for(auto& l : localDeviceLosses) // localDeviceLosses is already summed up over delay steps
-    localLoss += l;
+  StaticLoss localLoss = std::accumulate(localDeviceLosses.begin(), localDeviceLosses.end(), StaticLoss());
 
   if(scheduler_) {
     // track and log localLoss

@@ -49,6 +49,8 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
     *(reinterpret_cast<float *>(&(*(output_tensor + item.shape.elements())))) = quantMult;
 }
 
+void unquantizeWemb(io::Item& item, const char * input);
+
 } //integer
 } //cpu
 } //marian

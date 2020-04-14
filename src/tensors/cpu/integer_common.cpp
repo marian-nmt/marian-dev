@@ -37,6 +37,15 @@ void AddBias(marian::Tensor C, const marian::Tensor Bias) {
   }
 }
 
+void unquantizeWemb(io::Item& item, const char * input) {
+    float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const char *>(input) + item.shape.elements()));
+    float * output_tensor = reinterpret_cast<float *>(&(*item.bytes.begin()));
+    for (size_t i = 0; i < rows(item.shape) * cols(item.shape); i++) {
+        output_tensor[i] = input[i]*(1/quantMult);
+    }
+}
+
+
 //template void prepareAndTranspose<intgemm8>;//(io::Item& item, const char * input);
 //template void prepareAndTranspose<intgemm16>(io::Item&, const char *);
 

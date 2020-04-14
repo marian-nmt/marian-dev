@@ -60,6 +60,7 @@ namespace marian {
 // We will improve this in the near future. 
 class ExpressionGraphPackable : public ExpressionGraph {
 public:
+  bool compressWemb = true;
   ExpressionGraphPackable()
     : ExpressionGraph( /* inference =  */ true) {} // Packable expression graph only supports inference
 
@@ -184,7 +185,7 @@ public:
         ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
 #endif
       } else if ((gemmElementType == Type::intgemm8 || gemmElementType == Type::intgemm16) &&
-      (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 /* || pName.find("Wemb") != std::string::npos*/)) {
+      (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2  || ((pName.find("Wemb") != std::string::npos) && compressWemb))) {
 
         using cpu::integer::cols;
         using cpu::integer::rows;
@@ -196,8 +197,12 @@ public:
         // Compute QuantMultiplier, compress matrix and store quantMult at the end.
         // We need to tranpose first, because of our architecture independet format requiring a transposed matrix
         Tensor tmp;
-        allocator->allocate(tmp, val->shape(), val->type());
-        Transpose10(tmp, val);
+        if (pName.find("Wemb") != std::string::npos) { //Do not transpose the Wemb matrix. Hacky temporary solution
+          tmp = val;
+        } else {
+          allocator->allocate(tmp, val->shape(), val->type());
+          Transpose10(tmp, val);
+        }
         if (gemmElementType == Type::intgemm8) {
           float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
           intgemm::Int8::PrepareA(tmp->data(), /*input*/

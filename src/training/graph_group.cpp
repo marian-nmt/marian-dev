@@ -420,4 +420,12 @@ void GraphGroup::setTypicalTrgBatchWords(size_t typicalTrgBatchWords) { // neede
   typicalTrgBatchWords_ = typicalTrgBatchWords;
 }
 
+double GraphGroup::getTypicalTrgBatchWords() {
+  return typicalTrgBatchWords_;
+}
+
+void GraphGroup::updateAverageTrgBatchWords(size_t trgBatchWords) {
+  typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * (double)trgBatchWords; // record a running average of the batch size, factors are chosen empirically.
+}
+
 }

@@ -42,7 +42,7 @@ protected:
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
   
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
-  size_t typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
+  double typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
 
   bool costScale_{false};
   float costScaleFactor_{1.f}; // @TODO, add current costScaleFactor_ to trainingState for serialization
@@ -198,6 +198,8 @@ public:
                                              double multiplier = 1.);
 
   void setTypicalTrgBatchWords(size_t typicalTrgBatchWords);
+  double getTypicalTrgBatchWords();
+  void updateAverageTrgBatchWords(size_t trgBatchWords);
 };
 
 }  // namespace marian

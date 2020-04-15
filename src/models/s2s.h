@@ -34,7 +34,7 @@ public:
     auto backward = type == "alternating" ? rnn::dir::alternating_backward
                                           : rnn::dir::backward;
 
-    float dropoutRnn = inference_ ? 0 : opt<float>("dropout-rnn");
+    float dropoutRnn = !useDropout_ ? 0 : opt<float>("dropout-rnn");
 
     auto rnnFw = rnn::rnn()                                        //
         ("type", opt<std::string>("enc-cell"))                     //
@@ -149,7 +149,7 @@ private:
 
   Ptr<rnn::RNN> constructDecoderRNN(Ptr<ExpressionGraph> graph,
                                     Ptr<DecoderState> state) {
-    float dropoutRnn = inference_ ? 0 : opt<float>("dropout-rnn");
+    float dropoutRnn = !useDropout_ ? 0 : opt<float>("dropout-rnn");
 
     auto rnn = rnn::rnn()                                          //
         ("type", opt<std::string>("dec-cell"))                     //

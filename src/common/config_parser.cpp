@@ -299,12 +299,6 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
 
   if(mode_ == cli::mode::training) {
     // TODO: add ->range(0,1);
-    cli.add<float>("--dropout-rnn",
-        "Scaling dropout along rnn layers and time (0 = no dropout)");
-    cli.add<float>("--dropout-src",
-        "Dropout source words (0 = no dropout)");
-    cli.add<float>("--dropout-trg",
-        "Dropout target words (0 = no dropout)");
     cli.add<float>("--grad-dropping-rate",
         "Gradient Dropping rate (0 = no gradient Dropping)");
     cli.add<float>("--grad-dropping-momentum",
@@ -312,13 +306,21 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
     cli.add<size_t>("--grad-dropping-warmup",
         "Do not apply gradient dropping for the first arg steps",
         100);
-    cli.add<float>("--transformer-dropout",
-        "Dropout between transformer layers (0 = no dropout)");
-    cli.add<float>("--transformer-dropout-attention",
-        "Dropout for transformer attention (0 = no dropout)");
-    cli.add<float>("--transformer-dropout-ffn",
-        "Dropout for transformer filter (0 = no dropout)");
   }
+
+  cli.add<float>("--dropout-rnn",
+      "Scaling dropout along rnn layers and time (0 = no dropout)");
+  cli.add<float>("--dropout-src",
+      "Dropout source words (0 = no dropout)");
+  cli.add<float>("--dropout-trg",
+      "Dropout target words (0 = no dropout)");
+  cli.add<float>("--transformer-dropout",
+      "Dropout between transformer layers (0 = no dropout)");
+  cli.add<float>("--transformer-dropout-attention",
+      "Dropout for transformer attention (0 = no dropout)");
+  cli.add<float>("--transformer-dropout-ffn",
+      "Dropout for transformer filter (0 = no dropout)");
+
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -646,6 +648,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--output-sampling",
      "Noise output layer with gumbel noise",
       false);
+  cli.add<bool>("--dropout-sampling",
+      "Use dropout during inference",
+      false);
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
@@ -699,6 +704,10 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
+
+  cli.add<bool>("--dropout-sampling",
+      "Use dropout during scoring",
+      false);
 
   cli.switchGroup(previous_group);
   // clang-format on

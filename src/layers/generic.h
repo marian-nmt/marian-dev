@@ -70,6 +70,7 @@ protected:
   const bool embeddingFix_;
   const float dropout_;
   const bool inference_;
+  const bool useDropout_;
   const size_t batchIndex_;
   mutable std::vector<Ptr<IEmbeddingLayer>> embeddingLayers_; // (lazily created)
 
@@ -81,6 +82,7 @@ protected:
       embeddingFix_(embeddingFix),
       dropout_(dropout),
       inference_(options->get<bool>("inference", false)),
+      useDropout_(options->get<bool>("dropout-sampling", !inference_)),
       batchIndex_(options->get<size_t>("index", batchIndex)) {}
 
   virtual ~EncoderDecoderLayerBase() {}

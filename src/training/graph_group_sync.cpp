@@ -153,12 +153,12 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
     ABORT_IF(typicalTrgBatchWords_ == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
 
     GraphGroup::updateAverageTrgBatchWords(newBatch->wordsTrg());
-    ratio *= (double)refBatchLabels / (double)(GraphGroup::getTypicalTrgBatchWords() * updateMultiplier_);
+    ratio *= (double)refBatchLabels / (GraphGroup::getTypicalTrgBatchWords() * updateMultiplier_);
   }
 
   // @TODO: MJD review
   // round up to full batches if within a certain error margin  --@BUGBUG: Not invariant w.r.t. GPU size, as ratio is relative to what fits into 1 GPU
-  ratio = roundUpRatio(ratio);
+  // ratio = roundUpRatio(ratio);
 
   if (pendingBatches_.size() < ratio)
     return false; // not enough data yet

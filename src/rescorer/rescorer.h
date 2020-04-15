@@ -186,6 +186,7 @@ public:
               float sentScore{0.f};
 
               for(size_t i = 0; i < batch->size(); ++i) {
+                // Sum word-level scores to get the sentence score
                 for(size_t j = 0; j < sentLengths[i]; ++j) {
                   size_t idx = j * batch->size() + i;            // the j-th word in i-th sentence
                   wordScores.push_back(-1.f * sentScores[idx]);  // report logProb, hence negate
@@ -194,9 +195,10 @@ public:
 
                 sentScore *= -1.f;  // report logProb while score is CE, hence negate
                 if(normalize)
-                  // note: word-level scores are not normalized to be consistent with decoding
+                  // Note: word-level scores are not normalized; this is consistent with decoding
                   // TODO: return length-normalized scores in both marian-scorer and marian-decoder
                   sentScore /= sentLengths[i];
+
                 output->Write((long)batch->getSentenceIds()[i], sentScore, aligns[i], wordScores);
 
                 wordScores.clear();

@@ -511,7 +511,7 @@ public:
         std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
         size_t trieVocabBatchIdx = 0;
 
-        std::cout << "sizes of trie vocab: " << trieVocabIdxs.size() << std::endl;
+        // std::cout << "sizes of trie vocab: " << trieVocabIdxs.size() << std::endl;
 
         // the line below is actually (num of sentences) * (num of hyps)
         // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
@@ -539,8 +539,8 @@ public:
           }
           if (trieVocabIdxs[trieVocabBatchIdx].size() != 0)
             trieVocabBatchIdx += 1;
-          std::cout << "batch " <<  i << ": num of continuations: " << trieVocabIdxs[i].size() << std::endl;
-        std::cout << "ok543" << std::endl;
+          // std::cout << "batch " <<  i << ": num of continuations: " << trieVocabIdxs[i].size() << std::endl;
+        // std::cout << "ok543" << std::endl;
         }
         // std::cout << "maxBeamSize: " << maxBeamSize << std::endl;
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
@@ -565,7 +565,7 @@ public:
                        emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
                        batchIdxMap); // used to create a reverse batch index map to recover original batch indices for this step
         
-      std::cout << "ok568" << std::endl;
+      // std::cout << "ok568" << std::endl;
       } // END FOR factorGroup = 0 .. numFactorGroups-1
 
       prevBatchIdxMap = batchIdxMap; // save current batchIdx map to be used in next step; we are then going to look one step back
@@ -590,26 +590,26 @@ public:
 
       // this is the search space for the next output time step
       beams = purgedNewBeams;
-      std::cout << "size of purged beams: " << beams.size() << std::endl;
+      // std::cout << "size of purged beams: " << beams.size() << std::endl;
 
       // advance trie pointers
         int batchCounter = 0;
         for(auto beam : beams) {
           int hypCounter = 0;
-          std::cout << "size of beam " << batchCounter << ": "<< beam.size() << std::endl;
+          // std::cout << "size of beam " << batchCounter << ": "<< beam.size() << std::endl;
           for (auto hyp : beam) {
             if (!hyp->hasTrieContinuatuions()) {
               // should never reach here
-              std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
+              // std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
             }
             hypCounter += 1;
           }
           batchCounter+= 1;
         }
 
-      std::cout << "ok610" << std::endl;
+      // std::cout << "ok610" << std::endl;
         
-      std::cout << "ok612" << std::endl;
+      // std::cout << "ok612" << std::endl;
     } // end of main loop over output time steps
 
     return histories; // [origDimBatch][t][N best hyps]

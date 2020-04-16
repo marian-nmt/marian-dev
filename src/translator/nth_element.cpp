@@ -51,7 +51,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
     const auto inputN    = scores->shape()[-2];
     const auto dimBatch  = scores->shape()[-4];
 
-    std::cout << "scores tensor looks like: " << scores->shape() << std::endl;
+    // std::cout << "scores tensor looks like: " << scores->shape() << std::endl;
     // std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
@@ -88,10 +88,10 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
         // std::cout << "selected idxs: ";
         // int pos = batchIdx * N; // iterates through h_res and h_res_idx
         // std::cout << "sentence (batch) " << batchIdx << ":" << std::endl;
-        std::cout << "nth elem for batch " << batchIdx << ":  "; 
+        // std::cout << "nth elem for batch " << batchIdx << ":  "; 
         for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
           int idx = idxs[temp];
-          std::cout << "(" << idx + batchIdx * batchOffset << ", " << idx % vocabSize << ", " << vocabMap[idx % vocabSize]  << " ) ";
+          // std::cout << "(" << idx + batchIdx * batchOffset << ", " << idx % vocabSize << ", " << vocabMap[idx % vocabSize]  << " ) ";
           h_res_idx.push_back(idx + batchIdx * batchOffset);
           // scores do not need offset because the pointer gets advanced each time
           h_res.push_back(scoresData[idx]);

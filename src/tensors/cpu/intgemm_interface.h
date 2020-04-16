@@ -403,22 +403,34 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
   return Expression<SelectColumnsBNodeOp<vtype > >(b, cols, clipValue);
 }
 
-static inline Expr fetchAlphaFromModel(Expr b) {
-  std::string bname = b->name();
-  Expr aQuantMult = nullptr;
-  static auto map = b->graph()->params()->getMap();
-  std::string aQuantKey = b->name() + "_QuantMultA";
-  //Very Hacky Bit. Unnamed matrix is notpart of the F0 parameter namespace
-  if (aQuantKey.at(0) != 'F') {
-    aQuantKey = "F0::" + aQuantKey;
+class fetchAlphaFromModelNodeOp : public UnaryNodeOp {
+public:
+  fetchAlphaFromModelNodeOp(Expr b)
+      : UnaryNodeOp(b, b->shape(), Type::float32) {
+
+    std::string bname = b->name();
+    std::string aQuantKey = b->name() + "_QuantMultA";
+    //Very Hacky Bit. Unnamed matrix is notpart of the F0 parameter namespace
+    if (aQuantKey.at(0) != 'F') {
+      aQuantKey = "F0::" + aQuantKey;
+    }
+    set_name(aQuantKey);
   }
-  auto mapiter = map.find(aQuantKey);
-  if (mapiter != map.end()) {
-    return mapiter->second;
-  } else {
-    ABORT("We did not find an alpha in the model named: {}.", aQuantKey);
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      auto map = child(0)->graph()->params()->getMap();
+      const auto mapiter = map.find(name());
+      if (mapiter != map.end()) {
+        val_ = mapiter->second->val();
+      } else {
+        ABORT("We did not find an alpha in the model named: {}.", name());
+      }
+    )};
   }
-}
+
+  const std::string type() override { return "alphaNodeOp"; }
+};
 
 template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool shiftedBias=false) {
@@ -426,7 +438,7 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   Expr aQuantMult = nullptr;
   static bool precomputedAlphas = b->graph()->getBackend()->isPrecomputedAlpha();
   if (precomputedAlphas) { //Shifting here maybe should check?
-    aQuantMult = fetchAlphaFromModel(b);
+    aQuantMult = Expression<fetchAlphaFromModelNodeOp>(b);
   } else {
     aQuantMult = quantMult<vtype>(a, true, b->name()); /*@TODO Do something about b->name() here*/
   }

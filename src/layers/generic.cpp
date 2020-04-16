@@ -270,14 +270,14 @@ namespace marian {
           Expr bQuantMult = marian::cpu::integer::quantMult<Type::int8>(Wt_);
           if (isIntgemm(Wt_->value_type())) {
             if (graph_->getBackend()->isPrecomputedAlpha()) {
-              aQuantMult = marian::cpu::integer::fetchAlphaFromModel(Wt_);
+              aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(Wt_);
               preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, Wt_, aQuantMult, bQuantMult);
             }
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           } else {
             cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */);
             if (graph_->getBackend()->isPrecomputedAlpha()) {
-              aQuantMult = marian::cpu::integer::fetchAlphaFromModel(cachedShortWt_);
+              aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(cachedShortWt_);
               preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, cachedShortWt_, aQuantMult, bQuantMult);
             }
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);

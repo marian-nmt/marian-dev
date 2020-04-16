@@ -406,7 +406,7 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 class fetchAlphaFromModelNodeOp : public UnaryNodeOp {
 public:
   fetchAlphaFromModelNodeOp(Expr b)
-      : UnaryNodeOp(b, b->shape(), Type::float32) {
+      : UnaryNodeOp(b, Shape({1}), Type::float32) {
 
     std::string bname = b->name();
     std::string aQuantKey = b->name() + "_QuantMultA";

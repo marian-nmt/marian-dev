@@ -96,7 +96,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
           // scores do not need offset because the pointer gets advanced each time
           h_res.push_back(scoresData[idx]);
         }
-        std::cout << std::endl;
+        // std::cout << std::endl;
         scoresData += batchOffset;
       }
       // std::cout << "size of h_res: " << h_res.size() << std::endl;

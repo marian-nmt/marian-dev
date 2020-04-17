@@ -23,14 +23,7 @@ public:
       : GraphGroup(options) {
     ABORT_IF(mpi->numMPIProcesses() != 1, "SingletonGraph does not support multiple MPI processes");
     ABORT_IF(devices_.size() != 1, "Only one device ID should be provided for singleton training");
-    auto deviceId = devices_[0];
-    // Initialize graph
-
-    graphs_.push_back(New<ExpressionGraph>());
-
-    auto graph = graphs_[0]; // only one graph
-    graph->setDevice(deviceId);
-
+    
     GraphGroup::initGraphs();
 
     optimizerShards_.push_back(Optimizer(options_));

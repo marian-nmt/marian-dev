@@ -50,7 +50,11 @@ GraphGroup::GraphGroup(Ptr<Options> options)
   : GraphGroup(options, Config::getDevices(options)) {}
 
 void GraphGroup::initGraphs() {
-  for(auto graph : graphs_) {
+  for(auto device : devices_) {
+    auto graph = New<ExpressionGraph>();
+    graph->setDevice(device);
+    graphs_.push_back(graph);
+
     // @TODO: validate precisions in config
     auto precisions = options_->get<std::vector<std::string>>("precision");
     Type parameterType = typeFromString(precisions[0]);

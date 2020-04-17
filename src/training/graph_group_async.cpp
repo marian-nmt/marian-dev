@@ -13,15 +13,13 @@ AsyncGraphGroup::AsyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
   ABORT_IF((double)optimizerDelay_ != options_->get<double>("optimizer-delay"), "AsyncGraphGroup presently does not implement fractional values for --optimizer-delay");
   pool_.reset(new ThreadPool(devices_.size(), devices_.size()));
 
-  for(auto device : devices_) {
-    auto graph = New<ExpressionGraph>();
-    graph->setDevice(device);
-    graphs_.push_back(graph);
+  GraphGroup::initGraphs();
+
+  for(auto graph : graphs_) {
+    graph; // avoid unused variable error
     optimizerShards_.push_back(Optimizer(options_));
     models_.push_back(models::createCriterionFunctionFromOptions(options_, models::usage::training));
   }
-
-  GraphGroup::initGraphs();
 }
 
 void AsyncGraphGroup::setScheduler(Ptr<Scheduler> scheduler) {

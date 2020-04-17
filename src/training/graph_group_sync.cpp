@@ -8,16 +8,13 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     : GraphGroup(options, Config::getDevices(options, mpi->myMPIRank(), mpi->numMPIProcesses())),
       delay_{options_->get<double>("optimizer-delay")}, mpi_(mpi) { // @TODO: rename delay_ to something else; delay means delayed updated, not accumulation
 
-  for(auto device : devices_) {
-    auto graph = New<ExpressionGraph>();
-    graph->setDevice(device);
+  GraphGroup::initGraphs();
 
-    graphs_.push_back(graph);
+  for(auto graph : graphs_) {
+    graph; // avoid unused variable error
     optimizerShards_.push_back(Optimizer(options_));
     models_.push_back(models::createCriterionFunctionFromOptions(options_, models::usage::training));
   }
-
-  GraphGroup::initGraphs();
 
   // Note: We may well end up with only one MPI process or only one graph per worker.
   // This part of the code will not special-case any of this here.
@@ -59,19 +56,25 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
       graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
     return true; // dummy success
   });
+
+  // We compute the readerMultiplier in collectStats(...) and the updateMultiplier_ here
+  // as collectStats maybe called for a different instance of this object and fields would not
+  // survive destruction.
+  double multiplier = devices_.size() * mpi_->numMPIProcesses() * delay_;
+  bool isDynamic = scheduler_->isDynamicMBSizeScaling();
+  updateMultiplier_ = isDynamic ? multiplier : 1.; // multiplier applied later in update()
 }
 
 Ptr<data::BatchStats> SyncGraphGroup::collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
   // This function determines the granularity in which the reader provides data.
   // If no mini-batch-fit, then user provides a constant number. It reads that much. We won't get into this function.
-  // If mini-batch-fit, then we get here and set miniBatchFitMultiplier_. Then...
+  
   // If dynamic MB scaling, then we want fine-grained minibatches of the size of one GPU.
   // If not, we prefer a single large batch that can be split into equal-size parts over GPUs,
   // so that we have perfect load balancing and read precisely as much as we need (no waste).
   double multiplier = devices_.size() * mpi_->numMPIProcesses() * delay_;
   bool isDynamic = scheduler_->isDynamicMBSizeScaling();
   double readerMultiplier = isDynamic ? 1. : multiplier; // multiplier applied already by reader
-  updateMultiplier_ = isDynamic ? multiplier : 1.;       // multiplier applied later in update()
   return GraphGroup::collectStats(graphs_[0], models_[0], vocabs, readerMultiplier);
 }
 
@@ -129,7 +132,7 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
     // is the user's responsibility to guarantee that it fits into 'delay_' warps.
     // Distribute evenly over all GPUs we have, using multiple warps if needed.
     size_t numWarps = (size_t)ceil(delay_);
-    subBatches = newBatch->split(numWarps * warpSize);
+    subBatches = newBatch->split(numWarps * warpSize); // @TODO might be eaiser to mb-scaling here if mb-words not given?
     numReadBatches = 1;
     return true;
   }
@@ -142,6 +145,7 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
   double ratio = scheduler_->getDynamicMBSizeMultiplier();
 
   // relative to what base? (what does ratio == 1 mean)
+  // updateMultiplier_ is only used if we do mini-batch warmup and did not provide mini-batch-words. Otherwise it gets cancelled out.
   ratio *= updateMultiplier_; // if mini-batch-fit, this is = warpSize * delay_, otherwise 1
 
   // If a reference is given, then at progress == mbWarmup.n (ratio=1), we would like to have refBatchLabels instead of whichever
@@ -150,15 +154,17 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
   auto refBatchLabels = options_->get<size_t>("mini-batch-words");
   if (refBatchLabels != 0) {
     LOG_ONCE(info, "[scheduler] Scaling to {} reference labels, using actual-batch-word estimate of {}", refBatchLabels, GraphGroup::getTypicalTrgBatchWords());
-    ABORT_IF(typicalTrgBatchWords_ == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
+    ABORT_IF(GraphGroup::getTypicalTrgBatchWords() == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
 
     GraphGroup::updateAverageTrgBatchWords(newBatch->wordsTrg());
-    ratio *= (double)refBatchLabels / (GraphGroup::getTypicalTrgBatchWords() * updateMultiplier_);
+    ratio *= (double)refBatchLabels / (GraphGroup::getTypicalTrgBatchWords() * updateMultiplier_); // cancellation of updateMultiplier_
   }
 
   // @TODO: MJD review
   // round up to full batches if within a certain error margin  --@BUGBUG: Not invariant w.r.t. GPU size, as ratio is relative to what fits into 1 GPU
-  // ratio = roundUpRatio(ratio);
+#if 0
+  ratio = roundUpRatio(ratio);
+#endif
 
   if (pendingBatches_.size() < ratio)
     return false; // not enough data yet

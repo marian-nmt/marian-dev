@@ -52,9 +52,7 @@ GraphGroup::GraphGroup(Ptr<Options> options)
 void GraphGroup::initGraphs() {
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
-    graph->setDevice(device);
-    graphs_.push_back(graph);
-
+    
     // @TODO: validate precisions in config
     auto precisions = options_->get<std::vector<std::string>>("precision");
     Type parameterType = typeFromString(precisions[0]);
@@ -66,8 +64,12 @@ void GraphGroup::initGraphs() {
     if(options_->get<bool>("check-nan")) // @TODO: add to other places
       graph->setThrowNaN(true);
 
+    graph->setDevice(device);
+    
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
+
+    graphs_.push_back(graph);
   }
 }
 

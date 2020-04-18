@@ -485,7 +485,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // mixed precision training
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision training with float16 and cost-scaling, "
-      "corresponds to: --precision float16 float32 float32 --cost-scaling 7 2000 2 0.05 10 1");
+      "corresponds to: --precision float16 float32 float32 --cost-scaling 0 2000 2 0.05 10 1");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision training for forward/backward pass and optimizaton. "
       "Defines types for: forward/backward, optimization, saving.",
@@ -493,7 +493,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
       "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
-      ->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+      ->implicit_val("0.f 2000 2.f 0.05f 10 1.f");
   cli.add<std::vector<std::string>>("--check-gradient-norm", 
       "Skip parameter update based on gradient norm size")
       ->implicit_val("100 4.f");

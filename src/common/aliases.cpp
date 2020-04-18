@@ -31,7 +31,7 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
       config["precision"] = std::vector<std::string>({"float16", "float32", "float32"}); // inference type, optimization type, save type
       // @TODO: review this
       // scaling factor (power of 2), frequency, multiplier at increase, tolerance, range, minium factor
-      config["cost-scaling"] = std::vector<std::string>({"7", "2000", "2", "0.05", "10", "1"}); 
+      config["cost-scaling"] = std::vector<std::string>({"0", "2000", "2", "0.05", "10", "1"}); 
     } else {
       config["precision"] = std::vector<std::string>({"float16"}); // for inference we do not need the other types
     }

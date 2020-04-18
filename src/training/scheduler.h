@@ -185,7 +185,7 @@ public:
   }
 
   void increaseEpoch() {
-    LOG(info, "Seen {} samples", state_->samplesEpoch);
+    LOG(info, "Seen {} samples", utils::withCommas(state_->samplesEpoch));
     state_->newEpoch();
     LOG(info, "Starting epoch {}", state_->epochs);
   }

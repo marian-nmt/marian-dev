@@ -66,14 +66,14 @@ static void unsetTensorMode(cublasHandle_t cublasHandle) {
 }
 
 // primary template for specialiation with different element and compute types
-template <typename ElementType, typename ComputeType> 
+template <typename ElementType, typename ComputeType>
 struct TypedGemm { };
 
 template <>
 struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specialization for element type float32 and compute type float32
   static void gemm(cublasHandle_t handle,
                    CudaCompute computeCapability,
-                   cublasOperation_t transa, 
+                   cublasOperation_t transa,
                    cublasOperation_t transb,
                    int m, int n, int k,
                    const float* alpha, // has to match compute type!
@@ -87,49 +87,52 @@ struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specializati
     // query math mode and set algorithm accordingly
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
     if(computeCapability.major >= 5)
-      CUBLAS_CHECK(cublasGemmEx(handle, transa, transb, 
-                                m, n, k, alpha, 
-                                A, CUDA_R_32F, lda, 
-                                B, CUDA_R_32F, ldb, beta, 
+      CUBLAS_CHECK(cublasGemmEx(handle, transa, transb,
+                                m, n, k, alpha,
+                                A, CUDA_R_32F, lda,
+                                B, CUDA_R_32F, ldb, beta,
                                 C, CUDA_R_32F, ldc,
                                 CUDA_R_32F, algorithm));
+    else
   #endif
-    CUBLAS_CHECK(cublasSgemm(handle, transa, transb, 
-                            m, n, k, alpha, 
-                            A, lda, 
-                            B, ldb, beta, 
-                            C, ldc));
+      CUBLAS_CHECK(cublasSgemm(handle, transa, transb,
+                               m, n, k, alpha,
+                               A, lda,
+                               B, ldb, beta,
+                               C, ldc));
+  
   }
 
   static void batchedGemm(cublasHandle_t handle,
                           CudaCompute computeCapability,
-                          cublasOperation_t transa, 
+                          cublasOperation_t transa,
                           cublasOperation_t transb,
                           int m, int n, int k,
                           const float *alpha, // has to match compute type!
                           const float *Aarray[], int lda,
                           const float *Barray[], int ldb,
                           const float *beta,  // has to match compute type!
-                          float *Carray[], int ldc, 
+                          float *Carray[], int ldc,
                           int batchCount) {
-  // double #if and if unfortunately required to safeguard against compilation error 
+  // double #if and if unfortunately required to safeguard against compilation error
   // with CUDA 8.0 and runtime error with CUDA >9.0 on GPUs with compute capability under 5
   #if CUDA_VERSION > 9000
     // query math mode and set algorithm accordingly
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
     if(computeCapability.major >= 5)
-      CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb, 
-                                       m, n, k, alpha, 
-                                       (void* const*)Aarray, CUDA_R_32F, lda, 
+      CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb,
+                                       m, n, k, alpha,
+                                       (void* const*)Aarray, CUDA_R_32F, lda,
                                        (void* const*)Barray, CUDA_R_32F, ldb, beta,
                                        (void**)Carray, CUDA_R_32F, ldc, batchCount,
                                        CUDA_R_32F, algorithm));
+    else
   #endif
-    CUBLAS_CHECK(cublasSgemmBatched(handle, transa, transb, 
-                                    m, n, k, alpha, 
-                                    Aarray, lda, 
-                                    Barray, ldb, beta,
-                                    Carray, ldc, batchCount));
+      CUBLAS_CHECK(cublasSgemmBatched(handle, transa, transb,
+                                      m, n, k, alpha,
+                                      Aarray, lda,
+                                      Barray, ldb, beta,
+                                      Carray, ldc, batchCount));
   }
 };
 
@@ -150,31 +153,31 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/half> { // specialization
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
     // query math mode and set algorithm accordingly
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
-    CUBLAS_CHECK(cublasGemmEx(handle, transa, transb, 
-                              m, n, k, alpha, 
-                              A, CUDA_R_16F, lda, 
-                              B, CUDA_R_16F, ldb, beta, 
+    CUBLAS_CHECK(cublasGemmEx(handle, transa, transb,
+                              m, n, k, alpha,
+                              A, CUDA_R_16F, lda,
+                              B, CUDA_R_16F, ldb, beta,
                               C, CUDA_R_16F, ldc,
                               CUDA_R_16F, algorithm)); // @TODO: review algorithm
   }
 
   static void batchedGemm(cublasHandle_t handle,
                           CudaCompute computeCapability,
-                          cublasOperation_t transa, 
+                          cublasOperation_t transa,
                           cublasOperation_t transb,
                           int m, int n, int k,
                           const half *alpha,  // has to match compute type!
                           const half *Aarray[], int lda,
                           const half *Barray[], int ldb,
                           const half *beta,   // has to match compute type!
-                          half *Carray[], int ldc, 
+                          half *Carray[], int ldc,
                           int batchCount) {
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
     // query math mode and set algorithm accordingly
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
-    CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb, 
-                                     m, n, k, alpha, 
-                                     (void* const*)Aarray, CUDA_R_16F, lda, 
+    CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb,
+                                     m, n, k, alpha,
+                                     (void* const*)Aarray, CUDA_R_16F, lda,
                                      (void* const*)Barray, CUDA_R_16F, ldb, beta,
                                      (void**)Carray, CUDA_R_16F, ldc, batchCount,
                                      CUDA_R_16F, algorithm));
@@ -198,30 +201,30 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/float> { // specializatio
     // query math mode and set algorithm accordingly
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
     CUBLAS_CHECK(cublasGemmEx(handle, transa, transb, 
-                              m, n, k, alpha, 
-                              A, CUDA_R_16F, lda, 
-                              B, CUDA_R_16F, ldb, beta, 
+                              m, n, k, alpha,
+                              A, CUDA_R_16F, lda,
+                              B, CUDA_R_16F, ldb, beta,
                               C, CUDA_R_16F, ldc,
                               CUDA_R_32F, algorithm)); // use 32-bit compute type for accumulation
   }
 
   static void batchedGemm(cublasHandle_t handle,
                           CudaCompute computeCapability,
-                          cublasOperation_t transa, 
+                          cublasOperation_t transa,
                           cublasOperation_t transb,
                           int m, int n, int k,
                           const float *alpha, // has to match compute type!
                           const half *Aarray[], int lda,
                           const half *Barray[], int ldb,
                           const float *beta,  // has to match compute type!
-                          half *Carray[], int ldc, 
+                          half *Carray[], int ldc,
                           int batchCount) {
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
     // query math mode and set algorithm accordingly
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
-    CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb, 
-                                     m, n, k, alpha, 
-                                     (void* const*)Aarray, CUDA_R_16F, lda, 
+    CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb,
+                                     m, n, k, alpha,
+                                     (void* const*)Aarray, CUDA_R_16F, lda,
                                      (void* const*)Barray, CUDA_R_16F, ldb, beta,
                                      (void**)Carray, CUDA_R_16F, ldc, batchCount,
                                      CUDA_R_32F, algorithm)); // use 32-bit compute type for accumulation
@@ -381,7 +384,7 @@ void ProdBatchedTyped(marian::Tensor C,
                                          &alpha,
                                          mp_bptr->data<const T*>(), ldb,
                                          mp_aptr->data<const T*>(), lda,
-                                         &beta, 
+                                         &beta,
                                          mp_cptr->data<T*>(), ldc,
                                          batchC);
   unsetTensorMode(cublasHandle);

@@ -70,16 +70,16 @@ template <typename ElementType, typename ComputeType>
 struct TypedGemm { };
 
 template <>
-struct TypedGemm<float, float> { // specialization for element type float32 and compute type float32
+struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specialization for element type float32 and compute type float32
   static void gemm(cublasHandle_t handle,
                    CudaCompute computeCapability,
                    cublasOperation_t transa, 
                    cublasOperation_t transb,
                    int m, int n, int k,
-                   const float* alpha,
+                   const float* alpha, // has to match compute type!
                    const float* A, int lda,
                    const float* B, int ldb,
-                   const float* beta,
+                   const float* beta,  // has to match compute type!
                    float* C, int ldc) {
   // double #if and if unfortunately required to safeguard against compilation error 
   // with CUDA 8.0 and runtime error with CUDA >9.0 on GPUs with compute capability under 5
@@ -106,10 +106,10 @@ struct TypedGemm<float, float> { // specialization for element type float32 and 
                           cublasOperation_t transa, 
                           cublasOperation_t transb,
                           int m, int n, int k,
-                          const float *alpha,
+                          const float *alpha, // has to match compute type!
                           const float *Aarray[], int lda,
                           const float *Barray[], int ldb,
-                          const float *beta,
+                          const float *beta,  // has to match compute type!
                           float *Carray[], int ldc, 
                           int batchCount) {
   // double #if and if unfortunately required to safeguard against compilation error 
@@ -135,17 +135,17 @@ struct TypedGemm<float, float> { // specialization for element type float32 and 
 
 #if COMPILE_FP16
 template <>
-struct TypedGemm<half, half> { // specialization for element type float16 and compute type float16
+struct TypedGemm</*ElementType=*/half, /*ComputeType=*/half> { // specialization for element type float16 and compute type float16
   // overload for half, contains configuration settings for float16
   static void gemm(cublasHandle_t handle,
                    CudaCompute computeCapability,
                    cublasOperation_t transa, 
                    cublasOperation_t transb,
                    int m, int n, int k,
-                   const half* alpha,
+                   const half* alpha,  // has to match compute type!
                    const half* A, int lda,
                    const half* B, int ldb,
-                   const half* beta,
+                   const half* beta,  // has to match compute type!
                    half* C, int ldc) {
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
     // query math mode and set algorithm accordingly
@@ -163,10 +163,10 @@ struct TypedGemm<half, half> { // specialization for element type float16 and co
                           cublasOperation_t transa, 
                           cublasOperation_t transb,
                           int m, int n, int k,
-                          const half *alpha,
+                          const half *alpha,  // has to match compute type!
                           const half *Aarray[], int lda,
                           const half *Barray[], int ldb,
-                          const half *beta,
+                          const half *beta,   // has to match compute type!
                           half *Carray[], int ldc, 
                           int batchCount) {
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
@@ -182,17 +182,17 @@ struct TypedGemm<half, half> { // specialization for element type float16 and co
 };
 
 template <>
-struct TypedGemm<half, float> { // specialization for element type float16 and compute type float32
+struct TypedGemm</*ElementType=*/half, /*ComputeType=*/float> { // specialization for element type float16 and compute type float32
 // overload for half, contains configuration settings for float16 and accumulation in float32
   static void gemm(cublasHandle_t handle,
                    CudaCompute computeCapability,
                    cublasOperation_t transa, 
                    cublasOperation_t transb,
                    int m, int n, int k,
-                   const half* alpha,
+                   const float* alpha, // has to match compute type!
                    const half* A, int lda,
                    const half* B, int ldb,
-                   const half* beta,
+                   const float* beta, // has to match compute type!
                    half* C, int ldc) {
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
     // query math mode and set algorithm accordingly
@@ -210,10 +210,10 @@ struct TypedGemm<half, float> { // specialization for element type float16 and c
                           cublasOperation_t transa, 
                           cublasOperation_t transb,
                           int m, int n, int k,
-                          const half *alpha,
+                          const float *alpha, // has to match compute type!
                           const half *Aarray[], int lda,
                           const half *Barray[], int ldb,
-                          const half *beta,
+                          const float *beta,  // has to match compute type!
                           half *Carray[], int ldc, 
                           int batchCount) {
     ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
@@ -232,14 +232,14 @@ struct TypedGemm<half, float> { // specialization for element type float16 and c
 
 // overload for float, contains configuration settings for float32
 
-template <typename T, typename AccType>
+template <typename T, typename ComputeType>
 void ProdTyped(marian::Tensor C,
                const marian::Tensor& A,
                const marian::Tensor& B,
                bool transA,
                bool transB,
-               T beta,
-               T scalar) {
+               ComputeType beta,
+               ComputeType scalar) {
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
   T alpha = scalar;
 
@@ -268,14 +268,14 @@ void ProdTyped(marian::Tensor C,
   auto computeCapability = backend->getCudaComputeCapability();
 
   setTensorMode(cublasHandle);
-  TypedGemm<T, AccType>::gemm(cublasHandle, computeCapability,
-                              opB, opA,
-                              n, m, k,
-                              &alpha,
-                              B->data<T>(), ldb,
-                              A->data<T>(), lda,
-                              &beta,
-                              C->data<T>(), ldc);
+  TypedGemm<T, ComputeType>::gemm(cublasHandle, computeCapability,
+                                  opB, opA,
+                                  n, m, k,
+                                  &alpha,
+                                  B->data<T>(), ldb,
+                                  A->data<T>(), lda,
+                                  &beta,
+                                  C->data<T>(), ldc);
   unsetTensorMode(cublasHandle);
 }
 
@@ -298,27 +298,27 @@ void ProdWithComputeType(marian::Tensor C,
                          float scalar,
                          Type computeType) {
   if(C->type() == Type::float32 && computeType == Type::float32) {
-    ProdTyped<float, float>(C, A, B, transA, transB, beta, scalar);
+    ProdTyped</*ElementType=*/float, /*ComputeType=*/float>(C, A, B, transA, transB, beta, scalar);
 #if COMPILE_FP16
   } else if(C->type() == Type::float16 && computeType == Type::float16) {
-    ProdTyped<half, half>(C, A, B, transA, transB, __float2half(beta), __float2half(scalar));
+    ProdTyped</*ElementType=*/half, /*ComputeType=*/half>(C, A, B, transA, transB, __float2half(beta), __float2half(scalar));
   } else if(C->type() == Type::float16 && computeType == Type::float32) {
-    ProdTyped<half, float>(C, A, B, transA, transB, __float2half(beta), __float2half(scalar));
+    ProdTyped</*ElementType=*/half, /*ComputeType=*/float>(C, A, B, transA, transB, beta, scalar);
 #endif
   } else {
     ABORT("Prod not implemented for element type {} and compute type {}", C->type(), computeType);
   }
 }
 
-template <typename T, typename AccType>
+template <typename T, typename ComputeType>
 void ProdBatchedTyped(marian::Tensor C,                 
                       Ptr<Allocator> allocator,
                       const marian::Tensor A,
                       const marian::Tensor B,
                       bool transA,
                       bool transB,
-                      T beta,
-                      T scalar) {
+                      ComputeType beta,
+                      ComputeType scalar) {
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
   T alpha = scalar;
 
@@ -375,15 +375,15 @@ void ProdBatchedTyped(marian::Tensor C,
   CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<T*>());
 
   setTensorMode(cublasHandle);
-  TypedGemm<T, AccType>::batchedGemm(cublasHandle, compute,
-                                     opB, opA,
-                                     n, m, k,
-                                     &alpha,
-                                     mp_bptr->data<const T*>(), ldb,
-                                     mp_aptr->data<const T*>(), lda,
-                                     &beta, 
-                                     mp_cptr->data<T*>(), ldc,
-                                     batchC);
+  TypedGemm<T, ComputeType>::batchedGemm(cublasHandle, compute,
+                                         opB, opA,
+                                         n, m, k,
+                                         &alpha,
+                                         mp_bptr->data<const T*>(), ldb,
+                                         mp_aptr->data<const T*>(), lda,
+                                         &beta, 
+                                         mp_cptr->data<T*>(), ldc,
+                                         batchC);
   unsetTensorMode(cublasHandle);
 
   allocator->free(mp_aptr);

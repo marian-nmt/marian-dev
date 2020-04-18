@@ -213,8 +213,10 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
-    using namespace functional;
-
+    
+    // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+    // This preserves precision with larger batches where all batch entries reduce into a single vector.
+    // See also LayerNormalizationGrad where we do the same for scale and bias
     if(!transA_ && transB_)
       return {
           NodeOp(Prod(child(0)->grad(),
@@ -231,8 +233,8 @@ public:
                       false,
                       1.0,
                       scalar_)),
-          NodeOp(Prod(
-              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+          NodeOp(ProdWithComputeType(
+              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, Type::float32))
       };
 
     if(transA_ && !transB_)
@@ -251,8 +253,8 @@ public:
                       false,
                       1.0,
                       scalar_)),
-          NodeOp(Prod(
-              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+          NodeOp(ProdWithComputeType(
+              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, Type::float32))
       };
 
     if(transA_ && transB_)
@@ -271,8 +273,8 @@ public:
                       true,
                       1.0,
                       scalar_)),
-          NodeOp(Prod(
-              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+          NodeOp(ProdWithComputeType(
+              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, Type::float32))
       };
 
     return {
@@ -290,8 +292,8 @@ public:
                     false,
                     1.0,
                     scalar_)),
-        NodeOp(Prod(
-            child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+        NodeOp(ProdWithComputeType(
+            child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, Type::float32))
     };
   }
 

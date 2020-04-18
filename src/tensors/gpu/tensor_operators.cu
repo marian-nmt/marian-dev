@@ -2164,11 +2164,14 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   }
 
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
-  // This is much faster for fp16 which seems to have a broken atomicAdd implementation
-  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1); // beta set to one to add
+  // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // This preserves precision with larger batches where all batch entries reduce into a single vector.
+  // See also AffineNodeOp where we do the same for biases
+  gpu::ProdWithComputeType(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
 
   if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
-    gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1); // beta set to one to add
+    gpu::ProdWithComputeType(gradBeta, tempOnes, adj, false, false, 1, 1, Type::float32); // beta set to one to add
 
   allocator->free(tempGradGammaMemory);
   allocator->free(tempOnesMemory);

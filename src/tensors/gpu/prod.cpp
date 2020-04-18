@@ -241,7 +241,7 @@ void ProdTyped(marian::Tensor C,
                ComputeType beta,
                ComputeType scalar) {
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
-  T alpha = scalar;
+  ComputeType alpha = scalar;
 
   int m = A->shape().elements() / A->shape().back();
   int k = A->shape().back();
@@ -320,7 +320,7 @@ void ProdBatchedTyped(marian::Tensor C,
                       ComputeType beta,
                       ComputeType scalar) {
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
-  T alpha = scalar;
+  ComputeType alpha = scalar;
 
   int batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
   int batchB = B->shape().elements() / (B->shape()[-1] * B->shape()[-2]);

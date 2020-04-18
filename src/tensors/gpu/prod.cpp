@@ -224,7 +224,7 @@ struct TypedGemm<half, float> { // specialization for element type float16 and c
                                      (void* const*)Aarray, CUDA_R_16F, lda, 
                                      (void* const*)Barray, CUDA_R_16F, ldb, beta,
                                      (void**)Carray, CUDA_R_16F, ldc, batchCount,
-                                     CUDA_R_32F, algorithm));
+                                     CUDA_R_32F, algorithm)); // use 32-bit compute type for accumulation
   }
 };
 #endif
@@ -310,15 +310,15 @@ void ProdWithComputeType(marian::Tensor C,
   }
 }
 
-template <typename T>
+template <typename T, typename AccType>
 void ProdBatchedTyped(marian::Tensor C,                 
-                 Ptr<Allocator> allocator,
-                 const marian::Tensor A,
-                 const marian::Tensor B,
-                 bool transA,
-                 bool transB,
-                 T beta,
-                 T scalar) {
+                      Ptr<Allocator> allocator,
+                      const marian::Tensor A,
+                      const marian::Tensor B,
+                      bool transA,
+                      bool transB,
+                      T beta,
+                      T scalar) {
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
   T alpha = scalar;
 
@@ -375,15 +375,15 @@ void ProdBatchedTyped(marian::Tensor C,
   CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<T*>());
 
   setTensorMode(cublasHandle);
-  TypedGemm<T, T>::batchedGemm(cublasHandle, compute,
-                               opB, opA,
-                               n, m, k,
-                               &alpha,
-                               mp_bptr->data<const T*>(), ldb,
-                               mp_aptr->data<const T*>(), lda,
-                               &beta, 
-                               mp_cptr->data<T*>(), ldc,
-                               batchC);
+  TypedGemm<T, AccType>::batchedGemm(cublasHandle, compute,
+                                     opB, opA,
+                                     n, m, k,
+                                     &alpha,
+                                     mp_bptr->data<const T*>(), ldb,
+                                     mp_aptr->data<const T*>(), lda,
+                                     &beta, 
+                                     mp_cptr->data<T*>(), ldc,
+                                     batchC);
   unsetTensorMode(cublasHandle);
 
   allocator->free(mp_aptr);
@@ -401,10 +401,10 @@ void ProdBatched(marian::Tensor C,
                  float beta,
                  float scalar) {
   if(C->type() == Type::float32) {
-    ProdBatchedTyped<float>(C, allocator, A, B, transA, transB, beta, scalar);
+    ProdBatchedTyped<float, float>(C, allocator, A, B, transA, transB, beta, scalar);
 #if COMPILE_FP16
   } else if(C->type() == Type::float16) { // not a *.cu file
-    ProdBatchedTyped<half>(C, allocator, A, B, transA, transB, __float2half(beta), __float2half(scalar));
+    ProdBatchedTyped<half, half>(C, allocator, A, B, transA, transB, __float2half(beta), __float2half(scalar));
 #endif
   } else {
     ABORT("ProdBatched not implemented for element type {}", C->type());

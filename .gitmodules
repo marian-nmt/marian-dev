@@ -16,4 +16,4 @@
 	branch = master
 [submodule "src/3rd_party/simple-websocket-server"]
 	path = src/3rd_party/simple-websocket-server
-	url = https://gitlab.com/eidheim/Simple-WebSocket-Server.git
+	url = https://github.com/marian-nmt/Simple-WebSocket-Server

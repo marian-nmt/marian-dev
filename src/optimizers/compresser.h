@@ -50,8 +50,13 @@ public:
           skip_size += p->val()->size();
           continue;
         }
-        
-        compressImpl(p->val(), bit_, base_, clip_, kMeans_);
+
+        //if (p->name() == "Wemb") {
+	//  if (step == 1 && p->val()->getDeviceId().no == 0) LOG(info, "compress to 1 bit {}", p->name());
+	//  compressImpl(p->val(), 1, base_, clip_, kMeans_);
+	//}
+        //else
+          compressImpl(p->val(), bit_, base_, clip_, kMeans_);
       }
     if (step == 1 && graph->params()->vals()->getDeviceId().no == 0) LOG(info, "skipping total of {}", skip_size);
 

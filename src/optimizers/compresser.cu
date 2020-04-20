@@ -27,6 +27,38 @@ namespace marian {
       if (data[idx] > range) data[idx] = range;
     }
 
+  __global__ void gQuantize_fixed(float* data,
+                            float* delta,
+                            int size,
+                            int num_centers,
+                            float max) {
+  
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if(idx >= size)
+      return;
+
+    // get sign flag
+    float dataTemp = data[idx];
+
+    // helper
+    // will be 127 / max if we set the bit to be 8
+    float multiplier = num_centers / max;
+    // quantize
+    int tmp = int(data[idx] * multiplier);
+
+    // reverse-back
+    data[idx] = tmp / multiplier;
+    
+    
+    if (delta != NULL) {  
+      // normal delta
+      delta[idx] = data[idx] / max;
+      
+      // scaled delta
+      data[idx] = dataTemp;
+    }
+  }
+
   __global__ void gQuantize(float* data,
                             float* delta,
                             int size,
@@ -122,8 +154,10 @@ struct square
 
     // optimze scale 
     for (int i=0;i< kMeanStep;i++) {
-      gQuantize<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, base, max);
-
+      // gQuantize<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, base, max);
+      
+      gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, max);
+      
       thrust::device_ptr<float> delta_ptr(delta[id]->data());
       float delta_top = thrust::inner_product(delta_ptr, delta_ptr + t->size(), d_ptr, 0.0f);
       float delta_btm = thrust::inner_product(delta_ptr, delta_ptr + t->size(), delta_ptr, 0.0f);
@@ -131,6 +165,8 @@ struct square
     }
 
     // compress
-    gQuantize<<<blocksSample, threads>>>(t->data(), NULL, t->size(), (1<<(bit-1)) - 1, base, max);
+    // gQuantize<<<blocksSample, threads>>>(t->data(), NULL, t->size(), (1<<(bit-1)) - 1, base, max);
+       gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, max);
+ 
   }
 }

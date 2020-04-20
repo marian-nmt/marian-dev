@@ -18,8 +18,9 @@ def log_b(tensor, base):
 
 
 def log_quantize(tensor, bit, base, curr_max = 0):
-  # find max quantization center
   max = 1.0
+
+  # find max quantization center
   if curr_max > 0:
     max = curr_max
 
@@ -41,8 +42,24 @@ def log_quantize(tensor, bit, base, curr_max = 0):
   return quantized_tensor
 
 
+def fixed_quantize(tensor, bit, curr_max = 0):
+    max = 1.0
+    if curr_max > 0:
+      max = curr_max
+
+    multiplier = ((2**(bit-1)) - 1) / max
+    intquant = np.round(tensor * multiplier)
+
+    # return back
+    quantized_tensor = intquant / multiplier
+
+    return quantized_tensor
+
 def compute_movement(data, curr_max, BIT, BASE):
-  tmp = log_quantize(data, BIT, BASE, curr_max)
+  if args.fixed_point:
+    tmp = fixed_quantize(data, BIT, curr_max)
+  else:
+    tmp = log_quantize(data, BIT, BASE, curr_max)
    
   basepow = (tmp / curr_max).flatten()
   dataflat = data.flatten()
@@ -64,6 +81,7 @@ def parse_args():
   parser.add_argument("-q", "--quiet", default=False, action="store_true")
   parser.add_argument("--skip_bias", default=False, action="store_true")  
   parser.add_argument("--max_scale", default=False, action="store_true")
+  parser.add_argument("--fixed_point",default=False, action="store_true")
 
   return parser.parse_args()
 
@@ -135,8 +153,11 @@ if __name__== "__main__":
       for i in range(args.kmeans):
         tmp_max = (compute_movement(tmp, tmp_max, args.bit, args.base))
       
-    tmp = log_quantize(tmp, args.bit, args.base, tmp_max)
-    
+    if args.fixed_point:
+        tmp = fixed_quantize(tmp, args.bit,tmp_max)
+    else:
+       tmp = log_quantize(tmp, args.bit, args.base, tmp_max)
+
     if args.sparse < 1:
       total_compressed -= np.count_nonzero(reserved)
       total_uncompressed += np.count_nonzero(reserved)

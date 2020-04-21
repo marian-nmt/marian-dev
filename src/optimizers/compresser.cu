@@ -43,8 +43,15 @@ namespace marian {
     // helper
     // will be 127 / max if we set the bit to be 8
     float multiplier = num_centers / max;
+    
+    // clip
+    if (data[idx] < -max)
+      data[idx] = -max;
+    if (data[idx] > max)
+      data[idx] = max;
+
     // quantize
-    int tmp = int(data[idx] * multiplier);
+    int tmp = round(data[idx] * multiplier);
 
     // reverse-back
     data[idx] = tmp / multiplier;
@@ -155,7 +162,6 @@ struct square
     // optimze scale 
     for (int i=0;i< kMeanStep;i++) {
       // gQuantize<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, base, max);
-      
       gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, max);
       
       thrust::device_ptr<float> delta_ptr(delta[id]->data());
@@ -166,7 +172,7 @@ struct square
 
     // compress
     // gQuantize<<<blocksSample, threads>>>(t->data(), NULL, t->size(), (1<<(bit-1)) - 1, base, max);
-       gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, max);
+    gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, max);
  
   }
 }

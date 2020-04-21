@@ -47,6 +47,8 @@ def fixed_quantize(tensor, bit, curr_max = 0):
     if curr_max > 0:
       max = curr_max
 
+    tensor = np.clip(tensor, a_min = -max, a_max = max)
+
     multiplier = ((2**(bit-1)) - 1) / max
     intquant = np.round(tensor * multiplier)
 

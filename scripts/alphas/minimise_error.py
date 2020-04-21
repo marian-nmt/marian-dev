@@ -15,35 +15,31 @@ def get_quant_error(matrix, quantNum):
 
 def find_best_matrix(matrix):
     maxAbs = np.float32(abs(max(matrix.min(), matrix.max(), key=abs)))
-    maxAbs = maxAbs + np.float32(0.0001) # The first condition
+    maxAbs = maxAbs + np.float32(0.001) # The first condition
     bestFactor = maxAbs
     bestMSE =  np.inf
-    increases = 0
+    limit = 0.03*maxAbs
 
-    while maxAbs > 0 and increases < 20:
-        maxAbs = maxAbs - np.float32(0.0001) # The first condition
+    while maxAbs > limit:
+        maxAbs = maxAbs - np.float32(0.001) # The first condition
         mse = get_quant_error(matrix, maxAbs)
         #print("MSE", mse)
         if mse < bestMSE:
             bestMSE = mse
             bestFactor = maxAbs
-            increases = 0
-        else:
-            increases = increases + 1
+
 
     # Now that we found the best matrix, replace the Maximum (or minimum number) in the matrix with that number
     # so that it can be nicely picked up by our marian implementation
 
-    maxNum = max(matrix.min(), matrix.max(), key=abs)
-    if (abs(maxNum) != bestFactor):
-        if maxNum > 0:
-            print("MaxAbs before:", maxNum, "now:", bestFactor)
-            return np.where(matrix == maxNum, bestFactor, matrix)
-        else:
-            print("MaxAbs before:", maxNum, "now:", -bestFactor)
-            return np.where(matrix == maxNum, -bestFactor, matrix)
-    else:
-        return matrix
+    maxNum = abs(max(matrix.min(), matrix.max(), key=abs))
+    minNum = -maxNum
+    print("Old MaxAbs:", maxNum, "new:", bestFactor)
+
+    matrix = np.where(matrix >= maxNum, bestFactor, matrix)
+    matrix = np.where(matrix <= minNum, -bestFactor, matrix)
+
+    return matrix
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

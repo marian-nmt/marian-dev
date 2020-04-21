@@ -6,7 +6,7 @@ def get_quant_error(matrix, quantNum):
     quantmult = np.float32(127)/np.float32(quantNum)
 
     #Quantize
-    quantized_matrix = (matrix*quantmult).astype(np.int8)
+    quantized_matrix = np.around((matrix*quantmult)).astype(np.int8)
 
     #Unquantize
     unquantized_matrix = quantized_matrix*(1/quantmult)
@@ -34,11 +34,43 @@ def find_best_matrix(matrix):
 
     maxNum = abs(max(matrix.min(), matrix.max(), key=abs))
     minNum = -maxNum
-    print("Old MaxAbs:", maxNum, "new:", bestFactor)
+    for i in range(len(matrix)):
+        for j in range(len(matrix[i])):
+            if matrix[i][j] > bestFactor:
+                matrix[i][j] = bestFactor
+            elif matrix[i][j] < -bestFactor:
+                matrix[i][j] = -bestFactor
 
-    matrix = np.where(matrix >= maxNum, bestFactor, matrix)
-    matrix = np.where(matrix <= minNum, -bestFactor, matrix)
+    print("Old MaxAbs:", maxNum, "new:", bestFactor, "actual:", abs(max(matrix.min(), matrix.max(), key=abs)))
 
+
+    return matrix
+
+def find_best_matrix_kenneth(matrix):
+    maxAbs = np.float32(abs(max(matrix.min(), matrix.max(), key=abs)))
+    min_norm = np.inf
+    bestFactor = maxAbs
+
+    for i in range(1,300):
+        m = maxAbs * float(i) / float(300)
+        norm = np.linalg.norm(np.clip(np.around(matrix * 127. / m), -127., 127.) / (127. / m) - matrix)
+        if norm < min_norm:
+            bestFactor = m
+            min_norm = norm
+
+    maxNum = abs(max(matrix.min(), matrix.max(), key=abs))
+    minNum = -maxNum
+#    print("Old MaxAbs:", maxNum, "new:", bestFactor)
+
+#    matrix = np.where(matrix >= maxNum, bestFactor, matrix)
+#    matrix = np.where(matrix <= minNum, -bestFactor, matrix)
+    for i in range(len(matrix)):
+        for j in range(len(matrix[i])):
+            if matrix[i][j] > bestFactor:
+                matrix[i][j] = bestFactor
+            elif matrix[i][j] < -bestFactor:
+                matrix[i][j] = -bestFactor
+    print("Old MaxAbs:", maxNum, "new:", bestFactor, "actual:", abs(max(matrix.min(), matrix.max(), key=abs)))
     return matrix
 
 if __name__ == '__main__':
@@ -50,9 +82,14 @@ if __name__ == '__main__':
     model_file_dict = dict(model_file)
 
     for matrix in model_file_dict.keys():
+#        if matrix[-2] == 'W' or matrix == "Wemb":
+#            model_file_dict[matrix] = (model_file_dict[matrix]*.9).astype(np.float32)
+
         if matrix[-2] == 'W' or matrix == "Wemb":
             print(matrix)
             model_file_dict[matrix] = find_best_matrix(model_file_dict[matrix])
+#        elif matrix == "Wemb":
+#            model_file_dict[matrix] = (model_file_dict[matrix]*.9).astype(np.float32)
 
 
     # Save

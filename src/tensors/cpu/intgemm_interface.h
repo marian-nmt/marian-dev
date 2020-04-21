@@ -184,8 +184,8 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         *val_->data() = *(reinterpret_cast<float *>(reinterpret_cast<Integer *>(child(0)->val()->data()) + child(0)->val()->shape().elements()));
       } else {
         if (child(0)->graph()->getBackend()->DumpQuantMult()) {
-          intgemm::MeanStd meanstd = intgemm::GetQuantizerStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements(), true);
-          intgemm::MeanStd meanstd2 = intgemm::GetQuantizerStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
+          intgemm::MeanStd meanstd = intgemm::GetVectorMeanStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements(), true);
+          intgemm::MeanStd meanstd2 = intgemm::GetVectorMeanStd(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
           std::cerr << "Name: " << name() << " MeanAbs: " << meanstd.mean << " stddevAbs: " << meanstd.stddev << " Mean: " << meanstd2.mean << " stddev: "
           << meanstd2.stddev << " MaxAbs: " << intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements()) << std::endl;
         }

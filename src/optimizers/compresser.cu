@@ -172,7 +172,7 @@ struct square
 
     // compress
     // gQuantize<<<blocksSample, threads>>>(t->data(), NULL, t->size(), (1<<(bit-1)) - 1, base, max);
-    gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, max);
+    gQuantize_fixed<<<blocksSample, threads>>>(t->data(), NULL, t->size(), (1<<(bit-1)) - 1, max);
  
   }
 }

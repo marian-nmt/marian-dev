@@ -8,13 +8,10 @@ Ptr<LabelwiseLoss> newLoss(Ptr<Options> options, bool inference) {
   float factorWeight = options->get<float>("factor-weight", 1.0f);
   std::string costType = options->get<std::string>("cost-type", "ce-mean");
   bool unlikelihood = options->get<bool>("unlikelihood-loss", false);
-  bool wordScores = options->get<bool>("word-scores", false);
 
   if(costType == "ce-rescore") {  // per-batch-item scores (while ce-mean reduces over batch)
-    if(wordScores)
-      return New<RescorerUnreducedLoss>();
-    else
-      return New<RescorerLoss>();
+    bool wordScores = options->get<bool>("word-scores", false);
+    return New<RescorerLoss>(wordScores);
   } else if(unlikelihood) {
     ABORT_IF(!options->hasAndNotEmpty("data-weighting")
              && options->get<std::string>("data-weighting-type") != "word",

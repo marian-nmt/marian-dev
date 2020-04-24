@@ -2085,11 +2085,12 @@ __global__ void gLayerNormalizationGrad(T* gradX,
 
           AccType gradXv = gammav * gradLv;
 
-          // Keep LN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. @TODO: to be fixed and removed.
+          // Keep LN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf. 
+          // @TODO: to be fixed and removed.
           AccType sign = functional::Ops<AccType>::sgn(gradXv);
-          AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option?
-                                            // or better: make obsolete.
-          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv;
+          AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option? or better: make obsolete.
+          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv; // if gradXv is NaN the value return is NaN too because NaN > value is false.
+          gradXv = isnan(gradXv) ? 0.f : gradXv; // turn NaN into 0.
 
           T* gradXRow      = gradX     + j * cols;
           gradXRow[id]    += (T)(gradXv);

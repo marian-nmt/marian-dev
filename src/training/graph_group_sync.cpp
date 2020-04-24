@@ -301,7 +301,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
 
-#if 0
+#if 1
     // Handle local gradient explosion but only clip to largest possible value
     // given number of GPUs and type. Should clip rarely. Also clips inf
     // We do another clipping/rescaling after summation.
@@ -353,9 +353,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
 
       float l2norm = optimizerShards_[i]->update(curParam, curGrad, updateTrgWords, gradientNormalizer);
-
       curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
-
       return l2norm; // return partial norm
     };
 

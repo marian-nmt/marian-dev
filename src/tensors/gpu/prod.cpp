@@ -93,7 +93,7 @@ struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specializati
                                 B, CUDA_R_32F, ldb, beta,
                                 C, CUDA_R_32F, ldc,
                                 CUDA_R_32F, algorithm));
-    else
+    else // don't lose the "else"
   #endif
       CUBLAS_CHECK(cublasSgemm(handle, transa, transb,
                                m, n, k, alpha,
@@ -126,7 +126,7 @@ struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specializati
                                        (void* const*)Barray, CUDA_R_32F, ldb, beta,
                                        (void**)Carray, CUDA_R_32F, ldc, batchCount,
                                        CUDA_R_32F, algorithm));
-    else
+    else // don't lose the "else"
   #endif
       CUBLAS_CHECK(cublasSgemmBatched(handle, transa, transb,
                                       m, n, k, alpha,

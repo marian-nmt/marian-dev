@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
         if matrix[-2] == 'W' or matrix == "Wemb":
             print(matrix)
-            model_file_dict[matrix] = find_best_matrix(model_file_dict[matrix])
+            model_file_dict[matrix] = find_best_matrix_kenneth(model_file_dict[matrix])
 #        elif matrix == "Wemb":
 #            model_file_dict[matrix] = (model_file_dict[matrix]*.9).astype(np.float32)
 

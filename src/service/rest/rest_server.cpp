@@ -16,26 +16,27 @@
 #include "crow.h"
 #pragma GCC diagnostic pop
 
+typedef marian::server::TranslationService tservice_t;
 
 // Wrapper class for CROW (HTTP server) logging
 class LogHandler : public crow::ILogHandler {
-    public:
-        void log(std::string msg, crow::LogLevel loglevel) override {
-          if (loglevel == crow::LogLevel::DEBUG)
-            LOG(debug,msg);
-          else if (loglevel == crow::LogLevel::INFO)
-            LOG(info,msg);
-          else if (loglevel == crow::LogLevel::WARNING)
-            LOG(warn,msg);
-          else if (loglevel == crow::LogLevel::ERROR)
-            LOG(error,msg);
-          else if (loglevel == crow::LogLevel::CRITICAL)
-            LOG(critical,msg);
-        }
+public:
+  void log(std::string msg, crow::LogLevel loglevel) override {
+    if (loglevel == crow::LogLevel::DEBUG)
+      LOG(debug,msg);
+    else if (loglevel == crow::LogLevel::INFO)
+      LOG(info,msg);
+    else if (loglevel == crow::LogLevel::WARNING)
+      LOG(warn,msg);
+    else if (loglevel == crow::LogLevel::ERROR)
+      LOG(error,msg);
+    else if (loglevel == crow::LogLevel::CRITICAL)
+      LOG(critical,msg);
+  }
 };
 
-typedef marian::server::TranslationService<marian::BeamSearch> tservice_t;
-
+namespace marian {
+namespace server {
 // Base class for handling requests. API-specific handlers (e.g. for Bergamot,
 // ELG) are derived from this class.
 class RequestHandler{
@@ -109,7 +110,7 @@ public:
 
 class BergamotRequestHandler : public RequestHandler {
 
-  marian::server::BergamotJsonRequestHandlerV1<tservice_t> process_;
+  BergamotJsonRequestHandlerV1<TranslationService> process_;
 
   std::string
   post(const crow::request& req) const override {
@@ -121,12 +122,12 @@ class BergamotRequestHandler : public RequestHandler {
     std::string payload = payload_field ? payload_field : "text";
     std::string t_opts = options_field ? options_field : "options";
 
-    marian::Ptr<rapidjson::Document> D = process_(req.body, payload, t_opts);
-    std::string response = marian::server::serialize(*D);
+    Ptr<rapidjson::Document> D = process_(req.body, payload, t_opts);
+    std::string response = rapidjson::serialize(*D);
     return response;
   }
 public:
-  BergamotRequestHandler(tservice_t& service,
+  BergamotRequestHandler(TranslationService& service,
                          const std::string gui_file,
                          const std::string src_lang,
                          const std::string trg_lang)
@@ -134,11 +135,11 @@ public:
 };
 
 class ElgRequestHandler : public RequestHandler {
-  marian::server::ElgJsonRequestHandlerV1<tservice_t> process_;
+  ElgJsonRequestHandlerV1<tservice_t> process_;
   std::string
   post(const crow::request& req) const override {
-    marian::Ptr<rapidjson::Document> D = process_(req.body.c_str());
-    return marian::server::serialize(*D);
+    Ptr<rapidjson::Document> D = process_(req.body.c_str());
+    return rapidjson::serialize(*D);
   }
 public:
   ElgRequestHandler(tservice_t& service,
@@ -147,7 +148,7 @@ public:
                     const std::string trg_lang)
     : RequestHandler(gui_file, src_lang, trg_lang), process_(service){}
 };
-
+}} // end of namespace marian::server
 
 int main(int argc, char* argv[])
 {
@@ -172,7 +173,7 @@ int main(int argc, char* argv[])
 
   auto options = cp.parseOptions(argc, argv, true);
   auto service = New<tservice_t>(options);
-  service->start();
+  service->start<BeamSearch>();
 
   crow::SimpleApp app;
   std::string doc_root = options->get<std::string>("server-root");
@@ -213,4 +214,5 @@ int main(int argc, char* argv[])
   LogHandler logger;
   crow::logger::setHandler(&logger);
   app.port(options->get<int>("port")).multithreaded().run();
+  exit(0);
 }

@@ -31,12 +31,12 @@ int timeval_subtract_ (struct timeval& result,
 }
 
 Job::Job(uint64_t ejid, const std::string text,
-         const size_t num_nbest, const size_t pri)
+         const TranslationOptions& topts, const size_t pri)
   : unique_id(++job_ctr_),
     external_id(ejid),
     priority(pri),
     input({text}),
-    nbestlist_size(num_nbest) {
+    nbestlist_size(topts.nbest) {
   gettimeofday(&created.first, &created.second);
 }
 
@@ -46,14 +46,14 @@ void Job::dequeued() {
 
 void Job::finish(Ptr<const History> h, const bool R2L, const Vocab& V) {
   history = h;
-  auto nbest_histories = h->nBest(nbestlist_size,true);
-  for (auto& hyp: nbest_histories) {
+  nbest = h->nBest(nbestlist_size,true);
+  for (auto& hyp: nbest) {
     auto& snt = std::get<0>(hyp);
     if (R2L) std::reverse(snt.begin(), snt.end());
-    nbest.push_back(std::make_pair(std::get<2>(hyp), V.decode(snt)));
   }
-  if (nbest.size())
-    translation = nbest[0].second;
+  if (nbest.size()) {
+    translation = V.decode(std::get<0>(nbest[0]));
+  }
   gettimeofday(&finished.first, &finished.second);
 }
 

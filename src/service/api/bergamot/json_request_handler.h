@@ -1,4 +1,6 @@
 #pragma once
+#include "service/api/rapidjson_utils.h"
+#include "node_translation.h"
 // Do not include this file directly. It is included by ../json_request_handler.h
 namespace marian{
 namespace server{
@@ -26,8 +28,8 @@ public:
     if (!D->IsObject()) {
       return this->error("Invalid Json");
     }
-    LOG(debug, "PARSED: {}", server::serialize(*D));
-    NodeTranslation<typename Service::SearchType>
+    LOG(debug, "PARSED: {}", serialize(*D));
+    NodeTranslation
       job(D.get(), this->service, payload_field_name, options_field_name);
     job.finish(D->GetAllocator());
     return D;

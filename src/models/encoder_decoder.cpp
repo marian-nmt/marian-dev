@@ -36,6 +36,7 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
     modelFeatures_.insert(feature);
 
   modelFeatures_.insert("transformer-heads");
+  modelFeatures_.insert("transformer-head-dim");
   modelFeatures_.insert("transformer-no-projection");
   modelFeatures_.insert("transformer-dim-ffn");
   modelFeatures_.insert("transformer-ffn-depth");

@@ -236,8 +236,19 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--transformer-head-dim",
       "Dimension heads in multi-head attention (transformer)",
       64);
+  cli.add<bool>("--transformer-head-file",
+      "Load number of heads from model.npz.{decoder,encoder}_pruning.yml");
+  cli.add<std::vector<int>>("--transformer-encoder-heads",
+      "Number of heads in encoder self-attention (transformer)",
+      {8, 8, 8, 8, 8, 8});
+  cli.add<std::vector<int>>("--transformer-decoder-heads",
+      "Number of heads in decoder self-attention (transformer)",
+      {8, 8, 8, 8, 8, 8});
+  cli.add<std::vector<int>>("--transformer-context-heads",
+      "Number of heads in encoder-decoder context attention (transformer)",
+      {8, 8, 8, 8, 8, 8});
   cli.add<bool>("--transformer-head-print",
-      "Print statistics in multi-head attention (transformer)");
+      "Print statistics in multi-head attention (transformer), for lottery ticket pruning.");
   cli.add<bool>("--transformer-tied-ffn",
       "Tie FFN layers in an encoder");
   cli.add<bool>("--transformer-no-projection",
@@ -637,7 +648,19 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsBatching(cli);
 
   cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
+      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer CPU multiplication. Only available on CPU");
+  cli.add<bool>("--optimize8",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer CPU multiplication. Only available on CPU");
+  cli.add<bool>("--intgemm-shifted",
+      "Use a shifted GEMM implementation. Only available with intgemm8.");
+  cli.add<bool>("--intgemm-shifted-all",
+      "Use a shifted GEMM implementation even for operations without biases. Only available with intgemm8.");
+  cli.add<bool>("--dump-quantmult",
+      "Dump the quantization multipliers during an avarage run.");
+  cli.add<bool>("--use-precomputed-alphas",
+      "Use precomputed alphas for bias calculation.");
+  cli.add<bool>("--use-legacy-batching",
+      "Use legacy codepath with a for loop of cblas_sgemm, instead of cblas_sgemm_batched.");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<bool>("--fp16",

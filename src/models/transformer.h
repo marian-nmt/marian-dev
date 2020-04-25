@@ -55,24 +55,37 @@ public:
   virtual void setNumHeads() { };
  
   void loadNumHeads(const std::string& name, std::string type, size_t numLayers) {
-    std::string pruningYAML = name + "." + type + "_pruning.yml";
-    YAML::Node config = YAML::LoadFile(pruningYAML);
-    // LOG(info, "Loaded YAML file with the number of attention heads!");
-
-    if (type == "encoder") {
+    if (opt<bool>("transformer-head-file")) {
+      std::string pruningYAML = name + "." + type + "_pruning.yml";
+      YAML::Node config = YAML::LoadFile(pruningYAML);
+      // LOG(info, "Loaded YAML file with the number of attention heads!");
+  
       for (size_t i = 1; i < numLayers + 1; i++) {
-        std::string selfLayer = type + "_l" + std::to_string(i) + "_self";
+        auto selfLayer = type + "_l" + std::to_string(i) + "_self";
         numHeads_[selfLayer] = config[selfLayer].as<size_t>();
+        if (type == "decoder") {
+          auto contextLayer = type + "_l" + std::to_string(i) + "_context";
+          numHeads_[contextLayer] = config[contextLayer].as<size_t>();
+        }
       }
     }
-    else if (type == "decoder") {
+
+    else {
+      auto encoderHeads = opt<std::vector<int>>("transformer-encoder-heads");
+      auto decoderHeads = opt<std::vector<int>>("transformer-decoder-heads");
+      auto contextHeads = opt<std::vector<int>>("transformer-context-heads");
       for (size_t i = 1; i < numLayers + 1; i++) {
         auto selfLayer = type + "_l" + std::to_string(i) + "_self";
         auto contextLayer = type + "_l" + std::to_string(i) + "_context";
-        numHeads_[selfLayer] = config[selfLayer].as<size_t>();
-        numHeads_[contextLayer] = config[contextLayer].as<size_t>();
+        if (type == "encoder")
+          numHeads_[selfLayer] = encoderHeads[i - 1];
+        if (type == "decoder") {
+          numHeads_[selfLayer] = decoderHeads[i - 1];
+          numHeads_[contextLayer] = contextHeads[i - 1];
+        }
       }
     }
+
   }
 
 
@@ -568,7 +581,6 @@ public:
     if (!setHeads_) {
       setNumHeads();
       setHeads_ = true;
-      // LOG(info, "Set heads in {}...", prefix_);
     }
     graph_ = graph;
     return apply(batch);
@@ -698,7 +710,6 @@ public:
       else
         modelPath = opt<std::string>("model");
   
-      LOG(info, "modelPath = {}", modelPath);
       auto decLayers = opt<int>("dec-depth");
       loadNumHeads(modelPath, "decoder", decLayers);
   }
@@ -712,7 +723,6 @@ public:
     if (!setHeads_) {
       setNumHeads();
       setHeads_ = true;
-      // LOG(info, "Set heads in {}...", prefix_);
     }
     
     std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");

@@ -3,7 +3,7 @@
 #include "common/config.h"
 #include "common/definitions.h"
 #include "common/file_stream.h"
-
+#include "corpus_base.h"
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -38,7 +38,7 @@ class ShortlistGenerator {
 public:
   virtual ~ShortlistGenerator() {}
 
-  virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const = 0;
+  virtual Ptr<Shortlist> generate(Ptr<CorpusBatch> batch) const = 0;
 
   // Writes text version of (possibly) pruned short list to file
   // with given prefix and implementation-specific suffixes.

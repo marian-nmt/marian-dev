@@ -6,22 +6,20 @@
 #include <vector>
 #include <map>
 
+#include "common/logging.h"
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/shortlist.h"
-#include "data/text_input.h"
+// #include "data/text_input.h"
 
-#include "3rd_party/threadpool.h"
 #include "translator/history.h"
-#include "translator/output_collector.h"
-#include "translator/output_printer.h"
+// #include "translator/output_collector.h"
+// #include "translator/output_printer.h"
 
-#include "models/model_task.h"
+// #include "models/model_task.h"
 #include "translator/scorers.h"
-
-#include "translation_worker.h"
-#include "common/logging.h"
-#include "queue.h"
+#include <thread>
+#include "data/shortlist.h"
 #include "queued_input.h"
 
 extern Logger logger;
@@ -29,17 +27,14 @@ extern Logger logger;
 namespace marian {
 namespace server {
 
-template<class Search>
-class TranslationService;
-
-template<class Search>
 class TranslationWorker
 {
 private:
   DeviceId device_;
   std::unique_ptr<std::thread> thread_;
   // we use a pointer to the worker thread so that we have an easy way of
-  // ensuring the worker is run exactly once.
+  // ensuring the worker is run exactly once; we don't want two workers
+  // on the same device.
 
   Ptr<data::QueuedInput> job_queue_;
   std::function<void (Ptr<History const>)> callback_;
@@ -50,25 +45,9 @@ private:
   Ptr<data::ShortlistGenerator const> slgen_;
   bool keep_going_{true};
 
-  void init_() {
-    graph_ = New<ExpressionGraph>(true); // always optimize
-    graph_->setDevice(device_);
-    graph_->getBackend()->setClip(options_->get<float>("clip-gemm"));
-    graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-    scorers_ = createScorers(options_);
-    for (auto s: scorers_) {
-      // Why aren't these steps part of createScorers?
-      // i.e., createScorers(options_, graph_, shortlistGenerator_) [UG]
-      s->init(graph_);
-      if (slgen_) s->setShortlistGenerator(slgen_);
-    }
-    graph_->forward();
-    // Is there a particular reason that graph_->forward() happens after
-    // initialization of the scorers? It would improve code readability
-    // to do this before scorer initialization. Logical flow: first
-    // set up graph, then set up scorers. [UG]
-  }
+  void init_();
 
+  template<typename Search>
   void run_() {
     init_();
     LOG(info,"Worker {} is ready.", std::string(device_));
@@ -92,25 +71,16 @@ public:
                     Ptr<data::ShortlistGenerator const> slgen,
                     Ptr<data::QueuedInput> job_queue,
                     std::function<void (Ptr<History const>)> callback,
-                    Ptr<Options> options)
-    : device_(device), job_queue_(job_queue), callback_(callback),
-      options_(options), vocabs_(vocabs), slgen_(slgen)
-  { }
+                    Ptr<Options> options);
 
+  template<typename Search>
   void start() {
     ABORT_IF(thread_ != NULL, "Don't call start on a running worker!");
-    thread_.reset(new std::thread([this]{ this->run_(); }));
+    thread_.reset(new std::thread([this]{ this->run_<Search>(); }));
   }
 
-  void stop() {
-    keep_going_ = false;
-  }
-
-  void join() {
-    thread_->join();
-    thread_.reset();
-  }
-
+  void stop();
+  void join();
 }; // end of class TranslationWorker
 
 } // end of namespace marian::server

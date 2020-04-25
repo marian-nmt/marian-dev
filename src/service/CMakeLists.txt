@@ -5,10 +5,14 @@ if (COMPILE_REST_SERVER OR COMPILE_AMQP_WORKER OR COMPILE_WEBSOCKET_SERVER)
   add_library(marian-service STATIC
     common/queued_input.cpp
     common/translation_job.cpp
+    common/translation_worker.cpp
+    common/translation_service.cpp
     api/rapidjson_utils.cpp
+    api/output_options.cpp
     )
   target_compile_options(marian-service PUBLIC ${ALL_WARNINGS})
 endif(COMPILE_REST_SERVER OR COMPILE_AMQP_WORKER OR COMPILE_WEBSOCKET_SERVER)
+
 if (CUDA_FOUND)
   set(MARIAN_CUDA_LIB marian_cuda)
 endif(CUDA_FOUND)

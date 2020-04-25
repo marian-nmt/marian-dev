@@ -60,5 +60,5 @@ public:
   void prepare() override {}
   size_t size() const { return job_queue_.size(); }
 };
-}  // namespace data
-}  // namespace marian
+
+}}  // namespace marian::data

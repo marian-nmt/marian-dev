@@ -1,4 +1,5 @@
 #pragma once
+#include "service/common/plaintext_translation.h"
 // Do not include this file directly. It is included by ../json_request_handler.h
 namespace marian {
 namespace server {
@@ -37,24 +38,24 @@ class ElgJsonRequestHandlerV1
   }
 
   class NodeWrapper {
-    typedef typename Service::SearchType SearchType;
-    typedef PlainTextTranslation<SearchType> tjob;
+    typedef PlainTextTranslation tjob;
     std::vector<NodeWrapper> children_;
     Ptr<tjob> translation_;
   public:
     NodeWrapper(rapidjson::Value const& n,
                 Service& service,
+                TranslationOptions& topts,
                 ug::ssplit::SentenceStream::splitmode const& smode) {
       if (n.IsObject()) {
         auto x = n.FindMember("content");
         if (x != n.MemberEnd() && x->value.IsString()) {
           std::string input = x->value.GetString();
-          translation_.reset(new tjob(input, service, smode));
+          translation_.reset(new tjob(input, service, topts, smode));
         }
         auto y = n.FindMember("texts");
         if (y != n.MemberEnd() && y->value.IsArray()) {
           for (auto c = y->value.Begin(); c != y->value.End(); ++c) {
-            auto z = NodeWrapper(*c, service, smode);
+            auto z = NodeWrapper(*c, service, topts, smode);
             children_.push_back(std::move(z));
           }
         }
@@ -64,7 +65,7 @@ class ElgJsonRequestHandlerV1
     void finish(rapidjson::Value& n, rapidjson::Document::AllocatorType& alloc) {
       rapidjson::Value x(rapidjson::kObjectType);
       if (translation_) {
-        std::string t = translation_->await();
+        std::string t = translation_->toString();
         x.AddMember("content", {}, alloc)["content"].SetString(t.c_str(), t.size(), alloc);
         // x.AddMember("content", translation_->await(), alloc);
       }
@@ -180,7 +181,11 @@ public:
     // translations to the response document D.
     auto r = rapidjson::ensure_path(*D, alloc, "response", "texts");
     rapidjson::Value n(rapidjson::kArrayType);
-    NodeWrapper(request, this->service, smode).finish(n, alloc);
+    TranslationOptions topts;
+    auto p = get(&request, {"params", "NBest"});
+    if (p && p->IsObject())
+      topts.nbest = p->GetInt();
+    NodeWrapper(request, this->service, topts, smode).finish(n, alloc);
     *r = n;
     (*D)["response"].AddMember("type","texts",alloc);
     return D;

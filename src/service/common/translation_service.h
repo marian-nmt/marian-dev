@@ -11,24 +11,16 @@
 #include <thread>
 
 #include "3rd_party/ssplit-cpp/src/ssplit/ssplit.h"
-#include "3rd_party/threadpool.h"
 #include "common/logging.h"
-#include "data/batch_generator.h"
-#include "data/corpus.h"
+#include "common/definitions.h"
+#include "common/utils.h"
 #include "data/shortlist.h"
-#include "data/text_input.h"
-#include "models/model_task.h"
-#include "queue.h"
 #include "queued_input.h"
 #include "translation_job.h"
 #include "translation_worker.h"
-#include "translation_worker.h"
+#include "translation_options.h"
 #include "translator/beam_search.h"
 #include "translator/history.h"
-#include "translator/output_collector.h"
-#include "translator/output_printer.h"
-#include "translator/scorers.h"
-
 #ifdef __CUDA_ARCH__
 #include <cuda.h>
 #endif
@@ -37,348 +29,80 @@ extern Logger logger;
 
 namespace marian {
 namespace server {
-// This should actually go into vocab.*
-// Also it should be merged with the loadOrCreate code in corpus_base.cpp
-// and refactored as a separate function (that then goes into vocab.*).
-std::vector<Ptr<Vocab const> >
-loadVocabularies(Ptr<Options> options) {
-  // @TODO: parallelize vocab loading for faster startup
-  auto vfiles = options->get<std::vector<std::string>>("vocabs");
-  // with the current setup, we need at least two vocabs: src and trg
-  ABORT_IF(vfiles.size() < 2, "Insufficient number of vocabularies.");
-  std::vector<Ptr<Vocab const> > vocabs(vfiles.size());
-  std::unordered_map<std::string,Ptr<Vocab>> vmap;
-  for (size_t i = 0; i < vocabs.size(); ++i) {
-    auto m = vmap.emplace(std::make_pair(vfiles[i],Ptr<Vocab>()));
-    if (m.second) { // new: load the vocab
-      m.first->second = New<Vocab>(options, i);
-      m.first->second->load(vfiles[i]);
-    }
-    vocabs[i] = m.first->second;
-  }
-  return vocabs;
-}
 
-template<class Search> class PlainTextTranslation;
-template<class Search=BeamSearch> class NodeTranslation;
+// template<class Search=BeamSearch> class NodeTranslation;
+class PlainTextTranslation;
+std::vector<Ptr<const Vocab> > loadVocabularies(Ptr<Options> options);
 
-template<class Search>
 class TranslationService {
-public:
-  // see https://oopscenities.net/2012/02/24/c11-stdfunction-and-stdbind/
-  // for ResponseHandler below
-  typedef std::function<void (uint64_t ejid, Ptr<History const> h)>  ResponseHandler;
-
-  typedef ug::ssplit::SentenceStream::splitmode splitmode;
-  typedef Search SearchType;
-private:
-  typedef TranslationWorker<Search> Worker;
-
-  // bits and pieces for translating
-  Ptr<Options> options_;
-  std::vector<Ptr<Vocab const>> vocabs_;
-  std::vector<Ptr<Worker>> workers_;
-  Ptr<data::QueuedInput> jq_;
-  Ptr<data::ShortlistGenerator const> slgen_;
-  ug::ssplit::SentenceSplitter ssplit_;
-
-  // bits and pieces for callbacks
-  std::mutex lock_; // for management of pending callbacks
+  std::mutex lock_; // for management of jobs in progress
   typedef std::pair<Ptr<Job>, std::promise<Ptr<Job const>>> JobEntry;
   std::unordered_map<uint64_t, JobEntry> scheduled_jobs_;
 
+  Ptr<Options> options_; // options set at start of service
+  TranslationOptions dflt_topts_; // can be set by client
+
+  std::vector<Ptr<Vocab const>> vocabs_;
+  Ptr<data::QueuedInput> jq_;
+  Ptr<data::ShortlistGenerator const> slgen_;
+  ug::ssplit::SentenceSplitter ssplit_;
+  std::vector<Ptr<TranslationWorker>> workers_;
   bool keep_going_{true};
 
-  void callback_(Ptr<History const> h) {
-    // This function is called by the workers once translations are available.
-
-    JobEntry entry;
-
-    { // remove the job / promise pair from the pool of scheduled jobs
-      std::lock_guard<std::mutex> lock(lock_);
-      auto m = scheduled_jobs_.find(h->getLineNum());
-      if (m == scheduled_jobs_.end()) return; // job was cancelled (not yet implemented)
-      entry = std::move(m->second);
-      scheduled_jobs_.erase(m);
-    }
-
-    // extract translations from history and fulfil the promise
-    entry.first->finish(h, isRight2LeftDecoder(), *vocabs_.back());
-    entry.first->callback(entry.first);
-    entry.second.set_value(entry.first);
-  }
-
-  // When run in a docker container with nvidia docker, CUDA may or may
-  // not be available, depending on how the Docker container is run, i.e.,
-  // mapping host devices into the container via --gpus or not.
-  // chooseDevice() checks if CUDA is available and automatically switches
-  // to CPU mode if not. Without this check, Marian will crash unless
-  // --cpu-threads is set explicitly.
-  void chooseDevice_(Ptr<Options> options){
-#ifdef __CUDA_ARCH__
-    if (options->get<int>("cpu_threads",0) > 0)
-      return; // nothing to worry about, user wants to use CPU anyway
-    int ngpus;
-    cudaError_t err = cudaGetDeviceCount(&ngpus);
-    if (err != cudaSuccess){
-      size_t nproc = std::thread::hardware_concurrency();
-      size_t num_workers = options->get<size_t>("max_workers",nproc);
-      LOG(warn, "NO GPU available, using CPU instead. "
-          "Setting --cpu-threads to {}", num_workers);
-      options->set("cpu_threads",num_workers);
-    }
-    if (options->get<int>("cpu_threads",0)){
-      // use mini-batch size 1 if running on CPU
-      options->set<int>("mini_batch",1);
-    }
-#endif
-  }
+  void callback_(Ptr<const History> h);
+  void chooseDevice_(Ptr<Options> options);
 
 public:
   typedef ug::ssplit::SentenceStream::splitmode ssplitmode;
+  typedef std::function<void(uint64_t ejid,Ptr<History const>h)>ResponseHandler;
 
-  TranslationService(Ptr<Options> options)
-    : options_(options) {
-    auto ssplit_prefix_file = options_->get<std::string>("ssplit-prefix-file","");
-    if (ssplit_prefix_file.size()) {
-      ssplit_prefix_file = cli::InterpolateEnvVars(ssplit_prefix_file);
-      LOG(info, "Loading protected prefixes for sentence splitting from {}",
-          ssplit_prefix_file);
-      ssplit_.load(ssplit_prefix_file);
-    }
-    else {
-      LOG(warn, "Missing list of protected prefixes for sentence splitting. "
-          "Set with --ssplit-prefix-file.");
-    }
-    chooseDevice_(options);
-  }
+  TranslationService(Ptr<Options> options);
 
-  ~TranslationService() {
-    stop();
-  }
-
-  void stop() {
-    for (auto& w: workers_) w->stop();
-    for (auto& w: workers_) w->join();
-  }
-
+  template<typename Search>
   void start() {
     keep_going_ = true;
     vocabs_ = loadVocabularies(options_);
-
     if(options_->hasAndNotEmpty("shortlist")) {
       Ptr<data::ShortlistGenerator const> slgen;
-      slgen_ = New<data::LexicalShortlistGenerator>                   \
-        (options_, vocabs_.front(), vocabs_.back(),
-         /*srcIdx=*/ 0, /*trgIdx=*/ 1,
-         /*shared (vocab) = */ vocabs_.front() == vocabs_.back());
+      int srcIdx=0, trgIdx=1;
+      bool shared_vcb = vocabs_.front() == vocabs_.back();
+      slgen_ = New<data::LexicalShortlistGenerator> \
+        (options_, vocabs_.front(), vocabs_.back(), srcIdx, trgIdx, shared_vcb);
     }
-
-    jq_.reset(new data::QueuedInput(vocabs_,options_));
+    jq_.reset(new data::QueuedInput(vocabs_, options_));
     auto devices = Config::getDevices(options_);
     for (auto d: devices) {
-      // wrap callback in a lambda function because it's a non static
-      // member function:
+      // callback() is not static, so we must wrap it in a lambda:
       auto cb = [=](Ptr<History const> h) { this->callback_(h); };
-      workers_.push_back(New<Worker>(d, vocabs_, slgen_, jq_, cb, options_));
-      workers_.back()->start();
+      auto w = New<TranslationWorker>(d, vocabs_, slgen_, jq_, cb, options_);
+      w->start<Search>();
+      workers_.push_back(w);
     }
   }
 
-  std::pair<uint64_t, std::future<Ptr<Job const>>>
-  push(uint64_t ejid, std::string const& input, size_t const nbest=1,
-       size_t const priority=0,
-       std::function<void (Ptr<Job> j)> callback
-       =[=](Ptr<Job> j){return;}) {
-    auto job = New<Job>(ejid, input, nbest, priority);
-    if (input.empty()){ // return empty result immediately
-      std::promise<Ptr<Job const>> prom;
-      prom.set_value(job);
-      return std::make_pair(job->unique_id,prom.get_future());
-    }
-    else if (!jq_->push(job)) {
-      job->error = New<Error>("Could not push to Queue.");
-      std::promise<Ptr<Job const>> prom;
-      prom.set_value(job);
-      return std::make_pair(job->unique_id,prom.get_future());
-    }
-    job->callback = callback;
-    JobEntry* entry;
-    {
-      std::lock_guard<std::mutex> lock(lock_);
-      entry = &scheduled_jobs_[job->unique_id];
-    }
-    entry->first = job;
-    return std::make_pair(job->unique_id, entry->second.get_future());
-  }
+  std::pair<uint64_t, std::future<Ptr<const Job>>>
+  push(uint64_t ejid,
+       const std::string& input,
+       const TranslationOptions* topts=NULL,
+       const size_t priority=0, // currently has no effect, yet to be implemented
+       std::function<void (Ptr<Job> j)> callback =[=](Ptr<Job> j){return;});
 
-  Ptr<Vocab const> vocab(int i) const {
-    if (i < 0) i += vocabs_.size();
-    return vocabs_.at(i);
-  }
 
-  bool isRight2LeftDecoder() const {
-    return options_->get<bool>("right-left");
-  }
-
-  Ptr<PlainTextTranslation<Search>>
-  translate(std::string const& input,
-            splitmode const smode = splitmode::wrapped_text){
-    Ptr<PlainTextTranslation<Search>> ret;
-    ret.reset(new PlainTextTranslation<Search>(input, *this, smode));
-    return ret;
-  }
+  void stop();
+  bool isRight2LeftDecoder() const;
+  Ptr<const Vocab> vocab(int i) const;
 
   ug::ssplit::SentenceStream
-  createSentenceStream(std::string const& input, ssplitmode const& mode)
-  {
-    return std::move(ug::ssplit::SentenceStream(input, this->ssplit_, mode));
-  }
+  createSentenceStream(std::string const& input, ssplitmode const& mode);
+
+  Ptr<PlainTextTranslation>
+  translate(std::string const& input,
+            ssplitmode const smode = ssplitmode::wrapped_text);
+
 };
 
-template<class Search=BeamSearch>
-class PlainTextTranslation {
-public:
-  typedef  ug::ssplit::SentenceStream::splitmode splitmode;
-private:
-  std::vector<std::future<Ptr<Job const>>> pending_jobs_;
-  splitmode smode_;
-  bool ends_with_eol_char_{false};
-public:
-  PlainTextTranslation(std::string const& input,
-                       TranslationService<Search>& service,
-                       splitmode const& smode)
-    : smode_(smode) {
-    size_t linectr=0;
-    std::string snt;
-    auto buf = service.createSentenceStream(input, smode);
-    while (buf >> snt) {
-      LOG(trace, "SNT: {}", snt);
-      auto foo = std::move(service.push(++linectr, snt));
-      pending_jobs_.push_back(std::move(foo.second));
-    }
-    ends_with_eol_char_ = input.size() && input.back() == '\n';
-  }
+ug::ssplit::SentenceStream::splitmode
+string2splitmode(const std::string& m);
 
-  std::string
-  await() {
-    std::ostringstream buf;
-    char sep = (smode_ == splitmode::one_sentence_per_line ? '\n' : ' ');
-    for (auto& f: pending_jobs_) {
-      Ptr<Job const> j = f.get();
-      if (j->nbest.size() == 0) { // "job" was a paragraph marker
-        buf << (smode_ == splitmode::wrapped_text ? "\n\n" : "\n");
-      }
-      else {
-        buf << j->translation << sep;
-      }
-    }
-    std::string ret = buf.str();
-    if (ret.size() && !ends_with_eol_char_ && ret.back()=='\n')
-      ret.pop_back();
-    return ret;
-  }
-};
-
-template<class Search>
-class NodeTranslation {
-
-  // Map from strings to sentence splitting modes.
-  // paragraph and wrapped_text use linguistic sentence splitting.
-  using splitmode=ug::ssplit::SentenceStream::splitmode;
-
-  std::vector<NodeTranslation<Search>> children_;
-  rapidjson::Value* node_;
-  // std::vector<std::future<Ptr<Job const>>> delayed_;
-  Ptr<PlainTextTranslation<Search>> translation_;
-  bool ends_with_eol_char_{false};
-  splitmode smode_;
-
-  splitmode
-  determine_splitmode_(rapidjson::Value* n,
-                       NodeTranslation const* parent,
-                       const std::string& options_field){
-    if (n->IsObject()){
-      auto x = n->FindMember(options_field.c_str());
-      if (x != n->MemberEnd() && x->value.IsObject()){
-        auto y = x->value.FindMember("inputFormat");
-        if (y != x->value.MemberEnd() && y->value.IsString()){
-          std::string m = y->value.GetString();
-          if (m == "sentence")
-            return (smode_ = splitmode::one_sentence_per_line);
-          if (m == "paragraph")
-            return (smode_ = splitmode::one_paragraph_per_line);
-          if (m != "wrapped_text"){
-            LOG(warn,"Ignoring unknown text input format specification: {}.",m);
-          }
-        }
-      }
-    }
-    smode_ = parent ? parent->smode_ : splitmode::wrapped_text;
-    return smode_;
-  }
-
-  void setOptions(rapidjson::Value* n,
-                  NodeTranslation const* parent,
-                  const std::string& options_field){
-    determine_splitmode_(n, parent, options_field);
-  }
-
- public:
-  NodeTranslation(rapidjson::Value* n,
-                  TranslationService<Search>& service,
-                  std::string payload_field="text",
-                  std::string options_field="options",
-                  NodeTranslation* parent=NULL)
-    : node_(n) {
-    if (n == NULL) return; // nothing to do
-    setOptions(n, parent, options_field);
-
-    if (n->IsObject()){
-      auto x = n->FindMember(payload_field.c_str());
-      if (x != n->MemberEnd()){
-        auto c = NodeTranslation(&(x->value), service,
-                                 payload_field, options_field, this);
-        children_.push_back(std::move(c));
-      }
-    }
-    else if (n->IsString()) {
-      translation_.reset(new PlainTextTranslation<Search>(n->GetString(),
-                                                          service, smode_));
-    }
-    else if (n->IsArray()) {
-      for (auto c = n->Begin(); c != n->End(); ++c){
-        auto x = NodeTranslation(c, service, payload_field, options_field, this);
-        children_.push_back(std::move(x));
-      }
-    }
-  }
-
-  void finish(rapidjson::Document::AllocatorType& alloc) {
-    for (auto& c: children_) c.finish(alloc);
-    if (translation_){
-      std::string translation = translation_->await();
-      if (node_) {
-        ABORT_IF(!node_->IsString(), "Node is not a string!");
-        // @TODO: We should thrown an exception here instead of aborting
-        node_->SetString(translation.c_str(), translation.size(), alloc);
-      }
-    }
-  }
-};
-
-std::string serialize(rapidjson::Document const& D) {
-  // @TODO: this should be in a different namespace, maybe rapidjson
-  rapidjson::StringBuffer buffer;
-  buffer.Clear();
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-  D.Accept(writer);
-  return std::string(buffer.GetString(), buffer.GetSize());
-}
-
-void dump(rapidjson::Value& v, std::ostream& out) {
-  if (v.IsString()) { out << v.GetString() << std::endl; }
-  else if (v.IsArray()) { for (auto& c: v.GetArray()) dump(c,out); }
-}
 
 }} // end of namespace marian::server

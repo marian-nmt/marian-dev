@@ -16,6 +16,8 @@ matrices_stddev = dict()
 matrices_meansAbs = dict()
 matrices_stddevAbs = dict()
 for line in input_file:
+    if "tcmalloc" in line:
+        continue
     _, name, _, meanAbs, _, stdAbs, _, mean, _, stddev, _, maxAbs = line.strip().split()
     name = name.split("::")[-1]
     if name not in matrices_maxabs:

@@ -24,14 +24,14 @@ option(COMPILE_REST_SERVER "Compile Marian REST server" ON)
 option(COMPILE_SERVER "Compile marian-server" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
 option(COMPILE_WEBSOCKET_SERVER "Compile websocket server" OFF)
-option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
+option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" ON)
 option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_DOXYGEN "Build documentation with Doxygen" ON)
 option(USE_FBGEMM "Use FBGEMM" OFF)
 option(USE_MKL "Compile with MKL support" ON)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
+option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 
 # use ccache (https://ccache.dev) for faster compilation if requested and available
@@ -375,11 +375,11 @@ endif(COMPILE_CPU)
 if(COMPILE_AMQP_WORKER)
   list(APPEND BOOST_COMPONENTS filesystem system)
 endif(COMPILE_AMQP_WORKER)
-  
+
 if (COMPILE_REST_SERVER)
   list(APPEND BOOST_COMPONENTS system)
 endif(COMPILE_REST_SERVER)
-  
+
 if (COMPILE_SERVER)
   set(NEED_OPENSSL ON)
 endif(COMPILE_SERVER)

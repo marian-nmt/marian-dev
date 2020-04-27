@@ -55,6 +55,8 @@ toString() {
   std::string ret = buf.str();
   if (ret.size() && !ends_with_eol_char_ && ret.back()=='\n')
     ret.pop_back();
+  if (ret.size() && ret.back()==' ')
+    ret.pop_back();
   return ret;
 }
 

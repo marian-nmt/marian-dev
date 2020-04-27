@@ -4,6 +4,10 @@
 #include "service/common/plaintext_translation.h"
 #include <string>
 
+// After some thought and investivation, I decided to
+// go with camelCase for propertNames.
+// see here: https://github.com/json-api/json-api/issues/1255
+
 namespace marian {
 namespace server {
 
@@ -17,6 +21,10 @@ NodeTranslation(rapidjson::Value* n,
   if (n == NULL)
     return; // nothing to do
   setOptions(n, parent, options_field);
+  //@TODO: check if service provides word alignments
+  //       add error if not but it is requested.
+  //@TOOD: check for source sentence length, add warning if
+  //       cropped.
 
   if (n->IsObject()){
     auto x = n->FindMember(payload_field.c_str());
@@ -60,11 +68,11 @@ setOptions(rapidjson::Value* n,
     auto x = n->FindMember(options_field.c_str());
     if (x != n->MemberEnd() && x->value.IsObject()){
       const auto& v = x->value;
-      if (v.HasMember("InputFormat")) {
-        smode_ =string2splitmode(v["InputFormat"].GetString());
+      if (v.HasMember("inputFormat")) {
+        smode_ =string2splitmode(v["inputFormat"].GetString());
       }
       rapidjson::setOptions(reportingOptions_, v);
-      translationOptions_.nbest = get(v, "NBest", translationOptions_.nbest);
+      translationOptions_.nbest = get(v, "nBest", translationOptions_.nbest);
     }
   }
 }

@@ -67,11 +67,11 @@ Value hyp2json(const marian::Result& nbestlist_item,
   // @TODO: add warnings and errors, if any
 
   // Sentence score and translation are always included
-  ret.AddMember("SentenceScore",std::get<2>(nbestlist_item),alloc);
-  ret.AddMember("Translation",Value(translation.c_str(),alloc),alloc);
+  ret.AddMember("sentenceScore",std::get<2>(nbestlist_item),alloc);
+  ret.AddMember("translation",Value(translation.c_str(),alloc),alloc);
 
   if (opts.withTokenization) {
-    ret.AddMember("TranslationTokenized",words2json(ttok_ids,V,alloc),alloc);
+    ret.AddMember("translationTokenized",words2json(ttok_ids,V,alloc),alloc);
   }
   if (opts.withWordAlignment || opts.withSoftAlignment) {
     // We currently handle only translation with single input, but
@@ -91,7 +91,7 @@ Value hyp2json(const marian::Result& nbestlist_item,
       waNode[0].Reserve(alnvec.size(),alloc);
       for (int p: alnvec)
         waNode[0].PushBack(p,alloc);
-      ret.AddMember("WordAlignment", waNode.Move(), alloc);
+      ret.AddMember("wordAlignment", waNode.Move(), alloc);
     }
     if (opts.withSoftAlignment) {
       Value saNode(kArrayType);
@@ -105,7 +105,7 @@ Value hyp2json(const marian::Result& nbestlist_item,
         }
         saNode[0].PushBack(row.Move(),alloc);
       }
-      ret.AddMember("SoftAlignment", saNode.Move(), alloc);
+      ret.AddMember("softAlignment", saNode.Move(), alloc);
     }
   }
 
@@ -117,7 +117,7 @@ Value hyp2json(const marian::Result& nbestlist_item,
     ws.Reserve(wscores.size(),alloc);
     for (const auto& v: wscores)
       ws.PushBack(v,alloc);
-    ret.AddMember("WordScores",ws.Move(),alloc);
+    ret.AddMember("wordScores",ws.Move(),alloc);
   }
   return ret;
 }
@@ -133,6 +133,10 @@ Value job2json(const marian::server::Job& job,
     const auto& T = job.translation;
     return Value(&T[0],T.size(),alloc);
   }
+  else {
+    LOG(trace, "NBest list size is {}", job.nbestlist_size);
+  }
+
 
   if (opts.withOriginal) {
     // Currently, we assume single input per sentence.
@@ -143,7 +147,7 @@ Value job2json(const marian::server::Job& job,
     for (const auto& i: job.input) {
       a.PushBack(Value(i.c_str(),alloc), alloc);
     }
-    ret.AddMember("Original", a.Move(), alloc);
+    ret.AddMember("original", a.Move(), alloc);
   }
 
   if (opts.withTokenization) {
@@ -151,7 +155,7 @@ Value job2json(const marian::server::Job& job,
     for (const auto& i: job.input) {
       oriTok.PushBack(words2json(V1.encode(i), V1, alloc), alloc);
     }
-    ret.AddMember("OriginalTokenized", oriTok.Move(), alloc);
+    ret.AddMember("originalTokenized", oriTok.Move(), alloc);
   }
 
   Value nbest(kArrayType);
@@ -159,7 +163,7 @@ Value job2json(const marian::server::Job& job,
   for (const auto& i: job.nbest) {
     nbest.PushBack(hyp2json(i, service, opts, alloc), alloc);
   }
-  ret.AddMember("NBest", nbest.Move(), alloc);
+  ret.AddMember("nBest", nbest.Move(), alloc);
   return ret;
 }
 
@@ -175,13 +179,13 @@ bool setOptions(marian::server::OutputOptions& opts, const rapidjson::Value& v) 
   if (!v.IsObject()) {
     return false; // an error occurred; should we throw an exception here?
   }
-  opts.withWordAlignment = get(v, "ReturnWordAlignment", opts.withWordAlignment);
-  opts.withSoftAlignment = get(v, "ReturnSoftAlignment", opts.withSoftAlignment);
-  opts.withTokenization  = get(v, "ReturnTokenization",  opts.withTokenization);
-  opts.withSentenceScore = get(v, "ReturnSentenceScore", opts.withSentenceScore);
-  opts.withWordScores    = get(v, "ReturnWordScores",    opts.withWordScores);
+  opts.withWordAlignment = get(v, "returnWordAlignment", opts.withWordAlignment);
+  opts.withSoftAlignment = get(v, "returnSoftAlignment", opts.withSoftAlignment);
+  opts.withTokenization  = get(v, "returnTokenization",  opts.withTokenization);
+  opts.withSentenceScore = get(v, "returnSentenceScore", opts.withSentenceScore);
+  opts.withWordScores    = get(v, "returnWordScores",    opts.withWordScores);
   opts.withTokenization |= opts.withWordAlignment || opts.withSoftAlignment;
-  opts.withOriginal = get(v, "ReturnOriginal", opts.withOriginal);
+  opts.withOriginal = get(v, "returnOriginal", opts.withOriginal);
   return true;
 }
 

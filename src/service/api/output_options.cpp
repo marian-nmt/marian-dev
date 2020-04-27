@@ -7,7 +7,12 @@ namespace server {
 bool OutputOptions::noDetails() const {
   // we don't need to check to withWordAlignment and withSoftAlignment, because
   // these imply withTokenization
-  return (withTokenization || withSentenceScore || withWordScores || withOriginal);
+  return !(withTokenization ||
+           withSentenceScore ||
+           withWordScores ||
+           withWordAlignment ||
+           withSoftAlignment ||
+           withOriginal);
 }
 
 }}// end of namespace marian::server

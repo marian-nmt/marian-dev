@@ -37,7 +37,11 @@
                   break;
               }
           }
-          var payload = { "text"  : input, "options" : { "inputFormat" : input_format} };
+          var payload = { "text"  : input,
+                          "options" : { "inputFormat" : input_format,
+                                        "returnWordAlignment": true,
+                                        "returnSoftAlignment": true,
+                                      } };
           console.log(JSON.stringify(payload));
           job.send(JSON.stringify(payload));
           document.getElementById('input').focus();

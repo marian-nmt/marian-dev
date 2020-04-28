@@ -20,9 +20,6 @@
 	path = src/3rd_party/fbgemm
 	url = https://github.com/marian-nmt/FBGEMM
 	branch = master
-[submodule "src/3rd_party/simple-websocket-server"]
-	path = src/3rd_party/simple-websocket-server
-	url = https://github.com/marian-nmt/Simple-WebSocket-Server
 [submodule "src/3rd_party/ssplit-cpp"]
 	path = src/3rd_party/ssplit-cpp
 	url = http://github.com/ugermann/ssplit-cpp

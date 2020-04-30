@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   and translation with options --tsv and --tsv-fields n.
 
 ### Fixed
+- Providing a single value to vector-like options using the equals sign, e.g. --models=model.npz
 - Fix building server with Boost 1.72
 - Make mini-batch scaling depend on mini-batch-words and not on mini-batch-words-ref
 - In concatenation make sure that we do not multiply 0 with nan (which results in nan)

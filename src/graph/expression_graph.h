@@ -26,22 +26,26 @@ private:
 
   typedef std::unordered_map<size_t, std::vector<WExpr>> WeakMemory;
   typedef std::unordered_map<size_t, std::vector<Expr>> Memory;
+  typedef std::unordered_map<std::string, Expr> ShortlistMemory; //Because... yeah
 
   Ptr<WeakMemory> shortterm_;
   Ptr<Memory> longterm_;
+  Ptr<ShortlistMemory> midterm_;
 
 public:
   Tensors(Ptr<Backend> backend)
       : tensors_(New<TensorAllocator>(backend)),
         cache_(New<TensorAllocator>(backend)),
         shortterm_(New<WeakMemory>()),
-        longterm_(New<Memory>()) {}
+        longterm_(New<Memory>()),
+        midterm_(New<ShortlistMemory>()) {}
 
   Tensors(Ptr<Backend> backend, Ptr<Device> device)
       : tensors_(New<TensorAllocator>(backend, device)),
         cache_(New<TensorAllocator>(backend)),
         shortterm_(New<WeakMemory>()),
-        longterm_(New<Memory>()) {}
+        longterm_(New<Memory>()),
+        midterm_(New<ShortlistMemory>()) {}
 
   void reserve(size_t bytes) { tensors_->reserve(bytes); }
 
@@ -72,7 +76,30 @@ public:
     size_t hash = node->hash();
     // memoize constant nodes that are not parameters
     // parameters are already memoized in the graph itself
-    if(node->type() != "param" && node->memoize()) {
+
+    // When we have a shortlist, we're getting screwed by the constantly changing shortlist
+    // Which is necessary for this batch, but not for anything else. The current cache mechanism has no notion of
+    // "Keep those tensors cached but delete them once it is over". Conveniently, they all have different hashes
+    // making it difficult to isolate them inside the longterm memory.
+    // Somewhat less important, the same thing happens with:
+    // F0::none_QuantMultA Type: alphaNodeOp shape: shape=1 size=1  and
+    // none_QuantMultB Type: intgemmQuantMultB shape: shape=1 size=1
+    // But as their sizes are very small, they are less of an issue.
+    // Those are actually constant, but as they have different parents, marian cache doesn't match them.
+    // To fix those, in intgemm_interface we're hashing the name() string and comparing its equality of the equals method.
+    if (node->type() == "intgemmSelectColumnsB") {
+      auto it = midterm_->find("intgemmSelectColumnsB");
+      if (it != midterm_->end()) {
+        if (it->second->hash() == hash) {
+          return it->second;
+        } else {
+          midterm_->clear();
+        }
+      }
+      (*midterm_)["intgemmSelectColumnsB"] = node;
+      return nullptr;
+
+    } else if(node->type() != "param" && node->memoize()) {
       auto it = longterm_->find(hash);
       if(it != longterm_->end()) {
         for(auto found : it->second) {
@@ -85,6 +112,8 @@ public:
           //}
         }
       }
+
+      std::cerr << "Longterm: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
       (*longterm_)[hash].push_back(node);
     }
 
@@ -96,6 +125,7 @@ public:
         }
       }
     }
+    //std::cerr << "Shortterm: Name: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
     (*shortterm_)[hash].push_back(node.get()); // weakPtr
     return nullptr;
   }

@@ -205,6 +205,16 @@ struct QuantMultNodeOp : public UnaryNodeOp {
     else
       return "intgemmQuantMultB";
   }
+
+  bool equal(Expr node) override {
+    if(hash() == node->hash()) return true;
+    return false;
+  }
+
+  size_t hash() override {
+    return std::hash<std::string>{}(name());
+  }
+
 };
 
 class PrepareBiasForBNodeOp : public NaryNodeOp {
@@ -427,6 +437,15 @@ public:
         ABORT("We did not find an alpha in the model named: {}.", name());
       }
     )};
+  }
+
+  bool equal(Expr node) override {
+    if(hash() == node->hash()) return true;
+    return false;
+  }
+
+  size_t hash() override {
+    return std::hash<std::string>{}(name());
   }
 
   const std::string type() override { return "alphaNodeOp"; }

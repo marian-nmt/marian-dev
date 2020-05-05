@@ -93,6 +93,7 @@ public:
         if (it->second->hash() == hash) {
           return it->second;
         } else {
+          it->second->free();
           midterm_->clear();
         }
       }
@@ -113,7 +114,7 @@ public:
         }
       }
 
-      std::cerr << "Longterm: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
+    //std::cerr << "Longterm: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
       (*longterm_)[hash].push_back(node);
     }
 
@@ -125,7 +126,7 @@ public:
         }
       }
     }
-    //std::cerr << "Shortterm: Name: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
+    //std::cerr << "Shortterm size: " << (*shortterm_).size() << " Name: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << " bucket_size: " << (*shortterm_)[hash].size() << std::endl;
     (*shortterm_)[hash].push_back(node.get()); // weakPtr
     return nullptr;
   }

@@ -104,7 +104,8 @@ public:
       : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), clipValue_(clipValue), indices_(indices) {
 
     set_name(input->name());
-    //setMemoize(false); //This *should* prevent it from going into the long term memory and remain in the shorterm. In practise, it crashes.
+    setMemoize(false); // Enabling memoization leads to increase in performance, but unfortunately also leads to a massive memory leak.
+                      // I am not entirely sure why and how to fix it.
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 
@@ -206,7 +207,11 @@ struct QuantMultNodeOp : public UnaryNodeOp {
       return "intgemmQuantMultB";
   }
 
+  /* @TODO This is not correct in the case of none-static alphas but we are leaving it for now to battle memory leaks. */
   bool equal(Expr node) override {
+    if (isA_) {
+      return UnaryNodeOp::equal(node);
+    }
     if(hash() == node->hash()) return true;
     return false;
   }

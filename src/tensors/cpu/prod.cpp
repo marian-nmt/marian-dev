@@ -144,7 +144,16 @@ void ProdBatched(marian::Tensor C,
   if(transB)
     transB_forarr = CblasTrans;
 
-  static const constexpr size_t group_count = 1;
+  /* cblas_sgemm_batch allows us to group all the small GEMMs that are done in a for loop with sgemm and compute
+   * them in only one MKL call. For the API documentation refer to
+   * https://software.intel.com/content/www/us/en/develop/documentation/mkl-developer-reference-c/top/blas-and-sparse-blas-routines/blas-like-extensions/cblas-gemm-batch.html
+   * The API supports dependencies, where you can specify one "group" of GEMMs to be computed after another. (This controlled by the group_count parameter).
+   * In our case, the operations are not dependent on one another so we hardcode one group. The rest of the arguments (with the exception of group_size) are
+   * the same as the ones that cblas_sgemm expects, with the difference that we are supposed to provide an array pointer (One element per group).
+   * Weirdly enough, we are required to to provide all of the integer arguments as the MKL_INT datatype
+   */
+
+  static const constexpr size_t group_count = 1; // We have one group
   const std::vector<CBLAS_TRANSPOSE> transa_arr(group_count, transA_forarr);
   const std::vector<CBLAS_TRANSPOSE> transb_arr(group_count, transB_forarr);
   const std::vector<MKL_INT> m_arr(group_count, (MKL_INT)m);
@@ -155,11 +164,14 @@ void ProdBatched(marian::Tensor C,
   const std::vector<MKL_INT> lda_arr(group_count, (MKL_INT)lda);
   const std::vector<MKL_INT> ldb_arr(group_count, (MKL_INT)ldb);
   const std::vector<MKL_INT> ldc_arr(group_count, (MKL_INT)ldc);
-  const std::vector<MKL_INT> group_size(group_count, (MKL_INT)batchC);
+  const std::vector<MKL_INT> group_size(group_count, (MKL_INT)batchC); // Group size specifies number of GEMM operations per group (Which is batchC)
 
   std::vector<const float *> a_array(batchC, nullptr);
   std::vector<const float *> b_array(batchC, nullptr);
   std::vector<float *> c_array(batchC, nullptr);
+
+  // This loop initializes the array pointers in the same way as the for loop
+  // in the normal sgemm version a few lines below
   for(size_t i = 0; i < batchC; ++i) {
     a_array[i] = A->data() + (i % batchA) * strideA;
     b_array[i] = B->data() + (i % batchB) * strideB;

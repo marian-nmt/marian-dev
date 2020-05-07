@@ -56,8 +56,6 @@ public:
                const std::vector<bool>& dropBatchEntries, // [origDimBatch] - empty source batch entries are marked with true, should be cleared after first use.
                const std::vector<IndexType>& batchIdxMap) const { // [origBatchIdx -> currentBatchIdx]
 
-    // std::cout << "size of keys and scores: "<< nBestKeys.size() << " and " << nBestPathScores.size() << std::endl;
-    // std::cout << "nBestBeamSize: " << nBestBeamSize << std::endl;
     std::vector<float> align; // collects alignment information from the last executed time step
     if(options_->hasAndNotEmpty("alignment") && factorGroup == 0)
       align = scorers_[0]->getAlignment(); // [beam depth * max src length * current batch size] -> P(s|t); use alignments from the first scorer, even if ensemble,
@@ -511,27 +509,13 @@ public:
         std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
         size_t trieVocabBatchIdx = 0;
 
-        // std::cout << "sizes of trie vocab: " << trieVocabIdxs.size() << std::endl;
-
-        // the line below is actually (num of sentences) * (num of hyps)
-        // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
         for (int i = 0; i < origDimBatch; i++) { // loop over sentences
-          // std::cout << "dimBatch i: " << i << std::endl;
-          // loop over hypotheses, beams[i].size() instead of maxBeamSize because beam size shrinks
           for (int j = 0; j < beams[i].size(); j++) {
-            // std::cout << beams[i][j]->GetWord() << std::endl;
-            // std::cout << "j: " << j << std::endl;
-            // std::cout << "size of first batch (sent): " << beams[i].size() << "\n";
-            // std::cout << "size of first hyp: " << beams[i][j]->GetLength() << "\n";
             auto curTrieNode = beams[i][j]->GetTrieNode();
-            // std::cout << "retrieved continuations:";
             if (curTrieNode != nullptr) { // check for null pointers
-              // std::cout << curTrieNode->size() << std::endl ;
-              // std::cout << "hyp " << j << " vocab: ";
               for(auto&& node : *curTrieNode) {
                 trieVocabIdxs[trieVocabBatchIdx].push_back(node.id_ + j * vocabSize);
               }
-              // std::cout << "\n";
             }
             if (t == 0 && factorGroup == 0) {
               break;
@@ -539,11 +523,8 @@ public:
           }
           if (trieVocabIdxs[trieVocabBatchIdx].size() != 0)
             trieVocabBatchIdx += 1;
-          // std::cout << "batch " <<  i << ": num of continuations: " << trieVocabIdxs[i].size() << std::endl;
-        // std::cout << "ok543" << std::endl;
         }
-        // std::cout << "maxBeamSize: " << maxBeamSize << std::endl;
-        // find N best amongst the (maxBeamSize * dimVocab) hypotheses
+
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
         getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, 1, dimVocab or dimShortlist] for first token and [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist] otherwise
@@ -564,8 +545,6 @@ public:
                        factoredVocab, factorGroup,
                        emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
                        batchIdxMap); // used to create a reverse batch index map to recover original batch indices for this step
-        
-      // std::cout << "ok568" << std::endl;
       } // END FOR factorGroup = 0 .. numFactorGroups-1
 
       prevBatchIdxMap = batchIdxMap; // save current batchIdx map to be used in next step; we are then going to look one step back
@@ -590,26 +569,20 @@ public:
 
       // this is the search space for the next output time step
       beams = purgedNewBeams;
-      // std::cout << "size of purged beams: " << beams.size() << std::endl;
 
       // advance trie pointers
         int batchCounter = 0;
         for(auto beam : beams) {
           int hypCounter = 0;
-          // std::cout << "size of beam " << batchCounter << ": "<< beam.size() << std::endl;
           for (auto hyp : beam) {
             if (!hyp->hasTrieContinuatuions()) {
               // should never reach here
-              // std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
+              std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
             }
             hypCounter += 1;
           }
           batchCounter+= 1;
         }
-
-      // std::cout << "ok610" << std::endl;
-        
-      // std::cout << "ok612" << std::endl;
     } // end of main loop over output time steps
 
     return histories; // [origDimBatch][t][N best hyps]

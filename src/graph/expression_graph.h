@@ -77,6 +77,17 @@ public:
     // memoize constant nodes that are not parameters
     // parameters are already memoized in the graph itself
 
+    // int size1 = 0;
+    // for (auto it = longterm_->begin(); it != longterm_->end(); it++) {
+    //   size1 += it->second.size();
+    // }
+
+    // int size2 = 0;
+    // for (auto it = shortterm_->begin(); it != shortterm_->end(); it++) {
+    //   size2 += it->second.size();
+    // }
+    // std::cerr << "Longterm: " << size1 << " shortterm: " << size2 << std::endl;
+
     // When we have a shortlist, we're getting screwed by the constantly changing shortlist
     // Which is necessary for this batch, but not for anything else. The current cache mechanism has no notion of
     // "Keep those tensors cached but delete them once it is over". Conveniently, they all have different hashes
@@ -89,6 +100,7 @@ public:
     // To fix those, in intgemm_interface we're hashing the name() string and comparing its equality of the equals method.
     if (node->type() == "intgemmSelectColumnsB") {
       auto it = midterm_->find("intgemmSelectColumnsB");
+      //std::cerr << "Midterm size: " << midterm_->size() << std::endl;
       if (it != midterm_->end()) {
         if (it->second->hash() == hash) {
           return it->second;
@@ -114,7 +126,7 @@ public:
         }
       }
 
-    //std::cerr << "Longterm: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
+      //std::cerr << "Longterm: " << longterm_->size() << " " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
       (*longterm_)[hash].push_back(node);
     }
 

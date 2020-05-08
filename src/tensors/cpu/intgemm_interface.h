@@ -104,7 +104,7 @@ public:
       : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), clipValue_(clipValue), indices_(indices) {
 
     set_name(input->name());
-    //setMemoize(false); //This *should* prevent it from going into the long term memory and remain in the shorterm. In practise, it crashes.
+    setMemoize(false); // SelectColumnsB is memorised in src/layers/generic.cpp:262
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "B cannot be null");
 

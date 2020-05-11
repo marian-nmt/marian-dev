@@ -26,26 +26,26 @@ private:
 
   typedef std::unordered_map<size_t, std::vector<WExpr>> WeakMemory;
   typedef std::unordered_map<size_t, std::vector<Expr>> Memory;
-  typedef std::unordered_map<std::string, Expr> ShortlistMemory; //Because... yeah
+  //typedef std::unordered_map<std::string, Expr> ShortlistMemory; //Because... yeah
 
   Ptr<WeakMemory> shortterm_;
   Ptr<Memory> longterm_;
-  Ptr<ShortlistMemory> midterm_;
+  //Ptr<ShortlistMemory> midterm_;
 
 public:
   Tensors(Ptr<Backend> backend)
       : tensors_(New<TensorAllocator>(backend)),
         cache_(New<TensorAllocator>(backend)),
         shortterm_(New<WeakMemory>()),
-        longterm_(New<Memory>()),
-        midterm_(New<ShortlistMemory>()) {}
+        longterm_(New<Memory>())/*,
+        midterm_(New<ShortlistMemory>())*/ {}
 
   Tensors(Ptr<Backend> backend, Ptr<Device> device)
       : tensors_(New<TensorAllocator>(backend, device)),
         cache_(New<TensorAllocator>(backend)),
         shortterm_(New<WeakMemory>()),
-        longterm_(New<Memory>()),
-        midterm_(New<ShortlistMemory>()) {}
+        longterm_(New<Memory>())/*,
+        midterm_(New<ShortlistMemory>())*/ {}
 
   void reserve(size_t bytes) { tensors_->reserve(bytes); }
 
@@ -98,7 +98,7 @@ public:
     // But as their sizes are very small, they are less of an issue.
     // Those are actually constant, but as they have different parents, marian cache doesn't match them.
     // To fix those, in intgemm_interface we're hashing the name() string and comparing its equality of the equals method.
-    if (node->type() == "intgemmSelectColumnsB") {
+    /*if (node->type() == "intgemmSelectColumnsB") {
       auto it = midterm_->find("intgemmSelectColumnsB");
       //std::cerr << "Midterm size: " << midterm_->size() << std::endl;
       if (it != midterm_->end()) {
@@ -112,7 +112,8 @@ public:
       (*midterm_)["intgemmSelectColumnsB"] = node;
       return nullptr;
 
-    } else if(node->type() != "param" && node->memoize()) {
+    } else */
+    if(node->type() != "param" && node->memoize()) {
       auto it = longterm_->find(hash);
       if(it != longterm_->end()) {
         for(auto found : it->second) {

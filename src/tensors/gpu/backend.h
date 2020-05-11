@@ -66,13 +66,13 @@ public:
 
   CudaCompute getCudaComputeCapability() { return compute_; }
 
-  // for CPU, sets to use optimized code for inference.
-  // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
-  void setOptimized(bool optimize) override {
-    LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
+  // for CPU, sets to use optimized (intgemm8/intgemm16) code for matrix multiplication.
+  // for GPU, this is invalid. for gpu, all the functions below always returns false.
+  void setOptimized16(bool optimize) override {
+    LOG_ONCE(info, "setOptimized16() not supported for GPU_{}", optimize);
   }
 
-  bool isOptimized() override {
+  bool isOptimized16() override {
     return false;
   }
 

@@ -75,7 +75,7 @@ public:
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+        graph->getBackend()->setOptimized16(options_->get<bool>("optimize16"));
         graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
         graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
       }

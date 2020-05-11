@@ -26,20 +26,16 @@ size_t requiredBytes(const Shape& shape, Type type) {
       ABORT("Not a supported data type: {}", type);
       return 0;
     }
-  } else if (isIntgemm(type)) {
+  }
+#endif  // USE_FBGEMM 
+
+  if (isIntgemm(type)) {
     /* Intgemm tensors have an extra float at the back that stores the quantization multiplier */
     return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
   } else {
     return shape.elements() * sizeOf(type);
   }
-#else
-if (isIntgemm(type)) {
-  /* Intgemm tensors have an extra float at the back that stores the quantization multiplier */
-  return shape.elements() * sizeOf(type) + sizeOf(Type::float32);
-}
-  return shape.elements() * sizeOf(type);
-#endif  // USE_FBGEMM
   
 }
 
-}
+} // namespace marian

@@ -28,10 +28,10 @@ public:
   virtual void setClip(float clipValue) { clipValue_ = clipValue; }
   float getClip() { return clipValue_; }
 
-  // for CPU, sets to use optimized code for inference.
-  // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
-  virtual void setOptimized(bool optimize) = 0;
-  virtual bool isOptimized() = 0;
+  // for CPU, sets to use optimized (intgemm8/intgemm16) code for matrix multiplication.
+  // for GPU, this is invalid. for gpu, all the functions below always returns false.
+  virtual void setOptimized16(bool optimize) = 0;
+  virtual bool isOptimized16() = 0;
   virtual void setOptimized8(bool optimize) = 0;
   virtual bool isOptimized8() = 0;
   virtual void setShifted(bool shifted) = 0;

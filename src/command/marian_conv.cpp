@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   auto graph = New<ExpressionGraphPackable>();
   graph->setDevice(CPU0);
   if (saveGemmType != Type::intgemm16)
-    graph->getBackend()->setOptimized(false);
+    graph->getBackend()->setOptimized16(false);
   if (saveGemmType != Type::intgemm8)
     graph->getBackend()->setOptimized8(false);
 

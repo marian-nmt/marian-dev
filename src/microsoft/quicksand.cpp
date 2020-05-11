@@ -255,7 +255,7 @@ bool convertModel(std::string inputFile, std::string outputFile, int32_t targetP
 
   auto graph = New<ExpressionGraphPackable>();
   graph->setDevice(CPU0);
-  graph->getBackend()->setOptimized(false);
+  graph->getBackend()->setOptimized16(false);
   graph->getBackend()->setOptimized8(false);
 
   graph->load(inputFile);

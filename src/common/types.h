@@ -139,6 +139,7 @@ struct packed16 {
   uint16_t x;
 };
 
+// similar to the packed16, but to use with 16bit intgemm model packing.
 struct intgemm16 {
   int16_t x;
 };
@@ -154,6 +155,7 @@ struct packed8avx512 {
   uint8_t x;
 };
 
+// similar to packed8* but for intgemm 8bit model packing.
 struct intgemm8 {
   int8_t x;
 };
@@ -340,7 +342,7 @@ template <> inline bool matchType<packed16>(Type type)       { return type == Ty
 template <> inline bool matchType<packed8avx2>(Type type)    { return type == Type::packed8avx2;    }
 template <> inline bool matchType<packed8avx512>(Type type)  { return type == Type::packed8avx512;  }
 
-template <> inline bool matchType<intgemm8>(Type type)    { return type == Type::intgemm8;    }
+template <> inline bool matchType<intgemm8>(Type type)    { return type == Type::intgemm8;   }
 template <> inline bool matchType<intgemm16>(Type type)   { return type == Type::intgemm16;  }
 // clang-format on
 

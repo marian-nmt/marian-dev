@@ -9,6 +9,17 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
+/*
+ * Prepare an activation matrix into intgemm8/16 format. For now the activation matrix is just quantized.
+ * Expr input: The input tensor
+ * Expr quant_mult: The quantization multiplier used. Produced by QuantMultNodeOp.
+ * float clipValue: Not used for now, just forwarded
+ * bool shifted: If the shifted version of intgemm is used (Only available with intgemm8), an offset of 127
+ * is added to every single element of the input, effectively making it in the unsigned_int range
+ * 
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
+ */
+
 template<Type vtype>
 struct PrepareANodeOp : public NaryNodeOp {
 float clipValue_;
@@ -23,9 +34,6 @@ bool shifted_;
       set_name(input->name() + "_shifted");
     }
     setMemoize(false);
-    // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "A cannot be null");
-    ABORT_IF(child(1) == nullptr, "Quant mult of A cannot be null");
   }
 
   NodeOps forwardOps() override {
@@ -56,6 +64,16 @@ bool shifted_;
   const std::string type() override { return "intgemmPrepareA"; }
 };
 
+/*
+ * Prepare a parameter matrix into intgemm8/16 format. The activation matrix is quantized and reordered and the reodering
+ * depends on the architecture
+ * Expr input: The input tensor
+ * Expr quant_mult: The quantization multiplier used. Produced by QuantMultNodeOp.
+ * float clipValue: Not used for now, just forwarded
+ * 
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
+ */
+
 template<Type vtype>
 struct PrepareBNodeOp : public NaryNodeOp {
 float clipValue_;
@@ -66,8 +84,6 @@ float quantMult_;
 
     set_name(input->name());
     // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "A cannot be null");
-    ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
     ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
   }
 
@@ -95,6 +111,16 @@ float quantMult_;
   const std::string type() override { return "intgemmPrepareB"; }
 };
 
+/*
+ * This is intgemm's equivalent to marian's index_select for the intgemm format. Used for selecting a shortlist from
+ * intgemm formatted matrix.
+ * Expr input: The input tensor
+ * const std::vector<uint_least32_t>  &indices the indecis of the shortlist
+ * float clipValue: Not used for now, just forwarded
+ * 
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
+ */
+
 template<Type vtype>
 struct SelectColumnsBNodeOp : public UnaryNodeOp {
 public:
@@ -105,8 +131,6 @@ public:
 
     set_name(input->name());
     setMemoize(false); // SelectColumnsB is memorised in src/layers/generic.cpp:262
-    // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "B cannot be null");
 
     // Check number of selected columns
     ABORT_IF(indices.size() % 8 != 0, "Shortlist selected vocabulary must be a multiple of 8.");
@@ -135,6 +159,7 @@ public:
 
   const std::string type() override { return "intgemmSelectColumnsB"; }
 
+  // A custom hasher and comparator are necessary to take the shortlist indecis into account.
   size_t hash() override {
     if (!hash_) {
       hash_ = NaryNodeOp::hash();
@@ -161,6 +186,14 @@ private:
   std::vector<uint_least32_t> indices_;
 };
 
+/*
+ * This node calculates the quantization multiplier
+ * Expr input: The input tensor
+ * bool isA: Whether the matrix is an Activation or parameter
+ * 
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
+ */
+
 template<Type vtype>
 struct QuantMultNodeOp : public UnaryNodeOp {
   bool isA_;
@@ -172,6 +205,14 @@ struct QuantMultNodeOp : public UnaryNodeOp {
       set_name(input->name() + "_QuantMultB");
     }
   }
+
+  /*
+   * We have several cases:
+   * If we are using 16bit ints, the quantization multiplier is hardcoded to 1024
+   * If our input is shortlist (SelectColumnsBNodeOp), it is stored on the node.
+   * If our model is prepared intgemm8/intgemm16 format, the qunatization multiplier is stored at the back of the tensor
+   * Otherwise, we have the 8bit case, in which case we use 127/MaxAbsolute(input)
+   */
 
   NodeOps forwardOps() override {
     return {NodeOp(
@@ -202,6 +243,15 @@ struct QuantMultNodeOp : public UnaryNodeOp {
   }
 };
 
+
+/*
+ * This node prepares the bias with the compensation for the intgemm-shifted implementation
+ * Expr bias: The input tensor
+ * Expr inputB_preppd: The parameter matrix in intgemm8 format.
+ * Expr a_quant_mult: The quantization multiplier for the activations matrix.
+ * Expr b_quant_mult: The quantization multiplier for the parameter matrix
+ */
+
 class PrepareBiasForBNodeOp : public NaryNodeOp {
 public:
   PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr a_quant_mult, Expr b_quant_mult)
@@ -225,6 +275,14 @@ public:
 
   const std::string type() override { return "prepareBias"; }
 };
+
+/*
+ * This computes A*B in intgemm.
+ * Expr a: The activation matrix in intgemm format
+ * Expr b: The parameter matrix in intgemm fromat
+ * 
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
+ */
 
 template<Type vtype>
 class DotNodeOp : public NaryNodeOp {
@@ -275,6 +333,17 @@ public:
 
   const std::string type() override { return "intgemmDot"; }
 };
+
+/*
+ * This computes A*B + bias in intgemm.
+ * Expr a: The activation matrix in intgemm format
+ * Expr b: The parameter matrix in intgemm fromat
+ * Expr bias: The bias
+ * float scalar: AFAIK, not ever used
+ * bool shifted: Use the faster shifted intgemm8 multiplier. Requires special versions of the bias and the activation matrix
+ * 
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
+ */
 
 template<Type vtype>
 class AffineNodeOp : public NaryNodeOp {
@@ -336,6 +405,8 @@ public:
   const std::string type() override { return "intgemmAffine"; }
 };
 
+
+// Wrappers for converting nodes to expression.
 template<Type vtype>
 static inline Expr quantMult(Expr a, bool isA=false) {
   return Expression<QuantMultNodeOp<vtype> >(a, isA);
@@ -357,24 +428,28 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 }
 
 template<Type vtype>
-static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool shiftedBias=false) {
+static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
+  bool shiftedBias = a->graph()->getBackend()->isShifted() && bias; // Use shifted multiplication if we have a enabled it in the options, and we have a bias
+
   Type bElementType = b->value_type();
   auto aQuantMult = quantMult<vtype>(a, true);
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, aQuantMult, scale, shiftedBias);
   Expr bQuantMult = quantMult<vtype>(b);
   Expr bQuant = nullptr;
   if (isIntgemm(bElementType)) {
-    //This is the case where we already run SelectColumnB or we loaded a prepacked model.
-    //We ignore a transpose argument here, because we do not support it.
+    // This is the case where we already run SelectColumnB or we loaded a prepacked model.
+    // We ignore a transpose argument here, because we do not support it.
     ABORT_IF(transB, "Transpose on prepareB not currently supported");
     bQuant = b;
   } else {
     bQuant = prepareB<vtype>(transB ? transpose(b) : b, bQuantMult, scale);
   }
   if (shiftedBias) {
+    // Shifted version of intgemm requires a specially prepared bias.
     bias = Expression<PrepareBiasForBNodeOp>(bias, bQuant, aQuantMult, bQuantMult);
   }
 
+  // IF we don't have a bias, do A*B (AKA dot)
   if (bias)
     return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, scale, shiftedBias);
   else
@@ -382,8 +457,8 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 }
 
 template<Type vtype>
-static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale, bool shiftedBias=false) {
-  return affine<vtype>(a, b, nullptr, transA, transB, scale, 0 /*currently unused clipValue*/, shiftedBias);
+static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
+  return affine<vtype>(a, b, nullptr, transA, transB, scale, 0 /*currently unused clipValue*/);
 }
 
 }  // namespace integer

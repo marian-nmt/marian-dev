@@ -7,7 +7,7 @@ int main(int /*argc*/, char** /*argv*/) {
     {
         auto g = New<ExpressionGraph>(true);
         g->setDevice({0, DeviceType::cpu});
-        g->getBackend()->setOptimized(false);
+        g->getBackend()->setOptimized16(false);
         g->reserveWorkspaceMB(2512);
 
         timer::AutoTimer timer;
@@ -40,7 +40,7 @@ int main(int /*argc*/, char** /*argv*/) {
     {
         auto g = New<ExpressionGraph>(true);
         g->setDevice({0, DeviceType::cpu});
-        g->getBackend()->setOptimized(true);
+        g->getBackend()->setOptimized16(true);
         g->reserveWorkspaceMB(2512);
 
         timer::AutoTimer timer;

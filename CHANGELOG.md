@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Training and scoring from STDIN
 - Support for reading from TSV files from STDIN and other sources during training
   and translation with options --tsv and --tsv-fields n.
+- Shortlist is now always multiple-of-eight
+- Changed the `--optimize` switch to `--optimize16` and replaced the backend computation to intgemm
+- Added `--optimize8` `--intgemm-shifted` that allows for fast 8bit integer decoding with intgemm
+- Added intgemm 8/16bit integer binary architecture agnostic format
 
 ### Fixed
 - Fix building server with Boost 1.72

@@ -260,6 +260,7 @@ namespace marian {
       lazyConstruct(input->shape()[-1]);
 
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
+#if COMPILE_CPU
         // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
         // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
         if ((graph_->getBackend()->isOptimized8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
@@ -287,6 +288,9 @@ namespace marian {
         } else {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
+#else
+        cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
+#endif
         cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
       }
 

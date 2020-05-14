@@ -9,6 +9,8 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
+#if COMPILE_CPU
+
 /*
  * Prepare an activation matrix into intgemm8/16 format. For now the activation matrix is just quantized.
  * Expr input: The input tensor
@@ -426,9 +428,11 @@ template<Type vtype>
 static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &cols, float clipValue) {
   return Expression<SelectColumnsBNodeOp<vtype > >(b, cols, clipValue);
 }
+#endif
 
 template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
+#if COMPILE_CPU
   bool shiftedBias = a->graph()->getBackend()->isShifted() && bias; // Use shifted multiplication if we have a enabled it in the options, and we have a bias
 
   Type bElementType = b->value_type();
@@ -454,6 +458,10 @@ static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, f
     return Expression<AffineNodeOp<vtype> >(aQuant, bQuant, bias, scale, shiftedBias);
   else
     return Expression<DotNodeOp<vtype> >(aQuant, bQuant, scale);
+#else
+  a, b, bias, transA, transB, scale, clipValue;
+  ABORT("You need to enable CPU compilation to use this feature. Use cmake .. -DCOMPILE_CPU=ON");
+#endif
 }
 
 template<Type vtype>

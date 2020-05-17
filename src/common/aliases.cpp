@@ -37,6 +37,30 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     }
   });
 
+  cli.alias("int16", "true", [&](YAML::Node& config) {
+    if(mode_ == cli::mode::training) {
+      ABORT("int16 GEMM mode is not supported for training");
+    } else {
+      config["gemm-precision"] = std::string("int16");
+    }
+  });
+
+  cli.alias("int8", "true", [&](YAML::Node& config) {
+    if(mode_ == cli::mode::training) {
+      ABORT("int8 GEMM mode is not supported for training");
+    } else {
+      config["gemm-precision"] = std::string("int8");
+    }
+  });
+
+  cli.alias("int8shift", "true", [&](YAML::Node& config) {
+    if(mode_ == cli::mode::training) {
+      ABORT("int8shift GEMM mode is not supported for training");
+    } else {
+      config["gemm-precision"] = std::string("int8shift");
+    }
+  });
+
   if(mode_ == cli::mode::training) {
     // for backwards-compatibility with older version, "--no-shuffle" maps to "--shuffle none"
     cli.alias("no-shuffle", "true", [](YAML::Node& config) {

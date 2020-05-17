@@ -433,7 +433,7 @@ static inline Expr selectColumnsB(Expr b, const std::vector<uint_least32_t> &col
 template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
 #if COMPILE_CPU
-  bool shiftedBias = a->graph()->getBackend()->isShifted() && bias; // Use shifted multiplication if we have a enabled it in the options, and we have a bias
+  bool shiftedBias = a->graph()->getBackend()->isInt8Shift() && bias; // Use shifted multiplication if we have a enabled it in the options, and we have a bias
 
   Type bElementType = b->value_type();
   auto aQuantMult = quantMult<vtype>(a, true);

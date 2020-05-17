@@ -67,28 +67,29 @@ public:
   CudaCompute getCudaComputeCapability() { return compute_; }
 
   // for CPU, sets to use optimized (intgemm8/intgemm16) code for matrix multiplication.
-  // for GPU, this is invalid. for gpu, all the functions below always returns false.
-  void setOptimized16(bool optimize) override {
-    LOG_ONCE(info, "setOptimized16() not supported for GPU_{}", optimize);
+  // for GPU, this is invalid. for gpu, all the functions below always returns false and the setters abort.
+  void setInt16(bool optimize) override {
+    ABORT("setInt16() is not supported on the GPU.");
   }
 
-  bool isOptimized16() override {
+  bool isInt16() override {
     return false;
   }
 
-  void setOptimized8(bool optimize) override {
-    LOG_ONCE(info, "setOptimized8() not supported for GPU_{}", optimize);
+  void setInt8(bool optimize) override {
+    ABORT("setInt8() is not supported on the GPU.");
   }
 
-  bool isOptimized8() override {
+  bool isInt8() override {
     return false;
   }
 
-  void setShifted(bool shifted) override {
-    LOG_ONCE(info, "setShifted() not supported for GPU_{}", shifted);
+  void setInt8Shift(bool shifted) override {
+    shifted;
+    ABORT("setInt8Shift() is not supported on the GPU.");
   }
 
-  bool isShifted() override {
+  bool isInt8Shift() override {
     return false;
   }
 

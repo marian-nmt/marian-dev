@@ -629,19 +629,21 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
-  cli.add<bool>("--optimize16",
-      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU");
-  cli.add<bool>("--optimize8",
-      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU");
-  cli.add<bool>("--intgemm-shifted",
-      "Use a faster, shifted GEMM implementation. Only available with intgemm8.");
-  cli.add<bool>("--skip-cost",
-      "Ignore model cost during translation, not recommended for beam-size > 1");
+  cli.add<bool>("--int16",
+      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");
+  cli.add<bool>("--int8",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int8");
+  cli.add<bool>("--int8shift",
+      "Use a faster, shifted 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
+  cli.add<std::string>("--gemm-precision",
+      "Use lower precision for the GEMM operations only. Supported values: float32, int16, int8, int8shift", "float32");
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
+  cli.add<bool>("--skip-cost",
+    "Ignore model cost during translation, not recommended for beam-size > 1");
 
   cli.add<std::vector<std::string>>("--shortlist",
      "Use softmax shortlist: path first best prune");
@@ -694,12 +696,18 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
+  cli.add<bool>("--int16",
+      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");
+  cli.add<bool>("--int8",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int8");
+  cli.add<bool>("--int8shift",
+      "Use a faster, shifted 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
+  cli.add<std::string>("--gemm-precision",
+      "Use lower precision for the GEMM operations only. Supported values: float32, int16, int8, int8shift", "float32");
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
-      "Mixed precision for inference, set parameter type in expression graph",
+      "Mixed precision for inference, set parameter type in expression graph. Supported values: float32, float16",
       {"float32"});
 
   cli.switchGroup(previous_group);

@@ -263,7 +263,7 @@ namespace marian {
 #if COMPILE_CPU
         // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
         // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
-        if ((graph_->getBackend()->isOptimized8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
+        if ((graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
           if (!isLegacyUntransposedW) { // We expect Wt_ to be untransposed, as our prepareB works on untransposed matrices.
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;
@@ -274,7 +274,7 @@ namespace marian {
             cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */);
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
-        } else if ((graph_->getBackend()->isOptimized16() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
+        } else if ((graph_->getBackend()->isInt16() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
           if (!isLegacyUntransposedW) {
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;

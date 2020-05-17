@@ -74,10 +74,9 @@ public:
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized16(options_->get<bool>("optimize16"));
-        graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
-        graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
+      if (device.type == DeviceType::cpu) { // Specific GEMM precisions are only supported on the CPU for now.
+        std::string gemmPrecision = options_->get<std::string>("gemm-precision", {"float32"});
+        graph->getBackend()->setGemmPrecision(gemmPrecision);
       }
 
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));

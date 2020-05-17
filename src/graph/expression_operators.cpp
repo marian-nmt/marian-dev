@@ -420,9 +420,9 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isOptimized8() || matchType<intgemm8>(bElementType)) {
+      if(a->graph()->getBackend()->isInt8() || matchType<intgemm8>(bElementType)) {
         return cpu::integer::dot<Type::int8>(a, b, transA, transB, scale);
-      } else if(a->graph()->getBackend()->isOptimized16() || matchType<intgemm16>(bElementType)) {
+      } else if(a->graph()->getBackend()->isInt16() || matchType<intgemm16>(bElementType)) {
         return cpu::integer::dot<Type::int16>(a, b, transA, transB, scale);
       } else {
         return Expression<DotNodeOp>(
@@ -492,9 +492,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isOptimized8()  || matchType<intgemm8>(bElementType) ) {
+      if(a->graph()->getBackend()->isInt8()  || matchType<intgemm8>(bElementType) ) {
         return cpu::integer::affine<Type::int8>(a, b, bias, transA, transB, scale, clipValue);
-      } else if(a->graph()->getBackend()->isOptimized16()  || matchType<intgemm16>(bElementType) ) {
+      } else if(a->graph()->getBackend()->isInt16()  || matchType<intgemm16>(bElementType) ) {
         return cpu::integer::affine<Type::int16>(a, b, bias, transA, transB, scale, clipValue);
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);

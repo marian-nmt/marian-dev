@@ -10,7 +10,7 @@ namespace marian {
 // This requires some more changes, but we temporarily do this just by name ("_W") of the weights.
 // And, this introduces a low level packed_gemm.h apis interact with high level graph class.
 // So, we make a subclass of ExpressionGraph and put those immature codes in this class.
-// We will improve this in the near future.
+// We will improve this in the near future. 
 class ExpressionGraphPackable : public ExpressionGraph {
 public:
   ExpressionGraphPackable()

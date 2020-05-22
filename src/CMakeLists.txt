@@ -26,7 +26,6 @@ add_library(marian STATIC
   common/file_stream.cpp
   common/file_utils.cpp
   common/signal_handling.cpp
-  common/file_utils.cpp
   common/types.cpp
 
   data/alignment.cpp

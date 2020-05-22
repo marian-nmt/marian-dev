@@ -892,21 +892,6 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
       cli_.updateConfig(config, cli::OptionPriority::CommandLine, "A shortcut for STDIN failed.");
   }
 
-  // Option shortcuts for input from STDIN for trainer and scorer
-  if(mode_ == cli::mode::training || mode_ == cli::mode::scoring) {
-    auto trainSets = get<std::vector<std::string>>("train-sets");
-    YAML::Node config;
-    // Assume the input will come from STDIN if --tsv is set but no --train-sets are given
-    if(get<bool>("tsv") && trainSets.empty()) {
-      config["train-sets"].push_back("stdin");
-    // Assume the input is in TSV format if --train-sets is set to "stdin"
-    } else if(trainSets.size() == 1 && (trainSets[0] == "stdin" || trainSets[0] == "-")) {
-      config["tsv"] = true;
-    }
-    if(!config.IsNull())
-      cli_.updateConfig(config, cli::OptionPriority::CommandLine, "A shortcut for STDIN failed.");
-  }
-
   if(doValidate) {
     ConfigValidator(config_).validateOptions(mode_);
   }

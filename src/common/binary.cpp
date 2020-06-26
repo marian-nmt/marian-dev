@@ -3,6 +3,7 @@
 #include "common/file_stream.h"
 #include "common/io_item.h"
 #include "common/types.h"
+#include "tensors/cpu/integer_common.h"
 
 #include <string>
 
@@ -58,12 +59,25 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
 
   for(int i = 0; i < numHeaders; ++i) {
     if(items[i].mapped) { // memory-mapped, hence only set pointer
+      ABORT_IF(isIntgemm(items[i].type), "mmap format not supported for intgemm matrices");
       items[i].ptr = get<char>(current, headers[i].dataLength);
     } else { // reading into item data
       size_t len = headers[i].dataLength;
       items[i].bytes.resize(len);
       const char* ptr = get<char>(current, len);
-      std::copy(ptr, ptr + len, items[i].bytes.begin());
+      if (matchType<intgemm8>(items[i].type)) {
+        if (items[i].name.find("Wemb") != std::string::npos) { //HACK HACK HACK THAT HACKS WEMB QUANTIZATION
+          items[i].type = Type::float32;
+          items[i].bytes.resize(len*sizeof(float)-1024); //Because of some padding issues (I think) our size becomes too big. Or something. I hope this doesn't screw us somewhere
+          cpu::integer::unquantizeWemb(items[i], ptr);
+        } else {
+          cpu::integer::prepareAndTransposeB<Type::int8>(items[i], ptr);
+        }
+      } else if (matchType<intgemm16>(items[i].type)) {
+        cpu::integer::prepareAndTransposeB<Type::int16>(items[i], ptr);
+      } else {
+        std::copy(ptr, ptr + len, items[i].bytes.begin());
+      }
     }
   }
 }

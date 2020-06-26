@@ -71,8 +71,54 @@ public:
   void setOptimized(bool optimize) override {
     LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
   }
-  
+
   bool isOptimized() override {
+    return false;
+  }
+
+  void setOptimized8(bool optimize) override {
+    LOG_ONCE(info, "setOptimized8() not supported for GPU_{}", optimize);
+  }
+
+  bool isOptimized8() override {
+    return false;
+  }
+
+  void setShifted(bool shifted) override {
+    LOG_ONCE(info, "setShifted() not supported for GPU_{}", shifted);
+  }
+
+  bool isShifted() override {
+    return false;
+  }
+
+  void setShiftedAll(bool shiftedAll) override {
+    LOG_ONCE(info, "setShiftedAll() not supported for GPU_{}", shiftedAll);
+  }
+
+  bool isShiftedAll() override {
+    return false;
+  }
+
+  void setDumpQuantMult(bool dump) override {
+    LOG_ONCE(info, "setDumpQuantMult() not supported for GPU_{}", dump);
+  }
+
+  bool DumpQuantMult() override {
+    return false;
+  }
+
+  void setPrecomputedAlpha(bool alpha) override {
+    LOG_ONCE(info, "setPrecomputedAlpha() not supported for GPU_{}", alpha);
+  }
+  bool isPrecomputedAlpha() override {
+    return false;
+  }
+
+  void setLegacyBatchedGemm(bool legacyBatch) override {
+    LOG_ONCE(info, "setLegacyBatchedGemm() not supported for GPU_{}", legacyBatch);;
+  }
+  bool isLegacyBatchedGemm() override {
     return false;
   }
 

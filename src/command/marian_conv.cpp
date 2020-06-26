@@ -4,7 +4,7 @@
 
 #include <sstream>
 
-#include "tensors/cpu/fbgemm/expression_graph_packable.h"
+#include "tensors/cpu/expression_graph_packable.h"
 
 int main(int argc, char** argv) {
   using namespace marian;
@@ -22,7 +22,8 @@ int main(int argc, char** argv) {
         "  ./marian-conv -f model.npz -t model.bin --gemm-type packed16");
     cli->add<std::string>("--from,-f", "Input model", "model.npz");
     cli->add<std::string>("--to,-t", "Output model", "model.bin");
-    cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512", "float32");
+    cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512, intgemm8, intgemm16", "float32");
+    cli->add<bool>("--float-Wemb", "Do not compress the Wemb matrix. Only available when using intgemm8 format.", false);
     cli->parse(argc, argv);
     options->merge(config);
   }
@@ -39,6 +40,10 @@ int main(int argc, char** argv) {
     saveGemmType = Type::packed8avx2;
   } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512
     saveGemmType = Type::packed8avx512;
+  } else if(saveGemmTypeStr == "intgemm8") { // intgemm 8 bit format
+    saveGemmType = Type::intgemm8;
+  } else if(saveGemmTypeStr == "intgemm16") { // intgemm 16 bit format
+    saveGemmType = Type::intgemm16;
   } else {
     ABORT("Unknown gemm-type: {}", saveGemmTypeStr);
   }
@@ -51,8 +56,12 @@ int main(int argc, char** argv) {
   configStr << config;
 
   auto graph = New<ExpressionGraphPackable>();
+  graph->compressWemb = !options->get<bool>("float-Wemb"); //The variable is reversed because, sue me
   graph->setDevice(CPU0);
-  graph->getBackend()->setOptimized(false);
+  if (saveGemmType != Type::intgemm16)
+    graph->getBackend()->setOptimized(false);
+  if (saveGemmType != Type::intgemm8)
+    graph->getBackend()->setOptimized8(false);
 
   graph->load(modelFrom);
   graph->forward();

@@ -630,7 +630,19 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsBatching(cli);
 
   cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
+      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer CPU multiplication. Only available on CPU");
+  cli.add<bool>("--optimize8",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer CPU multiplication. Only available on CPU");
+  cli.add<bool>("--intgemm-shifted",
+      "Use a shifted GEMM implementation. Only available with intgemm8.");
+  cli.add<bool>("--intgemm-shifted-all",
+      "Use a shifted GEMM implementation even for operations without biases. Only available with intgemm8.");
+  cli.add<bool>("--dump-quantmult",
+      "Dump the quantization multipliers during an avarage run.");
+  cli.add<bool>("--use-precomputed-alphas",
+      "Use precomputed alphas for bias calculation.");
+  cli.add<bool>("--use-legacy-batching",
+      "Use legacy codepath with a for loop of cblas_sgemm, instead of cblas_sgemm_batched.");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<bool>("--fp16",

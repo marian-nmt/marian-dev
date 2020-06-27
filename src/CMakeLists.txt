@@ -153,6 +153,7 @@ cuda_add_library(marian_cuda
   tensors/gpu/add_all.cu
   tensors/gpu/tensor_operators.cu
   tensors/gpu/cudnn_wrappers.cu
+  tensors/gpu/uint8tools.cu
   translator/nth_element.cu
   translator/helpers.cu
   STATIC)

@@ -5,6 +5,7 @@
 
 #include <cublas_v2.h>
 #include <cusparse.h>
+#include "tensors/gpu/uint8tools.h"
 
 // clang-format off
 #include "tensors/gpu/prod.h"
@@ -80,14 +81,25 @@ static cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
 // with CUDA 8.0 and runtime error with CUDA >9.0 on GPUs with compute capability under 5
 #if CUDA_VERSION > 9000
   // query math mode and set algorithm accordingly
-  auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
-  if(computeCapability.major >= 5)
-    return cublasGemmEx(handle, transa, transb, 
+  //auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
+  if(computeCapability.major >= 5) {
+    /*
+    return marian::hacky8bit::cublas8bitGemmmEx(handle, transa, transb, //UsedToBe cublasGemmEx
                         m, n, k, alpha, 
                         A, CUDA_R_32F, lda, 
                         B, CUDA_R_32F, ldb, beta, 
                         C, CUDA_R_32F, ldc,
-                        CUDA_R_32F, algorithm); // @TODO: review algorithm
+                        CUDA_R_32F, algorithm); // @TODO: review algorithm */
+    return marian::hacky8bit::cublas8bitGemmmEx(handle,
+        transa, 
+        transb,
+        m, n, k,
+        alpha,
+        A, lda,
+        B, ldb,
+        beta,
+        C, ldc);
+}
 #endif
   return cublasSgemm(handle, transa, transb, 
                       m, n, k, alpha, 
@@ -171,6 +183,16 @@ void ProdTyped(marian::Tensor C,
                                &beta,
                                C->data<T>(),
                                ldc));
+  /*
+  if (m%4 == 0 && n%4 ==0 && k%4 ==0) {
+    CUBLAS_CHECK(marian::hacky8bit::cublas8bitGemmm(C,
+                A,
+                B,
+                transA,
+                transB,
+                beta,
+                scalar));
+  }*/
   unsetTensorMode(cublasHandle);
 }
 

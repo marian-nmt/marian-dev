@@ -8,7 +8,28 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- LSH indexing to replace short list
+- ONNX support for transformer models
+- Add topk operator like PyTorch's topk
+- Use *cblas_sgemm_batch* instead of a for loop of *cblas_sgemm* on CPU as the batched_gemm implementation
+- Supporting relative paths in shortlist and sqlite options
+- Training and scoring from STDIN
+- Support for reading from TSV files from STDIN and other sources during training
+  and translation with options --tsv and --tsv-fields n.
+
+### Fixed
+- Fix building server with Boost 1.72
+- Make mini-batch scaling depend on mini-batch-words and not on mini-batch-words-ref
+- In concatenation make sure that we do not multiply 0 with nan (which results in nan)
+- Change Approx.epsilon(0.01) to Approx.margin(0.001) in unit tests. Tolerance is now
+  absolute and not relative. We assumed incorrectly that epsilon is absolute tolerance.
+
 ### Changed
+- Move Simple-WebSocket-Server to submodule
+- Python scripts start with #!/usr/bin/env python3 instead of python
+- Changed compile flags -Ofast to -O3 and remove --ffinite-math
+- Moved old graph groups to depracated folder
 - Make cublas and cusparse handle inits lazy to save memory when unused
 
 ## [1.9.0] - 2020-03-10
@@ -34,15 +55,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Support for 16-bit packed models with FBGEMM
 - Multiple separated parameter types in ExpressionGraph, currently inference-only
 - Safe handling of sigterm signal
-- Automatic vectorization of elementwise operations on CPU for tensors dims that 
+- Automatic vectorization of elementwise operations on CPU for tensors dims that
   are divisible by 4 (AVX) and 8 (AVX2)
-- Replacing std::shared_ptr<T> with custom IntrusivePtr<T> for small objects like 
+- Replacing std::shared_ptr<T> with custom IntrusivePtr<T> for small objects like
   Tensors, Hypotheses and Expressions.
 - Fp16 inference working for translation
 - Gradient-checkpointing
 
 ### Fixed
-- Replace value for INVALID_PATH_SCORE with std::numer_limits<float>::lowest() 
+- Replace value for INVALID_PATH_SCORE with std::numer_limits<float>::lowest()
   to avoid overflow with long sequences
 - Break up potential circular references for GraphGroup*
 - Fix empty source batch entries with batch purging
@@ -53,16 +74,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - FastOpt now reads "n" and "y" values as strings, not as boolean values
 - Fixed multiple reduction kernels on GPU
 - Fixed guided-alignment training with cross-entropy
-- Replace IntrusivePtr with std::uniq_ptr in FastOpt, fixes random segfaults 
+- Replace IntrusivePtr with std::uniq_ptr in FastOpt, fixes random segfaults
   due to thread-non-safty of reference counting.
 - Make sure that items are 256-byte aligned during saving
 - Make explicit matmul functions respect setting of cublasMathMode
 - Fix memory mapping for mixed paramter models
 - Removed naked pointer and potential memory-leak from file_stream.{cpp,h}
 - Compilation for GCC >= 7 due to exception thrown in destructor
-- Sort parameters by lexicographical order during allocation to ensure consistent 
+- Sort parameters by lexicographical order during allocation to ensure consistent
   memory-layout during allocation, loading, saving.
-- Output empty line when input is empty line. Previous behavior might result in 
+- Output empty line when input is empty line. Previous behavior might result in
   hallucinated outputs.
 - Compilation with CUDA 10.1
 
@@ -73,7 +94,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Return error signal on SIGTERM
 - Dropped support for CUDA 8.0, CUDA 9.0 is now minimal requirement
 - Removed autotuner for now, will be switched back on later
-- Boost depdendency is now optional and only required for marian_server 
+- Boost depdendency is now optional and only required for marian_server
 - Dropped support for g++-4.9
 - Simplified file stream and temporary file handling
 - Unified node intializers, same function API.

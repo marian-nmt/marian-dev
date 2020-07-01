@@ -67,6 +67,28 @@ void split(const std::string& line,
   }
 }
 
+// the function guarantees that the output has as many elements as requested
+void splitTsv(const std::string& line, std::vector<std::string>& fields, size_t numFields) {
+  fields.clear();
+
+  size_t begin = 0;
+  size_t pos = 0;
+  for(size_t i = 0; i < numFields; ++i) {
+    pos = line.find('\t', begin);
+    if(pos == std::string::npos) {
+      fields.push_back(line.substr(begin));
+      break;
+    }
+    fields.push_back(line.substr(begin, pos - begin));
+    begin = pos + 1;
+  }
+
+  if(fields.size() < numFields)  // make sure there is as many elements as requested
+    fields.resize(numFields);
+
+  ABORT_IF(pos != std::string::npos, "Excessive field(s) in the tab-separated line: '{}'", line);
+}
+
 std::vector<std::string> split(const std::string& line,
                                const std::string& del /*= " "*/,
                                bool keepEmpty /*= false*/,
@@ -101,6 +123,12 @@ std::string join(const std::vector<std::string>& words, const std::string& del /
   }
 
   return ss.str();
+}
+
+std::string join(const std::vector<size_t>& nums, const std::string& del /*= " "*/) {
+  std::vector<std::string> words(nums.size());
+  std::transform(nums.begin(), nums.end(), words.begin(), [](size_t i) { return std::to_string(i); });
+  return join(words, del);
 }
 
 // escapes a string for passing to popen, which uses /bin/sh to parse its argument string
@@ -386,7 +414,8 @@ double parseNumber(std::string param) {
   }
   // we allow users to place commas in numbers (note: we are not actually verifying that they are in
   // the right place)
-  std::remove_if(param.begin(), param.end(), [](char c) { return c == ','; });
+  auto it = std::remove_if(param.begin(), param.end(), [](char c) { return c == ','; }); // use return value for future-proofing against nodiscard warning
+  param.erase(it, param.end()); // since we have that iterator now, we might as well shrink to fit
   return factor * parseDouble(param);
 }
 

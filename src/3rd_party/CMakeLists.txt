@@ -5,6 +5,8 @@ add_subdirectory(./yaml-cpp)
 add_subdirectory(./SQLiteCpp)
 add_subdirectory(./pathie-cpp)
 add_subdirectory(./zlib)
+add_subdirectory(./faiss)
+include_directories(./faiss)
 
 set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
 add_subdirectory(./intgemm)
@@ -100,8 +102,6 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
     " -fPIC -Wno-unused-value")
 endif()
-
-
 
 include_directories(./zlib)
 

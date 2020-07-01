@@ -67,10 +67,11 @@ if(MSVC)
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
   set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
 
-  set(INTRINSICS "/arch:AVX")
+  # set(INTRINSICS "/arch:AVX")
+  add_definitions(-DUSE_SSE2=1)
 
   # Or maybe use these?
-  # set(INTRINSICS "/arch:AVX2")
+  set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
 
   set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
@@ -167,9 +168,9 @@ else(MSVC)
   endif(CMAKE_COMPILER_IS_GNUCC)
 
   set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
-  set(CMAKE_CXX_FLAGS_RELEASE         "-Ofast -m64 -funroll-loops -ffinite-math-only -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
-  set(CMAKE_CXX_FLAGS_SLIM            "-Ofast -m64 -funroll-loops -ffinite-math-only -DNDEBUG")
+  set(CMAKE_CXX_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS_RELEASE}")
   set(CMAKE_CXX_FLAGS_PROFILE         "${CMAKE_CXX_FLAGS_RELEASE} -pg")
   set(CMAKE_CXX_FLAGS_PROFGEN         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
@@ -177,9 +178,9 @@ else(MSVC)
 
   # these need to be set separately
   set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
-  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -ffinite-math-only -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
-  set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -ffinite-math-only -DNDEBUG")
+  set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO  "${CMAKE_C_FLAGS_RELEASE}")
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
@@ -193,6 +194,12 @@ if(USE_SENTENCEPIECE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
   LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
   set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+endif()
+
+if(USE_ONNX)
+  message(STATUS "Enabling experimental ONNX support")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ONNX")
+  set(EXT_LIBS ${EXT_LIBS} protobuf)
 endif()
 
 # Find packages
@@ -351,6 +358,7 @@ if(COMPILE_CPU)
   if(MKL_FOUND)
     include_directories(${MKL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})
+    set(BLAS_FOUND TRUE)
     add_definitions(-DBLAS_FOUND=1 -DMKL_FOUND=1)
   else(MKL_FOUND)
     set(BLAS_VENDOR "OpenBLAS")

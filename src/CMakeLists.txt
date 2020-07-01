@@ -6,7 +6,7 @@ include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(3rd_party/fbgemm/include)
 include_directories(3rd_party/intgemm)
-include_directories(${CMAKE_BINARY_DIR}/src/3rd_party/intgemm)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/3rd_party/intgemm)
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC

@@ -7,7 +7,7 @@
 #include "graph/node_operators_tuple.h"
 
 #include "graph/auto_tuner.h"
-#include "tensors/cpu/int16.h"
+#include "tensors/cpu/intgemm_interface.h"
 #include "tensors/cpu/fbgemm/expanded_gemm.h"
 
 #if USE_FBGEMM
@@ -474,14 +474,22 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
-        // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-        // if transA = false and transB = false.
-
-        return cpu::int16::dot(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
+      if(a->graph()->getBackend()->isOptimized8() || matchType<intgemm8>(bElementType)) {
+        bool shiftedAll = a->graph()->getBackend()->isShiftedAll(); //@TODO
+        return cpu::integer::dot<Type::int8>(
+          a,
+          b,
+          transA,
+          transB,
+          scale,
+          shiftedAll);
+      } else if(a->graph()->getBackend()->isOptimized() || matchType<intgemm16>(bElementType)) {
+        return cpu::integer::dot<Type::int16>(
+          a,
+          b,
+          transA,
+          transB,
           scale);
       } else {
         return Expression<DotNodeOp>(
@@ -550,14 +558,27 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
-        // cpu int16 version
-        return cpu::int16::affine(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
+      if(a->graph()->getBackend()->isOptimized8()  || matchType<intgemm8>(bElementType) ) {
+        bool shiftedBias = a->graph()->getBackend()->isShifted();
+        return cpu::integer::affine<Type::int8>(
+          a,
+          b,
           bias,
-          scale);
+          transA,
+          transB,
+          scale,
+          clipValue,
+          shiftedBias);
+      } else if(a->graph()->getBackend()->isOptimized()  || matchType<intgemm16>(bElementType) ) {
+        return cpu::integer::affine<Type::int16>(
+          a,
+          b,
+          bias,
+          transA,
+          transB,
+          scale,
+          clipValue);
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }

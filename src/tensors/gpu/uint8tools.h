@@ -29,6 +29,7 @@ cublasStatus_t cublas8bitGemmmEx(cublasHandle_t handle,
         const float* A, int lda,
         const float* B, int ldb,
         const float* beta,
-        float* C, int ldc);
+        float* C, int ldc,
+        bool useCutlass = true);
 }
 }

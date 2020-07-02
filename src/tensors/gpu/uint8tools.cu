@@ -1,3 +1,4 @@
+#include "cutlass/gemm/device/gemm.h"
 #include "tensors/gpu/uint8tools.h"
 #include "tensors/gpu/cuda_helpers.h"
 #include <cmath>
@@ -6,6 +7,121 @@
 namespace marian {
 
 namespace hacky8bit {
+
+inline std::string cutlassGetErrorString(cutlass::Status& status) {
+    switch (status) {
+        case cutlass::Status::kSuccess:
+        return "Operation was successful.";
+        case cutlass::Status::kErrorMisalignedOperand:
+        return "Operands fail alignment requirements.";
+        case cutlass::Status::kErrorInvalidLayout:
+        return "Layout fails alignment requirement.";
+        case cutlass::Status::kErrorInvalidProblem:
+        return "Specified problem size is not supported by operator.";
+        case cutlass::Status::kErrorNotSupported:
+        return "Operation is not supported on current device.";
+        case cutlass::Status::kErrorWorkspaceNull:
+        return "The given workspace is null when it is required to be non-null";
+        case cutlass::Status::kErrorInternal:
+        return "An error within CUTLASS occurred.";
+        case cutlass::Status::kInvalid:
+        return "Status is unspecified.";
+    }
+    return "Unknown CUTLASS status. Update this section of the code.";
+}
+
+#define CUTLASS_CHECK(expr) do {                                             \
+    cutlass::Status rc = (expr);                                        \
+    ABORT_IF(rc != cutlass::Status::kSuccess,                                  \
+                "Cutlass Error: {} - {}:{}: {}", cutlassGetErrorString(rc), __FILE__, __LINE__, #expr);  \
+    } while(0)
+
+    /*Cutlass matrices*/
+    using ColumnMajor = cutlass::layout::ColumnMajor;
+    using ColumnMajorT = cutlass::layout::RowMajor; //Transposing in cutlass is done by changing the input from RowMajor to ColumnMajor. Care of the output
+    //using RowMajor = cutlass::layout::RowMajor;
+    using CutlassGemmTT = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                    ColumnMajorT,  // Layout of A matrix
+                                                    int8_t,        // Data-type of B matrix
+                                                    ColumnMajorT,  // Layout of B matrix
+                                                    int32_t,        // Data-type of C matrix
+                                                    ColumnMajor>; // Layout of C matrix
+
+    using CutlassGemmNT = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                    ColumnMajor,  // Layout of A matrix
+                                                    int8_t,        // Data-type of B matrix
+                                                    ColumnMajorT,  // Layout of B matrix
+                                                    int32_t,        // Data-type of C matrix
+                                                    ColumnMajor>; // Layout of C matrix
+
+    using CutlassGemmTN = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                    ColumnMajorT,  // Layout of A matrix
+                                                    int8_t,        // Data-type of B matrix
+                                                    ColumnMajor,  // Layout of B matrix
+                                                    int32_t,        // Data-type of C matrix
+                                                    ColumnMajor>; // Layout of C matrix
+
+    using CutlassGemmNN = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                    ColumnMajor,  // Layout of A matrix
+                                                    int8_t,        // Data-type of B matrix
+                                                    ColumnMajor,  // Layout of B matrix
+                                                    int32_t,        // Data-type of C matrix
+                                                    ColumnMajor>; // Layout of C matrix
+
+
+    cutlass::Status cutlass_igemm_nn(bool transA, bool transB,
+                     int M,
+                     int N,
+                     int K,
+                     float alpha,
+                     int8_t const *A,
+                     int lda,
+                     int8_t const *B,
+                     int ldb,
+                     float beta,
+                     int32_t *C,
+                     int ldc) {
+
+        if (!transA && !transB) {
+            CutlassGemmNN gemm_operator;
+            CutlassGemmNN::Arguments args({M , N, K},  // Gemm Problem dimensions
+                {A, lda},    // Tensor-ref for source matrix A
+                {B, ldb},    // Tensor-ref for source matrix B
+                {C, ldc},    // Tensor-ref for source matrix C
+                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                {alpha, beta}); // Scalars used in the Epilogue
+            return gemm_operator(args);
+        } else if (transA && !transB) {
+            CutlassGemmTN gemm_operator;
+            CutlassGemmTN::Arguments args({M , N, K},  // Gemm Problem dimensions
+                {A, lda},    // Tensor-ref for source matrix A
+                {B, ldb},    // Tensor-ref for source matrix B
+                {C, ldc},    // Tensor-ref for source matrix C
+                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                {alpha, beta}); // Scalars used in the Epilogue
+            return gemm_operator(args);
+        } else if (!transA && transB) {
+            CutlassGemmNT gemm_operator;
+            CutlassGemmNT::Arguments args({M , N, K},  // Gemm Problem dimensions
+                {A, lda},    // Tensor-ref for source matrix A
+                {B, ldb},    // Tensor-ref for source matrix B
+                {C, ldc},    // Tensor-ref for source matrix C
+                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                {alpha, beta}); // Scalars used in the Epilogue
+            return gemm_operator(args);
+        } else { // Final case (transA && transB)
+            CutlassGemmTT gemm_operator;
+            CutlassGemmTT::Arguments args({M , N, K},  // Gemm Problem dimensions
+                {A, lda},    // Tensor-ref for source matrix A
+                {B, ldb},    // Tensor-ref for source matrix B
+                {C, ldc},    // Tensor-ref for source matrix C
+                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                {alpha, beta}); // Scalars used in the Epilogue
+            return gemm_operator(args);
+        }
+    }
+
+
     template<class T>
     void sanityCheck(T * gpumem, size_t num_items, char typechar) {
         T * cpumem = new T[num_items];
@@ -297,10 +413,12 @@ namespace hacky8bit {
         const float* A, int lda,
         const float* B, int ldb,
         const float* beta,
-        float* C, int ldc) {
+        float* C, int ldc,
+        bool useCutlass) {
             
         auto algorithm = CUBLAS_GEMM_DEFAULT_TENSOR_OP;
-        if (m%4 == 0 && n % 4 == 0 && k % 4 ==0) {
+        //if (m%4 == 0 && n % 4 == 0 && k % 4 ==0) {
+        if (k % 4 ==0) {
             int BlockA = m;
             int ThreadsA = k;
             int BlockB = k;
@@ -312,7 +430,7 @@ namespace hacky8bit {
             if (ThreadsA > 512) {
                 std::swap(BlockA, ThreadsA);
                 if (ThreadsA > 512) {
-                    fprintf(stderr, "Incompatible sizes for A: rows %d, cols %d\n", BlockA, ThreadsA);
+                    //fprintf(stderr, "Incompatible sizes for A: rows %d, cols %d\n", BlockA, ThreadsA);
                     BlockA = (int)ceil((ThreadsA*BlockA)/512);
                     ThreadsA = 512;
                 }
@@ -321,7 +439,7 @@ namespace hacky8bit {
             if (ThreadsB > 512) {
                 std::swap(BlockB, ThreadsB);
                 if (ThreadsB > 512) {
-                    fprintf(stderr, "Incompatible sizes for B: rows %d, cols %d\n", BlockB, ThreadsB);
+                    //fprintf(stderr, "Incompatible sizes for B: rows %d, cols %d\n", BlockB, ThreadsB);
                     BlockB = (int)ceil((ThreadsB*BlockB)/512);
                     ThreadsB = 512;
                 }
@@ -330,7 +448,7 @@ namespace hacky8bit {
             if (ThreadsC > 512) {
                 std::swap(BlockC, ThreadsC);
                 if (ThreadsC > 512) {
-                    fprintf(stderr, "Incompatible sizes for C: rows %d, cols %d\n", BlockC, ThreadsC);
+                    //fprintf(stderr, "Incompatible sizes for C: rows %d, cols %d\n", BlockC, ThreadsC);
                     BlockC = (int)ceil((ThreadsC*BlockC)/512);
                     ThreadsC = 512;
                 }
@@ -353,12 +471,29 @@ namespace hacky8bit {
             quantize<<<BlockB, ThreadsB>>>(B, in8bitIntB, k*n, 127.0f/bMaxAbs);
             CUDA_CHECK(cudaDeviceSynchronize());
 
-            auto res = cublasGemmEx(handle, transa, transb, 
-                m, n, k, &alpha_int, 
-                in8bitIntA, CUDA_R_8I, lda, 
-                in8bitIntB, CUDA_R_8I, ldb, &beta_int, 
-                out32bitInt, CUDA_R_32I, ldc,
-                CUDA_R_32I, algorithm);
+            cublasStatus_t res = CUBLAS_STATUS_SUCCESS;
+            if (useCutlass) {
+                bool transACutlass = false;
+                bool transBCutlass = false;
+                if (transa == CUBLAS_OP_T)
+                    transACutlass = true;
+
+                if (transb == CUBLAS_OP_T)
+                    transBCutlass = true;
+
+                CUTLASS_CHECK(cutlass_igemm_nn(transACutlass, transBCutlass,
+                    m, n, k, *alpha,
+                    in8bitIntA, lda,
+                    in8bitIntB, ldb, *beta,
+                    out32bitInt, ldc));
+            } else {
+                auto res = cublasGemmEx(handle, transa, transb,
+                    m, n, k, &alpha_int,
+                    in8bitIntA, CUDA_R_8I, lda,
+                    in8bitIntB, CUDA_R_8I, ldb, &beta_int,
+                    out32bitInt, CUDA_R_32I, ldc,
+                    CUDA_R_32I, algorithm);
+            }
             
             dequantize<<<BlockC, ThreadsC>>>(out32bitInt, C, m*n, (aMaxAbs/127.0f)*(bMaxAbs/127.0f) );
             CUDA_CHECK(cudaDeviceSynchronize());
@@ -368,10 +503,10 @@ namespace hacky8bit {
             CUDA_CHECK(cudaFree(in8bitIntB));
             return res;
         } else {
-            auto res = cublasGemmEx(handle, transa, transb, 
-                m, n, k, alpha, 
-                A, CUDA_R_32F, lda, 
-                B, CUDA_R_32F, ldb, beta, 
+            auto res = cublasGemmEx(handle, transa, transb,
+                m, n, k, alpha,
+                A, CUDA_R_32F, lda,
+                B, CUDA_R_32F, ldb, beta,
                 C, CUDA_R_32F, ldc,
                 CUDA_R_32F, algorithm);
             return res;

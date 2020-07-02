@@ -14,6 +14,8 @@
 #include "fbgemm/Utils.h"
 #endif
 
+#include "tensors/gpu/integer_interface.h"
+
 namespace marian {
 
 Expr debug(Expr a, const std::string& message) {

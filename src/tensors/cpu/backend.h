@@ -21,7 +21,19 @@ protected:
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
+
   void setDevice() override {}
+
+  void configureDevice(Ptr<Options const> options) override {
+    setClip(options->get<float>("clip-gemm"));
+    setOptimized(options->get<bool>("optimize"));
+    setOptimized8(options->get<bool>("optimize8"));
+    setShifted(options->get<bool>("intgemm-shifted"));
+    setShiftedAll(options->get<bool>("intgemm-shifted-all"));
+    setDumpQuantMult(options->get<bool>("dump-quantmult"));
+    setPrecomputedAlpha(options->get<bool>("use-precomputed-alphas"));
+    setLegacyBatchedGemm(options->get<bool>("use-legacy-batching"));
+  }
   void synchronize() override {}
 
   // for CPU & inference only, sets to use optimized code for inference. Does nothing for GPU.

@@ -73,17 +73,7 @@ public:
       auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
-      graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-        graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
-        graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
-        graph->getBackend()->setShiftedAll(options_->get<bool>("intgemm-shifted-all"));
-        graph->getBackend()->setDumpQuantMult(options_->get<bool>("dump-quantmult"));
-        graph->getBackend()->setPrecomputedAlpha(options_->get<bool>("use-precomputed-alphas"));
-        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
-      }
-
+      graph->getBackend()->configureDevice(options_);
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
     }

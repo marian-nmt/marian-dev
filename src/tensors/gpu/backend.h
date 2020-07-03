@@ -44,6 +44,11 @@ public:
     }
   }
 
+  void configureDevice(Ptr<Options const> options) override {
+    setClip(options->get<float>("clip-gemm"));
+  }
+
+
   void setDevice() override { CUDA_CHECK(cudaSetDevice((int)deviceId_.no)); }
 
   void synchronize() override { CUDA_CHECK(cudaStreamSynchronize(0)); }

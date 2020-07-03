@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/definitions.h"
+#include "common/options.h"
 #include "tensors/rand.h"
 
 namespace marian {
@@ -23,6 +24,7 @@ public:
 
   // for GPU only, calls cudaSetDevice, does nothing on CPU. Maybe change name.
   virtual void setDevice() = 0;
+  virtual void configureDevice(Ptr<Options const> options) = 0;
   virtual void synchronize() = 0;
 
   virtual void setClip(float clipValue) { clipValue_ = clipValue; }

@@ -43,7 +43,7 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
     Integer * output_tensor = reinterpret_cast<Integer *>(&(*item.bytes.begin()));
     // Sometimes we will end up with misaligned intput (and output) so we can't use them directly.
     // If this is the case, we will need to temporary allocate aligned memory, copy the results, and then free it
-    if (reinterpret_cast<uintptr_t>(input) % 64 == 0 || reinterpret_cast<uintptr_t>(output_tensor) % 64 == 0) {
+    if (reinterpret_cast<uintptr_t>(input) % 64 == 0 && reinterpret_cast<uintptr_t>(output_tensor) % 64 == 0) {
         intgemm_<vtype>::width::PrepareBQuantizedTransposed(reinterpret_cast<const Integer *>(input),
                                                    output_tensor,
                                                    rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 

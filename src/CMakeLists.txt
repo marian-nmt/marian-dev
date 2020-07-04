@@ -45,6 +45,8 @@ add_library(marian STATIC
   
   3rd_party/intgemm/intgemm.cc
 
+  3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
+
   3rd_party/phf/phf.cc
 
   tensors/backend.cpp
@@ -52,6 +54,7 @@ add_library(marian STATIC
   tensors/tensor.cpp
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
+  tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
   
   tensors/cpu/integer_common.cpp
@@ -62,6 +65,9 @@ add_library(marian STATIC
   graph/node.cpp
   graph/node_operators.cpp
   graph/node_initializers.cpp
+
+  onnx/expression_graph_onnx_exporter.cpp
+  onnx/expression_graph_onnx_serialization.cpp
 
   layers/convolution.cpp
   layers/generic.cpp
@@ -103,6 +109,11 @@ add_library(marian STATIC
   $<TARGET_OBJECTS:pathie-cpp>
   $<TARGET_OBJECTS:zlib>
 )
+
+if(BLAS_FOUND)
+  target_sources(marian PRIVATE ${CMAKE_CURRENT_LIST_DIR}/layers/lsh.cpp $<TARGET_OBJECTS:faiss>)
+endif()
+
 target_compile_options(marian PUBLIC ${ALL_WARNINGS})
 
 # Generate git_revision.h to reflect current git revision information
@@ -139,6 +150,7 @@ cuda_add_library(marian_cuda
   tensors/gpu/device.cu
   tensors/gpu/algorithm.cu
   tensors/gpu/prod.cpp
+  tensors/gpu/topk.cu
   tensors/gpu/element.cu
   tensors/gpu/add.cu
   tensors/gpu/add_all.cu

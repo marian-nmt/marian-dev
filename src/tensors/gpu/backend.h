@@ -85,7 +85,6 @@ public:
   }
 
   void setInt8Shift(bool shifted) override {
-    shifted;
     ABORT("setInt8Shift() is not supported on the GPU.");
   }
 

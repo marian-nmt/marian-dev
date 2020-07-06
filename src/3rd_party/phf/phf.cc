@@ -52,6 +52,10 @@
 #endif
 
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4706)  // assignment within conditional expression
+#endif
+
 
 /*
  * M A C R O  R O U T I N E S

@@ -65,7 +65,7 @@ if(MSVC)
   # Disabled bogus warnings for CPU intrincics:
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
-  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
+  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\"")
 
   # set(INTRINSICS "/arch:AVX")
   add_definitions(-DUSE_SSE2=1)

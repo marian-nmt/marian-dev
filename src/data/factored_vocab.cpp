@@ -1,10 +1,6 @@
 // This is the main implementation of factored models, which are driven by the vocabulary.
 // Decoding, embedding, and output layer call into the vocab to drive their behavior.
 
-#ifdef _MSC_VER
-#pragma warning(disable: 4702)  // unreachable code
-#endif
-
 #include "data/vocab_base.h"
 #include "common/definitions.h"
 #include "data/types.h"

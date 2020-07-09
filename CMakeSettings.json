@@ -15,11 +15,10 @@
         { "name": "COMPILE_CUDA:BOOL", "value": "FALSE" },
         { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
         { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" },
-        { "name": "COMPILE_FBGEMM:BOOL", "value": "FALSE" },
         { "name": "COMPILE_SERVER:BOOL", "value": "FALSE" },
         { "name": "COMPILE_TESTS:BOOL", "value": "FALSE" },
 
-        { "name": "USE_CUDNN:BOOL", "value": "TRUE" },
+        { "name": "USE_FBGEMM:BOOL", "value": "FALSE" },
         { "name": "USE_MPI:BOOL", "value": "FALSE" },
         { "name": "USE_SENTENCEPIECE:BOOL", "value": "FALSE" }
       ]
@@ -39,11 +38,10 @@
         { "name": "COMPILE_CUDA:BOOL", "value": "FALSE" },
         { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
         { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" },
-        { "name": "COMPILE_FBGEMM:BOOL", "value": "FALSE" },
         { "name": "COMPILE_SERVER:BOOL", "value": "FALSE" },
         { "name": "COMPILE_TESTS:BOOL", "value": "FALSE" },
 
-        { "name": "USE_CUDNN:BOOL", "value": "TRUE" },
+        { "name": "USE_FBGEMM:BOOL", "value": "FALSE" },
         { "name": "USE_MPI:BOOL", "value": "FALSE" },
         { "name": "USE_SENTENCEPIECE:BOOL", "value": "FALSE" }
       ]

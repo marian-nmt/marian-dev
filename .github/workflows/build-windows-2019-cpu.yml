@@ -32,3 +32,14 @@ jobs:
         cmakeSettingsJsonPath: ${{ github.workspace }}/CMakeSettings.json
         useVcpkgToolchainFile: true
 
+    - name: Run unit tests
+      working-directory: build/Debug/
+      run: ctest
+
+    - name: Print versions
+      working-directory: build/Debug/
+      run: |
+        .\marian.exe --version
+        .\marian-decoder.exe --version
+        .\marian-scorer.exe --version
+

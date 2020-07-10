@@ -29,7 +29,6 @@ jobs:
         sudo apt-get update -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/intel-mkl.list"
         sudo apt-get install --no-install-recommends intel-mkl-64bit-2020.0-088
 
-    # GitHub-runners have two versions of Boost installed: 1.72 and 1.69. The newer version generates warnings, so we use the older.
     - name: Print Boost paths
       run: |
           ls $BOOST_ROOT_1_69_0
@@ -51,6 +50,10 @@ jobs:
       working-directory: build
       run: make -j2
 
+    - name: Run unit tests
+      working-directory: build
+      run: make test
+
     - name: Print versions
       working-directory: build
       run: |
@@ -59,6 +62,3 @@ jobs:
           ./marian-scorer --version
           ./spm_encode --version
 
-    - name: Run unit tests
-      working-directory: build
-      run: make test

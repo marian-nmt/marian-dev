@@ -39,7 +39,7 @@
         { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
         { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" },
         { "name": "COMPILE_SERVER:BOOL", "value": "FALSE" },
-        { "name": "COMPILE_TESTS:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_TESTS:BOOL", "value": "TRUE" },
 
         { "name": "USE_FBGEMM:BOOL", "value": "FALSE" },
         { "name": "USE_MPI:BOOL", "value": "FALSE" },

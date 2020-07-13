@@ -45,9 +45,9 @@ foreach(_variableName ${_variableNames})
         endif()
 
         # Print variables for debugging
-        message(STATUS "${_variableName}=${_variableValueEscaped}")
-        message(STATUS "  Type=${_variableType}")
-        message(STATUS "  Advanced=${_isAdvanced}")
+        #message(STATUS "${_variableName}=${_variableValueEscaped}")
+        #message(STATUS "  Type=${_variableType}")
+        #message(STATUS "  Advanced=${_isAdvanced}")
     endif()
   endif(_cachePropIsSet)
 endforeach()

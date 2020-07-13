@@ -1,0 +1,50 @@
+{
+  "configurations": [
+    {
+      "name": "Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "inheritEnvironments": [ "msvc_x64" ],
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": "",
+      "variables": [
+        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "FALSE" },
+        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "FALSE" },
+
+        { "name": "COMPILE_CUDA:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
+        { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_SERVER:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_TESTS:BOOL", "value": "FALSE" },
+
+        { "name": "USE_FBGEMM:BOOL", "value": "FALSE" },
+        { "name": "USE_MPI:BOOL", "value": "FALSE" },
+        { "name": "USE_SENTENCEPIECE:BOOL", "value": "FALSE" }
+      ]
+    },
+    {
+      "name": "Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64" ],
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "-v",
+      "ctestCommandArgs": "",
+      "variables": [
+        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "FALSE" },
+        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "FALSE" },
+
+        { "name": "COMPILE_CUDA:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
+        { "name": "COMPILE_EXAMPLES:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_SERVER:BOOL", "value": "FALSE" },
+        { "name": "COMPILE_TESTS:BOOL", "value": "TRUE" },
+
+        { "name": "USE_FBGEMM:BOOL", "value": "FALSE" },
+        { "name": "USE_MPI:BOOL", "value": "FALSE" },
+        { "name": "USE_SENTENCEPIECE:BOOL", "value": "FALSE" }
+      ]
+    }
+  ]
+}

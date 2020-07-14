@@ -15,6 +15,9 @@ jobs:
       with:
         submodules: recursive
 
+    # With the current settings no packages are required other than those
+    # pre-installed on GitHub runners, but it is easier to specify something
+    # than setting up a setup-only step
     - name: Prepare vcpkg
       uses: lukka/run-vcpkg@v3
       with:
@@ -23,6 +26,7 @@ jobs:
         vcpkgDirectory: ${{ github.workspace }}/vcpkg/
         vcpkgTriplet: x64-windows
 
+    # Note that we build with a simplified CMake settings JSON file
     - name: Run CMake
       uses: lukka/run-cmake@v2
       with:

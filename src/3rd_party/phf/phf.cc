@@ -52,10 +52,6 @@
 #endif
 
 
-#ifdef _MSC_VER
-#pragma warning(disable: 4706)  // assignment within conditional expression
-#endif
-
 
 /*
  * M A C R O  R O U T I N E S
@@ -683,7 +679,7 @@ PHF_PUBLIC void PHF::compact(struct phf *phf) {
 	}
 
 	/* simply keep old array if realloc fails */
-	if ((tmp = realloc(phf->g, phf->r * size)))
+	if ((tmp = realloc(phf->g, phf->r * size)) != 0)
 		phf->g = static_cast<uint32_t *>(tmp);
 } /* PHF::compact() */
 

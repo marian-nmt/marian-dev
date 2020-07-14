@@ -11,10 +11,6 @@
 #include "tensors/gpu/cudnn_wrappers.h"
 #endif
 
-#ifdef _MSC_VER
-#pragma warning(disable: 4702)  // unreachable code
-#endif
-
 namespace marian {
 
 class LambdaNodeOp : public NaryNodeOp {

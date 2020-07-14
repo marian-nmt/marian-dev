@@ -17,16 +17,13 @@ jobs:
       with:
         submodules: recursive
 
-    # With the current settings no packages are required other than those
-    # pre-installed on GitHub runners, but it is easier to specify something
-    # than setting up a setup-only step
     - name: Prepare vcpkg
       uses: lukka/run-vcpkg@v3
       with:
-        vcpkgArguments: openssl
+        vcpkgArguments: protobuf
         vcpkgGitCommitId: 6185aa76504a5025f36754324abf307cc776f3da
         vcpkgDirectory: ${{ github.workspace }}/vcpkg/
-        vcpkgTriplet: x64-windows
+        vcpkgTriplet: x64-windows-static
 
     # Note that we build with a simplified CMake settings JSON file
     - name: Run CMake
@@ -48,4 +45,5 @@ jobs:
         .\marian.exe --version
         .\marian-decoder.exe --version
         .\marian-scorer.exe --version
+        .\spm_encode.exe --version
 

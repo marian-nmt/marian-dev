@@ -9,8 +9,8 @@
       "buildCommandArgs": "-v",
       "ctestCommandArgs": "",
       "variables": [
-        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "FALSE" },
-        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "FALSE" },
+        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "TRUE" },
+        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "TRUE" },
 
         { "name": "COMPILE_CUDA:BOOL", "value": "FALSE" },
         { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
@@ -20,7 +20,8 @@
 
         { "name": "USE_FBGEMM:BOOL", "value": "TRUE" },
         { "name": "USE_MPI:BOOL", "value": "FALSE" },
-        { "name": "USE_SENTENCEPIECE:BOOL", "value": "FALSE" }
+        { "name": "USE_SENTENCEPIECE:BOOL", "value": "TRUE" },
+        { "name": "USE_STATIC_LIBS:BOOL", "value": "TRUE" }
       ]
     },
     {
@@ -32,8 +33,8 @@
       "buildCommandArgs": "-v",
       "ctestCommandArgs": "",
       "variables": [
-        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "FALSE" },
-        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "FALSE" },
+        { "name": "OPENSSL_MSVC_STATIC_RT:BOOL", "value": "TRUE" },
+        { "name": "OPENSSL_USE_STATIC_LIBS:BOOL", "value": "TRUE" },
 
         { "name": "COMPILE_CUDA:BOOL", "value": "FALSE" },
         { "name": "COMPILE_CPU:BOOL", "value": "TRUE" },
@@ -43,7 +44,8 @@
 
         { "name": "USE_FBGEMM:BOOL", "value": "TRUE" },
         { "name": "USE_MPI:BOOL", "value": "FALSE" },
-        { "name": "USE_SENTENCEPIECE:BOOL", "value": "FALSE" }
+        { "name": "USE_SENTENCEPIECE:BOOL", "value": "TRUE" },
+        { "name": "USE_STATIC_LIBS:BOOL", "value": "TRUE" }
       ]
     }
   ]

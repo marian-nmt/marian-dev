@@ -31,9 +31,9 @@ jobs:
 
     - name: Print Boost paths
       run: |
-          ls $BOOST_ROOT_1_69_0
-          ls $BOOST_ROOT_1_69_0/include
-          ls $BOOST_ROOT_1_69_0/lib
+        ls $BOOST_ROOT_1_69_0
+        ls $BOOST_ROOT_1_69_0/include
+        ls $BOOST_ROOT_1_69_0/lib
 
     # Boost is already installed on GitHub-hosted runners in a non-standard location
     # https://github.com/actions/virtual-environments/issues/687#issuecomment-610471671
@@ -57,8 +57,8 @@ jobs:
     - name: Print versions
       working-directory: build
       run: |
-          ./marian --version
-          ./marian-decoder --version
-          ./marian-scorer --version
-          ./spm_encode --version
+        ./marian --version
+        ./marian-decoder --version
+        ./marian-scorer --version
+        ./spm_encode --version
 

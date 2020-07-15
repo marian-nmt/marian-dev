@@ -7,6 +7,9 @@
 #include "tensors/gpu/backend.h"
 #include "tensors/gpu/integer_tools.h"
 
+//TMP
+#include "tensors/gpu/uint8tools.h"
+
 
 namespace marian {
 
@@ -91,11 +94,255 @@ struct PrepareNodeOp : public NaryNodeOp {
   const std::string type() override { return "integer8Quantized"; }
 };
 
-//static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
+class AffineNodeOp : public NaryNodeOp {
+private:
+  float scalar_;
+  bool transA_;
+  bool transB_;
+
+public:
+  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr quantMultA, Expr quantMultB, Expr ones, bool transA, bool transB, float scalar)
+      : NaryNodeOp({a, b, Bias, quantMultA, quantMultB, ones}, 
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB) {
+        setMemoize(false); // AFAIK affine is never called with the same matrices
+      }
+
+  Shape newShape(Expr a, Expr b, bool transA, bool transB) {
+    auto shapeA = a->shape();
+    if(transA) {
+      shapeA.set(shapeA.size() - 2, a->shape()[shapeA.size() - 1]);
+      shapeA.set(shapeA.size() - 1, a->shape()[shapeA.size() - 2]);
+    }
+
+    auto shapeB = b->shape();
+    if(transB) {
+      shapeB.set(shapeB.size() - 2, b->shape()[shapeB.size() - 1]);
+      shapeB.set(shapeB.size() - 1, b->shape()[shapeB.size() - 2]);
+    }
+
+    Shape outShape = shapeA;
+    outShape.set(outShape.size() - 1, shapeB[shapeB.size() - 1]);
+    ABORT_IF(shapeA[shapeA.size() - 1] != shapeB[shapeB.size() - 2],
+             "Matrix product requires inner dimensions to match in {}{} * {}{}", std::string(shapeA), transA, std::string(shapeB), transB);
+    return outShape;
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      //A and B and swapped here, so are LDA, LDB and transA and transB
+      // Perform LDA, LDB, LDC
+      Tensor A = child(0)->val();
+      Tensor B = child(1)->val();
+      Tensor C = val_;
+      
+      Tensor quantMultA = child(3)->val();
+      Tensor quantMultB = child(4)->val();
+
+      CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
+      float alpha = scalar_;
+
+      int m = A->shape().elements() / A->shape().back();
+      int k = A->shape().back();
+      if(transA_)
+        std::swap(m, k);
+
+      int l = B->shape().elements() / B->shape().back();
+      int n = B->shape().back();
+      if(transB_)
+        std::swap(l, n);
+
+      int lda = A->shape().back();
+      int ldb = B->shape().back();
+      int ldc = B->shape().back();
+
+      if(transB_)
+        ldc = B->shape().elements() / B->shape().back();
+
+      cutlass_igemm_dispatcher(transB_, transA_,
+                        n,
+                        m,
+                        k,
+                        alpha,
+                        B->data<int8_t>(),
+                        ldb,
+                        A->data<int8_t>(),
+                        lda,
+                        0.0f,
+                        C->data<int32_t>(),
+                        ldc);
+
+      //Now unquantize... Reusing the same Tensor
+      int rowsC = C->shape().elements() / C->shape().back();
+      int colsC = C->shape().back();
+      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, quantMultA->data<float>(), quantMultB->data<float>());
+      //Synchronize
+      val_->getBackend()->synchronize();
+
+      //Perform bias addition, copied from the master implementation
+      if (child(2)) {
+        Tensor bias = child(2)->val();
+        Tensor ones = child(5)->val();
+        marian::gpu::Prod(val_, ones, bias, false, false, 1.f, 1.f);
+      }
+
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Only used for inference");
+    return {NodeOp(0)};
+  }
+
+  const std::string type() override { return "int8Affine"; }
+};
+
+class DotNodeOp : public NaryNodeOp {
+private:
+  float scalar_;
+  bool transA_;
+  bool transB_;
+
+public:
+  DotNodeOp(Expr a, Expr b, Expr quantMultA, Expr quantMultB, bool transA, bool transB, float scalar)
+      : NaryNodeOp({a, b, quantMultA, quantMultB}, 
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB) {
+        setMemoize(false); // AFAIK affine is never called with the same matrices
+      }
+
+  Shape newShape(Expr a, Expr b, bool transA, bool transB) {
+    auto shapeA = a->shape();
+    if(transA) {
+      shapeA.set(shapeA.size() - 2, a->shape()[shapeA.size() - 1]);
+      shapeA.set(shapeA.size() - 1, a->shape()[shapeA.size() - 2]);
+    }
+
+    auto shapeB = b->shape();
+    if(transB) {
+      shapeB.set(shapeB.size() - 2, b->shape()[shapeB.size() - 1]);
+      shapeB.set(shapeB.size() - 1, b->shape()[shapeB.size() - 2]);
+    }
+
+    Shape outShape = shapeA;
+    outShape.set(outShape.size() - 1, shapeB[shapeB.size() - 1]);
+    ABORT_IF(shapeA[shapeA.size() - 1] != shapeB[shapeB.size() - 2],
+             "Matrix product requires inner dimensions to match in {}{} * {}{}", std::string(shapeA), transA, std::string(shapeB), transB);
+    return outShape;
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      //A and B and swapped here, so are LDA, LDB and transA and transB
+      // Perform LDA, LDB, LDC
+      Tensor A = child(0)->val();
+      Tensor B = child(1)->val();
+      Tensor C = val_;
+      
+      Tensor quantMultA = child(2)->val();
+      Tensor quantMultB = child(3)->val();
+      
+
+      CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
+      float alpha = scalar_;
+
+      int m = A->shape().elements() / A->shape().back();
+      int k = A->shape().back();
+      if(transA_)
+        std::swap(m, k);
+
+      int l = B->shape().elements() / B->shape().back();
+      int n = B->shape().back();
+      if(transB_)
+        std::swap(l, n);
+
+      int lda = A->shape().back();
+      int ldb = B->shape().back();
+      int ldc = B->shape().back();
+
+      if(transB_)
+        ldc = B->shape().elements() / B->shape().back();
+
+      cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
+                        n,
+                        m,
+                        k,
+                        alpha,
+                        B->data<int8_t>(),
+                        ldb,
+                        A->data<int8_t>(),
+                        lda,
+                        0.0f,
+                        C->data<int32_t>(),
+                        ldc);
+      //Now unquantize... Reusing the same Tensor
+      int rowsC = rows(C);
+      int colsC = cols(C);
+
+      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, quantMultA->data<float>(), quantMultB->data<float>());
+      //Synchronize
+      val_->getBackend()->synchronize();
+      //std::cerr << "Af4: " << C->data<float>()[0] << std::endl;
+
+      /*
+      //DEEEEBUG
+      cublasOperation_t opA = transA_ ? CUBLAS_OP_T : CUBLAS_OP_N;
+      cublasOperation_t opB = transB_ ? CUBLAS_OP_T : CUBLAS_OP_N;
+
+      auto backend = std::static_pointer_cast<gpu::Backend>(C->getBackend());
+      auto cublasHandle = backend->getCublasHandle();
+      //auto computeCapability = backend->getCudaComputeCapability();
+      gpuPrinterDispatch(C->data<float>(), 0);
+      val_->getBackend()->synchronize();
+      std::cerr << "True" << std::endl;
+      //setTensorMode(cublasHandle);
+      float beta = 0.0f;
+      marian::hacky8bit::cublas8bitGemmmEx(cublasHandle,
+        opB, 
+        opA,
+        n, m, k,
+        &alpha,
+        Bfloat->data<float>(), ldb,
+        Afloat->data<float>(), lda,
+        &beta,
+        C->data<float>(), ldc,
+        true);
+        gpuPrinterDispatch(C->data<float>(), 0); */
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Only used for inference");
+    return {NodeOp(0)};
+  }
+
+  const std::string type() override { return "int8Affine"; }
+};
+
+static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
+  // Quantize to 8bits:
+  std::string Bname = B->name();
+  Expr AQuantMult = Expression<QuantMultNodeOp>(A, true, Bname);
+  Expr BQuantMult = Expression<QuantMultNodeOp>(B, false, Bname);
+
+  Expr AQuantized = Expression<PrepareNodeOp>(A, AQuantMult, true);
+  Expr BQuantized = Expression<PrepareNodeOp>(B, BQuantMult, false);
+
+
+  //Perform multiplication KNOWING that A and B are swapped
+  
+  if (bias) {
+    int rows = A->shape().elements() / A->shape()[-1];
+    Expr ones = A->graph()->ones({ rows, 1 });
+    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, AQuantMult, BQuantMult, ones, transA, transB, scale);
+  } else {
+    return Expression<DotNodeOp>(AQuantized, BQuantized, AQuantMult, BQuantMult, transA, transB, scale);
+  }
+}
+
+static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     // @TODO this will only work for k (cols(a) or rows(b)) % 4 == 0
 
-  //return affine<vtype>(a, b, nullptr, transA, transB, scale, 0 /*currently unused clipValue*/, shiftedBias);
-//}
+  return affine(a, b, nullptr, transA, transB, scale, 0);
+}
 
 } // namespace integer
 } // namespace gpu

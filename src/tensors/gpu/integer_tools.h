@@ -15,11 +15,24 @@ inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
 inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
 
 #ifdef CUDA_FOUND
-    void maxAbsQuantMult(cublasHandle_t& handle, float * input_gpu, size_t items, float * output_gpu);
+    void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu);
     void quantize(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
-    void dequantize(const int8_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr);
+    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr);
+    void cutlass_igemm_dispatcher(bool transA, bool transB,
+        int M,
+        int N,
+        int K,
+        float alpha,
+        int8_t const *A,
+        int lda,
+        int8_t const *B,
+        int ldb,
+        float beta,
+        int32_t *C,
+        int ldc);
+    //void gpuPrinterDispatch(float * mem, size_t idx);
 #else
-    void maxAbsQuantMult(cublasHandle_t& handle, float * input_gpu, size_t items, float * output_gpu) {
+    void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu) {
         handle;
         input_gpu;
         items;
@@ -34,14 +47,43 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         quantMult;
         return;
     }
-    void dequantize(const int8_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr) {
+    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr) {
         input;
         output;
         rows;
         cols;
-        dequantMultAddr;
+        quantMultAaddr;
+        quantMultBaddr;
         return;
     }
+    void cutlass_igemm_dispatcher(bool transA, bool transB,
+        int M,
+        int N,
+        int K,
+        float alpha,
+        int8_t const *A,
+        int lda,
+        int8_t const *B,
+        int ldb,
+        float beta,
+        int32_t *C,
+        int ldc) {
+            M;
+            N;
+            K;
+            alpha;
+            A;
+            lda;
+            B;
+            ldb;
+            beta;
+            C;
+            ldc;
+        }
+        //void gpuPrinterDispatch(float * mem, size_t idx) {
+        //    mem;
+        //    idx;
+        //}
 #endif
 } // namespace integer
 } // namespace gpu

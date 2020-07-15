@@ -21,6 +21,7 @@ struct CudaCompute {
 
 class Backend : public marian::Backend {
 private:
+  bool optimized8_{false};
   void setCudaComputeCapability() {
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
@@ -76,12 +77,12 @@ public:
     return false;
   }
 
-  void setOptimized8(bool optimize) override {
-    LOG_ONCE(info, "setOptimized8() not supported for GPU_{}", optimize);
+  void setOptimized8(bool optimize8) override {
+    optimized8_ = optimize8;
   }
 
   bool isOptimized8() override {
-    return false;
+    return optimized8_;
   }
 
   void setShifted(bool shifted) override {

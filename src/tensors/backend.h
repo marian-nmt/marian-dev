@@ -44,7 +44,7 @@ public:
     }
   }
 
-  // for CPU, sets to use optimized (intgemm8/intgemm16) code for matrix multiplication.
+  // for CPU, sets the GEMM mode for matrix multiplication. When everything is false, float32 is used
   // for GPU, this is invalid. for GPU, all the functions below always returns false and the setters abort.
   virtual void setInt16(bool int16) = 0;
   virtual bool isInt16() = 0;

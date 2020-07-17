@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - CMake-based compilation on Windows
+- Fix minor issues with compilation on MacOS
+- Fix warnings in Windows MSVC builds using CMake
 - Fix building server with Boost 1.72
 - Make mini-batch scaling depend on mini-batch-words and not on mini-batch-words-ref
 - In concatenation make sure that we do not multiply 0 with nan (which results in nan)

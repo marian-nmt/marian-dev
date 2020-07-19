@@ -62,15 +62,16 @@ if(MSVC)
 # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS /WX; /W4;)
 
-  # Disabled bogus warnings for CPU intrincics:
+  # Disabled bogus warnings for CPU intrinsics:
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
   set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
 
-  set(INTRINSICS "/arch:AVX")
+  # set(INTRINSICS "/arch:AVX")
+  add_definitions(-DUSE_SSE2=1)
 
   # Or maybe use these?
-  # set(INTRINSICS "/arch:AVX2")
+  set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
 
   set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
@@ -78,7 +79,9 @@ if(MSVC)
   set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
   # ignores warning LNK4049: locally defined symbol free imported - this comes from zlib
-  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /NODEFAULTLIB:MSVCRT /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRTD")
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")
 
   find_library(SHLWAPI Shlwapi.lib)
@@ -195,6 +198,12 @@ if(USE_SENTENCEPIECE)
   set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
 endif()
 
+if(USE_ONNX)
+  message(STATUS "Enabling experimental ONNX support")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ONNX")
+  set(EXT_LIBS ${EXT_LIBS} protobuf)
+endif()
+
 # Find packages
 set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
 
@@ -203,7 +212,9 @@ if(COMPILE_CUDA)
 
 if(USE_STATIC_LIBS)
   # link statically to stdlib libraries
-  set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+  if(NOT MSVC)
+    set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+  endif()
 
   # look for libraries that have .a suffix
   set(_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -235,12 +246,22 @@ if(CUDA_FOUND)
   endif(COMPILE_CUDA_SM70)
 
   if(USE_STATIC_LIBS)
-    find_library(CUDA_culibos_LIBRARY NAMES culibos PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
-    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_culibos_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
-    set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_culibos_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    find_library(CUDA_culibos_LIBRARY NAMES culibos PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+    # The cuLIBOS library does not seem to exist in Windows CUDA toolkit installs
+    if(CUDA_culibos_LIBRARY)
+      set(EXT_LIBS ${EXT_LIBS} ${CUDA_culibos_LIBRARY})
+      set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_culibos_LIBRARY})
+    elseif(NOT WIN32)
+      message(FATAL_ERROR "cuLIBOS library not found")
+    endif()
     # CUDA 10.1 introduces cublasLt library that is required on static build
     if ((CUDA_VERSION VERSION_EQUAL "10.1" OR CUDA_VERSION VERSION_GREATER "10.1"))
-      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+      if(NOT CUDA_cublasLt_LIBRARY)
+        message(FATAL_ERROR "cuBLASLt library not found")
+      endif()
       set(EXT_LIBS ${EXT_LIBS} ${CUDA_cublasLt_LIBRARY})
       set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_cublasLt_LIBRARY})
     endif()
@@ -304,7 +325,7 @@ if(NOT MSVC)
   list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
   list(APPEND CUDA_NVCC_FLAGS ${INTRINSICS_NVCC})
 else()
-  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; )
+  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
 endif()
 
 list(REMOVE_DUPLICATES CUDA_NVCC_FLAGS)
@@ -351,6 +372,7 @@ if(COMPILE_CPU)
   if(MKL_FOUND)
     include_directories(${MKL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})
+    set(BLAS_FOUND TRUE)
     add_definitions(-DBLAS_FOUND=1 -DMKL_FOUND=1)
   else(MKL_FOUND)
     set(BLAS_VENDOR "OpenBLAS")

@@ -10,12 +10,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Printing word-level scores in scoring
+- LSH indexing to replace short list
+- ONNX support for transformer models
+- Add topk operator like PyTorch's topk
+- Use *cblas_sgemm_batch* instead of a for loop of *cblas_sgemm* on CPU as the batched_gemm implementation
 - Supporting relative paths in shortlist and sqlite options
 - Training and scoring from STDIN
 - Support for reading from TSV files from STDIN and other sources during training
   and translation with options --tsv and --tsv-fields n.
 
 ### Fixed
+- Fix minor issues with compilation on MacOS
+- Fix warnings in Windows MSVC builds using CMake
 - Fix building server with Boost 1.72
 - Make mini-batch scaling depend on mini-batch-words and not on mini-batch-words-ref
 - In concatenation make sure that we do not multiply 0 with nan (which results in nan)

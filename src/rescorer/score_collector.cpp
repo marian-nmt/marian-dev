@@ -77,7 +77,6 @@ std::string ScoreCollector::getAlignment(const data::SoftAlignment& align) {
   } else {
     ABORT("Unrecognized word alignment type");
   }
-  return "";
 }
 
 ScoreCollectorNBest::ScoreCollectorNBest(const Ptr<Options>& options)

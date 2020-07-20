@@ -66,7 +66,15 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
     *(reinterpret_cast<float *>(&(*(output_tensor + item.shape.elements())))) = quantMult;
 }
 
-void unquantizeWemb(io::Item& item, const char * input);
+template<Type vtype>
+void unquantizeWemb(io::Item& item, const char * input) {
+    typedef typename intgemm_<vtype>::type Integer;
+    float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements()));
+    float * output_tensor = reinterpret_cast<float *>(&(*item.bytes.begin()));
+    for (size_t i = 0; i < rows(item.shape) * cols(item.shape); i++) {
+        output_tensor[i] = reinterpret_cast<const Integer *>(input)[i]*(1/quantMult);
+    }
+}
 
 } //integer
 } //cpu

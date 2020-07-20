@@ -66,13 +66,13 @@ int main(int argc, char** argv) {
   graph->compressWemb = !options->get<bool>("float-Wemb"); //The variable is reversed because, sue me
   graph->setDevice(CPU0);
   if (saveGemmType != Type::intgemm16)
-    graph->getBackend()->setOptimized(false);
+    graph->getBackend()->setInt16(false);
   if (saveGemmType != Type::intgemm8)
-    graph->getBackend()->setOptimized8(false);
+    graph->getBackend()->setInt8(false);
 
   auto load = [&](Ptr<ExpressionGraph> graph) {
     graph->setDevice(CPU0);
-    graph->getBackend()->setOptimized(false);
+    graph->getBackend()->setInt16(false);
 
     graph->load(modelFrom);
     graph->forward();  // run the initializers

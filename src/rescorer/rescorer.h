@@ -12,6 +12,7 @@
 #include "rescorer/score_collector.h"
 #include "training/scheduler.h"
 #include "training/validator.h"
+#include "tensors/backend.h"
 
 namespace marian {
 
@@ -75,12 +76,7 @@ public:
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-        graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
-        graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
-        graph->getBackend()->setShiftedAll(options_->get<bool>("intgemm-shifted-all"));
-        graph->getBackend()->setDumpQuantMult(options_->get<bool>("dump-quantmult"));
-        graph->getBackend()->setPrecomputedAlpha(options_->get<bool>("use-precomputed-alphas"));
+        graph->getBackend()->setGemmPrecision(options_);
         graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
       }
 

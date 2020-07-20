@@ -87,11 +87,9 @@ ConfigParser::ConfigParser(cli::mode mode)
       break;
     case cli::mode::translation:
       addOptionsTranslation(cli_);
-      addOptionsIntgemm(cli_);
       break;
     case cli::mode::scoring:
       addOptionsScoring(cli_);
-      addOptionsIntgemm(cli_);
       break;
     default:
       ABORT("wrong CLI mode");
@@ -630,6 +628,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
   cli.add<bool>("--use-legacy-batching",
       "Use legacy codepath with a for loop of cblas_sgemm, instead of cblas_sgemm_batched.");
@@ -691,9 +690,8 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
@@ -834,7 +832,7 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
-void ConfigParser::addOptionsIntgemm(cli::CLIWrapper& cli) {
+void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
   // clang-format off
   cli.add<bool>("--int16",
       "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");

@@ -477,7 +477,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isOptimized8() || matchType<intgemm8>(bElementType)) {
+      if(a->graph()->getBackend()->isInt8() || matchType<intgemm8>(bElementType)) {
         bool shiftedAll = a->graph()->getBackend()->isShiftedAll(); //@TODO
         return cpu::integer::dot<Type::int8>(
           a,
@@ -486,7 +486,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
           transB,
           scale,
           shiftedAll);
-      } else if(a->graph()->getBackend()->isOptimized() || matchType<intgemm16>(bElementType)) {
+      } else if(a->graph()->getBackend()->isInt16() || matchType<intgemm16>(bElementType)) {
         return cpu::integer::dot<Type::int16>(
           a,
           b,
@@ -527,7 +527,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     if(transA)
       std::swap(m, k);
 
-    if(a->graph()->getBackend()->isOptimized8() && (k%4 == 0)) {
+    if(a->graph()->getBackend()->isInt8() && (k%4 == 0)) {
       return gpu::integer::dot(clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
     } else {
       return Expression<DotNodeOp>(
@@ -570,7 +570,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isOptimized8()  || matchType<intgemm8>(bElementType) ) {
+      if(a->graph()->getBackend()->isInt8()  || matchType<intgemm8>(bElementType) ) {
         bool shiftedBias = a->graph()->getBackend()->isShifted();
         return cpu::integer::affine<Type::int8>(
           a,
@@ -581,7 +581,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
           scale,
           clipValue,
           shiftedBias);
-      } else if(a->graph()->getBackend()->isOptimized()  || matchType<intgemm16>(bElementType) ) {
+      } else if(a->graph()->getBackend()->isInt16()  || matchType<intgemm16>(bElementType) ) {
         return cpu::integer::affine<Type::int16>(
           a,
           b,
@@ -627,7 +627,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     int k = a->shape().back();
     if(transA)
       std::swap(m, k);
-    if(a->graph()->getBackend()->isOptimized8() && (k%4 == 0)) {
+    if(a->graph()->getBackend()->isInt8() && (k%4 == 0)) {
       return gpu::integer::affine(clip(a, clipValue), clip(b, clipValue),bias, transA, transB, scale, 0.0f /*unused clipvalue*/);
     } else {
       return affineDefault(a, b, bias, transA, transB, scale);

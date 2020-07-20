@@ -86,14 +86,9 @@ public:
         graph->setDefaultElementType(typeFromString(prec[0]));
         graph->setDevice(device);
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-        graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
+        graph->getBackend()->setGemmPrecision(options_);
         if (device.type == DeviceType::cpu) {
-          graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-          graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
-          graph->getBackend()->setShiftedAll(options_->get<bool>("intgemm-shifted-all"));
-          graph->getBackend()->setDumpQuantMult(options_->get<bool>("dump-quantmult"));
-          graph->getBackend()->setPrecomputedAlpha(options_->get<bool>("use-precomputed-alphas"));
-          graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
+            graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
         }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
@@ -234,13 +229,8 @@ public:
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-      graph->getBackend()->setOptimized8(options_->get<bool>("optimize8"));
+      graph->getBackend()->setGemmPrecision(options_);
       if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-        graph->getBackend()->setShifted(options_->get<bool>("intgemm-shifted"));
-        graph->getBackend()->setShiftedAll(options_->get<bool>("intgemm-shifted-all"));
-        graph->getBackend()->setDumpQuantMult(options_->get<bool>("dump-quantmult"));
-        graph->getBackend()->setPrecomputedAlpha(options_->get<bool>("use-precomputed-alphas"));
         graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
       }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));

@@ -21,7 +21,7 @@ struct CudaCompute {
 
 class Backend : public marian::Backend {
 private:
-  bool optimized8_{false};
+  bool int8_{false};
   void setCudaComputeCapability() {
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
@@ -69,20 +69,20 @@ public:
 
   // for CPU, sets to use optimized code for inference.
   // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
-  void setOptimized(bool optimize) override {
+  void setInt16(bool optimize) override {
     LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
   }
 
-  bool isOptimized() override {
+  bool isInt16() override {
     return false;
   }
 
-  void setOptimized8(bool optimize8) override {
-    optimized8_ = optimize8;
+  void setInt8(bool optimize) override {
+    int8_ = optimize;
   }
 
-  bool isOptimized8() override {
-    return optimized8_;
+  bool isInt8() override {
+    return int8_;
   }
 
   void setShifted(bool shifted) override {

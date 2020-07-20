@@ -261,7 +261,7 @@ namespace marian {
 
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
         Expr preparedBias = nullptr;
-        if ((graph_->getBackend()->isOptimized8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
+        if ((graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
           if (!isLegacyUntransposedW) {
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;
@@ -282,7 +282,7 @@ namespace marian {
             }
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
-        } else if ((graph_->getBackend()->isOptimized() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
+        } else if ((graph_->getBackend()->isInt16() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
           if (!isLegacyUntransposedW) {
             Wt_ = transpose(Wt_);
             isLegacyUntransposedW = true;

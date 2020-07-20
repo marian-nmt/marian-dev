@@ -144,6 +144,30 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
       config["valid-mini-batch"] = 8;
       config["normalize"] = 1.0;
     });
+  } else { // Only available during translation/scoring or server modes
+      cli.alias("int16", "true", [&](YAML::Node& config) {
+        config["gemm-precision"] = std::string("int16");
+      });
+
+      cli.alias("int8", "true", [&](YAML::Node& config) {
+        config["gemm-precision"] = std::string("int8");
+      });
+
+      cli.alias("int8shift", "true", [&](YAML::Node& config) {
+        config["gemm-precision"] = std::string("int8shift");
+      });
+
+      cli.alias("int8shiftAlpha", "true", [&](YAML::Node& config) {
+        config["gemm-precision"] = std::string("int8shiftAlpha");
+      });
+
+      cli.alias("int8shiftAll", "true", [&](YAML::Node& config) {
+        config["gemm-precision"] = std::string("int8shiftAll");
+      });
+
+      cli.alias("int8shiftAlphaAll", "true", [&](YAML::Node& config) {
+        config["gemm-precision"] = std::string("int8shiftAlphaAll");
+      });
   }
 }
 

@@ -31,7 +31,7 @@ public:
     std::string gemmPrecision = options->get<std::string>("gemm-precision");
     bool dumpQuantMults = options->get<bool>("dump-quantmult");
     if (dumpQuantMults) {
-      setOptimized8(true);
+      setInt8(true);
       setShifted(true);
       setShiftedAll(true);
       setDumpQuantMult(true);
@@ -39,22 +39,22 @@ public:
     } else if (gemmPrecision == "float32") {
       // Default case, all variables are false. Do nothing
     } else if (gemmPrecision == "int16") {
-      setOptimized(true);
+      setInt16(true);
     } else if (gemmPrecision == "int8") {
-      setOptimized8(true);
+      setInt8(true);
     } else if (gemmPrecision == "int8shift") {
-      setOptimized8(true);
+      setInt8(true);
       setShifted(true);
     } else if (gemmPrecision == "int8shiftAlpha") {
-      setOptimized8(true);
+      setInt8(true);
       setShifted(true);
       setPrecomputedAlpha(true);
     } else if (gemmPrecision == "int8shiftAll") {
-      setOptimized8(true);
+      setInt8(true);
       setShifted(true);
       setShiftedAll(true);
     } else if (gemmPrecision == "int8shiftAlphaAll") {
-      setOptimized8(true);
+      setInt8(true);
       setShifted(true);
       setShiftedAll(true);
       setPrecomputedAlpha(true);
@@ -68,10 +68,10 @@ public:
 
   // for CPU, sets to use optimized code for inference.
   // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
-  virtual void setOptimized(bool optimize) = 0;
-  virtual bool isOptimized() = 0;
-  virtual void setOptimized8(bool optimize) = 0;
-  virtual bool isOptimized8() = 0;
+  virtual void setInt16(bool optimize) = 0;
+  virtual bool isInt16() = 0;
+  virtual void setInt8(bool optimize) = 0;
+  virtual bool isInt8() = 0;
   virtual void setShifted(bool shifted) = 0;
   virtual bool isShifted() = 0;
   virtual void setShiftedAll(bool shifted) = 0;

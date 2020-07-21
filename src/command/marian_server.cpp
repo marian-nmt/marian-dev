@@ -22,10 +22,10 @@ int main(int argc, char **argv) {
   auto &translate = server.endpoint["^/translate/?$"];
 
   translate.on_message = [&task](Ptr<WSServer::Connection> connection,
-                                 Ptr<WSServer::Message> message) {
+                                 Ptr<WSServer::InMessage> message) {
     // Get input text
     auto inputText = message->string();
-    auto sendStream = std::make_shared<WSServer::SendStream>();
+    auto sendStream = std::make_shared<WSServer::OutMessage>();
 
     // Translate
     timer::Timer timer;
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 
   // Error Codes for error code meanings
   // http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html
-  translate.on_error = [](Ptr<WSServer::Connection> connection,
+  translate.on_error = [](Ptr<WSServer::Connection> /*connection*/,
                           const SimpleWeb::error_code &ec) {
     LOG(error, "Connection error: ({}) {}", ec.value(), ec.message());
   };

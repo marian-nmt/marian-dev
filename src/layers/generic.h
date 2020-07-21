@@ -12,8 +12,6 @@ namespace marian { namespace mlp {
   enum struct act : int { linear, tanh, sigmoid, ReLU, LeakyReLU, PReLU, swish };
 }}
 
-YAML_REGISTER_TYPE(marian::mlp::act, int)
-
 namespace marian {
 
 // Each layer consists of LayerBase and IXXXLayer which defines one or more apply()
@@ -41,6 +39,7 @@ public:
 
 // Simplest layer interface: Unary function
 struct IUnaryLayer {
+  virtual ~IUnaryLayer() {}
   virtual Expr apply(Expr) = 0;
   virtual Expr apply(const std::vector<Expr>& es) {
     ABORT_IF(es.size() > 1, "Not implemented"); // simple stub
@@ -61,6 +60,7 @@ struct IEmbeddingLayer {
 
   // alternative from indices directly
   virtual Expr applyIndices(const std::vector<WordIndex>& embIdx, const Shape& shape) const = 0;
+  virtual ~IEmbeddingLayer() {}
 };
 
 // base class for Encoder and Decoder classes, which have embeddings and a batch index (=stream index)
@@ -175,7 +175,7 @@ public:
 
     auto useLayerNorm = opt<bool>("layer-normalization", false);
     auto useNematusNorm = opt<bool>("nematus-normalization", false);
-    auto activation = opt<act>("activation", act::linear);
+    auto activation = (act)opt<int>("activation", (int)act::linear);
 
     auto g = graph_;
 
@@ -228,6 +228,12 @@ public:
   Expr apply(Expr input) override { return apply(std::vector<Expr>({input})); }
 };
 
+} // namespace mlp
+
+class LSH;
+
+namespace mlp {
+
 class Output : public LayerBase, public IUnaryLogitLayer, public IHasShortList {
 private:
   // parameters held by this layer
@@ -239,10 +245,11 @@ private:
   Expr cachedShortb_;   // these match the current value of shortlist_
   Expr cachedShortLemmaEt_;
   Ptr<FactoredVocab> factoredVocab_;
-
+  
   // optional parameters set/updated after construction
   Expr tiedParam_;
   Ptr<data::Shortlist> shortlist_;
+  Ptr<LSH> lsh_;
 
   void lazyConstruct(int inputDim);
 public:
@@ -414,4 +421,32 @@ public:
     ABORT("not implemented"); // @TODO: implement me
   }
 };
+
+// --- a few layers with built-in parameters created on the fly, without proper object
+// @TODO: change to a proper layer object
+
+// like affine() but with built-in parameters, activation, and dropout
+static inline
+Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
+{
+  auto graph = x->graph();
+
+  auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorotUniform());
+  auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
+
+  x = affine(x, W, b);
+  if (actFn)
+    x = actFn(x);
+  x = dropout(x, dropProb);
+  return x;
+}
+
+static inline
+Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) {
+  int dimModel = x->shape()[-1];
+  auto scale = x->graph()->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
+  auto bias  = x->graph()->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
+  return marian::layerNorm(x, scale, bias, 1e-6f);
+}
+
 }  // namespace marian

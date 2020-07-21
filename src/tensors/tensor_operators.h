@@ -25,13 +25,16 @@
 namespace marian {
 
 template <typename InIt, typename OutIt>
-void copy(Ptr<Backend> backend, const InIt beg, const InIt end, OutIt it) {
+void copy(Ptr<Backend>& backend, const InIt beg, const InIt end, OutIt it) {
 #ifdef CUDA_FOUND
   if(backend->getDeviceId().type == DeviceType::gpu)
     gpu::copy(backend, beg, end, it);
   else
-#endif
     std::copy(beg, end, it);
+#else
+    backend;
+    std::copy(beg, end, it);
+#endif
 }
 
 DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor);
@@ -54,12 +57,12 @@ void Add(Functor functor, float scale, marian::Tensor out, Tensors... tensors) {
     gpu::Add(functor, scale, out, tensors...);
   else
 #endif
-    cpu::Aggregate(functor, 0.0f, functional::_1 + functional::_2, scale, out, tensors...);
+    cpu::Aggregate(functor, /*aggInit=*/0.0f, functional::_1 + functional::_2, scale, out, tensors...);
 }
 
 template <class Functor, class... Tensors>
 void Add(Functor functor, marian::Tensor out, Tensors... tensors) {
-  Add(functor, 1, out, tensors...);
+  Add(functor, /*scale=*/1.f, out, tensors...);
 }
 
 template <class Functor, class AggFunctor, class... Tensors>
@@ -119,7 +122,7 @@ DISPATCH3(Concatenate, marian::Tensor, const std::vector<marian::Tensor>&, int)
 
 // clang-format on
 
-// Bernoulli(tensor, 0.5f, 2.f, -1.f) generates a tensor composed of 50% of 1 and 50% of -1. 
+// Bernoulli(tensor, 0.5f, 2.f, -1.f) generates a tensor composed of 50% of 1 and 50% of -1.
 static inline void Bernoulli(Tensor resultTensor, float keepProb, float scale = 1.f, float shift = 0.f) {
   // in-place uniform distribution
   auto rnd = resultTensor->getBackend()->getRandomGenerator();
@@ -219,6 +222,8 @@ DISPATCH3(PasteCols, marian::Tensor, const marian::Tensor, const marian::Tensor)
 
 DISPATCH4(Select, marian::Tensor, const marian::Tensor, const marian::Tensor, int)
 DISPATCH4(Insert, marian::Tensor, const marian::Tensor, const marian::Tensor, int)
+
+DISPATCH7(TopK, marian::Tensor, marian::Tensor, Ptr<Allocator>, const marian::Tensor, int, int, bool);
 
 DISPATCH2(LSTMCellForward, marian::Tensor, std::vector<marian::Tensor>)
 DISPATCH2(LSTMOutputForward, marian::Tensor, std::vector<marian::Tensor>);

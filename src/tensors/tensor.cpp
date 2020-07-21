@@ -1,5 +1,6 @@
 #include "tensors/tensor.h"
 #include "tensors/tensor_operators.h"
+#include "common/io.h"
 
 namespace marian {
 
@@ -27,17 +28,19 @@ std::string TensorBase::debug(int precision, int dispCols) {
   else
     strm << std::fixed << std::setprecision(0) << std::setfill(' ');
 
-  // double maxv = std::numeric_limits<double>::lowest();
-  // double minv = std::numeric_limits<double>::max();
-  // double l2Norm = 0.0;
+  double maxv = std::numeric_limits<double>::lowest();
+  double minv = std::numeric_limits<double>::max();
+  double l2Sum = 0.0;
+  for(int i = 0; i < values.size(); ++i) {
+    if((double)values[i] > maxv) maxv = (double)values[i];
+    if((double)values[i] < minv) minv = (double)values[i];
+    l2Sum += (double)values[i] * (double)values[i];
+  }
+  strm << "min: " << minv << " max: " << maxv << " l2-norm: " << sqrt(l2Sum) << std::endl;
 
   for(int i = 0; i < values.size(); ++i) {
     std::vector<int> dims;
     shape().dims(i, dims);
-
-    // if((double)values[i] > maxv) maxv = values[i];
-    // if((double)values[i] < minv) minv = values[i];
-    // l2Norm += (double)values[i] * (double)values[i];
 
     bool disp = true;
     for(int j = 0; j < dims.size(); ++j)
@@ -94,8 +97,6 @@ std::string TensorBase::debug(int precision, int dispCols) {
     }
   }
   strm << std::endl;
-  //strm << "min: " << minv << " max: " << maxv << " l2-norm: " << sqrt(l2Norm);
-
   return strm.str();
 }
 
@@ -120,12 +121,21 @@ void TensorBase::get(io::Item& item, const std::string& name) {
   item.shape = shape_;
   item.type  = type_;
 
-  size_t bytesWithoutPadding = shape_.elements() * sizeOf(type_);
-  item.bytes.resize(bytesWithoutPadding);
+  item.bytes.resize(memory_->size());
   copy(backend_,
        memory_->data<char>(),
-       memory_->data<char>() + bytesWithoutPadding,
+       memory_->data<char>() + memory_->size(),
        item.bytes.data());
+}
+
+void TensorBase::set(const io::Item& item) {
+  ABORT_IF(item.type != type_, "Tensor type {} and item type {} do not match", type_, item.type);
+  ABORT_IF(item.shape != shape_, "Tensor shape {} and item shape {} do not match", shape_, item.shape);
+  ABORT_IF(item.bytes.size() > memory_->size(), "Item data size {} too large for memory {}", item.bytes.size(), memory_->size());
+  copy(backend_,
+       item.bytes.data(),
+       item.bytes.data() + item.bytes.size(),
+       memory_->data<char>());
 }
 
 }  // namespace marian

@@ -10,6 +10,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-override"
 #endif
+#undef HOST
 #include "mpi.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -156,11 +157,8 @@ public:
   void scatterReduceAndResetGrads() const override {
     const_cast<DefaultCommunicator*>(this)->lazyInit();
 
-    int totalSize = (int)graphs_[0]->params()->vals()->size();
-    int shardSize = (int)ceil(totalSize / (float)graphs_.size());
-
     // Gather gradients from different devices into current gradient shards
-    auto scatter = [this, shardSize](size_t idx, size_t begin, size_t end) {
+    auto scatter = [this](size_t idx, size_t begin, size_t end) {
       auto curGrad = graphs_[idx]->params()->grads()->subtensor(begin, end-begin);
 
       // collect and sum gradients
@@ -176,7 +174,7 @@ public:
     };
 
     // reset gradients outside current shard
-    auto reset = [this, shardSize](size_t idx, size_t begin, size_t end) {
+    auto reset = [this](size_t idx, size_t begin, size_t end) {
       auto grad = graphs_[idx]->params()->grads();
       if (begin > 0)
         grad->subtensor(0, begin)->set(0);
@@ -189,11 +187,9 @@ public:
   }
 
   void allGatherParams() const override {
-    int totalSize = (int)graphs_[0]->params()->vals()->size();
-    int shardSize = (int)ceil(totalSize / (float)graphs_.size());
 
     // Update all graphs with parameter shard
-    auto gather = [this, shardSize](size_t idx, size_t begin, size_t end) {
+    auto gather = [this](size_t idx, size_t begin, size_t end) {
       auto getShard = [&](Ptr<ExpressionGraph> graph) {
         return graph->params()->vals()->subtensor(begin, end-begin);
       };

@@ -14,6 +14,12 @@
 #define noinline __attribute__((noinline))
 #endif
 
+namespace marian {
+  static bool throwExceptionOnAbort = false;
+  bool getThrowExceptionOnAbort() { return throwExceptionOnAbort; }
+  void setThrowExceptionOnAbort(bool doThrowExceptionOnAbort) { throwExceptionOnAbort = doThrowExceptionOnAbort; };
+}
+
 std::shared_ptr<spdlog::logger> createStderrLogger(const std::string& name,
                                                    const std::string& pattern,
                                                    const std::vector<std::string>& files,
@@ -118,7 +124,7 @@ static void setErrorHandlers() {
   std::set_terminate(unhandledException);
 #ifdef __unix__
   // catch segfaults
-  struct sigaction sa = { 0 };
+  struct sigaction sa = { {0} };
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_SIGINFO;
   sa.sa_sigaction = [](int /*signal*/, siginfo_t*, void*) { ABORT("Segmentation fault"); };

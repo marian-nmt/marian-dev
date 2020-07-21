@@ -5,10 +5,11 @@
 #include "graph/node_operators.h"
 #include "graph/node_operators_binary.h"
 #include "graph/node_operators_unary.h"
+#include "graph/node_operators_tuple.h"
 
 #include "graph/auto_tuner.h"
 #include "tensors/cpu/int16.h"
-#include "tensors/cpu/expanded_gemm.h"
+#include "tensors/cpu/fbgemm/expanded_gemm.h"
 
 #if USE_FBGEMM
 #include "fbgemm/Utils.h"
@@ -24,6 +25,16 @@ Expr debug(Expr a, const std::string& message) {
 Expr checkpoint(Expr a) {
   a->markCheckpoint();
   return a;
+}
+
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, 
+            LambdaNodeFunctor fwd) {
+  return Expression<LambdaNodeOp>(nodes, shape, type, fwd);
+}
+
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, 
+            LambdaNodeFunctor fwd, LambdaNodeFunctor bwd) {
+  return Expression<LambdaNodeOp>(nodes, shape, type, fwd, bwd);
 }
 
 // logistic function. Note: scipy name is expit()
@@ -56,6 +67,10 @@ Expr log(Expr a) {
 
 Expr exp(Expr a) {
   return Expression<ExpNodeOp>(a);
+};
+
+Expr sin(Expr a) {
+  return Expression<SinNodeOp>(a);
 };
 
 Expr swish(Expr a) {
@@ -119,12 +134,52 @@ Expr logaddexp(Expr a, Expr b) {
   return Expression<LogAddExpNodeOp>(a, b);
 }
 
+Expr2 topk(Expr a, int k, int axis, bool descending) {
+  // only supports topk along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1);                              // non-op if axes are the same
+  auto topkVal = Expression<TopKNodeOp>(a, k, -1, descending); // axis=-1 is OK now as we swapped
+  auto topkIdx = std::dynamic_pointer_cast<TopKNodeOp>(topkVal)->tupleView(); // get a view on the top-k values
+  return std::make_tuple(swapAxes(topkVal, axis, -1), swapAxes(topkIdx, axis, -1)); // non-op if axes are the same
+}
+
+Expr2 argmax(Expr a, int axis) {
+  return topk(a, 1, axis, /*descending=*/true);
+}
+
+Expr2 argmin(Expr a, int axis) {
+  return topk(a, 1, axis, /*descending=*/false);
+}
+
 Expr maximum(Expr a, Expr b) {
   return Expression<MaximumNodeOp>(a, b);
 }
 
+// @TODO: implement version without constant
+Expr maximum(float a, Expr b) {
+  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  return Expression<MaximumNodeOp>(aExpr, b);
+}
+
+Expr maximum(Expr a, float b) {
+  return maximum(b, a);
+}
+
 Expr minimum(Expr a, Expr b) {
   return Expression<MinimumNodeOp>(a, b);
+}
+
+// @TODO: implement version without constant
+Expr minimum(float a, Expr b) {
+  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  return Expression<MinimumNodeOp>(aExpr, b);
+}
+
+Expr minimum(Expr a, float b) {
+  return minimum(b, a);
+}
+
+Expr abs(Expr a) {
+  return Expression<AbsNodeOp>(a);
 }
 
 Expr lt(Expr a, Expr b) { return Expression<CmpNodeOp>(a, b, -1, false); }
@@ -285,11 +340,6 @@ Expr stopGradient(Expr a) {
   return res;
 }
 
-Expr constant_like(Expr a, const Ptr<inits::NodeInitializer>& init) {
-  auto graph = a->graph();
-  return graph->constant(a->shape(), init, a->value_type());
-}
-
 // gather() -- gather arbitrary elements along an axis; batched or non-batched
 Expr gather(Expr a, int axis, Expr indices) {
   return Expression<GatherNodeOp>(a, axis, indices);
@@ -318,6 +368,7 @@ Expr index_select(Expr a, int axis, Expr indices) {
   indices = reshape(indices, shape); // move index to axis
   return gather(a, axis, indices);
 }
+
 Expr index_select(Expr a, int axis, const std::vector<IndexType>& indices) {
   auto indexExpr = a->graph()->indices(indices);
   return index_select(a, axis, indexExpr);
@@ -356,35 +407,51 @@ Expr slice(Expr a, int axis, Slice slice) { // numpy __getslice__ semantics, but
 }
 
 Expr sum(Expr a, int ax) {
+  if(a->shape()[ax] == 1) // nothing to reduce, sum of itself is a
+    return a;
   return Expression<ReduceNodeOp>(a, ax, ReduceNodeOpCode::sum);
 }
 
 Expr mean(Expr a, int ax) {
+  if(a->shape()[ax] == 1) // nothing to reduce, mean of itself is a
+    return a;
   return Expression<ReduceNodeOp>(a, ax, ReduceNodeOpCode::mean);
 }
 
 Expr std(Expr a, int ax) {
-  return Expression<ReduceNodeOp>(a - mean(a,ax), ax, ReduceNodeOpCode::rms);
+  if(a->shape()[ax] == 1) // nothing to reduce, std(a) = 0
+    return a - a;
+  return Expression<ReduceNodeOp>(a - mean(a, ax), ax, ReduceNodeOpCode::rms);
 }
 
-Expr var(Expr a, int ax) {
+Expr var(Expr a, int ax) { 
+  if(a->shape()[ax] == 1) // nothing to reduce, var(a) = 0
+    return a - a;
   return Expression<ReduceNodeOp>(a - mean(a, ax), ax, ReduceNodeOpCode::meanSqr);
 }
 
 Expr max(Expr a, int ax) {
+  if(a->shape()[ax] == 1) // nothing to reduce, max of itself is a
+    return a;
   return Expression<ReduceNodeOp>(a, ax, ReduceNodeOpCode::max);
 }
 
 Expr min(Expr a, int ax) {
+  if(a->shape()[ax] == 1) // nothing to reduce, min of itself is a
+    return a;
   return Expression<ReduceNodeOp>(a, ax, ReduceNodeOpCode::min);
 }
 
 Expr prod(Expr a, int ax) {
+  if(a->shape()[ax] == 1) // nothing to reduce, prod of itself is a
+    return a;
   return Expression<ReduceNodeOp>(a, ax, ReduceNodeOpCode::prod);
 }
 
 // log(sum(exp(a)))
 Expr logsumexp(Expr a, int ax) {
+  if(a->shape()[ax] == 1) // nothing to reduce, log(sum(exp(a))) = log(exp(a)) = a
+    return a;
   return Expression<ReduceNodeOp>(a, ax, ReduceNodeOpCode::logSumExp);
 }
 
@@ -401,18 +468,50 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
   float clipValue = a->graph()->getBackend()->getClip();
+  // added support for packed GEMM API (fp16, int8)
+  Type aElementType = a->value_type();
+  Type bElementType = b->value_type();
 
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
-  if(device == DeviceType::cpu && a->graph()->getBackend()->isOptimized()
-     && a->graph()->getBackend()->getGemmType() == GemmType::IntrinInt16) {
-    // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-    // if transA = false and transB = false.
+  if(device == DeviceType::cpu) {
+    if(isFloat(aElementType) && isFloat(bElementType)) {
+      if(a->graph()->getBackend()->isOptimized()) {
+        // dotInt16 computes A * B.T, hence the transpose for B to get A * B
+        // if transA = false and transB = false.
 
-    return cpu::int16::dot(
-        cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-        cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-        scale);
+        return cpu::int16::dot(
+          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+          scale);
+      } else {
+        return Expression<DotNodeOp>(
+          clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+      }
+    } else if(isFloat(aElementType) && isPacked(bElementType)) {
+#if USE_FBGEMM
+      // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
+      // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
+      // It looks at the cpu register
+      // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
+      // and this cpu lookup is executed only once and the state is kept in FBGEMM.
+      if(fbgemm::fbgemmHasAvx2Support()) {
+        // This variant of dot product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
+        return cpu::variant::dot(clip(a, clipValue),
+                                 b,
+                                 b->shape(),
+                                 transA,
+                                 transB,
+                                 scale);
+      } else {
+        ABORT("AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed GEMM");
+      }
+#else
+      ABORT("Packed GEMM is not available in this build");
+#endif  // USE_FBGEMM
+    } else {
+      ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
+    }
   } else {
     return Expression<DotNodeOp>(
         clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
@@ -423,198 +522,77 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
   return Expression<DotBatchedNodeOp>(a, b, transA, transB, scale);
 }
 
+static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+  // general version, MKL, CBlas or CUDA
+
+  // if clipValue > 0, the inputs will be clipped to range [-clipValue,
+  // clipValue] This is meant to keep values at the same range as used during
+  // training when optimizing for 8-bit integer products. Likely to be removed
+  // in the future when we explore better ways to handle this.
+  float clipValue = a->graph()->getBackend()->getClip();
+
+  int rows = a->shape().elements() / a->shape()[-1];
+  Expr ones = a->graph()->ones({ rows, 1 });
+  std::vector<Expr> nodes
+    = { clip(a, clipValue), clip(b, clipValue), bias, ones };
+  return Expression<AffineNodeOp>(nodes, transA, transB, scale);
+}
+
+// This operation used to implement auto-tuning. We have removed it for now due to complexity, but plan to revisit it in the future. 
+// The last branch with auto-tuner is: 
+// youki/packed-model-pr-backup1031
+// https://machinetranslation.visualstudio.com/Marian/_git/marian-dev?version=GByouki%2Fpacked-model-pr-backup1031
+// SHA: 3456a7ed1d1608cfad74cd2c414e7e8fe141aa52
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
   float clipValue = a->graph()->getBackend()->getClip();
+  Type aElementType = a->value_type();
+  Type bElementType = b->value_type();
 
-  if(device == DeviceType::cpu && a->graph()->getBackend()->isOptimized()) {
-    GemmType gemmType = a->graph()->getBackend()->getGemmType();
-    // When gemmType is set to 'auto', an autotuner decides the best algorithm available.
-    // A new autotuner is created, then different kinds of algorithms are added to the autotuner.
-    // For each GEMM size, there is a unique hash key.
-    // (e.g. m, n, k, transpose A, transpose B, bias size for GEMM)
-    if(gemmType == GemmType::Auto) {
-      thread_local Ptr<AutoTuner<Expr>> tuner = New<AutoTuner<Expr>>();
-
-      // start with new set of algorithms
-      tuner->clear();
-
-      // lower precicion for shapes, reduces data sparsity
-      auto sh = [](Shape sh) {
-        for(size_t i = 0; i < sh.size(); ++i)
-          sh.set(i, sh[i] / 4);
-        return sh;
-      };
-
-      // create context for current call as hash
-      std::size_t hash = sh(a->shape()).hash();
-      util::hash_combine(hash, sh(b->shape()).hash());
-      util::hash_combine(hash, sh(bias->shape()).hash());
-      util::hash_combine(hash, transA);
-      util::hash_combine(hash, transB);
-
-#if USE_FBGEMM
-      // Use Packed GEMM only if the node b in the graph is memoized.
-      // More specifically, packed GEMM is used only if the B matrix (weight) is constant.
-      // In general, 'memoized' means that the node is a constant variable or
-      // a combination of contant nodes which is also a constant variable
-      // when it's computed once.
-      // Those memoized nodes are cached to avoid duplicated computations.
-      // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
-      // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
-      // It looks at the cpu register 
-      // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
-      // and this cpu lookup is executed only once and the state is kept in FBGEMM.
-      if(fbgemm::fbgemmHasAvx2Support() && b->memoize()) {
-        // add packed GEMM algorithm variant (Packed GEMM) to the autotuner
-        // Once an algorithm is added to the autotuner,
-        // autotuner runs all the added algorithms for a designated times.
-        // One algorithm is run per one this operation call
-        // and the stat for that algorithm is collected.
-        // When all the algorithms reach the maximum stat collection count,
-        // the autotuner decide the best algorithm, and keep using it afterward.
-        size_t hashPack = hash;
-        util::hash_combine(hashPack, 1);
-        auto recPack = [=](Expr e, bool stop = false) {
-          e->record(tuner, hashPack, stop);
-          return e;
-        };
-
-        auto algPack = [=]() {
-          auto packed = cpu::variant::pack(b, cpu::variant::PackMatrix::B, transB, clipValue);
-
-          return recPack(
-              cpu::variant::affine(
-                  clip(a, clipValue),
-                  packed,
-                  b->shape(),
-                  bias,
-                  transA,
-                  transB,
-                  scale),
-              true);
-        };
-        tuner->insert({hashPack, algPack});
-      }
-#endif // USE_FBGEMM
-
-      // add second algorithm variant (Int16) to the autotuner
-      size_t hashInt16 = hash;
-      util::hash_combine(hashInt16, 2);
-      auto recInt16 = [=](Expr e, bool stop = false) {
-        e->record(tuner, hashInt16, stop);
-        return e;
-      };
-      auto algInt16 = [=]() {
-        return recInt16(
-            cpu::int16::affine(
-                recInt16(
-                    cpu::int16::quantize(
-                        transA ? recInt16(transpose(a)) : a,
-                        clipValue)),
-                cpu::int16::quantize(
-                    transB ? b : transpose(b),
-                    clipValue),
-                bias,
-                scale),
-            true);
-      };
-      tuner->insert({hashInt16, algInt16});
-
-      // add third algorithm variant (CBlas) to the autotuner
-      size_t hashCblas = hash;
-      util::hash_combine(hashCblas, 3);
-      auto recCblas = [=](Expr e, bool stop = false) {
-        e->record(tuner, hashCblas, stop);
-        return e;
-      };
-
-      auto algCblas = [=]() {
-        auto ac = clip(a, clipValue);
-        if(ac != a)
-          ac = recCblas(ac);
-
-        auto bc = clip(b, clipValue);
-        if(bc != b)
-          bc = recCblas(bc);
-
-        int rows = ac->shape().elements() / ac->shape()[-1];
-        Expr ones = ac->graph()->ones({rows, 1}, bias->value_type());
-        std::vector<Expr> nodes = {ac, bc, bias, ones};
-        return recCblas(Expression<AffineNodeOp>(nodes, transA, transB, scale),
-                        true);
-      };
-      tuner->insert({hashCblas, algCblas});
-
-      // execute algorithm with autotuning
-      return tuner->run();
-    } else {
-      if(gemmType == GemmType::IntrinInt16) {
+  if(device == DeviceType::cpu) {
+    if(isFloat(aElementType) && isFloat(bElementType)) {
+      if(a->graph()->getBackend()->isOptimized()) {
         // cpu int16 version
         return cpu::int16::affine(
-            cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-            cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-            bias,
-            scale);
-      } else if(gemmType == GemmType::FbFp16Packed) {
-#if USE_FBGEMM
-        // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
-        // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
-        // It looks at the cpu register
-        // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
-        // and this cpu lookup is executed only once and the state is kept in FBGEMM.
-        if(fbgemm::fbgemmHasAvx2Support() && b->memoize()) {
-          auto packed = cpu::variant::pack(b, cpu::variant::PackMatrix::B, transB, clipValue);
-
-          return cpu::variant::affine(
-              clip(a, clipValue),
-              packed,
-              b->shape(),
-              bias,
-              transA,
-              transB,
-              scale);
-        } else {
-          int rows = a->shape().elements() / a->shape()[-1];
-          Expr ones = a->graph()->ones({rows, 1}, bias->value_type());
-          std::vector<Expr> nodes = {clip(a, clipValue), clip(b, clipValue), bias, ones};
-          return Expression<AffineNodeOp>(nodes, transA, transB, scale);
-        }
-#else
-        ABORT("Packed GEMM is not available in this build");
-#endif  // USE_FBGEMM
-
-      } else if(gemmType == GemmType::MklFp32) {
-        // general version, MKL, CBlas or CUDA
-
-        // if clipValue > 0, the inputs will be clipped to range [-clipValue,
-        // clipValue] This is meant to keep values at the same range as used during
-        // training when optimizing for 8-bit integer products. Likely to be removed
-        // in the future when we explore better ways to handle this.
-
-        int rows = a->shape().elements() / a->shape()[-1];
-        Expr ones = a->graph()->ones({rows, 1}, bias->value_type());
-        std::vector<Expr> nodes
-            = {clip(a, clipValue), clip(b, clipValue), bias, ones};
-        return Expression<AffineNodeOp>(nodes, transA, transB, scale);
+          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
+          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
+          bias,
+          scale);
       } else {
-        ABORT("GemmType..{} not available by affine()", gemmType);
+        return affineDefault(a, b, bias, transA, transB, scale);
       }
+    } else if(isFloat(aElementType) && isPacked(bElementType)) {
+#if USE_FBGEMM
+      // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
+      // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
+      // It looks at the cpu register
+      // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
+      // and this cpu lookup is executed only once and the state is kept in FBGEMM.
+      if(fbgemm::fbgemmHasAvx2Support()) {
+        // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
+        return cpu::variant::affine(clip(a, clipValue),
+                                    b,
+                                    b->shape(),
+                                    bias,
+                                    transA,
+                                    transB,
+                                    scale);
+      } else {
+        ABORT("AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed GEMM");
+      }
+#else
+      ABORT("Packed GEMM is not available in this build");
+#endif  // USE_FBGEMM
+    } else {
+      ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
   } else {
-    // general version, MKL, CBlas or CUDA
-
-    // if clipValue > 0, the inputs will be clipped to range [-clipValue,
-    // clipValue] This is meant to keep values at the same range as used during
-    // training when optimizing for 8-bit integer products. Likely to be removed
-    // in the future when we explore better ways to handle this.
-
-    int rows = a->shape().elements() / a->shape()[-1];
-    Expr ones = a->graph()->ones({rows, 1});
-    std::vector<Expr> nodes
-        = {clip(a, clipValue), clip(b, clipValue), bias, ones};
-    return Expression<AffineNodeOp>(nodes, transA, transB, scale);
+    // Default GEMM
+    ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType), 
+             "GPU-based GEMM only supports float types, you have A: {} and B: {}", 
+             aElementType, bElementType);
+    return affineDefault(a, b, bias, transA, transB, scale);
   }
 }
 
@@ -686,8 +664,20 @@ Expr cast(Expr a, Type type) {
   }
 }
 
-Expr cross_entropy(Expr a, Expr indices) {
-  return Expression<CrossEntropyNodeOp>(a, indices);
+Expr cross_entropy(Expr logits, Expr indices) {
+  return Expression<CrossEntropyNodeOp>(logits, indices);
+}
+
+// Unlikelihood loss based on https://arxiv.org/abs/1908.04319
+Expr unlikelihood(Expr logits, Expr indices) {
+  int dimBatch = logits->shape()[-2];
+  int dimTime  = logits->shape()[-3];
+
+  // @TODO: fix this outside of this function in decoder.h etc. 
+  auto indicesWithLayout = reshape(indices, {1, dimTime, dimBatch, 1});
+
+  // This is currently implemented with multiple ops, might be worth doing a special operation like for cross_entropy
+  return -log(gather(1.f - softmax(logits), /*axis=*/-1, indicesWithLayout));
 }
 
 Expr plus(const std::vector<Expr>& nodes) {
@@ -758,12 +748,12 @@ Expr highway(const std::string prefix, Expr x) {
   auto g = mlp::dense()
       ("prefix", prefix + "_highway_d1")
       ("dim", outDim)
-      ("activation", mlp::act::sigmoid)
+      ("activation", (int)mlp::act::sigmoid)
       .construct(graph)->apply(x);
   auto relued = mlp::dense()
       ("prefix", prefix + "_highway_d2")
       ("dim", outDim)
-      ("activation", mlp::act::ReLU)
+      ("activation", (int)mlp::act::ReLU)
       .construct(graph)->apply(x);
   return (g * relued) + ((1 - g) * x);
   // clang-format on

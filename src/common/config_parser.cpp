@@ -1,3 +1,5 @@
+#include "common/authors.h"
+#include "common/build_info.h"
 #include "common/cli_helper.h"
 #include "common/config.h"
 #include "common/config_parser.h"
@@ -37,16 +39,14 @@ const std::set<std::string> PATHS = {
   "valid-script-args",
   "valid-log",
   "valid-translation-output",
-  "input",            // except: stdin
-  "output",           // except: stdout
+  "input",            // except: 'stdin', handled in makeAbsolutePaths and interpolateEnvVars
+  "output",           // except: 'stdout', handled in makeAbsolutePaths and interpolateEnvVars
   "pretrained-model",
   "data-weighting",
-  "log"
-  // TODO: Handle the special value in helper functions
-  //"sqlite",         // except: temporary
-  // TODO: This is a vector with a path and some numbers, handle this in helper
-  // functions or separate shortlist path to a separate command-line option
-  //"shortlist",
+  "log",
+  "sqlite",           // except: 'temporary', handled in the processPaths function
+  "shortlist",        // except: only the first element in the sequence is a path, handled in the
+                      //  processPaths function
 };
 // clang-format on
 
@@ -106,6 +106,13 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.switchGroup("General options");
 
   // clang-format off
+  cli.add<bool>("--authors",
+    "Print list of authors and exit");
+  cli.add<bool>("--cite",
+    "Print citation and exit");
+  cli.add<std::string>("--build-info",
+    "Print CMake build options and exit. Set to 'all' to print advanced options")
+    ->implicit_val("basic");
   cli.add<std::vector<std::string>>("--config,-c",
     "Configuration file(s). If multiple, later overrides earlier");
   cli.add<size_t>("--workspace,-w",
@@ -323,6 +330,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");
   cli.add<std::string>("--multi-loss-type",
       "How to accumulate multi-objective losses: sum, scaled, mean", "sum");
+  cli.add<bool>("--unlikelihood-loss",
+      "Use word-level weights as indicators for sequence-level unlikelihood training");
   cli.add<bool>("--overwrite",
       "Do not create model checkpoints, only overwrite main model file with last checkpoint. "
       "Reduces disk usage");
@@ -364,6 +373,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "10000u");
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
 
   // data management options
   cli.add<std::string>("--shuffle",
@@ -477,7 +487,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Fix target embeddings. Affects all decoders");
 
   // mixed precision training
-  cli.add<bool>("--fp16", 
+  cli.add<bool>("--fp16",
       "Shortcut for mixed precision training with float16 and cost-scaling, "
       "corresponds to: --precision float16 float32 float32 --cost-scaling 7 2000 2 0.05 10 1");
   cli.add<std::vector<std::string>>("--precision",
@@ -486,8 +496,10 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       {"float32", "float32", "float32"});
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
-      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
-  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
+      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
+    ->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+  cli.add<bool>("--normalize-gradient",
+      "Normalize gradient by multiplying with no. devices / total labels");
 
   // multi-node training
   cli.add<bool>("--multi-node",
@@ -538,6 +550,8 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Metric to use during validation: cross-entropy, ce-mean-words, perplexity, valid-script, "
       "translation, bleu, bleu-detok. Multiple metrics can be specified",
       {"cross-entropy"});
+  cli.add<bool>("--valid-reset-stalled",
+     "Reset all stalled validation metrics when the training is restarted");
   cli.add<size_t>("--early-stopping",
      "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
      10);
@@ -558,13 +572,16 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Allow unknown words to appear in output");
   cli.add<bool>("--n-best",
       "Generate n-best list");
+  cli.add<bool>("--word-scores",
+      "Print word-level scores");
 
   // efficiency options
   cli.add<int>("--valid-mini-batch",
       "Size of mini-batch used during validation",
       32);
   cli.add<size_t>("--valid-max-length",
-      "Maximum length of a sentence in a validating sentence pair",
+      "Maximum length of a sentence in a validating sentence pair. "
+      "Sentences longer than valid-max-length are cropped to valid-max-length",
       1000);
 
   // options for validation script
@@ -577,8 +594,10 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Additional args passed to --valid-script-path. These are inserted"
       " between the script path and the output translation-file path");
   cli.add<std::string>("--valid-translation-output",
-     "Path to store the translation");
-
+     "(Template for) path to store the translation. "
+     "E.g., validation-output-after-{U}-updates-{T}-tokens.txt. Template "
+     "parameters: {E} for epoch; {B} for No. of batches within epoch; "
+     "{U} for total No. of updates; {T} for total No. of tokens seen.");
   cli.add<bool>("--keep-best",
       "Keep best model for each validation metric");
   cli.add<std::string>("--valid-log",
@@ -618,20 +637,23 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::string>("--alignment",
      "Return word alignment. Possible values: 0.0-1.0, hard, soft")
     ->implicit_val("1");
+  cli.add<bool>("--word-scores",
+      "Print word-level scores");
+#ifdef USE_SENTENCEPIECE
+  cli.add<bool>("--no-spm-decode",
+      "Keep the output segmented into SentencePiece subwords");
+#endif
 
-  addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
+  addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
-  cli.add<std::string>("--gemm-type",
-      "Select GEMM options: auto, mklfp32, intrinint16, fp16packed, int8packed",
-      "auto");
-  
-  cli.add<bool>("--fp16", 
+  cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
@@ -644,9 +666,14 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--output-sampling",
      "Noise output layer with gumbel noise",
       false);
+  cli.add<std::vector<int>>("--output-approx-knn",
+     "Use approximate knn search in output layer (currently only in transformer)")
+     ->implicit_val("100 1024");
 
+#if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
   addSuboptionsULR(cli);
+#endif
 
   cli.switchGroup(previous_group);
   // clang-format on
@@ -682,17 +709,18 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
      ->implicit_val("1"),
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
-  cli.add<bool>("--fp16", 
+  cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
-  
+
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -745,7 +773,7 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
     cli.add<size_t>("--mini-batch-fit-step",
       "Step size for mini-batch-fit statistics",
       10);
-    cli.add<bool>("--gradient-checkpointing", 
+    cli.add<bool>("--gradient-checkpointing",
       "Enable gradient-checkpointing to minimize memory usage");
   }
 
@@ -756,29 +784,25 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
       "Sorting strategy for maxi-batch: none, src, trg (not available for decoder)",
       defaultMaxiBatchSort);
 
-  cli.add<bool>("--shuffle-in-ram",
-      "Keep shuffled corpus in RAM, do not write to temp file");
-  // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
-  cli.add<size_t>("--all-caps-every",
-      "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
-  cli.add<size_t>("--english-title-case-every",
-      "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
+  if(mode_ == cli::mode::training) {
+    cli.add<bool>("--shuffle-in-ram",
+        "Keep shuffled corpus in RAM, do not write to temp file");
+    // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
+    cli.add<size_t>("--all-caps-every",
+        "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
+    cli.add<size_t>("--english-title-case-every",
+        "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
 
-  cli.add<int>("--mini-batch-words-ref",
-      "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
-      "--learn-rate, --optimizer-params, --exponential-smoothing, --mini-batch-warmup");
-  cli.add<std::string/*SchedulerPeriod*/>("--mini-batch-warmup",
-      "Linear ramp-up of MB size, up to this #updates (append 't' for up to this #target labels). "
-      "Auto-adjusted to --mini-batch-words-ref if given",
-      {"0"});
-  cli.add<bool>("--mini-batch-track-lr",
-      "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
-  cli.add<size_t>("--mini-batch-overstuff",
-      "[experimental] Stuff this much more data into a minibatch, but scale down the LR and progress counter",
-      1);
-  cli.add<size_t>("--mini-batch-understuff",
-      "[experimental] Break each batch into this many updates",
-      1);
+    cli.add<int>("--mini-batch-words-ref",
+        "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
+        "--learn-rate, --optimizer-params, --exponential-smoothing, --mini-batch-warmup");
+    cli.add<std::string/*SchedulerPeriod*/>("--mini-batch-warmup",
+        "Linear ramp-up of MB size, up to this #updates (append 't' for up to this #target labels). "
+        "Auto-adjusted to --mini-batch-words-ref if given",
+        {"0"});
+    cli.add<bool>("--mini-batch-track-lr",
+        "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
+  }
   // clang-format on
 }
 
@@ -790,6 +814,15 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
       "Crop a sentence to max-length instead of omitting it if longer than max-length");
+  // clang-format on
+}
+
+void ConfigParser::addSuboptionsTSV(cli::CLIWrapper& cli) {
+  // clang-format off
+  cli.add<bool>("--tsv",
+      "Tab-separated input");
+  cli.add<size_t>("--tsv-fields",
+      "Number of fields in the TSV input, guessed based on the model type");
   // clang-format on
 }
 
@@ -831,6 +864,29 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   // parse command-line options and fill wrapped YAML config
   cli_.parse(argc, argv);
 
+  if(get<bool>("authors")) {
+    std::cerr << authors() << std::endl;
+    exit(0);
+  }
+
+  if(get<bool>("cite")) {
+    std::cerr << citation() << std::endl;
+    exit(0);
+  }
+
+  auto buildInfo = get<std::string>("build-info");
+  if(!buildInfo.empty() && buildInfo != "false") {
+#ifndef _MSC_VER // cmake build options are not available on MSVC based build.
+    if(buildInfo == "all")
+      std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
+    else
+      std::cerr << cmakeBuildOptions() << std::endl;
+    exit(0);
+#else // _MSC_VER
+    ABORT("build-info is not available on MSVC based build.");
+#endif // _MSC_VER
+  }
+
   // get paths to extra config files
   auto configPaths = findConfigPaths();
   if(!configPaths.empty()) {
@@ -841,7 +897,22 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   }
 
   if(get<bool>("interpolate-env-vars")) {
-    cli::processPaths(config_, cli::InterpolateEnvVars, PATHS);
+    cli::processPaths(config_, cli::interpolateEnvVars, PATHS);
+  }
+
+  // Option shortcuts for input from STDIN for trainer and scorer
+  if(mode_ == cli::mode::training || mode_ == cli::mode::scoring) {
+    auto trainSets = get<std::vector<std::string>>("train-sets");
+    YAML::Node config;
+    // Assume the input will come from STDIN if --tsv is set but no --train-sets are given
+    if(get<bool>("tsv") && trainSets.empty()) {
+      config["train-sets"].push_back("stdin");
+    // Assume the input is in TSV format if --train-sets is set to "stdin"
+    } else if(trainSets.size() == 1 && (trainSets[0] == "stdin" || trainSets[0] == "-")) {
+      config["tsv"] = true;
+    }
+    if(!config.IsNull())
+      cli_.updateConfig(config, cli::OptionPriority::CommandLine, "A shortcut for STDIN failed.");
   }
 
   if(doValidate) {
@@ -881,12 +952,12 @@ std::vector<std::string> ConfigParser::findConfigPaths() {
     for(auto& path : paths) {
       // (note: this updates the paths array)
       if(interpolateEnvVars)
-        path = cli::InterpolateEnvVars(path);
+        path = cli::interpolateEnvVars(path);
     }
   } else if(mode_ == cli::mode::training) {
     auto path = config_["model"].as<std::string>() + ".yml";
     if(interpolateEnvVars)
-      path = cli::InterpolateEnvVars(path);
+      path = cli::interpolateEnvVars(path);
 
     bool reloadConfig = filesystem::exists(path) && !get<bool>("no-reload");
     if(reloadConfig)
@@ -912,7 +983,7 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
                                  && config["interpolate-env-vars"].as<bool>())
                                 || get<bool>("interpolate-env-vars");
       if(interpolateEnvVars)
-        cli::processPaths(config, cli::InterpolateEnvVars, PATHS);
+        cli::processPaths(config, cli::interpolateEnvVars, PATHS);
 
       // replace relative path w.r.t. the config file
       cli::makeAbsolutePaths(config, path, PATHS);

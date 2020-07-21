@@ -3,7 +3,6 @@
 #include "common/definitions.h"
 #include "common/shape.h"
 #include "common/types.h"
-#include "common/io.h"
 #include "tensors/backend.h"
 #include "tensors/memory_piece.h"
 #ifdef CUDA_FOUND
@@ -17,6 +16,10 @@
 #include <sstream>
 
 namespace marian {
+
+namespace io {
+  struct Item;
+}
 
 class TensorBase {
   MemoryPiece::PtrType memory_;
@@ -33,11 +36,23 @@ class TensorBase {
              Ptr<Backend> backend)
       : memory_(memory), shape_(shape), type_(type), backend_(backend) {}
 
-  TensorBase(MemoryPiece::PtrType memory, Shape shape, Ptr<Backend> backend)
+  TensorBase(MemoryPiece::PtrType memory, 
+             Shape shape, 
+             Ptr<Backend> backend)
       : memory_(memory),
         shape_(shape),
         type_(Type::float32),
         backend_(backend) {}
+
+  // Wraps existing memory
+  template <typename T>
+  TensorBase(T* rawMemory,
+             size_t rawMemoryNum,
+             Shape shape,
+             Type type,
+             Ptr<Backend> backend)
+      : memory_(MemoryPiece::New((uint8_t*)rawMemory, rawMemoryNum * sizeof(T))), 
+        shape_(shape), type_(type), backend_(backend) {}
 
 public:
   // Use this whenever pointing to MemoryPiece
@@ -150,6 +165,11 @@ public:
 
   template <typename T>
   void set(const T* begin, const T* end) {
+    ABORT_IF(end - begin != shape_.elements(),
+             "Vector size ({}) and underlying shape ({}, {}) do not match",
+             end - begin,
+             std::string(shape_),
+             memory_->size());
     matchOrAbort<T>(type_);
 
     if(backend_->getDeviceId().type == DeviceType::cpu) {
@@ -167,36 +187,7 @@ public:
     set(v.data(), v.data() + v.size());
   }
 
-  // a binary copy with type checking
-  void set(const char* begin, const char* end, Type type) {
-    ABORT_IF(type_ != type,
-             "Tensor type ({}) and data type ({}) do not match",
-             type_,
-             type);
-
-    size_t dataSize = (end - begin) / sizeOf(type);
-    ABORT_IF(size() != dataSize,
-             "Tensor size ({}) and mapped size ({}) do not match",
-             size(),
-             dataSize);
-
-    if(backend_->getDeviceId().type == DeviceType::cpu) {
-      std::copy(begin, end, data<char>());
-    }
-#ifdef CUDA_FOUND
-    else {
-      gpu::copy(backend_, begin, end, data<char>());
-    }
-#endif
-  }
-
-  void set(const std::vector<char>& v, Type type) {
-    set(v.data(), v.data() + v.size(), type);
-  }
-
-  void set(const io::Item& item) {
-    set(item.bytes.data(), item.bytes.data() + item.bytes.size(), item.type);
-  }
+  void set(const io::Item& item);
 
   // For single values enable conversion to other numeric formats if possible
   template <typename T>

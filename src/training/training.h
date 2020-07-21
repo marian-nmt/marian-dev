@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/config.h"
+#include "common/utils.h"
 #include "data/batch_generator.h"
 #ifndef _MSC_VER // @TODO: include SqLite in Visual Studio project
 #include "data/corpus_sqlite.h"
@@ -34,8 +35,6 @@ public:
 
     dataset->prepare();
 
-    auto trainState = New<TrainingState>(options_->get<float>("learn-rate"));
-    auto scheduler = New<Scheduler>(options_, trainState);
     auto mpi = initMPI(/*multiThreaded=*/!options_->get<bool>("sync-sgd")); // @TODO: do we need the multiThreaded distinction at all?
 
     Ptr<BatchStats> stats;
@@ -46,10 +45,19 @@ public:
       // @TODO this should receive a function object that can generate a fake batch;
       // that way vocabs would not be exposed.
       auto model = New<ModelWrapper>(options_, mpi);
-      model->setScheduler(scheduler); // collectStats() needs to know about dynamic MB scaling
+
+      // use temporary scheduler to make sure everything gets destroyed properly
+      // otherwise the scheduler believes that registered objects still exist
+      auto tempTrainState = New<TrainingState>(options_->get<float>("learn-rate"));
+      auto tempScheduler = New<Scheduler>(options_, tempTrainState);
+
+      model->setScheduler(tempScheduler); // collectStats() needs to know about dynamic MB scaling
       stats = model->collectStats(dataset->getVocabs());
-      LOG(info, "[batching] Done. Typical MB size is {} target words", stats->estimateTypicalTrgWords());
+      LOG(info, "[batching] Done. Typical MB size is {} target words", utils::withCommas(stats->estimateTypicalTrgWords()));
     }
+
+    auto trainState = New<TrainingState>(options_->get<float>("learn-rate"));
+    auto scheduler = New<Scheduler>(options_, trainState);
 
     if((options_->hasAndNotEmpty("valid-sets") || options_->hasAndNotEmpty("valid-script-path"))
        && SchedulingParameter::parse(options_->get<std::string>("valid-freq"))) {
@@ -77,12 +85,10 @@ public:
       restored = false;
 
       // main training loop for one epoch
-      for(auto batchIt = std::begin(*batchGenerator); // @TODO: try to use for(auto ...)
-          batchIt != std::end(*batchGenerator);
-          batchIt++) {
+      for(auto batch : *batchGenerator) {
         if (!scheduler->keepGoing())
           break;
-        model->update(*batchIt);
+        model->update(batch);
       }
 
       if(scheduler->keepGoing())

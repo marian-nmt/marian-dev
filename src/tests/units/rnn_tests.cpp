@@ -22,7 +22,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
   }
 #endif
 
-  auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.01); };
+  auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.01f).scale(1.f); };
 
   std::vector<IndexType> vWords = {
     43, 2, 83, 78,
@@ -50,7 +50,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
     Config::seed = 1234;
 
     auto graph = New<ExpressionGraph>();
-    graph->setParameterType(floatType);
+    graph->setDefaultElementType(floatType);
     graph->setDevice({0, type});
     graph->reserveWorkspaceMB(16);
 
@@ -98,7 +98,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
     Config::seed = 1234;
 
     auto graph = New<ExpressionGraph>();
-    graph->setParameterType(floatType);
+    graph->setDefaultElementType(floatType);
     graph->setDevice({0, type});
     graph->reserveWorkspaceMB(16);
 

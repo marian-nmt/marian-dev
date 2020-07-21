@@ -39,7 +39,7 @@ class LambdaInitConvert : public NodeInitializer {
         auto sharedAllocator = allocator_.lock();
         ABORT_IF(!sharedAllocator, "Allocator in LambdaInitConvert has not been set or expired");
 
-        auto memory = sharedAllocator->alloc(tensor->size(), intermediateType_);
+        auto memory = sharedAllocator->alloc(requiredBytes(tensor->shape(), intermediateType_));
         auto temp = TensorBase::New(memory,
                                     tensor->shape(),
                                     intermediateType_,
@@ -145,9 +145,19 @@ Ptr<NodeInitializer> fromVector(const std::vector<T>& v) {
   return fromLambda([v](Tensor t) { t->set(v.data(), v.data() + v.size()); }, typeId<T>());
 }
 
+template <typename T>
+Ptr<NodeInitializer> fromVector(std::vector<T>&& v) {
+  return fromLambda([v](Tensor t) { t->set(v.data(), v.data() + v.size()); }, typeId<T>());
+}
+
 template Ptr<NodeInitializer> fromVector<float16>(const std::vector<float16>& v);
 template Ptr<NodeInitializer> fromVector<float>(const std::vector<float>& v);
 template Ptr<NodeInitializer> fromVector<IndexType>(const std::vector<IndexType>& v);
+
+// @TODO: can we remove the const& ones above? They always make a copy anyways, and often from a temp
+template Ptr<NodeInitializer> fromVector<float16>  (std::vector<float16>  && v);
+template Ptr<NodeInitializer> fromVector<float>    (std::vector<float>    && v);
+template Ptr<NodeInitializer> fromVector<IndexType>(std::vector<IndexType>&& v);
 
 Ptr<NodeInitializer> fromSparseVector(std::pair<std::vector<size_t>, std::vector<float>>& v) {
   return fromLambda([v](Tensor t) { t->set(1e-6); t->setSparse(v.first, v.second); });
@@ -183,11 +193,11 @@ Ptr<NodeInitializer> fromItem(const io::Item& item) {
                "Tensor type ({}) and type for mapping ({}) do not match",
                tensor->type(),
                item.type);
-      ABORT_IF(tensor->size() != item.size() / sizeOf(item.type),
-               "Tensor size ({}) and mapped size ({}) do not match",
-               tensor->size(),
-               item.size() / sizeOf(item.type));
-      auto mp = MemoryPiece::New((uint8_t*)item.ptr, tensor->size() * sizeOf(item.type));
+      ABORT_IF(tensor->shape() != item.shape,
+               "Tensor shape ({}) and shape of mapped item ({}) do not match",
+               tensor->shape(),
+               item.shape);
+      auto mp = MemoryPiece::New((uint8_t*)item.ptr, item.size()); // @TODO: this is not properly aligned now
       tensor->reset(mp);
     });
   } else {
@@ -223,6 +233,44 @@ Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
   }, Type::float32);
 }
 
-}  // namespace inits
+// computes the equivalent of Python's range()
+template <typename T>
+Ptr<NodeInitializer> range(T begin, T end, T step) {
+  return fromLambda([begin, end, step](Tensor t) {
+    auto nElem = t->shape().elements();
+    std::vector<T> v; v.reserve(nElem);
+    for (T i = begin; i < end; i += step)
+      v.push_back(i);
+    ABORT_IF(nElem != v.size(), "range does not match constant shape");
+    t->set(v);
+  }, typeId<T>());
+}
 
+template Ptr<NodeInitializer> range<float16>  (float16   begin, float16   end, float16   step);
+template Ptr<NodeInitializer> range<float>    (float     begin, float     end, float     step);
+template Ptr<NodeInitializer> range<IndexType>(IndexType begin, IndexType end, IndexType step);
+
+}  // namespace inits
 }  // namespace marian
+
+
+#if BLAS_FOUND
+#include "faiss/VectorTransform.h"
+
+namespace marian {
+namespace inits {
+
+Ptr<NodeInitializer> randomRotation(size_t seed) {
+  auto rot = [=](Tensor t) {
+    int rows = t->shape()[-2];
+    int cols = t->shape()[-1];
+    faiss::RandomRotationMatrix rrot(cols, rows); // transposed in faiss
+    rrot.init((int)seed);
+    t->set(rrot.A);
+  };
+  return fromLambda(rot, Type::float32);
+}
+
+}  // namespace inits
+}  // namespace marian
+#endif

@@ -10,6 +10,7 @@ SyncGraphGroup::SyncGraphGroup(Ptr<Options> config, Ptr<IMPIWrapper> mpi)
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
     graph->setDevice(device);
+    graph->setCheckpointing(options_->get<bool>("gradient-checkpointing"));
     graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
 
@@ -57,19 +58,6 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
     if (i > 0)
       graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
   });
-  //ThreadPool pool(graphs_.size() - 1, graphs_.size() - 1);
-  //for(size_t i = 1; i < graphs_.size(); ++i) {
-  //  auto init = [&](size_t i) {
-  //    // initialize i-th graph and weights
-  //    builders_[i]->build(graphs_[i], exampleBatch);
-  //    graphs_[i]->forward();
-  //    // overwrite weights of i-th graph with weights from 0-th graph
-  //    graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
-  //  };
-  //  pool.enqueue(init, i);
-  //}
-  //// ThreadPool destructor waits until completion of all tasks.
-  //// @TODO: can we use comm_->foreach()?
 }
 
 void SyncGraphGroup::initializeAvg() {
@@ -158,7 +146,7 @@ static double roundUpRatio(double ratio) {
 // helper routine that handles accumulation and load-balancing of sub-batches to fill all devices
 // It adds 'newBatch' to 'pendingBatches_', and if sufficient batches have been queued, then
 // returns 'pendingBatches_' in 'subBatches' and resets it. If not, it returns false.
-bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuff,
+bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
     std::vector<Ptr<data::Batch>>& subBatches, size_t& numReadBatches) {
   // The reader delivers in chunks of these sizes, according to case:
   //  - no dynamic MB-size scaling:
@@ -204,15 +192,12 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuf
   // If a reference is given, then at progress == mbWarmup.n (ratio=1), we would like to have refBatchLabels instead of whichever
   // the actual batch size is. Since we cannot know the future actual batch sizes that will be delivered
   // by the reader, we approximate them with (typicalTrgBatchWords * updateMultiplier), and scale ratio accordingly.
-  auto refBatchLabels = options_->get<size_t>("mini-batch-words-ref");
+  auto refBatchLabels = options_->get<size_t>("mini-batch-words");
   if (refBatchLabels != 0) {
     LOG_ONCE(info, "[scheduler] Scaling to {} reference labels, using actual-batch-word estimate of {}", refBatchLabels, typicalTrgBatchWords_);
     ABORT_IF(typicalTrgBatchWords_ == 0, "Dynamic scaling with words target requires MB size to be known in words"); // happens if MB size is specified in sentences
     ratio *= (double)refBatchLabels / (double)(typicalTrgBatchWords_ * updateMultiplier_);
   }
-
-  // overstuff: blow up ratio by a factor, which we later factor into the learning rate
-  ratio *= (double)overstuff;
 
   // round up to full batches if within a certain error margin  --@BUGBUG: Not invariant w.r.t. GPU size, as ratio is relative to what fits into 1 GPU
   ratio = roundUpRatio(ratio);
@@ -279,41 +264,18 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch, size_t overstuf
 void SyncGraphGroup::update(Ptr<data::Batch> newBatch) /*override*/ {
   validate();
 
-  size_t overstuff = options_->get<size_t>("mini-batch-overstuff");
-  if (overstuff != 1)
-    LOG_ONCE(info, "Overstuffing minibatches by a factor of {}", overstuff);
   std::vector<Ptr<data::Batch>> subBatches;
   size_t numReadBatches; // actual #batches delivered by reader, for restoring from checkpoint   --@TODO: reader should checkpoint itself; should not go via the scheduler
-  bool gotSubBatches = tryGetSubBatches(newBatch, overstuff, subBatches, numReadBatches);
+  bool gotSubBatches = tryGetSubBatches(newBatch, subBatches, numReadBatches);
 
   // not enough data yet: return right away
   if (!gotSubBatches)
     return;
 
-  // for testing the hypothesis that one can always go smaller. This is independent of overstuff.
-  size_t understuff = options_->get<size_t>("mini-batch-understuff");
-  if (understuff != 1)
-    LOG_ONCE(info, "Understuffing minibatches by a factor of {}", understuff);
-  if (understuff == 1)
-    update(subBatches, numReadBatches);
-  else {
-    std::vector<Ptr<data::Batch>> subBatches1;
-    for (auto& b : subBatches) {
-      auto bbs = b->split(understuff);
-      for (auto& bb : bbs)
-        subBatches1.push_back(bb);
-    }
-    for (size_t i = 0; i < understuff; i++) {
-      std::vector<Ptr<data::Batch>> subBatchRange(subBatches1.begin() + i * subBatches1.size() / understuff, subBatches1.begin() + (i+1) * subBatches1.size() / understuff);
-      if (!subBatchRange.empty())
-        update(subBatchRange, numReadBatches * (i+1) / understuff - numReadBatches * i / understuff);
-    }
-  }
+  update(subBatches, numReadBatches);
 }
 
 void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t numReadBatches) {
-  size_t overstuff  = options_->get<size_t>("mini-batch-overstuff");
-  //size_t understuff = options_->get<size_t>("mini-batch-understuff");
   // determine num words for dynamic hyper-parameter adjustment
   // @TODO: We can return these directly from tryGetSubBatches()
   size_t batchSize = 0;
@@ -322,9 +284,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     batchSize     += batch->size();
     batchTrgWords += batch->wordsTrg();
   }
-  // effective batch size: batch should be weighted like this. This will weight down the learning rate.
-  size_t effectiveBatchTrgWords = (size_t)ceil(batchTrgWords / (double)overstuff);
-  size_t effectiveBatchSize     = (size_t)ceil(batchSize     / (double)overstuff);
 
   // Helper to access the subBatches array
   auto getSubBatch = [&](size_t warp, size_t localDeviceIndex, size_t rank) -> Ptr<data::Batch> {
@@ -365,32 +324,21 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       auto rationalLoss = builders_[localDeviceIndex]->build(graph, subBatch);
       graph->forward();
 
-      StaticLoss tempLoss = *rationalLoss; // needed for overstuff
-      tempLoss.loss /= (float)overstuff; // @TODO: @fseide: scale only loss? should this scale labels too?
-
-      localDeviceLosses[localDeviceIndex] += tempLoss;
+      localDeviceLosses[localDeviceIndex] += *rationalLoss;
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
   });
   // At this point, each device on each MPI process has a gradient aggregated over a subset of the sub-batches.
-
-  // only needed for overstuff now
-  float div = (float)overstuff; // (note: with Adam, a constant here makes no difference)
 
   // Update parameter shard with gradient shard
   auto update = [&](size_t idx, size_t begin, size_t end) {
     auto curGrad = graphs_[idx]->params()->grads()->subtensor(begin, end-begin);
     auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
 
-    if(div != 1.f) {
-      using namespace functional;
-      Element(_1 = _1 / div, curGrad);   // average if overstuffed
-    }
-
     // actual model update
     auto updateTrgWords =
         /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
-          effectiveBatchTrgWords // if overstuffing then bring the count back to the original value
+          batchTrgWords // total number of labels across all GPUs and nodes
         /*else*/:
           OptimizerBase::mbSizeNotProvided;
     shardOpt_[idx]->update(curParam, curGrad, updateTrgWords);
@@ -400,31 +348,33 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       updateAvgParams(
           paramsAvg_[idx], curParam, scheduler_->numberOfBatches(), updateTrgWords);
   };
-
-  comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices (globally) into shards
-  comm_->foreach(update);              // per-shard model-update
-  comm_->allGatherParams();            // distribute param value shards back
-
-
-  // Re-compress the model 
-  if (options_->get<int>("compress-bit") < 32) {
-    // Lazy allocation
-    if (compressers_.size() == 0)
-      for (int idx = 0; idx < graphs_.size(); idx++)
-        compressers_.push_back(New<Compresser>(options_));
-    // TODO: this can be parallized
-    for (int idx = 0; idx < graphs_.size(); idx++)
-      compressers_[idx]->compress(graphs_[idx]);
-  }
-
+  
   // cost across all local devices (scheduler will aggregate cross-process)
-  StaticLoss localLoss;
-  for(auto& l : localDeviceLosses) // localDeviceLosses is already summed up over delay steps
-    localLoss += l;
+  StaticLoss localLoss = std::accumulate(localDeviceLosses.begin(), localDeviceLosses.end(), StaticLoss());
+  
+  // model update
+  if (std::isfinite(localLoss.loss) || mpi_->numMPIProcesses() > 1) { // guard against NaN (except with MPI, as this simple way could hang it)
+    comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices and MPI nodes into shards
+    comm_->foreach(update);              // per-shard model-update
+    comm_->allGatherParams();            // distribute param value shards back
+  
+   // Re-compress the model 
+    if (options_->get<int>("compress-bit") < 32) {
+      // Lazy allocation
+      if (compressers_.size() == 0)
+        for (int idx = 0; idx < graphs_.size(); idx++)
+          compressers_.push_back(New<Compresser>(options_));
+    
+      for (int idx = 0; idx < graphs_.size(); idx++)
+        compressers_[idx]->compress(graphs_[idx]);
+    }
+  }
+  else
+    LOG(info, "[training] skipping {}-th update due to loss being {}", scheduler_->numberOfBatches(), localLoss.loss);
 
   if(scheduler_) {
     // track and log localLoss
-    scheduler_->update(localLoss, numReadBatches, effectiveBatchSize, effectiveBatchTrgWords, mpi_);
+    scheduler_->update(localLoss, numReadBatches, batchSize, batchTrgWords, mpi_);
 
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving())

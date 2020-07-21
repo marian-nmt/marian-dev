@@ -10,6 +10,11 @@
 #include "translator/scorers.h"
 #include "data/alignment.h"
 #include "data/vocab_base.h"
+#include "tensors/cpu/fbgemm/expression_graph_packable.h"
+
+#if USE_FBGEMM
+#include "fbgemm/Utils.h"
+#endif
 
 namespace marian {
 
@@ -36,6 +41,7 @@ class VocabWrapper : public IVocabWrapper {
   Ptr<Vocab> pImpl_;
 public:
   VocabWrapper(Ptr<Vocab> vocab) : pImpl_(vocab) {}
+  virtual ~VocabWrapper() {}
   WordIndex encode(const std::string& word) const override { return (*pImpl_)[word].toWordIndex(); }
   std::string decode(WordIndex id) const override { return (*pImpl_)[Word::fromWordIndex(id)]; }
   size_t size() const override { return pImpl_->size(); }
@@ -69,10 +75,6 @@ public:
     device_ = New<cpu::WrappedDevice>(deviceId);
     graph_->setDevice(deviceId, device_);
 
-    // Use packed GEMM for the production
-    graph_->getBackend()->setOptimized(true);
-    graph_->getBackend()->setGemmType("fp16packed");
-
 #if MKL_FOUND
     mkl_set_num_threads(options->get<int>("mkl-threads", 1));
 #endif
@@ -92,7 +94,7 @@ public:
       modelOpts->merge(options_);
       modelOpts->merge(config);
 
-      std::cerr << modelOpts->str() << std::flush;
+      std::cerr << modelOpts->asYamlString() << std::flush; // @TODO: take a look at why this is even here.
 
       auto encdec = models::createModelFromOptions(modelOpts, models::usage::translation);
 
@@ -189,6 +191,7 @@ Ptr<IBeamSearchDecoder> newDecoder(Ptr<Options> options,
                                    const std::vector<const void*>& ptrs,
                                    const std::vector<Ptr<IVocabWrapper>>& vocabs,
                                    WordIndex eosDummy) { // @TODO: remove this parameter
+  marian::setThrowExceptionOnAbort(true); // globally defined to throw now
   ABORT_IF(marian::Word::fromWordIndex(eosDummy) != std::dynamic_pointer_cast<VocabWrapper>(vocabs[1])->getVocab()->getEosId(), "Inconsistent eos vs. vocabs_[1]");
 
   return New<BeamSearchDecoder>(options, ptrs, vocabs/*, eos*/);
@@ -209,6 +212,65 @@ std::vector<Ptr<IVocabWrapper>> loadVocabs(const std::vector<std::string>& vocab
     }
   }
   return res;
+}
+
+// query CPU AVX version
+DecoderCpuAvxVersion getCpuAvxVersion() {
+#if USE_FBGEMM
+  // Default value is AVX
+  DecoderCpuAvxVersion cpuAvxVer = DecoderCpuAvxVersion::AVX;
+  if (fbgemm::fbgemmHasAvx512Support())
+    cpuAvxVer = DecoderCpuAvxVersion::AVX512;
+  else if (fbgemm::fbgemmHasAvx2Support())
+    cpuAvxVer = DecoderCpuAvxVersion::AVX2;
+
+  return cpuAvxVer;
+#else
+  // Default value is AVX
+  return DecoderCpuAvxVersion::AVX;
+#endif
+}
+
+DecoderCpuAvxVersion parseCpuAvxVersion(std::string name) {
+  if (name == "avx") {
+    return DecoderCpuAvxVersion::AVX;
+  } else if (name == "avx2") {
+    return DecoderCpuAvxVersion::AVX2;
+  } else if (name == "avx512") {
+    return DecoderCpuAvxVersion::AVX512;
+  } else {
+    ABORT("Unknown CPU Instruction Set: {}", name);
+    return DecoderCpuAvxVersion::AVX;
+  }
+}
+
+// @TODO: clean-up this code and unify with marian-conv. The targetPrec parameter is not clear enought etc.
+bool convertModel(std::string inputFile, std::string outputFile, int32_t targetPrec) {
+  std::cerr << "Converting from: " << inputFile << ", to: " << outputFile << ", precision: " << targetPrec << std::endl;
+
+  YAML::Node config;
+  std::stringstream configStr;
+  marian::io::getYamlFromModel(config, "special:model.yml", inputFile);
+  configStr << config;
+
+  auto graph = New<ExpressionGraphPackable>();
+  graph->setDevice(CPU0);
+  graph->getBackend()->setOptimized(false);
+
+  graph->load(inputFile);
+  graph->forward();
+  auto saveGemmType = Type::float32;
+  if (targetPrec == 16)
+    saveGemmType = Type::packed16;
+  else if (targetPrec == 8)
+    saveGemmType = Type::packed8avx2; // We currently use avx2 by default.
+
+  // added a flag if the weights needs to be packed or not
+  graph->packAndSave(outputFile, configStr.str(), saveGemmType);
+
+  std::cerr << "Conversion Finished." << std::endl;
+
+  return true;
 }
 
 }  // namespace quicksand

@@ -38,7 +38,7 @@ Ptr<ICommunicator> createCommunicator(
   }
 
   // the actual implementation is inside communicator.cu
-  return New<NCCLCommunicator>(graphs, mpi); 
+  return New<NCCLCommunicator>(graphs, mpi);
 #else // no CUDA or no NCCL
   noNccl; // (unused)
   return New<DefaultCommunicator>(graphs, mpi);
@@ -139,9 +139,9 @@ class FakeMPIWrapper : public IMPIWrapper
 {
 public:
   FakeMPIWrapper(bool) {
-    LOG(warn, "Compiled without MPI support. Falling back to FakeMPIWrapper");
+    LOG(info, "[comm] Compiled without MPI support. Running as a single process on {}", utils::hostnameAndProcessId().first);
   }
-
+  virtual ~FakeMPIWrapper() {}
   virtual size_t myMPIRank() const override { return 0; };
   virtual size_t numMPIProcesses() const override { return 1; };
 
@@ -169,7 +169,7 @@ public:
     //        to only accept one parameter, and remove this error check can be removed.
     ABORT_IF(sendbuf != recvbuf, "FakeMPIWrapper::allReduce() only implemented for in-place operation"); // otherwise it's not a no-op, we must copy data
   }
-#pragma warning(push)
+#pragma warning(pop)
   virtual void finalize() override { }
 };
 

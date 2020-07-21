@@ -17,9 +17,9 @@ namespace inits {
 /**
  * Base class for specialized NodeInitializers.
  *
- * A NodeInitializer is a functor that is associated with parameters 
- * and constants, and is invoked on a tensor during node intialization. 
- * You need to override NodeIntializer::apply(Tensor) with your own 
+ * A NodeInitializer is a functor that is associated with parameters
+ * and constants, and is invoked on a tensor during node intialization.
+ * You need to override NodeIntializer::apply(Tensor) with your own
  * functionality or use a fromLambda intializer.
  *
  * See node_initializers.cpp for examples.
@@ -31,6 +31,7 @@ protected:
 public:
   virtual void apply(Tensor t) = 0;
   void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
+  virtual ~NodeInitializer() {}
 };
 
 /**
@@ -135,7 +136,7 @@ Ptr<NodeInitializer> dropout(float dropoutProbabilty);
 
 /**
  * Intialize with gumbel noise, i.e. -log(-log(u)) where u ~ Uniform(0 + eps, 1 - eps)
- * 
+ *
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> gumbel(float eps = 1e-5f);
@@ -143,6 +144,8 @@ Ptr<NodeInitializer> gumbel(float eps = 1e-5f);
 // @TODO: add documentation
 template <typename T>
 Ptr<NodeInitializer> fromVector(const std::vector<T>& v);
+template <typename T>
+Ptr<NodeInitializer> fromVector(std::vector<T>&& v);
 
 // @TODO: add documentation
 Ptr<NodeInitializer> fromSparseVector(std::pair<std::vector<size_t>, std::vector<float>>& v);
@@ -161,7 +164,7 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
 
 /**
  * Computes Google's Transformer-style sinusoidal position embeddings
- * starting from position 'start' taking into account batch and time 
+ * starting from position 'start' taking into account batch and time
  * dimensions of the tensor.
  *
  * Expected tensor layout {-2: time, -1: model}
@@ -172,6 +175,21 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
  * over time steps.
  */
 Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start);
+
+/**
+ * Computes a random rotation matrix for LSH hashing. This is part  
+ * of a hash function. The values are orthonormal and computed via
+ * QR decomposition. Same seed results in same random rotation.
+ */
+Ptr<NodeInitializer> randomRotation(size_t seed = Config::seed);
+
+/**
+ * Computes a range from begin to end-1, like Python's range().
+ * The constant being initialized must have one dimension that matches
+ * the number of elements being generated, while any other dimension must be 1.
+ */
+template <typename T>
+Ptr<NodeInitializer> range(T begin, T end, T step = (T)1);
 
 }  // namespace inits
 

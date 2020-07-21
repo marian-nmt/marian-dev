@@ -5,29 +5,102 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
 
 ### Added
+- LSH indexing to replace short list
+- ONNX support for transformer models
+- Add topk operator like PyTorch's topk
+- Use *cblas_sgemm_batch* instead of a for loop of *cblas_sgemm* on CPU as the batched_gemm implementation
+- Supporting relative paths in shortlist and sqlite options
+- Training and scoring from STDIN
+- Support for reading from TSV files from STDIN and other sources during training
+  and translation with options --tsv and --tsv-fields n.
+
+### Fixed
+- Fix minor issues with compilation on MacOS
+- Fix warnings in Windows MSVC builds using CMake
+- Fix building server with Boost 1.72
+- Make mini-batch scaling depend on mini-batch-words and not on mini-batch-words-ref
+- In concatenation make sure that we do not multiply 0 with nan (which results in nan)
+- Change Approx.epsilon(0.01) to Approx.margin(0.001) in unit tests. Tolerance is now
+  absolute and not relative. We assumed incorrectly that epsilon is absolute tolerance.
+
+### Changed
+- Move Simple-WebSocket-Server to submodule
+- Python scripts start with #!/usr/bin/env python3 instead of python
+- Changed compile flags -Ofast to -O3 and remove --ffinite-math
+- Moved old graph groups to depracated folder
+- Make cublas and cusparse handle inits lazy to save memory when unused
+
+## [1.9.0] - 2020-03-10
+
+### Added
+- An option to print cached variables from CMake
+- Add support for compiling on Mac (and clang)
+- An option for resetting stalled validation metrics
+- Add CMAKE options to disable compilation for specific GPU SM types
+- An option to print word-level translation scores
+- An option to turn off automatic detokenization from SentencePiece
+- Separate quantization types for 8-bit FBGEMM for AVX2 and AVX512
+- Sequence-level unliklihood training
+- Allow file name templated valid-translation-output files
+- Support for lexical shortlists in marian-server
+- Support for 8-bit matrix multiplication with FBGEMM
+- CMakeLists.txt now looks for SSE 4.2
+- Purging of finished hypotheses during beam-search. A lot faster for large batches.
+- Faster option look-up, up to 20-30% faster translation
+- Added --cite and --authors flag
+- Added optional support for ccache
+- Switch to change abort to exception, only to be used in library mode
+- Support for 16-bit packed models with FBGEMM
+- Multiple separated parameter types in ExpressionGraph, currently inference-only
 - Safe handling of sigterm signal
-- Automatic vectorization of elementwise operations on CPU for tensors dims that 
-  are divible by 4 (AVX) and 8 (AVX2)
-- Replacing std::shared_ptr<T> with custom IntrusivePtr<T> for small objects like 
+- Automatic vectorization of elementwise operations on CPU for tensors dims that
+  are divisible by 4 (AVX) and 8 (AVX2)
+- Replacing std::shared_ptr<T> with custom IntrusivePtr<T> for small objects like
   Tensors, Hypotheses and Expressions.
 - Fp16 inference working for translation
 - Gradient-checkpointing
 
 ### Fixed
-- Sort parameters by lexicographical order during allocation to ensure consistent 
+- Replace value for INVALID_PATH_SCORE with std::numer_limits<float>::lowest()
+  to avoid overflow with long sequences
+- Break up potential circular references for GraphGroup*
+- Fix empty source batch entries with batch purging
+- Clear RNN chache in transformer model, add correct hash functions to nodes
+- Gather-operation for all index sizes
+- Fix word weighting with max length cropping
+- Fixed compilation on CPUs without support for AVX
+- FastOpt now reads "n" and "y" values as strings, not as boolean values
+- Fixed multiple reduction kernels on GPU
+- Fixed guided-alignment training with cross-entropy
+- Replace IntrusivePtr with std::uniq_ptr in FastOpt, fixes random segfaults
+  due to thread-non-safty of reference counting.
+- Make sure that items are 256-byte aligned during saving
+- Make explicit matmul functions respect setting of cublasMathMode
+- Fix memory mapping for mixed paramter models
+- Removed naked pointer and potential memory-leak from file_stream.{cpp,h}
+- Compilation for GCC >= 7 due to exception thrown in destructor
+- Sort parameters by lexicographical order during allocation to ensure consistent
   memory-layout during allocation, loading, saving.
-- Output empty line when input is empty line. Previous behavior might result in 
+- Output empty line when input is empty line. Previous behavior might result in
   hallucinated outputs.
 - Compilation with CUDA 10.1
 
 ### Changed
-- Boost depdendency is now optional and only required for marian_server 
-  or for boost::regex when compiling with g++-4.9
+- Combine two for-loops in nth_element.cpp on CPU
+- Revert LayerNorm eps to old position, i.e. sigma' = sqrt(sigma^2 + eps)
+- Downgrade NCCL to 2.3.7 as 2.4.2 is buggy (hangs with larger models)
+- Return error signal on SIGTERM
+- Dropped support for CUDA 8.0, CUDA 9.0 is now minimal requirement
+- Removed autotuner for now, will be switched back on later
+- Boost depdendency is now optional and only required for marian_server
+- Dropped support for g++-4.9
 - Simplified file stream and temporary file handling
 - Unified node intializers, same function API.
+- Remove overstuff/understuff code
 
 ## [1.8.0] - 2019-09-04
 

@@ -22,31 +22,48 @@ void tests(DeviceType device, Type floatType = Type::float32) {
   }
 #endif
 
-  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).epsilon(0.01); };
+  auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).margin(0.001f); };
   auto floatEqual  = [](T x, T y) -> bool { return x == y; };
 
   Config::seed = 1234;
   auto graph = New<ExpressionGraph>();
-  graph->setParameterType(floatType);
+  graph->setDefaultElementType(floatType);
   graph->setDevice({0, device});
   graph->reserveWorkspaceMB(16);
 
   std::vector<T> values, values2;
 
-  SECTION("scalar multiplication") {
+  SECTION("elementwise unary and binary operators with scalars") {
     graph->clear();
     values.clear();
-    std::vector<T> vB({1, 2, 3, 4, 5, 6});
 
-    auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
-    auto B2 = B * 2.0f;
+    std::vector<T> vA({1, -2, 3, -4});
+    auto a = graph->constant({2, 2, 1}, inits::fromVector(vA));
+
+    auto compare = [&](Expr res, std::function<float(float)> f, bool exactMatch) -> bool {
+      if (res->shape() != Shape({ 2, 2, 1 }))
+          return false;
+      res->val()->get(values);
+      std::vector<float> ref{f(vA[0]), f(vA[1]), f(vA[2]), f(vA[3])};
+      return std::equal(values.begin(), values.end(), ref.begin(), exactMatch ? floatEqual : floatApprox);
+    };
+
+    // @TODO: add all operators and scalar variants here for completeness
+    auto rsmult = 2.f * a;
+    auto rabs   = abs(a);
+    auto rmax1  = maximum(a, 1);
+    auto rmax2  = maximum(1, a);
+    auto rmin1  = minimum(a, 1);
+    auto rmin2  = minimum(1, a);
+    
     graph->forward();
 
-    CHECK(B2->shape() == Shape({3, 2}));
-    B2->val()->get(values);
-
-    std::vector<T> vB2({2, 4, 6, 8, 10, 12});
-    CHECK(values == vB2);
+    CHECK(compare(rsmult, [](float a) {return 2.f * a;}, true));
+    CHECK(compare(rabs,   [](float a) {return std::abs(a);}, true));
+    CHECK(compare(rmax1,  [](float a) {return std::max(a, 1.f);}, true));
+    CHECK(compare(rmax2,  [](float a) {return std::max(1.f, a);}, true));
+    CHECK(compare(rmin1,  [](float a) {return std::min(a, 1.f);}, true));
+    CHECK(compare(rmin2,  [](float a) {return std::min(1.f, a);}, true));
   }
 
   SECTION("elementwise binary operators with broadcasting") {
@@ -670,16 +687,16 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     values.clear();
 
     std::vector<T> vA({  1, -2,   3,
-                            -4,  5,  -6,
-                             7, -8,   9,
-                           -10, 11, -12});
+                        -4,  5,  -6,
+                         7, -8,   9,
+                       -10, 11, -12});
     std::vector<T> vC({ 1,  -2, // C = np.array([1, -2, 3, -4, 5, -6, 7, -8, 9, -10, 11, -12]).reshape((2, 3, 2))
-                            3,  -4,
-                            5,  -6,
+                        3,  -4,
+                        5,  -6,
 
-                            7,  -8,
-                            9, -10,
-                           11, -12 });
+                        7,  -8,
+                        9, -10,
+                        11, -12 });
     std::vector<T> vB1({1, -2, 3});
     std::vector<T> vB2({1, -4, 7, -10});
     std::vector<T> vB3({-2, 5, -8, 11});
@@ -687,7 +704,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     std::vector<T> vD1(vB4);
     std::vector<T> vD2({5, -6, 11, -12});
     std::vector<T> vD3({1, -2, 5, -6, 7, -8, 11, -12}); // C[:,(0,2),:]
-    //std::vector<float> vD4({5, -6, 3, -4, 7, -8, 11, -12}); // [C[0,(2,1),:],C[1,(0,2),:]]
+    std::vector<T> vD4({5, -6, 3, -4, 7, -8, 11, -12}); // [C[0,(2,1),:],C[1,(0,2),:]]
     std::vector<T> vS1({7, -8, 9});
     std::vector<T> vS2({-4, 5, -6, 7, -8, 9});
     std::vector<T> vS3({7, -8, 9, -10, 11, -12});
@@ -714,11 +731,11 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(D1->type() == "sliceView");
     CHECK(D2->type() == "gather");
     // enable this once gather() supports batched indices:
-    //auto D4 = gather(C, 1, graph->constant({2, 2, 1}, // [C[0,(2,1),:],C[1,(0,2),:]]
-    //                                       inits::fromVector(std::vector<IndexType>{
-    //                                         2, 1,
-    //                                         0, 2 }),
-    //                                       Type::uint32));
+    auto D4 = gather(C, 1, graph->constant({2, 2, 1}, // [C[0,(2,1),:],C[1,(0,2),:]]
+                                          inits::fromVector(std::vector<IndexType>{
+                                            2, 1,
+                                            0, 2 }),
+                                          Type::uint32));
 
     auto S1 = slice(A, 0, 2);
     auto S2 = narrow(A, 0, 1, 2);
@@ -736,7 +753,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(D1->shape() == Shape({1, 3, 2})); D1->val()->get(values); CHECK( values == vD1 );
     CHECK(D2->shape() == Shape({2, 1, 2})); D2->val()->get(values); CHECK( values == vD2 );
     CHECK(D3->shape() == Shape({2, 2, 2})); D3->val()->get(values); CHECK( values == vD3 );
-    //CHECK(D4->shape() == Shape({2, 2, 2})); D4->val()->get(values); CHECK( values == vD4 );
+    CHECK(D4->shape() == Shape({2, 2, 2})); D4->val()->get(values); CHECK( values == vD4 );
 
     CHECK(S1->shape() == Shape({1,3})); S1->val()->get(values); CHECK(values == vS1);
     CHECK(S2->shape() == Shape({2,3})); S2->val()->get(values); CHECK(values == vS2);
@@ -770,6 +787,80 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     C2->val()->get(values2);
     CHECK( values == values2 );
   }
+
+  SECTION("topk operations") {
+    graph->clear();
+    values.clear();
+    
+    std::vector<T> vA({   0,      .3333,   -.2, 
+                          -.3,   0,        4.5, 
+                          5.2, -10,      101.45, 
+                       -100.05,  0,        1.05e-5});
+  
+    auto a = graph->constant({2, 2, 3}, inits::fromVector(vA));
+    
+    // get top-k indices and values as a tuple
+    auto rtopk1 = topk(a, /*k=*/2, /*axis=*/-1, /*descending=*/true);
+    auto rval1  = get<0>(rtopk1);  // values from top-k
+    auto ridx1  = get<1>(rtopk1);  // indices from top-k
+    auto gval1  = gather(a, -1, ridx1); // get the same values via gather and indices
+
+    auto ridx2  = get<1>(topk(a, /*k=*/2, /*axis=*/-1, /*descending=*/false));
+    auto gval2  = gather(a, -1, ridx2); // get the same values via gather and indices
+    
+    auto ridx3  = get<1>(argmin(a, -1));
+    auto ridx3_ = slice(ridx2, -1, 0); // slice and cast now support uint32_t/IndexType
+
+    // @TODO: add integer types to more operators
+    auto eq3 = eq(cast(ridx3, floatType), cast(ridx3_, floatType));
+    
+    auto rtopk4 = argmax(a, /*axis=*/-2); // axes other than -1 are currently implemented via inefficient transpose
+    auto rval4  = get<0>(rtopk4);
+    auto ridx4  = get<1>(rtopk4);
+    auto gval4  = gather(a, -2, ridx4);
+
+    graph->forward();
+
+    CHECK(rval1 != gval1);
+    CHECK(rval1->shape() == gval1->shape());
+    CHECK(ridx1->shape() == gval1->shape());
+    
+    std::vector<T> vval1 = { 0.3333,  0, 
+                             4.5,     0, 
+                           101.45,    5.2, 
+                             1.05e-5, 0 };
+    
+    std::vector<T> rvalues;
+    std::vector<T> gvalues;
+    rval1->val()->get(rvalues);
+    gval1->val()->get(gvalues);
+    CHECK( rvalues == gvalues );
+    CHECK( rvalues == vval1 );
+
+    std::vector<T> vval2 = { -0.2,  0, 
+                             -0.3,  0, 
+                            -10.0,  5.2, 
+                           -100.05, 0 };
+    gval2->val()->get(values);
+    CHECK( values == vval2 );
+
+    eq3->val()->get(values);
+    CHECK( values == std::vector<T>({1, 1, 1, 1}) );
+
+    std::vector<IndexType> vidx4;
+    ridx4->val()->get(vidx4);
+    CHECK( ridx4->shape() == Shape({2, 1, 3}) );
+    CHECK( vidx4 == std::vector<IndexType>({0, 0, 1, 
+                                            0, 1, 0}) );
+
+    std::vector<T> vval4 = { 0,   0.3333,   4.5, 
+                             5.2, 0,      101.45 };
+    rval4->val()->get(values);
+    CHECK( values == vval4 );
+
+    gval4->val()->get(values);
+    CHECK( values == vval4 );
+  }
 }
 
 #ifdef CUDA_FOUND
@@ -789,3 +880,59 @@ TEST_CASE("Expression graph supports basic math operations (cpu)", "[operator]")
   tests<float>(DeviceType::cpu);
 }
 #endif
+
+#ifdef BLAS_FOUND
+#ifdef CUDA_FOUND
+
+TEST_CASE("Compare aggregate operator", "[graph]") {
+  auto floatApprox = [](float x, float y) -> bool { return x == Approx(y).margin(0.001f); };
+  
+  Config::seed = 1234;
+
+  std::vector<float> initc;
+  std::vector<float> inita;
+
+  {
+    auto graph = New<ExpressionGraph>();
+    graph->setDevice({0, DeviceType::cpu});
+    graph->reserveWorkspaceMB(40);
+
+    auto chl = graph->param("1x10x512x2048", {1, 10, 512, 2048}, inits::normal());
+    auto adj = graph->param("1x1x512x2048",  {1,  1, 512, 2048}, inits::normal());
+    graph->forward();
+
+    chl->val()->get(initc);
+    adj->val()->get(inita);
+  }
+
+  SECTION("initializing with zero (cpu)") {
+    std::vector<float> values1;
+    std::vector<float> values2;
+    
+    auto graph1 = New<ExpressionGraph>();
+    graph1->setDevice({0, DeviceType::cpu});
+    graph1->reserveWorkspaceMB(40);
+
+    auto graph2 = New<ExpressionGraph>();
+    graph2->setDevice({0, DeviceType::gpu});
+    graph2->reserveWorkspaceMB(40);
+  
+    auto chl1 = graph1->param("1x10x512x2048", {1, 10, 512, 2048}, inits::fromVector(initc));
+    auto adj1 = graph1->param("1x1x512x2048",  {1,  1, 512, 2048}, inits::fromVector(inita));
+    auto prod1 = scalar_product(chl1, adj1, -1);
+    graph1->forward();
+
+    auto chl2 = graph2->param("1x10x512x2048", {1, 10, 512, 2048}, inits::fromVector(initc));
+    auto adj2 = graph2->param("1x1x512x2048",  {1,  1, 512, 2048}, inits::fromVector(inita));
+    auto prod2 = scalar_product(chl2, adj2, -1);
+    graph2->forward();
+
+    prod1->val()->get(values1);
+    prod2->val()->get(values2);
+
+    CHECK( std::equal(values1.begin(), values1.end(), values2.begin(), floatApprox) );
+  }
+}
+
+  #endif
+  #endif

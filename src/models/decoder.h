@@ -47,13 +47,12 @@ public:
 
     ABORT_IF(shortlist_, "How did a shortlist make it into training?");
 
-    const Words& data = subBatch->data();
-    Expr yData = graph_->indices(toWordIndexVector(data));
+    auto yDelayed = shift(y, {1, 0, 0}); // insert zero at front; first word gets predicted from a target embedding of 0
 
-    auto yShifted = shift(y, {1, 0, 0});
-
-    state->setTargetHistoryEmbeddings(yShifted);
+    state->setTargetHistoryEmbeddings(yDelayed);
     state->setTargetMask(yMask);
+    
+    const Words& data = subBatch->data();
     state->setTargetWords(data);
   }
 

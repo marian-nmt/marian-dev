@@ -38,7 +38,7 @@ namespace marian {
     if(idx >= size)
       return;
 
-    float quant[idx] = data[idx];
+    quant[idx] = data[idx];
 
     // helper
     // will be 127 / max if we set the bit to be 8
@@ -141,13 +141,15 @@ namespace marian {
       // gQuantize<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, base, S);
       gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, S);
       
-      // obtains a by applying q/=S
-      using namespace functional;
-      Element(_1 /= S, delta[id]);
-      
+      {
+	// obtains a by applying q/=S
+        using namespace functional;
+        Element(_1 /= S, delta[id]);
+      }
+
       thrust::device_ptr<float> delta_ptr(delta[id]->data());
-      float delta_top = thrust::inner_product(delta_ptr, delta_ptr + t->size(), d_ptr, 0.0f); // computes (a*t)
-      float delta_btm = thrust::inner_product(delta_ptr, delta_ptr + t->size(), delta_ptr, 0.0f); // computes (a*a)
+      float delta_top = thrust::inner_product(delta_ptr, delta_ptr + (int)t->size(), d_ptr, 0.0f); // computes (a*t)
+      float delta_btm = thrust::inner_product(delta_ptr, delta_ptr + (int)t->size(), delta_ptr, 0.0f); // computes (a*a)
       S = delta_top / delta_btm; // S = (a*t)/(a*a)
     }
 

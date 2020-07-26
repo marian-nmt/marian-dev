@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- GitHub workflows on Ubuntu and Windows
+- GitHub workflows on Ubuntu, Windows, and MacOS
 - LSH indexing to replace short list
 - ONNX support for transformer models
 - Add topk operator like PyTorch's topk

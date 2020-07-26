@@ -1,4 +1,4 @@
-name: build-ubuntu-18.04-cpu
+name: ubuntu-18.04-cpu
 
 on:
   push:

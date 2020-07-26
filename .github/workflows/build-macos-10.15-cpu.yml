@@ -1,4 +1,4 @@
-name: build-macos-10.5-cpu
+name: macos-10.5-cpu
 
 on:
   push:

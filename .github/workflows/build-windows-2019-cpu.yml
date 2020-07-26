@@ -1,4 +1,4 @@
-name: build-windows-2019-cpu
+name: windows-2019-cpu
 
 on:
   push:

@@ -689,7 +689,7 @@ template <class Backend> struct LoopBeforeAxisImpl<Backend, 0> {
       const functional::Shape &, int outBase,
       const functional::Shape &, int inBase,
       const functional::Shape &, int idxBase,
-      int axisCPU,
+      int /*axisCPU*/,
       Backend backend) {
     backend(outBase, inBase, idxBase);
   }

@@ -19,6 +19,9 @@ if(USE_FBGEMM)
     # only locally disabled for the 3rd_party folder
     # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-value -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused")
+  else()
+    # Do not compile cpuinfo executables due to a linker error, and they are not needed
+    set(CPUINFO_BUILD_TOOLS OFF CACHE BOOL "Build command-line tools")
   endif()
 
   set(FBGEMM_BUILD_TESTS OFF CACHE BOOL "Disable fbgemm tests")
@@ -66,7 +69,7 @@ if(USE_SENTENCEPIECE)
     PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    foreach(t sentencepiece sentencepiece_train sentencepiece_train-static
+    foreach(t sentencepiece-static sentencepiece_train-static
         spm_decode spm_encode spm_export_vocab spm_normalize spm_train)
       set_property(TARGET ${t} APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-tautological-compare -Wno-unused")
       if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.0)

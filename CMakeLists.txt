@@ -67,12 +67,8 @@ if(MSVC)
   # Disabled bogus warnings for CPU intrinsics:
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
-  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
-  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # In Debug build, disable more warnings that look bogus:
-    # C4702: unreachable code; note it is also disabled globally in the VS project
-    set(DISABLE_GLOBALLY "${DISABLE_GLOBALLY} /wd\"4702\"")
-  endif()
+  # C4702: unreachable code; note it is also disabled globally in the VS project file
+  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\"")
 
   # set(INTRINSICS "/arch:AVX")
   add_definitions(-DUSE_SSE2=1)

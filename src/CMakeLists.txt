@@ -222,9 +222,10 @@ if(COMPILE_SERVER)
   add_executable(marian_server command/marian_server.cpp)
   set_target_properties(marian_server PROPERTIES OUTPUT_NAME marian-server)
   if(MSVC)
+    # Disable warnings from the SimpleWebSocketServer library needed for compilation of marian-server
     target_compile_options(marian_server PUBLIC ${ALL_WARNINGS})
   else(MSVC)
-      # -Wno-suggest-override disables warnings from Boost 1.69+
+    # -Wno-suggest-override disables warnings from Boost 1.69+
     target_compile_options(marian_server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
   endif(MSVC)
   set(EXECUTABLES ${EXECUTABLES} marian_server)

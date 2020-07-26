@@ -410,8 +410,8 @@ void tests(DeviceType device, Type floatType = Type::float32) {
       std::vector<float> SV;    // create CSR version of S
       std::vector<IndexType> SI, SO;
       SO.push_back((IndexType)SI.size());
-      for (IndexType i = 0; size_t(i) < S->shape()[0]; i++) {
-        for (IndexType j = 0; size_t(j) < S->shape()[1]; j++) {
+      for (IndexType i = 0; i < (IndexType)S->shape()[0]; i++) {
+        for (IndexType j = 0; j < (IndexType)S->shape()[1]; j++) {
           auto k = 4 * i + j;
           if (vS[k] != 0) {
             SV.push_back(vS[k]);

@@ -746,7 +746,7 @@ void Select(Tensor out,
     const int idxStride = idxShape.bstride(axisCPU);
     // Loop over all dimensions before the axis.
     LoopBeforeAxis(outShape, inShape, idxShape, axisCPU,
-        [out, in, indices, afterAxis, end, outStride, idxStride, axisCPU](int outBase, int inBase, int idxBase) {
+        [out, in, indices, afterAxis, end, outStride, idxStride](int outBase, int inBase, int idxBase) {
           // Loop over the axis dimension.
           for (int i = 0; i < end; ++i) {
             int index = indices->data<IndexType>()[idxBase];

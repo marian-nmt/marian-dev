@@ -65,7 +65,7 @@ public:
     setGemmPrecision(options);
     setLegacyBatchedGemm(options->get<bool>("use-legacy-batching"));
   }
-g
+
   void synchronize() override {}
 
   // for CPU & inference only, sets to use optimized code for inference. Does nothing for GPU.

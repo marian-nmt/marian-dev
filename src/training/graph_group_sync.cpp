@@ -348,7 +348,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       updateAvgParams(
           paramsAvg_[idx], curParam, scheduler_->numberOfBatches(), updateTrgWords);
   };
-  
+
   // cost across all local devices (scheduler will aggregate cross-process)
   StaticLoss localLoss = std::accumulate(localDeviceLosses.begin(), localDeviceLosses.end(), StaticLoss());
   
@@ -357,17 +357,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     comm_->scatterReduceAndResetGrads(); // reduce gradients across all devices and MPI nodes into shards
     comm_->foreach(update);              // per-shard model-update
     comm_->allGatherParams();            // distribute param value shards back
-  
-   // Re-compress the model 
-    if (options_->get<int>("compress-bit") < 32) {
-      // Lazy allocation
-      if (compressers_.size() == 0)
-        for (int idx = 0; idx < graphs_.size(); idx++)
-          compressers_.push_back(New<Compresser>(options_));
-    
-      for (int idx = 0; idx < graphs_.size(); idx++)
-        compressers_[idx]->compress(graphs_[idx]);
-    }
   }
   else
     LOG(info, "[training] skipping {}-th update due to loss being {}", scheduler_->numberOfBatches(), localLoss.loss);

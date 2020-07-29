@@ -5,6 +5,8 @@
 #include <sstream>
 
 #include "tensors/cpu/expression_graph_packable.h"
+#include "onnx/expression_graph_onnx_exporter.h"
+
 
 int main(int argc, char** argv) {
   using namespace marian;
@@ -24,11 +26,16 @@ int main(int argc, char** argv) {
     cli->add<std::string>("--to,-t", "Output model", "model.bin");
     cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512, intgemm8, intgemm16", "float32");
     cli->add<bool>("--float-Wemb", "Do not compress the Wemb matrix. Only available when using intgemm8 format.", false);
+    cli->add<std::string>("--export-as", "Kind of conversion: marian-bin or onnx-{encode,decoder-step,decoder-init,decoder-stop}", "marian-bin");
+    cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export");
     cli->parse(argc, argv);
     options->merge(config);
   }
   auto modelFrom = options->get<std::string>("from");
   auto modelTo = options->get<std::string>("to");
+
+  auto exportAs = options->get<std::string>("export-as");
+  auto vocabPaths = options->get<std::vector<std::string>>("vocabs");// , std::vector<std::string>());
   
   auto saveGemmTypeStr = options->get<std::string>("gemm-type", "float32");
   Type saveGemmType;
@@ -48,7 +55,7 @@ int main(int argc, char** argv) {
     ABORT("Unknown gemm-type: {}", saveGemmTypeStr);
   }
 
-  LOG(info, "Outputting {}", modelTo);
+  LOG(info, "Outputting {}, precision: {}", modelTo, saveGemmType);
 
   YAML::Node config;
   std::stringstream configStr;
@@ -59,14 +66,35 @@ int main(int argc, char** argv) {
   graph->compressWemb = !options->get<bool>("float-Wemb"); //The variable is reversed because, sue me
   graph->setDevice(CPU0);
   if (saveGemmType != Type::intgemm16)
-    graph->getBackend()->setOptimized(false);
+    graph->getBackend()->setInt16(false);
   if (saveGemmType != Type::intgemm8)
-    graph->getBackend()->setOptimized8(false);
+    graph->getBackend()->setInt8(false);
 
-  graph->load(modelFrom);
-  graph->forward();
-  // added a flag if the weights needs to be packed or not
-  graph->packAndSave(modelTo, configStr.str(), /* --gemm-type */ saveGemmType, Type::float32);
+  auto load = [&](Ptr<ExpressionGraph> graph) {
+    graph->setDevice(CPU0);
+    graph->getBackend()->setInt16(false);
+
+    graph->load(modelFrom);
+    graph->forward();  // run the initializers
+  };
+
+  if (exportAs == "marian-bin") {
+    auto graph = New<ExpressionGraphPackable>();
+    load(graph);
+    // added a flag if the weights needs to be packed or not
+    graph->packAndSave(modelTo, configStr.str(), /* --gemm-type */ saveGemmType, Type::float32);
+  }
+#ifdef USE_ONNX
+  else if (exportAs == "onnx-encode") {
+    auto graph = New<ExpressionGraphONNXExporter>();
+    load(graph);
+    auto modelOptions = New<Options>(config)->with("vocabs", vocabPaths, "inference", true);
+
+    graph->exportToONNX(modelTo, modelOptions, vocabPaths);
+  }
+#endif // USE_ONNX
+  else
+    ABORT("Unknown --export-as value: {}", exportAs);
 
   // graph->saveBinary(vm["bin"].as<std::string>());
 

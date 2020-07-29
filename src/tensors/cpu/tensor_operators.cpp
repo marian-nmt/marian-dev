@@ -27,11 +27,18 @@ namespace cpu {
 template <typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   for(int i = 0; i < length; ++i)
-    out[i] = in[i];
+#ifdef _MSC_VER
+#pragma warning (push)
+#pragma warning (disable: 4244)  // 'argument': conversion from 'const From' to 'float', possible loss of data
+#endif
+    out[i] = (To)in[i];
+#ifdef _MSC_VER
+#pragma warning (pop)
+#endif
 }
 
 // Casting has been factored into two functions "CopyCastFrom" and
-// "CopyCastTo". This only serves the purpuse to autmatically create
+// "CopyCastTo". This only serves the purpuse to automatically create
 // the full Carthesian product of possible type cast via template magic.
 // Extending CopyCast and CopyCastFrom with a new branch in the "if" clause
 // adds all possible variants.
@@ -52,6 +59,8 @@ void CopyCast(Tensor out, const Tensor in) {
     CopyCastFrom(out, in->data<float>(), (int)in->size());
   } else if(in->type() == Type::float16) {
     CopyCastFrom(out, in->data<float16>(), (int)in->size());
+  } else if(in->type() == Type::uint32) {
+    CopyCastFrom(out, in->data<uint32_t>(), (int)in->size());
   } else {
     ABORT("CopyCastFrom from type {} not implemented", in->type());
   }
@@ -645,35 +654,62 @@ void PasteCols(Tensor out_,
   }
 }
 
-// Optimized version of Select for axis=2
-// @TODO: make this generally fast without this special version
-void SelectAxis2(Tensor out,
-             const Tensor in,
-             const Tensor indices) {
-
-  matchOrAbort<IndexType>(indices->type());
-
-  functional::Shape outShape = out->shape();
-  functional::Shape inShape = in->shape();
-
-  auto idxData = indices->data<IndexType>();
-  auto odata = out->data();
-  const auto idata = in->data();
-
-  int size = outShape[3];
-
-  for(int k = 0; k < outShape[0]; ++k) {
-    for(int j = 0; j < outShape[1]; ++j) {
-      int outOffset = k * j * outShape[2] * size + j * outShape[2] * size;
-      int inOffset = k * j * inShape[2] * size + j * inShape[2] * size;
-      for(int i = 0; i < outShape[2]; ++i) {
-        auto idx = idxData[i];
-        int outIndex = outOffset +   i * size;
-        int inIndex  = inOffset  + idx * size;
-        std::copy(idata + inIndex, idata + inIndex + size, odata + outIndex);
+/* Recursive template to implement LoopBeforeAxis. */
+template <class Backend, int Before> struct LoopBeforeAxisImpl {
+  static inline void Loop(
+      const functional::Shape &outShape, int outBase,
+      const functional::Shape &inShape, int inBase,
+      const functional::Shape &idxShape, int idxBase,
+      int axisCPU,
+      Backend backend) {
+    // Loop over this dimension.
+    const int dim = axisCPU - Before;
+    if (dim < 0) {
+      // This template is instantiated for every possible dimension, typically
+      // more than before the axis.
+      LoopBeforeAxisImpl<Backend, Before - 1>::Loop(outShape, outBase, inShape, inBase, idxShape, idxBase, axisCPU, backend);
+    } else {
+      const int outStride = outShape.stride(dim);
+      const int end = outShape.dim(dim);
+      const int inStride = inShape.stride(dim);
+      const int idxStride = idxShape.bstride(dim);
+      for (int i = 0; i < end; ++i) {
+        LoopBeforeAxisImpl<Backend, Before - 1>::Loop(outShape, outBase, inShape, inBase, idxShape, idxBase, axisCPU, backend);
+        outBase += outStride;
+        inBase += inStride;
+        idxBase += idxStride;
       }
     }
   }
+};
+
+/* We're at the axis, call the functor. */
+template <class Backend> struct LoopBeforeAxisImpl<Backend, 0> {
+  static inline void Loop(
+      const functional::Shape &, int outBase,
+      const functional::Shape &, int inBase,
+      const functional::Shape &, int idxBase,
+      int /*axisCPU*/,
+      Backend backend) {
+    backend(outBase, inBase, idxBase);
+  }
+};
+
+/* Jointly loop over dimensions [0, axisCPU) of three tensors out, in, and
+ * indices.  Call the Backend functor for each iteration of the loop.
+ * Backend is a functor taking the tensors and base indices into them:
+ * Backend::operator()(
+ *   int out_base,
+ *   int in_base,
+ *   int indices_base);
+ */
+template <class Backend> inline void LoopBeforeAxis(
+    const functional::Shape &outShape,
+    const functional::Shape &inShape,
+    const functional::Shape &idxShape,
+    int axisCPU,
+    Backend backend) {
+  LoopBeforeAxisImpl<Backend, functional::Shape::size()>::Loop(outShape, 0, inShape, 0, idxShape, 0, axisCPU, backend);
 }
 
 void Select(Tensor out,
@@ -683,17 +719,50 @@ void Select(Tensor out,
 
   matchOrAbort<IndexType>(indices->type());
 
-  // @TODO: make this efficient
   functional::Shape outShape = out->shape();
   functional::Shape inShape  = in->shape();
   functional::Shape idxShape = indices->shape();
-  int length = outShape.elements();
 
-  functional::Array<int, functional::Shape::size()> dims;
   int axisCPU = (int)(axis + functional::Shape::size() - out->shape().size());
 
-  if(axisCPU == 2 && outShape == idxShape) // specialization for axis==2 when there is no broadcasting, @TODO to be removed once we have a faster implementation below
-    return SelectAxis2(out, in, indices);
+  // Are all index dimensions 1 after the axis?
+  bool flatIndices = true;
+  // Total dimensionality of input and output after the axis.
+  int afterAxis = 1;
+  for (int i = axisCPU + 1; i < functional::Shape::size(); ++i) {
+    afterAxis *= outShape[i];
+    if (idxShape[i] != 1) {
+      flatIndices = false;
+    }
+  }
+  /* Faster version based on copying. Requirements:
+   * input is contiguous for every dimension after the axis.
+   * output is contiguous for every dimension after the axis.
+   * indices have shape 1 for every dimension after the axis.
+   */
+  if (afterAxis == inShape.stride(axisCPU) && afterAxis == outShape.stride(axisCPU) && flatIndices) {
+    const int end = outShape.dim(axisCPU);
+    const int outStride = outShape.stride(axisCPU);
+    const int idxStride = idxShape.bstride(axisCPU);
+    // Loop over all dimensions before the axis.
+    LoopBeforeAxis(outShape, inShape, idxShape, axisCPU,
+        [out, in, indices, afterAxis, end, outStride, idxStride](int outBase, int inBase, int idxBase) {
+          // Loop over the axis dimension.
+          for (int i = 0; i < end; ++i) {
+            int index = indices->data<IndexType>()[idxBase];
+            // Loop over all dimensions after the axis.
+            std::copy(in->data() + inBase + index * afterAxis, in->data() + inBase + index * afterAxis + afterAxis, out->data() + outBase);
+            outBase += outStride;
+            idxBase += idxStride;
+          }
+        });
+    return;
+  }
+
+  // @TODO: make this efficient
+  int length = outShape.elements();
+  // Loop over outer dimensions (those before the axis).
+  functional::Array<int, functional::Shape::size()> dims;
 
   for(int index = 0; index < length; ++index) {
     outShape.dims(index, dims);                                // compute dimension-based indices from global index;
@@ -1026,6 +1095,8 @@ void LayerNormalization(Tensor out_,
   const float* in = in_->data();
   const float* alpha = gamma_->data();
   const float* beta = beta_ ? beta_->data() : nullptr;
+  const int alphaStride = gamma_->shape().back() > 1;  // broadcasting for alpha and beta
+  const int betaStride = beta_ && beta_->shape().back() > 1;
 
   int rows = in_->shape().elements() / in_->shape().back();
   int cols = in_->shape().back();
@@ -1053,9 +1124,9 @@ void LayerNormalization(Tensor out_,
 
 #pragma omp simd
     for(int i = 0; i < cols; ++i) {
-      float t = alpha[i] * ((sp[i] - mean) / sigma);
+      float t = alpha[alphaStride * i] * ((sp[i] - mean) / sigma);
       if(beta != nullptr) {
-        t += beta[i];
+        t += beta[betaStride * i];
       }
 
       so[i] = t;
@@ -1080,6 +1151,10 @@ void LayerNormalizationGrad(Tensor gradX_,
   float* x = x_->data();
   float* gamma = gamma_->data();
   float* beta = beta_ ? beta_->data() : nullptr;
+  // @TODO: The CPU implementation supports scalar gamma and beta. This is a left-over,
+  //        we should enable that in the GPU version as well.
+  const int gammaStride = gamma_->shape().back() > 1;  // broadcasting for alpha and beta. 0 means it's a scalar
+  const int betaStride = beta_ && beta_->shape().back() > 1;
 
   size_t rows = y_->shape().elements() / y_->shape()[-1];
   size_t cols = y_->shape()[-1];
@@ -1100,7 +1175,7 @@ void LayerNormalizationGrad(Tensor gradX_,
 #pragma omp simd reduction(+ : sum_x, sum_adj_x, sum_adj)
       for(size_t i = 0; i < cols; ++i) {
         sum_x += xRow[i];
-        sum_adj_x += adjRow[i] * (yRow[i] - (beta ? beta[i] : 0.f)) / gamma[i];
+        sum_adj_x += adjRow[i] * (yRow[i] - (beta ? beta[betaStride * i] : 0.f)) / gamma[gammaStride * i];
         sum_adj += adjRow[i];
       }
 
@@ -1115,15 +1190,15 @@ void LayerNormalizationGrad(Tensor gradX_,
 #pragma omp simd
       for(size_t i = 0; i < cols; ++i) {
         float grad_x = 0.f;
-        float x_hat = (yRow[i] - beta[i]) / gamma[i];
+        float x_hat = (yRow[i] - beta[betaStride * i]) / gamma[gammaStride * i];
         grad_x += cols * adjRow[i];
         grad_x -= sum_adj;
         grad_x -= sum_adj_x * x_hat;
         grad_x /= cols * sigma;
 
-        gradXRow[i] += gamma[i] * grad_x;
-        gradGamma[i] += adjRow[i] * x_hat;
-        gradBeta[i] += adjRow[i];
+        gradXRow[i] += gamma[gammaStride * i] * grad_x;
+        gradGamma[gammaStride * i] += adjRow[i] * x_hat;
+        gradBeta[betaStride * i] += adjRow[i];
       }
     }
   } else {
@@ -1142,7 +1217,8 @@ void LayerNormalizationGrad(Tensor gradX_,
 #pragma omp simd reduction(+ : sum_x, sum_adj_x, sum_adj)
       for(size_t i = 0; i < cols; ++i) {
         sum_x += xRow[i];
-        sum_adj_x += adjRow[i] * (yRow[i] - (beta ? beta[i] : 0.f)) / gamma[i];
+        sum_adj_x += adjRow[i] * (yRow[i] - (beta ? beta[betaStride * i] : 0.f)) / gamma[gammaStride * i];
+        // @TODO: beta is NULL here            ^^
         sum_adj += adjRow[i];
       }
 
@@ -1157,14 +1233,14 @@ void LayerNormalizationGrad(Tensor gradX_,
 #pragma omp simd
       for(size_t i = 0; i < cols; ++i) {
         float grad_x = 0.f;
-        float x_hat = yRow[i] / gamma[i];
+        float x_hat = yRow[i] / gamma[gammaStride * i];
         grad_x += cols * adjRow[i];
         grad_x -= sum_adj;
         grad_x -= sum_adj_x * x_hat;
         grad_x /= cols * sigma;
 
-        gradXRow[i] += gamma[i] * grad_x;
-        gradGamma[i] += adjRow[i] * x_hat;
+        gradXRow[i] += gamma[gammaStride * i] * grad_x;
+        gradGamma[gammaStride * i] += adjRow[i] * x_hat;
       }
     }
   }
@@ -1175,7 +1251,7 @@ void Shift(Tensor out_,
            marian::Shape shift,
            float padValue,
            bool invert) {
-  int offset = 0;
+  int offset = 0; // out[i + offset] = in[i]; shift>0 inserts values at front, shifts back, pushes out
   for(int i = 0; i < shift.size(); ++i)
     offset += in_->shape().stride(i) * shift[i];
 

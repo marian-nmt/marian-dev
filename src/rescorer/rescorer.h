@@ -12,6 +12,7 @@
 #include "rescorer/score_collector.h"
 #include "training/scheduler.h"
 #include "training/validator.h"
+#include "tensors/backend.h"
 
 namespace marian {
 
@@ -73,7 +74,12 @@ public:
       auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
-      graph->getBackend()->configureDevice(options_);
+      graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
+      if (device.type == DeviceType::cpu) {
+        graph->getBackend()->setGemmPrecision(options_);
+        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
+      }
+
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
     }

@@ -73,19 +73,19 @@ public:
 
   // for CPU, sets to use optimized code for inference.
   // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
-  void setOptimized(bool optimize) override {
+  void setInt16(bool optimize) override {
     LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
   }
 
-  bool isOptimized() override {
+  bool isInt16() override {
     return false;
   }
 
-  void setOptimized8(bool optimize) override {
+  void setInt8(bool optimize) override {
     LOG_ONCE(info, "setOptimized8() not supported for GPU_{}", optimize);
   }
 
-  bool isOptimized8() override {
+  bool isInt8() override {
     return false;
   }
 

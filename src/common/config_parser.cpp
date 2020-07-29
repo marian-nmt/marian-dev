@@ -628,19 +628,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer CPU multiplication. Only available on CPU");
-  cli.add<bool>("--optimize8",
-      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer CPU multiplication. Only available on CPU");
-  cli.add<bool>("--intgemm-shifted",
-      "Use a shifted GEMM implementation. Only available with intgemm8.");
-  cli.add<bool>("--intgemm-shifted-all",
-      "Use a shifted GEMM implementation even for operations without biases. Only available with intgemm8.");
-  cli.add<bool>("--dump-quantmult",
-      "Dump the quantization multipliers during an avarage run.");
-  cli.add<bool>("--use-precomputed-alphas",
-      "Use precomputed alphas for bias calculation.");
   cli.add<bool>("--use-legacy-batching",
       "Use legacy codepath with a for loop of cblas_sgemm, instead of cblas_sgemm_batched.");
   cli.add<bool>("--skip-cost",
@@ -658,6 +647,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--output-sampling",
      "Noise output layer with gumbel noise",
       false);
+  cli.add<std::vector<int>>("--output-approx-knn",
+     "Use approximate knn search in output layer (currently only in transformer)")
+     ->implicit_val("100 1024");
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
@@ -701,9 +693,8 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
@@ -844,6 +835,26 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
+void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
+  // clang-format off
+  cli.add<bool>("--int16",
+      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");
+  cli.add<bool>("--int8",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int8");
+  cli.add<bool>("--int8shift",
+      "Use a faster, shifted integer 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
+  cli.add<bool>("--int8shiftAlpha",
+      "Use a faster, shifted integer 8bit GEMM implementation, with precomputed alphas. Corresponds to --gemm-precision int8shiftAlpha");
+  cli.add<bool>("--int8shiftAll",
+      "Use a faster, shifted integer 8bit GEMM implementation even for matrices that don't have a bias. Beneficial on VNNI. Corresponds to --gemm-precision int8shiftAll");
+  cli.add<bool>("--int8shiftAlphaAll",
+      "Use a faster, shifted integer 8bit GEMM implementation even for matrices that don't have a bias, with precomputed alphas. Should be the fastest option. Corresponds to --gemm-precision int8shiftAlphaAll");
+  cli.add<std::string>("--gemm-precision",
+      "Use lower precision for the GEMM operations only. Supported values: float32, int16, int8, int8shift, int8shiftAlpha, int8shiftAll, int8shiftAlphaAll", "float32");
+  cli.add<bool>("--dump-quantmult",
+      "Dump the quantization multipliers of activation matrices during an avarage run. To be used to precompute alphas for ---gemm-precision int8shiftAlpha or int8shiftAlphaAll.");
+  // clang-format on
+}
 
 cli::mode ConfigParser::getMode() const { return mode_; }
 

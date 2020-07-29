@@ -12,6 +12,7 @@
 #include "rescorer/score_collector.h"
 #include "training/scheduler.h"
 #include "training/validator.h"
+#include "tensors/backend.h"
 
 namespace marian {
 

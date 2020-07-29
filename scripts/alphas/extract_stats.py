@@ -52,4 +52,12 @@ for name in matrices_maxabs:
         res = np.array((1,), dtype = np.float32)
         res[0] = 127 / (np.mean(matrices_maxabs[name]) + 1.1*np.std(matrices_maxabs[name]))
         model_file_dict[name] = res
+# Make sure that the decoder works whether a shortlist has been generated or not:
+# This is necessary because when there is a shortlist, the matrix names are different.
+# The Wemb matrix becomes "none"
+if 'Wemb_QuantMultA' in model_file_dict:
+    model_file_dict['none_QuantMultA'] = model_file_dict['Wemb_QuantMultA']
+elif 'none_QuantMultA' in model_file_dict:
+    model_file_dict['Wemb_QuantMultA'] = model_file_dict['none_QuantMultA']
+
 np.savez(argv[3], **model_file_dict)

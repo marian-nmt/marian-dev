@@ -92,9 +92,6 @@ def print_sample(tensor_name, tensor, new_tensor):
   print(tensor_name + " | shape =  ", tensor.shape, "  : ")
   print(" before ", tensor.flat[0:6])
   print(" after  ", new_tensor.flat[0:6])
-  print(" unique centers : ",len(set(tensor.flat)), " -> ",  len(set(new_tensor.flat)))
-  # print(" before ", set(tensor.flat))
-  # print(" after ", set(new_tensor.flat))
   print("\n")
 
 
@@ -178,7 +175,6 @@ if __name__== "__main__":
   print(" uncompressed elements  : ", total_uncompressed) 
   print(" compress ratio         : ", (total_uncompressed * 32 + total_compressed * args.bit)/((total_compressed + total_uncompressed) * 32))
   print(" ===============")
-  print(np.average(bias_dev), np.average(full_dev))
   print("compression done")
   print("saving to " + args.output)
   np.savez(args.output, **new_model)

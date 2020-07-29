@@ -1,5 +1,3 @@
-#include <curand.h>
-#include <curand_kernel.h>
 #include <cmath>
 
 #include <thrust/inner_product.h>
@@ -7,13 +5,12 @@
 #include <thrust/device_vector.h>
 #include <thrust/extrema.h>
 
-
 #include "optimizers/compresser.h"
 #include "tensors/tensor_operators.h"
 #include "tensors/tensor_allocator.h"
 
 #include "functional/functional.h"
-
+#include "functional/floats.h"
 
 namespace marian {
 
@@ -24,40 +21,24 @@ namespace marian {
    *
    * @param data contains the original data
    * @param quant will contain the resulting quantized data. set data = quant for in-place operation
-   * @param size the data size
    * @param num_centers the number of quantized centers in absolute. It should be 2^(bit-1)
-   * @param max stores the scaling factor.
+   * @param S stores the scaling factor.
    */
-  __global__ void gQuantize_fixed(float* data,
-                            float* quant,
-                            int size,
-                            int num_centers,
-                            float max) {
-  
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if(idx >= size)
-      return;
+   void quantize_fixed(Tensor data, Tensor res, int num_centers, float S) {
+     using namespace functional;
+     float multiplier = num_centers / S;
+     
+     // clip based on the scale
+     Element(_1 = clip(_2, S), res, data);
 
-    quant[idx] = data[idx];
-
-    // helper
-    // will be 127 / max if we set the bit to be 8
-    float multiplier = num_centers / max;
-    
-    // clip
-    if (quant[idx] < -max)
-      quant[idx] = -max;
-    if (quant[idx] > max)
-      quant[idx] = max;
-
-    // quantize
-    int tmp = round(quant[idx] * multiplier);
-
-    // reverse-back
-    quant[idx] = tmp / multiplier;
-  }
-
-  
+     // get the quantization center
+     Element(_1 = round(_1 * multiplier), res); 
+     
+     // revert back to floating point representation
+     Element(_1 /= multiplier, res);
+ 
+   }
+      
   /* simulate a log-based quantization for values in data. The quantized value will be in the form of S*2^q
    * For example:
    * data  = [0.9, 0.7, 0.5, 0.2 , 1.1]
@@ -70,66 +51,45 @@ namespace marian {
    * @param max stores the scaling factor.
    * @param base for log quantized center. Default of 2
    */
-  __global__ void gQuantize(float* data,
-                            float* quant,
-                            int size,
-                            int num_centers,
-                            float base,
-                            float max) {
-  
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if(idx >= size)
-      return;
+   void quantize_log(Tensor data, Tensor res, int num_centers, float S, int base = 2) {
+     using namespace functional;     
 
-    quant[idx] = data[idx];
+     // multiplier such that the quantization is rounded in normal-space instead of log space.
+     // 4/3 for base = 2. example: 11.8 should be quantized to 8, instead of 16. 
+     float _mult = (2.0 * base) / (1.0 + base);
+     
+     // get the quantization center
+     Element(_1 = floor(log(abs(_2 / S) * _mult) / log(base)), res, data);
 
-    bool isNeg = false;
-      if (quant[idx] < 0) {
-      isNeg = true;
-      quant[idx] *= -1;
-    }
+     // clip the center to [0, 2^(bit-1)-1]
+     Element(_1 = clip(_1, num_centers), res);
 
-    // compute the log of the parameter
-    quant[idx] /= max;
-    int center = floor(log(quant[idx] * (2.0 * base)/(1.0 + base)) / log(base));
-    
-    // clip the center to [0, 2^(bit-1)-1]    
-    if (center < -num_centers)
-      center = -num_centers;
-    if (center > 0)
-      center = 0;
+     // revert back to floating point representation
+     Element(_1 = pow(base, _1) * S * sgn(_2), res, data);
 
-    // revert back to floating point representation
-    quant[idx] = std::pow(base, center) * max;
-    if (isNeg)
-      quant[idx] *= -1;
-  }
+   }
 
-  void compressImpl(Tensor t, int bit, int kMeanStep){
+  void Compresser::compressImpl(Tensor t, int bit, int kMeanStep, bool logQuant){
     cudaSetDevice(t->getDeviceId().no);
 
     // Lazy init delta variable
     int id = t->getDeviceId().no;
-    static Tensor delta[8];
-    static Ptr<TensorAllocator> alloc_[8];
-    if (!delta[id] && kMeanStep > 0) {
+    if (!delta && kMeanStep > 0) {
       int msize = t->size();
-      alloc_[id] = New<TensorAllocator>(t->getBackend());
+      alloc_ = New<TensorAllocator>(t->getBackend());
 
       int elements = (int)msize;
-      alloc_[id]->reserveExact(msize *sizeof(float));
-      alloc_[id]->allocate(delta[id], {1, elements});
+      alloc_->reserveExact(msize *sizeof(float));
+      alloc_->allocate(delta, {1, elements});
   
     }
 
-    int threads = 512;
-    int blocksSample = 1 + t->size() / threads;
- 
+    float S = 0;
     // get intial scaling factor (S) based on max element in Tensor
     thrust::device_ptr<float> d_ptr(t->data());
     float max = *(thrust::max_element(d_ptr, d_ptr + t->size()));
     float min = *(thrust::min_element(d_ptr, d_ptr + t->size())) * -1;
-    float S = std::max(max, min);
+    S = std::max(max, min);
 
     // optimze the scaling factor S
     for (int i=0;i< kMeanStep;i++) {
@@ -137,25 +97,27 @@ namespace marian {
       // we want to optimize S to minimize MSE(S*a - t)
       // therefore, S = sum(a*t)/sum(a*a)
       // see https://www.aclweb.org/anthology/2020.ngt-1.4.pdf for more details.
-      
-      // gQuantize<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, base, S);
-      gQuantize_fixed<<<blocksSample, threads>>>(t->data(), delta[id]->data(), t->size(), (1<<(bit-1)) - 1, S);
-      
+      if (logQuant)
+        quantize_log(t, delta->subtensor(0, t->size()), (1<<(bit-1)) - 1, S);
+      else      
+        quantize_fixed(t, delta->subtensor(0, t->size()) , (1<<(bit-1)) - 1, S);
+
       {
 	// obtains a by applying q/=S
         using namespace functional;
-        Element(_1 /= S, delta[id]);
+        Element(_1 /= S, delta);
       }
 
-      thrust::device_ptr<float> delta_ptr(delta[id]->data());
+      thrust::device_ptr<float> delta_ptr(delta->data());
       float delta_top = thrust::inner_product(delta_ptr, delta_ptr + (int)t->size(), d_ptr, 0.0f); // computes (a*t)
       float delta_btm = thrust::inner_product(delta_ptr, delta_ptr + (int)t->size(), delta_ptr, 0.0f); // computes (a*a)
+      
       S = delta_top / delta_btm; // S = (a*t)/(a*a)
     }
-
-    // compress
-    // gQuantize<<<blocksSample, threads>>>(t->data(), t->data(), t->size(), (1<<(bit-1)) - 1, base, S);
-    gQuantize_fixed<<<blocksSample, threads>>>(t->data(), t->data(), t->size(), (1<<(bit-1)) - 1, S);
- 
+    // final compress
+    if (logQuant)
+      quantize_log(t, t, (1<<(bit-1)) - 1, S);
+    else
+      quantize_fixed(t, t, (1<<(bit-1)) - 1, S); 
   }
 }

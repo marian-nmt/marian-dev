@@ -9,14 +9,14 @@
 #include "functional/functional.h"
 
 namespace marian {
-void compressImpl(Tensor t, int bit, int kMeanStep = 0);
 
 class Compresser {
 public:
   Compresser(Ptr<Options> options) 
     : bit_{options->get<int>("compress-bit")},
       kMeans_{options->get<int>("compress-k-means")},
-      skipBias_{options->get<bool>("compress-skip-bias")} {
+      skipBias_{options->get<bool>("compress-skip-bias")},
+      logQuant_{options->get<bool>("compress-log-quantize")} {
     }
       
   void compress(Ptr<ExpressionGraph> graph) {
@@ -44,7 +44,7 @@ public:
           continue;
       }
 
-      compressImpl(p->val(), bit_, kMeans_);
+      compressImpl(p->val(), bit_, kMeans_, logQuant_);
     }
 
     // get new error
@@ -53,11 +53,24 @@ public:
 
 
 protected:
-  int step{0};
+#ifdef CUDA_FOUND
+  void compressImpl(Tensor t, int bit, int kMeanStep = 0, bool logQuant = false); 
+#else
+  void compressImpl(Tensor t, int bit, int kMeanStep = 0, bool logQuant = false) {
+    ABORT("Model compression training requires CUDA");
+  }
+#endif
+
   Tensor error;
   Ptr<TensorAllocator> errorAlloc;
+  
   int bit_;
   int kMeans_;
   bool skipBias_;
+  bool logQuant_;
+
+  // temporary Tensor to calculate optimal S
+  Tensor delta;
+  Ptr<TensorAllocator> alloc_;
 };
 }

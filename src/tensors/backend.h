@@ -30,43 +30,6 @@ public:
   virtual void setClip(float clipValue) { clipValue_ = clipValue; }
   float getClip() { return clipValue_; }
 
-  // Set the gemm precision
-  virtual void setGemmPrecision(Ptr<Options const> options) {
-    std::string gemmPrecision = options->get<std::string>("gemm-precision");
-    bool dumpQuantMults = options->get<bool>("dump-quantmult");
-    if (dumpQuantMults) {
-      setInt8(true);
-      setShifted(true);
-      setShiftedAll(true);
-      setDumpQuantMult(true);
-      //float32, int16, int8, int8shift, int8shiftAlpha, int8shiftAll, int8shiftAlphaAll
-    } else if (gemmPrecision == "float32") {
-      return; // This is the default precisoin.
-    } else if (gemmPrecision == "int16") {
-      setInt16(true);
-    } else if (gemmPrecision == "int8") {
-      setInt8(true);
-    } else if (gemmPrecision == "int8shift") {
-      setInt8(true);
-      setShifted(true);
-    } else if (gemmPrecision == "int8shiftAlpha") {
-      setInt8(true);
-      setShifted(true);
-      setPrecomputedAlpha(true);
-    } else if (gemmPrecision == "int8shiftAll") {
-      setInt8(true);
-      setShifted(true);
-      setShiftedAll(true);
-    } else if (gemmPrecision == "int8shiftAlphaAll") {
-      setInt8(true);
-      setShifted(true);
-      setShiftedAll(true);
-      setPrecomputedAlpha(true);
-    }else {
-      ABORT("Unsupported GEMM precision type: {}", gemmPrecision);
-    }
-  }
-
   // for CPU, sets to use optimized code for inference.
   // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
   virtual void setInt16(bool optimize) = 0;

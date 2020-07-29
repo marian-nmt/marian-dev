@@ -87,11 +87,7 @@ public:
         auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
         graph->setDefaultElementType(typeFromString(prec[0]));
         graph->setDevice(device);
-        graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-        if (device.type == DeviceType::cpu) {
-          graph->getBackend()->setGemmPrecision(options_);
-          graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
-        }
+        graph->getBackend()->configureDevice(options_);
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
 
@@ -230,11 +226,7 @@ public:
       auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
-      graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setGemmPrecision(options_);
-        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
-      }
+      graph->getBackend()->configureDevice(options_);
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
 

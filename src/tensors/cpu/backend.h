@@ -19,21 +19,53 @@ protected:
   bool alpha_{false};
   bool legacyBatch_{false};
 
+  void setGemmPrecision(Ptr<const Options> options) {
+    std::string gemmPrecision = options->get<std::string>("gemm-precision");
+    if (options->get<bool>("dump-quantmult")) {
+      setInt8(true);
+      setShifted(true);
+      setShiftedAll(true);
+      setDumpQuantMult(true);
+      //float32, int16, int8, int8shift, int8shiftAlpha, int8shiftAll, int8shiftAlphaAll
+    } else if (gemmPrecision == "float32") {
+      return; // This is the default precisoin.
+    } else if (gemmPrecision == "int16") {
+      setInt16(true);
+    } else if (gemmPrecision == "int8") {
+      setInt8(true);
+    } else if (gemmPrecision == "int8shift") {
+      setInt8(true);
+      setShifted(true);
+    } else if (gemmPrecision == "int8shiftAlpha") {
+      setInt8(true);
+      setShifted(true);
+      setPrecomputedAlpha(true);
+    } else if (gemmPrecision == "int8shiftAll") {
+      setInt8(true);
+      setShifted(true);
+      setShiftedAll(true);
+    } else if (gemmPrecision == "int8shiftAlphaAll") {
+      setInt8(true);
+      setShifted(true);
+      setShiftedAll(true);
+      setPrecomputedAlpha(true);
+    } else {
+      ABORT("Unsupported GEMM precision type: {}", gemmPrecision);
+    }
+  }
+
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
 
   void setDevice() override {}
 
-  void configureDevice(Ptr<Options const> options) override {
+  // Set the gemm precision
+  void configureDevice(Ptr<const Options> options) override {
     setClip(options->get<float>("clip-gemm"));
-    setOptimized(options->get<bool>("optimize"));
-    setOptimized8(options->get<bool>("optimize8"));
-    setShifted(options->get<bool>("intgemm-shifted"));
-    setShiftedAll(options->get<bool>("intgemm-shifted-all"));
-    setDumpQuantMult(options->get<bool>("dump-quantmult"));
-    setPrecomputedAlpha(options->get<bool>("use-precomputed-alphas"));
+    setGemmPrecision(options);
     setLegacyBatchedGemm(options->get<bool>("use-legacy-batching"));
   }
+g
   void synchronize() override {}
 
   // for CPU & inference only, sets to use optimized code for inference. Does nothing for GPU.

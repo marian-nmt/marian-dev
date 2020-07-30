@@ -22,6 +22,26 @@
 #define DONT_OPTIMIZE // silently ignore on Visual Studio, where this is less of a problem
 #endif
 
+// Use these macros to enable faster math.  Put them around one or more
+// functions.  Usage:
+//
+// MARIAN_FFAST_MATH_BEGIN
+// void LayerNormalization(float *arg) { *arg += 1.0; }
+// void SomethingElse() {}
+// MARIAN_FFAST_MATH_END
+//
+#if defined(_MSC_VER)
+#define MARIAN_FFAST_MATH_BEGIN __pragma(float_control(precise, off, push))
+#define MARIAN_FFAST_MATH_END __pragma(float_control(pop))
+#elif defined(__clang__)
+#define MARIAN_FFAST_MATH_BEGIN _Pragma("float_control(precise, off, push)")
+#define MARIAN_FFAST_MATH_END _Pragma("float_control(pop)")
+#elif defined(__GNUC__)
+// Also available as __attribute__((optimize("-fassociative-math"))) but done as pragmas for consistency
+#define MARIAN_FFAST_MATH_BEGIN _Pragma("GCC push_options") _Pragma("GCC optimize(\"-ffast-math\")")
+#define MARIAN_FFAST_MATH_END _Pragma("GCC pop_options")
+#endif
+
 namespace marian {
 
 // Type to be used for all index types, e.g. for integer tensors for rows operator.

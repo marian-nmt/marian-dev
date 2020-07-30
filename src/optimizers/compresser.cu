@@ -1,10 +1,5 @@
 #include <cmath>
 
-#include <thrust/inner_product.h>
-#include <thrust/device_ptr.h>
-#include <thrust/device_vector.h>
-#include <thrust/extrema.h>
-
 #include "optimizers/compresser.h"
 #include "tensors/tensor_operators.h"
 #include "tensors/tensor_allocator.h"
@@ -54,69 +49,102 @@ namespace marian {
    void quantize_log(Tensor data, Tensor res, int num_centers, float S, int base = 2) {
      using namespace functional;     
 
+     // clip based on the scaling factor
+     Element(_1 = clip(_2, S), res, data);
+     
      // multiplier such that the quantization is rounded in normal-space instead of log space.
      // 4/3 for base = 2. example: 11.8 should be quantized to 8, instead of 16. 
      float _mult = (2.0 * base) / (1.0 + base);
      
-     // get the quantization center
-     Element(_1 = floor(log(abs(_2 / S) * _mult) / log(base)), res, data);
+   
+     // log-quantization works as the following:
+     // 1. capture the sign:
+     // sign = sgn(v)
+     // 2. get the quantization center:
+     // qc = floor(log2(abs(v/S) * _mult))
+     // 3. clip the center to make sure we have no more than 2^(bit-1) centers.
+     // qc = clip(qc, num_centers)
+     // 4. revert back to floating point space:
+     // q = 2^qc * S * sign
+     //
+     // The above steps are writen in 1 call as below, to avoid reserving extra Tensors:
+  
+     Element(_1 = sgn(_1) // revert the sign back
+		  * S     // revert the scaling function
+		  * pow(base, // revert from log space to normal FP represtation
+		        clip(floor(log(abs(_1 / S) * _mult) / log(base)), // get the quantization center
+			     num_centers)), //clip
+	     res);
+  }
 
-     // clip the center to [0, 2^(bit-1)-1]
-     Element(_1 = clip(_1, num_centers), res);
 
-     // revert back to floating point representation
-     Element(_1 = pow(base, _1) * S * sgn(_2), res, data);
-
-   }
-
-  void Compresser::compressImpl(Tensor t, int bit, int kMeanStep, bool logQuant){
-    cudaSetDevice(t->getDeviceId().no);
+  // helper Tensor init function
+  void Compresser::init(Tensor t) {
+    // init the swap tensor
+    temp_alloc = New<TensorAllocator>(t->getBackend());
+    temp_alloc->reserveExact(sizeof(float));
+    temp_alloc->allocate(temp_var, {1,1});
 
     // Lazy init delta variable
-    int id = t->getDeviceId().no;
-    if (!delta && kMeanStep > 0) {
+    if (!delta && opt_step_ > 0) {
       int msize = t->size();
       alloc_ = New<TensorAllocator>(t->getBackend());
-
-      int elements = (int)msize;
-      alloc_->reserveExact(msize *sizeof(float));
-      alloc_->allocate(delta, {1, elements});
-  
+      alloc_->reserveExact(msize * sizeof(float));
+      alloc_->allocate(delta, {1, msize});
     }
+  }
 
-    float S = 0;
+
+  /* Tensor compression implementation.
+   * @param t is the tensor to be compressed
+   * @param bit is the bit size
+   * @param kMeanStep is the steps for optimizing the scaling factor S
+   * @param logQuant is true when using log-based quantization. Otherwise will use a fixed-point quantization
+   */
+  void Compresser::compressImpl(Tensor t, int bit, int opt_step, bool log_quant){
+    if (!temp_var) init(t);
+
+    Tensor q = delta->subtensor(0, t->size());  // to store the quantized t
+    Tensor t_flat = t->subtensor(0, t->size()); // flatten t for reduce    
+
+    float S = 0; 
     // get intial scaling factor (S) based on max element in Tensor
-    thrust::device_ptr<float> d_ptr(t->data());
-    float max = *(thrust::max_element(d_ptr, d_ptr + t->size()));
-    float min = *(thrust::min_element(d_ptr, d_ptr + t->size())) * -1;
-    S = std::max(max, min);
-
+    {
+      using namespace functional;
+      Reduce(abs(_1), max(_1,_2), 0.0f  ,temp_var , t_flat);
+      S = temp_var->get(0);
+    }
+    
     // optimze the scaling factor S
-    for (int i=0;i< kMeanStep;i++) {
+    for (int i = 0; i < opt_step; i++) {
       // let t be the original tensor, and q be the quantised tensor, and q = S*a where S is the scaling factor.
       // we want to optimize S to minimize MSE(S*a - t)
       // therefore, S = sum(a*t)/sum(a*a)
       // see https://www.aclweb.org/anthology/2020.ngt-1.4.pdf for more details.
-      if (logQuant)
-        quantize_log(t, delta->subtensor(0, t->size()), (1<<(bit-1)) - 1, S);
+      if (log_quant)
+        quantize_log(t, q, (1<<(bit-1)) - 1, S);
       else      
-        quantize_fixed(t, delta->subtensor(0, t->size()) , (1<<(bit-1)) - 1, S);
+        quantize_fixed(t, q, (1<<(bit-1)) - 1, S);
 
-      {
-	// obtains a by applying q/=S
-        using namespace functional;
-        Element(_1 /= S, delta);
-      }
-
-      thrust::device_ptr<float> delta_ptr(delta->data());
-      float delta_top = thrust::inner_product(delta_ptr, delta_ptr + (int)t->size(), d_ptr, 0.0f); // computes (a*t)
-      float delta_btm = thrust::inner_product(delta_ptr, delta_ptr + (int)t->size(), delta_ptr, 0.0f); // computes (a*a)
+      // obtains a by applying q/=S
+      using namespace functional;
+      Element(_1 /= S, delta);
       
-      S = delta_top / delta_btm; // S = (a*t)/(a*a)
+      // get sum(a*t)
+      Reduce(_1 * _2, temp_var, t_flat, q);
+      float delta_top = temp_var->get(0);
+      
+      // get sum(a*a)
+      Reduce(_1 * _1, temp_var, q); 
+      float delta_btm = temp_var->get(0);
+      
+      S = delta_top / delta_btm; // S = sum(a*t)/sum(a*a)
     }
+
     // final compress
-    if (logQuant)
+    if (log_quant) {
       quantize_log(t, t, (1<<(bit-1)) - 1, S);
+    }
     else
       quantize_fixed(t, t, (1<<(bit-1)) - 1, S); 
   }

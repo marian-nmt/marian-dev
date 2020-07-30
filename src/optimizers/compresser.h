@@ -14,24 +14,24 @@ class Compresser {
 public:
   Compresser(Ptr<Options> options) 
     : bit_{options->get<int>("compress-bit")},
-      kMeans_{options->get<int>("compress-k-means")},
-      skipBias_{options->get<bool>("compress-skip-bias")},
-      logQuant_{options->get<bool>("compress-log-quantize")} {
-    }
+      opt_step_{options->get<int>("compress-k-means")},
+      skip_bias_{options->get<bool>("compress-skip-bias")},
+      log_quant_{options->get<bool>("compress-log-quantize")} {     
+   }
       
   void compress(Ptr<ExpressionGraph> graph) {
     // reserve tensor for error feedback mechanism
     if (!error) {
       LOG(info, " EXPERIMENTAL: Applying quantization based compress model to {}-bit", bit_);
-      LOG(info, " K-means scale adjustment steps: {}", kMeans_);
+      LOG(info, " K-means scale adjustment steps: {}", opt_step_);
 
       int elements = (int) graph->params()->vals()->size();
-      errorAlloc = New<TensorAllocator>(graph->getBackend());
-      errorAlloc->reserveExact(graph->params()->vals()->memory()->size());
-      errorAlloc->allocate(error, {1, elements});
+      error_alloc = New<TensorAllocator>(graph->getBackend());
+      error_alloc->reserveExact(graph->params()->vals()->memory()->size());
+      error_alloc->allocate(error, {1, elements});
     }
 
-    // apply eror feedback mechanism
+    // apply error feedback mechanism
     using namespace functional;
     Element(_1 += _2, graph->params()->vals(), error);
     error->copyFrom(graph->params()->vals());
@@ -39,12 +39,12 @@ public:
     int skip_size = 0;
     for(auto p : *graph->params()){
       // skip biases
-      if (skipBias_ && p->val()->shape()[0] == 1) {
+      if (skip_bias_ && p->val()->shape()[0] == 1) {
         skip_size += p->val()->size();
           continue;
       }
 
-      compressImpl(p->val(), bit_, kMeans_, logQuant_);
+      compressImpl(p->val(), bit_, opt_step_, log_quant_);
     }
 
     // get new error
@@ -53,24 +53,23 @@ public:
 
 
 protected:
-#ifdef CUDA_FOUND
-  void compressImpl(Tensor t, int bit, int kMeanStep = 0, bool logQuant = false); 
-#else
-  void compressImpl(Tensor t, int bit, int kMeanStep = 0, bool logQuant = false) {
-    ABORT("Model compression training requires CUDA");
-  }
-#endif
+  void init(Tensor t);
+  void compressImpl(Tensor t, int bit, int opt_step = 0, bool log_quant = false); 
 
   Tensor error;
-  Ptr<TensorAllocator> errorAlloc;
+  Ptr<TensorAllocator> error_alloc;
   
   int bit_;
-  int kMeans_;
-  bool skipBias_;
-  bool logQuant_;
+  int opt_step_;
+  bool skip_bias_;
+  bool log_quant_;
 
-  // temporary Tensor to calculate optimal S
+  // temporary Tensor for storing q to calculate optimal S
   Tensor delta;
   Ptr<TensorAllocator> alloc_;
+
+  // single element Tensor for Reduce swap variable
+  Tensor temp_var;
+  Ptr<TensorAllocator> temp_alloc;
 };
 }

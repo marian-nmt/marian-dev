@@ -20,23 +20,23 @@ def log_b(tensor, base):
 def log_quantize(tensor, bit, base, curr_max = 0):
   max = 1.0
 
-  # find max quantization center
+#find max quantization center
   if curr_max > 0:
     max = curr_max
 
-  # scale down
+#scale down
   tensor = tensor / max
-  
-  # count the number of possible centers (divided by 2 for positive and negative side)
+
+#count the number of possible centers(divided by 2 for positive and negative side)
   centers = 2**(bit-1)
-  
-  # quantize
+
+#quantize
   quantized_center = np.clip(np.floor(log_b(abs(tensor * (2.0 * base)/(1.0 + base)), base)), a_min = -(centers - 1), a_max = 0)
 
-  # revert back to float32
+#revert back to float32
   quantized_tensor = np.power(base, quantized_center) * max
 
-  # restore sign
+#restore sign
   quantized_tensor[tensor < 0] *= -1
   
   return quantized_tensor
@@ -52,7 +52,7 @@ def fixed_quantize(tensor, bit, curr_max = 0):
     multiplier = ((2**(bit-1)) - 1) / max
     intquant = np.round(tensor * multiplier)
 
-    # return back
+#return back
     quantized_tensor = intquant / multiplier
 
     return quantized_tensor
@@ -102,8 +102,8 @@ if __name__== "__main__":
   models = []
   for model_dir in args.input:
     models.append(np.load(model_dir))
-  
-  # prepare and ensemble the model
+
+#prepare and ensemble the model
   new_model = dict()
   for model in models:
     for f in model.files:
@@ -127,11 +127,11 @@ if __name__== "__main__":
   bias_dev = []
   full_dev = []
   for k in new_model:
-    # special configurations, not a Tensor. 
+#special configurations, not a Tensor. 
     if "special" in k:
       continue
-    
-    # skip compressing bias
+
+#skip compressing bias
     if args.skip_bias and new_model[k].shape[0] == 1: # new_model[k].size < 10000:
       print("Skipping ",k, "( size of ", new_model[k].size, " | shape = ", new_model[k].shape, ")")
       total_uncompressed += new_model[k].size
@@ -140,14 +140,13 @@ if __name__== "__main__":
     total_compressed += new_model[k].size
     tmp = new_model[k]
 
-
-    # apply clipping
+#apply clipping
     if args.clip > 0:
       tmp = clip(tmp, args.clip)
      
     tmp_max = np.max(abs(tmp))
 
-    # Apply some k-means readjustment of scale factor
+#Apply some k - means readjustment of scale factor
     if args.kmeans > 0:
       for i in range(args.kmeans):
         tmp_max = (compute_movement(tmp, tmp_max, args.bit, args.base))
@@ -178,11 +177,3 @@ if __name__== "__main__":
   print("compression done")
   print("saving to " + args.output)
   np.savez(args.output, **new_model)
-
-
-
-
-
-
-
-

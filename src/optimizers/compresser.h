@@ -14,41 +14,36 @@ class Compresser {
 public:
   Compresser(Ptr<Options> options) 
     : bit_{options->get<int>("compress-bit")},
-      opt_step_{options->get<int>("compress-k-means")},
-      skip_bias_{options->get<bool>("compress-skip-bias")},
-      log_quant_{options->get<bool>("compress-log-quantize")} {     
+      optStep_{options->get<int>("compress-k-means")},
+      skipBias_{options->get<bool>("compress-skip-bias")},
+      logQuant_{options->get<bool>("compress-log-quantize")} {     
    }
       
   void compress(Ptr<ExpressionGraph> graph) {
     // reserve tensor for error feedback mechanism
-    if (!error) {
+    if (!error_) {
       LOG(info, " EXPERIMENTAL: Applying quantization based compress model to {}-bit", bit_);
-      LOG(info, " K-means scale adjustment steps: {}", opt_step_);
+      LOG(info, " K-means scale adjustment steps: {}", optStep_);
 
       int elements = (int) graph->params()->vals()->size();
-      error_alloc = New<TensorAllocator>(graph->getBackend());
-      error_alloc->reserveExact(graph->params()->vals()->memory()->size());
-      error_alloc->allocate(error, {1, elements});
+      errorAlloc_ = New<TensorAllocator>(graph->getBackend());
+      errorAlloc_->reserveExact(graph->params()->vals()->memory()->size());
+      errorAlloc_->allocate(error_, {1, elements});
     }
 
     // apply error feedback mechanism
     using namespace functional;
-    Element(_1 += _2, graph->params()->vals(), error);
-    error->copyFrom(graph->params()->vals());
+    Element(_1 += _2, graph->params()->vals(), error_);
+    error_->copyFrom(graph->params()->vals());
 
-    int skip_size = 0;
     for(auto p : *graph->params()){
       // skip biases
-      if (skip_bias_ && p->val()->shape()[0] == 1) {
-        skip_size += p->val()->size();
-          continue;
-      }
-
-      compressImpl(p->val(), bit_, opt_step_, log_quant_);
+      if (!skipBias_ || p->val()->shape()[0] > 1)
+        compressImpl(p->val(), bit_, optStep_, logQuant_);
     }
 
     // get new error
-    Element(_1 -= _2, error, graph->params()->vals());
+    Element(_1 -= _2, error_, graph->params()->vals());
   }
 
 
@@ -56,20 +51,20 @@ protected:
   void init(Tensor t);
   void compressImpl(Tensor t, int bit, int opt_step = 0, bool log_quant = false); 
 
-  Tensor error;
-  Ptr<TensorAllocator> error_alloc;
+  Tensor error_;
+  Ptr<TensorAllocator> errorAlloc_;
   
   int bit_;
-  int opt_step_;
-  bool skip_bias_;
-  bool log_quant_;
+  int optStep_;
+  bool skipBias_;
+  bool logQuant_;
 
   // temporary Tensor for storing q to calculate optimal S
-  Tensor delta;
+  Tensor delta_;
   Ptr<TensorAllocator> alloc_;
 
   // single element Tensor for Reduce swap variable
-  Tensor temp_var;
-  Ptr<TensorAllocator> temp_alloc;
+  Tensor tempVar_;
+  Ptr<TensorAllocator> tempAlloc_;
 };
 }

@@ -493,9 +493,9 @@ struct Ops<half> {
   static DEVICE_INLINE half abs(const half& x)  { return fabs((float)x); }// @TODO half has this information somewhere in the struct, right?
   static DEVICE_INLINE half sgn(const half& x)  { half zero = 0.f; return (zero < x) - (x < zero); } // @TODO half has this information somewhere in the struct, right?
 
-  static HOST_DEVICE_INLINE half round(const half& x)  { return roundf((float)x); }
-  static HOST_DEVICE_INLINE half floor(const half& x)  { return floorf((float)x); }
-  static HOST_DEVICE_INLINE half ceil(const half& x)   { return ceilf((float)x); } 
+  static DEVICE_INLINE half round(const half& x)  { return hrint(x); }
+  static DEVICE_INLINE half floor(const half& x)  { return hfloor(x); }
+  static DEVICE_INLINE half ceil(const half& x)   { return hceil(x); } 
 
   static DEVICE_INLINE half add(const half& x, const half& y)  { return x + y; }
   static DEVICE_INLINE half sub(const half& x, const half& y)  { return x - y; }

@@ -1,11 +1,7 @@
 from argparse import ArgumentParser
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 import numpy as np
-from scipy import stats
 import math
-import scipy.stats as st
 import sys
-from statistics import stdev 
 
 
 EPS = 1e-18

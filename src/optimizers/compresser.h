@@ -28,6 +28,8 @@ public:
       errorAlloc_ = New<TensorAllocator>(graph->getBackend());
       errorAlloc_->reserveExact(graph->params()->vals()->memory()->size());
       errorAlloc_->allocate(error_, {1, elements});
+
+      firstError_ = true;
     }
 
     // apply error feedback mechanism
@@ -41,8 +43,14 @@ public:
         compressImpl(p->val(), bit_, optStep_, logQuant_);
     }
 
-    // get new error
-    Element(_1 -= _2, error_, graph->params()->vals());
+    // get new error. Skip the first error-feedback.
+    if (!firstError_)
+      Element(_1 -= _2, error_, graph->params()->vals());
+    else {
+      LOG(info, "skipping first error");
+      error_->set(0);
+      firstError_ = false;
+    }
   }
 
 protected:
@@ -56,6 +64,7 @@ protected:
   int optStep_;
   bool skipBias_;
   bool logQuant_;
+  bool firstError_;
 
   // temporary Tensor for storing q to calculate optimal S
   Tensor delta_;

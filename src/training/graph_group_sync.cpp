@@ -297,6 +297,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       return nullptr; // null if we reached beyond the end
   };
 
+
+  // Helper to compress the model
+  auto compressModel = [&](size_t idx, size_t /*begin*/, size_t /*end*/) {
+    compressers_[idx]->compress(graphs_[idx]);
+  };
+
   // Upon very first execution, reset everything
   if(first_) {
     LOG(info, "[training] Batches are processed as {} process(es) x {} devices/process",
@@ -304,6 +310,14 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     initialize(subBatches.front());
     if(mvAvg_ && paramsAvg_.empty())
       initializeAvg();
+ 
+    // initialize model compression
+    if (options_->get<int>("compress-bit") < 32) {
+      for (int idx = 0; idx < graphs_.size(); idx++)
+	compressers_.push_back(New<Compresser>(options_));
+      comm_->foreach(compressModel);
+    }
+
     first_ = false;
   }
 
@@ -359,15 +373,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     comm_->allGatherParams();            // distribute param value shards back
   
     // Re-compress the model 
-    if (options_->get<int>("compress-bit") < 32) {
-      // Lazy allocation
-      if (compressers_.size() == 0)
-        for (int idx = 0; idx < graphs_.size(); idx++)
-          compressers_.push_back(New<Compresser>(options_));
-    
-      for (int idx = 0; idx < graphs_.size(); idx++)
-        compressers_[idx]->compress(graphs_[idx]);
-    }
+    if (options_->get<int>("compress-bit") < 32)
+      comm_->foreach(compressModel);
   }
   else
     LOG(info, "[training] skipping {}-th update due to loss being {}", scheduler_->numberOfBatches(), localLoss.loss);

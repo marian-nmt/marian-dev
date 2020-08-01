@@ -1065,9 +1065,8 @@ void LayerNormalizationImpl(float* out,
 #pragma omp simd
     for(int i = 0; i < cols; ++i) {
       float t = alpha[alphaStride * i] * ((sp[i] - mean) / sigma);
-      if(hasBeta) {
+      if(hasBeta)
         t += beta[betaStride * i];
-      }
 
       so[i] = t;
     }

@@ -81,7 +81,7 @@ public:
     // shutdown that saves the current state of training before exiting.
     // This signal handler simply sets a flag that can be checked from
     // everywhere (getSignalFLAG(SIGTERM); #include common/signal_handling.h)
-    signal(SIGTERM,setSignalFlag);
+    signal(SIGTERM, setSignalFlag);
 
     // -- main training loop
     scheduler->started();

@@ -139,7 +139,7 @@ private:
     size_t sets = 0;
     while(current_ != data_->end() && maxiBatch->size() < maxSize) { // loop over data
       if (getSignalFlag(SIGTERM)) { // received SIGTERM, abandon ship ...
-        return tempBatches;
+        return std::deque<BatchPtr>(); 
       }
       maxiBatch->push(*current_);
       sets = current_->size();
@@ -167,7 +167,7 @@ private:
     while(!maxiBatch->empty()) { // while there are sentences in the queue
 
       if (getSignalFlag(SIGTERM)) { // received SIGTERM, abandon ship ...
-        return tempBatches;
+        return std::deque<BatchPtr>();
       }
 
       // push item onto batch

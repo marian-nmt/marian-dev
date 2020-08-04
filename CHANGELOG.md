@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Printing word-level scores in marian-scorer
+- Optimize LayerNormalization on CPU by 6x through vectorization (ffast-math) and fixing performance regression introduced with strides in 77a420
+- Decoding multi-source models in marian-server with --tsv
 - GitHub workflows on Ubuntu, Windows, and MacOS
 - LSH indexing to replace short list
 - ONNX support for transformer models
@@ -19,8 +21,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Training and scoring from STDIN
 - Support for reading from TSV files from STDIN and other sources during training
   and translation with options --tsv and --tsv-fields n.
+- Internal optional parameter in n-best list generation that skips empty hypotheses.
 
 ### Fixed
+- Fix compilation without BLAS installed
+- Providing a single value to vector-like options using the equals sign, e.g. --models=model.npz
+- Fix quiet-translation in marian-server
 - CMake-based compilation on Windows
 - Fix minor issues with compilation on MacOS
 - Fix warnings in Windows MSVC builds using CMake
@@ -31,6 +37,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   absolute and not relative. We assumed incorrectly that epsilon is absolute tolerance.
 - Fixed bug in finding .git/logs/HEAD when Marian is a submodule in another project.
 - Properly record cmake variables in the cmake build directory instead of the source tree.
+- Added default "none" for option shuffle in BatchGenerator, so that it works in executables where shuffle is not an option.
+- Added a few missing header files in shortlist.h and beam_search.h.
 
 ### Changed
 - Move Simple-WebSocket-Server to submodule

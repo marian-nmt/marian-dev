@@ -45,7 +45,7 @@ void quantizeFixed(Tensor data, Tensor res, int numCenters, float S) {
  * @param S stores the scaling factor.
  * @param base for log quantized center. Default of 2
  */
-void quantizeLog(Tensor data, Tensor res, int numCenters, float S, int base = 2) {
+void quantizeLog(Tensor data, Tensor res, int numCenters, float S, float base = 2.0f) {
   using namespace functional;
 
   // clip based on the scaling factor
@@ -53,7 +53,7 @@ void quantizeLog(Tensor data, Tensor res, int numCenters, float S, int base = 2)
 
   // multiplier such that the quantization is rounded in normal-space instead of log space.
   // 4/3 for base = 2. example: 11.8 should be quantized to 8, instead of 16.
-  float mult = (2.0 * base) / (1.0 + base);
+  float mult = (2.0f * base) / (1.0f + base);
 
   // log-quantization works as the following:
   // 1. capture the sign:
@@ -135,7 +135,7 @@ void ModelQuantizer::quantizeImpl(Tensor t) {
 
   // init additional tensor for scaling optimization
   if(!delta_ && optSteps_ > 0) {
-    int msize = t->size();
+    int msize = (int) t->size();
     auto allocator = New<TensorAllocator>(t->getBackend());
     allocator->reserveExact(msize * sizeof(float));
     allocator->allocate(delta_, {1, msize});

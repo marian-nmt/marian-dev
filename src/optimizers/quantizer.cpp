@@ -95,11 +95,13 @@ void ModelQuantizer::quantize(Ptr<ExpressionGraph> graph) {
     firstError_ = true;
   }
 
-  // apply error feedback mechanism
-  using namespace functional;
-  // add the previous error residual to the current model
-  Element(_1 += _2, graph->params()->vals(), errorResidual_);
-  errorResidual_->copyFrom(graph->params()->vals());
+  {
+    // apply error feedback mechanism
+    using namespace functional;
+    // add the previous error residual to the current model
+    Element(_1 += _2, graph->params()->vals(), errorResidual_);
+    errorResidual_->copyFrom(graph->params()->vals());
+  }
 
   for(auto p : *graph->params()) {
     // optionally quantize bias
@@ -108,8 +110,10 @@ void ModelQuantizer::quantize(Ptr<ExpressionGraph> graph) {
   }
 
   // get new error residual. Skip the first one.
-  if (!firstError_)
+  if (!firstError_) {
+    using namespace functional;
     Element(_1 -= _2, errorResidual_, graph->params()->vals());
+  }
   else {
     errorResidual_->set(0);
     firstError_ = false;

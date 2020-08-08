@@ -297,7 +297,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       return nullptr; // null if we reached beyond the end
   };
 
-
   // Helper to quantize the model
   auto quantizeModel = [&](size_t idx, size_t /*begin*/, size_t /*end*/) {
     quantizers_[idx]->quantize(graphs_[idx]);
@@ -372,7 +371,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     comm_->foreach(update);              // per-shard model-update
     comm_->allGatherParams();            // distribute param value shards back
   
-    // Re-quantize the model 
+    // Re-add the error residual from previous quantization,
+    // then re-quantize the model back and update the error residual
     if (options_->get<int>("quantize-bits") < 32)
       comm_->foreach(quantizeModel);
   }

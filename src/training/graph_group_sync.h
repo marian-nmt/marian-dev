@@ -1,6 +1,6 @@
 #pragma once
 
-#include "optimizers/compresser.h"
+#include "optimizers/quantizer.h"
 #include "training/graph_group.h"
 #include "training/communicator.h"
 #include "training/exponential_smoothing.h"
@@ -24,8 +24,8 @@ class SyncGraphGroup : public GraphGroup, public ExponentialSmoothing {
   std::vector<Ptr<TensorAllocator>> paramsAllocs_; // [deviceIndex] we must hold a reference to the memory until this class dies
   // @TODO: move this nto ExponentialSmoothing, together with paramsAvg_?
 
-  // model compressor
-  std::vector<Ptr<Compresser>> compressers_;
+  // model quantizer
+  std::vector<Ptr<ModelQuantizer>> quantizers_;
   
   // state for update()
   bool first_{ true };                           // gets interpreted and cleared by update()

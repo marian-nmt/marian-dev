@@ -286,8 +286,10 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     s2->val()->get(values); CHECK(values == vS2);
 
     CHECK(m3->val()->scalar() == 9);
-
-    s4->val()->get(values); CHECK(std::equal(values.begin(), values.end(), vS4.begin(), floatApprox));
+  
+    s4->val()->get(values); 
+    std::cout << values[0]<<" "<<values[1]<<std::endl;
+    CHECK(std::equal(values.begin(), values.end(), vS4.begin(), floatApprox));
     v5->val()->get(values); CHECK(values == vV5);
     m6->val()->get(values); CHECK(values == vM6);
     m7->val()->get(values); CHECK(values == vM7);

@@ -1,6 +1,6 @@
 #include <cmath>
 
-#include "optimizers/compresser.h"
+#include "optimizers/quantizer.h"
 #include "tensors/tensor_allocator.h"
 #include "tensors/tensor_operators.h"
 
@@ -34,7 +34,9 @@ void quantizeFixed(Tensor data, Tensor res, int numCenters, float S) {
 }
 
 /* simulate a log-based quantization for values in data. The quantized value will be in the form of
- * S*2^q For example: data  = [0.9, 0.7, 0.5, 0.2 , 1.1] res   = [1,   0.5, 0.5, 0.25, 1  ]
+ * S*2^q For example: 
+ * data  = [0.9, 0.7, 0.5, 0.2 , 1.1] 
+ * res   = [1,   0.5, 0.5, 0.25, 1  ]
  *
  * @param data contains the original data
  * @param res will contain the resulting quantized data. set data = res for in-place operation
@@ -70,40 +72,76 @@ void quantizeLog(Tensor data, Tensor res, int numCenters, float S, int base = 2)
            * S          // revert the scaling function
            * pow(base,  // revert from log space to normal FP represtation
                  clip(floor(log(abs(_1 / S) * mult) / log(base)),  // get the quantization center
-                      numCenters)),                                // clip
+                      (float) numCenters)),                                // clip
       res);
 }
 
-// helper Tensor init function
-void Compresser::init(Tensor t) {
-  // init the swap tensor
-  tempAlloc_ = New<TensorAllocator>(t->getBackend());
-  tempAlloc_->reserveExact(sizeof(float));
-  tempAlloc_->allocate(tempVar_, {1, 1});
+/* Quantize all the parameters (except bias, unless enabled via --quantize-bias)
+ * Quantization only works if we store the quantization error residual
+ * The stored residual will be added for the next quantization
+ * @param graph is the model graph to be quantized (in-place) 
+ */
+void ModelQuantizer::quantize(Ptr<ExpressionGraph> graph) {
+  // reserve tensor for error feedback mechanism
+  if(!errorResidual_) {
+    LOG(info, " EXPERIMENTAL: quantize the model to {}-bits", bits_);
 
-  // Lazy init delta variable
-  if(!delta_ && optStep_ > 0) {
-    int msize = t->size();
-    alloc_ = New<TensorAllocator>(t->getBackend());
-    alloc_->reserveExact(msize * sizeof(float));
-    alloc_->allocate(delta_, {1, msize});
+    int numElements = (int)graph->params()->vals()->size();
+    auto allocator = New<TensorAllocator>(graph->getBackend());
+    allocator->reserveExact(graph->params()->vals()->memory()->size());
+    allocator->allocate(errorResidual_, {1, numElements});
+
+    allocators_.push_back(allocator);
+    firstError_ = true;
+  }
+
+  // apply error feedback mechanism
+  using namespace functional;
+  // add the previous error residual to the current model
+  Element(_1 += _2, graph->params()->vals(), errorResidual_);
+  errorResidual_->copyFrom(graph->params()->vals());
+
+  for(auto p : *graph->params()) {
+    // optionally quantize bias
+    if(quantBias_ || p->val()->shape()[0] > 1)
+      quantizeImpl(p->val());
+  }
+
+  // get new error residual. Skip the first one.
+  if (!firstError_)
+    Element(_1 -= _2, errorResidual_, graph->params()->vals());
+  else {
+    errorResidual_->set(0);
+    firstError_ = false;
   }
 }
 
-/* Tensor compression implementation.
- * @param t is the tensor to be compressed
- * @param bit is the bit size
- * @param optStep is the number of steps for optimizing the scaling factor S
- * @param logQuant is true when using log-based quantization. Otherwise will use a fixed-point
- * quantization
- */
-void Compresser::compressImpl(Tensor t, int bit, int optStep, bool logQuant) {
-  if(!tempVar_)
-    init(t);
 
+/* Tensor quantization implementation.
+ * @param t is the tensor to be quantized (in-place)
+ */
+void ModelQuantizer::quantizeImpl(Tensor t) {
+  if(!tempVar_) {
+    // init the swap tensor
+    auto allocator = New<TensorAllocator>(t->getBackend());
+    allocator->reserveExact(sizeof(float));
+    allocator->allocate(tempVar_, {1, 1});
+    allocators_.push_back(allocator);
+  }
+
+  // init additional tensor for scaling optimization
+  if(!delta_ && optSteps_ > 0) {
+    int msize = t->size();
+    auto allocator = New<TensorAllocator>(t->getBackend());
+    allocator->reserveExact(msize * sizeof(float));
+    allocator->allocate(delta_, {1, msize});
+    allocators_.push_back(allocator);
+  }
+  
   Tensor q = delta_->subtensor(0, t->size());  // to store the quantized t
   Tensor tflat = t->subtensor(0, t->size());   // flatten t for reduce
 
+  // scaling factor S
   float S = 0;
   // get intial scaling factor (S) based on max element in Tensor
   {
@@ -113,34 +151,34 @@ void Compresser::compressImpl(Tensor t, int bit, int optStep, bool logQuant) {
   }
 
   // optimze the scaling factor S
-  for(int i = 0; i < optStep_; i++) {
-    // let t be the original tensor, and q be the quantised tensor, and q = S*a where S is the
+  for(int i = 0; i < optSteps_; i++) {
+    // let t be the original tensor, and q be the quantized tensor, and q = S*a where S is the
     // scaling factor. we want to optimize S to minimize MSE(S*a - t) therefore, S =
     // sum(a*t)/sum(a*a) see https://www.aclweb.org/anthology/2020.ngt-1.4.pdf for more details.
-    if(logQuant)
-      quantizeLog(t, q, (1 << (bit - 1)) - 1, S);
+    if(logQuant_)
+      quantizeLog(t, q, (1 << (bits_ - 1)) - 1, S);
     else
-      quantizeFixed(t, q, (1 << (bit - 1)) - 1, S);
+      quantizeFixed(t, q, (1 << (bits_ - 1)) - 1, S);
 
-    // obtains a by applying q/=S
+    // obtain a by applying q/=S
     using namespace functional;
     Element(_1 /= S, delta_);
 
     // get sum(a*t)
     Reduce(_1 * _2, tempVar_, tflat, q);
-    float deltaTop = tempVar_->get(0);
+    float deltaNumer = tempVar_->get(0);
 
     // get sum(a*a)
     Reduce(_1 * _1, tempVar_, q);
-    float deltaBtm = tempVar_->get(0);
+    float deltaDenom = tempVar_->get(0);
 
-    S = deltaTop / deltaBtm;  // S = sum(a*t)/sum(a*a)
+    S = deltaNumer / deltaDenom;  // S = sum(a*t)/sum(a*a)
   }
 
   // final compress
-  if(logQuant) {
-    quantizeLog(t, t, (1 << (bit - 1)) - 1, S);
+  if(logQuant_) {
+    quantizeLog(t, t, (1 << (bits_ - 1)) - 1, S);
   } else
-    quantizeFixed(t, t, (1 << (bit - 1)) - 1, S);
+    quantizeFixed(t, t,(1 << (bits_ - 1)) - 1, S);
 }
 }  // namespace marian

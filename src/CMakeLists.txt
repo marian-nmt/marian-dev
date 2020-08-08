@@ -74,7 +74,7 @@ add_library(marian STATIC
   rnn/cells.cpp
   rnn/attention.cpp
 
-  optimizers/compresser.cpp
+  optimizers/quantizer.cpp
   optimizers/clippers.cpp
   optimizers/optimizers.cpp
 

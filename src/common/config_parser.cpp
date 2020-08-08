@@ -509,16 +509,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      true);
 
   // model quantization training
-  cli.add<int>("--compress-bit",
-     "Model compression bit. Set 32 to disable",
-      32);
-  cli.add<int>("--compress-k-means",
-     "Adjust compression scale with k-means for N steps",
-     0);
-  cli.add<bool>("--compress-log-quantize",
-     "Uses log-based quantization");
-  cli.add<bool>("--compress-skip-bias",
-     "Do not compress bias");
+  addSuboptionsQuantization(cli);
 
   // add ULR settings
   addSuboptionsULR(cli);
@@ -844,6 +835,22 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   cli.add<float>("--ulr-softmax-temperature",
       "ULR softmax temperature to control randomness of predictions. Deafult is 1.0: no temperature",
       1.0f);
+  // clang-format on
+}
+
+void ConfigParser::addSuboptionsQuantization(cli::CLIWrapper& cli) {
+  // clang-format off
+  // model quantization training
+  cli.add<size_t>("--quantize-bits",
+     "Number of bits to compress model to. Set to 32 to disable",
+      32);
+  cli.add<size_t>("--quantize-optimization-steps",
+     "Adjust quantization scaling factor for N steps",
+     0);
+  cli.add<bool>("--quantize-log",
+     "Uses log-based quantization");
+  cli.add<bool>("--quantize-bias",
+     "Apply quantization to biases");
   // clang-format on
 }
 

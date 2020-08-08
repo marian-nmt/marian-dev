@@ -298,9 +298,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   };
 
 
-  // Helper to compress the model
-  auto compressModel = [&](size_t idx, size_t /*begin*/, size_t /*end*/) {
-    compressers_[idx]->compress(graphs_[idx]);
+  // Helper to quantize the model
+  auto quantizeModel = [&](size_t idx, size_t /*begin*/, size_t /*end*/) {
+    quantizers_[idx]->quantize(graphs_[idx]);
   };
 
   // Upon very first execution, reset everything
@@ -311,11 +311,11 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     if(mvAvg_ && paramsAvg_.empty())
       initializeAvg();
  
-    // initialize model compression
-    if (options_->get<int>("compress-bit") < 32) {
+    // initialize model quantization
+    if (options_->get<int>("quantize-bits") < 32) {
       for (int idx = 0; idx < graphs_.size(); idx++)
-	compressers_.push_back(New<Compresser>(options_));
-      comm_->foreach(compressModel);
+	quantizers_.push_back(New<ModelQuantizer>(options_));
+      comm_->foreach(quantizeModel);
     }
 
     first_ = false;
@@ -372,9 +372,9 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     comm_->foreach(update);              // per-shard model-update
     comm_->allGatherParams();            // distribute param value shards back
   
-    // Re-compress the model 
-    if (options_->get<int>("compress-bit") < 32)
-      comm_->foreach(compressModel);
+    // Re-quantize the model 
+    if (options_->get<int>("quantize-bits") < 32)
+      comm_->foreach(quantizeModel);
   }
   else
     LOG(info, "[training] skipping {}-th update due to loss being {}", scheduler_->numberOfBatches(), localLoss.loss);

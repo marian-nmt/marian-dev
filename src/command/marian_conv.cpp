@@ -40,11 +40,11 @@ int main(int argc, char** argv) {
   Type saveGemmType;
   if(saveGemmTypeStr == "float32") {
     saveGemmType = Type::float32;
-  } else if(saveGemmTypeStr == "packed16") {  // packed16 only supports AVX2. AVX512 might be added later
+  } else if(saveGemmTypeStr == "packed16") {  // packed16 (fbgemm) only supports AVX2. AVX512 might be added later
     saveGemmType = Type::packed16;
-  } else if(saveGemmTypeStr == "packed8avx2") { // packed8 for AVX2
+  } else if(saveGemmTypeStr == "packed8avx2") { // packed8 for AVX2 (fbgemm)
     saveGemmType = Type::packed8avx2;
-  } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512
+  } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512 (fbgemm)
     saveGemmType = Type::packed8avx512;
   } else if(saveGemmTypeStr == "intgemm8") { // intgemm 8 bit format
     saveGemmType = Type::intgemm8;

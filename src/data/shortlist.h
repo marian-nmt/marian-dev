@@ -263,7 +263,7 @@ public:
     // Ensure that the generated vocabulary items from a shortlist are a multiple-of-eight
     // This is necessary until intgemm supports non-multiple-of-eight matrices.
     // TODO better solution here? This could potentially be slow.
-    WordIndex i = firstNum_;
+    WordIndex i = static_cast<WordIndex>(firstNum_);
     while (indexSet.size() % 8 != 0) {
       indexSet.insert(i);
       i++;

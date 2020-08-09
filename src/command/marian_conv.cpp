@@ -61,17 +61,10 @@ int main(int argc, char** argv) {
   marian::io::getYamlFromModel(config, "special:model.yml", modelFrom);
   configStr << config;
 
-  auto graph = New<ExpressionGraphPackable>();
-  graph->setDevice(CPU0);
-  if (saveGemmType != Type::intgemm16)
-    graph->getBackend()->setInt16(false);
-  if (saveGemmType != Type::intgemm8)
-    graph->getBackend()->setInt8(false);
-
   auto load = [&](Ptr<ExpressionGraph> graph) {
     graph->setDevice(CPU0);
-    graph->getBackend()->setInt8(false);
-    graph->getBackend()->setInt16(false);
+    graph->getBackend()->setInt8(false);  // Since win run graph->forward() we need to make sure it does not get converted to an intgemm format during it.
+    graph->getBackend()->setInt16(false); // We manually do the compression later.
 
     graph->load(modelFrom);
     graph->forward();  // run the initializers

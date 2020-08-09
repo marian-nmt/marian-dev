@@ -4,7 +4,6 @@
 #include "tensors/tensor_allocator.h"
 #include "tensors/tensor_operators.h"
 
-#include "functional/floats.h"
 #include "functional/functional.h"
 
 namespace marian {
@@ -146,7 +145,7 @@ void ModelQuantizer::quantizeImpl(Tensor t) {
   Tensor tflat = t->subtensor(0, t->size());   // flatten t for reduce
 
   // scaling factor S
-  float S = 0;
+  float S = 0.0f;
   // get intial scaling factor (S) based on max element in Tensor
   {
     using namespace functional;

@@ -847,9 +847,9 @@ void ConfigParser::addSuboptionsQuantization(cli::CLIWrapper& cli) {
   cli.add<size_t>("--quantize-optimization-steps",
      "Adjust quantization scaling factor for N steps",
      0);
-  cli.add<bool>("--quantize-log",
+  cli.add<bool>("--quantize-log-based",
      "Uses log-based quantization");
-  cli.add<bool>("--quantize-bias",
+  cli.add<bool>("--quantize-biases",
      "Apply quantization to biases");
   // clang-format on
 }

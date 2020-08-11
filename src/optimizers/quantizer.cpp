@@ -14,18 +14,18 @@ namespace marian {
  * res   = [1   , 0.6,  0.8 , 0.8 , 0.4,  0.2 , 0.6 ]
  *
  * @param data contains the original data
- * @param res will contain the resulting quantized data. set data = quant for in-place operation
+ * @param res will contain the resulting quantized data. set data = res for in-place operation
  * @param numCenters the number of quantized centers in absolute. It should be 2^(bit-1)
  * @param S stores the scaling factor.
  */
-void quantizeFixed(Tensor data, Tensor res, int numCenters, float S) {
+static void fixedPointQuantization(Tensor data, Tensor res, int numCenters, float S) {
   using namespace functional;
   float multiplier = numCenters / S;
 
   // clip based on the scale
   Element(_1 = clip(_2, S), res, data);
 
-  // get the quantization center
+  // get the quantization bin ID
   Element(_1 = round(_1 * multiplier), res);
 
   // revert back to floating point representation
@@ -37,14 +37,14 @@ void quantizeFixed(Tensor data, Tensor res, int numCenters, float S) {
  * data  = [0.9, 0.7, 0.5, 0.2 , 1.1] 
  * res   = [1,   0.5, 0.5, 0.25, 1  ]
  *
- * @param data contains the original data
- * @param res will contain the resulting quantized data. set data = res for in-place operation
- * @param size the data size
- * @param numCenters the number of quantized centers in absolute. It should be 2^(bit-1)
+ * @param data contains the original data.
+ * @param res will contain the resulting quantized data. set data = res for in-place operation.
+ * @param size the data size.
+ * @param numCenters the number of quantized centers in absolute. It should be 2^(bit-1).
  * @param S stores the scaling factor.
- * @param base for log quantized center. Default of 2
+ * @param base for log quantized center. Default of 2.
  */
-void quantizeLog(Tensor data, Tensor res, int numCenters, float S, float base = 2.0f) {
+static void logQuantization(Tensor data, Tensor res, int numCenters, float S, float base = 2.0f) {
   using namespace functional;
 
   // clip based on the scaling factor
@@ -67,23 +67,23 @@ void quantizeLog(Tensor data, Tensor res, int numCenters, float S, float base = 
   // The above steps are writen in 1 call as below, to avoid reserving extra Tensors:
 
   Element(
-      _1 = sgn(_1)      // revert the sign back
-           * S          // revert the scaling function
-           * pow(base,  // revert from log space to normal FP represtation
-                 clip(floor(log(abs(_1 / S) * mult) / log(base)),  // get the quantization center
-                      (float) numCenters)),                                // clip
+      _1 = sgn(_1)                                                // revert the sign back
+           * S                                                    // revert the scaling function
+           * pow(base,                                            // revert from log space to normal FP represtation
+                 clip(floor(log(abs(_1 / S) * mult) / log(base)), // get the quantization center
+                      (float) numCenters)),                       // clip
       res);
 }
 
-/* Quantize all the parameters (except bias, unless enabled via --quantize-bias)
- * Quantization only works if we store the quantization error residual
- * The stored residual will be added for the next quantization
- * @param graph is the model graph to be quantized (in-place) 
+/* Quantize all the parameters (except bias, unless enabled via --quantize-biases).
+ * Quantization only works if we store the quantization error residual.
+ * The stored residual will be added for the next quantization.
+ * @param graph is the model graph to be quantized (in-place).
  */
 void ModelQuantizer::quantize(Ptr<ExpressionGraph> graph) {
-  // reserve tensor for error feedback mechanism
+  // lazily allocate tensor for error feedback mechanism
   if(!errorResidual_) {
-    LOG(info, " EXPERIMENTAL: quantize the model to {}-bits", bits_);
+    LOG(info, "Quantizing the model to {}-bits", bits_);
 
     int numElements = (int)graph->params()->vals()->size();
     auto allocator = New<TensorAllocator>(graph->getBackend());
@@ -91,31 +91,30 @@ void ModelQuantizer::quantize(Ptr<ExpressionGraph> graph) {
     allocator->allocate(errorResidual_, {1, numElements});
 
     allocators_.push_back(allocator);
-    firstError_ = true;
+    isFirstError_ = true;
   }
 
   {
     // apply error feedback mechanism
     using namespace functional;
-    // add the previous error residual to the current model
-    Element(_1 += _2, graph->params()->vals(), errorResidual_);
-    errorResidual_->copyFrom(graph->params()->vals());
+    Element(_1 += _2, graph->params()->vals(), errorResidual_); // add the previous error residual to the current model 
+    errorResidual_->copyFrom(graph->params()->vals()); // set the model as the error-residual (will be updated below)
   }
 
   for(auto p : *graph->params()) {
-    // optionally quantize bias
+    // quantize weight tensors, biases optional
     if(quantBias_ || p->val()->shape()[0] > 1)
       quantizeImpl(p->val());
   }
 
   // get new error residual. Skip the first one.
-  if (!firstError_) {
+  if (!isFirstError_) {
     using namespace functional;
-    Element(_1 -= _2, errorResidual_, graph->params()->vals());
+    Element(_1 -= _2, errorResidual_, graph->params()->vals()); // new error-residual = original model - quantized model
   }
   else {
     errorResidual_->set(0);
-    firstError_ = false;
+    isFirstError_ = false;
   }
 }
 
@@ -144,8 +143,7 @@ void ModelQuantizer::quantizeImpl(Tensor t) {
   Tensor q = delta_->subtensor(0, t->size());  // to store the quantized t
   Tensor tflat = t->subtensor(0, t->size());   // flatten t for reduce
 
-  // scaling factor S
-  float S = 0.0f;
+  float S = 0.0f; // scaling factor S
   // get intial scaling factor (S) based on max element in Tensor
   {
     using namespace functional;
@@ -153,15 +151,15 @@ void ModelQuantizer::quantizeImpl(Tensor t) {
     S = tempVar_->get(0);
   }
 
-  // optimze the scaling factor S
+  // optimize the scaling factor S
   for(int i = 0; i < optSteps_; i++) {
     // let t be the original tensor, and q be the quantized tensor, and q = S*a where S is the
     // scaling factor. we want to optimize S to minimize MSE(S*a - t) therefore, S =
     // sum(a*t)/sum(a*a) see https://www.aclweb.org/anthology/2020.ngt-1.4.pdf for more details.
     if(logQuant_)
-      quantizeLog(t, q, (1 << (bits_ - 1)) - 1, S);
+      logQuantization(t, q, (1 << (bits_ - 1)) - 1, S);
     else
-      quantizeFixed(t, q, (1 << (bits_ - 1)) - 1, S);
+      fixedPointQuantization(t, q, (1 << (bits_ - 1)) - 1, S);
 
     // obtain a by applying q/=S
     using namespace functional;
@@ -178,10 +176,10 @@ void ModelQuantizer::quantizeImpl(Tensor t) {
     S = deltaNumer / deltaDenom;  // S = sum(a*t)/sum(a*a)
   }
 
-  // final compress
+  // final quantization
   if(logQuant_) {
-    quantizeLog(t, t, (1 << (bits_ - 1)) - 1, S);
+    logQuantization(t, t, (1 << (bits_ - 1)) - 1, S);
   } else
-    quantizeFixed(t, t,(1 << (bits_ - 1)) - 1, S);
+    fixedPointQuantization(t, t,(1 << (bits_ - 1)) - 1, S);
 }
 }  // namespace marian

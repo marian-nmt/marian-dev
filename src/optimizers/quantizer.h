@@ -10,14 +10,14 @@
 
 namespace marian {
 
-/* Quantize all the parameters in a model graph
+/* Class to implement quantization of all the parameters in a model graph
  * This class handles the required error-feedback mechanism internally.
  * Example:
  *   auto mq = New<ModelQuantizer>(options_);
  *   mq->quantize(graph_);
  *
- * parameters in graph_ will be quantized every time quantize is called.
- * the internal error-residual is also updated each quantize call,
+ * Parameters in graph_ will be quantized every time quantize is called.
+ * The internal error-residual is also updated each quantize call,
  * therefore, use the same ModelQuantizer object to quantize the same graph.
  */
 class ModelQuantizer {
@@ -25,28 +25,26 @@ public:
   ModelQuantizer(Ptr<Options> options)
       : bits_{options->get<size_t>("quantize-bits")},
         optSteps_{options->get<size_t>("quantize-optimization-steps")},
-        quantBias_{options->get<bool>("quantize-bias")},
-        logQuant_{options->get<bool>("quantize-log")} {}
+        quantBias_{options->get<bool>("quantize-biases")},
+        logQuant_{options->get<bool>("quantize-log-based")} {}
 
   void quantize(Ptr<ExpressionGraph> graph);
 
 protected:
   void quantizeImpl(Tensor t);
+  //static void fixedPointQuantization(Tensor data, Tensor res, int numCenters, float S);
+  //static void logQuantization(Tensor data, Tensor res, int numCenters, float S, float base = 2.0f); 
 
   size_t bits_;
   size_t optSteps_;
   bool 	quantBias_;
   bool logQuant_;
-  bool firstError_;
+  bool isFirstError_;
 
   std::vector<Ptr<TensorAllocator>> allocators_;
 
-  Tensor errorResidual_;
-  
-  // temporary Tensor for storing q to calculate optimal S
-  Tensor delta_;
-
-  // single element Tensor for Reduce swap variable
-  Tensor tempVar_;
+  Tensor errorResidual_; // Tensor to store the error-residual
+  Tensor delta_; // temporary Tensor for storing q to calculate optimal S
+  Tensor tempVar_; // single element Tensor for Reduce swap variable
 };
 }  // namespace marian

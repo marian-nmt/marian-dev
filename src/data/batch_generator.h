@@ -138,9 +138,8 @@ private:
 
     size_t sets = 0;
     while(current_ != data_->end() && maxiBatch->size() < maxSize) { // loop over data
-      if (getSignalFlag(SIGTERM)) { // received SIGTERM, abandon ship ...
-        return tempBatches;
-      }
+      if (getSignalFlag(SIGTERM)) // received SIGTERM, abandon ship ...
+        return std::deque<BatchPtr>(); 
       maxiBatch->push(*current_);
       sets = current_->size();
       // do not consume more than required for the maxi batch as this causes
@@ -165,11 +164,8 @@ private:
       cachedStatsIter = stats_->begin();
 
     while(!maxiBatch->empty()) { // while there are sentences in the queue
-
-      if (getSignalFlag(SIGTERM)) { // received SIGTERM, abandon ship ...
-        return tempBatches;
-      }
-
+      if (getSignalFlag(SIGTERM)) // received SIGTERM, abandon ship ...
+        return std::deque<BatchPtr>();
       // push item onto batch
       batchVector.push_back(maxiBatch->top());
       maxiBatch->pop(); // fetch next-shortest

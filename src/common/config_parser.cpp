@@ -842,8 +842,8 @@ void ConfigParser::addSuboptionsQuantization(cli::CLIWrapper& cli) {
   // clang-format off
   // model quantization training
   cli.add<size_t>("--quantize-bits",
-     "Number of bits to compress model to. Set to 32 to disable",
-      32);
+     "Number of bits to compress model to. Set to 0 to disable",
+      0);
   cli.add<size_t>("--quantize-optimization-steps",
      "Adjust quantization scaling factor for N steps",
      0);

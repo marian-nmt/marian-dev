@@ -311,7 +311,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       initializeAvg();
  
     // initialize model quantization
-    if (options_->get<int>("quantize-bits") < 32) {
+    if (options_->get<size_t>("quantize-bits") > 0) {
       for (int idx = 0; idx < graphs_.size(); idx++)
 	quantizers_.push_back(New<ModelQuantizer>(options_));
       comm_->foreach(quantizeModel);
@@ -373,7 +373,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   
     // Re-add the error residual from previous quantization,
     // then re-quantize the model back and update the error residual
-    if (options_->get<int>("quantize-bits") < 32)
+    if (options_->get<size_t>("quantize-bits") > 0)
       comm_->foreach(quantizeModel);
   }
   else

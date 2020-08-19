@@ -138,8 +138,8 @@ private:
 
     size_t sets = 0;
     while(current_ != data_->end() && maxiBatch->size() < maxSize) { // loop over data
-      if (getSignalFlag(SIGTERM)) // received SIGTERM, abandon ship ...
-        return std::deque<BatchPtr>(); 
+      if (gracefulExitRequested()) // stop generating batches
+        return std::deque<BatchPtr>();
       maxiBatch->push(*current_);
       sets = current_->size();
       // do not consume more than required for the maxi batch as this causes
@@ -164,7 +164,7 @@ private:
       cachedStatsIter = stats_->begin();
 
     while(!maxiBatch->empty()) { // while there are sentences in the queue
-      if (getSignalFlag(SIGTERM)) // received SIGTERM, abandon ship ...
+      if (gracefulExitRequested()) // stop generating batches
         return std::deque<BatchPtr>();
       // push item onto batch
       batchVector.push_back(maxiBatch->top());
@@ -251,10 +251,9 @@ private:
           "If you have changed the training corpus, add --no-restore-corpus to the training command and run it again.");
 
       bufferedBatches_ = std::move(futureBufferedBatches_.get());
-      if (bufferedBatches_.empty() // i.e., end of Epoch
-          || getSignalFlag(SIGTERM)) { // process received SIGTERM, abandon ship ...
+      // stop generating batches at end of epoch or upon graceful exit request:
+      if (bufferedBatches_.empty() || gracefulExitRequested())
         return nullptr;
-      }
       fetchBatchesAsync(); // pre-fetch next slew of batches in separate thread
     }
     auto batch = bufferedBatches_.front();

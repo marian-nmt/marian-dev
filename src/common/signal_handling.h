@@ -1,26 +1,39 @@
 #pragma once
 #include <csignal>
+#include <string>
 
 // SIGNAL HANDLING
 
-// The Marian signal handler setSignalFlag is a general purpose signal handler
-// that sets a global flag upon receiving a signal (with SIGNAL No. < 32) in line 
-// with the recommendations for signal handling in the SEI CERT C Coding Standard, specifically
-// - SIG30-C: https://wiki.sei.cmu.edu/confluence/display/c/SIG30-C.+Call+only+asynchronous-safe+functions+within+signal+handlers
-// - SIG31-C: https://wiki.sei.cmu.edu/confluence/display/c/SIG31-C.+Do+not+access+shared+objects+in+signal+handlers
-// Usage: 
-// - install the signal handler for a specific signal with signal(SIGNAL, setSignalFlag), 
-//   e.g. signal(SIGTERM, setSignalFlag)
-// - check the flag wherever appropriate with getSignalFlag(SIGNAL), 
-//   e.g. getSignalFlag(SIGTERM)
-// 
-// This mechanism is currently used in marian training to ensure a graceful shutdown after receiving 
-// SIGTERM, saving the current state of training before exiting. This behavior is particularly desirable
-// when training on clusters with time limits on computeslots, e.g., on certain clusters managed by slurm. 
-// Slurm can be asked to send a (custom) warning signal to a process at a certain time priopr to the 
-// hard end of the time slot.
+// The signal handlers (and checkers) here are implemented in line with with the recommendations
+// for signal handling in the SEI CERT C Coding Standard, specifically
+//
+// - SIG30-C:
+//   https://wiki.sei.cmu.edu/confluence/display/c/SIG30-C.+Call+only+asynchronous-safe+functions+within+signal+handlers
+//
+// - SIG31-C:
+//   https://wiki.sei.cmu.edu/confluence/display/c/SIG31-C.+Do+not+access+shared+objects+in+signal+handlers
+//
+// The exact behavior of 'graceful exit' depends on the application; for training, it means 'save model and exit',
+// for a server (not implemented yet): 'block new requests but serve pending requests and then exit'.
+//
+// Graceful exit for training is useful for training on clusters with time limits on jobs. Slurm, for example, can be
+// set up to send a custom signal at a set time before the end of the time slot, giving Marian time to save its current
+// state before getting killed.
 
 namespace marian {
-bool getSignalFlag(int sig); // return true if sig was received, false otherwise
-void setSignalFlag(int sig); // custom handler (set flag) for sig
-} // end of namespace marian
+
+
+/// Request graceful exit (signal handler)
+void requestGracefulExit(const int sig);
+
+/// Check if graceful exit was requested.
+bool gracefulExitRequested();
+
+/// General purpose signal handler that simply sets a flag when a signal is received.
+//  (only for SIGNAL No. < 32).
+void setSignalFlag(const int sig);  // custom handler (set flag) for sig
+
+/// Check if a setSignalFlag was triggered for this signal
+bool getSignalFlag(const int sig);
+
+} // End of namespace marian

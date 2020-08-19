@@ -16,6 +16,7 @@ template <class ModelWrapper>
 class Train : public ModelTask {
 private:
   Ptr<Options> options_;
+  void installCustomSignalHandlers();
 
 public:
   Train(Ptr<Options> options) : options_(options) {}
@@ -77,11 +78,8 @@ public:
     bool restored = !options_->get<bool>("no-restore-corpus")
                     && batchGenerator->restore(trainState);
 
-    // Install custom handler for SIGTERM, to allow for a graceful
-    // shutdown that saves the current state of training before exiting.
-    // This signal handler simply sets a flag that can be checked from
-    // everywhere (getSignalFLAG(SIGTERM); #include common/signal_handling.h)
-    signal(SIGTERM, setSignalFlag);
+    // We only want custom behavior once training starts.
+    installCustomSignalHandlers();
 
     // -- main training loop
     scheduler->started();
@@ -113,4 +111,17 @@ public:
     finalizeMPI(std::move(mpi));
   }
 };
+
+template <class ModelWrapper>
+void Train<ModelWrapper>::installCustomSignalHandlers()
+{
+  const std::string sigTermAction = options_->get<std::string>("sigterm");
+  if (sigTermAction == "graceful") {
+    LOG(debug, "Enabling graceful shutdown for SIGTERM.");
+    signal(SIGTERM, requestGracefulExit);
+  }
+  else if (sigTermAction != "immediate")
+    ABORT("Unrecognized value '{}' for --sigterm", sigTermAction);
+}
+
 }  // namespace marian

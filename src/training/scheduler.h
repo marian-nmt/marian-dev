@@ -155,7 +155,7 @@ public:
   }
 
   bool keepGoing() {
-    if(getSignalFlag(SIGTERM)) // received signal SIGERM => exit gracefully
+    if(gracefulExitRequested()) // via SIGTERM
       return false;
 
     // stop if it reached the maximum number of epochs
@@ -189,12 +189,11 @@ public:
 
   void started() { LOG(info, "Training started"); }
   void finished() {
-    if (getSignalFlag(SIGTERM))
-      LOG(info, "Training interrupted (SIGTERM).");
+    if (gracefulExitRequested())
+      LOG(info, "Training interrupted (via signal).");
     else
       LOG(info, "Training finished");
   }
-
 
   void addValidator(Ptr<ValidatorBase> validator) {
     validators_.push_back(validator);
@@ -221,8 +220,9 @@ public:
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                 bool isFinal = false) {
     // Do not validate if already validated (for instance, after the model is
-    // loaded) or if validation is scheduled for another update, or when signal SIGTERM was received
-    if(getSignalFlag(SIGTERM) // SIGTERM was received
+    // loaded) or if validation is scheduled for another update, or when a
+    // graceful shutdown was requested via --sig{term|usr1|usr2}.
+    if(gracefulExitRequested() // signal requesting graceful exit (save model and exit) was received
        || state_->validated // already validated (in resumed training, for example)
        || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !isFinal)) // not now
       return;

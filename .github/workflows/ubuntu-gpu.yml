@@ -34,15 +34,9 @@ jobs:
         submodules: recursive
 
     # The following packages are already installed on GitHub-hosted runners: build-essential openssl libssl-dev
+    # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
     - name: Install dependencies
-      run: |
-        sudo apt-get install -y --no-install-recommends libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
-        case $(lsb_release -sr) in \
-          20.04) sudo apt-get install -y libprotobuf17 ;; \
-          18.04) sudo apt-get install -y libprotobuf10 ;; \
-          16.04) sudo apt-get install -y libprotobuf9v5 ;; \
-        esac
-      shell: bash
+      run: sudo apt-get install -y --no-install-recommends libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
 
     # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html
     - name: Install MKL

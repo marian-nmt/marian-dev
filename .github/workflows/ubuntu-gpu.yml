@@ -17,11 +17,11 @@ jobs:
           # Ubuntu 20.04 supports CUDA 11+
           # Ubuntu 18.04 supports CUDA 10.1+
           - os: ubuntu-18.04
-            cuda: 10.2
+            cuda: "10.2"
             gcc: 8
           # Ubuntu 16.04 supports CUDA 8+
           - os: ubuntu-16.04
-            cuda: 10.2
+            cuda: "10.2"
             gcc: 7
           - os: ubuntu-16.04
             cuda: 9.2
@@ -36,7 +36,7 @@ jobs:
     # The following packages are already installed on GitHub-hosted runners: build-essential openssl libssl-dev
     # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
     - name: Install dependencies
-      run: sudo apt-get install -y --no-install-recommends libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
+      run: sudo apt-get install -y libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
 
     # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html
     - name: Install MKL
@@ -56,8 +56,9 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/gcc-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/gcc-${{ matrix.gcc }} \
-        cmake .. -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DCOMPILE_EXAMPLES=on -DCOMPILE_SERVER=on -DCOMPILE_TESTS=on \
+        CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }} \
+        cmake .. \
+          -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DCOMPILE_EXAMPLES=on -DCOMPILE_SERVER=on -DCOMPILE_TESTS=on \
           -DUSE_FBGEMM=on -DUSE_SENTENCEPIECE=on \
           -DBOOST_ROOT=$BOOST_ROOT_1_69_0 -DBOOST_INCLUDEDIR=$BOOST_ROOT_1_69_0/include -DBOOST_LIBRARYDIR=$BOOST_ROOT_1_69_0/lib \
           -DBoost_ARCHITECTURE=-x64 \
@@ -68,6 +69,11 @@ jobs:
       run: make -j2
 
     # Unit tests are not run because GitHub-hosted runners do not have GPUs
+    # TODO: add a flag to CMake to compile unit tests only on CPU
+    #- name: Run unit tests
+      #working-directory: build
+      #run: make test
+
     - name: Print versions
       working-directory: build
       run: |

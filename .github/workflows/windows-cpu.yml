@@ -21,7 +21,7 @@ jobs:
       run: |
         Invoke-WebRequest -Uri https://romang.blob.core.windows.net/mariandev/ci/mkl-2020.1-windows-static.zip -TimeoutSec 600 -OutFile mkl.zip
         Expand-Archive -Force mkl.zip ${{ github.workspace }}/mkl
-        # Set MKLROOT environment variables so that CMake can find MKL
+        # Set MKLROOT environment variables so that CMake can find MKL.
         # GITHUB_WORKSPACE is an environment variable available on all GitHub-hosted runners
         echo "::set-env name=MKLROOT::$env:GITHUB_WORKSPACE/mkl"
       shell: powershell
@@ -34,7 +34,7 @@ jobs:
         vcpkgDirectory: ${{ github.workspace }}/vcpkg/
         vcpkgTriplet: x64-windows-static
 
-    # Note that we build with a simplified CMake settings JSON file
+    # Build with a simplified CMake settings JSON file
     - name: Run CMake
       uses: lukka/run-cmake@v2
       with:
@@ -49,21 +49,18 @@ jobs:
       working-directory: build/Release/
       run: ctest
 
-    - name: Print versions
-      working-directory: build/Release/
-      run: |
-        .\marian.exe --version
-        .\marian-decoder.exe --version
-        .\marian-scorer.exe --version
-
-    - name: Prepare archive
-      working-directory: build/Release
-      run: Compress-Archive marian*.exe marian-windows-release-static.zip
-      shell: powershell
+    #- name: Print versions
+      #working-directory: build/Release/
+      #run: |
+        #.\marian.exe --version
+        #.\marian-decoder.exe --version
+        #.\marian-scorer.exe --version
+        #.\spm_encode.exe --version
+      #shell: powershell
 
     # Marian is built with FBGEMM, so there are some restrictions on what CPUs the executables can be run
     - name: Upload archive
       uses: actions/upload-artifact@v2
       with:
-        name: marian-windows-release-static.zip
-        path: build/Release/marian-windows-release-static.zip
+        name: marian-windows-release-static
+        path: build/Release/marian*.exe

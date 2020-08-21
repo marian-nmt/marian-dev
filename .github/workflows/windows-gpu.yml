@@ -29,7 +29,7 @@ jobs:
       run: |
         Invoke-WebRequest -Uri https://romang.blob.core.windows.net/mariandev/ci/mkl-2020.1-windows-static.zip -TimeoutSec 600 -OutFile mkl.zip
         Expand-Archive -Force mkl.zip ${{ github.workspace }}/mkl
-        # Set MKLROOT environment variables so that CMake can find MKL
+        # Set MKLROOT environment variables so that CMake can find MKL.
         # GITHUB_WORKSPACE is an environment variable available on all GitHub-hosted runners
         echo "::set-env name=MKLROOT::$env:GITHUB_WORKSPACE/mkl"
       shell: powershell
@@ -42,8 +42,8 @@ jobs:
         vcpkgDirectory: ${{ github.workspace }}/vcpkg/
         vcpkgTriplet: x64-windows-static
 
-    # Note that we build with a simplified CMake settings JSON file.
-    # On Windows+CUDA we compile with COMPILE_CUDA=on and USE_NCCL=off.
+    # Build with a simplified CMake settings JSON file.
+    # On Windows+CUDA we compile with COMPILE_CUDA=on and USE_NCCL=off
     - name: Run CMake
       uses: lukka/run-cmake@v2
       with:

@@ -1,4 +1,4 @@
-name: Windows 2019 CPU+CUDA
+name: Windows CPU-only
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  build-and-upload:
 
     runs-on: windows-2019
 
@@ -16,14 +16,6 @@ jobs:
       uses: actions/checkout@v2
       with:
         submodules: recursive
-
-    - name: Install CUDA
-      run: |
-        .\scripts\ci\install_cuda_windows.ps1 "10.2"
-        # Set path to CUDA for subsequent steps so that CMake can find it
-        echo "::set-env name=CUDA_PATH::$env:CUDA_PATH"
-        echo "::add-path::$env:CUDA_PATH/bin"
-      shell: powershell
 
     - name: Download MKL
       run: |
@@ -42,8 +34,7 @@ jobs:
         vcpkgDirectory: ${{ github.workspace }}/vcpkg/
         vcpkgTriplet: x64-windows-static
 
-    # Note that we build with a simplified CMake settings JSON file.
-    # On Windows+CUDA we compile with COMPILE_CUDA=on and USE_NCCL=off.
+    # Note that we build with a simplified CMake settings JSON file
     - name: Run CMake
       uses: lukka/run-cmake@v2
       with:
@@ -51,13 +42,28 @@ jobs:
         cmakeAppendedArgs: -G Ninja
         cmakeListsOrSettingsJson: CMakeSettingsJson
         # JSON file must be in the same directory as the main CMakeLists.txt
-        cmakeSettingsJsonPath: ${{ github.workspace }}/_CMakeSettingsCI_GPU.json
+        cmakeSettingsJsonPath: ${{ github.workspace }}/_CMakeSettingsCI_CPU.json
         useVcpkgToolchainFile: true
 
+    - name: Run unit tests
+      working-directory: build/Release/
+      run: ctest
+
     - name: Print versions
-      working-directory: build/Debug/
+      working-directory: build/Release/
       run: |
         .\marian.exe --version
         .\marian-decoder.exe --version
         .\marian-scorer.exe --version
-        .\spm_encode.exe --version
+
+    - name: Prepare archive
+      working-directory: build/Release
+      run: Compress-Archive marian*.exe marian-windows-release-static.zip
+      shell: powershell
+
+    # Marian is built with FBGEMM, so there are some restrictions on what CPUs the executables can be run
+    - name: Upload archive
+      uses: actions/upload-artifact@v2
+      with:
+        name: marian-windows-release-static.zip
+        path: build/Release/marian-windows-release-static.zip

@@ -1,4 +1,4 @@
-name: macOS CPU
+name: macOS CPU-only
 
 on:
   push:

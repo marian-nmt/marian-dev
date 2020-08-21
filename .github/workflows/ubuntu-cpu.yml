@@ -1,4 +1,4 @@
-name: Ubuntu 18.04 CPU+CUDA
+name: Ubuntu 18.04 CPU-only
 
 on:
   push:
@@ -7,13 +7,9 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  build-and-upload:
 
     runs-on: ubuntu-18.04
-
-    strategy:
-      matrix:
-        cuda: [10.1, 10.2]
 
     steps:
     - name: Checkout
@@ -33,9 +29,11 @@ jobs:
         sudo apt-get update -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/intel-mkl.list"
         sudo apt-get install --no-install-recommends intel-mkl-64bit-2020.0-088
 
-    # The script simplifies installation of different versions of CUDA
-    - name: Install CUDA
-      run: ./scripts/ci/install_cuda_ubuntu.sh ${{ matrix.cuda }}
+    - name: Print Boost paths
+      run: |
+        ls $BOOST_ROOT_1_69_0
+        ls $BOOST_ROOT_1_69_0/include
+        ls $BOOST_ROOT_1_69_0/lib
 
     # Boost is already installed on GitHub-hosted runners in a non-standard location
     # https://github.com/actions/virtual-environments/issues/687#issuecomment-610471671
@@ -43,17 +41,20 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake .. -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DCOMPILE_EXAMPLES=on -DCOMPILE_SERVER=on -DCOMPILE_TESTS=on \
+        cmake .. -DCMAKE_BUILD_TYPE=Release \
+          -DCOMPILE_CPU=on -DCOMPILE_CUDA=off -DCOMPILE_EXAMPLES=on -DCOMPILE_SERVER=on -DCOMPILE_TESTS=on \
           -DUSE_FBGEMM=on -DUSE_SENTENCEPIECE=on \
           -DBOOST_ROOT=$BOOST_ROOT_1_69_0 -DBOOST_INCLUDEDIR=$BOOST_ROOT_1_69_0/include -DBOOST_LIBRARYDIR=$BOOST_ROOT_1_69_0/lib \
-          -DBoost_ARCHITECTURE=-x64 \
-          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-${{ matrix.cuda }}
+          -DBoost_ARCHITECTURE=-x64
 
     - name: Compile
       working-directory: build
       run: make -j2
 
-    # Unit tests are not run because GitHub-hosted runners do not have GPUs
+    - name: Run unit tests
+      working-directory: build
+      run: make test
+
     - name: Print versions
       working-directory: build
       run: |
@@ -62,3 +63,13 @@ jobs:
         ./marian-scorer --version
         ./spm_encode --version
 
+    - name: Prepare archive
+      working-directory: build
+      run: tar zcvf marian-ubuntu-release-static.tar.gz marian*
+
+    # Marian is built with FBGEMM, so there are some restrictions on what CPUs the executables can be run
+    - name: Upload archive
+      uses: actions/upload-artifact@v2
+      with:
+        name: marian-ubuntu-release-static.tar.gz
+        path: build/marian-ubuntu-release-static.tar.gz

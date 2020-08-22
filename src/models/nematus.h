@@ -45,6 +45,15 @@ public:
           it->name = pair->second;
         it++;
       }
+
+      // for backwards compatibility, turn one-dimensional vector into two dimensional matrix with first dimension being 1 and second dimension of the original size
+      // @TODO: consider dropping support for Nematus models
+      if(it->shape.size() == 1) {
+        int dim = it->shape[-1];
+        it->shape.resize(2);
+        it->shape.set(0, 1);
+        it->shape.set(1, dim);
+      }
     }
     // load items into the graph
     graph->load(ioItems);

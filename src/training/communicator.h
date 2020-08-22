@@ -50,7 +50,9 @@ public:
   virtual void scatterReduceAndResetGrads() const = 0; // reduce param gradients and scatter into gradient shards
   virtual void allGatherParams() const = 0;     // redistribute value shards into param values
 
+#if 0 // disabled for now, not being called anywhere in the code
   virtual void swapParams(const std::vector<Tensor>& paramShards) const = 0;
+#endif
 
   virtual void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const = 0;
   virtual io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const = 0;
@@ -87,15 +89,8 @@ private:
   static MPI_Datatype getDataType(const float*)              { return MPI_FLOAT; }
   static MPI_Datatype getDataType(const unsigned long*)      { return MPI_UNSIGNED_LONG; }
   static MPI_Datatype getDataType(const unsigned long long*) { return MPI_UNSIGNED_LONG_LONG; }
-public:
-  template<typename T>
-  void bCast(std::vector<T>& v, size_t rootRank = 0, MPI_Comm comm = MPI_COMM_WORLD) {
-    unsigned long long vecLen = (unsigned long long)v.size(); // only value from rootRank is used here
-    bCast(&vecLen, 1, getDataType(&vecLen), rootRank, comm);
-    v.resize(vecLen);
-    bCast(v.data(), v.size(), getDataType(v.data()), rootRank, comm);
-  }
 
+public:
   void bCast(io::Item& item, size_t rootRank = 0, MPI_Comm comm = MPI_COMM_WORLD) {
     unsigned long long bytesLen = item.bytes.size();
     bCast(&bytesLen, 1, getDataType(&bytesLen), rootRank, comm);
@@ -282,6 +277,7 @@ public:
     foreach(gather);
   }
 
+#if 0 // disabled for now, not being called anywhere in the code
   void swapParams(const std::vector<Tensor>& paramShards) const override {
     // Update all graphs with parameter shard
     auto gather = [this, paramShards](size_t idx, size_t begin, size_t end) {
@@ -301,6 +297,7 @@ public:
     // Execute for each shard
     foreach(gather);
   }
+#endif
 
   void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
     size_t dataSize = data.size();

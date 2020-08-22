@@ -298,6 +298,7 @@ public:
     synchronizeAll();
   }
 
+#if 0 // disabled for now, not being called anywhere in the code. @TODO: In order to get MPI back working we need to fix this.
   // swap distributed paramShards with model params()
   // It is assumed that all model params() on all devices and MPI processes are identical.
   // This is used for the smoothed parameters.
@@ -326,6 +327,7 @@ public:
     // for (auto& graph : graphs_) // broadcast to every local graph
     //   graph->params()->vals()->set(localParams);
   }
+#endif
 
   // Distribute a single CPU-side vector to shards across multiple devices and MPI processes.
   // This is used when restoring optimizer state, which is sharded, and as part of swapParams().

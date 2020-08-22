@@ -38,7 +38,7 @@ Ptr<ICommunicator> createCommunicator(
   }
 
   // the actual implementation is inside communicator.cu
-  return New<NCCLCommunicator>(graphs, mpi); 
+  return New<NCCLCommunicator>(graphs, mpi);
 #else // no CUDA or no NCCL
   noNccl; // (unused)
   return New<DefaultCommunicator>(graphs, mpi);

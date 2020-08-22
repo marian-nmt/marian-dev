@@ -122,7 +122,7 @@ static void unsetTensorMode(cublasHandle_t cublasHandle) {
 #endif
 }
 
-// primary template for specialiation with different element and compute types
+// primary template for specialization with different element and compute types
 template <typename ElementType, typename ComputeType>
 struct TypedGemm { };
 
@@ -291,8 +291,7 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/float> { // specializatio
 
 
 // overload for float, contains configuration settings for float32
-
-template <typename T, typename ComputeType>
+template <typename ElementType, typename ComputeType>
 void ProdTyped(marian::Tensor C,
                const marian::Tensor& A,
                const marian::Tensor& B,
@@ -328,14 +327,14 @@ void ProdTyped(marian::Tensor C,
   auto computeCapability = backend->getCudaComputeCapability();
 
   setTensorMode(cublasHandle);
-  TypedGemm<T, ComputeType>::gemm(cublasHandle, computeCapability,
-                                  opB, opA,
-                                  n, m, k,
-                                  &alpha,
-                                  B->data<T>(), ldb,
-                                  A->data<T>(), lda,
-                                  &beta,
-                                  C->data<T>(), ldc);
+  TypedGemm<ElementType, ComputeType>::gemm(cublasHandle, computeCapability,
+                                            opB, opA,
+                                            n, m, k,
+                                            &alpha,
+                                            B->data<ElementType>(), ldb,
+                                            A->data<ElementType>(), lda,
+                                            &beta,
+                                            C->data<ElementType>(), ldc);
   unsetTensorMode(cublasHandle);
 }
 
@@ -370,7 +369,7 @@ void ProdWithComputeType(marian::Tensor C,
   }
 }
 
-template <typename T, typename ComputeType>
+template <typename ElementType, typename ComputeType>
 void ProdBatchedTyped(marian::Tensor C,                 
                       Ptr<Allocator> allocator,
                       const marian::Tensor A,
@@ -414,36 +413,36 @@ void ProdBatchedTyped(marian::Tensor C,
   auto strideC = n * m;
   auto batchC = std::max(batchA, batchB);
 
-  std::vector<const T*> aptr;
-  std::vector<const T*> bptr;
-  std::vector<T*> cptr;
+  std::vector<const ElementType*> aptr;
+  std::vector<const ElementType*> bptr;
+  std::vector<ElementType*> cptr;
 
   for(int i = 0; i < batchC; i++) {
-    aptr.push_back(A->data<T>() + (i % batchA) * strideA);
-    bptr.push_back(B->data<T>() + (i % batchB) * strideB);
-    cptr.push_back(C->data<T>() + i * strideC);
+    aptr.push_back(A->data<ElementType>() + (i % batchA) * strideA);
+    bptr.push_back(B->data<ElementType>() + (i % batchB) * strideB);
+    cptr.push_back(C->data<ElementType>() + i * strideC);
   }
 
   // auto fails here from weird reason
-  IPtr<MemoryPiece> mp_aptr = allocator->alloc<const T*>(aptr.size());
-  CudaCopy(aptr.data(), aptr.data() + aptr.size(), mp_aptr->data<const T*>());
+  IPtr<MemoryPiece> mp_aptr = allocator->alloc<const ElementType*>(aptr.size());
+  CudaCopy(aptr.data(), aptr.data() + aptr.size(), mp_aptr->data<const ElementType*>());
 
-  IPtr<MemoryPiece> mp_bptr = allocator->alloc<const T*>(bptr.size());
-  CudaCopy(bptr.data(), bptr.data() + bptr.size(), mp_bptr->data<const T*>());
+  IPtr<MemoryPiece> mp_bptr = allocator->alloc<const ElementType*>(bptr.size());
+  CudaCopy(bptr.data(), bptr.data() + bptr.size(), mp_bptr->data<const ElementType*>());
 
-  IPtr<MemoryPiece> mp_cptr = allocator->alloc<T*>(cptr.size());
-  CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<T*>());
+  IPtr<MemoryPiece> mp_cptr = allocator->alloc<ElementType*>(cptr.size());
+  CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<ElementType*>());
 
   setTensorMode(cublasHandle);
-  TypedGemm<T, ComputeType>::batchedGemm(cublasHandle, compute,
-                                         opB, opA,
-                                         n, m, k,
-                                         &alpha,
-                                         mp_bptr->data<const T*>(), ldb,
-                                         mp_aptr->data<const T*>(), lda,
-                                         &beta,
-                                         mp_cptr->data<T*>(), ldc,
-                                         batchC);
+  TypedGemm<ElementType, ComputeType>::batchedGemm(cublasHandle, compute,
+                                                   opB, opA,
+                                                   n, m, k,
+                                                   &alpha,
+                                                   mp_bptr->data<const ElementType*>(), ldb,
+                                                   mp_aptr->data<const ElementType*>(), lda,
+                                                   &beta,
+                                                   mp_cptr->data<ElementType*>(), ldc,
+                                                   batchC);
   unsetTensorMode(cublasHandle);
 
   allocator->free(mp_aptr);

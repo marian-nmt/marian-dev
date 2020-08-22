@@ -602,7 +602,7 @@ private:
 
   CorpusBase* corpus_;
 
-  long long int pos_;
+  long long int pos_; // @TODO: we never use long long int anywhere else, why is this here?
   SentenceTuple tup_;
 };
 }  // namespace data

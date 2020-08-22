@@ -27,7 +27,7 @@ namespace cnpy {
     struct NpyArray {
         std::vector<char> bytes;
         std::vector<unsigned int> shape;
-        char type;
+        char type; // make it possible to inspect and set the numpy type. Unclear why this was not enabled from the start.
         unsigned int word_size{1};
         bool fortran_order{0};
 

@@ -77,15 +77,22 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
 
   // clip gradients when used
   if(!clipper_) {
-#if 0
+#if 1 // @BUGBUG the current way of gradient clipping is wrong since we switched to ce-sum internally. Keep this for current regressions tests, but change as soon as possible.
     float clipNorm = options_->get<float>("clip-norm", 0.f);
-    if(clipNorm > 0)
-       clipper_ = New<NormClipper>(clipNorm);
-    else
+    if(clipNorm > 0) {
+      LOG(WARN, "Gradient clipping is currently enabled, but is actually buggy. Complain to marcinjd to fix this.");
+      clipper_ = New<NormClipper>(clipNorm);
+    } else
 #endif
     clipper_ = New<ReportNormClipper>(0); // don't clip, just report
     
-    auto clipAlloc = New<Allocator>(pm_->getBackend()->getDeviceId(), pow(2, 16) * 4, 1024);
+    // This is a bit magical. 
+    // Preallocate in order to avoid later reallocation: number of maximum GPU blocks times size of float plus some overhead.
+    // This is not too critical and more an educated guess. If less memory is required we haven't lost much, if more is required
+    // (unlikely) it will reallocate. The hope is to avoid GPU memory fragmentation. 
+    // @TODO: check if this actually does anything beneficial, e.g. throw at reallocation and check if that ever happens.
+    size_t prealloc = 65535 * 4 + 1024; 
+    auto clipAlloc = New<Allocator>(pm_->getBackend()->getDeviceId(), /*bytes=*/prealloc, /*step=*/1024);
     clipper_->setAllocator(clipAlloc);
   }
 
@@ -289,7 +296,7 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
   using namespace functional;
   Element(_1 += (_2 * _2), gt_, grads);
 
-  // make sure eps_ does not drop below minimum value, add some reserve by multiplying with 2
+  // make sure eps_ does not drop below smallest (positive) value, add some reserve by multiplying with 2
   eps_ = std::max(NumericLimits<double>(params->type()).min * 2.f, (double)eps_);
   Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, params, gt_, grads);
 }

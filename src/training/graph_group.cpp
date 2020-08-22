@@ -414,7 +414,6 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
 
   // set back to original value for aborting on NaN or Inf
   graph->setThrowNaN(throwNan);
-  // graph->setFake(false);
 
   return stats;
 }

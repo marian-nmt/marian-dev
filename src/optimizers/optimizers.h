@@ -26,6 +26,7 @@ public:
     refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref", 0)) {
 
     auto precisions = options_->get<std::vector<std::string>>("precision", {"float32", "float32"});
+    ABORT_IF(precisions.size() < 2, "No optimizer precision type specified??");
     optimizerType_ = typeFromString(precisions[1]);
 
     // automatic learning-rate adjustment
@@ -103,6 +104,8 @@ public:
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
                     const GatherStateFunc& /*gatherFn*/);
 
+  // This function swaps out the current optimizer parameters with the smoothed version (provided smoothing is enabled).
+  // Usually we will call this twice, to swap in and to swap out.
   void swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_t n, bool swapAvg);
 
 protected:

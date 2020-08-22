@@ -337,7 +337,7 @@ public:
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
             timer_.elapsed(),
             state_->wordsDisp / timer_.elapsed(),
-            gradientNorm, // @TODO: think of acumulation
+            gradientNorm, // @TODO: think of accumulation
             state_->eta);
       } else {
         LOG(info,
@@ -347,10 +347,9 @@ public:
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
             timer_.elapsed(),
-            gradientNorm, // @TODO: think of acumulation
+            gradientNorm, // @TODO: think of accumulation
             state_->wordsDisp / timer_.elapsed());
       }
-
 
       timer_.start();
       state_->costSum      = 0;

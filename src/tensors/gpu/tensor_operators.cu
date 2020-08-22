@@ -2104,6 +2104,8 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType sign = functional::Ops<AccType>::sgn(gradXv);
           AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option? or better: make obsolete.
           gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv; // if gradXv is NaN the value return is NaN too because NaN > value is false.
+
+          // @TODO: frankly, this is embarrasing and should rather be removed or optional? It does help for low precision computation though. Maybe turn into option?
           gradXv = isnan(gradXv) ? 0.f : gradXv; // turn NaN into 0.
 
           T* gradXRow      = gradX     + j * cols;

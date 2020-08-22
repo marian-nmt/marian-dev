@@ -349,10 +349,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
   graph->setThrowNaN(false);
 
   auto stats = New<data::BatchStats>();
-
-  size_t numFiles = options_->get<bool>("tsv", false)
-                        ? options_->get<size_t>("tsv-fields")
-                        : options_->get<std::vector<std::string>>("train-sets").size();
+  size_t numFiles = numberOfInputFiles();
 
   // Initialize first batch to step size
   size_t first = options_->get<size_t>("mini-batch-fit-step");
@@ -410,7 +407,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
       } else {
         end = current - 1;
       }
-    } while(end >= start);
+    } while(end - start > step); // @TODO: better replace with `end >= start` to remove the step here
 
     maxBatch = start;
   }
@@ -434,4 +431,16 @@ void GraphGroup::updateAverageTrgBatchWords(size_t trgBatchWords) {
   typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * (double)trgBatchWords; // record a running average of the batch size, factors are chosen empirically.
 }
 
+size_t GraphGroup::numberOfInputFiles() {
+  if(options_->get<bool>("tsv", false)) {
+    size_t n = options_->get<size_t>("tsv-fields");
+    if(n > 0 && options_->get("guided-alignment", std::string("none")) != "none")
+      --n;
+    if(n > 0 && options_->hasAndNotEmpty("data-weighting"))
+      --n;
+    return n;
+  }
+  return options_->get<std::vector<std::string>>("train-sets").size();
 }
+
+}  // namespace marian

@@ -5,19 +5,22 @@
 #ifndef LIBCNPY_H_
 #define LIBCNPY_H_
 
-// use included zlib
-#include "zlib/zlib.h"
+#include "3rd_party/zlib/zlib.h"
 
-#include <string>
-#include <stdexcept>
-#include <sstream>
-#include <vector>
-#include <cstdio>
-#include <typeinfo>
-#include <iostream>
-#include <cassert>
-#include <map>
+#include<string>
+#include<stdexcept>
+#include<sstream>
+#include<vector>
+#include<cstdio>
+#include<typeinfo>
+#include<iostream>
+#include<cassert>
+#include<map>
 #include <memory>
+
+#ifdef __APPLE__
+#include <unistd.h>
+#endif
 
 namespace cnpy {
 

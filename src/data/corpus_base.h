@@ -88,18 +88,15 @@ public:
    * For sentence-level weights the vector contains only one element.
    */
   const std::vector<float>& getWeights() const { return weights_; }
-  void setWeights(const std::vector<float>& weights) {
-    auto numTrgWords = back().size();
-    auto numWeights = weights.size();
-    if(numWeights != 1 && numWeights != numTrgWords && numWeights != numTrgWords - 1)
-      LOG(warn,
-          "[warn] "
-          "Number of weights ({}) does not match the number of target words ({}) for line #{}",
-          numWeights,
-          numTrgWords,
-          id_);
-    weights_ = weights;
-  }
+
+  /**
+   * @brief Set sentence weights.
+   *
+   * For word weights (i.e. weights.size() > 1) it checks if there is as many weights as
+   * target tokens. If not, it aborts. Because of this, this function must becalled *after*
+   * adding source and target tokens.
+   */
+  void setWeights(const std::vector<float>& weights);
 
   const WordAlignment& getAlignment() const { return alignment_; }
   void setAlignment(const WordAlignment& alignment) { alignment_ = alignment; }
@@ -128,12 +125,12 @@ public:
    * @param width Number of words in the longest sentence
    */
   SubBatch(size_t size, size_t width, const Ptr<const Vocab>& vocab)
-      : indices_(size * width, vocab ? vocab->getEosId() : Word::ZERO), // note: for gaps, we must use a valid index
-        mask_(size * width, 0),
-        size_(size),
-        width_(width),
-        words_(0),
-        vocab_(vocab) {}
+    : indices_(size * width, vocab ? vocab->getEosId() : Word::ZERO), // note: for gaps, we must use a valid index
+    mask_(size * width, 0),
+    size_(size),
+    width_(width),
+    words_(0),
+    vocab_(vocab) {}
 
   /**
    * @brief Flat vector of word indices.
@@ -233,8 +230,8 @@ public:
 };
 
 /**
- * @brief Batch of source and target sentences with additional information,
- * such as guided alignments and sentence or word-leve weighting.
+ * @brief Batch of source(s) and target sentences with additional information,
+ * such as guided alignments and sentence or word-level weighting.
  */
 class CorpusBatch : public Batch {
 protected:
@@ -244,7 +241,7 @@ protected:
 
 public:
   CorpusBatch(const std::vector<Ptr<SubBatch>>& subBatches)
-      : subBatches_(subBatches) {}
+    : subBatches_(subBatches) {}
 
   /**
    * @brief Access i-th subbatch storing a source or target sentence.
@@ -279,8 +276,8 @@ public:
    */
   size_t words(int which = 0) const override {
     return subBatches_[which >= 0 ? which
-                                  : which + (ptrdiff_t)subBatches_.size()]
-        ->batchWords();
+      : which + (ptrdiff_t)subBatches_.size()]
+      ->batchWords();
   }
 
   /**
@@ -299,7 +296,7 @@ public:
   size_t wordsTrg() const override { return subBatches_.back()->batchWords(); };
 
   /**
-   * @brief The width of the target mini-batch. Num words + padded?
+   * @brief The target width (=max length) of the mini-batch.
    */
   size_t widthTrg() const override { return subBatches_.back()->batchWidth(); };
 
@@ -320,9 +317,9 @@ public:
    * @return Fake batch of the same size as the real batch.
    */
   static Ptr<CorpusBatch> fakeBatch(const std::vector<size_t>& lengths,
-                                    const std::vector<Ptr<Vocab>>& vocabs,
-                                    size_t batchSize,
-                                    Ptr<Options> options) {
+      const std::vector<Ptr<Vocab>>& vocabs,
+      size_t batchSize,
+      Ptr<Options> options) {
     std::vector<Ptr<SubBatch>> batches;
 
     size_t batchIndex = 0;
@@ -330,7 +327,7 @@ public:
       auto sb = New<SubBatch>(batchSize, len, vocabs[batchIndex]);
       // set word indices to random values (not actually needed with current version  --@marcinjd: please confirm)
       std::transform(sb->data().begin(), sb->data().end(), sb->data().begin(),
-                     [&](Word) -> Word { return vocabs[batchIndex]->randWord(); });
+          [&](Word) -> Word { return vocabs[batchIndex]->randWord(); });
       // mask: no items ask being masked out
       std::fill(sb->mask().begin(), sb->mask().end(), 1.f);
       batchIndex++;
@@ -346,7 +343,7 @@ public:
     if(options->get("guided-alignment", std::string("none")) != "none") {
       // @TODO: if > 1 encoder, verify that all encoders have the same sentence lengths
       std::vector<float> alignment(batchSize * lengths.front() * lengths.back(),
-                                   0.f);
+          0.f);
       batch->setGuidedAlignment(std::move(alignment));
     }
 
@@ -475,7 +472,7 @@ public:
    * @brief Prints the batch in a readable form on stderr for debugging.
    */
   void debug(bool printIndices = false) override { // prints word string if subbatch has vocab and
-                                                   // printIndices == false otherwise only numeric indices
+    // printIndices == false otherwise only numeric indices
     std::cerr << "batches: " << sets() << std::endl;
 
     if(!sentenceIds_.empty()) {
@@ -513,17 +510,15 @@ public:
 
 class CorpusIterator;
 
-class CorpusBase
-    : public DatasetBase<SentenceTuple, CorpusIterator, CorpusBatch>,
-      public RNGEngine {
+class CorpusBase : public DatasetBase<SentenceTuple, CorpusIterator, CorpusBatch>, public RNGEngine {
 public:
   typedef SentenceTuple Sample;
 
   CorpusBase(Ptr<Options> options, bool translate = false);
 
   CorpusBase(const std::vector<std::string>& paths,
-             const std::vector<Ptr<Vocab>>& vocabs,
-             Ptr<Options> options);
+      const std::vector<Ptr<Vocab>>& vocabs,
+      Ptr<Options> options);
 
   virtual ~CorpusBase() {}
   virtual std::vector<Ptr<Vocab>>& getVocabs() = 0;
@@ -545,20 +540,27 @@ protected:
   bool maxLengthCrop_{false};
   bool rightLeft_{false};
 
-  bool tsv_{false};          // true if the input is a single file with tab-separated values
-  size_t tsvNumFields_{0};   // number of fields in the TSV input (only if tsv_)
+  bool tsv_{false};  // true if the input is a single file with tab-separated values
+  size_t tsvNumInputFields_{0};  // number of fields from the TSV input that are associated
+                                  // with vocabs, i.e. excluding fields with alignment or
+                                  // weights, only if --tsv
+  /**
+   * @brief Determine the number of fields from the TSV input that are associated with
+   * vocabs, i.e. excluding fields that contain alignment or weights
+   */
+  static size_t getNumberOfTSVInputFields(Ptr<Options> options);
 
   /**
-   * @brief Index of the file with weights in paths_ and files_; zero means no
+   * @brief Index of the file with weights in paths_ and files_; -1 means no
    * weights file provided.
    */
-  size_t weightFileIdx_{0};
+  int weightFileIdx_{-1};
 
   /**
-   * @brief Index of the file with alignments in paths_ and files_; zero means
+   * @brief Index of the file with alignments in paths_ and files_; -1 means
    * no alignment file provided.
    */
-  size_t alignFileIdx_{0};
+  int alignFileIdx_{-1};
 
   /**
    * @brief Determine if EOS symbol should be added to input
@@ -569,27 +571,21 @@ protected:
    * @brief Helper function converting a line of text into words using the i-th
    * vocabulary and adding them to the sentence tuple.
    */
-  void addWordsToSentenceTuple(const std::string& line,
-                               size_t batchIndex,
-                               SentenceTuple& tup) const;
+  void addWordsToSentenceTuple(const std::string& line, size_t batchIndex, SentenceTuple& tup) const;
   /**
    * @brief Helper function parsing a line with word alignments and adding them
    * to the sentence tuple.
    */
-  void addAlignmentToSentenceTuple(const std::string& line,
-                                   SentenceTuple& tup) const;
+  void addAlignmentToSentenceTuple(const std::string& line, SentenceTuple& tup) const;
   /**
    * @brief Helper function parsing a line of weights and adding them to the
    * sentence tuple.
    */
-  void addWeightsToSentenceTuple(const std::string& line,
-                                 SentenceTuple& tup) const;
+  void addWeightsToSentenceTuple(const std::string& line, SentenceTuple& tup) const;
 
-  void addAlignmentsToBatch(Ptr<CorpusBatch> batch,
-                            const std::vector<Sample>& batchVector);
+  void addAlignmentsToBatch(Ptr<CorpusBatch> batch, const std::vector<Sample>& batchVector);
 
-  void addWeightsToBatch(Ptr<CorpusBatch> batch,
-                         const std::vector<Sample>& batchVector);
+  void addWeightsToBatch(Ptr<CorpusBatch> batch, const std::vector<Sample>& batchVector);
 };
 
 class CorpusIterator : public IteratorFacade<CorpusIterator, SentenceTuple> {

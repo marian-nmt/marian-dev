@@ -20,7 +20,7 @@ add_library(marian STATIC
   common/config_validator.cpp
   common/options.cpp
   common/binary.cpp
-  common/build_info.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/common/build_info.cpp
   common/io.cpp
   common/filesystem.cpp
   common/file_stream.cpp
@@ -40,6 +40,7 @@ add_library(marian STATIC
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
+  3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
   3rd_party/phf/phf.cc
 
@@ -48,6 +49,7 @@ add_library(marian STATIC
   tensors/tensor.cpp
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
+  tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
 
   tensors/cpu/sharp/int_gemm.cpp
@@ -61,10 +63,14 @@ add_library(marian STATIC
   graph/node_operators.cpp
   graph/node_initializers.cpp
 
+  onnx/expression_graph_onnx_exporter.cpp
+  onnx/expression_graph_onnx_serialization.cpp
+
   layers/convolution.cpp
   layers/generic.cpp
   layers/loss.cpp
   layers/weight.cpp
+  layers/lsh.cpp
 
   rnn/cells.cpp
   rnn/attention.cpp
@@ -78,7 +84,9 @@ add_library(marian STATIC
   models/transformer_stub.cpp
 
   rescorer/score_collector.cpp
+  embedder/vector_collector.cpp
 
+  translator/beam_search.cpp
   translator/history.cpp
   translator/output_collector.cpp
   translator/output_printer.cpp
@@ -96,12 +104,15 @@ add_library(marian STATIC
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
+  microsoft/cosmos.cpp
 
   $<TARGET_OBJECTS:libyaml-cpp>
   $<TARGET_OBJECTS:SQLiteCpp>
   $<TARGET_OBJECTS:pathie-cpp>
   $<TARGET_OBJECTS:zlib>
+  $<TARGET_OBJECTS:faiss>
 )
+
 target_compile_options(marian PUBLIC ${ALL_WARNINGS})
 
 # Generate git_revision.h to reflect current git revision information
@@ -109,21 +120,24 @@ target_compile_options(marian PUBLIC ${ALL_WARNINGS})
 # Git updates .git/logs/HEAD file whenever you pull or commit something.
 
 # If Marian is checked out as a submodule in another repository,
-# there's no .git directory in ${CMAKE_SOURCE_DIR}. Instead .git is a
-# file that specifies the relative path from ${CMAKE_SOURCE_DIR} to
-# ./git/modules/<MARIAN_ROOT_DIR> in the root of the repository that
-# contains Marian as a submodule. We set MARIAN_GIT_DIR to the appropriate
-# path, depending on whether ${CMAKE_SOURCE_DIR}/.git is a directory or file.
-if(IS_DIRECTORY ${CMAKE_SOURCE_DIR}/.git) # not a submodule
-  set(MARIAN_GIT_DIR ${CMAKE_SOURCE_DIR}/.git)
-else(IS_DIRECTORY ${CMAKE_SOURCE_DIR}/.git)
-  file(READ ${CMAKE_SOURCE_DIR}/.git MARIAN_GIT_DIR)
+# ${CMAKE_CURRENT_SOURCE_DIR}/../.git is not a directory but a file
+# that specifies the relative path from ${CMAKE_CURRENT_SOURCE_DIR}/..
+# to ./git/modules/<MARIAN_ROOT_DIR> in the root of the check_out of
+# the project that contains Marian as a submodule.
+#
+# We set MARIAN_GIT_DIR to the appropriate path, depending on whether
+# ${CMAKE_CURRENT_SOURCE_DIR}/../.git is a directory or file.
+set(MARIAN_GIT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../.git)
+if(NOT IS_DIRECTORY ${MARIAN_GIT_DIR}) # i.e., it's a submodule
+  file(READ ${MARIAN_GIT_DIR} MARIAN_GIT_DIR)
   string(REGEX REPLACE "gitdir: (.*)\n" "\\1" MARIAN_GIT_DIR ${MARIAN_GIT_DIR})
-  get_filename_component(MARIAN_GIT_DIR "${CMAKE_SOURCE_DIR}/${MARIAN_GIT_DIR}" ABSOLUTE)
-endif(IS_DIRECTORY ${CMAKE_SOURCE_DIR}/.git)
+  if(NOT IS_ABSOLUTE ${MARIAN_GIT_DIR})
+    get_filename_component(MARIAN_GIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../${MARIAN_GIT_DIR}" ABSOLUTE)
+  endif()
+endif(NOT IS_DIRECTORY ${MARIAN_GIT_DIR})
 
 add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/common/git_revision.h
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMAND git log -1 --pretty=format:\#define\ GIT_REVISION\ \"\%h\ \%ai\" > ${CMAKE_CURRENT_SOURCE_DIR}/common/git_revision.h
   DEPENDS ${MARIAN_GIT_DIR}/logs/HEAD
   VERBATIM
@@ -138,6 +152,7 @@ cuda_add_library(marian_cuda
   tensors/gpu/device.cu
   tensors/gpu/algorithm.cu
   tensors/gpu/prod.cpp
+  tensors/gpu/topk.cu
   tensors/gpu/element.cu
   tensors/gpu/add.cu
   tensors/gpu/add_all.cu
@@ -210,7 +225,13 @@ endif(USE_STATIC_LIBS)
 if(COMPILE_SERVER)
   add_executable(marian_server command/marian_server.cpp)
   set_target_properties(marian_server PROPERTIES OUTPUT_NAME marian-server)
-  target_compile_options(marian_server PUBLIC ${ALL_WARNINGS})
+  if(MSVC)
+    # Disable warnings from the SimpleWebSocketServer library needed for compilation of marian-server
+    target_compile_options(marian_server PUBLIC ${ALL_WARNINGS} /wd4267 /wd4244 /wd4456 /wd4458)
+  else(MSVC)
+    # -Wno-suggest-override disables warnings from Boost 1.69+
+    target_compile_options(marian_server PUBLIC ${ALL_WARNINGS} -Wno-suggest-override)
+  endif(MSVC)
   set(EXECUTABLES ${EXECUTABLES} marian_server)
 endif(COMPILE_SERVER)
 
@@ -219,6 +240,7 @@ if(APPLE) # This is a dependency of pathie but I can't seem to link it into that
 endif()
 
 foreach(exec ${EXECUTABLES})
+  # @TODO: consider adding MKL and other libs to the library rather than the executables if at all possible
   target_link_libraries(${exec} marian ${EXT_LIBS} ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
   if(CUDA_FOUND)
     target_link_libraries(${exec} marian marian_cuda ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})

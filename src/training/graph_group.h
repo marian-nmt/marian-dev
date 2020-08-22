@@ -60,6 +60,10 @@ protected:
 
   bool checkGradientNan_{false};
 
+  // determines the number of input streams (i.e. input files or fields in the TSV input) that need
+  // to be included in the batch, i.e. without alignments and weights
+  size_t numberOfInputFiles();
+
 public:
   GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices);
   GraphGroup(Ptr<Options> options);

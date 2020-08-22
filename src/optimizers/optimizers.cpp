@@ -552,7 +552,7 @@ Ptr<OptimizerBase> Optimizer(Ptr<Options> options) {
   } else if(optType == "adam") {
     opt = New<Adam>(options);
   } else {
-    ABORT("Unknown optimizer type: {}", opt);
+    ABORT("Unknown optimizer type: {}", optType);
   }
 
   opt->setParams(params);

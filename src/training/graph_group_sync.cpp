@@ -162,7 +162,7 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
 
   // @TODO: MJD review
   // round up to full batches if within a certain error margin  --@BUGBUG: Not invariant w.r.t. GPU size, as ratio is relative to what fits into 1 GPU
-#if 0
+#if 1
   ratio = roundUpRatio(ratio);
 #endif
 

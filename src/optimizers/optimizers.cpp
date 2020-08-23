@@ -223,7 +223,12 @@ void OptimizerBase::load(std::vector<io::Item>& items,
 
 void OptimizerBase::save(std::vector<io::Item>& items,
                          const std::vector<Ptr<OptimizerBase>>& opts,
-                         const GatherStateFunc& gatherFn) {
+                         const GatherStateFunc& gatherFn,
+                         bool isMainProcess) {
+  // if not main MPI process then we have done our duty
+  if(!isMainProcess)
+    return;
+
   if(castOptimizerType_) {
     // fetch and concatenate state vectors for high precision copy
     io::Item pm = gatherFn([&](size_t localDeviceIndex) {
@@ -261,8 +266,12 @@ void Sgd::load(std::vector<io::Item>& items,
 
 void Sgd::save(std::vector<io::Item>& items,
                const std::vector<Ptr<OptimizerBase>>& opts,
-               const GatherStateFunc& gatherFn) {
-  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+               const GatherStateFunc& gatherFn,
+               bool isMainProcess) {
+  if(!isMainProcess)
+    return;
+
+  OptimizerBase::save(items, opts, gatherFn, isMainProcess); // collect parameters from base
 }
 
 
@@ -337,9 +346,12 @@ void Adagrad::load(std::vector<io::Item>& items,
 
 void Adagrad::save(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
-                   const GatherStateFunc& gatherFn) {
+                   const GatherStateFunc& gatherFn,
+                   bool isMainProcess) {
+  if(!isMainProcess)
+    return;
 
-  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+  OptimizerBase::save(items, opts, gatherFn, isMainProcess); // collect parameters from base
 
   LOG(info, "Saving Adagrad parameters");
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
@@ -489,10 +501,12 @@ void Adam::load(std::vector<io::Item>& items,
 
 void Adam::save(std::vector<io::Item>& items,
                 const std::vector<Ptr<OptimizerBase>>& opts,
-                const GatherStateFunc& gatherFn) {
+                const GatherStateFunc& gatherFn,
+                bool isMainProcess) {
+  if(!isMainProcess)
+    return;
 
-
-  OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
+  OptimizerBase::save(items, opts, gatherFn, isMainProcess); // collect parameters from base
 
   LOG(info, "Saving Adam parameters");
 

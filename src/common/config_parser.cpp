@@ -324,13 +324,23 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         "Dropout for transformer attention (0 = no dropout)");
     cli.add<float>("--transformer-dropout-ffn",
         "Dropout for transformer filter (0 = no dropout)");
+
   }
   cli.switchGroup(previous_group);
   // clang-format on
 }
 
 void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
-  auto previous_group = cli.switchGroup("Training options");
+  auto previous_group = cli.switchGroup("Signal Handling");
+  // --sigterm is deliberately not a boolean, to allow for a consistent
+  // pattern of specifying custom signal handling in the future.
+  // (e.g., dump model but continue training upon SIGUSR1, or report current
+  // training status upon SIGINFO.)
+  cli.add<std::string>("--sigterm",
+                       "What to do with SIGTERM: 'graceful' => save and exit (default); "
+                       "'immediate' => exit immediately.", "graceful");
+
+  cli.switchGroup("Training options");
   // clang-format off
   cli.add<std::string>("--cost-type", // @TODO: rename to loss-type
       "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");

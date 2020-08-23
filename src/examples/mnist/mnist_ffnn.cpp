@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
     else
       New<TrainMNIST<AsyncGraphGroup>>(options)->run();
   } else {
-    New<TrainMNIST<SyncGraphGroup>>(options)->run();
+    New<TrainMNIST<SingletonGraph>>(options)->run();
   }
 
   return 0;

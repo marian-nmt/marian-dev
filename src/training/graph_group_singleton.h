@@ -22,7 +22,7 @@ public:
   SingletonGraph(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
       : GraphGroup(options) {
 
-    ABORT("This class only serves demonstration purposes. It should currently not be called from actual Marian code.");
+    LOG(warn, "This class only serves demonstration purposes. It should currently not be called from actual Marian code.");
 
     ABORT_IF(mpi->numMPIProcesses() != 1, "SingletonGraph does not support multiple MPI processes");
     ABORT_IF(devices_.size() != 1, "Only one device ID should be provided for singleton training");

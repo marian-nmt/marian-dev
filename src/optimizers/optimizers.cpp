@@ -30,7 +30,6 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
   if(numAllocateShards > 0 && !baseAlloc_) {
     LOG_ONCE(info, "Allocating memory for general optimizer shards");
     baseAlloc_ = New<TensorAllocator>(params->getBackend());
-    //baseAlloc_->throwAtReallocation(true);
     baseAlloc_->reserveExact(std::vector<size_t>(numAllocateShards, elements * sizeOf(optimizerType_)));
   }
 
@@ -63,11 +62,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
   }
 
   if(castOptimizerType_)
-#if 0
-    CopyCastStochastic(gd_, grads, alloc_);
-#else
     CopyCast(gd_, grads);
-#endif
   else
     gd_ = grads;
 
@@ -109,11 +104,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
 
   // undo paramter type cast if required
   if(castOptimizerType_)
-#if 0
-    CopyCastStochastic(params, pm_, alloc_);
-#else
     CopyCast(params, pm_);
-#endif
 
   params->getBackend()->synchronize();
 
@@ -283,7 +274,6 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_
   if(!alloc_) {
     LOG_ONCE(info, "Allocating memory for Adagrad-specific shards");
     alloc_ = New<TensorAllocator>(params->getBackend());
-    //alloc_->throwAtReallocation(true);
   }
 
   if(!gt_) {
@@ -368,12 +358,11 @@ void Adagrad::resetStats() {
 }
 
 // Adam
-void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size_t /*refMBWords*/) {
+void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
   // lazy allocation
   if(!alloc_) {
     LOG_ONCE(info, "Allocating memory for Adam-specific shards");
     alloc_ = New<TensorAllocator>(params->getBackend());
-    //alloc_->throwAtReallocation(true);
   }
 
   if(!mt_) {
@@ -388,8 +377,8 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t /*actualMBSize*/, size
     vt_->set(0.f);
   }
 
-  double T    = 1; //(double)actualMBSize;
-  double Tref = 1; //(double)refMBWords;
+  double T    = (double)actualMBSize;
+  double Tref = (double)refMBWords;
 
   // adjust for minibatch-size changes if Adam parameters are given a reference size (else do nothing)
   // Why the T/Tref factor on eta? The Adam optimizer adds an RMS-normalized gradient

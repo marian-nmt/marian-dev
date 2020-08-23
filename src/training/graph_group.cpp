@@ -131,6 +131,86 @@ void GraphGroup::decreaseCostScaleFactor() {
   }
 }
 
+float GraphGroup::checkNanOrNorm(size_t i, size_t begin, size_t end) {
+  auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
+  
+  if(checkGradientNan_ || costScale_) {
+    bool hasNan = false, hasInf = false;
+    IsNaN(curGrad, graphs_[i]->allocator(), hasNan, hasInf); // @TODO: make safe with different compiler options
+    if(hasNan || hasInf) {
+      LOG(debug, "Found Nan ({}) or Inf ({})", hasNan, hasInf);
+      return std::numeric_limits<float>::quiet_NaN();
+    }
+  }
+  
+  if(checkGradientNorm_) {
+    auto gNorm = L2Norm(curGrad, graphs_[i]->allocator());
+    if(isFinite(gNorm) && gNorm > 0.0)
+      return gNorm;
+    else 
+      return std::numeric_limits<float>::quiet_NaN();
+  }
+
+  return 0.f;
+};
+
+/**
+ * This function computes are normalization factor that is applied to the gradient before an update.
+ * Depending on various settings this will return a normalizer that can perform a combination of:
+ * - apply a cost scaling factor if cost scaling is enabled
+ * - normalize the gradient by the number of words in a batch if requested (turning ce-sum in to ce-mean). @TODO: once fp16 stability issues are proven to not be caused by this, remove.
+ * - re-scale the gradient based on a dynamic running average of gradient norms
+ */
+float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords) {
+  float normalizationFactor = 1.f;
+
+  if(costScale_)
+    normalizationFactor *= costScaleFactor_;
+
+  if(options_->get<bool>("normalize-gradient"))
+    normalizationFactor *= updateTrgWords;
+
+  if(!isFinite(gNorm)) // we are checking the sanity of the gradient elsewhere
+    return normalizationFactor;
+  
+  if(checkGradientNorm_) {
+  #if 1
+    ABORT("--check-gradient-norm is currently disabled. Should be fixed soon.");
+  #else
+    // make gradient norm invariant to changes in costScaleFactor_, luckily norm(c * g) = c * norm(g)
+    if(costScale_)
+      gNorm = gNorm / costScaleFactor_;
+    
+    // Normalize gradient norm w.r.t. number of labels in batch for statistics, 
+    // there should be no gradient normalization before this point, @TODO: check this
+    gNorm = gNorm / updateTrgWords;
+    
+    float logGNorm = std::log(gNorm); 
+        
+    float logGNormAvg, logGNormVar;
+    std::tie(logGNormAvg, logGNormVar) = scheduler_->getLogGradientNormAvgAndVar();
+    
+    auto delta = logGNorm - logGNormAvg;
+    auto logGNormStd = std::sqrt(logGNormVar);
+
+    // delta of log gradient norm vs log gradient norm average is larger than N standard deviations
+    // hence rescale gradient using norm
+    if(scheduler_->numberOfBatches() >= checkGradientNormWindow_ && delta > checkGradientNormFactor_ * logGNormStd) {
+      LOG(debug, "{:.4f} - {:.4f} -> logGNorm delta {:.4f} > {:.4f} * std {:.4f}", gNorm, std::exp(logGNormAvg), delta, checkGradientNormFactor_, logGNormStd);
+      normalizationFactor *= std::exp(delta); // @TODO: normalize to avg + 1 sigma instead of to avg (exp(delta - logGNormStd)?)
+    }
+
+    // also put this into the scheduler / training state
+    // float alpha = 2.f / (checkGradientNormWindow_ + 1);
+    // logGNormAvg = logGNormAvg + alpha * delta;
+    // delta = logGNormStd;
+    // logGNormVar = (1.0 - alpha) * (logGNormVar + alpha * delta * delta);
+  #endif
+  }
+
+  return normalizationFactor;
+};
+
 void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
   /*
   if not no-reload (=> i.e. do reload):

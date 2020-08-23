@@ -301,7 +301,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
 
-#if 1
+#if 0 // experimental and should eventually be somewhere else
     // Handle local gradient explosion but only clip to largest possible value
     // given number of GPUs and type. Should clip rarely. Also clips inf
     // We do another clipping/rescaling after summation.
@@ -332,10 +332,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   bool saneGradient = isFinite(gradNorm);
 
   if(saneGradient) {
-    auto accNorms = [](float& lhs, float rhs) {
-      lhs = sqrtf(lhs * lhs + rhs * rhs); // to accumulate gradients norms, first undo sqrt, sum, re-apply sqrt.
-    };
-
     // actual model update
     auto updateTrgWords =
         /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
@@ -345,7 +341,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
     ABORT_IF(checkGradient && updateTrgWords == OptimizerBase::mbSizeNotProvided, 
              "Various norm-based gradient-checking mechanisms only correct with ce-sum");
-    float gradientNormalizer = GraphGroup::normalize(gradNorm, updateTrgWords);
+    float gradientNormalizer = GraphGroup::computeNormalizationFactor(gradNorm, updateTrgWords);
 
     // Update parameter shard with gradient shard
     auto update = [&](size_t i, size_t begin, size_t end) -> float {
@@ -358,7 +354,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     };
 
     // Overwrite gradNorm with new value from normalized gradient
-    gradNorm = comm_->foreach(update, accNorms, 0.f); // per-shard model-update
+    gradNorm = comm_->foreach(update, accNanOrNorm, 0.f); // per-shard model-update
 
     if(!options_->get<bool>("normalize-gradient"))
       gradNorm /= updateTrgWords; // normalize for logging

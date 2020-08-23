@@ -50,5 +50,5 @@ int main(int argc, char** argv) {
   // returns for timeout -s SIGTERM <seconds> ...., because exiting after SIGTERM
   // is not technically a fatal error (which is what the 128+x convention usually
   // stands for).
-  exit(getSignalFlag(SIGTERM) ? 128 + SIGTERM : EXIT_SUCCESS);
+  exit(getSignalFlag(SIGTERM) ? (128 + SIGTERM) : EXIT_SUCCESS);
 }

@@ -39,8 +39,9 @@ int main(int argc, char** argv) {
       New<TrainMNIST<SyncGraphGroup>>(options)->run();
     else
       New<TrainMNIST<AsyncGraphGroup>>(options)->run();
-  } else
-    New<TrainMNIST<SingletonGraph>>(options)->run();
+  } else {
+    New<TrainMNIST<SyncGraphGroup>>(options)->run();
+  }
 
   return 0;
 }

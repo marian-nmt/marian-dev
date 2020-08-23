@@ -219,10 +219,10 @@ public:
 
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                 bool isFinal = false) {
-    // Do not validate if already validated (for instance, after the model is
-    // loaded) or if validation is scheduled for another update, or when a
-    // graceful shutdown was requested via --sig{term|usr1|usr2}.
-    if(gracefulExitRequested() // signal requesting graceful exit (save model and exit) was received
+    // Do not validate if already validated (for instance, after the model is loaded)
+    // or if validation is scheduled for another update, or when a graceful shutdown
+    // was requested.
+    if(gracefulExitRequested()
        || state_->validated // already validated (in resumed training, for example)
        || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !isFinal)) // not now
       return;

@@ -62,14 +62,14 @@ void Prod(marian::Tensor C,
 
 
 // dummy implementation, computeType doesn't do anything on CPU
-void ProdWithComputeType(marian::Tensor C,
-                         const marian::Tensor& A,
-                         const marian::Tensor& B,
-                         bool transA,
-                         bool transB,
-                         float beta,
-                         float scalar,
-                         Type computeType) {
+void Prod(marian::Tensor C,
+          const marian::Tensor& A,
+          const marian::Tensor& B,
+          bool transA,
+          bool transB,
+          float beta,
+          float scalar,
+          Type computeType) {
   computeType; // make compiler happy
   cpu::Prod(C, A, B, transA, transB, beta, scalar);
 }

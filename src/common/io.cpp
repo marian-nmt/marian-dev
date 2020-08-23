@@ -89,30 +89,18 @@ void loadItemsFromNpz(const std::string& fileName, std::vector<Item>& items) {
 
     char npzType = it.second->type;
     int wordSize = it.second->word_size;
-    if(npzType == 'f' && wordSize == 4)
-      item.type = Type::float32;
-    else if(npzType == 'f' && wordSize == 8)
-      item.type = Type::float64;
-    else if(npzType == 'f' && wordSize == 2)
-      item.type = Type::float16;
-    else if(npzType == 'i' && wordSize == 1)
-      item.type = Type::int8;
-    else if(npzType == 'i' && wordSize == 2)
-      item.type = Type::int16;
-    else if(npzType == 'i' && wordSize == 4)
-      item.type = Type::int32;
-    else if(npzType == 'i' && wordSize == 8)
-      item.type = Type::uint64;
-    else if(npzType == 'u' && wordSize == 1)
-      item.type = Type::uint8;
-    else if(npzType == 'u' && wordSize == 2)
-      item.type = Type::uint16;
-    else if(npzType == 'u' && wordSize == 4)
-      item.type = Type::uint32;
-    else if(npzType == 'u' && wordSize == 8)
-      item.type = Type::uint64;
-    else
-      ABORT("Numpy item '{}' type '{}' with size {} not supported", it.first, npzType, wordSize);
+    if     (npzType == 'f' && wordSize == 2) item.type = Type::float16;
+    else if(npzType == 'f' && wordSize == 4) item.type = Type::float32;
+    else if(npzType == 'f' && wordSize == 8) item.type = Type::float64;
+    else if(npzType == 'i' && wordSize == 1) item.type = Type::int8;
+    else if(npzType == 'i' && wordSize == 2) item.type = Type::int16;
+    else if(npzType == 'i' && wordSize == 4) item.type = Type::int32;
+    else if(npzType == 'i' && wordSize == 8) item.type = Type::uint64;
+    else if(npzType == 'u' && wordSize == 1) item.type = Type::uint8;
+    else if(npzType == 'u' && wordSize == 2) item.type = Type::uint16;
+    else if(npzType == 'u' && wordSize == 4) item.type = Type::uint32;
+    else if(npzType == 'u' && wordSize == 8) item.type = Type::uint64;
+    else ABORT("Numpy item '{}' type '{}' with size {} not supported", it.first, npzType, wordSize);
 
     item.bytes.swap(it.second->bytes);
     items.emplace_back(std::move(item));
@@ -152,30 +140,18 @@ void saveItemsNpz(const std::string& fileName, const std::vector<Item>& items) {
     std::vector<unsigned int> shape(item.shape.begin(), item.shape.end());
     char type;
 
-    if(item.type == Type::float32)
-      type = cnpy::map_type(typeid(float));
-    else if(item.type == Type::float64)
-      type = cnpy::map_type(typeid(double));
-    else if(item.type == Type::float16)
-      type = cnpy::map_type(typeid(float)); // becomes 'f', correct size is given below
-    else if(item.type == Type::int8)
-      type = cnpy::map_type(typeid(int8_t));
-    else if(item.type == Type::int16)
-      type = cnpy::map_type(typeid(int16_t));
-    else if(item.type == Type::int32)
-      type = cnpy::map_type(typeid(int32_t));
-    else if(item.type == Type::int64)
-      type = cnpy::map_type(typeid(int64_t));
-    else if(item.type == Type::uint8)
-      type = cnpy::map_type(typeid(uint8_t));
-    else if(item.type == Type::uint16)
-      type = cnpy::map_type(typeid(uint16_t));
-    else if(item.type == Type::uint32)
-      type = cnpy::map_type(typeid(uint32_t));
-    else if(item.type == Type::uint64)
-      type = cnpy::map_type(typeid(uint64_t));
-    else
-      ABORT("Other types ({}) not supported", item.type);
+    if     (item.type == Type::float16) type = cnpy::map_type(typeid(float)); // becomes 'f', correct size is given below
+    else if(item.type == Type::float32) type = cnpy::map_type(typeid(float));
+    else if(item.type == Type::float64) type = cnpy::map_type(typeid(double));
+    else if(item.type == Type::int8)    type = cnpy::map_type(typeid(int8_t));
+    else if(item.type == Type::int16)   type = cnpy::map_type(typeid(int16_t));
+    else if(item.type == Type::int32)   type = cnpy::map_type(typeid(int32_t));
+    else if(item.type == Type::int64)   type = cnpy::map_type(typeid(int64_t));
+    else if(item.type == Type::uint8)   type = cnpy::map_type(typeid(uint8_t));
+    else if(item.type == Type::uint16)  type = cnpy::map_type(typeid(uint16_t));
+    else if(item.type == Type::uint32)  type = cnpy::map_type(typeid(uint32_t));
+    else if(item.type == Type::uint64)  type = cnpy::map_type(typeid(uint64_t));
+    else ABORT("Other types ({}) not supported", item.type);
       
     npzItems.emplace_back(item.name, item.bytes, shape, type, sizeOf(item.type));
   }

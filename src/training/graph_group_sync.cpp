@@ -160,11 +160,9 @@ bool SyncGraphGroup::tryGetSubBatches(Ptr<data::Batch> newBatch,
     ratio *= (double)refBatchLabels / (GraphGroup::getTypicalTrgBatchWords() * updateMultiplier_); // cancellation of updateMultiplier_
   }
 
-  // @TODO: MJD review
   // round up to full batches if within a certain error margin  --@BUGBUG: Not invariant w.r.t. GPU size, as ratio is relative to what fits into 1 GPU
-#if 1
-  ratio = roundUpRatio(ratio);
-#endif
+  if(GraphGroup::mbRoundUp_) // true by default
+    ratio = roundUpRatio(ratio);
 
   if (pendingBatches_.size() < ratio)
     return false; // not enough data yet

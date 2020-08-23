@@ -10,7 +10,6 @@ namespace marian {
 void ExponentialSmoothing::updateAvgParams(Tensor paramsAvg, Tensor params, size_t batches, size_t actualBatchTrgWords) {
   double beta = 1. - mvDecayBy_;
 
-  /*
   // correction term if batch size is different from what mvDecayBy_ was specified for
   if (refBatchTrgWords_) {
     LOG_ONCE(info, "Exponential smoothing gets automatically adjusted as if update size was {} target words", refBatchTrgWords_);
@@ -18,7 +17,6 @@ void ExponentialSmoothing::updateAvgParams(Tensor paramsAvg, Tensor params, size
              "This graph-group type does not support reference batch size specification for exponential-smoothing");
     beta = pow(beta, (double)actualBatchTrgWords / (double)refBatchTrgWords_);
   }
-  */
 
   // reduce effect of decay parameter in early training stages
   float decayBy = std::max(1.f - (float)beta,

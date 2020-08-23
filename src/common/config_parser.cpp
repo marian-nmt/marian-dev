@@ -502,13 +502,14 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Dynamic cost scaling for mixed precision training: "
       "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
       ->implicit_val("0.f 2000 2.f 0.05f 10 1.f");
-  cli.add<std::vector<std::string>>("--check-gradient-norm", 
-      "Skip parameter update based on gradient norm size")
-      ->implicit_val("100 4.f");
+  cli.add<std::vector<std::string>>("--dynamic-gradient-scaling", 
+      "Rescale the gradient if the log of the gradient norm after arg1 updates exceeds the average log gradient norm by a factor of arg2. "
+      "This keeps track of a running average of the log gradient norm and results in dynamic gradient rescaling back to the average. ")
+      ->implicit_val("100 3.f");
   cli.add<bool>("--check-gradient-nan", 
-      "Skip parameter update based on NaN in gradient");
+      "Skip parameter update in case of NaNs in gradient");
   cli.add<bool>("--normalize-gradient", 
-      "Normalize gradient by multiplying with no. devices / total labels");
+      "Normalize gradient by multiplying with no. devices / total labels (not recommended and to be removed in the future)");
 
   // multi-node training
   cli.add<bool>("--multi-node",
@@ -832,6 +833,9 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
         {"0"});
     cli.add<bool>("--mini-batch-track-lr",
         "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
+    cli.add<bool>("--mini-batch-round-up",
+        "Round up batches for more efficient training, but this can make batch size less stable. Disable with --mini-batch-round-up=false",
+        true);
   }
   // clang-format on
 }

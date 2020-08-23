@@ -345,17 +345,17 @@ void Prod(marian::Tensor C,
           bool transB,
           float beta,
           float scalar) {
-  gpu::ProdWithComputeType(C, A, B, transA, transB, beta, scalar, C->type());
+  gpu::Prod(C, A, B, transA, transB, beta, scalar, C->type());
 }
 
-void ProdWithComputeType(marian::Tensor C,
-                         const marian::Tensor& A,
-                         const marian::Tensor& B,
-                         bool transA,
-                         bool transB,
-                         float beta,
-                         float scalar,
-                         Type computeType) {
+void Prod(marian::Tensor C,
+          const marian::Tensor& A,
+          const marian::Tensor& B,
+          bool transA,
+          bool transB,
+          float beta,
+          float scalar,
+          Type computeType) {
   if(C->type() == Type::float32 && computeType == Type::float32) {
     ProdTyped</*ElementType=*/float, /*ComputeType=*/float>(C, A, B, transA, transB, beta, scalar);
 #if COMPILE_FP16

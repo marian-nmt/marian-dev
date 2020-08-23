@@ -4,7 +4,8 @@ namespace marian {
 
 GraphGroup::GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices)
   : options_(options),
-    devices_(devices) {
+    devices_(devices),
+    mbRoundUp_(options_->get<bool>("mini-batch-round-up", true)) {
   if(options_->hasAndNotEmpty("cost-scaling")) {
     auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
     costScale_ = true;
@@ -28,8 +29,8 @@ GraphGroup::GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices
              costScaleNanRange_);
   }
 
-  if(options_->hasAndNotEmpty("check-gradient-norm")) {
-    auto vgc = options_->get<std::vector<std::string>>("check-gradient-norm");
+  if(options_->hasAndNotEmpty("dynamic-gradient-scaling")) {
+    auto vgc = options_->get<std::vector<std::string>>("dynamic-gradient-scaling");
     checkGradientNorm_ = true;
     if(vgc.size() > 0) checkGradientNormWindow_ = std::stoul(vgc[0]);
     if(vgc.size() > 1) checkGradientNormFactor_ = std::stof(vgc[1]);
@@ -175,7 +176,7 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
   
   if(checkGradientNorm_) {
   #if 1
-    ABORT("--check-gradient-norm is currently disabled. Should be fixed soon.");
+    ABORT("--dynamic-gradient-scaling is currently disabled. Should be fixed soon.");
   #else
     // make gradient norm invariant to changes in costScaleFactor_, luckily norm(c * g) = c * norm(g)
     if(costScale_)

@@ -44,7 +44,8 @@ protected:
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
   
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
-  double typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
+  double typicalTrgBatchWords_{0}; // for dynamic batch sizing: typical batch size in words
+  bool mbRoundUp_{true}; // round up batches for more efficient training but can make batch size less stable, disable with --mini-batch-round-up=false
 
   bool costScale_{false};
   float costScaleFactor_{1.f}; // @TODO, add current costScaleFactor_ to trainingState for serialization

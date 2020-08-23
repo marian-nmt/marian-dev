@@ -278,7 +278,7 @@ public:
   }
 
   void update(StaticLoss rationalLoss, Ptr<data::Batch> batch) {
-    update(rationalLoss, /*numReadBatches=*/1, /*batchSize=*/batch->size(), /*batchLabels=*/batch->wordsTrg(), /*dummy gradient norm*/0.f);
+    update(rationalLoss, /*numReadBatches=*/1, /*batchSize=*/batch->size(), /*batchLabels=*/batch->wordsTrg(), /*gradientNorm=*/0.f);
   }
 
   // @TODO: go back to function which takes batch as an argument? The current arguments make it hard

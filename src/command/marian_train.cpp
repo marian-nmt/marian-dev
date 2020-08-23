@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     if(devices.size() == 1) {
       LOG(info, "[training] Using single-device training");
       New<Train<SyncGraphGroup>>(options)->run();
-      // New<Train<SingletonGraph>>(options)->run();
+      // New<Train<SingletonGraph>>(options)->run(); // kept for reference
     } else {
       LOG(info, "Using asynchronous training");
       New<Train<AsyncGraphGroup>>(options)->run();

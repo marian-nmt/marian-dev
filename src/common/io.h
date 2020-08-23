@@ -35,7 +35,7 @@ void saveItems(const std::string& fileName, const std::vector<Item>& items);
 
 template <typename T>
 Item fromVector(const std::vector<T>& vec, const std::string& name) {
-  io::Item item;
+  Item item;
   item.name = std::move(name);
   item.shape = Shape({1, (int)vec.size()});
   item.type = typeId<T>();
@@ -43,7 +43,6 @@ Item fromVector(const std::vector<T>& vec, const std::string& name) {
   std::copy((char*)vec.data(), (char*)(vec.data() + vec.size()), item.bytes.begin());
   return item;
 }
-
 
 }  // namespace io
 }  // namespace marian

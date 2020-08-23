@@ -214,7 +214,6 @@ public:
     set(v.data(), v.data() + v.size(), type);
   }
 
-
   void set(const io::Item& item);
 
   // For single values enable conversion to other numeric formats if possible

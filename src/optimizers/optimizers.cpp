@@ -80,7 +80,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
 #if 1 // @BUGBUG the current way of gradient clipping is wrong since we switched to ce-sum internally. Keep this for current regressions tests, but change as soon as possible.
     float clipNorm = options_->get<float>("clip-norm", 0.f);
     if(clipNorm > 0) {
-      LOG(WARN, "Gradient clipping is currently enabled, but is actually buggy. Complain to marcinjd to fix this.");
+      LOG(warn, "Gradient clipping is currently enabled, but is actually buggy. Complain to marcinjd to fix this.");
       clipper_ = New<NormClipper>(clipNorm);
     } else
 #endif

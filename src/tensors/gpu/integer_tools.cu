@@ -38,6 +38,19 @@ namespace integer {
         } while(0)
     
     /*Cutlass matrices*/
+    /*TensorOp matrices*/
+    using CutlassGemmTensorOp = cutlass::gemm::device::Gemm<
+                                                            int8_t,                            // ElementA
+                                                            cutlass::layout::RowMajor,         // LayoutA
+                                                            int8_t,                            // ElementB
+                                                            cutlass::layout::ColumnMajor,      // LayoutB
+                                                            int32_t,                           // ElementOutput
+                                                            cutlass::layout::ColumnMajor,      // LayoutOutput
+                                                            int32_t,                           // ElementAccumulator
+                                                            cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
+                                                            cutlass::arch::Sm75                // tag indicating target GPU compute architecture //@TODO this should change, probably
+                                                            >;
+    /*Non TensorOp matrices*/
     using ColumnMajor = cutlass::layout::ColumnMajor;
     using ColumnMajorT = cutlass::layout::RowMajor; //Transposing in cutlass is done by changing the input from RowMajor to ColumnMajor. Care of the output
     //using RowMajor = cutlass::layout::RowMajor;
@@ -83,44 +96,55 @@ namespace integer {
                         int ldb,
                         float beta,
                         int32_t *C,
-                        int ldc) {
-
-        if (!transA && !transB) {
-            CutlassGemmNN gemm_operator;
-            CutlassGemmNN::Arguments args({M , N, K},  // Gemm Problem dimensions
+                        int ldc,
+                        bool tensorCore) {
+        if (tensorCore) {
+            CutlassGemmTensorOp gemm_operator;
+            CutlassGemmTensorOp::Arguments args({M , N, K},  // Gemm Problem dimensions
                 {A, lda},    // Tensor-ref for source matrix A
                 {B, ldb},    // Tensor-ref for source matrix B
                 {C, ldc},    // Tensor-ref for source matrix C
                 {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                 {alpha, beta}); // Scalars used in the Epilogue
             return gemm_operator(args);
-        } else if (transA && !transB) {
-            CutlassGemmTN gemm_operator;
-            CutlassGemmTN::Arguments args({M , N, K},  // Gemm Problem dimensions
-                {A, lda},    // Tensor-ref for source matrix A
-                {B, ldb},    // Tensor-ref for source matrix B
-                {C, ldc},    // Tensor-ref for source matrix C
-                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                {alpha, beta}); // Scalars used in the Epilogue
-            return gemm_operator(args);
-        } else if (!transA && transB) {
-            CutlassGemmNT gemm_operator;
-            CutlassGemmNT::Arguments args({M , N, K},  // Gemm Problem dimensions
-                {A, lda},    // Tensor-ref for source matrix A
-                {B, ldb},    // Tensor-ref for source matrix B
-                {C, ldc},    // Tensor-ref for source matrix C
-                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                {alpha, beta}); // Scalars used in the Epilogue
-            return gemm_operator(args);
-        } else { // Final case (transA && transB)
-            CutlassGemmTT gemm_operator;
-            CutlassGemmTT::Arguments args({M , N, K},  // Gemm Problem dimensions
-                {A, lda},    // Tensor-ref for source matrix A
-                {B, ldb},    // Tensor-ref for source matrix B
-                {C, ldc},    // Tensor-ref for source matrix C
-                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                {alpha, beta}); // Scalars used in the Epilogue
-            return gemm_operator(args);
+        } else {
+            if (!transA && !transB) {
+                CutlassGemmNN gemm_operator;
+                CutlassGemmNN::Arguments args({M , N, K},  // Gemm Problem dimensions
+                    {A, lda},    // Tensor-ref for source matrix A
+                    {B, ldb},    // Tensor-ref for source matrix B
+                    {C, ldc},    // Tensor-ref for source matrix C
+                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            } else if (transA && !transB) {
+                CutlassGemmTN gemm_operator;
+                CutlassGemmTN::Arguments args({M , N, K},  // Gemm Problem dimensions
+                    {A, lda},    // Tensor-ref for source matrix A
+                    {B, ldb},    // Tensor-ref for source matrix B
+                    {C, ldc},    // Tensor-ref for source matrix C
+                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            } else if (!transA && transB) {
+                CutlassGemmNT gemm_operator;
+                CutlassGemmNT::Arguments args({M , N, K},  // Gemm Problem dimensions
+                    {A, lda},    // Tensor-ref for source matrix A
+                    {B, ldb},    // Tensor-ref for source matrix B
+                    {C, ldc},    // Tensor-ref for source matrix C
+                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            } else { // Final case (transA && transB)
+                CutlassGemmTT gemm_operator;
+                CutlassGemmTT::Arguments args({M , N, K},  // Gemm Problem dimensions
+                    {A, lda},    // Tensor-ref for source matrix A
+                    {B, ldb},    // Tensor-ref for source matrix B
+                    {C, ldc},    // Tensor-ref for source matrix C
+                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            }
         }
     }
     void cutlass_igemm_dispatcher(bool transA, bool transB,
@@ -134,7 +158,8 @@ namespace integer {
         int ldb,
         float beta,
         int32_t *C,
-        int ldc) {
+        int ldc,
+        bool tensorCore) {
             CUTLASS_CHECK(cutlass_igemm_nn(transA, transB,
                 M,
                 N,
@@ -146,7 +171,8 @@ namespace integer {
                 ldb,
                 beta,
                 C,
-                ldc));
+                ldc,
+                tensorCore));
         }
     /**************************CUTLASS code ends here***********************/
 
@@ -192,6 +218,36 @@ namespace integer {
             }
         }
         quantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAddr);
+    }
+
+    __global__ void quantizeToRowMajor(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
+        const float quantMult = *quantMultAddr; // @TODO ask nvidia if this is the most efficient way to do this here
+        int row = blockIdx.y * blockDim.y + threadIdx.y;
+        int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+        //input is col major, output is row major
+        if (row*col < rows*cols) {
+            output[cols*row + col] = (int8_t)llrintf((input[rows*col + row]*quantMult));
+        }
+    }
+
+    void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
+        // Make sure we're not running out of threads here.
+        int threads = rows;
+        int blocks = cols;
+
+        if (threads > 512) {
+            std::swap(threads, blocks);
+            if (threads > 512) {
+                blocks = (int)ceil((threads*blocks)/512);
+                threads = 512;
+            }
+        }
+
+        dim3 dimBlock(blocks, blocks);
+        dim3 dimGrid(cols / dimBlock.x, rows / dimBlock.y);
+
+        quantizeToRowMajor<<<dimGrid, dimBlock>>>(input, output, rows, cols, quantMultAddr);
     }
 
     __global__ void dequantize(const int32_t * input, float * output, size_t items, const float * quantMultAaddr, const float * quantMultBaddr) {

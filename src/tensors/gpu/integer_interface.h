@@ -75,12 +75,16 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 
 template<bool isA_>
 struct PrepareNodeOp : public NaryNodeOp {
-  PrepareNodeOp(Expr input, Expr quant_mult)
-      : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8) {
+  bool useTensorcores_;
+  PrepareNodeOp(Expr input, Expr quant_mult, bool useTensorcores=false)
+      : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), useTensorcores_(useTensorcores) {
 
     set_name(input->name() + "_quantized8bit");
-    if (isA_)
+    if (isA_) {
         setMemoize(false);
+    } else {
+      useTensorcores_ = false; // We only need the special case for the activations, as they need to be quantized AND row-major'd
+    }
   }
 
   NodeOps forwardOps() override {
@@ -92,7 +96,11 @@ struct PrepareNodeOp : public NaryNodeOp {
         if (!isA_) {
           //std::cerr << "Preparing: " << name() << std::endl;
         }
-        quantize(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
+        if (useTensorcores_ && isA_) {
+          quantizeToRowMajorWrapper(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
+        } else {
+          quantize(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
+        }
 
     )};
   }
@@ -110,11 +118,12 @@ private:
   float scalar_;
   bool transA_;
   bool transB_;
+  bool useTensorcores_;
 
 public:
-  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr quantMultA, Expr quantMultB, Expr ones, bool transA, bool transB, float scalar)
+  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr quantMultA, Expr quantMultB, Expr ones, bool transA, bool transB, float scalar, bool useTensorcores)
       : NaryNodeOp({a, b, Bias, quantMultA, quantMultB, ones}, 
-        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB) {
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
 
@@ -180,7 +189,8 @@ public:
                         lda,
                         0.0f,
                         C->data<int32_t>(),
-                        ldc);
+                        ldc,
+                        useTensorcores_);
 
       //Now unquantize... Reusing the same Tensor
       int rowsC = C->shape().elements() / C->shape().back();
@@ -212,11 +222,12 @@ private:
   float scalar_;
   bool transA_;
   bool transB_;
+  bool useTensorcores_;
 
 public:
-  DotNodeOp(Expr a, Expr b, Expr quantMultA, Expr quantMultB, bool transA, bool transB, float scalar)
+  DotNodeOp(Expr a, Expr b, Expr quantMultA, Expr quantMultB, bool transA, bool transB, float scalar, bool useTensorcores)
       : NaryNodeOp({a, b, quantMultA, quantMultB}, 
-        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB) {
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
 
@@ -283,7 +294,8 @@ public:
                         lda,
                         0.0f,
                         C->data<int32_t>(),
-                        ldc);
+                        ldc,
+                        useTensorcores_);
       //Now unquantize... Reusing the same Tensor
       int rowsC = rows(C);
       int colsC = cols(C);
@@ -367,6 +379,8 @@ public:
 };
 
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
+  bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm() && !transA && !transB; // @TODO no transpose when using tensor cores for now
+  useTensorcores;
   // Quantize to 8bits:
   std::string Bname = B->name();
   Expr AQuantMult = nullptr;
@@ -378,7 +392,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   }
   Expr BQuantMult = Expression<QuantMultNodeOp<Parameter> >(B, Bname);
 
-  Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
+  Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult, useTensorcores);
   Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
 
 
@@ -387,9 +401,9 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   if (bias) {
     int rows = A->shape().elements() / A->shape()[-1];
     Expr ones = A->graph()->ones({ rows, 1 });
-    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, AQuantMult, BQuantMult, ones, transA, transB, scale);
+    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, AQuantMult, BQuantMult, ones, transA, transB, scale, useTensorcores);
   } else {
-    return Expression<DotNodeOp>(AQuantized, BQuantized, AQuantMult, BQuantMult, transA, transB, scale);
+    return Expression<DotNodeOp>(AQuantized, BQuantized, AQuantMult, BQuantMult, transA, transB, scale, useTensorcores);
   }
 }
 

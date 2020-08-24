@@ -17,6 +17,7 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
 #ifdef CUDA_FOUND
     void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu);
     void quantize(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
+    void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
     void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr);
     void cutlass_igemm_dispatcher(bool transA, bool transB,
         int M,
@@ -29,7 +30,8 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int ldb,
         float beta,
         int32_t *C,
-        int ldc);
+        int ldc,
+        bool tensorCore = false);
     //void gpuPrinterDispatch(float * mem, size_t idx);
 #else
     void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu) {
@@ -40,6 +42,14 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         return;
     }
     void quantize(const float * intput, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
+        input;
+        output;
+        rows;
+        cols;
+        quantMult;
+        return;
+    }
+    void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
         input;
         output;
         rows;

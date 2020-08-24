@@ -67,6 +67,13 @@ public:
     return legacyBatch_;
   }
 
+  void setTensorCoreGemm(bool tensorCore) override {
+    LOG_ONCE(info, "setTensorCoreGemm() not supported for CPU.");
+  }
+  bool useTensorCoreGemm() override {
+    return false;
+  }
+
 };
 }  // namespace cpu
 }  // namespace marian

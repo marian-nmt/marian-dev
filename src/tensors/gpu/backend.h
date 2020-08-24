@@ -23,6 +23,7 @@ class Backend : public marian::Backend {
 private:
   bool int8_{false};
   bool alpha_{false};
+  bool tensorCore_{false};
   void setCudaComputeCapability() {
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
@@ -122,6 +123,16 @@ public:
   }
   bool isLegacyBatchedGemm() override {
     return false;
+  }
+
+  void setTensorCoreGemm(bool tensorCore) override {
+    if (tensorCore) {
+      ABORT_IF(getCudaComputeCapability().major < 7, "Compute capability {} below 7 do not support tensor cores", getCudaComputeCapability().major);
+      tensorCore_ = tensorCore;
+    }
+  }
+  bool useTensorCoreGemm() override {
+    return tensorCore_;
   }
 
 private:

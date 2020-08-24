@@ -45,9 +45,16 @@ public:
       setInt16(true);
     } else if (gemmPrecision == "int8") {
       setInt8(true);
+    } else if (gemmPrecision == "int8tensor") {
+      setInt8(true);
+      setTensorCoreGemm(true);
     } else if (gemmPrecision == "int8Alpha") {
       setInt8(true);
       setPrecomputedAlpha(true);
+    } else if (gemmPrecision == "int8tensorAlpha") {
+      setInt8(true);
+      setPrecomputedAlpha(true);
+      setTensorCoreGemm(true);
     } else if (gemmPrecision == "int8shift") {
       setInt8(true);
       setShifted(true);
@@ -85,6 +92,8 @@ public:
   virtual bool isPrecomputedAlpha() = 0;
   virtual void setLegacyBatchedGemm(bool legacyBatch) = 0;
   virtual bool isLegacyBatchedGemm() = 0;
+  virtual void setTensorCoreGemm(bool tensorCore) = 0;
+  virtual bool useTensorCoreGemm() = 0;
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

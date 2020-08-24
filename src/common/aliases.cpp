@@ -157,6 +157,12 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
      cli.alias("int8Alpha", "true", [&](YAML::Node& config) {
        config["gemm-precision"] = "int8Alpha";
      });
+     cli.alias("int8tensor", "true", [&](YAML::Node& config) {
+       config["gemm-precision"] = "int8tensor";
+     });
+     cli.alias("int8tensorAlpha", "true", [&](YAML::Node& config) {
+       config["gemm-precision"] = "int8tensorAlpha";
+     });
      cli.alias("int8shift", "true", [&](YAML::Node& config) {
        config["gemm-precision"] = "int8shift";
      });

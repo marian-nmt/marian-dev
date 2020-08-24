@@ -22,6 +22,7 @@ struct CudaCompute {
 class Backend : public marian::Backend {
 private:
   bool int8_{false};
+  bool alpha_{false};
   void setCudaComputeCapability() {
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
@@ -110,10 +111,10 @@ public:
   }
 
   void setPrecomputedAlpha(bool alpha) override {
-    LOG_ONCE(info, "setPrecomputedAlpha() not supported for GPU_{}", alpha);
+    alpha_ = alpha;
   }
   bool isPrecomputedAlpha() override {
-    return false;
+    return alpha_;
   }
 
   void setLegacyBatchedGemm(bool legacyBatch) override {

@@ -369,7 +369,13 @@ public:
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
   // Quantize to 8bits:
   std::string Bname = B->name();
-  Expr AQuantMult = Expression<QuantMultNodeOp<Activation> >(A, Bname);
+  Expr AQuantMult = nullptr;
+  static bool precomputedAlphas = B->graph()->getBackend()->isPrecomputedAlpha();
+  if (precomputedAlphas) { //Shifting here maybe should check?
+    AQuantMult = Expression<fetchAlphaFromModelNodeOp>(B);
+  } else {
+    AQuantMult = Expression<QuantMultNodeOp<Activation> >(A, Bname);
+  }
   Expr BQuantMult = Expression<QuantMultNodeOp<Parameter> >(B, Bname);
 
   Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);

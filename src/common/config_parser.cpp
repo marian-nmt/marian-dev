@@ -841,8 +841,12 @@ void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
   // clang-format off
   cli.add<bool>("--int16",
       "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");
+  cli.add<bool>("--optimize",
+      "Deprecated. Corresponds to --gemm-precision int16");
   cli.add<bool>("--int8",
-      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int8");
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm or Tensor cores instead of floats. Corresponds to --gemm-precision int8");
+  cli.add<bool>("--int8Alpha",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm or Tensor cores instead of floats, with precomputed alpahs. Corresponds to --gemm-precision int8Alpha");
   cli.add<bool>("--int8shift",
       "Use a faster, shifted integer 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
   cli.add<bool>("--int8shiftAlpha",

@@ -45,6 +45,9 @@ public:
       setInt16(true);
     } else if (gemmPrecision == "int8") {
       setInt8(true);
+    } else if (gemmPrecision == "int8Alpha") {
+      setInt8(true);
+      setPrecomputedAlpha(true);
     } else if (gemmPrecision == "int8shift") {
       setInt8(true);
       setShifted(true);

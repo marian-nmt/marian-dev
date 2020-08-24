@@ -17,9 +17,13 @@ namespace gpu {
 
 namespace integer {
 
+static const constexpr bool Activation = true;
+static const constexpr bool Parameter = false;
+
+template<bool isA_>
 struct QuantMultNodeOp : public UnaryNodeOp {
-  bool isA_;
-  QuantMultNodeOp(Expr input, bool isA, std::string& bname) : UnaryNodeOp(input, Shape({1}), Type::float32), isA_(isA) {
+  //bool isA_;
+  QuantMultNodeOp(Expr input, std::string& bname) : UnaryNodeOp(input, Shape({1}), Type::float32) {
     if (isA_) {
       setMemoize(false);
       set_name(bname + "_QuantMultA");
@@ -35,6 +39,9 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         auto cublasHandle = backend->getCublasHandle();
 
         maxAbsQuantMult(cublasHandle, child(0)->val()->data(), child(0)->val()->shape().elements(), val_->data());
+        if (!isA_) {
+          //std::cerr << " HERE2 " << name() << std::endl; //NOT WORKING YET
+        }
         //@TODO syncrhonise device to wait for kernel completion?
     )};
   }
@@ -60,18 +67,19 @@ struct QuantMultNodeOp : public UnaryNodeOp {
     return false;
   } */
 
-  size_t hash() override {
-    return std::hash<std::string>{}(name());
-  }
+  //size_t hash() override {
+  //  return std::hash<std::string>{}(name());
+  //}
 
 };
 
+template<bool isA_>
 struct PrepareNodeOp : public NaryNodeOp {
-  PrepareNodeOp(Expr input, Expr quant_mult, bool isA)
+  PrepareNodeOp(Expr input, Expr quant_mult)
       : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8) {
 
     set_name(input->name() + "_quantized8bit");
-    if (isA)
+    if (isA_)
         setMemoize(false);
   }
 
@@ -81,6 +89,9 @@ struct PrepareNodeOp : public NaryNodeOp {
         const float * input = child(0)->val()->data();
         const float * quantMultAddr = child(1)->val()->data();
 
+        if (!isA_) {
+          //std::cerr << "Preparing: " << name() << std::endl;
+        }
         quantize(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
 
     )};
@@ -317,14 +328,52 @@ public:
   const std::string type() override { return "int8Affine"; }
 };
 
+class fetchAlphaFromModelNodeOp : public UnaryNodeOp {
+public:
+  fetchAlphaFromModelNodeOp(Expr b)
+      : UnaryNodeOp(b, Shape({1}), Type::float32) {
+
+    std::string bname = b->name();
+    std::string aQuantKey = b->name() + "_QuantMultA";
+    //Very Hacky Bit. Unnamed matrix is not part of the F0 parameter namespace
+    if (aQuantKey.at(0) != 'F') {
+      aQuantKey = "F0::" + aQuantKey;
+    }
+    set_name(aQuantKey);
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      auto map = child(0)->graph()->params()->getMap();
+      const auto mapiter = map.find(name());
+      if (mapiter != map.end()) {
+        val_ = mapiter->second->val();
+      } else {
+        ABORT("We did not find an alpha in the model named: {}.", name());
+      }
+    )};
+  }
+
+  bool equal(Expr node) override {
+    if(hash() == node->hash()) return true;
+    return false;
+  }
+
+  size_t hash() override {
+    return std::hash<std::string>{}(name());
+  }
+
+  const std::string type() override { return "alphaNodeOp"; }
+};
+
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
   // Quantize to 8bits:
   std::string Bname = B->name();
-  Expr AQuantMult = Expression<QuantMultNodeOp>(A, true, Bname);
-  Expr BQuantMult = Expression<QuantMultNodeOp>(B, false, Bname);
+  Expr AQuantMult = Expression<QuantMultNodeOp<Activation> >(A, Bname);
+  Expr BQuantMult = Expression<QuantMultNodeOp<Parameter> >(B, Bname);
 
-  Expr AQuantized = Expression<PrepareNodeOp>(A, AQuantMult, true);
-  Expr BQuantized = Expression<PrepareNodeOp>(B, BQuantMult, false);
+  Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
+  Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
 
 
   //Perform multiplication KNOWING that A and B are swapped

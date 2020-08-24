@@ -522,12 +522,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
   } else {
-    int m = a->shape().elements() / a->shape().back();
-    int k = a->shape().back();
-    if(transA)
-      std::swap(m, k);
-
-    if(a->graph()->getBackend()->isInt8() && (k%4 == 0)) {
+    if(a->graph()->getBackend()->isInt8()) {
       return gpu::integer::dot(clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
     } else {
       return Expression<DotNodeOp>(
@@ -623,11 +618,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType), 
              "GPU-based GEMM only supports float types, you have A: {} and B: {}", 
              aElementType, bElementType);
-    int m = a->shape().elements() / a->shape().back();
-    int k = a->shape().back();
-    if(transA)
-      std::swap(m, k);
-    if(a->graph()->getBackend()->isInt8() && (k%4 == 0)) {
+    if(a->graph()->getBackend()->isInt8()) {
       return gpu::integer::affine(clip(a, clipValue), clip(b, clipValue),bias, transA, transB, scale, 0.0f /*unused clipvalue*/);
     } else {
       return affineDefault(a, b, bias, transA, transB, scale);

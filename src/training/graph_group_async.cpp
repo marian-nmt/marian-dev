@@ -51,7 +51,8 @@ void AsyncGraphGroup::fetchParams(Tensor oldParams,
 }
 
 void AsyncGraphGroup::pushGradients(Tensor newGrads,
-                                    int /*device_id*/) {
+                                    int /*device_id*/,
+                                    size_t mbSize) {
   std::vector<std::thread> threads;
   int pos = 0;
   for(int idx = 0; idx < devices_.size(); idx++) {
@@ -59,7 +60,7 @@ void AsyncGraphGroup::pushGradients(Tensor newGrads,
       // individual mutex per-shard
       std::lock_guard<std::mutex> guard(shardSync_[idx]);
       grads_[idx]->copyFrom(newGrads->subtensor(pos, (int)grads_[idx]->size()));
-      optimizerShards_[idx]->update(params_[idx], grads_[idx]);
+      optimizerShards_[idx]->update(params_[idx], grads_[idx], mbSize);
     };
 
     threads.emplace_back(std::thread(push, idx, pos));
@@ -126,7 +127,7 @@ void AsyncGraphGroup::init(Ptr<data::Batch> batch) {
 
   // Initialize optimizers with empty gradient
   for(int i = 0; i < params_.size(); ++i)
-    optimizerShards_[i]->update(params_[i], grads_[i]);
+    optimizerShards_[i]->update(params_[i], grads_[i], batch->wordsTrg());
 }
 
 void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
@@ -191,7 +192,7 @@ void AsyncGraphGroup::execute(Ptr<data::Batch> batch) {
     t++;
 
     if(t % optimizerDelay_ == 0) {
-      pushGradients(gradients, tid);
+      pushGradients(gradients, tid, num_seen_words);
       // Reset the counter of seen target words after gradient update
       if(optimizerDelay_ > 1)
         gradients->set(0);

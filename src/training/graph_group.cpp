@@ -175,9 +175,6 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     return normalizationFactor;
   
   if(checkGradientNorm_) {
-  #if 1
-    ABORT("--dynamic-gradient-scaling is currently disabled. Should be fixed soon.");
-  #else
     // make gradient norm invariant to changes in costScaleFactor_, luckily norm(c * g) = c * norm(g)
     if(costScale_)
       gNorm = gNorm / costScaleFactor_;
@@ -189,7 +186,7 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     float logGNorm = std::log(gNorm); 
         
     float logGNormAvg, logGNormVar;
-    std::tie(logGNormAvg, logGNormVar) = scheduler_->getLogGradientNormAvgAndVar();
+    std::tie(logGNormAvg, logGNormVar) = scheduler_->getGradientNormStats();
     
     auto delta = logGNorm - logGNormAvg;
     auto logGNormStd = std::sqrt(logGNormVar);
@@ -200,13 +197,6 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
       LOG(debug, "{:.4f} - {:.4f} -> logGNorm delta {:.4f} > {:.4f} * std {:.4f}", gNorm, std::exp(logGNormAvg), delta, checkGradientNormFactor_, logGNormStd);
       normalizationFactor *= std::exp(delta); // @TODO: normalize to avg + 1 sigma instead of to avg (exp(delta - logGNormStd)?)
     }
-
-    // also put this into the scheduler / training state
-    // float alpha = 2.f / (checkGradientNormWindow_ + 1);
-    // logGNormAvg = logGNormAvg + alpha * delta;
-    // delta = logGNormStd;
-    // logGNormVar = (1.0 - alpha) * (logGNormVar + alpha * delta * delta);
-  #endif
   }
 
   return normalizationFactor;

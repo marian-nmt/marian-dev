@@ -115,6 +115,11 @@ public:
   // Number of updates seen since last display
   size_t updatesDisp{0};
 
+  // Running average of log gradient norm
+  float logGradientNormAvg{0};
+  // Running variance of log gradient norm
+  float logGradientNormVar{0};
+
   // The state of the random number generator from a batch generator
   std::string seedBatch;
   // The state of the random number generator from a corpus
@@ -264,6 +269,9 @@ public:
     samplesDisp = config["disp-samples"].as<size_t>();
     updatesDisp = config["disp-updates"].as<size_t>();
 
+    logGradientNormAvg = config["log-gradient-norm-avg"].as<float>();
+    logGradientNormVar = config["log-gradient-norm-var"].as<float>();
+
     seedBatch = config["seed-batch"].as<std::string>();
     seedCorpus = config["seed-corpus"].as<std::string>();
   }
@@ -298,6 +306,9 @@ public:
     config["disp-updates"] = updatesDisp;
     config["disp-samples"] = samplesDisp;
     config["disp-words"] = wordsDisp;
+
+    config["log-gradient-norm-avg"] = logGradientNormAvg;
+    config["log-gradient-norm-var"] = logGradientNormVar;
 
     config["seed-batch"] = seedBatch;
     config["seed-corpus"] = seedCorpus;

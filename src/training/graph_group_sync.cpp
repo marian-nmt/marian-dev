@@ -331,14 +331,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
   if(saneGradient) {
     // actual model update
-    auto updateTrgWords =
-        /*if*/(options_->get<std::string>("cost-type") == "ce-sum") ?
-          batchTrgWords // total number of labels across all GPUs and nodes
-        /*else*/:
-          OptimizerBase::mbSizeNotProvided;
-
-    ABORT_IF(checkGradient && updateTrgWords == OptimizerBase::mbSizeNotProvided, 
-             "Various norm-based gradient-checking mechanisms only correct with ce-sum");
+    auto updateTrgWords = batchTrgWords; // total number of labels across all GPUs and nodes
     float gradientNormalizer = GraphGroup::computeNormalizationFactor(gradNorm, updateTrgWords);
 
     // Update parameter shard with gradient shard

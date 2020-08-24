@@ -38,7 +38,7 @@ void SingletonGraph::execute(Ptr<data::Batch> batch) {
   if(noNanOrInf) // skip update if NaN was seen @TODO: repeat instead with smaller factor?
     opt->update(graph->params()->vals(),
                 graph->params()->grads(),
-                OptimizerBase::mbSizeNotProvided,
+                batch->wordsTrg(),
                 costScaleFactor_);
 
   if(scheduler_) {

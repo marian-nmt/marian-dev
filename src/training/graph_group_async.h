@@ -37,7 +37,8 @@ protected:
                            int device_id);
 
   virtual void pushGradients(Tensor newGrads,
-                             int device_id);
+                             int device_id,
+                             size_t mbSize);
 
   virtual void init(Ptr<data::Batch> batch);
   void execute(Ptr<data::Batch> batch);

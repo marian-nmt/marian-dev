@@ -150,6 +150,10 @@ public:
     return ratio;
   }
 
+  std::tuple<float, float> getGradientNormStats() const {
+    return std::make_tuple(state_->logGradientNormAvg, state_->logGradientNormVar);
+  }
+
   Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
       : options_(options), state_(state) {
     ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
@@ -314,6 +318,14 @@ public:
 
     state_->newUpdate(numReadBatches);
 
+    if(gradientNorm) {
+      size_t window = std::min(100ul, state_->batches); // @TODO: make window configurable
+      float alpha = 2.f / (window + 1); 
+      float delta = std::log(gradientNorm) - state_->logGradientNormAvg;
+      state_->logGradientNormAvg = state_->logGradientNormAvg + alpha * delta;
+      state_->logGradientNormVar = (1.0 - alpha) * (state_->logGradientNormVar + alpha * delta * delta);
+    }
+
     // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
     auto lossType = options_->get<std::string>("cost-type");
     auto dispLabelCounts = options_->get<bool>("disp-label-counts");  // if true then show as "cost per label * number of labels"
@@ -387,6 +399,9 @@ public:
       state_->updatesDisp  = 0;
       state_->samplesDisp  = 0;
       state_->wordsDisp    = 0;
+
+      state_->logGradientNormAvg = 0;
+      state_->logGradientNormVar = 0;
     }
 
     if(options_->get<bool>("valid-reset-stalled")) {

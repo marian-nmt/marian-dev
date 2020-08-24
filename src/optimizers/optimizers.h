@@ -23,7 +23,9 @@ public:
   : ExponentialSmoothing(options),
     options_(options),
     eta_(options_->get<float>("learn-rate")),
-    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref", 0)) {
+    refMBWordsParam_(options_->get<size_t>("mini-batch-words-ref", 0)),
+    normalizedGradient_{options_->get<bool>("normalize-gradient", false)} // @TODO: get rid of this if we manage to confirm that it does not help with fp16 training
+  {
 
     auto precisions = options_->get<std::vector<std::string>>("precision", {"float32", "float32"});
     ABORT_IF(precisions.size() < 2, "No optimizer precision type specified??");
@@ -109,23 +111,20 @@ public:
   void swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_t n, bool swapAvg);
 
 protected:
-  virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) = 0;
+  virtual void updateImpl(Tensor params, Tensor grads, size_t actualMBSize) = 0;
   virtual void resetStats() = 0;
 
   Ptr<Options> options_;
 
-  // Learning rate
-  float eta_;
-  // Reference MB size. This enables automatic adjustment of optimizer hyper-parameters to MB size.
-  size_t refMBWordsParam_{0}; // 0 means no adjustment
-  // Seen updates so far
-  size_t batchesSeen_{0};
+  float eta_;                      // Learning rate
+  size_t refMBWordsParam_{0};      // reference MB size. This enables automatic adjustment of optimizer hyper-parameters to MB size. 0 means no adjustment
+  size_t batchesSeen_{0};          // updates seen so far
+  bool normalizedGradient_{false}; // has the gradient been normalized by MB size? @TODO: get rid of this if we manage to confirm that it does not help with fp16 training
 
   Type optimizerType_{Type::float32};
   bool castOptimizerType_{false};
 
-    // Clip gradient norm
-  Ptr<Clipper> clipper_;
+  Ptr<Clipper> clipper_;  // Clip gradient norm
 
   Ptr<TensorAllocator> baseAlloc_;
   Ptr<Allocator> alloc_;
@@ -154,7 +153,7 @@ public:
 
   virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
-  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize) override;
 
   virtual void resetStats() override {}
 };
@@ -183,7 +182,7 @@ public:
   }
 
 private:
-  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize) override;
   void resetStats() override;
 
   float eps_ = 1e-8f;
@@ -212,7 +211,7 @@ public:
             const GatherStateFunc& gatherFn) override;
 
 private:
-  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;
+  void updateImpl(Tensor params, Tensor grads, size_t actualMBSize) override;
   void resetStats() override;
 
   // Adam parameters:

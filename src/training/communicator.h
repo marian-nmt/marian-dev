@@ -180,7 +180,7 @@ public:
     return { begin, end };
   }
 
-  // @TODO: function is now the same is in NCCLCommunicator, move up to base class if possible
+  // @TODO: function is now the same as in NCCLCommunicator, move up to base class if possible
   template <typename Ret>
   Ret foreachAcc(const ForeachFunc<Ret>& func, const AccFunc<Ret>& acc, Ret init, bool parallel = true) const {
     parallel &= graphs_.size() > 1;
@@ -233,20 +233,19 @@ public:
 
     // reset gradients
     // @TODO: all the different places where gradients get reset are confusing
-    auto resetGrads = [&](size_t i, size_t begin, size_t end) {
-      auto grads = graphs_[i]->params()->grads();
-      auto size = grads->size();
+    auto reset = [this](size_t idx, size_t begin, size_t end) {
+      auto grads = graphs_[idx]->params()->grads();
       // reset everything outside the shard that we reduce in
       if (begin > 0)
         grads->subtensor(0, begin)->set(0.f);
-      if (end < size)
-        grads->subtensor(end, size - end)->set(0.f);
+      if (end < grads->size())
+        grads->subtensor(end, grads->size() - end)->set(0.f);
 
       return true; // dummy success
     };
     
     foreach(scatter);
-    foreach(resetGrads);
+    foreach(reset);
   }
 
   void allGatherParams() const override {

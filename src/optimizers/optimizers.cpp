@@ -7,14 +7,6 @@
 namespace marian {
 
 float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float costScaleFactor) {
-  size_t refMBWords = refMBWordsParam_;
-  if (refMBWords == 0) { // optimizer not configured to use hyper-parameter auto-adjustment
-    refMBWords = mbSize = 1; // neutral settings that keep the standard behavior
-  } else { // optimizer is configured to auto-adjust hyper-parameters
-    ABORT_IF(mbSize == mbSizeNotProvided, "Using rational optimizer auto-adjustment with trainer that does not provide MB size");
-    // note: this behavior is only meaningful if using the ce-sum criterion
-  }
-
   // if true model for forward/backward uses a different type than the optimizer
   castOptimizerType_ = params->type() != optimizerType_;
   int elements = (int)params->size();
@@ -75,11 +67,14 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
 #if 1 // @BUGBUG the current way of gradient clipping is wrong since we switched to ce-sum internally. Keep this for current regressions tests, but change as soon as possible.
     float clipNorm = options_->get<float>("clip-norm", 0.f);
     if(clipNorm > 0) {
-      LOG(warn, "Gradient clipping is currently enabled, but is actually buggy. Complain to marcinjd to fix this.");
+      if(!normalizedGradient_) 
+        clipNorm *= mbSize;
       clipper_ = New<NormClipper>(clipNorm);
     } else
 #endif
-    clipper_ = New<ReportNormClipper>(0); // don't clip, just report
+    {
+      clipper_ = New<ReportNormClipper>(0); // don't clip, just report
+    }
     
     // This is a bit magical. 
     // Preallocate in order to avoid later reallocation: number of maximum GPU blocks times size of float plus some overhead.
@@ -96,7 +91,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
   // perform update on master copy with cast gradients
   // if a type cast has been performed. Otherwise the
   // original tensors are used.
-  updateImpl(pm_, gd_, mbSize, refMBWords);
+  updateImpl(pm_, gd_, mbSize);
 
   // if exponential smoothing is used update the average
   if(mvAvg_)
@@ -246,8 +241,8 @@ void OptimizerBase::save(std::vector<io::Item>& items,
   }
 }
 
-void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
-  actualMBSize, refMBWords; // (no correction for base update needed beyond using ce-sum)
+void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
+  actualMBSize;
   using namespace functional;
   Element(_1 -= eta_ * _2, params, grads);
 }
@@ -267,8 +262,8 @@ void Sgd::save(std::vector<io::Item>& items,
 
 
 // Adagrad update rule
-void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
-  ABORT_IF(actualMBSize != refMBWords, "Adagrad does not support rational hyper-parameter adjustment");
+void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
+  actualMBSize; // not used in Adagrad
 
   // allocate optimizer-specific parameters
   if(!alloc_) {
@@ -357,7 +352,7 @@ void Adagrad::resetStats() {
 }
 
 // Adam
-void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) {
+void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   // lazy allocation
   if(!alloc_) {
     LOG_ONCE(info, "Allocating memory for Adam-specific shards");
@@ -376,8 +371,11 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
     vt_->set(0.f);
   }
 
-  double T    = (double)actualMBSize;
-  double Tref = (double)refMBWords;
+  double T = 1, Tref = 1;
+  if(OptimizerBase::refMBWordsParam_ > 0) {
+    T    = (double)actualMBSize;
+    Tref = (double)refMBWordsParam_;
+  }
 
   // adjust for minibatch-size changes if Adam parameters are given a reference size (else do nothing)
   // Why the T/Tref factor on eta? The Adam optimizer adds an RMS-normalized gradient
@@ -389,7 +387,7 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t r
   // down-weighting, by multiplying the RMS-normalized gradient value by an additional factor
   // of (T/Tref). This is implemented here by locally multiplying the learning rate
   // with that factor.
-  double eta   = eta_ * (T/Tref);
+  double eta   = eta_ * (T / Tref);
   double beta1 = beta1_;
   double beta2 = beta2_;
   double decay = w_    ;

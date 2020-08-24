@@ -102,8 +102,7 @@ public:
 
   virtual void save(std::vector<io::Item>& /*items*/,
                     const std::vector<Ptr<OptimizerBase>>& /*opts*/,
-                    const GatherStateFunc& /*gatherFn*/,
-                    bool /*isMainProcess*/=true);
+                    const GatherStateFunc& /*gatherFn*/);
 
   // This function swaps out the current optimizer parameters with the smoothed version (provided smoothing is enabled).
   // Usually we will call this twice, to swap in and to swap out.
@@ -151,8 +150,7 @@ public:
 
   void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn,
-            bool /*isMainProcess*/=true) override;
+            const GatherStateFunc& gatherFn) override;
 
   virtual void setParams(const std::vector<float>& /*params*/) override {}
 private:
@@ -177,8 +175,7 @@ public:
 
   void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn,
-            bool /*isMainProcess*/=true) override;
+            const GatherStateFunc& gatherFn) override;
 
   void setParams(const std::vector<float>& params) override {
     if(params.size() > 0)
@@ -212,8 +209,7 @@ public:
 
   void save(std::vector<io::Item>& items,
             const std::vector<Ptr<OptimizerBase>>& opts,
-            const GatherStateFunc& gatherFn,
-            bool /*isMainProcess*/=true) override;
+            const GatherStateFunc& gatherFn) override;
 
 private:
   void updateImpl(Tensor params, Tensor grads, size_t actualMBSize, size_t refMBWords) override;

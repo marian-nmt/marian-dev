@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Properly record cmake variables in the cmake build directory instead of the source tree.
 - Added default "none" for option shuffle in BatchGenerator, so that it works in executables where shuffle is not an option.
 - Added a few missing header files in shortlist.h and beam_search.h.
-- Improved handling for graceful shutdown upon receiving SIGTERM. SIGTERM now also interrupts batch prefetching, which runs in a separate thread. Graceful shutdown can be disabled with --sigterm 'immediate'.
+- Improved handling for graceful shutdown upon receiving SIGTERM. SIGTERM now also interrupts batch prefetching, which runs in a separate thread. Graceful shutdown can be disabled with `--sigterm immediate`.
 
 ### Changed
 - Move Simple-WebSocket-Server to submodule

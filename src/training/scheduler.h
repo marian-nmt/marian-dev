@@ -17,7 +17,8 @@ private:
   Ptr<TrainingState> state_;
   std::vector<Ptr<ValidatorBase>> validators_;
 
-  bool first_{true};        // true if this is the first update after renewing the training
+  bool first_{true};                  // true if this is the first update after renewing the training
+  size_t gradientNormAvgWindow_{100}; // window size for recording the exponential average of gradient norms, after this many updates about 90% of the mass comes from this many last updates
 
   timer::Timer timer_;
   timer::Timer heartBeatTimer_;
@@ -150,12 +151,18 @@ public:
     return ratio;
   }
 
-  std::tuple<float, float> getGradientNormStats() const {
-    return std::make_tuple(state_->gradientNormAvg, state_->gradientNormVar);
+  std::tuple<size_t, float, float> getGradientNormStats() const {
+    return std::make_tuple(gradientNormAvgWindow_, state_->gradientNormAvg, state_->gradientNormVar);
+  }
+
+  std::tuple<size_t, float, float> getLogGradientNormStats() const {
+    return std::make_tuple(gradientNormAvgWindow_, state_->logGradientNormAvg, state_->logGradientNormVar);
   }
 
   Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
-      : options_(options), state_(state) {
+      : options_(options), state_(state),
+        gradientNormAvgWindow_(options_->get<size_t>("gradient-norm-average-window", 100)) 
+  {
     ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
     updateLearningRate(*state);
     installSignalHandlers();
@@ -319,11 +326,16 @@ public:
     state_->newUpdate(numReadBatches);
 
     if(gradientNorm) {
-      size_t range = std::min(100ul, state_->batches); // @TODO: make window configurable
+      size_t range = std::min(gradientNormAvgWindow_, state_->batches);
       float alpha = 2.f / (range + 1); 
+      
       float delta = gradientNorm - state_->gradientNormAvg;
       state_->gradientNormAvg = state_->gradientNormAvg + alpha * delta;
       state_->gradientNormVar = (1.0 - alpha) * (state_->gradientNormVar + alpha * delta * delta);
+
+      float logDelta = std::log(gradientNorm) - state_->logGradientNormAvg;
+      state_->logGradientNormAvg = state_->logGradientNormAvg + alpha * logDelta;
+      state_->logGradientNormVar = (1.0 - alpha) * (state_->logGradientNormVar + alpha * logDelta * logDelta);
     }
 
     // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
@@ -402,6 +414,9 @@ public:
 
       state_->gradientNormAvg = 0;
       state_->gradientNormVar = 0;
+
+      state_->logGradientNormAvg = 0;
+      state_->logGradientNormVar = 0;
     }
 
     if(options_->get<bool>("valid-reset-stalled")) {

@@ -31,14 +31,15 @@ GraphGroup::GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices
 
   if(options_->hasAndNotEmpty("dynamic-gradient-scaling")) {
     auto vgc = options_->get<std::vector<std::string>>("dynamic-gradient-scaling");
-    checkGradientNorm_ = true;
-    if(vgc.size() > 0) checkGradientNormWindow_ = std::stoul(vgc[0]);
-    if(vgc.size() > 1) checkGradientNormFactor_ = std::stof(vgc[1]);
+    dynamicGradientScaling_ = true;
+
+    if(vgc.size() > 0) dynamicGradientScalingFactor_  = std::stof(vgc[0]);
+    if(vgc.size() > 1) dynamicGradientScalingUseLogs_ = vgc[1] == "log";
 
     LOG_ONCE(info,
-             "Checking gradient norm with window {} and factor {:.2f}",
-             checkGradientNormWindow_,
-             checkGradientNormFactor_);
+             "Checking gradient norms with factor {:.2f} using logs: {}",
+             dynamicGradientScalingFactor_,
+             dynamicGradientScalingUseLogs_);
   }
 
   if(options_->get<bool>("check-gradient-nan")) {
@@ -144,7 +145,7 @@ float GraphGroup::checkNanOrNorm(size_t i, size_t begin, size_t end) {
     }
   }
   
-  if(checkGradientNorm_) {
+  if(dynamicGradientScaling_) {
     auto gNorm = L2Norm(curGrad, graphs_[i]->allocator());
     if(isFinite(gNorm) && gNorm > 0.0)
       return gNorm;
@@ -174,7 +175,7 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
   if(!isFinite(gNorm)) // we are checking the sanity of the gradient elsewhere
     return normalizationFactor;
   
-  if(checkGradientNorm_) {
+  if(dynamicGradientScaling_) {
     // make gradient norm invariant to changes in costScaleFactor_, luckily norm(c * g) = c * norm(g)
     if(costScale_)
       gNorm = gNorm / costScaleFactor_;
@@ -182,18 +183,28 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     // Normalize gradient norm w.r.t. number of labels in batch for statistics, 
     // there should be no gradient normalization before this point, @TODO: check this
     gNorm = gNorm / updateTrgWords; 
-        
-    float gNormAvg, gNormVar;
-    std::tie(gNormAvg, gNormVar) = scheduler_->getGradientNormStats();
     
-    auto delta = gNorm / gNormAvg;
-    auto gNormStd = std::sqrt(gNormVar);
+    size_t window; float gNormAvgTransform, gNormVarTransform, gNormTransform, gNormAvg;
+    if(dynamicGradientScalingUseLogs_) {
+      std::tie(window, gNormAvgTransform, gNormVarTransform) = scheduler_->getLogGradientNormStats();
+      gNormTransform = std::log(gNorm);
+      gNormAvg       = std::exp(gNormAvgTransform);
+    } else {
+      std::tie(window, gNormAvgTransform, gNormVarTransform) = scheduler_->getGradientNormStats();
+      gNormTransform = gNorm;
+      gNormAvg       = gNormAvgTransform;
+    }
+    
+    auto deltaTransform    = gNormTransform - gNormAvgTransform;
+    auto gNormStdTransform = std::sqrt(gNormVarTransform);
 
     // delta of log gradient norm vs log gradient norm average is larger than N standard deviations
     // hence rescale gradient using norm
-    if(scheduler_->numberOfBatches() >= checkGradientNormWindow_ && delta > checkGradientNormFactor_ * gNormStd) {
-      LOG(info, "log({:.4f}) - log({:.4f}) = {:.4f} > {:.4f} * std {:.4f}", gNorm, gNormAvg, delta, checkGradientNormFactor_, gNormStd);
-      normalizationFactor *= delta; // = gNorm / avg;
+    if(scheduler_->numberOfBatches() >= window && deltaTransform > dynamicGradientScalingFactor_ * gNormStdTransform) {
+      LOG(info, "log gradient norms: {} :: {:.4f} - {:.4f} = {:.4f} > {:.4f} * {:.4f}",
+          dynamicGradientScalingUseLogs_, gNormTransform, gNormAvgTransform, deltaTransform, dynamicGradientScalingFactor_, gNormStdTransform);
+
+      normalizationFactor *= gNorm / gNormAvg;
     }
   }
 

@@ -319,7 +319,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
   // check for Nan or Inf in all summed up shards
   comm_->scatterReduceAndResetGrads();      // reduce gradients across all devices (globally) into shards
   
-  bool checkGradient = costScale_ || checkGradientNorm_ || checkGradientNan_;
+  bool checkGradient = costScale_ || dynamicGradientScaling_ || checkGradientNan_;
 
   // Wrapping member function
   auto checkNanOrNorm = [&](size_t i, size_t begin, size_t end) {

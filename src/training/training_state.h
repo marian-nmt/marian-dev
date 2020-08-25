@@ -120,6 +120,11 @@ public:
   // Running variance of gradient norm
   float gradientNormVar{0};
 
+  // Running average of log gradient norm
+  float logGradientNormAvg{0};
+  // Running variance of log gradient norm
+  float logGradientNormVar{0};
+
   // The state of the random number generator from a batch generator
   std::string seedBatch;
   // The state of the random number generator from a corpus
@@ -272,6 +277,9 @@ public:
     gradientNormAvg = config["gradient-norm-avg"].as<float>();
     gradientNormVar = config["gradient-norm-var"].as<float>();
 
+    logGradientNormAvg = config["log-gradient-norm-avg"].as<float>();
+    logGradientNormVar = config["log-gradient-norm-var"].as<float>();
+
     seedBatch = config["seed-batch"].as<std::string>();
     seedCorpus = config["seed-corpus"].as<std::string>();
   }
@@ -309,6 +317,9 @@ public:
 
     config["gradient-norm-avg"] = gradientNormAvg;
     config["gradient-norm-var"] = gradientNormVar;
+
+    config["log-gradient-norm-avg"] = logGradientNormAvg;
+    config["log-gradient-norm-var"] = logGradientNormVar;
 
     config["seed-batch"] = seedBatch;
     config["seed-corpus"] = seedCorpus;

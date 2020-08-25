@@ -502,10 +502,15 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Dynamic cost scaling for mixed precision training: "
       "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
       ->implicit_val("0.f 2000 2.f 0.05f 10 1.f");
+  cli.add<size_t>("--gradient-norm-average-window",
+      "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
+      "After this many updates about 90% of the exponential average comes from these updates",
+      100);
   cli.add<std::vector<std::string>>("--dynamic-gradient-scaling", 
-      "Rescale the gradient if the log of the gradient norm after arg1 updates exceeds the average log gradient norm by a factor of arg2. "
-      "This keeps track of a running average of the log gradient norm and results in dynamic gradient rescaling back to the average. ")
-      ->implicit_val("100 3.f");
+      "Rescale the gradient if the difference between (log) gradient norm and the average (log) "
+      "gradient norm exceeds its standard deviation by a factor of arg1. If the second argument "
+      "(\"log\") is given, the statistics are recorded for the log of the gradient norm.")
+      ->implicit_val("2.f log");
   cli.add<bool>("--check-gradient-nan", 
       "Skip parameter update in case of NaNs in gradient");
   cli.add<bool>("--normalize-gradient", 

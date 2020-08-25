@@ -57,9 +57,9 @@ protected:
   size_t noNanSeen_{0}; // @TODO, add current noNanSeen_ to trainingState for serialization
   size_t nanSeen_{0};
 
-  bool checkGradientNorm_{false};
-  size_t checkGradientNormWindow_{100};
-  float checkGradientNormFactor_{4.f};
+  bool dynamicGradientScaling_{false};
+  float dynamicGradientScalingFactor_{2.f};
+  bool dynamicGradientScalingUseLogs_{false};
 
   bool checkGradientNan_{false};
 

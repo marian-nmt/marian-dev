@@ -15,6 +15,7 @@ float NormClipper::clip(Tensor t, float costScalingFactor) {
   float l2Norm = L2Norm(t, allocator_);
   float clipValue = c_ * costScalingFactor;
   if(l2Norm > clipValue) {
+    LOG(debug, "Re-scaling gradient by {}", clipValue / l2Norm);
     Element(_1 = (clipValue / l2Norm) * _1, t);
   }
   return l2Norm;

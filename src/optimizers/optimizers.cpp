@@ -64,14 +64,12 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
 
   // clip gradients when used
   if(!clipper_) {
-#if 1 // @BUGBUG the current way of gradient clipping is wrong since we switched to ce-sum internally. Keep this for current regressions tests, but change as soon as possible.
-    float clipNorm = options_->get<float>("clip-norm", 0.f);
+  #if 1 // @BUGBUG: when we changed to ce-sum we did not adapt gradient clipping. The norm now depends on mini-batch size, that is wrong. Keeping this for backcompat with regression tests. To be removed as soon as possible.
+    float clipNorm = options_->get<float>("clip-norm", 0.f); // this is different than the dynamic scaling as it is an absolute upper limit
     if(clipNorm > 0) {
-      if(!normalizedGradient_) 
-        clipNorm *= mbSize;
       clipper_ = New<NormClipper>(clipNorm);
-    } else
-#endif
+    } else 
+  #endif
     {
       clipper_ = New<ReportNormClipper>(0); // don't clip, just report
     }
@@ -85,8 +83,7 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
     auto clipAlloc = New<Allocator>(pm_->getBackend()->getDeviceId(), /*bytes=*/prealloc, /*step=*/1024);
     clipper_->setAllocator(clipAlloc);
   }
-
-  float gNorm = clipper_->clip(gd_); // clip and rescale, report norm from before clipping
+  float gNorm = clipper_->clip(gd_); // clip or rescale, report norm from before clipping
 
   // perform update on master copy with cast gradients
   // if a type cast has been performed. Otherwise the

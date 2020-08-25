@@ -504,12 +504,11 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       ->implicit_val("0.f 2000 2.f 0.05f 10 1.f");
   cli.add<size_t>("--gradient-norm-average-window",
       "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
-      "After this many updates about 90% of the exponential average comes from these updates",
+      "After this many updates about 90% of the mass of the exponential average comes from these updates",
       100);
   cli.add<std::vector<std::string>>("--dynamic-gradient-scaling", 
-      "Rescale the gradient if the difference between (log) gradient norm and the average (log) "
-      "gradient norm exceeds its standard deviation by a factor of arg1. If the second argument "
-      "(\"log\") is given, the statistics are recorded for the log of the gradient norm.")
+      "Re-scale gradient to have average gradient norm if (log) gradient norm diverges from average by arg1 sigmas. "
+      "If arg2 = \"log\" the statistics are recorded for the log of the gradient norm else use plain norm")
       ->implicit_val("2.f log");
   cli.add<bool>("--check-gradient-nan", 
       "Skip parameter update in case of NaNs in gradient");

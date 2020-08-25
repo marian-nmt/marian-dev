@@ -37,9 +37,9 @@ GraphGroup::GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices
     if(vgc.size() > 1) dynamicGradientScalingUseLogs_ = vgc[1] == "log";
 
     LOG_ONCE(info,
-             "Checking gradient norms with factor {:.2f} using logs: {}",
-             dynamicGradientScalingFactor_,
-             dynamicGradientScalingUseLogs_);
+             "Re-scaling gradient to have average gradient norm if (log={}) gradient norm diverges from average by {} sigmas",
+             dynamicGradientScalingUseLogs_,
+             dynamicGradientScalingFactor_);
   }
 
   if(options_->get<bool>("check-gradient-nan")) {
@@ -186,25 +186,27 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     
     size_t window; float gNormAvgTransform, gNormVarTransform, gNormTransform, gNormAvg;
     if(dynamicGradientScalingUseLogs_) {
+      // tracking the log of the gradient norms rather than the gradient norms itself results in a larger standard deviation as the actual
+      // gradient norms go towards 0. From observation, the STD (of log norms) tends to become near constant after some time while the averages keep decreasing.
       std::tie(window, gNormAvgTransform, gNormVarTransform) = scheduler_->getLogGradientNormStats();
-      gNormTransform = std::log(gNorm);
-      gNormAvg       = std::exp(gNormAvgTransform);
+      gNormTransform = std::log(gNorm);             // we are using the average of log norms, so we need to compute the log
+      gNormAvg       = std::exp(gNormAvgTransform); // for rescaling we need to undo the log, we assume avg(log(norm)) is roughly log(avg(norm))
     } else {
       std::tie(window, gNormAvgTransform, gNormVarTransform) = scheduler_->getGradientNormStats();
-      gNormTransform = gNorm;
-      gNormAvg       = gNormAvgTransform;
+      gNormTransform = gNorm;              // we are not using logs, so we can just use the normal gradient norm
+      gNormAvg       = gNormAvgTransform;  // we are getting the actual running average of gradient norms, no transformation needed.  
     }
     
-    auto deltaTransform    = gNormTransform - gNormAvgTransform;
-    auto gNormStdTransform = std::sqrt(gNormVarTransform);
+    auto deltaTransform    = gNormTransform - gNormAvgTransform; // compute the difference between the current transformer gradient norm and the running average.
+    auto gNormStdTransform = std::sqrt(gNormVarTransform);       // compute STD for the running average of (log) gradient norms.
 
-    // delta of log gradient norm vs log gradient norm average is larger than N standard deviations
-    // hence rescale gradient using norm
+    // delta of (log) gradient norm vs (log) gradient norm average is larger than N standard deviations
+    // hence rescale gradient using the average.
     if(scheduler_->numberOfBatches() >= window && deltaTransform > dynamicGradientScalingFactor_ * gNormStdTransform) {
-      LOG(info, "log gradient norms: {} :: {:.4f} - {:.4f} = {:.4f} > {:.4f} * {:.4f}",
+      LOG(debug, "log gradient norms: {} :: {:.4f} - {:.4f} = {:.4f} > {:.4f} * {:.4f}",
           dynamicGradientScalingUseLogs_, gNormTransform, gNormAvgTransform, deltaTransform, dynamicGradientScalingFactor_, gNormStdTransform);
 
-      normalizationFactor *= gNorm / gNormAvg;
+      normalizationFactor *= gNorm / gNormAvg; // since we later do gradient / normalizationFactor this divides by norm and multiplies by the average, rescaling to the average. 
     }
   }
 

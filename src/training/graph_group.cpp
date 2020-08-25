@@ -186,14 +186,14 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     float gNormAvg, gNormVar;
     std::tie(gNormAvg, gNormVar) = scheduler_->getGradientNormStats();
     
-    auto delta = std::log(gNorm) - std::log(gNormAvg);
-    auto logGNormStd = std::log(std::sqrt(gNormVar));
+    auto delta = gNorm / gNormAvg;
+    auto gNormStd = std::sqrt(gNormVar);
 
     // delta of log gradient norm vs log gradient norm average is larger than N standard deviations
     // hence rescale gradient using norm
-    if(gNormAvg > 0 && gNormVar > 0 && delta > checkGradientNormFactor_ * logGNormStd) {
-      LOG(info, "log({:.4f}) - log({:.4f}) = {:.4f} > {:.4f} * std {:.4f}", gNorm, gNormAvg, delta, checkGradientNormFactor_, logGNormStd);
-      normalizationFactor *= std::exp(delta); // = exp(log(gNorm) - log(avg)) = exp(log(gNorm / avg)) = gNorm / avg;
+    if(scheduler_->numberOfBatches() >= checkGradientNormWindow_ && delta > checkGradientNormFactor_ * gNormStd) {
+      LOG(info, "log({:.4f}) - log({:.4f}) = {:.4f} > {:.4f} * std {:.4f}", gNorm, gNormAvg, delta, checkGradientNormFactor_, gNormStd);
+      normalizationFactor *= delta; // = gNorm / avg;
     }
   }
 

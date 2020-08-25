@@ -181,21 +181,19 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     
     // Normalize gradient norm w.r.t. number of labels in batch for statistics, 
     // there should be no gradient normalization before this point, @TODO: check this
-    gNorm = gNorm / updateTrgWords;
-    
-    float logGNorm = std::log(gNorm); 
+    gNorm = gNorm / updateTrgWords; 
         
-    float logGNormAvg, logGNormVar;
-    std::tie(logGNormAvg, logGNormVar) = scheduler_->getGradientNormStats();
+    float gNormAvg, gNormVar;
+    std::tie(gNormAvg, gNormVar) = scheduler_->getGradientNormStats();
     
-    auto delta = logGNorm - logGNormAvg;
-    auto logGNormStd = std::sqrt(logGNormVar);
+    auto delta = std::log(gNorm) - std::log(gNormAvg);
+    auto logGNormStd = std::log(std::sqrt(gNormVar));
 
     // delta of log gradient norm vs log gradient norm average is larger than N standard deviations
     // hence rescale gradient using norm
-    if(scheduler_->numberOfBatches() >= checkGradientNormWindow_ && delta > checkGradientNormFactor_ * logGNormStd) {
-      LOG(debug, "{:.4f} - {:.4f} -> logGNorm delta {:.4f} > {:.4f} * std {:.4f}", gNorm, std::exp(logGNormAvg), delta, checkGradientNormFactor_, logGNormStd);
-      normalizationFactor *= std::exp(delta); // @TODO: normalize to avg + 1 sigma instead of to avg (exp(delta - logGNormStd)?)
+    if(gNormAvg > 0 && gNormVar > 0 && delta > checkGradientNormFactor_ * logGNormStd) {
+      LOG(info, "log({:.4f}) - log({:.4f}) = {:.4f} > {:.4f} * std {:.4f}", gNorm, gNormAvg, delta, checkGradientNormFactor_, logGNormStd);
+      normalizationFactor *= std::exp(delta); // = exp(log(gNorm) - log(avg)) = exp(log(gNorm / avg)) = gNorm / avg;
     }
   }
 

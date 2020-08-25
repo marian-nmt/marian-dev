@@ -151,7 +151,7 @@ public:
   }
 
   std::tuple<float, float> getGradientNormStats() const {
-    return std::make_tuple(state_->logGradientNormAvg, state_->logGradientNormVar);
+    return std::make_tuple(state_->gradientNormAvg, state_->gradientNormVar);
   }
 
   Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
@@ -319,11 +319,11 @@ public:
     state_->newUpdate(numReadBatches);
 
     if(gradientNorm) {
-      size_t window = std::min(100ul, state_->batches); // @TODO: make window configurable
-      float alpha = 2.f / (window + 1); 
-      float delta = std::log(gradientNorm) - state_->logGradientNormAvg;
-      state_->logGradientNormAvg = state_->logGradientNormAvg + alpha * delta;
-      state_->logGradientNormVar = (1.0 - alpha) * (state_->logGradientNormVar + alpha * delta * delta);
+      size_t range = std::min(100ul, state_->batches); // @TODO: make window configurable
+      float alpha = 2.f / (range + 1); 
+      float delta = gradientNorm - state_->gradientNormAvg;
+      state_->gradientNormAvg = state_->gradientNormAvg + alpha * delta;
+      state_->gradientNormVar = (1.0 - alpha) * (state_->gradientNormVar + alpha * delta * delta);
     }
 
     // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
@@ -349,7 +349,7 @@ public:
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
             timer_.elapsed(),
             state_->wordsDisp / timer_.elapsed(),
-            gradientNorm, // @TODO: think of accumulation
+            state_->gradientNormAvg,
             state_->eta);
       } else {
         LOG(info,
@@ -359,7 +359,7 @@ public:
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
             timer_.elapsed(),
-            gradientNorm, // @TODO: think of accumulation
+            state_->gradientNormAvg,
             state_->wordsDisp / timer_.elapsed());
       }
 
@@ -400,8 +400,8 @@ public:
       state_->samplesDisp  = 0;
       state_->wordsDisp    = 0;
 
-      state_->logGradientNormAvg = 0;
-      state_->logGradientNormVar = 0;
+      state_->gradientNormAvg = 0;
+      state_->gradientNormVar = 0;
     }
 
     if(options_->get<bool>("valid-reset-stalled")) {

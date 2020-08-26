@@ -12,21 +12,28 @@
 namespace marian {
 
 // With -Ofast enabled gcc will fail to identify NaN or Inf. Safeguard here.
-static bool isFinite(float x) {
+static inline bool isFinite(float x) {
 #ifdef __GNUC__ 
   ABORT_IF(std::isfinite(0.f / 0.f), "NaN detection unreliable. Disable -Ofast compiler option.");
 #endif
   return std::isfinite(x);
 }
 
+#ifdef _MSC_VER // MS Visual studio insists that this funtion is not being referenced although is being referenced by name as an argument
+#pragma warning(push)
+#pragma warning(disable: 4505) //Unreferenced local function has been removed
+#endif
 // to accumulate gradients norms, first undo sqrt, sum, re-apply sqrt.
 // if one value is nonfinite propagate Nan into the reduction.
-static void accNanOrNorm(float& lhs, float rhs) {
+static inline void accNanOrNorm(float& lhs, float rhs) {
   if(isFinite(lhs) && isFinite(rhs)) {
     lhs = sqrtf(lhs * lhs + rhs * rhs); 
   } else
     lhs = std::numeric_limits<float>::quiet_NaN();
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 /**
  *  Base class for managing the training process across one, multiple gpus,

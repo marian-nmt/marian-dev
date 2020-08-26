@@ -502,7 +502,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
 }
 
 void GraphGroup::setTypicalTrgBatchWords(size_t typicalTrgBatchWords) { // needed for dynamic MB scaling
-  typicalTrgBatchWords_ = typicalTrgBatchWords;
+  typicalTrgBatchWords_ = (double)typicalTrgBatchWords;
 }
 
 double GraphGroup::getTypicalTrgBatchWords() {

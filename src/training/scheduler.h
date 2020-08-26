@@ -327,15 +327,15 @@ public:
 
     if(gradientNorm) {
       size_t range = std::min(gradientNormAvgWindow_, state_->batches);
-      float alpha = 2.f / (range + 1); 
+      float alpha = 2.f / (float)(range + 1); 
       
       float delta = gradientNorm - state_->gradientNormAvg;
       state_->gradientNormAvg = state_->gradientNormAvg + alpha * delta;
-      state_->gradientNormVar = (1.0 - alpha) * (state_->gradientNormVar + alpha * delta * delta);
+      state_->gradientNormVar = (1.0f - alpha) * (state_->gradientNormVar + alpha * delta * delta);
 
       float logDelta = std::log(gradientNorm) - state_->logGradientNormAvg;
       state_->logGradientNormAvg = state_->logGradientNormAvg + alpha * logDelta;
-      state_->logGradientNormVar = (1.0 - alpha) * (state_->logGradientNormVar + alpha * logDelta * logDelta);
+      state_->logGradientNormVar = (1.0f - alpha) * (state_->logGradientNormVar + alpha * logDelta * logDelta);
     }
 
     // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level

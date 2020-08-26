@@ -13,7 +13,9 @@ namespace marian {
 
 // With -Ofast enabled gcc will fail to identify NaN or Inf. Safeguard here.
 static bool isFinite(float x) {
+#ifdef __GNUC__ 
   ABORT_IF(std::isfinite(0.f / 0.f), "NaN detection unreliable. Disable -Ofast compiler option.");
+#endif
   return std::isfinite(x);
 }
 

@@ -18,7 +18,6 @@ bool getSignalFlag(const int sig) {
 void requestGracefulExit(int sig) {
   setSignalFlag(sig);         // keep track of triggering signal
   gracefulExitRequested_ = 1; // set flag to exit gracefully
-  LOG(debug, "Graceful exit requested via signal {}.", sig);
 }
 
 bool gracefulExitRequested() {

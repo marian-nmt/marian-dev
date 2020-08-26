@@ -100,7 +100,7 @@ int main() {
       // Train classifier and update weights
       graph->forward();
       graph->backward();
-      opt->update(graph);
+      opt->update(graph, /*mbSize=*/0);
 
       if(epoch % 10 == 0)
         std::cout << "Epoch: " << epoch << " Cost: " << cost->scalar()

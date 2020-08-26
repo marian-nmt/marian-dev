@@ -66,12 +66,12 @@ float OptimizerBase::update(Tensor params, Tensor grads, size_t mbSize, float co
   if(!clipper_) {
   #if 1 // @BUGBUG: when we changed to ce-sum we did not adapt gradient clipping. The norm now depends on mini-batch size, that is wrong. Keeping this for backcompat with regression tests. To be removed as soon as possible.
     float clipNorm = options_->get<float>("clip-norm", 0.f); // this is different than the dynamic scaling as it is an absolute upper limit
-    if(clipNorm > 0) {
+    if(clipNorm > 0.f) {
       clipper_ = New<NormClipper>(clipNorm);
     } else 
   #endif
     {
-      clipper_ = New<ReportNormClipper>(0); // don't clip, just report
+      clipper_ = New<ReportNormClipper>(0.f); // don't clip, just report
     }
     
     // This is a bit magical. 
@@ -110,7 +110,7 @@ void OptimizerBase::swapWithSmoothed(Ptr<ExpressionGraph> graph, size_t i, size_
   // since we are here that means we are smoothing parameters, so let's get to work
 
   // Get the shard size. This needs to be divisible by n, right?
-  size_t size = std::ceil(graph->params()->vals()->size() / (float)n);
+  size_t size = (size_t)std::ceil(graph->params()->vals()->size() / (float)n);
 
   ABORT_IF(size != avg_->size(), "Graph shard size has to match smoothed parameter size ({} != {})", size, avg_->size());
 
@@ -279,7 +279,7 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   Element(_1 += (_2 * _2), gt_, grads);
 
   // make sure eps_ does not drop below smallest (positive) value, add some reserve by multiplying with 2
-  eps_ = std::max(NumericLimits<double>(params->type()).min * 2.f, (double)eps_);
+  eps_ = (float)std::max(NumericLimits<double>(params->type()).min * 2.f, (double)eps_);
   Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, params, gt_, grads);
 }
 
@@ -319,7 +319,7 @@ void Adagrad::load(std::vector<io::Item>& items,
 
         size_t size = end - begin; // this is size in bytes now
         int elements = (int)size / (int)sizeOf(iGt.type);
-        opt->alloc_->reserveExact({size});
+        opt->alloc_->reserveExact(size);
         opt->alloc_->allocate(opt->gt_, {1, elements}, iGt.type);
       }
 
@@ -506,7 +506,7 @@ void Adam::save(std::vector<io::Item>& items,
   items.emplace_back(std::move(vt));
 
   std::vector<double> vDenoms{denom1_, denom2_};
-  items.emplace_back(std::move(io::fromVector(vDenoms, "adam_denoms")));
+  items.emplace_back(io::fromVector(vDenoms, "adam_denoms"));
 }
 
 void Adam::resetStats() {

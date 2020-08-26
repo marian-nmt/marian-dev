@@ -13,6 +13,8 @@ protected:
   Ptr<Allocator> allocator_;
 
 public:
+  virtual ~Clipper() {}
+
   virtual float clip(Tensor, float /*costScalingFactor*/ = 1.f) = 0;
   virtual void setAllocator(Ptr<Allocator> allocator) { allocator_ = allocator; }
 };
@@ -20,6 +22,7 @@ public:
 class ElementwiseClipper : public Clipper {
 public:
   ElementwiseClipper(float c = 10.0) : c_(c) {}
+  ~ElementwiseClipper() override {}
 
   float clip(Tensor t, float costScalingFactor = 1.f) override;
 
@@ -30,6 +33,7 @@ private:
 class NormClipper : public Clipper {
 public:
   NormClipper(float c = 1.0) : c_(c) {}
+  ~NormClipper() override {}
 
   float clip(Tensor t, float costScalingFactor = 1.f) override;
 
@@ -41,6 +45,7 @@ private:
 class ReportNormClipper : public Clipper {
 public:
   ReportNormClipper(float /*c = 1.0*/)  {}
+  ~ReportNormClipper() override {}
 
   float clip(Tensor t, float costScalingFactor = 1.f) override;
 };

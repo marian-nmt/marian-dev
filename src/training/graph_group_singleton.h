@@ -57,7 +57,7 @@ public:
     GraphGroup::save(isFinal, distParams, gatherOpt, /*isMainProcess=*/true);
   }
 
-  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
+  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) override {
     return GraphGroup::collectStats(graphs_[0], models_[0], vocabs);
   }
 

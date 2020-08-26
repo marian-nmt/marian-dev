@@ -38,7 +38,7 @@ public:
   void load() override;
   void save(bool final = false) override;
 
-  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>&);
+  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>&) override;
   void finalize() override;
 
   // @TODO: consider to make this a virtual as well? Currently it is a template dispatch

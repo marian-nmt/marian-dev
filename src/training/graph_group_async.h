@@ -57,7 +57,7 @@ public:
   void save(bool final = false) override;
 
   // @TODO: give it a fake batch generator which own vocabs instead of passing vocabs
-  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) {
+  Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) override {
     return GraphGroup::collectStats(graphs_[0], models_[0], vocabs);
   }
 

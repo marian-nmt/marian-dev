@@ -146,6 +146,8 @@ public:
                                              const std::vector<Ptr<Vocab>>& vocabs,
                                              double multiplier = 1.);
 
+  virtual Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) = 0;
+
   void setTypicalTrgBatchWords(size_t typicalTrgBatchWords);
   double getTypicalTrgBatchWords();
   void updateAverageTrgBatchWords(size_t trgBatchWords);

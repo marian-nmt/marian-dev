@@ -1,4 +1,5 @@
 #include "tensors/gpu/integer_tools.h"
+#include "tensors/gpu/cuda_helpers.h"
 #include "cutlass/gemm/device/gemm.h"
 #include "cutlass/cutlass.h"
 
@@ -9,24 +10,24 @@ namespace gpu {
 namespace integer {
 
     /**************************CUTLASS code begins here***********************/
-    inline std::string cutlassGetErrorString(cutlass::Status& status) {
+    inline const char * cutlassGetErrorString(cutlass::Status& status) {
         switch (status) {
             case cutlass::Status::kSuccess:
-            return "Operation was successful.";
+                return "Operation was successful.";
             case cutlass::Status::kErrorMisalignedOperand:
-            return "Operands fail alignment requirements.";
+                return "Operands fail alignment requirements.";
             case cutlass::Status::kErrorInvalidLayout:
-            return "Layout fails alignment requirement.";
+                return "Layout fails alignment requirement.";
             case cutlass::Status::kErrorInvalidProblem:
-            return "Specified problem size is not supported by operator.";
+                return "Specified problem size is not supported by operator.";
             case cutlass::Status::kErrorNotSupported:
-            return "Operation is not supported on current device.";
+                return "Operation is not supported on current device.";
             case cutlass::Status::kErrorWorkspaceNull:
-            return "The given workspace is null when it is required to be non-null";
+                return "The given workspace is null when it is required to be non-null";
             case cutlass::Status::kErrorInternal:
-            return "An error within CUTLASS occurred.";
+                return "An error within CUTLASS occurred.";
             case cutlass::Status::kInvalid:
-            return "Status is unspecified.";
+                return "Status is unspecified.";
         }
         return "Unknown CUTLASS status. Update this section of the code.";
     }
@@ -173,6 +174,7 @@ namespace integer {
                 C,
                 ldc,
                 tensorCore));
+            CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
         }
     /**************************CUTLASS code ends here***********************/
 

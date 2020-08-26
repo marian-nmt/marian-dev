@@ -82,8 +82,7 @@ struct PrepareNodeOp : public NaryNodeOp {
     set_name(input->name() + "_quantized8bit");
     if (isA_) {
         setMemoize(false);
-    } else {
-      useTensorcores_ = false; // We only need the special case for the activations, as they need to be quantized AND row-major'd
+        useTensorcores_ = false; // We only need the special case for the Parameters, as they need to be quantized AND row-major'd
     }
   }
 
@@ -96,7 +95,7 @@ struct PrepareNodeOp : public NaryNodeOp {
         if (!isA_) {
           //std::cerr << "Preparing: " << name() << std::endl;
         }
-        if (useTensorcores_ && isA_) {
+        if (useTensorcores_ && !isA_) {
           quantizeToRowMajorWrapper(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
         } else {
           quantize(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
@@ -177,6 +176,10 @@ public:
 
       if(transB_)
         ldc = B->shape().elements() / B->shape().back();
+
+      if(useTensorcores_) {
+         ldb = k;//rows(B);
+      }
 
       cutlass_igemm_dispatcher(transB_, transA_,
                         n,
@@ -283,6 +286,10 @@ public:
       if(transB_)
         ldc = B->shape().elements() / B->shape().back();
 
+      if(useTensorcores_) {
+        ldb = k;//rows(B);
+      }
+
       cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
                         n,
                         m,
@@ -380,7 +387,9 @@ public:
 
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
   bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm() && !transA && !transB; // @TODO no transpose when using tensor cores for now
-  useTensorcores;
+  if (!useTensorcores) {
+    //std::cerr << "TensorCores used: " << A->name() << " " << B->name() << std::endl;
+  }
   // Quantize to 8bits:
   std::string Bname = B->name();
   Expr AQuantMult = nullptr;
@@ -392,8 +401,9 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   }
   Expr BQuantMult = Expression<QuantMultNodeOp<Parameter> >(B, Bname);
 
-  Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult, useTensorcores);
-  Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
+  Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
+  //Expr AQuantizedNormal = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
+  Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult, useTensorcores);
 
 
   //Perform multiplication KNOWING that A and B are swapped

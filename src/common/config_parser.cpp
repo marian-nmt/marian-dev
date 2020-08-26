@@ -324,7 +324,6 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         "Dropout for transformer attention (0 = no dropout)");
     cli.add<float>("--transformer-dropout-ffn",
         "Dropout for transformer filter (0 = no dropout)");
-
   }
   cli.switchGroup(previous_group);
   // clang-format on
@@ -338,7 +337,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // training status upon SIGINFO.)
   cli.add<std::string>("--sigterm",
                        "What to do with SIGTERM: 'graceful' => save and exit (default); "
-                       "'immediate' => exit immediately.", "graceful");
+                       "'immediate' => exit immediately.", 
+                       "graceful");
 
   cli.switchGroup("Training options");
   // clang-format off

@@ -15,15 +15,22 @@ jobs:
       matrix:
         include:
           # Ubuntu 20.04 supports CUDA 11+
+          - os: ubuntu-20.04
+            boost: false    # ubuntu-20.04 image does not have Boost pre-installed yet
+            cuda: "11.0"
+            gcc: 9
           # Ubuntu 18.04 supports CUDA 10.1+
           - os: ubuntu-18.04
+            boost: true
             cuda: "10.2"
             gcc: 8
           # Ubuntu 16.04 supports CUDA 8+
           - os: ubuntu-16.04
+            boost: true
             cuda: "10.2"
             gcc: 7
           - os: ubuntu-16.04
+            boost: true
             cuda: 9.2
             gcc: 7
 
@@ -58,7 +65,7 @@ jobs:
         cd build
         CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }} \
         cmake .. \
-          -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DCOMPILE_EXAMPLES=on -DCOMPILE_SERVER=on -DCOMPILE_TESTS=on \
+          -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DCOMPILE_EXAMPLES=on -DCOMPILE_SERVER=${{ matrix.boost }} -DCOMPILE_TESTS=on \
           -DUSE_FBGEMM=on -DUSE_SENTENCEPIECE=on \
           -DBOOST_ROOT=$BOOST_ROOT_1_69_0 -DBOOST_INCLUDEDIR=$BOOST_ROOT_1_69_0/include -DBOOST_LIBRARYDIR=$BOOST_ROOT_1_69_0/lib \
           -DBoost_ARCHITECTURE=-x64 \

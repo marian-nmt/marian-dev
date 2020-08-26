@@ -10,7 +10,7 @@
 #include "translator/scorers.h"
 #include "data/alignment.h"
 #include "data/vocab_base.h"
-#include "tensors/cpu/fbgemm/expression_graph_packable.h"
+#include "tensors/cpu/expression_graph_packable.h"
 
 #if USE_FBGEMM
 #include "fbgemm/Utils.h"
@@ -255,7 +255,8 @@ bool convertModel(std::string inputFile, std::string outputFile, int32_t targetP
 
   auto graph = New<ExpressionGraphPackable>();
   graph->setDevice(CPU0);
-  graph->getBackend()->setOptimized(false);
+  graph->getBackend()->setInt16(false);
+  graph->getBackend()->setInt8(false);
 
   graph->load(inputFile);
   graph->forward();

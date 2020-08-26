@@ -20,13 +20,14 @@ GraphGroup::GraphGroup(Ptr<Options> options, const std::vector<DeviceId> devices
     
 
     LOG_ONCE(info,
-             "Training with cost scaling - factor: 2^{} = {}, frequency: {}, multiplier: {}, tolerance: {}, range: {}",
+             "Training with cost scaling - factor: 2^{} = {}, frequency: {}, multiplier: {}, tolerance: {}, range: {}, minimum: {}",
              costExponent,
              costScaleFactor_,
              costScaleFreq_,
              costScaleMultiplier_,
              costScaleNanTolerance_,
-             costScaleNanRange_);
+             costScaleNanRange_,
+             costScaleFactorMinimum_);
   }
 
   if(options_->hasAndNotEmpty("dynamic-gradient-scaling")) {

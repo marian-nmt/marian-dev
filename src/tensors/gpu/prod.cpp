@@ -421,7 +421,7 @@ static cusparseSgemmiEx(cusparseHandle_t handle, int m,
   float *C, int ldc)
 {
 #if CUDA_VERSION >= 11000
-  ABORT("cusparseSgemmi is deprecated in CUDA VERSION >= 11.");
+  ABORT("cusparseSgemmi is not available in CUDA VERSION >= 11.");
 #else
   const int nMax = 65535; // max. number of columns allowed by cuSparse 10 implementation
   for (int j0 = 0; j0 < n; j0 += 65535) { // loop over column slices, j0 = index of first column
@@ -524,6 +524,7 @@ void CSRProd(marian::Tensor C,
 
     if (buffer)
       allocator->free(buffer);
+    ABORT("This code is untested. Please remove this ABORT once tests exist and pass.");
 #else
     CUSPARSE_CHECK(cusparseScsr2csc(cusparseHandle,
         /*m=*/ rowsS, // number of rows of matrix

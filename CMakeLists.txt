@@ -263,7 +263,6 @@ if(CUDA_FOUND)
     option(COMPILE_CUDA_SM80 "Compile GPU version with SM80 support" ON)
   endif()
 
-
   if(COMPILE_CUDA_SM35)
     LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35;)                             # Tesla K40 and above
   endif(COMPILE_CUDA_SM35)

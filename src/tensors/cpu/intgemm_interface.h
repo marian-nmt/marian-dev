@@ -215,8 +215,8 @@ struct QuantMultNodeOp : public UnaryNodeOp {
    * Otherwise, we have the 8bit case, in which case we use 127/MaxAbsolute(input)
    */
 
-#pragma warning( push )
-#pragma warning( disable : C4127 ) //VSCODE thinks line 222 is constant conditional expression, which it is only after the template resolution, not before.
+#pragma warning(push)
+#pragma warning(disable: 4127) //VSCODE thinks line 222 is constant conditional expression, which it is only after the template resolution, not before.
   NodeOps forwardOps() override {
     return {NodeOp(
       if (vtype == Type::int16) {
@@ -232,7 +232,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
       }
     )};
   }
-#pragma warning( pop )
+#pragma warning(pop)
   NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp(0)};

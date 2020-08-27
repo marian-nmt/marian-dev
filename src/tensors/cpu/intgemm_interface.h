@@ -195,7 +195,6 @@ private:
  * 
  * the template argument controls whether we're doing 16bit integers or 8bit integers. It can be Type::int8 or Type::int16
  */
-
 template<Type vtype>
 struct QuantMultNodeOp : public UnaryNodeOp {
   bool isA_;
@@ -216,6 +215,8 @@ struct QuantMultNodeOp : public UnaryNodeOp {
    * Otherwise, we have the 8bit case, in which case we use 127/MaxAbsolute(input)
    */
 
+#pragma warning( push )
+#pragma warning( disable : C4127 ) //VSCODE thinks line 222 is constant conditional expression, which it is only after the template resolution, not before.
   NodeOps forwardOps() override {
     return {NodeOp(
       if (vtype == Type::int16) {
@@ -231,7 +232,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
       }
     )};
   }
-
+#pragma warning( pop )
   NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp(0)};

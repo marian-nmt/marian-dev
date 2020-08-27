@@ -636,7 +636,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
-  addSuboptionsIntgemm(cli_);
+  addSuboptionsIntgemm(cli);
 
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
@@ -701,6 +701,7 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
   cli.add<bool>("--optimize",
       "Optimize speed aggressively sacrificing memory or precision");
@@ -740,7 +741,7 @@ void ConfigParser::addOptionsEmbedding(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
-  addSuboptionsIntgemm(cli_);
+  addSuboptionsIntgemm(cli);
 
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");

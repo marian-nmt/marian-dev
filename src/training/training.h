@@ -113,8 +113,7 @@ public:
 };
 
 template <class ModelWrapper>
-void Train<ModelWrapper>::installCustomSignalHandlers()
-{
+void Train<ModelWrapper>::installCustomSignalHandlers(){
   const std::string sigTermAction = options_->get<std::string>("sigterm");
   if (sigTermAction == "graceful") {
     LOG(debug, "Enabling graceful shutdown for SIGTERM.");

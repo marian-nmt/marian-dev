@@ -24,16 +24,16 @@ namespace marian {
 
 
 /// Request graceful exit (signal handler)
-void requestGracefulExit(const int sig);
+void requestGracefulExit(int sig);
 
 /// Check if graceful exit was requested.
 bool gracefulExitRequested();
 
 /// General purpose signal handler that simply sets a flag when a signal is received.
 //  (only for SIGNAL No. < 32).
-void setSignalFlag(const int sig);  // custom handler (set flag) for sig
+void setSignalFlag(int sig);  // custom handler (set flag) for sig
 
 /// Check if a setSignalFlag was triggered for this signal
-bool getSignalFlag(const int sig);
+bool getSignalFlag(int sig);
 
 } // End of namespace marian

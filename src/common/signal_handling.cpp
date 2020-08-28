@@ -4,22 +4,18 @@
 // The simplest (and recommended) way to handle signals is to simply set a flag
 // in the signal handler and check that flag later.
 //
-// We provide setSignalFlag as the most generic signal handler. This handler uses a 
-// single sig_atomic_t as a bit field. On Linux, sig_atomic_t is equivalent to a signed int, 
+// We provide setSignalFlag as the most generic signal handler. This handler uses a
+// single sig_atomic_t as a bit field. On Linux, sig_atomic_t is equivalent to a signed int,
 // theoretically providing 32 binary flags; in practice, most likely signals for which we may
 // want to install signal handlers are
 // - SIGTERM (15): which by default signals the request for a graceful shutdown
-//   (see also: https://qph.fs.quoracdn.net/main-qimg-1180ef2465c309928b02481f02580c6a)
 // - SIGUSR1 (10): intended for custom use, default action in Linux is termination
 // - SIGUSR2 (12): intended for custom use, default action in Linux is termination
 // - SIGINT (2): interrupt from the console
 // Just to be safe, we accommodate signals up to signal No. 30.
 
-// In addition, we also provide requestGracefulExit() and gracefulExitRequested() as a signal
-// handler/checker for graceful shutdown requests (what exactly that means, depends on the 
-// application; for training, it means save-and-exit, for a server, it might mean block new 
-// requests, serve bending requests, then exit) that can be installed for arbitrary signals
-// (SIGUSR1).
+// In addition, we also provide requestSaveAndExit() and saveAndExit() as a signal
+// handler/checker for graceful shutdown requests during training.
 constexpr int maxSignalForSetSignalFlag{30};
 
 // Make sure sig_atomic_t is large enough as a bit field for our purposes.
@@ -29,7 +25,7 @@ static_assert(SIG_ATOMIC_MAX > (1U<<maxSignalForSetSignalFlag),
 
 namespace marian{
 volatile std::sig_atomic_t sigflags_{0};
-volatile std::sig_atomic_t gracefulExitRequested_{0};
+volatile std::sig_atomic_t saveAndExit_{0};
 
 void setSignalFlag(int sig) {
   // sigflags_ is an int type serving as a bit filed for flags corresponding
@@ -50,13 +46,13 @@ bool getSignalFlag(const int sig) {
   return (sigflags_ & (1<<sig)) != 0;
 }
 
-void requestGracefulExit(int sig) {
+void requestSaveAndExit(int sig) {
   setSignalFlag(sig);         // keep track of triggering signal
-  gracefulExitRequested_ = 1; // set flag to exit gracefully
+  saveAndExit_ = 1; // set flag to exit gracefully
 }
 
-bool gracefulExitRequested() {
-  return gracefulExitRequested_ == 1;
+bool saveAndExit() {
+  return saveAndExit_ == 1;
 }
 
 }

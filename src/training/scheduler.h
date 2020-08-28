@@ -155,7 +155,7 @@ public:
   }
 
   bool keepGoing() {
-    if(gracefulExitRequested()) // via SIGTERM
+    if(saveAndExit()) // via SIGTERM
       return false;
 
     // stop if it reached the maximum number of epochs
@@ -189,7 +189,7 @@ public:
 
   void started() { LOG(info, "Training started"); }
   void finished() {
-    if (gracefulExitRequested())
+    if (saveAndExit())
       LOG(info, "Training interrupted (via signal).");
     else
       LOG(info, "Training finished");
@@ -222,7 +222,7 @@ public:
     // Do not validate if already validated (for instance, after the model is loaded)
     // or if validation is scheduled for another update, or when a graceful shutdown
     // was requested.
-    if(gracefulExitRequested()
+    if(saveAndExit()
        || state_->validated // already validated (in resumed training, for example)
        || (!state_->enteredNewPeriodOf(options_->get<std::string>("valid-freq")) && !isFinal)) // not now
       return;

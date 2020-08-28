@@ -117,7 +117,7 @@ void Train<ModelWrapper>::installCustomSignalHandlers(){
   const std::string sigTermAction = options_->get<std::string>("sigterm");
   if (sigTermAction == "save-and-exit") {
     LOG(debug, "Will save before exiting upon SIGTERM.");
-    signal(SIGTERM, requestGracefulExit);
+    signal(SIGTERM, requestSaveAndExit);
   }
   else if (sigTermAction != "exit-immediately")
     ABORT("Unrecognized value '{}' for --sigterm", sigTermAction);

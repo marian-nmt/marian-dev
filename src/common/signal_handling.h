@@ -24,10 +24,10 @@ namespace marian {
 
 
 /// Request graceful exit (signal handler)
-void requestGracefulExit(int sig);
+void requestSaveAndExit(int sig);
 
 /// Check if graceful exit was requested.
-bool gracefulExitRequested();
+bool saveAndExit();
 
 /// General purpose signal handler that simply sets a flag when a signal is received.
 //  (only for SIGNAL No. < 32).

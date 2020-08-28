@@ -52,8 +52,7 @@ int main(int argc, char **argv) {
 
   // Start server thread
   std::thread serverThread([&server]() {
-    LOG(info, "Server is listening on port {}", server.config.port);
-    server.start();
+    server.start([](unsigned short port) { LOG(info, "Server is listening on port {}", port); });
   });
 
   serverThread.join();

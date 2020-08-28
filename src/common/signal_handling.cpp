@@ -4,16 +4,22 @@
 // The simplest (and recommended) way to handle signals is to simply set a flag
 // in the signal handler and check that flag later.
 //
-// We provide setSignalFlag as the most generic signal handler.
-// This handler which uses a single sig_atomic_t as a bit field.
-// On Linux, sig_atomic_t is equivalent to a signed int, theoretically
-// providing 32 binary flags; in practice, most likely signals for which we may
+// We provide setSignalFlag as the most generic signal handler. This handler uses a 
+// single sig_atomic_t as a bit field. On Linux, sig_atomic_t is equivalent to a signed int, 
+// theoretically providing 32 binary flags; in practice, most likely signals for which we may
 // want to install signal handlers are
-// - SIGTERM (15): which by default signals the request for a graceful exit
+// - SIGTERM (15): which by default signals the request for a graceful shutdown
 //   (see also: https://qph.fs.quoracdn.net/main-qimg-1180ef2465c309928b02481f02580c6a)
-// - SIGUSR1,SIGUSR2 (10,12): signals specifically reserved for custom use
+// - SIGUSR1 (10): intended for custom use, default action in Linux is termination
+// - SIGUSR2 (12): intended for custom use, default action in Linux is termination
 // - SIGINT (2): interrupt from the console
 // Just to be safe, we accommodate signals up to signal No. 30.
+
+// In addition, we also provide requestGracefulExit() and gracefulExitRequested() as a signal
+// handler/checker for graceful shutdown requests (what exactly that means, depends on the 
+// application; for training, it means save-and-exit, for a server, it might mean block new 
+// requests, serve bending requests, then exit) that can be installed for arbitrary signals
+// (SIGUSR1).
 constexpr int maxSignalForSetSignalFlag{30};
 
 // Make sure sig_atomic_t is large enough as a bit field for our purposes.
@@ -40,9 +46,8 @@ bool getSignalFlag(const int sig) {
   // Do bitwise AND between sigflags_ and an int value that has exactly one bit set that
   // corresponds to the signal in question. If the bit is set (see setSignalFlag above),
   // the bitwise AND will return a non-zero integer, if it is not set, the result will
-  // be zero. Implicit type conversion from int to bool will convert this into a boolean
-  // value: true if the signal flag has been set, false otherwise.
-  return sigflags_ & (1<<sig);
+  // be zero.
+  return (sigflags_ & (1<<sig)) != 0;
 }
 
 void requestGracefulExit(int sig) {

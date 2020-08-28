@@ -32,7 +32,9 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int32_t *C,
         int ldc,
         bool tensorCore = false);
-    //void gpuPrinterDispatch(float * mem, size_t idx);
+    void gpuPrinterDispatch(float * mem, size_t idx);
+    void gpuPrinterDispatch(int32_t * mem, size_t idx);
+    void gpuPrinterDispatch(int8_t * mem, size_t idx);
 #else
     void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu) {
         handle;

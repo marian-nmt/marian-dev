@@ -84,6 +84,9 @@ struct PrepareNodeOp : public NaryNodeOp {
         setMemoize(false);
         useTensorcores_ = false; // We only need the special case for the Parameters, as they need to be quantized AND row-major'd
     }
+    if (useTensorcores) {
+      set_name(input->name() + "_RowM");
+    }
   }
 
   NodeOps forwardOps() override {
@@ -92,9 +95,6 @@ struct PrepareNodeOp : public NaryNodeOp {
         const float * input = child(0)->val()->data();
         const float * quantMultAddr = child(1)->val()->data();
 
-        if (!isA_) {
-          //std::cerr << "Preparing: " << name() << std::endl;
-        }
         if (useTensorcores_ && !isA_) {
           quantizeToRowMajorWrapper(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
         } else {
@@ -178,7 +178,7 @@ public:
         ldc = B->shape().elements() / B->shape().back();
 
       if(useTensorcores_) {
-         ldb = k;//rows(B);
+        ldb = k;
       }
 
       cutlass_igemm_dispatcher(transB_, transA_,
@@ -286,10 +286,38 @@ public:
       if(transB_)
         ldc = B->shape().elements() / B->shape().back();
 
-      if(useTensorcores_) {
-        ldb = k;//rows(B);
-      }
+      //if (!useTensorcores_) {
+      //  cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
+      //              n,
+      //              m,
+      //              k,
+      //              alpha,
+      //              B->data<int8_t>()/*child(4)->val()->data<int8_t>()*/,
+      //              ldb,
+      //              A->data<int8_t>(),
+      //              lda,
+      //              0.0f,
+       //             C->data<int32_t>(),
+      //              ldc,
+      //              false);
+/*
+        child(0)->val()->getBackend()->synchronize();
+        std::cerr << "B: " << child(4)->name() << " 0 and 1:" << std::endl;
+        gpuPrinterDispatch(child(4)->val()->data<int8_t>(), 0);
+        child(0)->val()->getBackend()->synchronize();
+        gpuPrinterDispatch(child(4)->val()->data<int8_t>(), 1);
+        child(0)->val()->getBackend()->synchronize();
 
+        std::cerr << "Non-tensorcores: 0 and -1:" << std::endl;
+        gpuPrinterDispatch(C->data<int32_t>(), 0);
+        child(0)->val()->getBackend()->synchronize();
+        gpuPrinterDispatch(C->data<int32_t>(), C->shape().elements() - 1);
+        child(0)->val()->getBackend()->synchronize();*/
+      //}
+
+      //if(useTensorcores_) {
+        //ldb = rows(B);
+        //std::cerr << "Using tensorcores: " << child(1)->name() << " m: " << m << " n " << n << " k " << k << std::endl;
       cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
                         n,
                         m,
@@ -303,39 +331,29 @@ public:
                         C->data<int32_t>(),
                         ldc,
                         useTensorcores_);
+                        /*
+        child(0)->val()->getBackend()->synchronize();
+        std::cerr << "B: " << child(1)->name() << " 0 and 1:" << std::endl;
+        gpuPrinterDispatch(B->data<int8_t>(), 0);
+        child(0)->val()->getBackend()->synchronize();
+        gpuPrinterDispatch(B->data<int8_t>(), 1);
+        child(0)->val()->getBackend()->synchronize();
+
+        std::cerr << "Tensorcores: 0 and -1:" << std::endl;
+        gpuPrinterDispatch(C->data<int32_t>(), 0);
+        child(0)->val()->getBackend()->synchronize();
+        gpuPrinterDispatch(C->data<int32_t>(), C->shape().elements() - 1);
+        child(0)->val()->getBackend()->synchronize();
+        //exit(1);*/
+      //}
+
       //Now unquantize... Reusing the same Tensor
       int rowsC = rows(C);
       int colsC = cols(C);
-
+      val_->getBackend()->synchronize();
       dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, quantMultA->data<float>(), quantMultB->data<float>());
       //Synchronize
       val_->getBackend()->synchronize();
-      //std::cerr << "Af4: " << C->data<float>()[0] << std::endl;
-
-      /*
-      //DEEEEBUG
-      cublasOperation_t opA = transA_ ? CUBLAS_OP_T : CUBLAS_OP_N;
-      cublasOperation_t opB = transB_ ? CUBLAS_OP_T : CUBLAS_OP_N;
-
-      auto backend = std::static_pointer_cast<gpu::Backend>(C->getBackend());
-      auto cublasHandle = backend->getCublasHandle();
-      //auto computeCapability = backend->getCudaComputeCapability();
-      gpuPrinterDispatch(C->data<float>(), 0);
-      val_->getBackend()->synchronize();
-      std::cerr << "True" << std::endl;
-      //setTensorMode(cublasHandle);
-      float beta = 0.0f;
-      marian::hacky8bit::cublas8bitGemmmEx(cublasHandle,
-        opB, 
-        opA,
-        n, m, k,
-        &alpha,
-        Bfloat->data<float>(), ldb,
-        Afloat->data<float>(), lda,
-        &beta,
-        C->data<float>(), ldc,
-        true);
-        gpuPrinterDispatch(C->data<float>(), 0); */
     )};
   }
 
@@ -404,6 +422,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
   //Expr AQuantizedNormal = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
   Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult, useTensorcores);
+  Expr BQuantizedNormal = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
 
 
   //Perform multiplication KNOWING that A and B are swapped
@@ -411,7 +430,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   if (bias) {
     int rows = A->shape().elements() / A->shape()[-1];
     Expr ones = A->graph()->ones({ rows, 1 });
-    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, AQuantMult, BQuantMult, ones, transA, transB, scale, useTensorcores);
+    return Expression<AffineNodeOp>(AQuantized, BQuantizedNormal, bias, AQuantMult, BQuantMult, ones, transA, transB, scale, false);
   } else {
     return Expression<DotNodeOp>(AQuantized, BQuantized, AQuantMult, BQuantMult, transA, transB, scale, useTensorcores);
   }

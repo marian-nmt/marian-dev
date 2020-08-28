@@ -174,8 +174,8 @@ namespace integer {
                 C,
                 ldc,
                 tensorCore));
-            CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
-        }
+        CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
+    }
     /**************************CUTLASS code ends here***********************/
 
     __global__ void findMaxMinAndQuantMult(const float * input_gpu, int idxMax, int idxMin, float * output) {
@@ -235,21 +235,12 @@ namespace integer {
 
     void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
         // Make sure we're not running out of threads here.
-        int threads = rows;
-        int blocks = cols;
 
-        if (threads > 512) {
-            std::swap(threads, blocks);
-            if (threads > 512) {
-                blocks = (int)ceil((threads*blocks)/512);
-                threads = 512;
-            }
-        }
-
-        dim3 dimBlock(blocks, blocks);
+        dim3 dimBlock(32, 32);
         dim3 dimGrid(cols / dimBlock.x, rows / dimBlock.y);
 
         quantizeToRowMajor<<<dimGrid, dimBlock>>>(input, output, rows, cols, quantMultAddr);
+        CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
     }
 
     __global__ void dequantize(const int32_t * input, float * output, size_t items, const float * quantMultAaddr, const float * quantMultBaddr) {
@@ -281,13 +272,29 @@ namespace integer {
         dequantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAaddr, quantMultBaddr);
     }
 
-    //__global__ void gpuPrinter(float * mem, size_t idx) {
-    //    printf("Value at %d idx is %f\n", idx, mem[idx]);
-    //}
+    __global__ void gpuPrinter(float * mem, size_t idx) {
+        printf("Value at %d idx is %f\n", (int)idx, mem[idx]);
+    }
 
-    //void gpuPrinterDispatch(float * mem, size_t idx) {
-    //    gpuPrinter<<<1,1>>>(mem, idx);
-    //}
+    void gpuPrinterDispatch(float * mem, size_t idx) {
+        gpuPrinter<<<1,1>>>(mem, idx);
+    }
+
+    __global__ void gpuPrinter(int32_t * mem, size_t idx) {
+        printf("Value at %d idx is %d\n", (int)idx, (int)mem[idx]);
+    }
+
+    void gpuPrinterDispatch(int32_t * mem, size_t idx) {
+        gpuPrinter<<<1,1>>>(mem, idx);
+    }
+
+    __global__ void gpuPrinter(int8_t * mem, size_t idx) {
+        printf("Value at %d idx is %d\n", (int)idx, (int)mem[idx]);
+    }
+
+    void gpuPrinterDispatch(int8_t * mem, size_t idx) {
+        gpuPrinter<<<1,1>>>(mem, idx);
+    }
 
 } // namespace integer
 } // namespace gpu

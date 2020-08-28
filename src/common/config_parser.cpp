@@ -149,8 +149,8 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
     // (e.g., dump model but continue training upon SIGUSR1, or report current
     // training status upon SIGINFO.)
     cli.add<std::string>("--sigterm",
-      "What to do with SIGTERM: 'graceful' => save and exit (default); 'immediate' => exit immediately.",
-      "graceful");
+      "What to do with SIGTERM: save-and-exit or exit-immediately.",
+      "save-and-exit");
   }
   // clang-format on
 }

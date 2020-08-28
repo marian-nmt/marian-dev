@@ -115,11 +115,11 @@ public:
 template <class ModelWrapper>
 void Train<ModelWrapper>::installCustomSignalHandlers(){
   const std::string sigTermAction = options_->get<std::string>("sigterm");
-  if (sigTermAction == "graceful") {
-    LOG(debug, "Enabling graceful shutdown for SIGTERM.");
+  if (sigTermAction == "save-and-exit") {
+    LOG(debug, "Will save before exiting upon SIGTERM.");
     signal(SIGTERM, requestGracefulExit);
   }
-  else if (sigTermAction != "immediate")
+  else if (sigTermAction != "exit-immediately")
     ABORT("Unrecognized value '{}' for --sigterm", sigTermAction);
 }
 

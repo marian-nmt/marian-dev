@@ -14,11 +14,11 @@
 // - SIGUSR1,SIGUSR2 (10,12): signals specifically reserved for custom use
 // - SIGINT (2): interrupt from the console
 // Just to be safe, we accommodate signals up to signal No. 30.
-constexpr int maxSignalForSetSetSignalFlag{30};
+constexpr int maxSignalForSetSignalFlag{30};
 
 // Make sure sig_atomic_t is large enough as a bit field for our purposes.
 // That said, I'm not aware of any platform where this would be a problem.
-static_assert(SIG_ATOMIC_MAX > (1U<<maxSignalForSetSetSignalFlag),
+static_assert(SIG_ATOMIC_MAX > (1U<<maxSignalForSetSignalFlag),
               "sig_atomic_type is too small for signal flags on this platform.");
 
 namespace marian{

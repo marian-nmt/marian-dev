@@ -26,12 +26,22 @@ volatile std::sig_atomic_t sigflags_{0};
 volatile std::sig_atomic_t gracefulExitRequested_{0};
 
 void setSignalFlag(int sig) {
+  // sigflags_ is an int type serving as a bit filed for flags corresponding
+  // to signals (lower or equeal to maxSignalForSetSignalFlag). We set the
+  // flag by a binary or (|=) of the bit field and an int value with exactly
+  // one bit set (s^sig).
   sigflags_ |= (1<<sig);
 }
 
+// Check if the flag for the signal sig is set in the bit field sigflags_
 bool getSignalFlag(const int sig) {
   ABORT_IF(sig > maxSignalForSetSignalFlag,
            "Signal out of range (must be < {}, is {}).", maxSignalForSetSignalFlag, sig);
+  // Do bitwise AND between sigflags_ and an int value that has exactly one bit set that
+  // corresponds to the signal in question. If the bit is set (see setSignalFlag above),
+  // the bitwise AND will return a non-zero integer, if it is not set, the result will
+  // be zero. Implicit type conversion from int to bool will convert this into a boolean
+  // value: true if the signal flag has been set, false otherwise.
   return sigflags_ & (1<<sig);
 }
 

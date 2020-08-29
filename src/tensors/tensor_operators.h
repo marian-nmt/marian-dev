@@ -38,6 +38,7 @@ void copy(Ptr<Backend>& backend, const InIt beg, const InIt end, OutIt it) {
 }
 
 DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor);
+DISPATCH2(AddCast, marian::Tensor, const marian::Tensor);
 DISPATCH4(IsNaN, const Tensor, Ptr<Allocator>, bool&, bool&);
 
 template <class Functor, class... Tensors>

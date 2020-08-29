@@ -96,33 +96,36 @@ void IsNaN(const Tensor in, Ptr<Allocator> allocator, bool& isNaN, bool& isInf) 
   cudaStreamSynchronize(0);
 }
 
-template <typename To, typename From>
+template <bool add, typename To, typename From>
 __global__ void gCopyCastTo(To* out, const From* in, int length) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
-      out[index] = in[index];
+      if(add)
+        out[index] += (To)in[index];
+      else 
+        out[index]  = (To)in[index];
     }
   }
 }
 
-template <typename To, typename From>
+template <bool add, typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-  gCopyCastTo<<<blocks, threads>>>(out, in, length);
+  gCopyCastTo<add><<<blocks, threads>>>(out, in, length);
 }
 
-template <typename T>
+template <bool add, typename T>
 void CopyCastFrom(Tensor out, const T* in, int length) {
   if(out->type() == Type::float32) {
-    CopyCastTo(out->data<float>(), in, length);
+    CopyCastTo<add>(out->data<float>(), in, length);
 #if COMPILE_FP16
   } else if(out->type() == Type::float16) {
-    CopyCastTo(out->data<half>(), in, length);
+    CopyCastTo<add>(out->data<half>(), in, length);
 #endif
   } else if(out->type() == Type::float64) {
-    CopyCastTo(out->data<double>(), in, length);
+    CopyCastTo<add>(out->data<double>(), in, length);
   } else {
     ABORT("CopyCastTo to type {} not implemented", out->type());
   }
@@ -132,15 +135,33 @@ void CopyCast(Tensor out, const Tensor in) {
   cudaSetDevice(out->getDeviceId().no);
 
   if(in->type() == Type::float32) {
-    CopyCastFrom(out, in->data<float>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<float>(), (int)in->size());
 #if COMPILE_FP16
   } else if(in->type() == Type::float16) {
-    CopyCastFrom(out, in->data<half>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<half>(), (int)in->size());
 #endif
   } else if(in->type() == Type::float64) {
-    CopyCastFrom(out, in->data<double>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<double>(), (int)in->size());
   } else if(in->type() == Type::uint32) {
-    CopyCastFrom(out, in->data<uint32_t>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<uint32_t>(), (int)in->size());
+  } else {
+    ABORT("CopyCastFrom from type {} not implemented", in->type());
+  }
+}
+
+void AddCast(Tensor out, const Tensor in) {
+  cudaSetDevice(out->getDeviceId().no);
+
+  if(in->type() == Type::float32) {
+    CopyCastFrom</*add=*/true>(out, in->data<float>(), (int)in->size());
+#if COMPILE_FP16
+  } else if(in->type() == Type::float16) {
+    CopyCastFrom</*add=*/true>(out, in->data<half>(), (int)in->size());
+#endif
+  } else if(in->type() == Type::float64) {
+    CopyCastFrom</*add=*/true>(out, in->data<double>(), (int)in->size());
+  } else if(in->type() == Type::uint32) {
+    CopyCastFrom</*add=*/true>(out, in->data<uint32_t>(), (int)in->size());
   } else {
     ABORT("CopyCastFrom from type {} not implemented", in->type());
   }

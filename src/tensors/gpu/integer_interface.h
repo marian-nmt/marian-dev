@@ -76,8 +76,9 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 template<bool isA_>
 struct PrepareNodeOp : public NaryNodeOp {
   bool useTensorcores_;
-  PrepareNodeOp(Expr input, Expr quant_mult, bool useTensorcores=false)
-      : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), useTensorcores_(useTensorcores) {
+  bool transpose_;
+  PrepareNodeOp(Expr input, Expr quant_mult, bool useTensorcores=false, bool transpose=false)
+      : NaryNodeOp({input, quant_mult}, input->shape(), Type::int8), useTensorcores_(useTensorcores), transpose_(transpose) {
 
     set_name(input->name() + "_quantized8bit");
     if (isA_) {
@@ -95,10 +96,11 @@ struct PrepareNodeOp : public NaryNodeOp {
         const float * input = child(0)->val()->data();
         const float * quantMultAddr = child(1)->val()->data();
 
-        if (useTensorcores_ && !isA_) {
+        if (useTensorcores_ && !isA_ && !transpose_) { /*if the matrix is to be transposed, we don't actually need to do that as we read it in as row major*/
+                                                                /*Cols and rows are inverted, cause cols() will give you the length of the row, which is what we are after*/
           quantizeToRowMajorWrapper(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
         } else {
-          quantize(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
+          quantize(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
         }
 
     )};
@@ -206,7 +208,7 @@ public:
       gpuPrinterDispatch(C->data<int32_t>(), C->shape().elements() - 1);
       child(0)->val()->getBackend()->synchronize(); */
 
-      if (useTensorcores_) {
+      if (useTensorcores_ && !transB_) { //If B is to be transposed we don't need to reverse the dimensions
           ldb = B->shape().elements() / B->shape().back();
       }
         cutlass_igemm_dispatcher(transB_, transA_,
@@ -450,15 +452,13 @@ public:
 };
 
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
-  bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm() && !transA && !transB; // @TODO no transpose when using tensor cores for now
-  if (!useTensorcores) {
-    //std::cerr << "TensorCores used: " << A->name() << " " << B->name() << std::endl;
-  }
+  bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm();
+  ABORT_IF(useTensorcores && transA, "Using tensorcores and transposing the activations is not yet supported!");
   // Quantize to 8bits:
   std::string Bname = B->name();
   Expr AQuantMult = nullptr;
   static bool precomputedAlphas = B->graph()->getBackend()->isPrecomputedAlpha();
-  if (precomputedAlphas) { //Shifting here maybe should check?
+  if (precomputedAlphas) {
     AQuantMult = Expression<fetchAlphaFromModelNodeOp>(B);
   } else {
     AQuantMult = Expression<QuantMultNodeOp<Activation> >(A, Bname);
@@ -466,9 +466,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   Expr BQuantMult = Expression<QuantMultNodeOp<Parameter> >(B, Bname);
 
   Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
-  //Expr AQuantizedNormal = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
-  Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult, useTensorcores);
-  //Expr BQuantizedNormal = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
+  Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult, useTensorcores, transB);
 
 
   //Perform multiplication KNOWING that A and B are swapped

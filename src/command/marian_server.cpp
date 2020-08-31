@@ -37,9 +37,8 @@ int main(int argc, char **argv) {
 
     // Send translation back
     connection->send(sendStream, [](const SimpleWeb::error_code &ec) {
-      if(ec) {
+      if(ec)
         LOG(error, "Error sending message: ({}) {}", ec.value(), ec.message());
-      }
     });
   };
 
@@ -52,7 +51,9 @@ int main(int argc, char **argv) {
 
   // Start server thread
   std::thread serverThread([&server]() {
-    server.start([](unsigned short port) { LOG(info, "Server is listening on port {}", port); });
+    server.start([](unsigned short port) {
+      LOG(info, "Server is listening on port {}", port);
+    });
   });
 
   serverThread.join();

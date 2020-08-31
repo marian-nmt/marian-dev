@@ -96,7 +96,7 @@ struct PrepareNodeOp : public NaryNodeOp {
         const float * quantMultAddr = child(1)->val()->data();
 
         if (useTensorcores_ && !isA_) {
-          quantizeToRowMajorWrapper(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
+          quantizeToRowMajorWrapper(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
         } else {
           quantize(input, val_->data<int8_t>(), rows(child(0)->val()), cols(child(0)->val()), quantMultAddr);
         }
@@ -177,23 +177,68 @@ public:
       if(transB_)
         ldc = B->shape().elements() / B->shape().back();
 
-      if(useTensorcores_) {
-        ldb = k;
-      }
+      //if (!useTensorcores_) {
+       /* 
+        cutlass_igemm_dispatcher(transB_, transA_,
+                          n,
+                          m,
+                          k,
+                          alpha,
+                          child(6)->val()->data<int8_t>(),
+                          ldb,
+                          A->data<int8_t>(),
+                          lda,
+                          0.0f,
+                          C->data<int32_t>(),
+                          ldc,
+                          false);
+       child(0)->val()->getBackend()->synchronize();
+      std::cerr << "\nM: " << m << " N: " << n << " K: " << k << " transA: " << transA_ << " transB " << transB_ << std::endl;
+      std::cerr << "B: " << child(6)->name() << " shape: " << child(6)->shape() << " 0 and 1:" << std::endl;
+      gpuPrinterDispatch(child(6)->val()->data<int8_t>(), 0);
+      child(0)->val()->getBackend()->synchronize();
+      gpuPrinterDispatch(child(6)->val()->data<int8_t>(), 1);
+      child(0)->val()->getBackend()->synchronize();
 
-      cutlass_igemm_dispatcher(transB_, transA_,
-                        n,
-                        m,
-                        k,
-                        alpha,
-                        B->data<int8_t>(),
-                        ldb,
-                        A->data<int8_t>(),
-                        lda,
-                        0.0f,
-                        C->data<int32_t>(),
-                        ldc,
-                        useTensorcores_);
+      std::cerr << "Non-tensorcores: 0 and -1:" << std::endl;
+      gpuPrinterDispatch(C->data<int32_t>(), 0);
+      child(0)->val()->getBackend()->synchronize();
+      gpuPrinterDispatch(C->data<int32_t>(), C->shape().elements() - 1);
+      child(0)->val()->getBackend()->synchronize(); */
+
+      if (useTensorcores_) {
+          ldb = B->shape().elements() / B->shape().back();
+      }
+        cutlass_igemm_dispatcher(transB_, transA_,
+                          n,
+                          m,
+                          k,
+                          alpha,
+                          B->data<int8_t>(),
+                          ldb,
+                          A->data<int8_t>(),
+                          lda,
+                          0.0f,
+                          C->data<int32_t>(),
+                          ldc,
+                          useTensorcores_);
+       /* 
+        child(0)->val()->getBackend()->synchronize();
+        std::cerr << "B: " << child(1)->name() << " shape: " << child(1)->shape() << " 0 and 1:" << std::endl;
+        gpuPrinterDispatch(B->data<int8_t>(), 0);
+        child(0)->val()->getBackend()->synchronize();
+        gpuPrinterDispatch(B->data<int8_t>(), 1);
+        child(0)->val()->getBackend()->synchronize();
+
+        std::cerr << "Tensorcores: 0 and -1:" << std::endl;
+        gpuPrinterDispatch(C->data<int32_t>(), 0);
+        child(0)->val()->getBackend()->synchronize();
+        gpuPrinterDispatch(C->data<int32_t>(), C->shape().elements() - 1);
+        child(0)->val()->getBackend()->synchronize();
+      }*/
+      //} else {
+
+      //}
 
       //Now unquantize... Reusing the same Tensor
       int rowsC = C->shape().elements() / C->shape().back();
@@ -315,9 +360,10 @@ public:
         child(0)->val()->getBackend()->synchronize();*/
       //}
 
-      //if(useTensorcores_) {
-        //ldb = rows(B);
-        //std::cerr << "Using tensorcores: " << child(1)->name() << " m: " << m << " n " << n << " k " << k << std::endl;
+      if(useTensorcores_) {
+        //ldb = rows(B); //@TODO transpose issues
+        ldb = B->shape().elements() / B->shape().back();
+      }
       cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
                         n,
                         m,
@@ -422,7 +468,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
   //Expr AQuantizedNormal = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
   Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult, useTensorcores);
-  Expr BQuantizedNormal = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
+  //Expr BQuantizedNormal = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult);
 
 
   //Perform multiplication KNOWING that A and B are swapped
@@ -430,7 +476,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   if (bias) {
     int rows = A->shape().elements() / A->shape()[-1];
     Expr ones = A->graph()->ones({ rows, 1 });
-    return Expression<AffineNodeOp>(AQuantized, BQuantizedNormal, bias, AQuantMult, BQuantMult, ones, transA, transB, scale, false);
+    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, AQuantMult, BQuantMult, ones, transA, transB, scale, useTensorcores);
   } else {
     return Expression<DotNodeOp>(AQuantized, BQuantized, AQuantMult, BQuantMult, transA, transB, scale, useTensorcores);
   }

@@ -220,6 +220,7 @@ namespace integer {
             }
         }
         quantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAddr);
+        CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 
     __global__ void quantizeToRowMajor(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
@@ -237,10 +238,11 @@ namespace integer {
         // Make sure we're not running out of threads here.
 
         dim3 dimBlock(32, 32);
-        dim3 dimGrid(cols / dimBlock.x, rows / dimBlock.y);
+        dim3 dimGrid(std::max(cols / dimBlock.x, 1ul), std::max(rows / dimBlock.y, 1ul));
+        //dim3 dimGrid(std::max(cols / dimBlock.x, 2ul), std::max(rows / dimBlock.y, 2ul));
 
         quantizeToRowMajor<<<dimGrid, dimBlock>>>(input, output, rows, cols, quantMultAddr);
-        CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
+        CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 
     __global__ void dequantize(const int32_t * input, float * output, size_t items, const float * quantMultAaddr, const float * quantMultBaddr) {
@@ -270,6 +272,7 @@ namespace integer {
             }
         }
         dequantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAaddr, quantMultBaddr);
+        CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 
     __global__ void gpuPrinter(float * mem, size_t idx) {

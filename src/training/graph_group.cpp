@@ -90,7 +90,7 @@ void GraphGroup::increaseCostScaleFactor() {
 
   if(noNanSeen_ % costScaleFreq_ == 0) {
     costScaleFactor_ *= costScaleMultiplier_;
-    LOG(info,
+    LOG(debug,
         "NaN/Inf percentage {:.2f} after {} gradient updates. Increasing cost-scaling factor to {}",
         nanPercent,
         total,
@@ -114,7 +114,7 @@ void GraphGroup::decreaseCostScaleFactor() {
   if(total >= costScaleNanRange_ && nanPercent > costScaleNanTolerance_) {
     if(costScaleFactor_ > costScaleFactorMinimum_) {
       costScaleFactor_ /= costScaleMultiplier_;
-      LOG(warn,
+      LOG(debug,
           "NaN/Inf percentage {:.2f} in {} gradient updates, reducing cost-scaling factor to {}",
           nanPercent,
           total,

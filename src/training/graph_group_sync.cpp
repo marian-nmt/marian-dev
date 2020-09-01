@@ -299,7 +299,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       graph->backward(/*zero=*/false); // (gradients are reset before we get here)
     }
 
-#if 0 // experimental and should eventually be somewhere else
+#if 1 // experimental and should eventually be somewhere else
     // Handle local gradient explosion but only clip to largest possible value
     // given number of GPUs and type. Should clip rarely. Also clips inf
     // We do another clipping/rescaling after summation.

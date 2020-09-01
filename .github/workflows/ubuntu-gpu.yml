@@ -10,29 +10,34 @@ jobs:
   build-ubuntu-cuda:
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
 
     strategy:
       matrix:
         include:
           # Ubuntu 20.04 supports CUDA 11+
           - os: ubuntu-20.04
-            boost: false    # ubuntu-20.04 image does not have Boost pre-installed yet
             cuda: "11.0"
             gcc: 9
+            boost: false        # ubuntu-20.04 image does not have Boost pre-installed yet
+            experimental: true  # continue even if the job fails
           # Ubuntu 18.04 supports CUDA 10.1+
           - os: ubuntu-18.04
-            boost: true
             cuda: "10.2"
             gcc: 8
+            boost: true
+            experimental: false
           # Ubuntu 16.04 supports CUDA 8+
           - os: ubuntu-16.04
-            boost: true
             cuda: "10.2"
             gcc: 7
-          - os: ubuntu-16.04
             boost: true
+            experimental: false
+          - os: ubuntu-16.04
             cuda: 9.2
             gcc: 7
+            boost: true
+            experimental: false
 
     steps:
     - name: Checkout

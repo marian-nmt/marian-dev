@@ -51,7 +51,7 @@ void requestSaveAndExit(int sig) {
   saveAndExit_ = 1; // set flag to exit gracefully
 }
 
-bool saveAndExit() {
+bool saveAndExitRequested() {
   return saveAndExit_ == 1;
 }
 

@@ -27,7 +27,7 @@ namespace marian {
 void requestSaveAndExit(int sig);
 
 /// Check if graceful exit was requested.
-bool saveAndExit();
+bool saveAndExitRequested();
 
 /// General purpose signal handler that simply sets a flag when a signal is received.
 //  (only for SIGNAL No. < 32).

@@ -59,7 +59,6 @@ void GraphGroup::initGraphs() {
     // @TODO: validate precisions in config
     auto precisions = options_->get<std::vector<std::string>>("precision");
     Type parameterType = typeFromString(precisions[0]);
-    // Type saveType = typeFromString(precisions[2]); // @TODO: respect this
 
     graph->setDefaultElementType(parameterType);
     graph->setCheckpointing(options_->get<bool>("gradient-checkpointing"));

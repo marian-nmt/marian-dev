@@ -7,7 +7,7 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  build-ubuntu-cuda:
 
     runs-on: ${{ matrix.os }}
 

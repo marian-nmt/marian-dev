@@ -974,6 +974,9 @@ void CopyRows(Tensor out,
     gCopyRows<<<blocks, threads>>>(
       out->data<half>(), in->data<half>(), cols, indices->data<IndexType>(), rowsToCopy);
 #endif
+  } else if (out->type() == Type::int8) {
+    gCopyRows<<<blocks, threads>>>(
+      out->data<int8_t>(), in->data<int8_t>(), cols, indices->data<IndexType>(), rowsToCopy);
   } else {
     ABORT("CopyRows not implemented for type {}", out->type());
   }
@@ -1089,7 +1092,10 @@ void CopyCols(Tensor out, const Tensor in, const Tensor indices) {
     gCopyCols<<<blocks, threads>>>(
       out->data<half>(), in->data<half>(), rows, cols, indices->data<IndexType>(), colsToCopy);
 #endif
-  } else {
+  } else if (out->type() == Type::int8) {
+    gCopyCols<<<blocks, threads>>>(
+      out->data<int8_t>(), in->data<int8_t>(), rows, cols, indices->data<IndexType>(), colsToCopy);
+    } else {
     ABORT("CopyCols not implemented for type {}", out->type());
   }
 }

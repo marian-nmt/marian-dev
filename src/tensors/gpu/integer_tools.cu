@@ -299,6 +299,24 @@ namespace integer {
         gpuPrinter<<<1,1>>>(mem, idx);
     }
 
+    void memCpyDevice(float * dest, float * source, size_t elems) {
+        CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(float), cudaMemcpyDeviceToDevice));
+    }
+
+    void memCpyDevice(int8_t * dest, int8_t * source, size_t elems) {
+        CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(int8_t), cudaMemcpyDeviceToDevice));
+    }
+/*
+    float * unmanagedGPUAlloc(size_t num) {
+        void * tmp;
+        CUDA_CHECK(cudaMalloc(&tmp, num*sizeof(float)));
+        return (float *)tmp;
+    }
+
+    void unmanagedFree(float * in) {
+        cudaFree(in);
+    }
+*/
 } // namespace integer
 } // namespace gpu
 } // namespace marian

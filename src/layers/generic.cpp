@@ -8,6 +8,7 @@
 #include "models/states.h" // for EncoderState
 #include "layers/lsh.h"
 #include "tensors/cpu/intgemm_interface.h"
+#include "tensors/gpu/integer_interface.h"
 
 
 namespace marian {
@@ -319,6 +320,15 @@ namespace marian {
             cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */);
             cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
+        } else if (graph_->getBackend()->isInt8() && graph_->getDeviceId().type == DeviceType::gpu) { // GPU 8bit prepare and index_select
+          std::string nodeName = Wt_->name();
+          Expr BQuantMult = Expression<marian::gpu::integer::QuantMultNodeOp<marian::gpu::integer::Parameter> >(Wt_, nodeName);
+          // Prepare it by just quantizing. We do this py setting tensorcores to FALSE regardless of whether we use them or not.
+          // Even when we are using tensorcores, this matrix comes transposed so we don't care rearranging it in RowM format
+          Expr Wt_Quantized = Expression<marian::gpu::integer::PrepareNodeOp<marian::gpu::integer::Parameter> >(Wt_, BQuantMult);
+          cachedShortWt_ = index_select(Wt_Quantized, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
+          // We need to carry over the QuantizationMultiplier somehow. Create a new node here to do that
+          cachedShortWt_ = Expression<marian::gpu::integer::PreparedContainerNodeOp>(cachedShortWt_, BQuantMult);
         } else {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }

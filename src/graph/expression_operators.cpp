@@ -615,12 +615,12 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     }
   } else {
     // Default GEMM
-    ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType), 
-             "GPU-based GEMM only supports float types, you have A: {} and B: {}", 
-             aElementType, bElementType);
     if(a->graph()->getBackend()->isInt8()) {
       return gpu::integer::affine(clip(a, clipValue), clip(b, clipValue),bias, transA, transB, scale, 0.0f /*unused clipvalue*/);
     } else {
+      ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType),
+             "GPU-based GEMM only supports float types, you have A: {} and B: {}",
+             aElementType, bElementType);
       return affineDefault(a, b, bias, transA, transB, scale);
     }
   }

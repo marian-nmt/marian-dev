@@ -8,7 +8,7 @@
 #include "tensors/gpu/integer_tools.h"
 
 //TMP
-#include "tensors/gpu/uint8tools.h"
+//#include "tensors/gpu/uint8tools.h"
 
 
 namespace marian {
@@ -16,6 +16,38 @@ namespace marian {
 namespace gpu {
 
 namespace integer {
+
+class PreparedContainerNodeOp : public NaryNodeOp {
+  public:
+  MemoryPiece::PtrType gpuQuantMult;
+  PreparedContainerNodeOp(Expr input, Expr quantMult)
+    : NaryNodeOp({input, quantMult}, input->shape(), Type::int8) {
+      set_name("none");
+    }
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
+      // Remember the qunatised node here
+      memCpyDevice(val_->data(), child(0)->val()->data<float>(), child(0)->shape().elements());
+
+      // Put the quantization multiplier on the node
+      float * quantMultHolder = child(1)->val()->data<float>();
+      gpuQuantMult = graph()->allocator()->alloc<float>(1);
+      memCpyDevice(gpuQuantMult->data<float>(), quantMultHolder, 1);
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Only used for inference");
+    return {NodeOp(0)};
+  }
+
+  const std::string type() override { return "PreparedContainer"; }
+
+  ~PreparedContainerNodeOp() {
+    graph()->allocator()->free(gpuQuantMult);
+  }
+};
 
 static const constexpr bool Activation = true;
 static const constexpr bool Parameter = false;
@@ -35,14 +67,15 @@ struct QuantMultNodeOp : public UnaryNodeOp {
   NodeOps forwardOps() override {
     return {NodeOp(
         CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
-        auto backend = std::static_pointer_cast<gpu::Backend>(child(0)->val()->getBackend());
-        auto cublasHandle = backend->getCublasHandle();
+        if (child(0)->value_type() == Type::int8) {
+          auto  actualExp = std::static_pointer_cast<PreparedContainerNodeOp>(child(0));
+          memCpyDevice(val_->data(), actualExp->gpuQuantMult->data<float>(), 1);
+        } else {
+          auto backend = std::static_pointer_cast<gpu::Backend>(child(0)->val()->getBackend());
+          auto cublasHandle = backend->getCublasHandle();
 
-        maxAbsQuantMult(cublasHandle, child(0)->val()->data(), child(0)->val()->shape().elements(), val_->data());
-        if (!isA_) {
-          //std::cerr << " HERE2 " << name() << std::endl; //NOT WORKING YET
+          maxAbsQuantMult(cublasHandle, child(0)->val()->data(), child(0)->val()->shape().elements(), val_->data());
         }
-        //@TODO syncrhonise device to wait for kernel completion?
     )};
   }
 
@@ -93,14 +126,18 @@ struct PrepareNodeOp : public NaryNodeOp {
   NodeOps forwardOps() override {
     return {NodeOp(
         CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
-        const float * input = child(0)->val()->data();
-        const float * quantMultAddr = child(1)->val()->data();
-
-        if (useTensorcores_ && !isA_ && !transpose_) { /*if the matrix is to be transposed, we don't actually need to do that as we read it in as row major*/
-                                                                /*Cols and rows are inverted, cause cols() will give you the length of the row, which is what we are after*/
-          quantizeToRowMajorWrapper(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
+        if (child(0)->value_type() == Type::int8) {
+          memCpyDevice(val_->data<int8_t>(), child(0)->val()->data<int8_t>(), child(0)->shape().elements());
         } else {
-          quantize(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
+          const float * input = child(0)->val()->data();
+          const float * quantMultAddr = child(1)->val()->data();
+
+          if (useTensorcores_ && !isA_ && !transpose_) { /*if the matrix is to be transposed, we don't actually need to do that as we read it in as row major*/
+                                                                  /*Cols and rows are inverted, cause cols() will give you the length of the row, which is what we are after*/
+            quantizeToRowMajorWrapper(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
+          } else {
+            quantize(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
+          }
         }
 
     )};
@@ -207,7 +244,10 @@ public:
       child(0)->val()->getBackend()->synchronize();
       gpuPrinterDispatch(C->data<int32_t>(), C->shape().elements() - 1);
       child(0)->val()->getBackend()->synchronize(); */
-
+/*
+      if (child(1)->name() == "PreparedContainer_quantized8bit" || transB_) {
+        std::cerr << "Affine: A: " << child(0)->name() << " B: " << child(1)->name() << " transA " << transA_ << " transB " << transB_ << std::endl;
+      } */
       if (useTensorcores_ && !transB_) { //If B is to be transposed we don't need to reverse the dimensions
           ldb = B->shape().elements() / B->shape().back();
       }
@@ -362,8 +402,7 @@ public:
         child(0)->val()->getBackend()->synchronize();*/
       //}
 
-      if(useTensorcores_) {
-        //ldb = rows(B); //@TODO transpose issues
+      if(useTensorcores_ && !transB_) {
         ldb = B->shape().elements() / B->shape().back();
       }
       cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check

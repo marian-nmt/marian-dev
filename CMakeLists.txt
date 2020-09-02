@@ -72,8 +72,8 @@ if(MSVC)
   # Or maybe use these?
   set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
-
-  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
+                                                                                                        # /bigobj is necessary for expression_operators.cpp. See https://stackoverflow.com/questions/15110580/penalty-of-the-msvs-compiler-flag-bigobj
+  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS /bigobj ${DISABLE_GLOBALLY}")
   set(CMAKE_CXX_FLAGS_RELEASE   "${CMAKE_CXX_FLAGS} /MT /O2 ${INTRINSICS} /Zi /MP /GL /DNDEBUG")
   set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
@@ -188,6 +188,13 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 endif(MSVC)
 
+# with gcc 7.0 and above we need to mark fallthrough in switch case statements
+# that can be done in comments for backcompat, but CCACHE removes comments.
+# -C makes gcc keep comments.
+if(USE_CCACHE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -C")
+endif()
+
 ###############################################################################
 # Downloading SentencePiece if requested and set to compile with it.
 # Requires all the dependencies imposed by SentencePiece
@@ -201,6 +208,7 @@ if(USE_ONNX)
   message(STATUS "Enabling experimental ONNX support")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ONNX")
   set(EXT_LIBS ${EXT_LIBS} protobuf)
+  include_directories(${Protobuf_INCLUDE_DIRS})
 endif()
 
 # Find packages
@@ -247,12 +255,13 @@ if(CUDA_FOUND)
     option(COMPILE_CUDA_SM75 "Compile GPU version with SM75 support" ON)
   endif()
   if(CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0")
+    option(COMPILE_CUDA_SM35 "Compile GPU version with SM35 support" ON)
+    option(COMPILE_CUDA_SM50 "Compile GPU version with SM50 support" ON)
     option(COMPILE_CUDA_SM60 "Compile GPU version with SM60 support" ON)
     option(COMPILE_CUDA_SM70 "Compile GPU version with SM70 support" ON)
     option(COMPILE_CUDA_SM75 "Compile GPU version with SM75 support" ON)
     option(COMPILE_CUDA_SM80 "Compile GPU version with SM80 support" ON)
   endif()
-
 
   if(COMPILE_CUDA_SM35)
     LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35;)                             # Tesla K40 and above
@@ -405,7 +414,7 @@ if(COMPILE_CPU)
     include_directories(${MKL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})
     set(BLAS_FOUND TRUE)
-    add_definitions(-DBLAS_FOUND=1 -DMKL_FOUND=1)
+    add_definitions(-DCOMPILE_CPU=1 -DBLAS_FOUND=1 -DMKL_FOUND=1)
   else(MKL_FOUND)
     set(BLAS_VENDOR "OpenBLAS")
     find_package(BLAS)
@@ -414,7 +423,7 @@ if(COMPILE_CPU)
       if(CBLAS_FOUND)
         include_directories(${BLAS_INCLUDE_DIR} ${CBLAS_INCLUDE_DIR})
         set(EXT_LIBS ${EXT_LIBS} ${BLAS_LIBRARIES} ${CBLAS_LIBRARIES})
-        add_definitions(-DBLAS_FOUND=1)
+        add_definitions(-DCOMPILE_CPU=1 -DBLAS_FOUND=1)
       endif(CBLAS_FOUND)
     endif(BLAS_FOUND)
   endif(MKL_FOUND)
@@ -429,6 +438,13 @@ if(COMPILE_SERVER)
     message(STATUS "Found OpenSSL")
     include_directories(${OPENSSL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${OPENSSL_CRYPTO_LIBRARY})
+    if(MSVC AND USE_STATIC_LIBS)
+      # "If you link with static OpenSSL libraries then you're expected to additionally link your
+      # application with WS2_32.LIB, GDI32.LIB, ADVAPI32.LIB, CRYPT32.LIB and USER32.LIB"
+      # See https://github.com/openssl/openssl/blob/OpenSSL_1_1_1d/NOTES.WIN#L127
+      # Linking with crypt32.lib seem to be enough.
+      set(EXT_LIBS ${EXT_LIBS} crypt32.lib)
+    endif()
     set(BOOST_COMPONENTS ${BOOST_COMPONENTS} system)
   else(OpenSSL_FOUND)
     message(WARNING "Cannot find OpenSSL library. Not compiling server.")

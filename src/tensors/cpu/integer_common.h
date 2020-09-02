@@ -39,6 +39,7 @@ void AddBias(marian::Tensor C, const marian::Tensor Bias);
 // in our binary format. Then we copy the quantizationMultiplier information at the end
 template<Type vtype>
 void prepareAndTransposeB(io::Item& item, const char * input) {
+#if COMPILE_CPU
     typedef typename intgemm_<vtype>::type Integer;
     Integer * output_tensor = reinterpret_cast<Integer *>(&(*item.bytes.begin()));
     // Sometimes we will end up with misaligned intput (and output) so we can't use them directly.
@@ -64,6 +65,10 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
     //Copy the quantMult
     float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements()));
     *(reinterpret_cast<float *>(&(*(output_tensor + item.shape.elements())))) = quantMult;
+#else
+    item, input;
+    ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
+#endif
 }
 
 template<Type vtype>

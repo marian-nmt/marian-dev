@@ -189,7 +189,7 @@ public:
 #endif
       } else if ((gemmElementType == Type::intgemm8 || gemmElementType == Type::intgemm16) &&
       (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2  || ((pName.find("Wemb") != std::string::npos) && compressWemb))) {
-
+#if COMPILE_CPU
         using cpu::integer::cols;
         using cpu::integer::rows;
         auto allocator = New<TensorAllocator>(getBackend());
@@ -236,6 +236,9 @@ public:
         item.bytes.resize(mem->size());
         copy(backend_, mem->data<char>(), mem->data<char>() + mem->size(), item.bytes.data());
         ioItems.emplace_back(std::move(item));
+#else
+        ABORT("Packed type {} only supported when compiled with -DCOMPILE_CPU=on", gemmElementType);
+#endif
       } else {
         io::Item item;
         val->get(item, pName);

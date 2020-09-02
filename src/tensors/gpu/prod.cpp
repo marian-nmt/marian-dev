@@ -5,7 +5,6 @@
 
 #include <cublas_v2.h>
 #include <cusparse.h>
-#include "tensors/gpu/uint8tools.h"
 
 // clang-format off
 #include "tensors/gpu/prod.h"
@@ -89,17 +88,6 @@ static cublasStatus_t cublasGemmTyped(cublasHandle_t handle,
                         B, CUDA_R_32F, ldb, beta, 
                         C, CUDA_R_32F, ldc,
                         CUDA_R_32F, algorithm); // @TODO: review algorithm
-/* OLD
-    return marian::hacky8bit::cublas8bitGemmmEx(handle,
-        transa, 
-        transb,
-        m, n, k,
-        alpha,
-        A, lda,
-        B, ldb,
-        beta,
-        C, ldc); *
-}*/
 #endif
   return cublasSgemm(handle, transa, transb, 
                       m, n, k, alpha, 
@@ -183,16 +171,6 @@ void ProdTyped(marian::Tensor C,
                                &beta,
                                C->data<T>(),
                                ldc));
-  /*
-  if (m%4 == 0 && n%4 ==0 && k%4 ==0) {
-    CUBLAS_CHECK(marian::hacky8bit::cublas8bitGemmm(C,
-                A,
-                B,
-                transA,
-                transB,
-                beta,
-                scalar));
-  }*/
   unsetTensorMode(cublasHandle);
 }
 
@@ -386,7 +364,7 @@ static cusparseSgemmiEx(cusparseHandle_t handle, int m,
   float *C, int ldc)
 {
 #if CUDA_VERSION >= 11000
-  ABORT("cusparseSgemmi is deprecated in CUDA VERSION >= 11.");
+  ABORT("cusparseSgemmi is not available in CUDA VERSION >= 11.");
 #else
   const int nMax = 65535; // max. number of columns allowed by cuSparse 10 implementation
   for (int j0 = 0; j0 < n; j0 += 65535) { // loop over column slices, j0 = index of first column
@@ -489,6 +467,7 @@ void CSRProd(marian::Tensor C,
 
     if (buffer)
       allocator->free(buffer);
+    ABORT("This code is untested. Please remove this ABORT once tests exist and pass.");
 #else
     CUSPARSE_CHECK(cusparseScsr2csc(cusparseHandle,
         /*m=*/ rowsS, // number of rows of matrix

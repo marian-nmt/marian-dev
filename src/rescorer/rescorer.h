@@ -76,9 +76,6 @@ public:
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       graph->getBackend()->setGemmPrecision(options_);
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
-      }
 
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
@@ -116,8 +113,7 @@ public:
     bool normalize = options_->get<bool>("normalize");
     bool wordLevel = options_->get<bool>("word-scores", false);
 
-    if(wordLevel && summarize)
-      LOG(warn, "[warn] Word-level scores will not be printed if --summarize is enabled");
+    ABORT_IF(wordLevel && summarize, "Word-level scores can not be printed if --summarize is enabled");
 
     float sumLoss = 0;
     size_t sumWords = 0;
@@ -157,7 +153,7 @@ public:
 
           std::vector<float> sentScores(scoresForSummary);
           // if '--normalize' then report scoresForSummary length-normalized
-          if(normalize && !wordLevel) {  // sentence-level scores printed with word-level scores is calculated later
+          if(normalize && !wordLevel) {  // sentence-level scores printed with word-level scores are calculated later
             for(size_t i = 0; i < scoresForSummary.size(); i++) {
               if(sentScores[i] != 0) // (avoid 0/0)
                 sentScores[i] /= (sentLengths.size() == 1 ? sentLengths[0] : sentLengths[i]); // emulate broadcasting semantics
@@ -197,7 +193,8 @@ public:
 
                 sentScore *= -1.f;  // report logProb while score is CE, hence negate
                 if(normalize)
-                  // Note: word-level scores are not normalized; this is consistent with decoding
+                  // Printed out word-level scores (i.e. if --word-scores) are not normalized; this
+                  // is consistent with printed out word-level scores in marian-decoder.
                   // TODO: return length-normalized scores in both marian-scorer and marian-decoder
                   sentScore /= sentLengths[i];
 

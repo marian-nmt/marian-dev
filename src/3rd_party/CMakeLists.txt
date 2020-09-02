@@ -8,8 +8,10 @@ add_subdirectory(./zlib)
 add_subdirectory(./faiss)
 include_directories(./faiss)
 
-set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
-add_subdirectory(./intgemm)
+if(COMPILE_CPU)
+  set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
+  add_subdirectory(./intgemm)
+endif(COMPILE_CPU)
 
 if(USE_FBGEMM)
   # @TODO: find out if this is somehow harmful. This is supppressing CMake warnings for CMAKE_SUPPRESS_DEVELOPER_WARNINGS
@@ -136,7 +138,7 @@ if(CUDA_FOUND)
       BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nccl
       CONFIGURE_COMMAND ""
       BUILD_COMMAND
-        $(MAKE) -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build
+        ${CMAKE_MAKE_PROGRAM} -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build
         BUILDDIR=${CMAKE_BINARY_DIR}/local CUDA_HOME=${CUDA_TOOLKIT_ROOT_DIR}
         CUDA8_GENCODE=${GENCODE} CXX=${CMAKE_CXX_COMPILER}
       INSTALL_COMMAND "")

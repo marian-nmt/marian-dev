@@ -65,6 +65,9 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
       size_t len = headers[i].dataLength;
       items[i].bytes.resize(len);
       const char* ptr = get<char>(current, len);
+      // Intgemm8/16 matrices in binary model are just quantized, however they also need to be reordered
+      // Reordering depends on the architecture (SSE/AVX2/AVX512) so we read in the quantized matrices and
+      // then reorder them before adding them as a parameter in the graph.
       if (matchType<intgemm8>(items[i].type)) {
         if (items[i].name.find("Wemb") != std::string::npos) { //HACK HACK HACK THAT HACKS WEMB QUANTIZATION
           items[i].type = Type::float32;

@@ -654,63 +654,40 @@ void PasteCols(Tensor out_,
   }
 }
 
-/* Recursive template to implement LoopBeforeAxis. */
-template <class Backend, int Before> struct LoopBeforeAxisImpl {
-  static inline void Loop(
-      const functional::Shape &outShape, int outBase,
-      const functional::Shape &inShape, int inBase,
-      const functional::Shape &idxShape, int idxBase,
-      int axisCPU,
-      Backend backend) {
-    // Loop over this dimension.
-    const int dim = axisCPU - Before;
-    if (dim < 0) {
-      // This template is instantiated for every possible dimension, typically
-      // more than before the axis.
-      LoopBeforeAxisImpl<Backend, Before - 1>::Loop(outShape, outBase, inShape, inBase, idxShape, idxBase, axisCPU, backend);
-    } else {
-      const int outStride = outShape.stride(dim);
-      const int end = outShape.dim(dim);
-      const int inStride = inShape.stride(dim);
-      const int idxStride = idxShape.bstride(dim);
-      for (int i = 0; i < end; ++i) {
-        LoopBeforeAxisImpl<Backend, Before - 1>::Loop(outShape, outBase, inShape, inBase, idxShape, idxBase, axisCPU, backend);
-        outBase += outStride;
-        inBase += inStride;
-        idxBase += idxStride;
+#if 0 // this version seems to actually be buggy, but also not used in decoding?
+// Optimized version of Select for axis=2
+// @TODO: make this generally fast without this special version
+void SelectAxis2(Tensor out,
+             const Tensor in,
+             const Tensor indices) {
+
+  std::cerr << indices->debug() << std::endl;
+
+  matchOrAbort<IndexType>(indices->type());
+
+  functional::Shape outShape = out->shape();
+  functional::Shape inShape = in->shape();
+
+  auto idxData = indices->data<IndexType>();
+  auto odata = out->data();
+  const auto idata = in->data();
+
+  int size = outShape[3];
+
+  for(int k = 0; k < outShape[0]; ++k) {
+    for(int j = 0; j < outShape[1]; ++j) {
+      int outOffset = k * j * outShape[2] * size + j * outShape[2] * size;
+      int inOffset = k * j * inShape[2] * size + j * inShape[2] * size;
+      for(int i = 0; i < outShape[2]; ++i) {
+        auto idx = idxData[i];
+        int outIndex = outOffset +   i * size;
+        int inIndex  = inOffset  + idx * size;
+        std::copy(idata + inIndex, idata + inIndex + size, odata + outIndex);
       }
     }
   }
-};
-
-/* We're at the axis, call the functor. */
-template <class Backend> struct LoopBeforeAxisImpl<Backend, 0> {
-  static inline void Loop(
-      const functional::Shape &, int outBase,
-      const functional::Shape &, int inBase,
-      const functional::Shape &, int idxBase,
-      int /*axisCPU*/,
-      Backend backend) {
-    backend(outBase, inBase, idxBase);
-  }
-};
-
-/* Jointly loop over dimensions [0, axisCPU) of three tensors out, in, and
- * indices.  Call the Backend functor for each iteration of the loop.
- * Backend is a functor taking the tensors and base indices into them:
- * Backend::operator()(
- *   int out_base,
- *   int in_base,
- *   int indices_base);
- */
-template <class Backend> inline void LoopBeforeAxis(
-    const functional::Shape &outShape,
-    const functional::Shape &inShape,
-    const functional::Shape &idxShape,
-    int axisCPU,
-    Backend backend) {
-  LoopBeforeAxisImpl<Backend, functional::Shape::size()>::Loop(outShape, 0, inShape, 0, idxShape, 0, axisCPU, backend);
 }
+#endif
 
 void Select(Tensor out,
             const Tensor in,
@@ -719,50 +696,19 @@ void Select(Tensor out,
 
   matchOrAbort<IndexType>(indices->type());
 
+  // @TODO: make this efficient
   functional::Shape outShape = out->shape();
   functional::Shape inShape  = in->shape();
   functional::Shape idxShape = indices->shape();
+  int length = outShape.elements();
 
+  functional::Array<int, functional::Shape::size()> dims;
   int axisCPU = (int)(axis + functional::Shape::size() - out->shape().size());
 
-  // Are all index dimensions 1 after the axis?
-  bool flatIndices = true;
-  // Total dimensionality of input and output after the axis.
-  int afterAxis = 1;
-  for (int i = axisCPU + 1; i < functional::Shape::size(); ++i) {
-    afterAxis *= outShape[i];
-    if (idxShape[i] != 1) {
-      flatIndices = false;
-    }
-  }
-  /* Faster version based on copying. Requirements:
-   * input is contiguous for every dimension after the axis.
-   * output is contiguous for every dimension after the axis.
-   * indices have shape 1 for every dimension after the axis.
-   */
-  if (afterAxis == inShape.stride(axisCPU) && afterAxis == outShape.stride(axisCPU) && flatIndices) {
-    const int end = outShape.dim(axisCPU);
-    const int outStride = outShape.stride(axisCPU);
-    const int idxStride = idxShape.bstride(axisCPU);
-    // Loop over all dimensions before the axis.
-    LoopBeforeAxis(outShape, inShape, idxShape, axisCPU,
-        [out, in, indices, afterAxis, end, outStride, idxStride](int outBase, int inBase, int idxBase) {
-          // Loop over the axis dimension.
-          for (int i = 0; i < end; ++i) {
-            int index = indices->data<IndexType>()[idxBase];
-            // Loop over all dimensions after the axis.
-            std::copy(in->data() + inBase + index * afterAxis, in->data() + inBase + index * afterAxis + afterAxis, out->data() + outBase);
-            outBase += outStride;
-            idxBase += idxStride;
-          }
-        });
-    return;
-  }
-
-  // @TODO: make this efficient
-  int length = outShape.elements();
-  // Loop over outer dimensions (those before the axis).
-  functional::Array<int, functional::Shape::size()> dims;
+#if 0 // buggy but not really used?
+  if(axisCPU == 2 && outShape == idxShape) // specialization for axis==2 when there is no broadcasting, @TODO to be removed once we have a faster implementation below
+    return SelectAxis2(out, in, indices);
+#endif
 
   for(int index = 0; index < length; ++index) {
     outShape.dims(index, dims);                                // compute dimension-based indices from global index;
@@ -1119,9 +1065,8 @@ void LayerNormalizationImpl(float* out,
 #pragma omp simd
     for(int i = 0; i < cols; ++i) {
       float t = alpha[alphaStride * i] * ((sp[i] - mean) / sigma);
-      if(hasBeta) {
+      if(hasBeta)
         t += beta[betaStride * i];
-      }
 
       so[i] = t;
     }
@@ -1337,65 +1282,102 @@ void SetSparse(float* out,
   }
 }
 
-void LSTMCellForward(Tensor out_, std::vector<Tensor> inputs) {
+// should be implemented via slicing and elementwise
+template <typename FType>
+void LSTMCellForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
   int rows = out_->shape().elements() / out_->shape()[-1];
-  int cols = out_->shape()[-1];
 
-  float* out = out_->data();
-  const float* cell = inputs[0]->data();
-  const float* xW = inputs[1]->data();
-  const float* sU = inputs[2]->data();
-  const float* b = inputs[3]->data();
+  int fVecSize = sizeof(FType) / sizeof(float);
+  int cols = out_->shape()[-1] / fVecSize;
+
+  FType* out = out_->data<FType>();
+  const FType* cell = inputs[0]->data<FType>();
+  const FType* xW = inputs[1]->data<FType>();
+  const FType* sU = inputs[2]->data<FType>();
+  const FType* b = inputs[3]->data<FType>();
   const float* mask = inputs.size() > 4 ? inputs[4]->data() : nullptr;
+
+  using fop = functional::Ops<FType>;
 
   for(int j = 0; j < rows; ++j) {
     float m = !mask || mask[j];
 
-    float* rowOut = out + j * cols;
-    const float* rowCell = cell + j * cols;
+    FType* rowOut = out + j * cols;
+    const FType* rowCell = cell + j * cols;
 
-    const float* xWrow = xW + j * cols * 4;
-    const float* sUrow = sU + j * cols * 4;
+    const FType* xWrow = xW + j * cols * 4;
+    const FType* sUrow = sU + j * cols * 4;
 
     for(int i = 0; i < cols; ++i) {
-      float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
+      FType gf   = fop::sigmoid(fop::add(fop::add(xWrow[i], sUrow[i]), b[i]));
 
       int k = i + cols;
-      float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+      FType gi   = fop::sigmoid(fop::add(fop::add(xWrow[k], sUrow[k]), b[k]));
 
       int l = i + 2 * cols;
-      float gc = std::tanh(xWrow[l] + sUrow[l] + b[l]);
+      FType gc   = fop::tanh(fop::add(fop::add(xWrow[l], sUrow[l]), b[l]));
 
-      float cout = gf * rowCell[i] + gi * gc;
-      rowOut[i] = m * cout + (1 - m) * rowCell[i];
+      FType cout = fop::add(fop::mul(gf, rowCell[i]), fop::mul(gi, gc));
+      rowOut[i]  = fop::add(fop::mul(m, cout), fop::mul(fop::sub(1.f, m), rowCell[i]));
     }
   }
 }
 
-void LSTMOutputForward(Tensor out_, std::vector<Tensor> inputs) {
-  int rows = out_->shape().elements() / out_->shape()[-1];
-  int cols = out_->shape()[-1];
+void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
+  int cols = out->shape()[-1];
+#ifdef __AVX__
+  if(cols % 8 == 0)
+    LSTMCellForwardTyped<float32x8>(out, inputs);
+  else
+#endif
+  if(cols % 4 == 0)
+    LSTMCellForwardTyped<float32x4>(out, inputs);
+  else
+    LSTMCellForwardTyped<float>(out, inputs);
+}
 
-  float* out = out_->data();
-  const float* cell = inputs[0]->data();
-  const float* xW = inputs[1]->data();
-  const float* sU = inputs[2]->data();
-  const float* b = inputs[3]->data();
+template <typename FType>
+void LSTMOutputForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
+  int rows = out_->shape().elements() / out_->shape()[-1];
+  
+  int fVecSize = sizeof(FType) / sizeof(float);
+  int cols = out_->shape()[-1] / fVecSize;
+
+  FType* out = out_->data<FType>();
+  const FType* cell = inputs[0]->data<FType>();
+  const FType* xW   = inputs[1]->data<FType>();
+  const FType* sU   = inputs[2]->data<FType>();
+  const FType* b    = inputs[3]->data<FType>();
+
+  using fop = functional::Ops<FType>;
 
   for(int j = 0; j < rows; ++j) {
-    float* rowOut = out + j * cols;
-    const float* rowCell = cell + j * cols;
+    FType* rowOut = out + j * cols;
+    const FType* rowCell = cell + j * cols;
 
-    const float* xWrow = xW + j * cols * 4;
-    const float* sUrow = sU + j * cols * 4;
+    const FType* xWrow = xW + j * cols * 4;
+    const FType* sUrow = sU + j * cols * 4;
 
     for(int i = 0; i < cols; ++i) {
       int k = i + 3 * cols;
-      float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
-
-      rowOut[i] = go * std::tanh(rowCell[i]);
+      FType go  = fop::sigmoid(fop::add(fop::add(xWrow[k], sUrow[k]), b[k]));
+      rowOut[i] = fop::mul(go, fop::tanh(rowCell[i]));
     }
   }
+}
+
+void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
+  int cols = out->shape()[-1];
+
+#ifdef __AVX__
+  if(cols % 8 == 0)
+    LSTMOutputForwardTyped<float32x8>(out, inputs);
+  else 
+#endif
+  if(cols % 4 == 0)
+    LSTMOutputForwardTyped<float32x4>(out, inputs);
+  else
+    LSTMOutputForwardTyped<float>(out, inputs);
 }
 
 void LSTMCellBackward(std::vector<Tensor> outputs,

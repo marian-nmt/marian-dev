@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Training and scoring from STDIN
 - Support for reading from TSV files from STDIN and other sources during training
   and translation with options --tsv and --tsv-fields n.
+- Shortlist is now always multiple-of-eight.
+- Changed the `--optimize` switch to `--int16` and replaced the computational backend to intgemm.
+- Added `--gemmm-precision` which specifies the numerical precision used for the GEMM computations. Valid values `float32` (default) `int16`, `int8` and `int8shift`. Also added aliases for the latter three. All integer based GEMM use intgemm as a computational backend.
+- Added intgemm 8/16bit integer binary architecture agnostic format.
 - Internal optional parameter in n-best list generation that skips empty hypotheses.
 
 ### Fixed
@@ -41,6 +45,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Properly record cmake variables in the cmake build directory instead of the source tree.
 - Added default "none" for option shuffle in BatchGenerator, so that it works in executables where shuffle is not an option.
 - Added a few missing header files in shortlist.h and beam_search.h.
+- Improved handling for receiving SIGTERM during training. By default, SIGTERM triggers 'save (now) and exit'. Prior to this fix, batch pre-fetching did not check for this sigal, potentially delaying exit considerably. It now pays attention to that. Also, the default behaviour of save-and-exit can now be disabled on the command line with --sigterm exit-immediately.
 
 ### Changed
 - Move Simple-WebSocket-Server to submodule

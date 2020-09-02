@@ -89,9 +89,6 @@ public:
         graph->setDevice(device);
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         graph->getBackend()->setGemmPrecision(options_);
-        if (device.type == DeviceType::cpu) {
-            graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
-        }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
 
@@ -232,9 +229,6 @@ public:
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       graph->getBackend()->setGemmPrecision(options_);
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
-      }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
 

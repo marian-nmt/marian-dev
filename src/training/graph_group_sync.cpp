@@ -306,8 +306,8 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     auto gradType = graph->params()->grads()->type();
     if(sizeOf(gradType) < sizeOf(Type::float32)) {
       using namespace functional;
-      float numGpus = mpi_->numMPIProcesses() * devices_.size();
-      float clipValue = NumericLimits<float>(gradType).max / numGpus;
+      size_t numGpus = mpi_->numMPIProcesses() * devices_.size();
+      float clipValue = NumericLimits<float>(gradType).max / (float)numGpus;
       Element(_1 = clip(_1, clipValue), graph->params()->grads());
     }
 #endif

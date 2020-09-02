@@ -202,23 +202,19 @@ namespace integer {
     __global__ void quantize(const float * input, int8_t * output, size_t items, const float * quantMultAddr) {
         const float quantMult = *quantMultAddr; //@TODO ask nvidia if this is the most efficient way to do this here
         size_t x = blockIdx.x * blockDim.x + threadIdx.x;
+        int i = threadIdx.x;
+        __shared__ float share[256]; // Not sure if shared memory is necessary here to take advnatage of globale memory burst
         if (x < items) {
-            output[x] = (int8_t)llrintf((input[x]*quantMult));
+            share[i] = input[x];
+            output[x] = (int8_t)llrintf((share[i]*quantMult));
         }
     }
 
     void quantize(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
         // Make sure we're not running out of threads here.
-        int threads = rows;
-        int blocks = cols;
+        int threads = 256;
+        int blocks = (int)ceil(rows*cols/256);
 
-        if (threads > 512) {
-            std::swap(threads, blocks);
-            if (threads > 512) {
-                blocks = (int)ceil((threads*blocks)/512);
-                threads = 512;
-            }
-        }
         quantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAddr);
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }

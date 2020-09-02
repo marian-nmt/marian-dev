@@ -246,27 +246,19 @@ namespace integer {
         const float bQuantMult = *quantMultBaddr;
         const float dequantMult = 1.0f/(aQuantMult*bQuantMult); //@TODO ask nvidia if this is the most efficient way to do this here
         size_t x = blockIdx.x * blockDim.x + threadIdx.x;
-        //if (x == 0) {
-        //    printf("Be4: %d\n", input[x]);
-        //}
-        if (x < items)
-            output[x] = ((float)input[x])*dequantMult;
-        //if (x == 0)
-        //    printf("Amax %f Bmax %f dequant: %f, after: %f\n", aMaxAbs, bMaxAbs, dequantMult, output[x]);
+        int i = threadIdx.x;
+        __shared__ int32_t share[256]; // Not sure if shared memory is necessary here to take advnatage of globale memory burst
+        if (x < items) {
+            share[i] = input[x];
+            output[x] = ((float)share[i])*dequantMult;
+        }
     }
 
     void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr) {
         // Make sure we're not running out of threads here.
-        int threads = rows;
-        int blocks = cols;
+        int threads = 256;
+        int blocks = (int)ceil(rows*cols/256);
 
-        if (threads > 512) {
-            std::swap(threads, blocks);
-            if (threads > 512) {
-                blocks = (int)ceil((threads*blocks)/512);
-                threads = 512;
-            }
-        }
         dequantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAaddr, quantMultBaddr);
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }

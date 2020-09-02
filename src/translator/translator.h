@@ -88,9 +88,8 @@ public:
         graph->setDefaultElementType(typeFromString(prec[0]));
         graph->setDevice(device);
         graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-        if (device.type == DeviceType::cpu) {
+        if (device.type == DeviceType::cpu) { // Specific GEMM precisions are only supported on the CPU for now.
           graph->getBackend()->setGemmPrecision(options_);
-          graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
         }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
@@ -231,9 +230,8 @@ public:
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
       graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-      if (device.type == DeviceType::cpu) {
+      if (device.type == DeviceType::cpu) { // Specific GEMM precisions are only supported on the CPU for now.
         graph->getBackend()->setGemmPrecision(options_);
-        graph->getBackend()->setLegacyBatchedGemm(options_->get<bool>("use-legacy-batching"));
       }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

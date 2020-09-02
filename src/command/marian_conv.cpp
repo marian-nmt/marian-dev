@@ -7,7 +7,6 @@
 #include "tensors/cpu/expression_graph_packable.h"
 #include "onnx/expression_graph_onnx_exporter.h"
 
-
 int main(int argc, char** argv) {
   using namespace marian;
 
@@ -36,16 +35,16 @@ int main(int argc, char** argv) {
 
   auto exportAs = options->get<std::string>("export-as");
   auto vocabPaths = options->get<std::vector<std::string>>("vocabs");// , std::vector<std::string>());
-  
+
   auto saveGemmTypeStr = options->get<std::string>("gemm-type", "float32");
   Type saveGemmType;
   if(saveGemmTypeStr == "float32") {
     saveGemmType = Type::float32;
-  } else if(saveGemmTypeStr == "packed16") {  // packed16 only supports AVX2. AVX512 might be added later
+  } else if(saveGemmTypeStr == "packed16") {  // packed16 (fbgemm) only supports AVX2. AVX512 might be added later
     saveGemmType = Type::packed16;
-  } else if(saveGemmTypeStr == "packed8avx2") { // packed8 for AVX2
+  } else if(saveGemmTypeStr == "packed8avx2") { // packed8 for AVX2 (fbgemm)
     saveGemmType = Type::packed8avx2;
-  } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512
+  } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512 (fbgemm)
     saveGemmType = Type::packed8avx512;
   } else if(saveGemmTypeStr == "intgemm8") { // intgemm 8 bit format
     saveGemmType = Type::intgemm8;
@@ -62,17 +61,11 @@ int main(int argc, char** argv) {
   marian::io::getYamlFromModel(config, "special:model.yml", modelFrom);
   configStr << config;
 
-  auto graph = New<ExpressionGraphPackable>();
-  graph->compressWemb = !options->get<bool>("float-Wemb"); //The variable is reversed because, sue me
-  graph->setDevice(CPU0);
-  if (saveGemmType != Type::intgemm16)
-    graph->getBackend()->setInt16(false);
-  if (saveGemmType != Type::intgemm8)
-    graph->getBackend()->setInt8(false);
-
-  auto load = [&](Ptr<ExpressionGraph> graph) {
+  auto load = [&](Ptr<ExpressionGraphPackable> graph) {
     graph->setDevice(CPU0);
-    graph->getBackend()->setInt16(false);
+    graph->getBackend()->setInt8(false);  // Since win run graph->forward() we need to make sure it does not get converted to an intgemm format during it.
+    graph->getBackend()->setInt16(false); // We manually do the compression later.
+    graph->compressWemb = !options->get<bool>("float-Wemb"); //The variable is reversed because, sue me
 
     graph->load(modelFrom);
     graph->forward();  // run the initializers
@@ -84,15 +77,17 @@ int main(int argc, char** argv) {
     // added a flag if the weights needs to be packed or not
     graph->packAndSave(modelTo, configStr.str(), /* --gemm-type */ saveGemmType, Type::float32);
   }
-#ifdef USE_ONNX
   else if (exportAs == "onnx-encode") {
+#ifdef USE_ONNX
     auto graph = New<ExpressionGraphONNXExporter>();
     load(graph);
     auto modelOptions = New<Options>(config)->with("vocabs", vocabPaths, "inference", true);
 
     graph->exportToONNX(modelTo, modelOptions, vocabPaths);
-  }
+#else
+    ABORT("--export-as onnx-encode requires Marian to be built with USE_ONNX=ON");
 #endif // USE_ONNX
+  }
   else
     ABORT("Unknown --export-as value: {}", exportAs);
 

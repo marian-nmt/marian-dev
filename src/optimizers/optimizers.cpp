@@ -241,7 +241,9 @@ void OptimizerBase::save(std::vector<io::Item>& items,
 void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   actualMBSize;
   using namespace functional;
-  Element(_1 -= eta_ * _2, params, grads);
+  Element(_1 -= eta_ * _2, 
+          params, 
+          grads);
 }
 
 void Sgd::load(std::vector<io::Item>& items,
@@ -258,7 +260,7 @@ void Sgd::save(std::vector<io::Item>& items,
 }
 
 
-// Adagrad update rule
+// Adagrad
 void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   actualMBSize; // not used in Adagrad
 
@@ -276,20 +278,21 @@ void Adagrad::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   }
 
   using namespace functional;
+
   Element(_1 += (_2 * _2), gt_, grads);
 
   // make sure eps_ does not drop below smallest (positive) value, add some reserve by multiplying with 2
   eps_ = (float)std::max(NumericLimits<double>(params->type()).min * 2.f, (double)eps_);
-  Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, params, gt_, grads);
+  Element(_1 -= (eta_ / (sqrt(_2) + eps_)) * _3, 
+          params, 
+          gt_, 
+          grads);
 }
 
 void Adagrad::load(std::vector<io::Item>& items,
                    const std::vector<Ptr<OptimizerBase>>& opts,
                    const std::vector<Ptr<Backend>>& backends,
                    const ScatterStateFunc& scatterFn) {
-  ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
-
-
   OptimizerBase::load(items, opts, backends, scatterFn);
 
   LOG(info, "Loading Adagrad parameters");
@@ -333,6 +336,7 @@ void Adagrad::save(std::vector<io::Item>& items,
   OptimizerBase::save(items, opts, gatherFn); // collect parameters from base
 
   LOG(info, "Saving Adagrad parameters");
+
   // fetch and concatenate state vectors from distributed shards into a CPU-side vector
   io::Item gt = gatherFn([&](size_t localDeviceIndex) {
       auto opt = std::dynamic_pointer_cast<Adagrad>(opts[localDeviceIndex]);
@@ -419,8 +423,6 @@ void Adam::load(std::vector<io::Item>& items,
                 const std::vector<Ptr<OptimizerBase>>& opts,
                 const std::vector<Ptr<Backend>>& backends,
                 const ScatterStateFunc& scatterFn) {
-  ABORT_IF(opts.size() != backends.size(), "opts and backends of different sizes??");
-
   OptimizerBase::load(items, opts, backends, scatterFn);
 
   LOG(info, "Loading Adam parameters");

@@ -239,7 +239,7 @@ void OptimizerBase::save(std::vector<io::Item>& items,
 }
 
 void Sgd::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
-  actualMBSize;
+  actualMBSize; // (no correction for base update needed beyond using ce-sum)
   using namespace functional;
   Element(_1 -= eta_ * _2, 
           params, 

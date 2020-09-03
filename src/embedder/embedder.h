@@ -54,8 +54,8 @@ private:
 
 public:
   Embed(Ptr<Options> options) : options_(options) {
-    
-    options_ = options_->with("inference", true, 
+
+    options_ = options_->with("inference", true,
                               "shuffle", "none");
 
     // if a similarity is computed then double the input types and vocabs for
@@ -82,11 +82,7 @@ public:
       auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
-      graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-      }
-
+      graph->getBackend()->configureDevice(options_);
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
     }
@@ -108,7 +104,7 @@ public:
   void run() override {
     LOG(info, "Embedding");
     timer::Timer timer;
-    
+
     auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus_, options_);
     batchGenerator->prepare();
 
@@ -133,7 +129,7 @@ public:
 
           std::vector<float> sentVectors;
           embeddings->val()->get(sentVectors);
-          
+
           // collect embedding vector per sentence.
           // if we compute similarities this is only one similarity per sentence pair.
           for(size_t i = 0; i < batch->size(); ++i) {
@@ -144,7 +140,7 @@ public:
               output->Write((long)batch->getSentenceIds()[i],
                             sentVector);
           }
-        
+
           // progress heartbeat for MS-internal Philly compute cluster
           // otherwise this job may be killed prematurely if no log for 4 hrs
           if (getenv("PHILLY_JOB_ID")   // this environment variable exists when running on the cluster

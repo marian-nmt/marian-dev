@@ -363,6 +363,9 @@ static cusparseSgemmiEx(cusparseHandle_t handle, int m,
   const float *cscValB, const int *cscColPtrB, const int *cscRowIndB, const float *beta,
   float *C, int ldc)
 {
+#if CUDA_VERSION >= 11000
+  ABORT("cusparseSgemmi is not available in CUDA VERSION >= 11.");
+#else
   const int nMax = 65535; // max. number of columns allowed by cuSparse 10 implementation
   for (int j0 = 0; j0 < n; j0 += 65535) { // loop over column slices, j0 = index of first column
     // Call original function on a column slice.
@@ -375,6 +378,7 @@ static cusparseSgemmiEx(cusparseHandle_t handle, int m,
     if (rc != CUSPARSE_STATUS_SUCCESS)
       return rc;
   }
+#endif
   return CUSPARSE_STATUS_SUCCESS;
 }
 
@@ -426,6 +430,45 @@ void CSRProd(marian::Tensor C,
     St_indices = allocator->alloc<int>(numValues);
     St_offsets = allocator->alloc<int>(colsS + 1);
     // transpose the second argument
+#if CUDA_VERSION >= 11000
+    size_t buffer_size;
+    CUSPARSE_CHECK(cusparseCsr2cscEx2_bufferSize(cusparseHandle,
+                                          /*m=*/ rowsS, // number of rows of matrix
+                                          /*n=*/ colsS, // number of columns of matrix
+                                          /*nnz=*/ (int)numValues,
+                                          /*csrcVal=*/          S_values ->data<float>(),
+                                          /*csrcRowPtr=*/ (int*)S_offsets->data<IndexType>(),
+                                          /*csrcColInd=*/ (int*)S_indices->data<IndexType>(),
+                                          /*cscVal=*/    St_values ->data<float>(),  // transposed version goes here
+                                          /*cscColPtr=*/ St_offsets->data<int>(),
+                                          /*cscRowInd=*/ St_indices->data<int>(),
+                                          /*valType*/ CUDA_R_32F,
+                                          /*copyValues=*/ CUSPARSE_ACTION_NUMERIC,
+                                          /*idxBase=*/ CUSPARSE_INDEX_BASE_ZERO,
+                                          /*alg*/ CUSPARSE_CSR2CSC_ALG1,
+                                          /*bufferSize*/ &buffer_size));
+    MemoryPiece::PtrType buffer= (buffer_size > 0) ? allocator->alloc<uint8_t>(buffer_size) : nullptr;
+
+    CUSPARSE_CHECK(cusparseCsr2cscEx2(cusparseHandle,
+                                          /*m=*/ rowsS, // number of rows of matrix
+                                          /*n=*/ colsS, // number of columns of matrix
+                                          /*nnz=*/ (int)numValues,
+                                          /*csrcVal=*/          S_values ->data<float>(),
+                                          /*csrcRowPtr=*/ (int*)S_offsets->data<IndexType>(),
+                                          /*csrcColInd=*/ (int*)S_indices->data<IndexType>(),
+                                          /*cscVal=*/    St_values ->data<float>(),  // transposed version goes here
+                                          /*cscColPtr=*/ St_offsets->data<int>(),
+                                          /*cscRowInd=*/ St_indices->data<int>(),
+                                          /*valType=*/ CUDA_R_32F,
+                                          /*copyValues=*/ CUSPARSE_ACTION_NUMERIC,
+                                          /*idxBase=*/ CUSPARSE_INDEX_BASE_ZERO,
+                                          /*alg=*/ CUSPARSE_CSR2CSC_ALG1,
+                                          /*buffer=*/ buffer->data<uint8_t>()));
+
+    if (buffer)
+      allocator->free(buffer);
+    ABORT("This code is untested. Please remove this ABORT once tests exist and pass.");
+#else
     CUSPARSE_CHECK(cusparseScsr2csc(cusparseHandle,
         /*m=*/ rowsS, // number of rows of matrix
         /*n=*/ colsS, // number of columns of matrix
@@ -438,12 +481,16 @@ void CSRProd(marian::Tensor C,
         /*cscColPtr=*/ St_offsets->data<int>(),
         /*copyValues=*/ CUSPARSE_ACTION_NUMERIC,
         /*idxBase=*/ CUSPARSE_INDEX_BASE_ZERO));
+#endif
     std::swap(rowsS, colsS); // these variables now represent the dims of the explicitly transposed object
   }
   if (swapOperands) {
     // C = D x S for row-major matrices
     // Implemented via cusparse as C' = S' x D' ("csrmm") where C' and D' are column-major,
     // and S' is CSR (if not transS then we make a transposed copy).
+#if CUDA_VERSION >= 11000
+    ABORT("CSRProd is not yet implemented for CUDA VERSION >= 11");
+#else
     cusparseMatDescr_t descrA;
     CUSPARSE_CHECK(cusparseCreateMatDescr(&descrA));
     cusparseSetMatType     (descrA, CUSPARSE_MATRIX_TYPE_GENERAL);
@@ -464,6 +511,7 @@ void CSRProd(marian::Tensor C,
         C->data(),
         /*ldc=*/ colsC)); // stride
     cusparseDestroyMatDescr(descrA);
+#endif
   }
   else {
     // C = S x D for row-major matrices

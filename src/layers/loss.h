@@ -416,7 +416,7 @@ protected:
     ABORT_IF(logits.getNumFactorGroups() > 1, "Unlikelihood loss is not implemented for factors");
 
     ABORT_IF(!mask, "mask is required"); // @TODO: check this, it seems weights for padding are by default 1, which would make this obsolete.
-    // use label weights, where 1 is GOOD and 0 is BAD. After inversion here, now 1 marks, mask again to eliminate padding (might be obsolete)
+    // use label weights, where 1 is GOOD and 0 is BAD. After inversion here, now 1 marks BAD, mask again to eliminate padding (might be obsolete)
     auto errorMask = (1.f - cast(labelWeights, Type::float32)) * cast(mask, Type::float32);
 
     auto ceUl = logits.applyLossFunction(labels, [&](Expr logits, Expr indices) {
@@ -458,13 +458,13 @@ public:
                              const Words& labels,
                              Expr mask = nullptr,
                              Expr labelWeights = nullptr) override {
-    ABORT_IF(!mask, "Word-level CE from rescorer must have mask");
     auto loss = CrossEntropyLoss::compute(logits, labels, mask, labelWeights);
 
     if(!wordScores_) {  // for sentence-level CE, reduce loss and labels as in cross-entropy
       return reduce(loss, mask);
     } else {  // for word-level CE, reduce labels only to get sentence lengths
       ABORT_IF(!loss, "Loss has not been computed");
+      ABORT_IF(!mask, "Word-level CE from rescorer must have mask");
 
       Expr labelsSum = cast(mask, Type::float32);  // accumulate in float32
       labelsSum = sum(labelsSum, -3);              // reduce over time axis to get sentence lengths
@@ -472,7 +472,6 @@ public:
     }
   }
 };
-
 
 /**
  * @brief Factory for label-wise loss functions

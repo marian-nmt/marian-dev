@@ -288,6 +288,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<std::string>("--transformer-postprocess",
       "Operation after each transformer layer: d = dropout, a = add, n = normalize",
       "dan");
+  cli.add<std::string>("--transformer-postprocess-top",
+      "Operation after each transformer layer: d = dropout, a = add, n = normalize",
+      "");
   cli.add<bool>("--transformer-train-position-embeddings",
       "Train positional embeddings instead of using static sinusoidal embeddings");
   cli.add<bool>("--transformer-depth-scaling",

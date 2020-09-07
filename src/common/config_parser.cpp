@@ -289,7 +289,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Operation after each transformer layer: d = dropout, a = add, n = normalize",
       "dan");
   cli.add<std::string>("--transformer-postprocess-top",
-      "Operation after each transformer layer: d = dropout, a = add, n = normalize",
+      "Final operation after a full transformer stack: d = dropout, a = add, n = normalize. The optional skip connection with 'a' by-passes the entire stack.",
       "");
   cli.add<bool>("--transformer-train-position-embeddings",
       "Train positional embeddings instead of using static sinusoidal embeddings");

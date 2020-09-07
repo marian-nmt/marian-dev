@@ -78,6 +78,7 @@ add_library(marian STATIC
 
   optimizers/clippers.cpp
   optimizers/optimizers.cpp
+  optimizers/exponential_smoothing.cpp
 
   models/model_factory.cpp
   models/encoder_decoder.cpp

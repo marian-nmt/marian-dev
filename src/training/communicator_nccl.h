@@ -29,7 +29,6 @@ private:
   std::vector<int> devices_;          // [device index]
   Ptr<IMPIWrapper> mpi_; // (may be null)
   mutable ThreadPool threadPool_;
-  mutable std::vector<std::future<void>> threadResults_; // [device index]
 
   void groupStart() const { NCCL_CHECK(ncclGroupStart()); } // helpers to make sure we check the error
   void groupEnd()   const { NCCL_CHECK(ncclGroupEnd());   }
@@ -140,7 +139,7 @@ public:
         streams_(graphs.size()),
         devices_(graphs.size()),
         mpi_(mpi),
-        threadPool_(graphs.size(), graphs.size()), threadResults_(graphs.size()) {
+        threadPool_(graphs.size(), graphs.size()) {
     mpiBarrier(); // barrier to group the multiple log messages from MPI processes
     LOG(info, "[comm] Using NCCL {} {}for GPU communication",
         ncclVersionString(),
@@ -203,20 +202,34 @@ public:
     }
   }
 
-  void foreach(const ForeachFunc& func, bool parallel = true) const override {
+  template <typename Ret>
+  Ret foreachAcc(const ForeachFunc<Ret>& func, const AccFunc<Ret>& acc, Ret init, bool parallel = true) const {
     parallel &= graphs_.size() > 1;
 
+    Ret retValue = init;
+    std::vector<std::future<Ret>> threadResults(graphs_.size()); // [device index]
     for(size_t i = 0; i < graphs_.size(); ++i) {
       size_t begin, end; std::tie
       (begin, end) = localShardRange(i);
       if (parallel)
-        threadResults_[i] = threadPool_.enqueue(func, i, begin, end);
+        threadResults[i] = threadPool_.enqueue(func, i, begin, end);
       else
-        func(i, begin, end);
+        acc(retValue, func(i, begin, end));
     }
-    if (parallel)
-      for(size_t i = 0; i < graphs_.size(); ++i)
-        threadResults_[i].wait();
+    if(parallel)
+       for(auto& task : threadResults)
+          acc(retValue, task.get());
+
+    return retValue;
+  }
+
+  float foreach(const ForeachFunc<float>& func, AccFunc<float> acc, float init, bool parallel = true) const override {
+    return foreachAcc(func, acc, init, parallel);
+  }
+
+  bool foreach(const ForeachFunc<bool>& func, bool parallel = true) const override {
+    AccFunc<bool> allTrue = [](bool& x, bool y) { x = x && y; };
+    return foreachAcc(func, allTrue, true, parallel);
   }
 
   void scatterReduceAndResetGrads() const override {
@@ -233,13 +246,18 @@ public:
       size_t      bufsize = shardSize();
       ABORT_IF(grads->subtensor(begin, end-begin)->size() != bufsize, "unexpected subtensor size??");
 
-      NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloat, ncclSum, comms_[i], streams_[i]));
+      ncclDataType_t ncclFloatType = ncclFloat32;
+      if(grads->type() == Type::float16)
+        ncclFloatType = ncclFloat16;
+
+      NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloatType, ncclSum, comms_[i], streams_[i]));
     }
     groupEnd();
     synchronizeAll();
 
     // reset gradients
     // In the future, we can keep quantization residuals here straight in the grads themselves.
+    // @TODO: all the different places where gradients get reset are confusing
     auto resetGrads = [&](size_t i, size_t begin, size_t end) {
       auto grads = graphs_[i]->params()->grads();
       auto size = grads->size();
@@ -248,6 +266,8 @@ public:
         grads->subtensor(0, begin)->set(0.f);
       if (end < size)
         grads->subtensor(end, size - end)->set(0.f);
+
+      return true; // dummy success
     };
     foreach(resetGrads);
   }
@@ -268,46 +288,51 @@ public:
       void*       recvbuf = vals->data();
       size_t      bufsize = shardSize();
 
-      NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, bufsize, ncclFloat, comms_[i], streams_[i]));
+      ncclDataType_t ncclFloatType = ncclFloat32;
+      if(vals->type() == Type::float16)
+        ncclFloatType = ncclFloat16;
+
+      NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, bufsize, ncclFloatType, comms_[i], streams_[i]));
     }
     groupEnd();
     synchronizeAll();
   }
 
+#if 0 // disabled for now, not being called anywhere in the code. @TODO: In order to get MPI back working we need to fix this.
   // swap distributed paramShards with model params()
   // It is assumed that all model params() on all devices and MPI processes are identical.
   // This is used for the smoothed parameters.
   void swapParams(const std::vector<Tensor>& distributedParamShards) const override {
+    ABORT("not implemented");
     // get everything onto the CPU
-    auto distributedParams = gatherState([&](size_t localDeviceIndex) {
-      std::vector<float> tmp;
-      distributedParamShards[localDeviceIndex]->get(tmp);
-      return tmp;
-    });
-    // Now all MPI processes hold an identical copy of a concatenation of all distributedParamShards[] across local and remote devices.
-    std::vector<float> localParams;
-    graphs_[0]->params()->vals()->get(localParams);
-    // Now all MPI processes hold an identical copy of params() (remember, we assumed all devices hold the same params()).
-    ABORT_IF(distributedParams.size() != localParams.size(), "distributed sharded and local params have different size??");
+    // auto distributedParams = gatherState([&](size_t localDeviceIndex) {
+    //   return distributedParamShards[localDeviceIndex]->toItem("dummy");
+    // });
+    // // Now all MPI processes hold an identical copy of a concatenation of all distributedParamShards[] across local and remote devices.
+    // std::vector<float> localParams;
+    // graphs_[0]->params()->vals()->get(localParams);
+    // // Now all MPI processes hold an identical copy of params() (remember, we assumed all devices hold the same params()).
+    // ABORT_IF(distributedParams.size() != localParams.size(), "distributed sharded and local params have different size??");
 
-    // swap
-    std::swap(distributedParams, localParams);
+    // // swap
+    // std::swap(distributedParams, localParams);
 
-    // distribute it back
-    scatterState(distributedParams, [&](size_t localDeviceIndex,
-                                        std::vector<float>::const_iterator begin,
-                                        std::vector<float>::const_iterator end){
-      ABORT_IF(distributedParamShards[localDeviceIndex]->size() != end-begin, "swapParams size mismatch??"); // @TODO: move check to set()
-      distributedParamShards[localDeviceIndex]->set(std::vector<float>(begin, end)); // @TODO: directly pass iterators to set()
-    });
-    for (auto& graph : graphs_) // broadcast to every local graph
-      graph->params()->vals()->set(localParams);
+    // // distribute it back
+    // scatterState(distributedParams, [&](size_t localDeviceIndex,
+    //                                     std::vector<float>::const_iterator begin,
+    //                                     std::vector<float>::const_iterator end){
+    //   ABORT_IF(distributedParamShards[localDeviceIndex]->size() != end-begin, "swapParams size mismatch??"); // @TODO: move check to set()
+    //   distributedParamShards[localDeviceIndex]->set(std::vector<float>(begin, end)); // @TODO: directly pass iterators to set()
+    // });
+    // for (auto& graph : graphs_) // broadcast to every local graph
+    //   graph->params()->vals()->set(localParams);
   }
+#endif
 
   // Distribute a single CPU-side vector to shards across multiple devices and MPI processes.
   // This is used when restoring optimizer state, which is sharded, and as part of swapParams().
   // It is assumed that all MPI processes get the same data() passed. Hence, no MPI transfers are needed here.
-  void scatterState(const std::vector<float>& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
+  void scatterState(const io::Item& data, const OptimizerBase::ScatterStateSetFunc& setFn) const override {
     size_t dataSize = data.size();
     size_t numShards = numNcclRanks();
     size_t shardSize = (dataSize + numShards - 1) / numShards;
@@ -316,32 +341,35 @@ public:
       auto ncclRank = myNcclRank(localDeviceIndex);
       size_t begin = ncclRank * shardSize;
       size_t end   = std::min(begin + shardSize, dataSize);
-      setFn(localDeviceIndex, data.begin() + begin, data.begin() + end);
+      setFn(localDeviceIndex, data.bytes.data() + begin, data.bytes.data() + end);
     }
   }
 
   // Collect shards across multiple devices and MPI processes in the NCCL configuration into a single CPU-side vector.
   // This is used when persisting optimizer state, which is sharded, and as part of swapParams().
-  std::vector<float> gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const override {
-    std::vector<float> tmp; // (temp buffer used multiple times)
+  io::Item gatherState(const OptimizerBase::GatherStateGetFunc& getFn) const override {
     // first, concatenate over all local devices
-    std::vector<float> localData;
-    for(size_t localDeviceIndex = 0; localDeviceIndex < graphs_.size(); localDeviceIndex++) {
-      tmp = getFn(localDeviceIndex);
-      localData.insert(localData.end(), tmp.begin(), tmp.end());
+    io::Item localData = getFn(0);
+    for(size_t localDeviceIndex = 1; localDeviceIndex < graphs_.size(); localDeviceIndex++) {
+      localData.append(getFn(localDeviceIndex));
     }
     // second, concatenate across MPI processes
     // Note that all local devices occupy consecutive ncclRanks in order.
-    std::vector<float> data;
+    io::Item data;
     if (mpi_) {
+      io::Item tmp; // (temp buffer used multiple times)
       // push one rank's data at a time using broadcast
       for(size_t mpiRank = 0; mpiRank < mpi_->numMPIProcesses(); mpiRank++) {
         // broadcast mpiRank's localData to all
-        if(mpiRank == mpi_->myMPIRank())
+        if(mpiRank == mpi_->myMPIRank()) {
           tmp = localData;
+        }
         mpi_->bCast(tmp, /*rootRank=*/mpiRank);
         // now all ranks have the same slice: concatenate (we will end up with the same on all MPI processes)
-        data.insert(data.end(), tmp.begin(), tmp.end());
+        if(mpiRank == 0)
+          data = tmp;
+        else
+          data.append(tmp);
       }
     }
     else { // no MPI: localData is the complete result already

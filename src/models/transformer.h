@@ -558,7 +558,7 @@ public:
     auto layer     = transposeTimeBatch(batchEmbeddings); // [beam depth=1, batch size, max length, vector dim]
     auto layerMask = transposeTimeBatch(batchMask);       // [beam depth=1, batch size, max length, vector dim=1]
 
-    auto prevLayer = layer; // keep handle to untransformed embeddeddings, potentially used for a final skip connection
+    auto prevLayer = layer; // keep handle to untransformed embeddings, potentially used for a final skip connection
 
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
@@ -582,9 +582,9 @@ public:
       checkpoint(layer); // sets a manually specified checkpoint if gradient checkpointing is enabled, does nothing otherwise.
     }
 
-    // This allows to run a final layernorm operation after going through the transformer layer stack.
+    // this allows to run a final layernorm operation after going through the transformer layer stack.
     // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
-    // we should normalize here. Can also be used to add a skip connection from the very bottom if requested.
+    // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
     auto opsTop = opt<std::string>("transformer-postprocess-top", "");
     layer = postProcess(prefix_ + "_top", opsTop, layer, prevLayer, dropProb);
 
@@ -714,7 +714,7 @@ public:
     // reorganize batch and timestep
     auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 
-    auto prevQuery = query;
+    auto prevQuery = query; // keep handle to untransformed embeddings, potentially used for a final skip connection
 
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
@@ -853,7 +853,7 @@ public:
 
     // This allows to run a final layernorm operation after going through the transformer layer stack.
     // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
-    // we should normalize here. Can also be used to add a skip connection from the very bottom if requested.
+    // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
     auto opsTop = opt<std::string>("transformer-postprocess-top", "");
     query = postProcess(prefix_ + "_top", opsTop, query, prevQuery, dropProb);
 

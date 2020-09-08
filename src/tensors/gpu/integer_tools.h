@@ -19,6 +19,7 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
     void quantize(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
     void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
     void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr);
+    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr);
     void cutlass_igemm_dispatcher(bool transA, bool transB,
         int M,
         int N,
@@ -37,6 +38,7 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
     void gpuPrinterDispatch(int8_t * mem, size_t idx);
     void memCpyDevice(float * dest, float * source, size_t elems);
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems);
+    void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr);
     /*
     float * unmanagedGPUAlloc(size_t num);
     void unmanagedFree(float * in);*/
@@ -47,7 +49,6 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         input_gpu;
         items;
         output_gpu;
-        return;
     }
     void quantize(const float * intput, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
         input;
@@ -55,7 +56,6 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         rows;
         cols;
         quantMult;
-        return;
     }
     void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
         input;
@@ -63,7 +63,6 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         rows;
         cols;
         quantMult;
-        return;
     }
     void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr) {
         input;
@@ -72,7 +71,13 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         cols;
         quantMultAaddr;
         quantMultBaddr;
-        return;
+    }
+    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr) {
+        input;
+        output;
+        rows;
+        cols;
+        dequantMultAddr;
     }
     void cutlass_igemm_dispatcher(bool transA, bool transB,
         int M,
@@ -107,6 +112,11 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
             dest;
             source;
             elems;
+        }
+        void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr) {
+            output;
+            quantMultAaddr;
+            quantMultBaddr;
         }
         //void gpuPrinterDispatch(float * mem, size_t idx) {
         //    mem;

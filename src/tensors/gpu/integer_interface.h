@@ -159,8 +159,8 @@ private:
   bool useTensorcores_;
 
 public:
-  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr quantMultA, Expr quantMultB, Expr ones, bool transA, bool transB, float scalar, bool useTensorcores)
-      : NaryNodeOp({a, b, Bias, quantMultA, quantMultB, ones}, 
+  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, Expr ones, bool transA, bool transB, float scalar, bool useTensorcores)
+      : NaryNodeOp({a, b, Bias, deQuantMult, ones},
         newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
@@ -193,8 +193,7 @@ public:
       Tensor B = child(1)->val();
       Tensor C = val_;
       
-      Tensor quantMultA = child(3)->val();
-      Tensor quantMultB = child(4)->val();
+      Tensor deQuantMult = child(3)->val();
 
       CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
       float alpha = scalar_;
@@ -285,14 +284,14 @@ public:
       //Now unquantize... Reusing the same Tensor
       int rowsC = C->shape().elements() / C->shape().back();
       int colsC = C->shape().back();
-      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, quantMultA->data<float>(), quantMultB->data<float>());
+      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, deQuantMult->data<float>());
       //Synchronize
       val_->getBackend()->synchronize();
 
       //Perform bias addition, copied from the master implementation
       if (child(2)) {
         Tensor bias = child(2)->val();
-        Tensor ones = child(5)->val();
+        Tensor ones = child(4)->val();
         marian::gpu::Prod(val_, ones, bias, false, false, 1.f, 1.f);
       }
 
@@ -315,8 +314,8 @@ private:
   bool useTensorcores_;
 
 public:
-  DotNodeOp(Expr a, Expr b, Expr quantMultA, Expr quantMultB, bool transA, bool transB, float scalar, bool useTensorcores)
-      : NaryNodeOp({a, b, quantMultA, quantMultB}, 
+  DotNodeOp(Expr a, Expr b, Expr deQuantMult, bool transA, bool transB, float scalar, bool useTensorcores)
+      : NaryNodeOp({a, b, deQuantMult},
         newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
@@ -349,8 +348,7 @@ public:
       Tensor B = child(1)->val();
       Tensor C = val_;
       
-      Tensor quantMultA = child(2)->val();
-      Tensor quantMultB = child(3)->val();
+      Tensor deQuantMult = child(2)->val();
       
 
       CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
@@ -438,7 +436,7 @@ public:
       int rowsC = rows(C);
       int colsC = cols(C);
       val_->getBackend()->synchronize();
-      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, quantMultA->data<float>(), quantMultB->data<float>());
+      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, deQuantMult->data<float>());
       //Synchronize
       val_->getBackend()->synchronize();
     )};
@@ -490,6 +488,24 @@ public:
   const std::string type() override { return "alphaNodeOp"; }
 };
 
+class DequantMultNodeOp : public NaryNodeOp {
+public:
+  DequantMultNodeOp(Expr aQuantMult, Expr bQuantMult)
+      : NaryNodeOp({aQuantMult, bQuantMult}, Shape({1}), Type::float32) {
+    set_name(aQuantMult->name() + "_" + bQuantMult->name() + "dequantMult");
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+      float * aQuantMult = child(0)->val()->data<float>();
+      float * bQuantMult = child(1)->val()->data<float>();
+      getDequantMultWrapper(val_->data<float>(), aQuantMult, bQuantMult);
+    )};
+  }
+
+  const std::string type() override { return "dequantMultNodeOp"; }
+};
+
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
   bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm();
   ABORT_IF(useTensorcores && transA, "Using tensorcores and transposing the activations is not yet supported!");
@@ -507,15 +523,16 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   Expr AQuantized = Expression<PrepareNodeOp<Activation> >(A, AQuantMult);
   Expr BQuantized = Expression<PrepareNodeOp<Parameter> >(B, BQuantMult, useTensorcores, transB);
 
+  Expr deQuantMult = Expression<DequantMultNodeOp>(AQuantMult, BQuantMult);
 
   //Perform multiplication KNOWING that A and B are swapped
   
   if (bias) {
     int rows = A->shape().elements() / A->shape()[-1];
     Expr ones = A->graph()->ones({ rows, 1 });
-    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, AQuantMult, BQuantMult, ones, transA, transB, scale, useTensorcores);
+    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, transA, transB, scale, useTensorcores);
   } else {
-    return Expression<DotNodeOp>(AQuantized, BQuantized, AQuantMult, BQuantMult, transA, transB, scale, useTensorcores);
+    return Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores);
   }
 }
 

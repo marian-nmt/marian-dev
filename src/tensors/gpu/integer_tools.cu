@@ -241,6 +241,16 @@ namespace integer {
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 
+    __global__ void getDequantMult(float * output, float * quantMultAaddr, float * quantMultBaddr) {
+        const float aQuantMult = *quantMultAaddr;
+        const float bQuantMult = *quantMultBaddr;
+        *output = 1.0f/(aQuantMult*bQuantMult);
+    }
+
+    void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr) {
+        getDequantMult<<<1,1>>>(output, quantMultAaddr, quantMultBaddr);
+    }
+
     __global__ void dequantize(const int32_t * input, float * output, size_t items, const float * quantMultAaddr, const float * quantMultBaddr) {
         const float aQuantMult = *quantMultAaddr;
         const float bQuantMult = *quantMultBaddr;
@@ -260,6 +270,26 @@ namespace integer {
         int blocks = (int)ceil(rows*cols/256);
 
         dequantize<<<blocks, threads>>>(input, output, rows*cols, quantMultAaddr, quantMultBaddr);
+        CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
+    }
+
+    __global__ void dequantize(const int32_t * input, float * output, size_t items, const float * dequantMultAddr) {
+        const float dequantMult = *dequantMultAddr; //@TODO ask nvidia if this is the most efficient way to do this here
+        size_t x = blockIdx.x * blockDim.x + threadIdx.x;
+        int i = threadIdx.x;
+        __shared__ int32_t share[256]; // Not sure if shared memory is necessary here to take advnatage of globale memory burst
+        if (x < items) {
+            share[i] = input[x];
+            output[x] = ((float)share[i])*dequantMult;
+        }
+    }
+
+    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr) {
+        // Make sure we're not running out of threads here.
+        int threads = 256;
+        int blocks = (int)ceil(rows*cols/256);
+
+        dequantize<<<blocks, threads>>>(input, output, rows*cols, dequantMultAddr);
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 

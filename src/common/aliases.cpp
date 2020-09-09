@@ -148,6 +148,9 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
     // Transformer base variant with "prenorm" (i.e. the layer normalization is performed as the first block-wise
     // preprocessing step). This also requires to normalize the final output of a transformer stack to avoid the 
     // activations to blow up. This blow up is particularly nasty with mixed precision training.
+    // See implementation and comments in tensor2tensor: 
+    // * https://github.com/tensorflow/tensor2tensor/blob/95d021477272c10af15cd62f25b595ad16ad514e/tensor2tensor/models/transformer.py#L1845
+    // * https://github.com/tensorflow/tensor2tensor/commit/f5c9b17e617ea9179b7d84d36b1e8162cb369f25#diff-4e58a582cf11ca649e76b4362d69e405R78
     cli.alias("task", "transformer-base-prenorm", [](YAML::Node& config) {
       // Model options
       config["type"] = "transformer";

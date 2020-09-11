@@ -18,6 +18,7 @@ protected:
   bool dumpMatrices_{false};
   bool alpha_{false};
   bool legacyBatch_{false};
+  bool fused_{false};
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {}
@@ -68,9 +69,17 @@ public:
   }
 
   void setTensorCoreGemm(bool tensorCore) override {
+    tensorCore;
     LOG_ONCE(info, "setTensorCoreGemm() not supported for CPU.");
   }
   bool useTensorCoreGemm() override {
+    return false;
+  }
+  void setFused(bool fused) override {
+    fused;
+    LOG_ONCE(info, "setFused() not supported for CPU.");
+  }
+  bool isFused() override {
     return false;
   }
 

@@ -904,6 +904,14 @@ void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
       "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm or Tensor cores instead of floats, with precomputed alphas. Corresponds to --gemm-precision int8Alpha");
   cli.add<bool>("--int8tensorAlpha",
       "Use precomputed alphas when using 8bit integer operations with CUTLASS tensor cores. Corresponds to --gemm-precision int8tensorAlpha");
+  cli.add<bool>("--int8Fused",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm or CUTLASS instead of floats. Uses fused GEMM. Corresponds to --gemm-precision int8Fused");
+  cli.add<bool>("--int8tensorFused",
+      "Use tensor cores for CUTLASS when doing 8bit int operations. Uses fused GEMM.  Corresponds to --gemm-precision int8tensorFused");
+  cli.add<bool>("--int8AlphaFused",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm or Tensor cores instead of floats, with precomputed alphas. Uses fused GEMM.  Corresponds to --gemm-precision int8AlphaFused");
+  cli.add<bool>("--int8tensorAlphaFused",
+      "Use precomputed alphas when using 8bit integer operations with CUTLASS tensor cores. Uses fused GEMM.  Corresponds to --gemm-precision int8tensorAlphaFused");
   cli.add<bool>("--int8shift",
       "Use a faster, shifted integer 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
   cli.add<bool>("--int8shiftAlpha",

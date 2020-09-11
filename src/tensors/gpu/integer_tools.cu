@@ -39,112 +39,265 @@ namespace integer {
         } while(0)
     
     /*Cutlass matrices*/
+    using ElementOutput = float;
+    using ElementAccumulator = int32_t;
+    using ElementCompute = float;
     /*TensorOp matrices*/
-    using CutlassGemmTensorOp = cutlass::gemm::device::Gemm<
-                                                            int8_t,                            // ElementA
+    using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<128, 256, 64>;  // <- threadblock tile M = 128, N = 256, K = 64
+    // This code section describes tile size a warp will compute
+    using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 64>;  // <- warp tile M = 64, N = 64, K = 64 
+    // This code section describes the size of MMA op
+    using ShapeMMAOp = cutlass::gemm::GemmShape<8, 8, 16>;  // <- MMA Op tile M = 8, N = 8, K = 16
+
+
+    // This code section describes the epilogue part of the kernel
+    using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
+                                                  ElementOutput, // <- data type of output matrix
+                                                  128 / cutlass::sizeof_bits<ElementOutput>::value,  // <- the number of elements per vectorized
+                                                       // memory access. For a byte, it's 16
+                                                       // elements. This becomes the vector width of
+                                                       // math instructions in the epilogue too
+                                                  ElementAccumulator, // <- data type of accumulator
+                                                  ElementCompute>;  // <- data type for alpha/beta in linear combination function
+    using CutlassGemmTensorOp = cutlass::gemm::device::Gemm<int8_t,                            // ElementA
                                                             cutlass::layout::RowMajor,         // LayoutA
                                                             int8_t,                            // ElementB
                                                             cutlass::layout::ColumnMajor,      // LayoutB
-                                                            int32_t,                           // ElementOutput
+                                                            float,                             // ElementOutput
                                                             cutlass::layout::ColumnMajor,      // LayoutOutput
                                                             int32_t,                           // ElementAccumulator
                                                             cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
-                                                            cutlass::arch::Sm75                // tag indicating target GPU compute architecture //@TODO this should change, probably
-                                                            >;
+                                                            cutlass::arch::Sm75,               // tag indicating target GPU compute architecture //@TODO this should change, probably
+                                                            ShapeMMAThreadBlock,
+                                                            ShapeMMAWarp,
+                                                            ShapeMMAOp,
+                                                            EpilogueOp>;
     /*Non TensorOp matrices*/
+    using InstructionShape = cutlass::gemm::GemmShape<1, 1, 4>;
+    using ThreadBlockShape = cutlass::gemm::GemmShape<64, 64, 16>;
+    using WarpShape = cutlass::gemm::GemmShape<64, 64, 16>;
+    using Epilogue = cutlass::epilogue::thread::LinearCombination<ElementOutput,
+                                                                  1, /*@TODO should be something different? like 32/64/128?*/
+                                                                  ElementAccumulator,
+                                                                  ElementCompute>;
     using ColumnMajor = cutlass::layout::ColumnMajor;
     using ColumnMajorT = cutlass::layout::RowMajor; //Transposing in cutlass is done by changing the input from RowMajor to ColumnMajor. Care of the output
     //using RowMajor = cutlass::layout::RowMajor;
-    using CutlassGemmTT = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
-                                                    ColumnMajorT,  // Layout of A matrix
-                                                    int8_t,        // Data-type of B matrix
-                                                    ColumnMajorT,  // Layout of B matrix
-                                                    int32_t,        // Data-type of C matrix
-                                                    ColumnMajor>; // Layout of C matrix
-                                                    //int32_t, // Accumulator
-                                                    //cutlass::arch::OpClassTensorOp, //TensorOp
-                                                    //cutlass::arch::Sm75>;  //SMmodel
+    using CutlassGemmTT = cutlass::gemm::device::Gemm<int8_t,       // Data-type of A matrix
+                                                    ColumnMajorT,   // Layout of A matrix
+                                                    int8_t,         // Data-type of B matrix
+                                                    ColumnMajorT,   // Layout of B matrix
+                                                    float,          // Data-type of C matrix
+                                                    ColumnMajor,    // Layout of C matrix
+                                                    int32_t,        // Accumulator
+                                                    cutlass::arch::OpClassSimt,
+                                                    cutlass::arch::Sm75,
+                                                    ThreadBlockShape,
+                                                    WarpShape,
+                                                    InstructionShape,
+                                                    Epilogue
+                                                    >;
     using CutlassGemmNT = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
                                                     ColumnMajor,  // Layout of A matrix
                                                     int8_t,        // Data-type of B matrix
                                                     ColumnMajorT,  // Layout of B matrix
-                                                    int32_t,        // Data-type of C matrix
-                                                    ColumnMajor>; // Layout of C matrix
+                                                    float,        // Data-type of C matrix
+                                                    ColumnMajor, // Layout of C matrix
+                                                    int32_t,        // Accumulator
+                                                    cutlass::arch::OpClassSimt,
+                                                    cutlass::arch::Sm75,
+                                                    ThreadBlockShape,
+                                                    WarpShape,
+                                                    InstructionShape,
+                                                    Epilogue
+                                                    >;
 
-    using CutlassGemmTN = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
-                                                    ColumnMajorT,  // Layout of A matrix
+    using CutlassGemmTN = cutlass::gemm::device::Gemm<int8_t,       // Data-type of A matrix
+                                                    ColumnMajorT,   // Layout of A matrix
+                                                    int8_t,         // Data-type of B matrix
+                                                    ColumnMajor,    // Layout of B matrix
+                                                    float,          // Data-type of C matrix
+                                                    ColumnMajor,    // Layout of C matrix
+                                                    int32_t,        // Accumulator
+                                                    cutlass::arch::OpClassSimt,
+                                                    cutlass::arch::Sm75,
+                                                    ThreadBlockShape,
+                                                    WarpShape,
+                                                    InstructionShape,
+                                                    Epilogue
+                                                    >;
+
+    using CutlassGemmNN = cutlass::gemm::device::Gemm<int8_t,      // Data-type of A matrix
+                                                    ColumnMajor,   // Layout of A matrix
                                                     int8_t,        // Data-type of B matrix
-                                                    ColumnMajor,  // Layout of B matrix
-                                                    int32_t,        // Data-type of C matrix
-                                                    ColumnMajor>; // Layout of C matrix
+                                                    ColumnMajor,   // Layout of B matrix
+                                                    float,         // Data-type of C matrix
+                                                    ColumnMajor,   // Layout of C matrix
+                                                    int32_t,       // Accumulator
+                                                    cutlass::arch::OpClassSimt,
+                                                    cutlass::arch::Sm75,
+                                                    ThreadBlockShape,
+                                                    WarpShape,
+                                                    InstructionShape,
+                                                    Epilogue
+                                                    >;
 
-    using CutlassGemmNN = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
-                                                    ColumnMajor,  // Layout of A matrix
-                                                    int8_t,        // Data-type of B matrix
-                                                    ColumnMajor,  // Layout of B matrix
-                                                    int32_t,        // Data-type of C matrix
-                                                    ColumnMajor>; // Layout of C matrix
+    /*Non-Epilogue functions, as they are faster (for now)*/
+    using CutlassGemmTensorOpunfused = cutlass::gemm::device::Gemm<int8_t,                         // ElementA
+                                                                cutlass::layout::RowMajor,         // LayoutA
+                                                                int8_t,                            // ElementB
+                                                                cutlass::layout::ColumnMajor,      // LayoutB
+                                                                int32_t,                           // ElementOutput
+                                                                cutlass::layout::ColumnMajor,      // LayoutOutput
+                                                                int32_t,                           // ElementAccumulator
+                                                                cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
+                                                                cutlass::arch::Sm75>;
 
+    using CutlassGemmTTunfused = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                            ColumnMajorT,   // Layout of A matrix
+                                                            int8_t,         // Data-type of B matrix
+                                                            ColumnMajorT,   // Layout of B matrix
+                                                            int32_t,        // Data-type of C matrix
+                                                            ColumnMajor,    // Layout of C matrix
+                                                            int32_t>;       // Accumulator
+
+    using CutlassGemmNTunfused = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                            ColumnMajor,    // Layout of A matrix
+                                                            int8_t,         // Data-type of B matrix
+                                                            ColumnMajorT,   // Layout of B matrix
+                                                            int32_t,        // Data-type of C matrix
+                                                            ColumnMajor,    // Layout of C matrix
+                                                            int32_t>;       // Accumulator
+
+    using CutlassGemmTNunfused = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                            ColumnMajorT,   // Layout of A matrix
+                                                            int8_t,         // Data-type of B matrix
+                                                            ColumnMajor,    // Layout of B matrix
+                                                            int32_t,        // Data-type of C matrix
+                                                            ColumnMajor,    // Layout of C matrix
+                                                            int32_t>;       // Accumulator
+
+    using CutlassGemmNNunfused = cutlass::gemm::device::Gemm<int8_t,        // Data-type of A matrix
+                                                            ColumnMajor,    // Layout of A matrix
+                                                            int8_t,         // Data-type of B matrix
+                                                            ColumnMajor,    // Layout of B matrix
+                                                            int32_t,        // Data-type of C matrix
+                                                            ColumnMajor,    // Layout of C matrix
+                                                            int32_t>;       // Accumulator
 
     cutlass::Status cutlass_igemm_nn(bool transA, bool transB,
                         int M,
                         int N,
                         int K,
-                        float alpha,
+                        float * alpha,
                         int8_t const *A,
                         int lda,
                         int8_t const *B,
                         int ldb,
-                        float beta,
-                        int32_t *C,
+                        float * beta,
+                        float *C,
                         int ldc,
-                        bool tensorCore) {
-        if (tensorCore) {
-            CutlassGemmTensorOp gemm_operator;
-            CutlassGemmTensorOp::Arguments args({M , N, K},  // Gemm Problem dimensions
-                {A, lda},    // Tensor-ref for source matrix A
-                {B, ldb},    // Tensor-ref for source matrix B
-                {C, ldc},    // Tensor-ref for source matrix C
-                {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                {alpha, beta}); // Scalars used in the Epilogue
-            return gemm_operator(args);
+                        bool tensorCore,
+                        bool fused) {
+        if (fused) {
+            if (tensorCore) {
+                CutlassGemmTensorOp gemm_operator;
+                CutlassGemmTensorOp::Arguments args({M, N, K},  // Gemm Problem dimensions
+                    {A, lda},    // Tensor-ref for source matrix A
+                    {B, ldb},    // Tensor-ref for source matrix B
+                    {C, ldc},    // Tensor-ref for source matrix C
+                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            } else {
+                if (!transA && !transB) {
+                    CutlassGemmNN gemm_operator;
+                    CutlassGemmNN::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {C, ldc},    // Tensor-ref for source matrix C
+                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha, beta}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                } else if (transA && !transB) {
+                    CutlassGemmTN gemm_operator;
+                    CutlassGemmTN::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {C, ldc},    // Tensor-ref for source matrix C
+                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha, beta}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                } else if (!transA && transB) {
+                    CutlassGemmNT gemm_operator;
+                    CutlassGemmNT::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {C, ldc},    // Tensor-ref for source matrix C
+                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha, beta}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                } else { // Final case (transA && transB)
+                    CutlassGemmTT gemm_operator;
+                    CutlassGemmTT::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {C, ldc},    // Tensor-ref for source matrix C
+                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha, beta}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                }
+            }
         } else {
-            if (!transA && !transB) {
-                CutlassGemmNN gemm_operator;
-                CutlassGemmNN::Arguments args({M , N, K},  // Gemm Problem dimensions
+            static const float constexpr alpha_int = 1.0f;
+            static const float constexpr beta_int = 0.0f;
+            if (tensorCore) {
+                CutlassGemmTensorOpunfused gemm_operator;
+                CutlassGemmTensorOpunfused::Arguments args({M, N, K},  // Gemm Problem dimensions
                     {A, lda},    // Tensor-ref for source matrix A
                     {B, ldb},    // Tensor-ref for source matrix B
-                    {C, ldc},    // Tensor-ref for source matrix C
-                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                    {alpha, beta}); // Scalars used in the Epilogue
+                    {(int32_t *)C, ldc},    // Tensor-ref for source matrix C
+                    {(int32_t *)C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha_int, beta_int}); // Scalars used in the Epilogue
                 return gemm_operator(args);
-            } else if (transA && !transB) {
-                CutlassGemmTN gemm_operator;
-                CutlassGemmTN::Arguments args({M , N, K},  // Gemm Problem dimensions
-                    {A, lda},    // Tensor-ref for source matrix A
-                    {B, ldb},    // Tensor-ref for source matrix B
-                    {C, ldc},    // Tensor-ref for source matrix C
-                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                    {alpha, beta}); // Scalars used in the Epilogue
-                return gemm_operator(args);
-            } else if (!transA && transB) {
-                CutlassGemmNT gemm_operator;
-                CutlassGemmNT::Arguments args({M , N, K},  // Gemm Problem dimensions
-                    {A, lda},    // Tensor-ref for source matrix A
-                    {B, ldb},    // Tensor-ref for source matrix B
-                    {C, ldc},    // Tensor-ref for source matrix C
-                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                    {alpha, beta}); // Scalars used in the Epilogue
-                return gemm_operator(args);
-            } else { // Final case (transA && transB)
-                CutlassGemmTT gemm_operator;
-                CutlassGemmTT::Arguments args({M , N, K},  // Gemm Problem dimensions
-                    {A, lda},    // Tensor-ref for source matrix A
-                    {B, ldb},    // Tensor-ref for source matrix B
-                    {C, ldc},    // Tensor-ref for source matrix C
-                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
-                    {alpha, beta}); // Scalars used in the Epilogue
-                return gemm_operator(args);
+            } else {
+                if (!transA && !transB) {
+                    CutlassGemmNNunfused gemm_operator;
+                    CutlassGemmNNunfused::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {(int32_t *)C, ldc},    // Tensor-ref for source matrix C
+                        {(int32_t *)C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha_int, beta_int}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                } else if (transA && !transB) {
+                    CutlassGemmTNunfused gemm_operator;
+                    CutlassGemmTNunfused::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {(int32_t *)C, ldc},    // Tensor-ref for source matrix C
+                        {(int32_t *)C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha_int, beta_int}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                } else if (!transA && transB) {
+                    CutlassGemmNTunfused gemm_operator;
+                    CutlassGemmNTunfused::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {(int32_t *)C, ldc},    // Tensor-ref for source matrix C
+                        {(int32_t *)C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha_int, beta_int}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                } else { // Final case (transA && transB)
+                    CutlassGemmTTunfused gemm_operator;
+                    CutlassGemmTTunfused::Arguments args({M, N, K},  // Gemm Problem dimensions
+                        {A, lda},    // Tensor-ref for source matrix A
+                        {B, ldb},    // Tensor-ref for source matrix B
+                        {(int32_t *)C, ldc},    // Tensor-ref for source matrix C
+                        {(int32_t *)C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {alpha_int, beta_int}); // Scalars used in the Epilogue
+                    return gemm_operator(args);
+                }
             }
         }
     }
@@ -152,15 +305,16 @@ namespace integer {
         int M,
         int N,
         int K,
-        float alpha,
+        float * alpha,
         int8_t const *A,
         int lda,
         int8_t const *B,
         int ldb,
-        float beta,
+        float * beta,
         int32_t *C,
         int ldc,
-        bool tensorCore) {
+        bool tensorCore,
+        bool fused) {
             CUTLASS_CHECK(cutlass_igemm_nn(transA, transB,
                 M,
                 N,
@@ -171,9 +325,10 @@ namespace integer {
                 B,
                 ldb,
                 beta,
-                C,
+                (float *)C,
                 ldc,
-                tensorCore));
+                tensorCore,
+                fused));
         CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
     }
     /**************************CUTLASS code ends here***********************/

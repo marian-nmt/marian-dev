@@ -159,6 +159,12 @@ private:
   bool useTensorcores_;
 
 public:
+  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, Expr ones, Expr zero, bool transA, bool transB, float scalar, bool useTensorcores)
+      : NaryNodeOp({a, b, Bias, deQuantMult, ones, zero},
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
+        setMemoize(false); // AFAIK affine is never called with the same matrices
+      }
+  /*Version without zero tensor*/
   AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, Expr ones, bool transA, bool transB, float scalar, bool useTensorcores)
       : NaryNodeOp({a, b, Bias, deQuantMult, ones},
         newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
@@ -196,7 +202,7 @@ public:
       Tensor deQuantMult = child(3)->val();
 
       CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
-      float alpha = scalar_;
+      //float alpha = scalar_;
 
       int m = A->shape().elements() / A->shape().back();
       int k = A->shape().back();
@@ -250,19 +256,28 @@ public:
       if (useTensorcores_ && !transB_) { //If B is to be transposed we don't need to reverse the dimensions
           ldb = B->shape().elements() / B->shape().back();
       }
-        cutlass_igemm_dispatcher(transB_, transA_,
+      float * beta = nullptr;
+      static bool fused = child(0)->graph()->getBackend()->isFused();
+      if (fused)
+        beta = child(3)->val()->data<float>(); //0.0f on the GPU
+      //std::cerr << "Affine alpha and beta: " << std::endl;
+      //gpuPrinterDispatch(deQuantMult->data<float>(), 0);
+      //gpuPrinterDispatch(beta, 0);
+      //std::cerr << "Performing fused: " << fused << " gemm: TensorOp: " << useTensorcores_ << std::endl;
+      cutlass_igemm_dispatcher(transB_, transA_,
                           n,
                           m,
                           k,
-                          alpha,
+                          deQuantMult->data<float>(),
                           B->data<int8_t>(),
                           ldb,
                           A->data<int8_t>(),
                           lda,
-                          0.0f,
-                          C->data<int32_t>(),
+                          beta,
+                          C->data<int32_t>(), /*We perform a cast depending on whether its fused or not down the line*/
                           ldc,
-                          useTensorcores_);
+                          useTensorcores_,
+                          fused);
        /* 
         child(0)->val()->getBackend()->synchronize();
         std::cerr << "B: " << child(1)->name() << " shape: " << child(1)->shape() << " 0 and 1:" << std::endl;
@@ -282,11 +297,17 @@ public:
       //}
 
       //Now unquantize... Reusing the same Tensor
-      int rowsC = C->shape().elements() / C->shape().back();
-      int colsC = C->shape().back();
-      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, deQuantMult->data<float>());
-      //Synchronize
-      val_->getBackend()->synchronize();
+      if (!fused) {
+        int rowsC = C->shape().elements() / C->shape().back();
+        int colsC = C->shape().back();
+        dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, deQuantMult->data<float>());
+        //Synchronize
+        val_->getBackend()->synchronize();
+      }
+      //std::cerr << "First affine: " << std::endl;
+      //gpuPrinterDispatch(C->data<float>(), 0);
+      //val_->getBackend()->synchronize();
+      //exit(0);
 
       //Perform bias addition, copied from the master implementation
       if (child(2)) {
@@ -314,6 +335,12 @@ private:
   bool useTensorcores_;
 
 public:
+  DotNodeOp(Expr a, Expr b, Expr deQuantMult, Expr zero, bool transA, bool transB, float scalar, bool useTensorcores)
+      : NaryNodeOp({a, b, deQuantMult, zero},
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
+        setMemoize(false); // AFAIK affine is never called with the same matrices
+      }
+  /* Version without the zero tensor*/
   DotNodeOp(Expr a, Expr b, Expr deQuantMult, bool transA, bool transB, float scalar, bool useTensorcores)
       : NaryNodeOp({a, b, deQuantMult},
         newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
@@ -352,7 +379,7 @@ public:
       
 
       CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
-      float alpha = scalar_;
+      //float alpha = scalar_;
 
       int m = A->shape().elements() / A->shape().back();
       int k = A->shape().back();
@@ -403,19 +430,31 @@ public:
       if(useTensorcores_ && !transB_) {
         ldb = B->shape().elements() / B->shape().back();
       }
+      float * beta = nullptr;
+      static bool fused = child(0)->graph()->getBackend()->isFused();
+      if (fused)
+        beta = child(3)->val()->data<float>(); //0.0f on the GPU
+      //std::cerr << "Affine alpha and beta: " << std::endl;
+      //gpuPrinterDispatch(deQuantMult->data<float>(), 0);
+      //gpuPrinterDispatch(beta, 0);
       cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
                         n,
                         m,
                         k,
-                        alpha,
+                        deQuantMult->data<float>(),
                         B->data<int8_t>(),
                         ldb,
                         A->data<int8_t>(),
                         lda,
-                        0.0f,
+                        beta,
                         C->data<int32_t>(),
                         ldc,
-                        useTensorcores_);
+                        useTensorcores_,
+                        fused);
+        //std::cerr << "First dot: " << std::endl;
+        //gpuPrinterDispatch(C->data<float>(), 0);
+        //val_->getBackend()->synchronize();
+        //exit(0);
                         /*
         child(0)->val()->getBackend()->synchronize();
         std::cerr << "B: " << child(1)->name() << " 0 and 1:" << std::endl;
@@ -433,12 +472,13 @@ public:
       //}
 
       //Now unquantize... Reusing the same Tensor
-      int rowsC = rows(C);
-      int colsC = cols(C);
-      val_->getBackend()->synchronize();
-      dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, deQuantMult->data<float>());
-      //Synchronize
-      val_->getBackend()->synchronize();
+      if (!fused) {
+        int rowsC = rows(C);
+        int colsC = cols(C);
+        dequantize(C->data<int32_t>(), C->data<float>(), rowsC, colsC, deQuantMult->data<float>());
+        // Synchronize
+        val_->getBackend()->synchronize();
+      }
     )};
   }
 
@@ -526,13 +566,23 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
   Expr deQuantMult = Expression<DequantMultNodeOp>(AQuantMult, BQuantMult);
 
   //Perform multiplication KNOWING that A and B are swapped
-  
-  if (bias) {
+  static bool fused = A->graph()->getBackend()->isFused();
+  Expr zero = nullptr;
+  if (fused)
+    zero = A->graph()->zeros({1,1}, Type::float32); // This is the beta in GPU space, 0.0f. 
+  if (bias) {                                       // @TODO move it onto BQuantMult or PrepareB, because this is really slow.
     int rows = A->shape().elements() / A->shape()[-1];
     Expr ones = A->graph()->ones({ rows, 1 });
-    return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, transA, transB, scale, useTensorcores);
+    if (zero)
+      return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, zero, transA, transB, scale, useTensorcores);
+    else
+      return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, transA, transB, scale, useTensorcores);
   } else {
-    return Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores);
+    if (zero)
+      return Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, zero, transA, transB, scale, useTensorcores);
+    else {
+      return Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores);
+    }
   }
 }
 

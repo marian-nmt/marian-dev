@@ -24,15 +24,16 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int M,
         int N,
         int K,
-        float alpha,
+        float * alpha,
         int8_t const *A,
         int lda,
         int8_t const *B,
         int ldb,
-        float beta,
+        float * beta,
         int32_t *C,
         int ldc,
-        bool tensorCore = false);
+        bool tensorCore,
+        bool fused);
     void gpuPrinterDispatch(float * mem, size_t idx);
     void gpuPrinterDispatch(int32_t * mem, size_t idx);
     void gpuPrinterDispatch(int8_t * mem, size_t idx);
@@ -83,14 +84,16 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int M,
         int N,
         int K,
-        float alpha,
+        float * alpha,
         int8_t const *A,
         int lda,
         int8_t const *B,
         int ldb,
-        float beta,
+        float * beta,
         int32_t *C,
-        int ldc) {
+        int ldc,
+        bool tensorCore,
+        bool fused) {
             M;
             N;
             K;
@@ -102,6 +105,8 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
             beta;
             C;
             ldc;
+            tensorCore;
+            fused;
         }
         void memCpyDevice(float * dest, float * source, size_t elems) {
             dest;

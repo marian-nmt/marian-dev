@@ -24,6 +24,7 @@ private:
   bool int8_{false};
   bool alpha_{false};
   bool tensorCore_{false};
+  bool fused_{false};
   void setCudaComputeCapability() {
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
@@ -133,6 +134,14 @@ public:
   }
   bool useTensorCoreGemm() override {
     return tensorCore_;
+  }
+
+  void setFused(bool fused) override {
+    fused_ = fused;
+  }
+
+  bool isFused() override {
+    return fused_;
   }
 
 private:

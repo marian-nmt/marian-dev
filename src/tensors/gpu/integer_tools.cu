@@ -249,8 +249,8 @@ namespace integer {
                 }
             }
         } else {
-            static const float constexpr alpha_int = 1.0f;
-            static const float constexpr beta_int = 0.0f;
+            static const int32_t constexpr alpha_int = 1;
+            static const int32_t constexpr beta_int = 0;
             if (tensorCore) {
                 CutlassGemmTensorOpunfused gemm_operator;
                 CutlassGemmTensorOpunfused::Arguments args({M, N, K},  // Gemm Problem dimensions

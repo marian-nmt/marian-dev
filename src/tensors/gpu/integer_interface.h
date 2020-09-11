@@ -259,7 +259,7 @@ public:
       float * beta = nullptr;
       static bool fused = child(0)->graph()->getBackend()->isFused();
       if (fused)
-        beta = child(3)->val()->data<float>(); //0.0f on the GPU
+        beta = child(5)->val()->data<float>(); //0.0f on the GPU
       //std::cerr << "Affine alpha and beta: " << std::endl;
       //gpuPrinterDispatch(deQuantMult->data<float>(), 0);
       //gpuPrinterDispatch(beta, 0);

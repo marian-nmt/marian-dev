@@ -146,6 +146,15 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<std::string>("--dump-config",
     "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal, expand")
     ->implicit_val("full");
+  if(mode_ == cli::mode::training) {
+    // --sigterm is deliberately not a boolean, to allow for a consistent
+    // pattern of specifying custom signal handling in the future.
+    // (e.g., dump model but continue training upon SIGUSR1, or report current
+    // training status upon SIGINFO.)
+    cli.add<std::string>("--sigterm",
+      "What to do with SIGTERM: save-and-exit or exit-immediately.",
+      "save-and-exit");
+  }
   // clang-format on
 }
 
@@ -235,7 +244,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Tie source and target embeddings");
   cli.add<bool>("--tied-embeddings-all",
       "Tie all embedding layers and output layer");
-
+  cli.add<bool>("--output-omit-bias",
+      "Do not use a bias vector in decoder output layer");
+  
   // Transformer options
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
@@ -280,6 +291,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<std::string>("--transformer-postprocess",
       "Operation after each transformer layer: d = dropout, a = add, n = normalize",
       "dan");
+  cli.add<std::string>("--transformer-postprocess-top",
+      "Final operation after a full transformer stack: d = dropout, a = add, n = normalize. The optional skip connection with 'a' by-passes the entire stack.",
+      "");
   cli.add<bool>("--transformer-train-position-embeddings",
       "Train positional embeddings instead of using static sinusoidal embeddings");
   cli.add<bool>("--transformer-depth-scaling",

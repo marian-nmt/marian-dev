@@ -47,6 +47,7 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("transformer-preprocess");
   modelFeatures_.insert("transformer-postprocess");
   modelFeatures_.insert("transformer-postprocess-emb");
+  modelFeatures_.insert("transformer-postprocess-top");
   modelFeatures_.insert("transformer-decoder-autoreg");
   modelFeatures_.insert("transformer-tied-layers");
   modelFeatures_.insert("transformer-guided-alignment-layer");
@@ -60,6 +61,7 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("ulr-trainable-transformation");
   modelFeatures_.insert("ulr-dim-emb");
   modelFeatures_.insert("lemma-dim-emb");
+  modelFeatures_.insert("output-omit-bias");
 }
 
 std::vector<Ptr<EncoderBase>>& EncoderDecoder::getEncoders() {

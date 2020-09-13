@@ -663,8 +663,8 @@ Expr cast(Expr a, Type type) {
   }
 }
 
-Expr cross_entropy(Expr logits, Expr indices) {
-  return Expression<CrossEntropyNodeOp>(logits, indices);
+Expr cross_entropy(Expr logits, Expr indices, float labelSmoothingAlpha) {
+  return Expression<CrossEntropyNodeOp>(logits, indices, labelSmoothingAlpha);
 }
 
 // Unlikelihood loss based on https://arxiv.org/abs/1908.04319

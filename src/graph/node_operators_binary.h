@@ -121,14 +121,18 @@ public:
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
     
+    auto isParameter = [](Expr p) {
+      return std::dynamic_pointer_cast<ParamNode>(p) != nullptr;
+    };
+
     // if child A is not a parameter (i.e. activations) use computeType float32 for accumulation
     Type computeTypeA = child(0)->grad()->type();
-    if(child(0)->type() != "param" && computeTypeA == Type::float16)
+    if(!isParameter(child(0)) && computeTypeA == Type::float16)
       computeTypeA = Type::float32;
 
     // if child B is not a parameter (i.e. activations) use computeType float32 for accumulation
     Type computeTypeB = child(1)->grad()->type();
-    if(child(1)->type() != "param" && computeTypeB == Type::float16)
+    if(!isParameter(child(1)) && computeTypeB == Type::float16)
       computeTypeB = Type::float32;
 
     if(!transA_ && transB_)
@@ -283,21 +287,24 @@ public:
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
 
+    auto isParameter = [](Expr p) {
+      return std::dynamic_pointer_cast<ParamNode>(p) != nullptr;
+    };
+
     // if child A is not a parameter (i.e. activations) use computeType float32 for accumulation
     Type computeTypeA = child(0)->grad()->type();
-    if(std::dynamic_pointer_cast<ParamNode>(child(0)) != nullptr && computeTypeA == Type::float16)
+    if(!isParameter(child(0)) && computeTypeA == Type::float16)
       computeTypeA = Type::float32;
 
     // if child B is not a parameter (i.e. activations) use computeType float32 for accumulation
     Type computeTypeB = child(1)->grad()->type();
-    if(child(1)->type() != "param" && computeTypeB == Type::float16)
+    if(!isParameter(child(1)) && computeTypeB == Type::float16)
       computeTypeB = Type::float32;
 
     // if child C (bias) is not a parameter (i.e. activations) use computeType float32 for accumulation
     Type computeTypeC = child(2)->grad()->type();
-    if(child(2)->type() != "param" && computeTypeC == Type::float16)
+    if(!isParameter(child(2)) && computeTypeC == Type::float16)
       computeTypeC = Type::float32;
-
 
     // We reduce bias gradients with a matrix multiply
     if(!transA_ && transB_)

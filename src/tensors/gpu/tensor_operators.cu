@@ -1495,7 +1495,7 @@ void GRUFastBackward(std::vector<Tensor> outputs,
 }
 
 template <typename T, typename AccType = float>
-__global__ void gCrossEntropyPick(T* out,
+__global__ void gCrossEntropyPick(AccType* out,
                                   const functional::Shape outShape,
                                   const T* in,
                                   const functional::Shape inShape,
@@ -1570,7 +1570,7 @@ __global__ void gCrossEntropyPick(T* out,
           auto logsumexp = functional::Ops<AccType>::log(sumexp);
           auto ce = logsumexp - (AccType)sp[id] + (AccType)max; // cross-entropy    H(y^, p)
           auto ls = logsumexp - mean;                           // label smoothing  H(u, p)
-          out[j] = (T)((1.f - labelSmoothingAlpha) * ce + labelSmoothingAlpha * ls);  // (1 - alpha) * H(y^, p) + alpha * H(u, p)
+          out[j] = (1.f - labelSmoothingAlpha) * ce + labelSmoothingAlpha * ls;  // (1 - alpha) * H(y^, p) + alpha * H(u, p)
         }
       }
     }
@@ -1594,23 +1594,23 @@ void CrossEntropyPick(Tensor out, Tensor in, Tensor indices, float labelSmoothin
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = sizeof(float) * threads * 2; // Use float32 as accumulation type
 
-  if(out->type() == Type::float32) {
+  if(out->type() == Type::float32 && in->type() == Type::float32) {
     gCrossEntropyPick<float, float><<<blocks, threads, shared>>>(
       out->data<float>(), out->shape(), in->data<float>(), in->shape(), indices->data<IndexType>(), labelSmoothingAlpha);
 #if COMPILE_FP16
-  } else if(out->type() == Type::float16) {
+  } else if(out->type() == Type::float32 && in->type() == Type::float16) {
     gCrossEntropyPick<half, float><<<blocks, threads, shared>>>(
-      out->data<half>(), out->shape(), in->data<half>(), in->shape(), indices->data<IndexType>(), labelSmoothingAlpha);
+      out->data<float>(), out->shape(), in->data<half>(), in->shape(), indices->data<IndexType>(), labelSmoothingAlpha);
 #endif
   } else {
-    ABORT("CrossEntropyPick not implemented for type {}", out->type());
+    ABORT("CrossEntropyPick not implemented for input type {} and output type{}", in->type(), out->type());
   }
 }
 
 template <typename T, typename AccType = float>
 __global__ void gCrossEntropyPickBackward(T* out,
                                           const functional::Shape outShape,
-                                          const T* adj,
+                                          const AccType* adj,
                                           const T* in,
                                           const IndexType* pick,
                                           AccType labelSmoothingAlpha = AccType(0.f)) {
@@ -1676,7 +1676,7 @@ __global__ void gCrossEntropyPickBackward(T* out,
           AccType sub = (AccType)(id == (int)pick[j]);
           AccType dce = functional::Ops<AccType>::exp(sp[id] - max) / _sum[0] - sub;
           AccType dls = labelSmoothingAlpha * (sub - 1.f / (AccType)cols);
-          so[id] += (AccType)adj[j] * (dce + dls);
+          so[id] += (T)(adj[j] * (dce + dls));
         }
       }
     }
@@ -1696,16 +1696,16 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices, 
   int threads = std::min(MAX_THREADS, (int)cols);
   int shared = sizeof(float) * threads; // use float as accumulation type
 
-  if(out->type() == Type::float32) {
+  if(out->type() == Type::float32 && adj->type() == Type::float32) {
     gCrossEntropyPickBackward<float, float><<<blocks, threads, shared>>>(
       out->data<float>(), out->shape(), adj->data<float>(), a->data<float>(), indices->data<IndexType>(), labelSmoothingAlpha);
 #if COMPILE_FP16
-  } else if(out->type() == Type::float16) {
+  } else if(out->type() == Type::float16 && adj->type() == Type::float32) {
     gCrossEntropyPickBackward<half, float><<<blocks, threads, shared>>>(
-      out->data<half>(), out->shape(), adj->data<half>(), a->data<half>(), indices->data<IndexType>(), labelSmoothingAlpha);
+      out->data<half>(), out->shape(), adj->data<float>(), a->data<half>(), indices->data<IndexType>(), labelSmoothingAlpha);
 #endif
   } else {
-    ABORT("CrossEntropyPick not implemented for type {}", out->type());
+    ABORT("CrossEntropyPickBackward not implemented for type {} and adjoint type {}", out->type(), adj->type());
   }
 }
 

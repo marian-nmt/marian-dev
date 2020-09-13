@@ -351,7 +351,7 @@ protected:
       // for bert training or classification the time dimension is lost.
       // Here safeguard against 2d classifier output, adds 1 on the left, non-op.
       
-      Expr ce = cast(cross_entropy(logits, indices, inFactor ? 0.f : labelSmoothing_), Type::float32);
+      Expr ce = cross_entropy(logits, indices, inFactor ? 0.f : labelSmoothing_, Type::float32);
       if (inFactor && factorWeight_ != 1.0f) {
         LOG_ONCE(info, "scaling factor losses with weight {}", factorWeight_);
         ce = ce * factorWeight_;

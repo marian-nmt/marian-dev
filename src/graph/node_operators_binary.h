@@ -1077,8 +1077,8 @@ private:
   float labelSmoothingAlpha_;
 
 public:
-  CrossEntropyNodeOp(Expr a, Expr indices, float labelSmoothingAlpha)
-    : NaryNodeOp({a, indices}, newShape(a), a->value_type()),
+  CrossEntropyNodeOp(Expr a, Expr indices, float labelSmoothingAlpha, Type outputType = Type::float32)
+    : NaryNodeOp({a, indices}, newShape(a), outputType),
       labelSmoothingAlpha_(labelSmoothingAlpha) {
     matchOrAbort<IndexType>(indices->value_type());
     int rows   = a->shape().elements() / a->shape()[-1];

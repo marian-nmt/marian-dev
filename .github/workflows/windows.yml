@@ -39,7 +39,6 @@ jobs:
         # GitHub-hosted runners
         echo "::set-env name=MKLROOT::$env:GITHUB_WORKSPACE/mkl"
       shell: powershell
-      if: matrix.cpu == true
 
     - name: Install CUDA
       run: |
@@ -85,11 +84,17 @@ jobs:
       if: matrix.gpu == true
 
     # Windows CUDA builds use USE_NCCL=off due to compilation errors
+    # Boost is pre-installed on Azure/GitHub-hosted Windows runners
+    # https://github.com/actions/virtual-environments/blob/main/images/win/Windows2019-Readme.md#boost
+    # (not used yet)
     - name: Build Release
       uses: lukka/run-cmake@v2
       with:
         buildDirectory: ${{ github.workspace }}/build/
         cmakeAppendedArgs: '-G Ninja
+          -DBOOST_ROOT="$(BOOST_ROOT_1_72_0)"
+          -DBOOST_INCLUDEDIR="$(BOOST_ROOT_1_72_0)/include"
+          -DBOOST_LIBRARYDIR="$(BOOST_ROOT_1_72_0)/lib"
           -DCMAKE_BUILD_TYPE="Release"
           -DOPENSSL_USE_STATIC_LIBS="TRUE"
           -DOPENSSL_MSVC_STATIC_RT="TRUE"
@@ -109,7 +114,7 @@ jobs:
     - name: Run unit tests
       working-directory: build/
       run: ctest
-      # GitHub-hosted VMs do not have GPUs, so tests are not run in CUDA builds
+      # Not run in GPU builds because GitHub-hosted VMs do not have GPUs
       if: matrix.gpu == false
 
     - name: Print versions
@@ -118,4 +123,5 @@ jobs:
         .\marian.exe --version
         .\marian-decoder.exe --version
         .\marian-scorer.exe --version
-        .\spm_encode.exe --version
+        dir *.exe
+      shell: cmd

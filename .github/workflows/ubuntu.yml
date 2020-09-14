@@ -11,7 +11,6 @@ jobs:
     strategy:
       matrix:
         include:
-          ################################################################
           # Ubuntu CPU-only build
           - os: ubuntu-latest
             cuda: ""
@@ -24,7 +23,6 @@ jobs:
             gcc: 7
             cpu: false
             gpu: true
-          ################################################################
           # Ubuntu 20.04 supports CUDA 11+
           #- os: ubuntu-20.04
             #cuda: "11.0"

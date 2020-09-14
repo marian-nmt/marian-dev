@@ -14,14 +14,11 @@ jobs:
     strategy:
       matrix:
         include:
-          ################################################################
           # Windows CPU-only build
           - cuda: ""
-            cpu: true
             gpu: false
           # Windows CPU+GPU build
           - cuda: "10.2"
-            cpu: true
             gpu: true
 
     runs-on: windows-2019
@@ -61,8 +58,34 @@ jobs:
         vcpkgDirectory: ${{ github.workspace }}/vcpkg/
         vcpkgTriplet: x64-windows-static
 
-    # On Windows CUDA builds we compile with USE_NCCL=off
-    - name: Run CMake
+    # Windows CUDA builds use USE_NCCL=off due to compilation errors.
+    - name: Build Debug
+      uses: lukka/run-cmake@v2
+      with:
+        buildDirectory: ${{ github.workspace }}/build/Debug
+        cmakeAppendedArgs: '-G Ninja
+          -DCMAKE_BUILD_TYPE="Debug"
+          -DOPENSSL_USE_STATIC_LIBS="TRUE"
+          -DOPENSSL_MSVC_STATIC_RT="TRUE"
+          -DCOMPILE_CPU="TRUE"
+          -DCOMPILE_CUDA="${{ matrix.gpu }}"
+          -DCOMPILE_SERVER="FALSE"
+          -DCOMPILE_TESTS="TRUE"
+          -DUSE_FBGEMM="TRUE"
+          -DUSE_MPI="FALSE"
+          -DUSE_NCCL="FALSE"
+          -DUSE_SENTENCEPIECE="TRUE"
+          -DUSE_STATIC_LIBS="TRUE"'
+        cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
+        cmakeListsTxtPath: ${{ github.workspace }}/CMakeLists.txt
+        useVcpkgToolchainFile: true
+      # Building in Debug is sufficient for the all-in CPU+GPU compilation;
+      # its main purpose is to detect warnings that the Release build is not
+      # able to find sometimes.
+      if: matrix.gpu == true
+
+    # Windows CUDA builds use USE_NCCL=off due to compilation errors
+    - name: Build Release
       uses: lukka/run-cmake@v2
       with:
         buildDirectory: ${{ github.workspace }}/build/
@@ -70,11 +93,11 @@ jobs:
           -DCMAKE_BUILD_TYPE="Release"
           -DOPENSSL_USE_STATIC_LIBS="TRUE"
           -DOPENSSL_MSVC_STATIC_RT="TRUE"
-          -DCOMPILE_CPU="${{ matrix.cpu }}"
+          -DCOMPILE_CPU="TRUE"
           -DCOMPILE_CUDA="${{ matrix.gpu }}"
           -DCOMPILE_SERVER="FALSE"
           -DCOMPILE_TESTS="TRUE"
-          -DUSE_FBGEMM="${{ matrix.cpu }}"
+          -DUSE_FBGEMM="TRUE"
           -DUSE_MPI="FALSE"
           -DUSE_NCCL="FALSE"
           -DUSE_SENTENCEPIECE="TRUE"
@@ -84,13 +107,13 @@ jobs:
         useVcpkgToolchainFile: true
 
     - name: Run unit tests
-      working-directory: build/Debug/
+      working-directory: build/
       run: ctest
-      # GitHub-hosted VMs do not have GPUs, so can not be run in CUDA builds
+      # GitHub-hosted VMs do not have GPUs, so tests are not run in CUDA builds
       if: matrix.gpu == false
 
     - name: Print versions
-      working-directory: build/Debug/
+      working-directory: build/
       run: |
         .\marian.exe --version
         .\marian-decoder.exe --version

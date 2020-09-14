@@ -53,6 +53,5 @@ jobs:
         ./marian --version
         ./marian-decoder --version
         ./marian-scorer --version
-        ./marian-server --version
         ./spm_encode --version
 

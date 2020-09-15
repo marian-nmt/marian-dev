@@ -26,7 +26,7 @@ name: Release
 on:
   push:
     tags:
-      - "test-v*.*.*"
+      - "v*.*.*"
 
 env:
   cuda_version: "10.2"
@@ -35,19 +35,22 @@ env:
 jobs:
   ######################################################################
   build-release-ubuntu:
-    runs-on: ubuntu-18.04
-
     strategy:
       matrix:
         include:
           # No builds with FBGEMM because they are not portable enough
           # requiring same CPU architecture at compilation and runtime
-          - suffix: cpu
+          - name: "Build Ubuntu CPU"
+            suffix: cpu
             fbgemm: false
             cuda: false
-          - suffix: cuda10.2
+          - name: "Build Ubuntu CPU+CUDA"
+            suffix: cuda10.2
             fbgemm: false
             cuda: true
+
+    runs-on: ubuntu-18.04
+    name: ${{ matrix.name }}
 
     steps:
     # Set env.github_tag_name and env.archive_name for subsequent steps
@@ -122,19 +125,22 @@ jobs:
 
   ######################################################################
   build-release-windows:
-    runs-on: windows-2019
-
     strategy:
       matrix:
         include:
           # No builds with FBGEMM because they are not portable enough
           # requiring same CPU architecture at compilation and runtime
-          - suffix: cpu
+          - name: "Build Windows CPU"
+            suffix: cpu
             fbgemm: false
             cuda: false
-          - suffix: cuda10.2
+          - name: "Build Windows CPU+CUDA"
+            suffix: cuda10.2
             fbgemm: false
             cuda: true
+
+    runs-on: windows-2019
+    name: ${{ matrix.name }}
 
     steps:
     # Set env.github_tag_name and env.archive_name for subsequent steps
@@ -223,6 +229,7 @@ jobs:
     needs: [build-release-ubuntu, build-release-windows]
 
     runs-on: ubuntu-18.04
+    name: Release
 
     steps:
     - name: Checkout

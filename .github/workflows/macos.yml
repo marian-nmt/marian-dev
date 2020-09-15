@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-macos:
+    name: MacOS CPU-only
     runs-on: macos-10.15
 
     steps:

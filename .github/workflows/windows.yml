@@ -15,13 +15,16 @@ jobs:
       matrix:
         include:
           # Windows CPU-only build
-          - cuda: ""
+          - name: "Windows CPU-only"
+            cuda: ""
             gpu: false
           # Windows CPU+GPU build
-          - cuda: "10.2"
+          - name: "Windows CPU+CUDA"
+            cuda: "10.2"
             gpu: true
 
     runs-on: windows-2019
+    name: ${{ matrix.name }}
 
     steps:
     - name: Checkout

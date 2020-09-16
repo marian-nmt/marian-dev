@@ -33,13 +33,15 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int32_t *C,
         int ldc,
         bool tensorCore,
-        bool fused);
+        bool fused,
+        float * bias);
     void gpuPrinterDispatch(float * mem, size_t idx);
     void gpuPrinterDispatch(int32_t * mem, size_t idx);
     void gpuPrinterDispatch(int8_t * mem, size_t idx);
     void memCpyDevice(float * dest, float * source, size_t elems);
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems);
     void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr);
+    void fieldSetGPU(float * gpuMem, float value);
     /*
     float * unmanagedGPUAlloc(size_t num);
     void unmanagedFree(float * in);*/
@@ -93,7 +95,8 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int32_t *C,
         int ldc,
         bool tensorCore,
-        bool fused) {
+        bool fused,
+        float * bias) {
             M;
             N;
             K;
@@ -107,6 +110,7 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
             ldc;
             tensorCore;
             fused;
+            bias;
         }
         void memCpyDevice(float * dest, float * source, size_t elems) {
             dest;
@@ -122,6 +126,10 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
             output;
             quantMultAaddr;
             quantMultBaddr;
+        }
+        void fieldSetGPU(float * gpuMem, float value) {
+            gpuMem;
+            value;
         }
         //void gpuPrinterDispatch(float * mem, size_t idx) {
         //    mem;

@@ -29,11 +29,19 @@ private:
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
   }
+  float * oneGPU;
+  float * zeroGPU;
 
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {
     setDevice();
     setCudaComputeCapability();
+    float one = 1.0;
+    float zero = 0.0;
+    CUDA_CHECK(cudaMalloc(&oneGPU, 1*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&zeroGPU, 1*sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(oneGPU, &one, 1*sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(zeroGPU, &zero, 1*sizeof(float), cudaMemcpyHostToDevice));
   }
 
   ~Backend() {
@@ -46,6 +54,8 @@ public:
       cublasDestroy(cublasHandle_);
       cublasHandle_ = 0;
     }
+    cudaFree(oneGPU);
+    cudaFree(zeroGPU);
   }
 
   void setDevice() override { CUDA_CHECK(cudaSetDevice((int)deviceId_.no)); }
@@ -66,6 +76,14 @@ public:
       cusparseCreate(&cusparseHandle_);
     }
     return cusparseHandle_;
+  }
+
+  float * getOneGPU() {
+    return oneGPU;
+  }
+
+  float * getZeroGPU() {
+    return zeroGPU;
   }
 
   CudaCompute getCudaComputeCapability() { return compute_; }

@@ -198,52 +198,62 @@ namespace integer {
                         float *C,
                         int ldc,
                         bool tensorCore,
-                        bool fused) {
+                        bool fused,
+                        float * bias) {
+        float * Csrc;
+        int ldcSRC;
+        if (bias) { /* This is only available for the fused option. Beta needs to be 1? */
+            Csrc = bias;
+            ldcSRC = 0; /*Having a stride of 0 enables bias broadcast*/
+        } else {
+            Csrc = C;
+            ldcSRC = ldc;
+        }
         if (fused) {
             if (tensorCore) {
                 CutlassGemmTensorOp gemm_operator;
                 CutlassGemmTensorOp::Arguments args({M, N, K},  // Gemm Problem dimensions
-                    {A, lda},    // Tensor-ref for source matrix A
-                    {B, ldb},    // Tensor-ref for source matrix B
-                    {C, ldc},    // Tensor-ref for source matrix C
-                    {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {A, lda},       // Tensor-ref for source matrix A
+                    {B, ldb},       // Tensor-ref for source matrix B
+                    {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                    {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                     {alpha, beta}); // Scalars used in the Epilogue
                 return gemm_operator(args);
             } else {
                 if (!transA && !transB) {
                     CutlassGemmNN gemm_operator;
                     CutlassGemmNN::Arguments args({M, N, K},  // Gemm Problem dimensions
-                        {A, lda},    // Tensor-ref for source matrix A
-                        {B, ldb},    // Tensor-ref for source matrix B
-                        {C, ldc},    // Tensor-ref for source matrix C
-                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {A, lda},       // Tensor-ref for source matrix A
+                        {B, ldb},       // Tensor-ref for source matrix B
+                        {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                        {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                         {alpha, beta}); // Scalars used in the Epilogue
                     return gemm_operator(args);
                 } else if (transA && !transB) {
                     CutlassGemmTN gemm_operator;
                     CutlassGemmTN::Arguments args({M, N, K},  // Gemm Problem dimensions
-                        {A, lda},    // Tensor-ref for source matrix A
-                        {B, ldb},    // Tensor-ref for source matrix B
-                        {C, ldc},    // Tensor-ref for source matrix C
-                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {A, lda},       // Tensor-ref for source matrix A
+                        {B, ldb},       // Tensor-ref for source matrix B
+                        {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                        {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                         {alpha, beta}); // Scalars used in the Epilogue
                     return gemm_operator(args);
                 } else if (!transA && transB) {
                     CutlassGemmNT gemm_operator;
                     CutlassGemmNT::Arguments args({M, N, K},  // Gemm Problem dimensions
-                        {A, lda},    // Tensor-ref for source matrix A
-                        {B, ldb},    // Tensor-ref for source matrix B
-                        {C, ldc},    // Tensor-ref for source matrix C
-                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {A, lda},       // Tensor-ref for source matrix A
+                        {B, ldb},       // Tensor-ref for source matrix B
+                        {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                        {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                         {alpha, beta}); // Scalars used in the Epilogue
                     return gemm_operator(args);
                 } else { // Final case (transA && transB)
                     CutlassGemmTT gemm_operator;
                     CutlassGemmTT::Arguments args({M, N, K},  // Gemm Problem dimensions
-                        {A, lda},    // Tensor-ref for source matrix A
-                        {B, ldb},    // Tensor-ref for source matrix B
-                        {C, ldc},    // Tensor-ref for source matrix C
-                        {C, ldc},    // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                        {A, lda},       // Tensor-ref for source matrix A
+                        {B, ldb},       // Tensor-ref for source matrix B
+                        {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                        {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
                         {alpha, beta}); // Scalars used in the Epilogue
                     return gemm_operator(args);
                 }
@@ -314,7 +324,8 @@ namespace integer {
         int32_t *C,
         int ldc,
         bool tensorCore,
-        bool fused) {
+        bool fused,
+        float * bias) {
             CUTLASS_CHECK(cutlass_igemm_nn(transA, transB,
                 M,
                 N,
@@ -328,7 +339,8 @@ namespace integer {
                 (float *)C,
                 ldc,
                 tensorCore,
-                fused));
+                fused,
+                bias));
         CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
     }
     /**************************CUTLASS code ends here***********************/
@@ -478,6 +490,11 @@ namespace integer {
 
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems) {
         CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(int8_t), cudaMemcpyDeviceToDevice));
+    }
+
+    void fieldSetGPU(float * gpuMem, float value) {
+        float src = value;
+        CUDA_CHECK(cudaMemcpy(gpuMem, &src, 1*sizeof(float), cudaMemcpyHostToDevice));
     }
 /*
     float * unmanagedGPUAlloc(size_t num) {

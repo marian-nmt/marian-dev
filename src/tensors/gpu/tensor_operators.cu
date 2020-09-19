@@ -1580,17 +1580,17 @@ __global__ void gCrossEntropyPick(AccType* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      auto sumexp = _acc[0];
+      AccType sumexp = _acc[0];
 
       // H(u, p) = 1/N * logsoftmax(h) = mean(h - max) - log(sum(exp(h - max)))
-      auto mean = _acc[1] / (AccType)cols; // mean(h - max)
+      AccType mean = _acc[1] / (AccType)cols; // mean(h - max)
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id == (int)pick[j]) {
-          auto logsumexp = functional::Ops<AccType>::log(sumexp);
-          auto ce = logsumexp - (AccType)sp[id] + (AccType)max; // cross-entropy    H(y^, p)
-          auto ls = logsumexp - mean;                           // label smoothing  H(u, p)
+          AccType logsumexp = functional::Ops<AccType>::log(sumexp);
+          AccType ce = logsumexp - (AccType)sp[id] + (AccType)max; // cross-entropy    H(y^, p)
+          AccType ls = logsumexp - mean;                           // label smoothing  H(u, p)
           out[j] = (1.f - labelSmoothingAlpha) * ce + labelSmoothingAlpha * ls;  // (1 - alpha) * H(y^, p) + alpha * H(u, p)
         }
       }

@@ -131,8 +131,10 @@ public:
       size_t progress = state_->getProgressIn(mbWarmup.unit); // number of updates/labels processed
       auto progressRatio = (double)progress / (double)mbWarmup.n; // where are we relatively within target warm-up period
       // if unit is labels, then account for the fact that our increment itself is not constant
+#if 0  // this seems to hurt convergence quite a bit compared to when updates is used     
       if (mbWarmup.unit == SchedulingUnit::trgLabels)
         progressRatio = std::sqrt(progressRatio);
+#endif
       if (progressRatio < 1)
         ratio *= progressRatio;
     }

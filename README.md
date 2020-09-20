@@ -1,3 +1,53 @@
+TensorCore 8bit integer decoding for marian.
+
+How to: Compile with:
+```bash
+cmake .. -DUSE_FBGEMM=ON -DUSE_SENTENCEPIECE=ON -DCOMPILE_CUDA_SM80=OFF -DCOMPILE_CUDA_SM70=OFF -DCOMPILE_CUDA_SM60=OFF -DCOMPILE_CUDA_SM50=OFF -DCOMPILE_CUDA_SM35=OFF
+```
+Then in order to get better performance than floats, you need to first produce a model with pretrained quantization multipliers and then decode with it on the tensorCores. A script that does all of this looks like:
+``` bash
+#!/bin/bash
+
+set -e
+
+MARIAN=~/marian-dev-8bitgpu/build_VSCODE
+
+SRC=en
+TRG=de
+# Preparation part
+mkdir -p speed_intgemm
+test -e model.npz.best-bleu-detok.alphas.npz || $MARIAN/marian-decoder $@ \
+            --relative-paths -m model.npz.best-bleu-detok.npz -v vocab.spm vocab.spm --dump-quantmult \
+            -i speed_intgemm/wmt16.$SRC -o speed_intgemm/cpu.wmt16.$TRG \
+            --beam-size 1 --mini-batch 32 --maxi-batch 100 --maxi-batch-sort src -w 128 \
+            --skip-cost --shortlist lex.s2t.gz 50 50 --cpu-threads 1 \
+            --quiet --quiet-translation --log speed_intgemm/cpu.wmt16.log 2> quantmults
+
+test -e model.npz.best-bleu-detok.alphas.npz || $MARIAN/../scripts/alphas/extract_stats.py quantmults model.npz.best-bleu-detok.npz model.npz.best-bleu-detok.alphas.npz
+# TensorCore decoding part
+for i in 16 17 18 19; do
+        /home/s1031254/.local/bin/sacrebleu -t wmt$i -l $SRC-$TRG --echo src > speed_intgemm/wmt$i.$SRC
+
+        $MARIAN/marian-decoder $@ \
+            --relative-paths -m model.npz.best-bleu-detok.alphas.npz -v vocab.spm vocab.spm \
+            -i speed_intgemm/wmt$i.$SRC -o speed_intgemm/cpu.wmt$i.$TRG \
+            --beam-size 1 --mini-batch 32 --maxi-batch 100 --maxi-batch-sort src -w 128 \
+            --skip-cost --shortlist lex.s2t.gz 50 50 -d 1 \
+            --quiet --quiet-translation --log speed_intgemm/cpu.wmt$i.log --gemm-precision int8tensorAlphaFused
+
+        tail -n1 speed_intgemm/cpu.wmt$i.log
+        /home/s1031254/.local/bin/sacrebleu -t wmt$i -l $SRC-$TRG < speed_intgemm/cpu.wmt$i.$TRG | tee speed_intgemm/cpu.wmt$i.$TRG.bleu
+
+done
+```
+This is the first working version, that delivers about 10% higher performance than fp16 mode for tiny student preset.
+TODOs:
+ - Tune the GEMM for the different shapes. We use CUTLASS templates that do fused dequantization + bias addition. They have about 10 tunable hyperparameters, it'd be good to fine tune them to the matrix sizes.
+ - At the moment compilation only works for one GPU target. Figure out how to make a fat cutlass binary targetting multiple GPU targets at the same time.
+ - Make int8 GEMM work together with FP16 mode.
+ - Probably lots of other clean ups
+
+
 Marian
 ======
 

@@ -4,7 +4,10 @@ How to: Compile with:
 ```bash
 cmake .. -DUSE_FBGEMM=ON -DUSE_SENTENCEPIECE=ON -DCOMPILE_CUDA_SM80=OFF -DCOMPILE_CUDA_SM70=OFF -DCOMPILE_CUDA_SM60=OFF -DCOMPILE_CUDA_SM50=OFF -DCOMPILE_CUDA_SM35=OFF
 ```
-Then in order to get better performance than floats, you need to first produce a model with pretrained quantization multipliers and then decode with it on the tensorCores. A script that does all of this looks like:
+Note that this compilation only enables Compute_75 devices, meaning 2060/2070/2080/2080ti and the likes. Tensor cores are also available on Compute_80 devices, in case anyone has managed to get one on their hands. CUTLASS code is however hardcoded to Compute75, I need to fix that. If you do not have tensorCores you can still do 8 bit fused GEMM with the non-tensorCore hardware but the performance would likely not be faster than fp32.
+
+
+In order to get better performance than floats, you need to first produce a model with pretrained quantization multipliers and then decode with it on the tensorCores. A script that does all of this looks like:
 ``` bash
 #!/bin/bash
 
@@ -45,6 +48,7 @@ TODOs:
  - Tune the GEMM for the different shapes. We use CUTLASS templates that do fused dequantization + bias addition. They have about 10 tunable hyperparameters, it'd be good to fine tune them to the matrix sizes.
  - At the moment compilation only works for one GPU target. Figure out how to make a fat cutlass binary targetting multiple GPU targets at the same time.
  - Make int8 GEMM work together with FP16 mode.
+ - CUTLASS code is hardcoded to compute75.
  - Probably lots of other clean ups
 
 

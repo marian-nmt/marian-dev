@@ -43,8 +43,6 @@ add_library(marian STATIC
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
-  
-  3rd_party/intgemm/intgemm.cc
 
   3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
@@ -57,7 +55,6 @@ add_library(marian STATIC
   tensors/cpu/prod.cpp
   tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
-  
   tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
 

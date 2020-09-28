@@ -4,8 +4,14 @@
 #include "tensors/tensor_operators.h"
 #include "tensors/cpu/aligned.h"
 #include "common/io_item.h"
+#if COMPILE_CPU
 #include "3rd_party/intgemm/intgemm.h"
-
+#else
+namespace intgemm {
+    struct Int8;
+    struct Int16;
+}
+#endif
 #include <emmintrin.h>
 #include <immintrin.h>
 #include <tmmintrin.h>

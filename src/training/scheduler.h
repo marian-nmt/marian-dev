@@ -410,12 +410,6 @@ public:
       state_->updatesDisp  = 0;
       state_->samplesDisp  = 0;
       state_->wordsDisp    = 0;
-
-      state_->gradientNormAvg = 0;
-      state_->gradientNormVar = 0;
-
-      state_->logGradientNormAvg = 0;
-      state_->logGradientNormVar = 0;
     }
 
     if(options_->get<bool>("valid-reset-stalled")) {

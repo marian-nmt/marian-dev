@@ -328,6 +328,29 @@ public:
     return output;
   }
 
+  // Reduce the encoder to a single sentence vector, here we just take the contextual embedding of the first word per sentence
+  // Replaces cross-attention in LASER-like models
+  Expr LayerPooling(std::string prefix,
+                    Expr input,            // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
+                    const Expr& values) {  // [-4: beam depth=1, -3: batch size, -2: max length (src or trg), -1: vector dim]
+    int dimModel = input->shape()[-1];
+    auto output = slice(values, -2, 0); // Select first word [-4: beam depth, -3: batch size, -2: 1, -1: vector dim]
+
+    int dimPool = output->shape()[-1];
+    bool project = !opt<bool>("transformer-no-projection");
+    if(project || dimPool != dimModel) {
+      auto Wo = graph_->param(prefix + "_Wo", {dimPool, dimModel}, inits::glorotUniform());
+      auto bo = graph_->param(prefix + "_bo", {1, dimModel}, inits::zeros());
+      output = affine(output, Wo, bo);  // [-4: beam depth, -3: batch size, -2: 1, -1: vector dim]
+    }
+
+    auto opsPost = opt<std::string>("transformer-postprocess");
+    output = postProcess(prefix + "_Wo", opsPost, output, input, 0.f);
+
+    return output;
+  }
+
+
   Expr LayerAttention(std::string prefix,
                       Expr input,         // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
                       const Expr& keys,   // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
@@ -535,6 +558,8 @@ public:
     auto layer     = transposeTimeBatch(batchEmbeddings); // [beam depth=1, batch size, max length, vector dim]
     auto layerMask = transposeTimeBatch(batchMask);       // [beam depth=1, batch size, max length, vector dim=1]
 
+    auto prevLayer = layer; // keep handle to untransformed embeddings, potentially used for a final skip connection
+
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     layer = preProcess(prefix_ + "_emb", opsEmb, layer, dropProb);
@@ -556,6 +581,12 @@ public:
       layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
       checkpoint(layer); // sets a manually specified checkpoint if gradient checkpointing is enabled, does nothing otherwise.
     }
+
+    // this allows to run a final layernorm operation after going through the transformer layer stack.
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
+    auto opsTop = opt<std::string>("transformer-postprocess-top", "");
+    layer = postProcess(prefix_ + "_top", opsTop, layer, prevLayer, dropProb);
 
     // restore organization of batch and time steps. This is currently required
     // to make RNN-based decoders and beam search work with this. We are looking
@@ -620,6 +651,7 @@ private:
         "prefix", prefix_ + "_ff_logit_out",
         "dim", dimTrgVoc,
         "vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_], // for factored outputs
+        "output-omit-bias", opt<bool>("output-omit-bias", false),
         "output-approx-knn", opt<std::vector<int>>("output-approx-knn", {}),
         "lemma-dim-emb", opt<int>("lemma-dim-emb", 0)); // for factored outputs
 
@@ -681,6 +713,8 @@ public:
 
     // reorganize batch and timestep
     auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+
+    auto prevQuery = query; // keep handle to untransformed embeddings, potentially used for a final skip connection
 
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
@@ -790,14 +824,20 @@ public:
             saveAttentionWeights = i == attLayer;
           }
 
-          query = LayerAttention(prefix,
+          if(options_->get<bool>("transformer-pool", false)) {
+            query = LayerPooling(prefix,
                                  query,
-                                 encoderContexts[j], // keys
-                                 encoderContexts[j], // values
-                                 encoderMasks[j],
-                                 opt<int>("transformer-heads"),
-                                 /*cache=*/true,
-                                 saveAttentionWeights);
+                                 encoderContexts[j]); // values
+          } else {
+            query = LayerAttention(prefix,
+                                   query,
+                                   encoderContexts[j], // keys
+                                   encoderContexts[j], // values
+                                   encoderMasks[j],
+                                   opt<int>("transformer-heads"),
+                                   /*cache=*/true,
+                                   saveAttentionWeights);
+          }
         }
       }
 
@@ -810,6 +850,12 @@ public:
 
       checkpoint(query);
     }
+
+    // This allows to run a final layernorm operation after going through the transformer layer stack.
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
+    auto opsTop = opt<std::string>("transformer-postprocess-top", "");
+    query = postProcess(prefix_ + "_top", opsTop, query, prevQuery, dropProb);
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
 

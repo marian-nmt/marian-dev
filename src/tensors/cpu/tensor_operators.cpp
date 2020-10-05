@@ -1032,21 +1032,15 @@ void AttBack(Tensor gVa_,
   }
 }
 
-void LayerNormalization(Tensor out_,
-                        Tensor in_,
-                        Tensor gamma_,
-                        Tensor beta_,
-                        float eps) {
-  float* out = out_->data();
-  const float* in = in_->data();
-  const float* alpha = gamma_->data();
-  const float* beta = beta_ ? beta_->data() : nullptr;
-  const int alphaStride = gamma_->shape().back() > 1;  // broadcasting for alpha and beta
-  const int betaStride = beta_ && beta_->shape().back() > 1;
-
-  int rows = in_->shape().elements() / in_->shape().back();
-  int cols = in_->shape().back();
-
+MARIAN_FFAST_MATH_BEGIN
+template <int alphaStride, int betaStride, bool hasBeta>
+void LayerNormalizationImpl(float* out,
+                            const float* in,
+                            const float* alpha,
+                            const float* beta,
+                            float eps,
+                            int rows,
+                            int cols) {
 #pragma omp parallel for
   for(int j = 0; j < rows; ++j) {
     float* so = out + j * cols;
@@ -1071,15 +1065,54 @@ void LayerNormalization(Tensor out_,
 #pragma omp simd
     for(int i = 0; i < cols; ++i) {
       float t = alpha[alphaStride * i] * ((sp[i] - mean) / sigma);
-      if(beta != nullptr) {
+      if(hasBeta)
         t += beta[betaStride * i];
-      }
 
       so[i] = t;
     }
   }
 }
+MARIAN_FFAST_MATH_END
 
+template <int alphaStride>
+inline void LayerNormalizationDispatchBeta(float* out,
+                                           const float* in,
+                                           const float* alpha,
+                                           Tensor beta,
+                                           float eps,
+                                           int rows,
+                                           int cols) {
+  if (beta) {
+    if (beta->shape().back() > 1) {
+      LayerNormalizationImpl<alphaStride, 1, true>(out, in, alpha, beta->data(), eps, rows, cols);
+    } else {
+      LayerNormalizationImpl<alphaStride, 0, true>(out, in, alpha, beta->data(), eps, rows, cols);
+    }
+  } else {
+    LayerNormalizationImpl<alphaStride, 0, false>(out, in, alpha, nullptr, eps, rows, cols);
+  }
+}
+
+void LayerNormalization(Tensor out_,
+                        Tensor in_,
+                        Tensor gamma_,
+                        Tensor beta,
+                        float eps) {
+  float* out = out_->data();
+  const float* in = in_->data();
+  const float* alpha = gamma_->data();
+  const int alphaStride = gamma_->shape().back() > 1;  // broadcasting for alpha and beta
+
+  int rows = in_->shape().elements() / in_->shape().back();
+  int cols = in_->shape().back();
+  if (alphaStride == 0) {
+    LayerNormalizationDispatchBeta<0>(out, in, alpha, beta, eps, rows, cols);
+  } else {
+    LayerNormalizationDispatchBeta<1>(out, in, alpha, beta, eps, rows, cols);
+  }
+}
+
+MARIAN_FFAST_MATH_BEGIN
 void LayerNormalizationGrad(Tensor gradX_,
                             Tensor gradGamma_,
                             Tensor gradBeta_,
@@ -1191,6 +1224,7 @@ void LayerNormalizationGrad(Tensor gradX_,
     }
   }
 }
+MARIAN_FFAST_MATH_END
 
 void Shift(Tensor out_,
            Tensor in_,
@@ -1248,65 +1282,102 @@ void SetSparse(float* out,
   }
 }
 
-void LSTMCellForward(Tensor out_, std::vector<Tensor> inputs) {
+// should be implemented via slicing and elementwise
+template <typename FType>
+void LSTMCellForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
   int rows = out_->shape().elements() / out_->shape()[-1];
-  int cols = out_->shape()[-1];
 
-  float* out = out_->data();
-  const float* cell = inputs[0]->data();
-  const float* xW = inputs[1]->data();
-  const float* sU = inputs[2]->data();
-  const float* b = inputs[3]->data();
+  int fVecSize = sizeof(FType) / sizeof(float);
+  int cols = out_->shape()[-1] / fVecSize;
+
+  FType* out = out_->data<FType>();
+  const FType* cell = inputs[0]->data<FType>();
+  const FType* xW = inputs[1]->data<FType>();
+  const FType* sU = inputs[2]->data<FType>();
+  const FType* b = inputs[3]->data<FType>();
   const float* mask = inputs.size() > 4 ? inputs[4]->data() : nullptr;
+
+  using fop = functional::Ops<FType>;
 
   for(int j = 0; j < rows; ++j) {
     float m = !mask || mask[j];
 
-    float* rowOut = out + j * cols;
-    const float* rowCell = cell + j * cols;
+    FType* rowOut = out + j * cols;
+    const FType* rowCell = cell + j * cols;
 
-    const float* xWrow = xW + j * cols * 4;
-    const float* sUrow = sU + j * cols * 4;
+    const FType* xWrow = xW + j * cols * 4;
+    const FType* sUrow = sU + j * cols * 4;
 
     for(int i = 0; i < cols; ++i) {
-      float gf = functional::Ops<float>::sigmoid(xWrow[i] + sUrow[i] + b[i]);
+      FType gf   = fop::sigmoid(fop::add(fop::add(xWrow[i], sUrow[i]), b[i]));
 
       int k = i + cols;
-      float gi = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
+      FType gi   = fop::sigmoid(fop::add(fop::add(xWrow[k], sUrow[k]), b[k]));
 
       int l = i + 2 * cols;
-      float gc = std::tanh(xWrow[l] + sUrow[l] + b[l]);
+      FType gc   = fop::tanh(fop::add(fop::add(xWrow[l], sUrow[l]), b[l]));
 
-      float cout = gf * rowCell[i] + gi * gc;
-      rowOut[i] = m * cout + (1 - m) * rowCell[i];
+      FType cout = fop::add(fop::mul(gf, rowCell[i]), fop::mul(gi, gc));
+      rowOut[i]  = fop::add(fop::mul(m, cout), fop::mul(fop::sub(1.f, m), rowCell[i]));
     }
   }
 }
 
-void LSTMOutputForward(Tensor out_, std::vector<Tensor> inputs) {
-  int rows = out_->shape().elements() / out_->shape()[-1];
-  int cols = out_->shape()[-1];
+void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
+  int cols = out->shape()[-1];
+#ifdef __AVX__
+  if(cols % 8 == 0)
+    LSTMCellForwardTyped<float32x8>(out, inputs);
+  else
+#endif
+  if(cols % 4 == 0)
+    LSTMCellForwardTyped<float32x4>(out, inputs);
+  else
+    LSTMCellForwardTyped<float>(out, inputs);
+}
 
-  float* out = out_->data();
-  const float* cell = inputs[0]->data();
-  const float* xW = inputs[1]->data();
-  const float* sU = inputs[2]->data();
-  const float* b = inputs[3]->data();
+template <typename FType>
+void LSTMOutputForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
+  int rows = out_->shape().elements() / out_->shape()[-1];
+  
+  int fVecSize = sizeof(FType) / sizeof(float);
+  int cols = out_->shape()[-1] / fVecSize;
+
+  FType* out = out_->data<FType>();
+  const FType* cell = inputs[0]->data<FType>();
+  const FType* xW   = inputs[1]->data<FType>();
+  const FType* sU   = inputs[2]->data<FType>();
+  const FType* b    = inputs[3]->data<FType>();
+
+  using fop = functional::Ops<FType>;
 
   for(int j = 0; j < rows; ++j) {
-    float* rowOut = out + j * cols;
-    const float* rowCell = cell + j * cols;
+    FType* rowOut = out + j * cols;
+    const FType* rowCell = cell + j * cols;
 
-    const float* xWrow = xW + j * cols * 4;
-    const float* sUrow = sU + j * cols * 4;
+    const FType* xWrow = xW + j * cols * 4;
+    const FType* sUrow = sU + j * cols * 4;
 
     for(int i = 0; i < cols; ++i) {
       int k = i + 3 * cols;
-      float go = functional::Ops<float>::sigmoid(xWrow[k] + sUrow[k] + b[k]);
-
-      rowOut[i] = go * std::tanh(rowCell[i]);
+      FType go  = fop::sigmoid(fop::add(fop::add(xWrow[k], sUrow[k]), b[k]));
+      rowOut[i] = fop::mul(go, fop::tanh(rowCell[i]));
     }
   }
+}
+
+void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
+  int cols = out->shape()[-1];
+
+#ifdef __AVX__
+  if(cols % 8 == 0)
+    LSTMOutputForwardTyped<float32x8>(out, inputs);
+  else 
+#endif
+  if(cols % 4 == 0)
+    LSTMOutputForwardTyped<float32x4>(out, inputs);
+  else
+    LSTMOutputForwardTyped<float>(out, inputs);
 }
 
 void LSTMCellBackward(std::vector<Tensor> outputs,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tensors/backend.h"
+#include "common/types.h"
 
 namespace marian {
 namespace gpu {
@@ -17,5 +18,9 @@ void setSparse(Ptr<marian::Backend> backend,
                const std::vector<size_t>&,
                const std::vector<float>&,
                float*);
+
+void gatherIndices(Ptr<marian::Backend> backend, float* d_out, float* d_in, size_t* d_indices, size_t indices_size);     
+
+void gatherIndices(Ptr<marian::Backend> backend, float* d_out, float16* d_in, size_t* d_indices, size_t indices_size);   
 }  // namespace gpu
 }  // namespace marian

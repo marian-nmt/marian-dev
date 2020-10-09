@@ -103,6 +103,35 @@ public:
     return TensorBase::New(mem, Shape{1, (int)size}, type(), backend_);
   }
 
+  void gatherFromIndices(Tensor gatheredResults, Tensor flattenedIndices) {
+    ABORT_IF((flattenedIndices->type() != Type::uint64),
+             "Type of indices must be uint64");
+
+    ABORT_IF(gatheredResults->size() < flattenedIndices->size(), 
+             "The result tensor is too small to hold all of the indexed values.");
+    
+    ABORT_IF(gatheredResults->type() != Type::float32, 
+          "The type of the result tensor must be float32.");
+
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
+      for(int i = 0; i < flattenedIndices->size(); ++i) {
+        gatheredResults->set(i, get<float>(flattenedIndices->get<size_t>(i)));
+      }
+    }
+  #ifdef CUDA_FOUND
+    else {
+      if (type_ == Type::float32) {
+        return gpu::gatherIndices(backend_, gatheredResults->data<float>(), data<float>(), flattenedIndices->data<size_t>(), flattenedIndices->size());
+      } else if(type_ == Type::float16) {
+         return gpu::gatherIndices(backend_, gatheredResults->data<float>(), data<float16>(), flattenedIndices->data<size_t>(), flattenedIndices->size());
+      } else {
+        ABORT("INVALID TYPE FOR OP");
+      }
+    }
+  #endif    
+
+  }
+
   // @TODO: review if we can eliminate GPU-specific code here, 
   // potentially by moving this to non-class members.
   template <typename T>

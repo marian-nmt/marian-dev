@@ -411,17 +411,23 @@ public:
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_ffn", opsPre, input, dropProb);
 
+    auto actName = opt<std::string>("transformer-ffn-activation");
     int dimFfn = opt<int>("transformer-dim-ffn");
     int depthFfn = opt<int>("transformer-ffn-depth");
-    auto actFn = activationByName(opt<std::string>("transformer-ffn-activation"));
+    auto actFn = activationByName(actName);
     float ffnDropProb
       = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
 
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
 
     // the stack of FF layers
-    for(int i = 1; i < depthFfn; ++i)
-      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
+    for(int i = 1; i < depthFfn; ++i) {
+      if (actName == "relu") {
+        output = denseInlineRelu(output, prefix, std::to_string(i), dimFfn, ffnDropProb);
+      } else {
+        output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
+      }
+    }
     output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
 
     auto opsPost = opt<std::string>("transformer-postprocess");

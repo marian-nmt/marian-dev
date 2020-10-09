@@ -380,6 +380,98 @@ public:
 
 };
 
+class FusedAffineNodeOp : public NaryNodeOp {
+private:
+  friend class SerializationHelpers;
+  bool transA_;
+  bool transB_;
+  float scalar_;
+  bool do_relu_;
+
+public:
+  FusedAffineNodeOp(const std::vector<Expr>& nodes,
+               bool transA,
+               bool transB,
+               float scalar,
+               bool do_relu=false)
+      : NaryNodeOp(nodes, newShape(nodes[0], nodes[1], transA, transB)),
+        transA_(transA),
+        transB_(transB),
+        scalar_(scalar),
+        do_relu_(do_relu) {}
+
+  Shape newShape(Expr a, Expr b, bool transA, bool transB) {
+    auto shapeA = a->shape();
+    if(transA) {
+      shapeA.set(shapeA.size() - 2, a->shape()[shapeA.size() - 1]);
+      shapeA.set(shapeA.size() - 1, a->shape()[shapeA.size() - 2]);
+    }
+
+    auto shapeB = b->shape();
+    if(transB) {
+      shapeB.set(shapeB.size() - 2, b->shape()[shapeB.size() - 1]);
+      shapeB.set(shapeB.size() - 1, b->shape()[shapeB.size() - 2]);
+    }
+
+    Shape outShape = shapeA;
+    outShape.set(outShape.size() - 1, shapeB[shapeB.size() - 1]);
+    ABORT_IF(shapeA[shapeA.size() - 1] != shapeB[shapeB.size() - 2],
+             "Matrix product requires inner dimensions to match in {}{} * {}{}", std::string(shapeA), transA, std::string(shapeB), transB);
+    return outShape;
+  }
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+
+    return {
+      NodeOp(
+        Affine(val_,
+               graph()->allocator(),
+               child(0)->val(),
+               child(1)->val(),
+               child(2)->val(),
+               transA_,
+               transB_,
+               0.f,
+               scalar_,
+               do_relu_))
+    };
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Node only supports inference.");
+  }
+
+  const std::string type() override { return "fusedAffine"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, transA_);
+    util::hash_combine(seed, transB_);
+    util::hash_combine(seed, scalar_);
+    util::hash_combine(seed, do_relu_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<FusedAffineNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(transA_ != cnode->transA_)
+      return false;
+    if(transB_ != cnode->transB_)
+      return false;
+    if(scalar_ != cnode->scalar_)
+      return false;
+    if(do_relu_ != cnode->do_relu_)
+      return false;
+    return true;
+  }
+
+};
+
 class DotBatchedNodeOp : public NaryNodeOp {
 private:
   friend class SerializationHelpers;

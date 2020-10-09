@@ -247,6 +247,63 @@ cublasStatus_t cublasGemmBatchedTyped(cublasHandle_t handle,
 }
 #endif
 
+cublasStatus_t cublasGemmBatchedStridedTyped(cublasHandle_t handle,
+                                             CudaCompute computeCapability,
+                                             cublasOperation_t transa, 
+                                             cublasOperation_t transb,
+                                             int m, int n, int k,
+                                             const float *alpha,
+                                             const float *A, int lda, int strideA,
+                                             const float *B, int ldb, int strideB,
+                                             const float *beta,
+                                             float *C, int ldc, int strideC,
+                                             int batchCount) {
+// double #if and if unfortunately required to safeguard against compilation error 
+// with CUDA 8.0 and runtime error with CUDA >9.0 on GPUs with compute capability under 5
+#if CUDA_VERSION > 9000
+  // query math mode and set algorithm accordingly
+  auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
+  if(computeCapability.major >= 5)
+    return cublasGemmStridedBatchedEx(handle, transa, transb, 
+                                      m, n, k, alpha, 
+                                      (void const*)A, CUDA_R_32F, lda, strideA,
+                                      (void const*)B, CUDA_R_32F, ldb, strideB, beta,
+                                      (void*)C, CUDA_R_32F, ldc, strideC, batchCount,
+                                      CUDA_R_32F, algorithm);
+#endif
+  return cublasSgemmStridedBatched(handle, transa, transb, 
+                                   m, n, k, alpha, 
+                                   A, lda, strideA,
+                                   B, ldb, strideB, 
+                                   beta,
+                                   C, ldc, strideC, 
+                                   batchCount);
+}
+
+#if COMPILE_FP16 // should not be visible for CUDA 9.0 and below
+cublasStatus_t cublasGemmBatchedStridedTyped(cublasHandle_t handle,
+                                             CudaCompute computeCapability,
+                                             cublasOperation_t transa, 
+                                             cublasOperation_t transb,
+                                             int m, int n, int k,
+                                             const half *alpha,
+                                             const half *A, int lda, int strideA,
+                                             const half *B, int ldb, int strideB,
+                                             const half *beta,
+                                             half *C, int ldc, int strideC,
+                                             int batchCount) {
+  ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
+  // query math mode and set algorithm accordingly
+  auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
+  return cublasGemmStridedBatchedEx(handle, transa, transb, 
+                                    m, n, k, alpha, 
+                                    (void const*)A, CUDA_R_16F, lda, strideA,
+                                    (void const*)B, CUDA_R_16F, ldb, strideB, beta,
+                                    (void*)C, CUDA_R_16F, ldc, strideC, batchCount,
+                                    CUDA_R_16F, algorithm);
+}
+#endif
+
 template <typename T>
 void ProdBatchedTyped(marian::Tensor C,                 
                  Ptr<Allocator> allocator,
@@ -289,50 +346,68 @@ void ProdBatchedTyped(marian::Tensor C,
   auto strideA = batchA == 1 ? 0 : m * k;
   auto strideB = batchB == 1 ? 0 : n * k;
   auto strideC = n * m;
-  auto batchC = std::max(batchA, batchB);
 
-  std::vector<const T*> aptr;
-  std::vector<const T*> bptr;
-  std::vector<T*> cptr;
+  if(batchA == batchB) {
+    setTensorMode(cublasHandle);
+    CUBLAS_CHECK(cublasGemmBatchedStridedTyped(cublasHandle, 
+                                               compute, 
+                                               opB, 
+                                               opA, 
+                                               n,
+                                               m,
+                                               k,
+                                               &alpha,
+                                               B->data<const T>(), 
+                                               ldb, strideB, 
+                                               A->data<const T>(), 
+                                               lda, strideA, 
+                                               &beta, 
+                                               C->data<T>(), 
+                                               ldc, strideC, 
+                                               batchA));
+    unsetTensorMode(cublasHandle);
+  } else {
+    auto batchC = std::max(batchA, batchB);
+    size_t size = 3*batchC;
+    std::vector<T*> ptrs(size);
+    auto aStart = 0;
+    auto bStart = batchC;
+    auto cStart = bStart + batchC;
 
-  for(int i = 0; i < batchC; i++) {
-    aptr.push_back(A->data<T>() + (i % batchA) * strideA);
-    bptr.push_back(B->data<T>() + (i % batchB) * strideB);
-    cptr.push_back(C->data<T>() + i * strideC);
+    for(int i = 0; i < batchC; i++) {
+      ptrs[aStart + i] = A->data<T>() + (i % batchA) * strideA;
+      ptrs[bStart + i] = B->data<T>() + (i % batchB) * strideB;
+      ptrs[cStart + i] = C->data<T>() + i * strideC;
+    }
+
+    // auto fails here from weird reason
+    IPtr<MemoryPiece> mp_ptrs = allocator->alloc<T*>(size); 
+    T** dest = mp_ptrs->data<T*>();
+    cudaStream_t cublasStream = 0;
+    CUBLAS_CHECK(cublasGetStream(cublasHandle, &cublasStream));
+    CUDA_CHECK(cudaMemcpyAsync(dest, ptrs.data(), size * sizeof(T*), cudaMemcpyHostToDevice, cublasStream));
+
+    setTensorMode(cublasHandle);
+    CUBLAS_CHECK(cublasGemmBatchedTyped(cublasHandle,
+                                        compute,
+                                        opB,
+                                        opA,
+                                        n,
+                                        m,
+                                        k,
+                                        &alpha,
+                                        mp_ptrs->data<const T*>() + bStart,
+                                        ldb,
+                                        mp_ptrs->data<const T*>() + aStart,
+                                        lda,
+                                        &beta,
+                                        mp_ptrs->data<T*>() + cStart,
+                                        ldc,
+                                        batchC));
+    unsetTensorMode(cublasHandle);
+
+    allocator->free(mp_ptrs);
   }
-
-  // auto fails here from weird reason
-  IPtr<MemoryPiece> mp_aptr = allocator->alloc<const T*>(aptr.size());
-  CudaCopy(aptr.data(), aptr.data() + aptr.size(), mp_aptr->data<const T*>());
-
-  IPtr<MemoryPiece> mp_bptr = allocator->alloc<const T*>(bptr.size());
-  CudaCopy(bptr.data(), bptr.data() + bptr.size(), mp_bptr->data<const T*>());
-
-  IPtr<MemoryPiece> mp_cptr = allocator->alloc<T*>(cptr.size());
-  CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<T*>());
-
-  setTensorMode(cublasHandle);
-  CUBLAS_CHECK(cublasGemmBatchedTyped(cublasHandle,
-                                      compute,
-                                      opB,
-                                      opA,
-                                      n,
-                                      m,
-                                      k,
-                                      &alpha,
-                                      mp_bptr->data<const T*>(),
-                                      ldb,
-                                      mp_aptr->data<const T*>(),
-                                      lda,
-                                      &beta,
-                                      mp_cptr->data<T*>(),
-                                      ldc,
-                                      batchC));
-  unsetTensorMode(cublasHandle);
-
-  allocator->free(mp_aptr);
-  allocator->free(mp_bptr);
-  allocator->free(mp_cptr);
 }
 
 void ProdBatched(marian::Tensor C,

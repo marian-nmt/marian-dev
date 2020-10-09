@@ -521,6 +521,13 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
   return Expression<DotBatchedNodeOp>(a, b, transA, transB, scale);
 }
 
+// A fused version of affine for GPU inference
+static Expr affineFused(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bool do_relu) {
+  float clipValue = a->graph()->getBackend()->getClip();
+  std::vector<Expr> nodes = { clip(a, clipValue), clip(b, clipValue), bias};
+  return Expression<FusedAffineNodeOp>(nodes, transA, transB, scale, do_relu);
+}
+
 static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
 
@@ -542,7 +549,7 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 // youki/packed-model-pr-backup1031
 // https://machinetranslation.visualstudio.com/Marian/_git/marian-dev?version=GByouki%2Fpacked-model-pr-backup1031
 // SHA: 3456a7ed1d1608cfad74cd2c414e7e8fe141aa52
-Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bool do_relu) {
   auto device = a->graph()->getDeviceId().type;
 
   float clipValue = a->graph()->getBackend()->getClip();
@@ -550,16 +557,17 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
+    Expr affineTransform;
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized()) {
         // cpu int16 version
-        return cpu::int16::affine(
+        affineTransform = cpu::int16::affine(
           cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
           cpu::int16::quantize(transB ? b : transpose(b), clipValue),
           bias,
           scale);
       } else {
-        return affineDefault(a, b, bias, transA, transB, scale);
+        affineTransform = affineDefault(a, b, bias, transA, transB, scale);
       }
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
@@ -570,13 +578,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::affine(clip(a, clipValue),
-                                    b,
-                                    b->shape(),
-                                    bias,
-                                    transA,
-                                    transB,
-                                    scale);
+        affineTransform = cpu::variant::affine(clip(a, clipValue),
+                                                b,
+                                                b->shape(),
+                                                bias,
+                                                transA,
+                                                transB,
+                                                scale);
       } else {
         ABORT("AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed GEMM");
       }
@@ -586,12 +594,21 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     } else {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
+    if(do_relu) 
+      return relu(affineTransform);
+    return affineTransform;
   } else {
     // Default GEMM
     ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType), 
              "GPU-based GEMM only supports float types, you have A: {} and B: {}", 
              aElementType, bElementType);
-    return affineDefault(a, b, bias, transA, transB, scale);
+    if(a->graph()->isInference()) {
+      return affineFused(a, b, bias, transA, transB, scale, do_relu);
+    }
+    Expr affineTransform = affineDefault(a, b, bias, transA, transB, scale);
+    if (do_relu) 
+      return relu(affineTransform);
+    return affineTransform;
   }
 }
 

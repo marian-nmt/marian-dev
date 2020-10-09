@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common/definitions.h"
+#include "graph/expression_operators.h"
 #include "marian.h"
 
 #include "data/shortlist.h"
@@ -440,6 +442,18 @@ Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, con
   x = affine(x, W, b);
   if (actFn)
     x = actFn(x);
+  x = dropout(x, dropProb);
+  return x;
+}
+
+static inline
+Expr denseInlineRelu(Expr x, std::string prefix, std::string suffix, int outDim, float dropProb = 0.0f)
+{
+  auto graph = x->graph();
+
+  auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorotUniform());
+  auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
+  x = affine(x, W, b, false, false, 1.f, true);
   x = dropout(x, dropProb);
   return x;
 }

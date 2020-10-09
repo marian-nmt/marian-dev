@@ -147,7 +147,8 @@ Expr affine(Expr a,
             Expr c,
             bool transA = false,
             bool transB = false,
-            float scalar = 1.f);
+            float scalar = 1.f,
+            bool do_relu = false);
 
 Expr csr_dot(const Shape& A_shape, Expr Avalues, Expr Aindices, Expr Aoffsets, Expr B, bool transA = false);
 Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB = false);

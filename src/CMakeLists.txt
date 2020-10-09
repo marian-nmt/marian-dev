@@ -163,6 +163,7 @@ if(CUDA_FOUND)
     tensors/gpu/device.cu
     tensors/gpu/algorithm.cu
     tensors/gpu/prod.cpp
+    tensors/gpu/prod.cu
     tensors/gpu/topk.cu
     tensors/gpu/element.cu
     tensors/gpu/add.cu

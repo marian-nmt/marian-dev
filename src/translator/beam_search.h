@@ -6,12 +6,14 @@
 
 namespace marian {
 
+class TensorAllocator;
 class BeamSearch {
 private:
   Ptr<Options> options_;
   std::vector<Ptr<Scorer>> scorers_;
   size_t beamSize_;
   Ptr<const Vocab> trgVocab_;
+  Ptr<TensorAllocator> allocator;
 
   const float INVALID_PATH_SCORE = std::numeric_limits<float>::lowest(); // @TODO: observe this closely
   const bool PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.

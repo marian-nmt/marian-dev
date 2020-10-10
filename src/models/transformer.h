@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 // TODO: This is really a .CPP file now. I kept the .H name to minimize confusing git, until this is code-reviewed.
 // This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
 

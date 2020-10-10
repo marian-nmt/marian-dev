@@ -1,3 +1,9 @@
+
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+ 
 #include "graph/expression_operators.h"
 #include "layers/constructors.h"
 

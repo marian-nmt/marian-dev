@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "translator/beam_search.h"
 #include "tensors/tensor_allocator.h"
 
@@ -162,8 +167,8 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
   if(options_->get<bool>("n-best")) {
     Tensor indices;
     Tensor logitsTensor;
-    allocator->allocate(indices, {(int)flattenedLogitIndices[0].size()}, Type::uint64);
-    allocator->allocate(logitsTensor, indices->shape(), Type::float32);
+    allocator_->allocate(indices, {(int)flattenedLogitIndices[0].size()}, Type::uint64);
+    allocator_->allocate(logitsTensor, indices->shape(), Type::float32);
     std::vector<float> logits(flattenedLogitIndices[0].size());
 
     for(size_t state = 0; state < states.size(); ++state) {
@@ -184,8 +189,8 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
         newBeam[newBeamHypIndices[i]]->setScoreBreakdown(breakDown);
       }
     }
-    allocator->free(indices);
-    allocator->free(logitsTensor);
+    allocator_->free(indices);
+    allocator_->free(logitsTensor);
   }
 
   // if factored vocab and this is not the first factor, we need to
@@ -298,7 +303,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
   const auto trgUnkId = trgVocab_->getUnkId();
 
   auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId());
-  allocator = graph->getTensorAllocator();
+  allocator_ = graph->getTensorAllocator();
 
   for(auto scorer : scorers_) {
     scorer->clear(graph);

@@ -24,6 +24,10 @@ namespace cpu {
   ABORT("Not implemented");
 }
 
+void AddPosEmbeddings(marian::Tensor result, const marian::Tensor& embeddings, float scaleFactor, int startPos) {
+  ABORT("Not implemented");
+}
+
 template <typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   for(int i = 0; i < length; ++i)

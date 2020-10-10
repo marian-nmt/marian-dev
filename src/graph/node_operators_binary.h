@@ -754,6 +754,54 @@ struct ScalarProductNodeOp : public NaryNodeOp {
   int axis_;
 };
 
+struct PosEmbeddingNodeOp : public NaryNodeOp {
+  PosEmbeddingNodeOp(Expr embeddings, float scaleFactor, int startPos)
+      : NaryNodeOp({embeddings}, newShape(embeddings)), 
+        scaleFactor_(scaleFactor),
+        startPos_(startPos) {}
+
+  Shape newShape(Expr a) {
+    return a->shape();
+  }
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+
+    return {NodeOp(AddPosEmbeddings(val_, child(0)->val(), scaleFactor_, startPos_))};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Not Implemented. Inference Optimization");
+  }
+
+  const std::string type() override { return "Add Positional Embedding"; }
+
+  const std::string color() override { return "blue"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, scaleFactor_);
+    util::hash_combine(seed, startPos_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<PosEmbeddingNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(scaleFactor_ != cnode->scaleFactor_)
+      return false;
+    if(startPos_ != cnode->startPos_)
+      return false;
+    return true;
+  }
+
+  float scaleFactor_;
+  int startPos_;
+};
+
 struct RowsNodeOp : public NaryNodeOp {
   RowsNodeOp(Expr a, Expr indices)
     : NaryNodeOp({a, indices}, newShape(a, indices), a->value_type()) {

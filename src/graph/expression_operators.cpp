@@ -310,6 +310,20 @@ Expr atleast_4d(Expr a) {
   return atleast_nd(a, 4);
 }
 
+Expr addPosEmbedding(Expr embeddings, float scaleFactor, int startPos) {
+  int dimEmb   = embeddings->shape()[-1];
+  int dimWords = embeddings->shape()[-3];
+  auto graph = embeddings->graph();
+  if (!graph->isInference() || graph->getBackend()->getDeviceId().type == DeviceType::cpu) {
+    auto signal = graph->constant({dimWords, 1, dimEmb},
+                                   inits::sinusoidalPositionEmbeddings(startPos));
+    return scaleFactor * embeddings + signal;
+  }
+
+  // Mode is GPU inference
+  return Expression<PosEmbeddingNodeOp>(embeddings, scaleFactor, startPos);
+}
+
 Expr atleast_nd(Expr a, size_t dims) {
   if(a->shape().size() >= dims)
     return a;

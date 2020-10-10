@@ -1958,6 +1958,7 @@ __global__ void gLNormalization(T* out,
   }
 }
 
+
 void LayerNormalization(Tensor out,
                         Tensor in,
                         Tensor gamma,
@@ -2917,5 +2918,54 @@ void PoolingWithMaskingBackward(Tensor adj,
                                            width,
                                            lastWidth);
 }
+
+template<typename T>
+__global__ void gComputeSinusoidalPosEmb(T* result, const T* const embedding, float scaleFactor, int startPos, 
+                                         int dimWords, int dim2, int dimEmb, int elts) {
+
+  const float numTimescales = (float)dimEmb / 2;
+  const float logTimescaleIncrement = log(10000.f) / (numTimescales - 1.f);
+
+  const size_t offset = blockDim.x * blockIdx.x + threadIdx.x;
+
+  if (offset < elts) {
+    // Dim2 of signal is 1 so we ignore it
+    const int colInSignal = offset % dimEmb;
+    const int rowInSignal = (offset / (dimEmb * dim2)) % dimWords;
+
+    const int p = rowInSignal + startPos;
+    const int i = colInSignal % (int) numTimescales;
+    const float v = p * exp(i * -logTimescaleIncrement);
+    const T posSignal = colInSignal < (int) numTimescales? sin(v) : cos(v);
+    const T scaledEmbedding = (T)scaleFactor * embedding[offset];
+    result[offset] = scaledEmbedding + posSignal;
+  }
+}
+
+void AddPosEmbeddings(marian::Tensor result, const marian::Tensor& embeddings, float scaleFactor, int startPos) {
+
+  int dimEmb = embeddings->shape()[-1];
+  int broadcastDim = embeddings->shape()[-2];
+  int dimWords = embeddings->shape()[-3];
+  int elts = embeddings->shape().elements();
+  
+  int threads = std::min(elts, MAX_THREADS);
+  int blocks = (elts + threads - 1) / threads;
+
+  cudaSetDevice(result->getDeviceId().no);
+
+  if(result->type() == Type::float32) {
+    gComputeSinusoidalPosEmb<<<blocks, threads>>>(
+        result->data<float>(), embeddings->data<float>(), scaleFactor, startPos, dimWords, broadcastDim, dimEmb, elts);
+#if COMPILE_FP16
+  } else if(result->type() == Type::float16) {
+    gComputeSinusoidalPosEmb<<<blocks, threads>>>(
+      result->data<half>(), embeddings->data<half>(), scaleFactor, startPos, dimWords, broadcastDim, dimEmb, elts);
+#endif
+  } else {
+    ABORT("gComputeSinusoidalPosEmb not implemented for type {}", result->type());
+  }
+}
+
 }  // namespace gpu
 }  // namespace marian

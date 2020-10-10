@@ -99,6 +99,7 @@ void Reduce(Functor functor, AggFunctor aggFunctor, float aggInit,
 }
 
 // clang-format off
+DISPATCH4(AddPosEmbeddings, marian::Tensor, const marian::Tensor&, float, int);
 DISPATCH7(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float)
 DISPATCH8(ProdBatched, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
 DISPATCH9(CSRProd, marian::Tensor, Ptr<Allocator>, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, bool, bool, float)

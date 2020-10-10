@@ -31,6 +31,7 @@ protected:
   std::unordered_map<std::string, Expr> cache_;    // caching transformation of the encoder that should not be created again
   mutable/*lazy*/ std::vector<float> sinusoidalEmbeddingsFreq_, sinusoidalEmbeddingsOffs_;  // cached contributions to sinusoidal embeddings
 
+  std::unordered_map<std::string, Expr> constantCache_; 
   // attention weights produced by step()
   // If enabled, it is set once per batch during training, and once per step during translation.
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
@@ -85,8 +86,8 @@ public:
     } else {
       // @TODO : test if embeddings should be scaled when trainable
       // according to paper embeddings are scaled up by \sqrt(d_m)
-      embeddings = std::sqrt((float)dimEmb) * embeddings; // embeddings were initialized to unit length; so norms will be in order of sqrt(dimEmb)
 
+    float scaleFactor = std::sqrt((float)dimEmb);
 #ifdef USE_ONNX // TODO 'Sin' op and constant sine generate different result. So, use constant when 'USE_ONNX' is not defined for now.
       // precompute the arguments to sin() (the cos(x) are expressed as sin(x+pi/2))
       if (sinusoidalEmbeddingsFreq_.empty()) {
@@ -101,12 +102,10 @@ public:
       auto positionRange = graph_->constant({ dimWords, 1, 1 }, inits::range((float)start, (float)start + (float)dimWords));
       positionRange->set_name("data_" + std::to_string(batchIndex_) + "_posrange");
       auto signal = sin(positionRange * frequencies + cosOffsets);
+      embeddings = scaleFactor * embeddings + signal;
 #else // USE_ONNX
-      auto signal = graph_->constant({dimWords, 1, dimEmb},
-                                     inits::sinusoidalPositionEmbeddings(start));
+      embeddings = addPosEmbedding(embeddings, scaleFactor, start);
 #endif // USE_ONNX
-
-      embeddings = embeddings + signal;
     }
 
     return embeddings;
@@ -117,13 +116,27 @@ public:
     return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }
 
-  Expr triangleMask(int length) const {
-    // fill triangle mask
-    std::vector<float> vMask(length * length, 0);
-    for(int i = 0; i < length; ++i)
-      for(int j = 0; j <= i; ++j)
-        vMask[i * length + j] = 1.f;
-    return graph_->constant({1, length, length}, inits::fromVector(vMask));
+  Expr triangleMask(int length) {
+    if (inference_ && constantCache_.count("triangleMask") > 0 && 
+        constantCache_["triangleMask"]->shape().elements() == length * length) {
+      return constantCache_["triangleMask"];
+    } else {
+      // fill triangle mask
+      std::vector<float> vMask(length * length, 0);
+      for(int i = 0; i < length; ++i)
+        for(int j = 0; j <= i; ++j)
+          vMask[i * length + j] = 1.f;
+      
+      Expr e = graph_->constant({1, length, length}, inits::fromVector(vMask));
+      if(inference_) {
+        e->setMemoize(true);
+        if (constantCache_.count("triangleMask") > 0) {
+          constantCache_["triangleMask"]->setMemoize(false);
+        }
+        constantCache_["triangleMask"] = e;
+      }
+      return e;
+    }
   }
 
   // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
@@ -714,11 +727,11 @@ public:
     // Used for position embeddings and creating new decoder states.
     int startPos = (int)state->getPosition();
 
-    auto scaledEmbeddings = addSpecialEmbeddings(embeddings, startPos);
+    auto scaledEmbeddings = addSpecialEmbeddings(embeddings, startPos); // TODO1
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
 
     // reorganize batch and timestep
-    auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+    auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim] TODO1
 
     auto prevQuery = query; // keep handle to untransformed embeddings, potentially used for a final skip connection
 

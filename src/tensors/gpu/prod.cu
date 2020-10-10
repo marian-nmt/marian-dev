@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include <stdint.h>
 #include "tensors/tensor.h"
 #include "tensors/gpu/cuda_helpers.h"

@@ -114,8 +114,12 @@ public:
           "The type of the result tensor must be float32.");
 
     if(backend_->getDeviceId().type == DeviceType::cpu) {
+      float* gatheredResultsPtr = gatheredResults->data<float>();
+      size_t* flattenedIndicesPtr = flattenedIndices->data<size_t>();
+      float* dataToGather = data();
+
       for(int i = 0; i < flattenedIndices->size(); ++i) {
-        gatheredResults->set(i, get<float>(flattenedIndices->get<size_t>(i)));
+        gatheredResultsPtr[i] = dataToGather[flattenedIndicesPtr[i]];
       }
     }
   #ifdef CUDA_FOUND

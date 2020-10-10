@@ -197,6 +197,10 @@ public:
 
   Expr postProcess(std::string prefix, std::string ops, Expr input, Expr prevInput, float dropProb = 0.0f) const {
     auto output = input;
+    if(dropProb == 0.0f && (ops == "an" || ops == "dan")) {
+      return addBiasSkipAndLayerNorm(output, prefix, prevInput);
+    }
+
     for(auto op : ops) {
       // dropout
       if(op == 'd')
@@ -280,6 +284,7 @@ public:
   Expr MultiHead(std::string prefix,
                  int dimOut,
                  int dimHeads,
+                 Expr prevInput,
                  Expr q,             // [-4: beam depth * batch size, -3: num heads, -2: max q length, -1: split vector dim]
                  const Expr &keys,   // [-4: beam depth, -3: batch size, -2: max kv length, -1: vector dim]
                  const Expr &values, // [-4: beam depth, -3: batch size, -2: max kv length, -1: vector dim]
@@ -336,14 +341,19 @@ public:
     int dimAtt = output->shape()[-1];
 
     bool project = !opt<bool>("transformer-no-projection");
+    auto opsPost = opt<std::string>("transformer-postprocess");
     if(project || dimAtt != dimOut) {
       auto Wo
         = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform());
       auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
+      if(inference_ && (opsPost == "dan" || opsPost == "an")) {
+        Expr dp = dot(output, Wo);
+        return addBiasSkipAndLayerNorm(dp, prefix + "_Wo", prevInput, bo);
+      }
       output = affine(output, Wo, bo);
     }
-
-    return output;
+    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    return postProcess(prefix + "_Wo", opsPost, output, prevInput, dropProb);;
   }
 
   // Reduce the encoder to a single sentence vector, here we just take the contextual embedding of the first word per sentence
@@ -384,10 +394,7 @@ public:
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
     // multi-head self-attention over previous input
-    output = MultiHead(prefix, dimModel, dimHeads, output, keys, values, mask, cache, saveAttentionWeights);
-    
-    auto opsPost = opt<std::string>("transformer-postprocess");
-    output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
+    output = MultiHead(prefix, dimModel, dimHeads, input, output, keys, values, mask, cache, saveAttentionWeights);
 
     return output;
   }
@@ -446,11 +453,18 @@ public:
         output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
       }
     }
-    output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
-
     auto opsPost = opt<std::string>("transformer-postprocess");
-    output
-      = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
+
+    if(inference_ && (opsPost == "dan" || opsPost == "an")) {
+      auto W = graph_->param(prefix + "_W" + std::to_string(depthFfn), { output->shape()[-1], dimModel }, inits::glorotUniform());
+      auto b = graph_->param(prefix + "_b" + std::to_string(depthFfn), { 1,              dimModel}, inits::zeros());
+      output = dot(output, W);
+      output = addBiasSkipAndLayerNorm(output, prefix + "_ffn", input, b);
+
+    } else {
+      output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
+      output = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
+    }
 
     return output;
   }

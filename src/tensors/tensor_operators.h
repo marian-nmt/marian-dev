@@ -172,6 +172,7 @@ static inline void Deconcatenate(std::vector<marian::Tensor>& outputs,
 
 // clang-format off
 DISPATCH5(LayerNormalization, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, float)
+DISPATCH7(AddBiasSkipAndLayerNormalization, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, float)
 
 #ifdef CUDA_FOUND
 namespace gpu {

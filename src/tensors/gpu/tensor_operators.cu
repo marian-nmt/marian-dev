@@ -2973,5 +2973,149 @@ void AddPosEmbeddings(marian::Tensor result, const marian::Tensor& embeddings, f
   }
 }
 
+template<typename T>
+__device__ __forceinline__ T addBiasAndSkipConnection(T* xRow, T* prevInputRow, T* bias, int id) {
+  const T biasAdd = xRow[id] + (bias? bias[id] : T(0));
+  const T skipConnection = biasAdd + prevInputRow[id];
+  return skipConnection;
+}
+
+// Code duplication here since gLayerNormGrad would no longer correspond to gLayerNorm. Can shrink code by allowing
+// prevInput to also be a nullptr in this function and the device function above.
+template <typename T, typename AccType = float>
+__global__ void gAddBiasSkipAndLayerNormalization(T* out,
+                                                  const T* in,
+                                                  const T* bias,
+                                                  const T* prevInput,
+                                                  const T* gamma,
+                                                  const T* beta,
+                                                  int rows,
+                                                  int cols,
+                                                  AccType eps = 1e-9) {
+  extern __shared__ uint8_t _sharedBytes[];
+  AccType* _shareAccType = (AccType*)_sharedBytes;
+
+  AccType N = cols;
+
+  for(int bid = 0; bid < rows; bid += gridDim.x) {
+    int j = bid + blockIdx.x;
+    if(j < rows) {
+      T* yRow       = out + j * cols;
+      const T* xRow =  in + j * cols;
+      const T* prevInputRow = prevInput + j * cols;
+
+      AccType* _sum = _shareAccType; // accumulate into floats
+      _sum[threadIdx.x] = (AccType)0.0f;
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          const T normInput = addBiasAndSkipConnection(xRow, prevInputRow, bias, id);
+          _sum[threadIdx.x] += (AccType)normInput;
+        }
+      }
+      __syncthreads();
+      int len = blockDim.x;
+      while(len != 1) {
+        __syncthreads();
+        int skip = (len + 1) >> 1;
+        if(threadIdx.x < (len >> 1)) {
+          _sum[threadIdx.x] += _sum[threadIdx.x + skip];
+        }
+        len = (len + 1) >> 1;
+      }
+      __syncthreads();
+      AccType mean = _sum[0] / N;
+      __syncthreads();
+
+      AccType* _sqSum = _shareAccType;
+
+      _sqSum[threadIdx.x] = (AccType)0.0f;
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          const T normInput = addBiasAndSkipConnection(xRow, prevInputRow, bias, id);
+          AccType xv =  (AccType) normInput;
+          AccType ex = xv - mean;
+          _sqSum[threadIdx.x] += ex * ex;
+        }
+      }
+      __syncthreads();
+      len = blockDim.x;
+      while(len != 1) {
+        __syncthreads();
+        int skip = (len + 1) >> 1;
+        if(threadIdx.x < (len >> 1))
+          _sqSum[threadIdx.x] += _sqSum[threadIdx.x + skip];
+        len = (len + 1) >> 1;
+      }
+      __syncthreads();
+      AccType sigma = functional::Ops<AccType>::sqrt(_sqSum[0] / N + eps); // all AccType
+      __syncthreads();
+
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          AccType gammav = (AccType)gamma[id];
+          AccType xv     = (AccType)addBiasAndSkipConnection(xRow, prevInputRow, bias, id);
+          AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType lv     = (xv - mean) / sigma;
+          AccType y      = gammav * lv + betav;
+          yRow[id]       = (T)y;
+        }
+      }
+    }
+    __syncthreads();
+  }
+}
+
+
+void AddBiasSkipAndLayerNormalization(Tensor out,
+                                      Tensor in,
+                                      Tensor bias,
+                                      Tensor prevInput,
+                                      Tensor gamma,
+                                      Tensor beta,
+                                      float eps) {
+  cudaSetDevice(out->getDeviceId().no);
+
+  int rows = in->shape().elements() / in->shape().back();
+  int cols = in->shape().back();
+
+  int blocks = std::min(MAX_BLOCKS, (int)rows);
+  int threads = std::min(MAX_THREADS, (int)cols);
+  int shared = threads * sizeof(float);
+
+  ABORT_IF(bias && cols != bias->shape().elements(), "The number of columns in the input must match the number of elements in the bias");
+  ABORT_IF(cols != prevInput->shape().back(), "The previous input and the current inputs must have the same shape for skip");
+  ABORT_IF(in->shape().elements() != prevInput->shape().elements(), "The previous input and the current inputs must have the same shape for skip");
+
+
+  if(out->type() == Type::float32) {
+    gAddBiasSkipAndLayerNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
+                                                                                 in->data<float>(),
+                                                                                 bias? bias->data<float>() : nullptr,
+                                                                                 prevInput->data<float>(),
+                                                                                 gamma->data<float>(),
+                                                                                 beta ? beta->data<float>() : nullptr,
+                                                                                 rows,
+                                                                                 cols,
+                                                                                 eps);
+ #if COMPILE_FP16
+  } else if (out->type() == Type::float16) {
+    gAddBiasSkipAndLayerNormalization<half, float><<<blocks, threads, shared>>>(out->data<half>(),
+                                                                                in->data<half>(),
+                                                                                bias? bias->data<half>() : nullptr,
+                                                                                prevInput->data<half>(),
+                                                                                gamma->data<half>(),
+                                                                                beta ? beta->data<half>() : nullptr,
+                                                                                rows,
+                                                                                cols,
+                                                                                eps);
+#endif
+  } else {
+    ABORT("LayerNormalization not implemented for type {}", out->type());
+  }
+}
+
 }  // namespace gpu
 }  // namespace marian

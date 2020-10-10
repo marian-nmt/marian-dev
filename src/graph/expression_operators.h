@@ -285,6 +285,8 @@ Expr square(Expr a);
 
 Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
+Expr addBiasSkipAndLayerNorm(Expr x, Expr prevInput, Expr gamma, Expr beta = nullptr, Expr bias = nullptr, float eps = 1e-9);
+
 Expr highway(Expr y, Expr x, Expr t);
 Expr highway(const std::string prefix, Expr x);
 

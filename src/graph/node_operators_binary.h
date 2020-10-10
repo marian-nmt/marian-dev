@@ -1368,6 +1368,56 @@ private:
   float eps_;
 };
 
+struct BiasAddSkipAndNormLayerOp : public NaryNodeOp {
+Expr bias_;
+Expr beta_;
+public:
+  BiasAddSkipAndNormLayerOp(const std::vector<Expr>& nodes, Expr bias, Expr beta, float eps = 1e-9)
+      : NaryNodeOp(nodes), eps_(eps) {
+    // @TODO: dimension check
+    bias_ = bias;
+    beta_ = beta;
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+        AddBiasSkipAndLayerNormalization(val_,
+                                         child(0)->val(),
+                                         bias_? bias_->val() : nullptr,
+                                         child(1)->val(),
+                                         child(2)->val(),
+                                         beta_? beta_->val() : nullptr,
+                                         eps_))};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Not Implemented for Training");
+  }
+
+  const std::string type() override { return "biasAddThenSkipConnectionThenLayerNorm"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, eps_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<BiasAddSkipAndNormLayerOp>(node);
+    if(!cnode)
+      return false;
+    if(eps_ != cnode->eps_)
+      return false;
+    return true;
+  }
+
+private:
+  friend class SerializationHelpers; // @TODO: use the same name for this as SqrtNodeOp
+  float eps_;
+};
+
 struct HighwayNodeOp : public NaryNodeOp {
   HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes) {}
 

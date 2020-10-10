@@ -33,6 +33,12 @@ void AddPosEmbeddings(marian::Tensor result, const marian::Tensor& embeddings, f
   ABORT("Not implemented");
 }
 
+
+void AddBiasSkipAndLayerNormalization(Tensor out, Tensor in, Tensor bias, Tensor prevInput, Tensor gamma,
+                                      Tensor beta, float eps) {
+  ABORT("Not implemented");
+}
+
 template <typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   for(int i = 0; i < length; ++i)

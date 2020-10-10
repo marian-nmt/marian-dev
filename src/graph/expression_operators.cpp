@@ -772,6 +772,20 @@ Expr layerNorm(Expr x,
   return Expression<LayerNormalizationOp>(nodes, eps);
 }
 
+Expr addBiasSkipAndLayerNorm(Expr x, Expr prevInput, Expr gamma, Expr beta, Expr bias, float eps) {
+  std::vector<Expr> nodes = {x, prevInput, gamma};
+  auto graph = x->graph();
+  if (graph->isInference() && graph->getBackend()->getDeviceId().type == DeviceType::gpu) {
+    return Expression<BiasAddSkipAndNormLayerOp>(nodes, bias, beta, eps);
+  }
+
+  if (bias) {
+    x = x + bias;
+  }
+  x = x + prevInput;
+  return layerNorm(x, gamma, beta, eps);
+}
+
 Expr highway(Expr y, Expr x, Expr t) {
   std::vector<Expr> nodes = {y, x, t};
   return Expression<HighwayNodeOp>(nodes);

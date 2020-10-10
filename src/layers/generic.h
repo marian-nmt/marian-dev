@@ -471,4 +471,12 @@ Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) {
   return marian::layerNorm(x, scale, bias, 1e-6f);
 }
 
+static inline
+Expr addBiasSkipAndLayerNorm(Expr x, std::string prefix, Expr prevInput, Expr bias = nullptr, std::string suffix = std::string()) {
+  int dimModel = x->shape()[-1];
+  auto scale = x->graph()->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
+  auto beta  = x->graph()->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
+  return marian::addBiasSkipAndLayerNorm(x, prevInput, scale, beta, bias, 1e-6);
+}
+
 }  // namespace marian

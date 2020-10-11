@@ -322,6 +322,8 @@ namespace marian {
               cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */, transposed /*Use different routine as Wt is transposed*/);
               cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
             }
+          } else {
+            cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
           }
         }
 #endif
@@ -335,7 +337,7 @@ namespace marian {
           cachedShortWt_ = index_select(Wt_Quantized, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
           // We need to carry over the QuantizationMultiplier somehow. Create a new node here to do that
           cachedShortWt_ = Expression<marian::gpu::integer::PreparedContainerNodeOp>(cachedShortWt_, BQuantMult);
-        } else {
+        } else if (graph_->getDeviceId().type == DeviceType::gpu) {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
 #endif

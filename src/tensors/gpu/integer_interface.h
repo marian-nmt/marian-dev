@@ -74,7 +74,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
         if (child(0)->value_type() == Type::int8) {
           auto  actualExp = std::static_pointer_cast<PreparedContainerNodeOp>(child(0));
-          memCpyDevice(val_->data(), actualExp->gpuQuantMult->data<float>(), 1);
+          memCpyDevice(val_->data(), reinterpret_cast<float *>(actualExp->gpuQuantMult->data()), 1); // data<float>() fails on GPU only build on some GCC
         } else {
           auto backend = std::static_pointer_cast<gpu::Backend>(child(0)->val()->getBackend());
           auto cublasHandle = backend->getCublasHandle();
@@ -134,7 +134,7 @@ struct PrepareNodeOp : public NaryNodeOp {
 #ifdef CUDA_FOUND
         CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
         if (child(0)->value_type() == Type::int8) {
-          memCpyDevice(val_->data<int8_t>(), child(0)->val()->data<int8_t>(), child(0)->shape().elements());
+          memCpyDevice(val_->data<int8_t>(), reinterpret_cast<int8_t *>(child(0)->val()->data()), child(0)->shape().elements()); // Using data<int8_t>() fails on some GCC
         } else {
           const float * input = child(0)->val()->data();
           const float * quantMultAddr = child(1)->val()->data();

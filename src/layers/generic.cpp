@@ -333,6 +333,7 @@ namespace marian {
           Expr BQuantMult = Expression<marian::gpu::integer::QuantMultNodeOp<marian::gpu::integer::Parameter> >(Wt_, nodeName);
           // Prepare it by just quantizing. We do this py setting tensorcores to FALSE regardless of whether we use them or not.
           // Even when we are using tensorcores, this matrix comes transposed so we don't care rearranging it in RowM format
+          // @TODO XapaJIaMnu this will fail for legacy models were isLegacyUntransposed = true. Fix it
           Expr Wt_Quantized = Expression<marian::gpu::integer::PrepareNodeOp<marian::gpu::integer::Parameter> >(Wt_, BQuantMult);
           cachedShortWt_ = index_select(Wt_Quantized, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
           // We need to carry over the QuantizationMultiplier somehow. Create a new node here to do that

@@ -30,6 +30,7 @@ bool shifted_;
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef COMPILE_CPU
       quantMult_ = *child(1)->val()->data();
       typedef typename intgemm_<vtype>::type Integer;
       if (!shifted_) {
@@ -45,6 +46,7 @@ bool shifted_;
                                       rows(child(0)->val()),
                                       cols(child(0)->val()));
       }
+#endif
     )};
   }
 
@@ -76,6 +78,7 @@ bool transposed_; /*This is only used for the output layer which has a different
 
   NodeOps forwardOps() override {
    return {NodeOp(
+#ifdef COMPILE_CPU
       quantMult_ = *child(1)->val()->data();
       typedef typename intgemm_<vtype>::type Integer;
       if (isIntgemm(child(0)->value_type())) {
@@ -93,6 +96,7 @@ bool transposed_; /*This is only used for the output layer which has a different
                                       cols(child(0)->val()), /*Cols and rows need to be swapped*/
                                       rows(child(0)->val())); /*Cols and rows need to be swapped*/
       }
+#endif
     )};
   }
 
@@ -136,6 +140,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef COMPILE_CPU
       //We get the quantization multiplier from a PrepareB or directly from the input
       if (child(0)->type() == "intgemmPrepareB") {
         auto bPreppedNode = std::static_pointer_cast<PrepareBNodeOp<vtype> >(child(0));
@@ -152,6 +157,7 @@ public:
                     rows(input),
                     &*indices_.begin(),
                     &*indices_.end());
+#endif
     )};
   }
 
@@ -195,6 +201,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef COMPILE_CPU
       if (vtype == Type::int16) {
         *val_->data() = 1024.0f;
       } else if (child(0)->type() == "intgemmSelectColumnsB") {
@@ -211,6 +218,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
         }
         *val_->data() = 127.0f / intgemm::MaxAbsolute(child(0)->val()->data(), child(0)->val()->data() + child(0)->val()->shape().elements());
       }
+#endif
     )};
   }
 
@@ -260,6 +268,7 @@ public:
     //std::cerr << "TrueBias: " << child(0)->name() << " type: " << child(0)->type() << " bQuantMult: " << this->child(3)->val()->data()[0] <<  " aQuantMult: " << this->child(2)->val()->data()[0] << std::endl;
     //std::cerr << "Bias name and val: " << child(0)->name() << " " << child(0)->val()->data()[0] << std::endl;
     return {NodeOp(
+#ifdef COMPILE_CPU
       if (alreadyPrepared_) {
         //God Knows why trying to assign the bias tensor to this node causes a crash, the second time it's referenced
         //even though it's supposed to work fine. We use a memory copy instead.
@@ -275,6 +284,7 @@ public:
         float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
         intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
       }
+#endif
       )};
   }
 
@@ -295,12 +305,14 @@ public:
   NodeOps forwardOps() override {
     //std::cerr << "FakeBias: " << child(0)->name() << " bQuantMult: " << this->child(2)->val()->data()[0] << " aQuantMult: " << this->child(1)->val()->data()[0] << std::endl;
     return {NodeOp(
+#ifdef COMPILE_CPU
     auto b = this->child(0)->val();
     auto quant_mult_a = this->child(1)->val();
     auto quant_mult_b = this->child(2)->val();
 
     float unquant_mult = (-1)*((127.0f / *quant_mult_a->data())*(127.0f / *quant_mult_b->data()))/(127.0f); //Minus one to invert add_ps later on
     intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
+#endif
     )};
   }
 
@@ -326,6 +338,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef COMPILE_CPU
           float aQuantMult = std::static_pointer_cast<PrepareANodeOp<vtype> >(child(0))->quantMult_;
           float bQuantMult;
           if (child(1)->type() == "intgemmSelectColumnsB") {
@@ -346,6 +359,7 @@ public:
                                            cols(child(0)->val()),
                                            cols(child(1)->val()),
                                            intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
+#endif
     )};
   }
 
@@ -377,6 +391,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef COMPILE_CPU
           float aQuantMult = std::static_pointer_cast<PrepareANodeOp<vtype> >(child(0))->quantMult_;
           float bQuantMult;
           if (child(1)->type() == "intgemmSelectColumnsB") {
@@ -406,6 +421,7 @@ public:
                                   cols(child(1)->val()),                                          /*child(2) is bias*/
                                   intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
           }
+#endif
     )};
   }
 

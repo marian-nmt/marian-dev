@@ -1,7 +1,10 @@
 #pragma once
 
+#ifdef CUDA_FOUND
 #include <cublas_v2.h>
-#include "tensors/gpu/backend.h"
+#else
+struct cublasHandle_t;
+#endif
 #include "tensors/tensor.h"
 #include "tensors/tensor_operators.h"
 #include "tensors/tensor_allocator.h"
@@ -47,94 +50,31 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
     void unmanagedFree(float * in);*/
 
 #else
-    void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu) {
-        handle;
-        input_gpu;
-        items;
-        output_gpu;
-    }
-    void quantize(const float * intput, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
-        input;
-        output;
-        rows;
-        cols;
-        quantMult;
-    }
-    void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
-        input;
-        output;
-        rows;
-        cols;
-        quantMult;
-    }
-    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr) {
-        input;
-        output;
-        rows;
-        cols;
-        quantMultAaddr;
-        quantMultBaddr;
-    }
-    void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr) {
-        input;
-        output;
-        rows;
-        cols;
-        dequantMultAddr;
-    }
-    void cutlass_igemm_dispatcher(bool transA, bool transB,
-        int M,
-        int N,
-        int K,
-        float * alpha,
-        int8_t const *A,
-        int lda,
-        int8_t const *B,
-        int ldb,
-        float * beta,
-        int32_t *C,
-        int ldc,
-        bool tensorCore,
-        bool fused,
-        float * bias) {
-            M;
-            N;
-            K;
-            alpha;
-            A;
-            lda;
-            B;
-            ldb;
-            beta;
-            C;
-            ldc;
-            tensorCore;
-            fused;
-            bias;
-        }
-        void memCpyDevice(float * dest, float * source, size_t elems) {
-            dest;
-            source;
-            elems;
-        }
-        void memCpyDevice(int8_t * dest, int8_t * source, size_t elems) {
-            dest;
-            source;
-            elems;
-        }
-        void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr) {
-            output;
-            quantMultAaddr;
-            quantMultBaddr;
-        }
-        void fieldSetGPU(float * gpuMem, float value) {
-            gpuMem;
-            value;
-        }
-        //void gpuPrinterDispatch(float * mem, size_t idx) {
-        //    mem;
-        //    idx;
-        //}
+    inline void maxAbsQuantMult(cublasHandle_t& /*handle*/, const float * /*input_gpu*/, size_t /*items*/, float * /*output_gpu*/) {}
+    inline void quantize(const float * /*input*/, int8_t * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAddr*/) {}
+    inline void quantizeToRowMajorWrapper(const float * /*input*/, int8_t * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAddr*/) {}
+    inline void dequantize(const int32_t * /*input*/, float * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAaddr*/, const float * /*quantMultBaddr*/) {}
+    inline void dequantize(const int32_t * /*input*/, float * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*dequantMultAddr*/) {}
+    inline void cutlass_igemm_dispatcher(bool /*transA*/, bool /*transB*/,
+        int /*M*/,
+        int /*N*/,
+        int /*K*/,
+        float * /*alpha*/,
+        int8_t const */*A*/,
+        int /*lda*/,
+        int8_t const */*B*/,
+        int /*ldb*/,
+        float * /*beta*/,
+        int32_t */*C*/,
+        int /*ldc*/,
+        bool /*tensorCore*/,
+        bool /*fused*/,
+        float * /*bias*/) {}
+    inline void memCpyDevice(float * /*dest*/, float * /*source*/, size_t /*elems*/) {}
+    inline void memCpyDevice(int8_t * /*dest*/, int8_t * /*source*/, size_t /*elems*/) {}
+    inline void getDequantMultWrapper(float * /*output*/, float * /*quantMultAaddr*/, float * /*quantMultBaddr*/) {}
+    inline void fieldSetGPU(float * /*gpuMem*/, float /*value*/) {}
+    //void gpuPrinterDispatch(float * /*mem*/, size_t /*idx*/) {}
 #endif
 } // namespace integer
 } // namespace gpu

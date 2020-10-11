@@ -4,7 +4,9 @@
 #include "tensors/tensor_operators.h"
 #include "graph/node.h"
 #include "graph/node_operators_unary.h"
+#ifdef CUDA_FOUND
 #include "tensors/gpu/backend.h"
+#endif
 #include "tensors/gpu/integer_tools.h"
 
 //TMP
@@ -26,6 +28,7 @@ class PreparedContainerNodeOp : public NaryNodeOp {
     }
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef CUDA_FOUND
       CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
       // Remember the quantised node here
       memCpyDevice(val_->data(), child(0)->val()->data<float>(), child(0)->shape().elements());
@@ -34,6 +37,7 @@ class PreparedContainerNodeOp : public NaryNodeOp {
       float * quantMultHolder = child(1)->val()->data<float>();
       gpuQuantMult = graph()->allocator()->alloc<float>(1);
       memCpyDevice(gpuQuantMult->data<float>(), quantMultHolder, 1);
+#endif
     )};
   }
 
@@ -66,6 +70,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef CUDA_FOUND
         CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
         if (child(0)->value_type() == Type::int8) {
           auto  actualExp = std::static_pointer_cast<PreparedContainerNodeOp>(child(0));
@@ -76,6 +81,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
 
           maxAbsQuantMult(cublasHandle, child(0)->val()->data(), child(0)->val()->shape().elements(), val_->data());
         }
+#endif
     )};
   }
 
@@ -125,6 +131,7 @@ struct PrepareNodeOp : public NaryNodeOp {
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef CUDA_FOUND
         CUDA_CHECK(cudaSetDevice((int)child(0)->val()->getDeviceId().no));
         if (child(0)->value_type() == Type::int8) {
           memCpyDevice(val_->data<int8_t>(), child(0)->val()->data<int8_t>(), child(0)->shape().elements());
@@ -139,7 +146,7 @@ struct PrepareNodeOp : public NaryNodeOp {
             quantize(input, val_->data<int8_t>(), cols(child(0)->val()), rows(child(0)->val()), quantMultAddr);
           }
         }
-
+#endif
     )};
   }
 
@@ -194,6 +201,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef CUDA_FOUND
       //A and B and swapped here, so are LDA, LDB and transA and transB
       // Perform LDA, LDB, LDC
       Tensor A = child(0)->val();
@@ -262,6 +270,7 @@ public:
         marian::gpu::Prod(val_, ones, bias, false, false, 1.f, 1.f);
 
       }
+#endif
     )};
   }
 
@@ -309,6 +318,7 @@ public:
 
   NodeOps forwardOps() override {
     return {NodeOp(
+#ifdef CUDA_FOUND
       //A and B and swapped here, so are LDA, LDB and transA and transB
       // Perform LDA, LDB, LDC
       Tensor A = child(0)->val();
@@ -370,6 +380,7 @@ public:
         // Synchronize
         val_->getBackend()->synchronize();
       }
+#endif
     )};
   }
 

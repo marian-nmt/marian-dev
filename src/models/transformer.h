@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 // TODO: This is really a .CPP file now. I kept the .H name to minimize confusing git, until this is code-reviewed.
 // This is meant to speed-up builds, and to support Ctrl-F7 to rebuild.
 
@@ -31,6 +36,7 @@ protected:
   std::unordered_map<std::string, Expr> cache_;    // caching transformation of the encoder that should not be created again
   mutable/*lazy*/ std::vector<float> sinusoidalEmbeddingsFreq_, sinusoidalEmbeddingsOffs_;  // cached contributions to sinusoidal embeddings
 
+  std::unordered_map<std::string, Expr> constantCache_; 
   // attention weights produced by step()
   // If enabled, it is set once per batch during training, and once per step during translation.
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
@@ -85,8 +91,8 @@ public:
     } else {
       // @TODO : test if embeddings should be scaled when trainable
       // according to paper embeddings are scaled up by \sqrt(d_m)
-      embeddings = std::sqrt((float)dimEmb) * embeddings; // embeddings were initialized to unit length; so norms will be in order of sqrt(dimEmb)
 
+    float scaleFactor = std::sqrt((float)dimEmb);
 #ifdef USE_ONNX // TODO 'Sin' op and constant sine generate different result. So, use constant when 'USE_ONNX' is not defined for now.
       // precompute the arguments to sin() (the cos(x) are expressed as sin(x+pi/2))
       if (sinusoidalEmbeddingsFreq_.empty()) {
@@ -101,12 +107,10 @@ public:
       auto positionRange = graph_->constant({ dimWords, 1, 1 }, inits::range((float)start, (float)start + (float)dimWords));
       positionRange->set_name("data_" + std::to_string(batchIndex_) + "_posrange");
       auto signal = sin(positionRange * frequencies + cosOffsets);
+      embeddings = scaleFactor * embeddings + signal;
 #else // USE_ONNX
-      auto signal = graph_->constant({dimWords, 1, dimEmb},
-                                     inits::sinusoidalPositionEmbeddings(start));
+      embeddings = addPosEmbedding(embeddings, scaleFactor, start);
 #endif // USE_ONNX
-
-      embeddings = embeddings + signal;
     }
 
     return embeddings;
@@ -117,13 +121,27 @@ public:
     return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }
 
-  Expr triangleMask(int length) const {
-    // fill triangle mask
-    std::vector<float> vMask(length * length, 0);
-    for(int i = 0; i < length; ++i)
-      for(int j = 0; j <= i; ++j)
-        vMask[i * length + j] = 1.f;
-    return graph_->constant({1, length, length}, inits::fromVector(vMask));
+  Expr triangleMask(int length) {
+    if (inference_ && constantCache_.count("triangleMask") > 0 && 
+        constantCache_["triangleMask"]->shape().elements() == length * length) {
+      return constantCache_["triangleMask"];
+    } else {
+      // fill triangle mask
+      std::vector<float> vMask(length * length, 0);
+      for(int i = 0; i < length; ++i)
+        for(int j = 0; j <= i; ++j)
+          vMask[i * length + j] = 1.f;
+      
+      Expr e = graph_->constant({1, length, length}, inits::fromVector(vMask));
+      if(inference_) {
+        e->setMemoize(true);
+        if (constantCache_.count("triangleMask") > 0) {
+          constantCache_["triangleMask"]->setMemoize(false);
+        }
+        constantCache_["triangleMask"] = e;
+      }
+      return e;
+    }
   }
 
   // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
@@ -179,6 +197,10 @@ public:
 
   Expr postProcess(std::string prefix, std::string ops, Expr input, Expr prevInput, float dropProb = 0.0f) const {
     auto output = input;
+    if(dropProb == 0.0f && (ops == "an" || ops == "dan")) {
+      return addBiasSkipAndLayerNorm(output, prefix, prevInput);
+    }
+
     for(auto op : ops) {
       // dropout
       if(op == 'd')
@@ -262,6 +284,7 @@ public:
   Expr MultiHead(std::string prefix,
                  int dimOut,
                  int dimHeads,
+                 Expr prevInput,
                  Expr q,             // [-4: beam depth * batch size, -3: num heads, -2: max q length, -1: split vector dim]
                  const Expr &keys,   // [-4: beam depth, -3: batch size, -2: max kv length, -1: vector dim]
                  const Expr &values, // [-4: beam depth, -3: batch size, -2: max kv length, -1: vector dim]
@@ -318,14 +341,19 @@ public:
     int dimAtt = output->shape()[-1];
 
     bool project = !opt<bool>("transformer-no-projection");
+    auto opsPost = opt<std::string>("transformer-postprocess");
     if(project || dimAtt != dimOut) {
       auto Wo
         = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform());
       auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
+      if(inference_ && (opsPost == "dan" || opsPost == "an")) {
+        Expr dp = dot(output, Wo);
+        return addBiasSkipAndLayerNorm(dp, prefix + "_Wo", prevInput, bo);
+      }
       output = affine(output, Wo, bo);
     }
-
-    return output;
+    float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
+    return postProcess(prefix + "_Wo", opsPost, output, prevInput, dropProb);;
   }
 
   // Reduce the encoder to a single sentence vector, here we just take the contextual embedding of the first word per sentence
@@ -366,10 +394,7 @@ public:
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
     // multi-head self-attention over previous input
-    output = MultiHead(prefix, dimModel, dimHeads, output, keys, values, mask, cache, saveAttentionWeights);
-    
-    auto opsPost = opt<std::string>("transformer-postprocess");
-    output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
+    output = MultiHead(prefix, dimModel, dimHeads, input, output, keys, values, mask, cache, saveAttentionWeights);
 
     return output;
   }
@@ -411,22 +436,35 @@ public:
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_ffn", opsPre, input, dropProb);
 
+    auto actName = opt<std::string>("transformer-ffn-activation");
     int dimFfn = opt<int>("transformer-dim-ffn");
     int depthFfn = opt<int>("transformer-ffn-depth");
-    auto actFn = activationByName(opt<std::string>("transformer-ffn-activation"));
+    auto actFn = activationByName(actName);
     float ffnDropProb
       = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
 
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
 
     // the stack of FF layers
-    for(int i = 1; i < depthFfn; ++i)
-      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
-    output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
-
+    for(int i = 1; i < depthFfn; ++i) {
+      if (actName == "relu") {
+        output = denseInlineRelu(output, prefix, std::to_string(i), dimFfn, ffnDropProb);
+      } else {
+        output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, actFn, ffnDropProb);
+      }
+    }
     auto opsPost = opt<std::string>("transformer-postprocess");
-    output
-      = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
+
+    if(inference_ && (opsPost == "dan" || opsPost == "an")) {
+      auto W = graph_->param(prefix + "_W" + std::to_string(depthFfn), { output->shape()[-1], dimModel }, inits::glorotUniform());
+      auto b = graph_->param(prefix + "_b" + std::to_string(depthFfn), { 1,              dimModel}, inits::zeros());
+      output = dot(output, W);
+      output = addBiasSkipAndLayerNorm(output, prefix + "_ffn", input, b);
+
+    } else {
+      output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel);
+      output = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
+    }
 
     return output;
   }
@@ -708,11 +746,11 @@ public:
     // Used for position embeddings and creating new decoder states.
     int startPos = (int)state->getPosition();
 
-    auto scaledEmbeddings = addSpecialEmbeddings(embeddings, startPos);
+    auto scaledEmbeddings = addSpecialEmbeddings(embeddings, startPos); // TODO1
     scaledEmbeddings = atleast_nd(scaledEmbeddings, 4);
 
     // reorganize batch and timestep
-    auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+    auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim] TODO1
 
     auto prevQuery = query; // keep handle to untransformed embeddings, potentially used for a final skip connection
 

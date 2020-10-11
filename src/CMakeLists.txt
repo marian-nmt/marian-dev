@@ -1,3 +1,7 @@
+ # All or part of this file was contributed by NVIDIA under license:
+ #   Copyright (C) 2020 NVIDIA Corporation
+ #   SPDX-License-Identifier: MIT
+
 add_subdirectory(3rd_party)
 
 include_directories(.)
@@ -164,6 +168,7 @@ if(CUDA_FOUND)
     tensors/gpu/device.cu
     tensors/gpu/algorithm.cu
     tensors/gpu/prod.cpp
+    tensors/gpu/prod.cu
     tensors/gpu/topk.cu
     tensors/gpu/element.cu
     tensors/gpu/add.cu

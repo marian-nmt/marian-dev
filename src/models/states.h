@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
 #include "marian.h"
@@ -30,7 +35,8 @@ public:
   // Sub-select active batch entries from encoder context and context mask
   Ptr<EncoderState> select(const std::vector<IndexType>& batchIndices) { // [batchIndex] indices of active batch entries
     // Dimension -2 is OK for both, RNN and Transformer models as the encoder context in Transformer gets transposed to the same dimension layout
-    return New<EncoderState>(index_select(context_, -2, batchIndices), index_select(mask_, -2, batchIndices), batch_);
+    auto indices = context_->graph()->indices(batchIndices);
+    return New<EncoderState>(index_select(context_, -2, indices), index_select(mask_, -2, indices), batch_);
   }
 };
 

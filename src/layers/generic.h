@@ -1,5 +1,12 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
+#include "common/definitions.h"
+#include "graph/expression_operators.h"
 #include "marian.h"
 
 #include "data/shortlist.h"
@@ -445,11 +452,31 @@ Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, con
 }
 
 static inline
+Expr denseInlineRelu(Expr x, std::string prefix, std::string suffix, int outDim, float dropProb = 0.0f)
+{
+  auto graph = x->graph();
+
+  auto W = graph->param(prefix + "_W" + suffix, { x->shape()[-1], outDim }, inits::glorotUniform());
+  auto b = graph->param(prefix + "_b" + suffix, { 1,              outDim }, inits::zeros());
+  x = affine(x, W, b, false, false, 1.f, true);
+  x = dropout(x, dropProb);
+  return x;
+}
+
+static inline
 Expr layerNorm(Expr x, std::string prefix, std::string suffix = std::string()) {
   int dimModel = x->shape()[-1];
   auto scale = x->graph()->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
   auto bias  = x->graph()->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
   return marian::layerNorm(x, scale, bias, 1e-6f);
+}
+
+static inline
+Expr addBiasSkipAndLayerNorm(Expr x, std::string prefix, Expr prevInput, Expr bias = nullptr, std::string suffix = std::string()) {
+  int dimModel = x->shape()[-1];
+  auto scale = x->graph()->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
+  auto beta  = x->graph()->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
+  return marian::addBiasSkipAndLayerNorm(x, prevInput, scale, beta, bias, 1e-6f);
 }
 
 }  // namespace marian

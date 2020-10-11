@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
 #include "common/config.h"
@@ -66,6 +71,7 @@ public:
     if(!cublasHandle_) { // lazy initialization here to avoid memory usage when unused
       setDevice();
       cublasCreate(&cublasHandle_);
+      cublasSetStream(cublasHandle_, cudaStreamPerThread);
     }
     return cublasHandle_;
   }
@@ -74,6 +80,7 @@ public:
     if(!cusparseHandle_) { // lazy initialization here to avoid memory usage when unused
       setDevice();
       cusparseCreate(&cusparseHandle_);
+      cusparseSetStream(cusparseHandle_, cudaStreamPerThread);  
     }
     return cusparseHandle_;
   }

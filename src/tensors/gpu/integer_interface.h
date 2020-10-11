@@ -474,7 +474,7 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
 static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     // @TODO this will only work for k (cols(a) or rows(b)) % 4 == 0
 
-  return affine(a, b, nullptr, transA, transB, scale, 0);
+  return gpu::integer::affine(a, b, nullptr, transA, transB, scale, 0);
 }
 
 } // namespace integer

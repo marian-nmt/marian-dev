@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "tensors/gpu/algorithm.h"
 
 // clang-format off
@@ -149,6 +154,34 @@ template void swap_ranges<uint64_t>(Ptr<Backend>, uint64_t*, uint64_t*, uint64_t
 template void swap_ranges<float>(Ptr<Backend>, float*, float*, float*);
 template void swap_ranges<double>(Ptr<Backend>, double*, double*, double*);
 // clang-format on
+
+template <typename T>
+__global__ void ggatherIndices(float* d_out, T* d_in, size_t* indices, size_t indicesToGather) {  
+  int index = threadIdx.x + blockDim.x * blockIdx.x;
+  if(index < indicesToGather) {
+    d_out[index] = static_cast<float>(d_in[indices[index]]);
+  }
+}
+
+void gatherIndices(Ptr<Backend> backend, float* d_out, float* d_in, size_t* d_indices, size_t indices_size) {
+  CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
+  int threadsPerBlock = std::min(MAX_THREADS, (int)indices_size);
+  int blocks = (indices_size + threadsPerBlock - 1) / threadsPerBlock;
+  ggatherIndices<<<blocks, threadsPerBlock>>>(d_out, d_in, d_indices, indices_size);
+  CUDA_CHECK(cudaStreamSynchronize(0));
+}
+
+void gatherIndices(Ptr<Backend> backend, float* d_out, float16* d_in, size_t* d_indices, size_t indices_size) {
+#if COMPILE_FP16
+  CUDA_CHECK(cudaSetDevice(backend->getDeviceId().no));
+  int threadsPerBlock = std::min(MAX_THREADS, (int)indices_size);
+  int blocks = (indices_size + threadsPerBlock - 1) / threadsPerBlock; 
+  ggatherIndices<<<blocks, threadsPerBlock>>>(d_out, (__half*)d_in, d_indices, indices_size);
+  CUDA_CHECK(cudaStreamSynchronize(0));
+#else
+  ABORT("FP16 not supported with current hardware or CUDA version");
+#endif
+}
 
 }  // namespace gpu
 }  // namespace marian

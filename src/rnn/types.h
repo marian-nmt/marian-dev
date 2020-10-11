@@ -1,5 +1,12 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
+#include "common/definitions.h"
+#include "common/shape.h"
 #include "marian.h"
 
 #include <iostream>
@@ -12,7 +19,7 @@ struct State {
   Expr output;
   Expr cell;
 
-  State select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
+  State select(Expr selIdx, // [beamIndex * activeBatchSize + batchIndex]
                int beamSize, bool isBatchMajor) const {
     return{ select(output, selIdx, beamSize, isBatchMajor),
             select(cell,   selIdx, beamSize, isBatchMajor) };
@@ -20,15 +27,14 @@ struct State {
 
   // this function is also called by Logits
   static Expr select(Expr sel, // [beamSize, dimTime, dimBatch, dimDepth] or [beamSize, dimBatch, dimTime, dimDepth] (dimTime = 1 for RNN)
-                     const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
+                     Expr selIdx, // [beamIndex * activeBatchSize + batchIndex]
                      int beamSize, bool isBatchMajor)
   {
     if (!sel)
       return sel; // keep nullptr untouched
 
     sel = atleast_4d(sel);
-
-    int dimBatch = (int)selIdx.size() / beamSize;
+    int dimBatch =(int) selIdx->shape().elements()/beamSize;
     int dimDepth = sel->shape()[-1];
     int dimTime  = isBatchMajor ? sel->shape()[-2] : sel->shape()[-3];
 
@@ -83,8 +89,24 @@ public:
   States select(const std::vector<IndexType>& selIdx, // [beamIndex * activeBatchSize + batchIndex]
                 int beamSize, bool isBatchMajor) const {
     States selected;
+    Expr indices;
+    // I think this doesn't work if model split among gpus but not sure if it matters
+    
+    for (auto& state : states_) {
+      if (state.cell) {
+        indices = state.cell->graph()->indices(selIdx);
+        break;
+      }
+
+      if (state.output) {
+        indices = state.output->graph()->indices(selIdx);
+        break;
+      }
+    }
+    
+    // GPU OPT: Implement kernel to batch these on GPU
     for(auto& state : states_)
-      selected.push_back(state.select(selIdx, beamSize, isBatchMajor));
+      selected.push_back(state.select(indices, beamSize, isBatchMajor));
     return selected;
   }
 

@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
 #include <thread>
@@ -380,6 +385,98 @@ public:
 
 };
 
+class FusedAffineNodeOp : public NaryNodeOp {
+private:
+  friend class SerializationHelpers;
+  bool transA_;
+  bool transB_;
+  float scalar_;
+  bool do_relu_;
+
+public:
+  FusedAffineNodeOp(const std::vector<Expr>& nodes,
+               bool transA,
+               bool transB,
+               float scalar,
+               bool do_relu=false)
+      : NaryNodeOp(nodes, newShape(nodes[0], nodes[1], transA, transB)),
+        transA_(transA),
+        transB_(transB),
+        scalar_(scalar),
+        do_relu_(do_relu) {}
+
+  Shape newShape(Expr a, Expr b, bool transA, bool transB) {
+    auto shapeA = a->shape();
+    if(transA) {
+      shapeA.set(shapeA.size() - 2, a->shape()[shapeA.size() - 1]);
+      shapeA.set(shapeA.size() - 1, a->shape()[shapeA.size() - 2]);
+    }
+
+    auto shapeB = b->shape();
+    if(transB) {
+      shapeB.set(shapeB.size() - 2, b->shape()[shapeB.size() - 1]);
+      shapeB.set(shapeB.size() - 1, b->shape()[shapeB.size() - 2]);
+    }
+
+    Shape outShape = shapeA;
+    outShape.set(outShape.size() - 1, shapeB[shapeB.size() - 1]);
+    ABORT_IF(shapeA[shapeA.size() - 1] != shapeB[shapeB.size() - 2],
+             "Matrix product requires inner dimensions to match in {}{} * {}{}", std::string(shapeA), transA, std::string(shapeB), transB);
+    return outShape;
+  }
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+
+    return {
+      NodeOp(
+        Affine(val_,
+               graph()->allocator(),
+               child(0)->val(),
+               child(1)->val(),
+               child(2)->val(),
+               transA_,
+               transB_,
+               0.f,
+               scalar_,
+               do_relu_))
+    };
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Node only supports inference.");
+  }
+
+  const std::string type() override { return "fusedAffine"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, transA_);
+    util::hash_combine(seed, transB_);
+    util::hash_combine(seed, scalar_);
+    util::hash_combine(seed, do_relu_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<FusedAffineNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(transA_ != cnode->transA_)
+      return false;
+    if(transB_ != cnode->transB_)
+      return false;
+    if(scalar_ != cnode->scalar_)
+      return false;
+    if(do_relu_ != cnode->do_relu_)
+      return false;
+    return true;
+  }
+
+};
+
 class DotBatchedNodeOp : public NaryNodeOp {
 private:
   friend class SerializationHelpers;
@@ -660,6 +757,54 @@ struct ScalarProductNodeOp : public NaryNodeOp {
   }
 
   int axis_;
+};
+
+struct PosEmbeddingNodeOp : public NaryNodeOp {
+  PosEmbeddingNodeOp(Expr embeddings, float scaleFactor, int startPos)
+      : NaryNodeOp({embeddings}, newShape(embeddings)), 
+        scaleFactor_(scaleFactor),
+        startPos_(startPos) {}
+
+  Shape newShape(Expr a) {
+    return a->shape();
+  }
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+
+    return {NodeOp(AddPosEmbeddings(val_, child(0)->val(), scaleFactor_, startPos_))};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Not Implemented. Inference Optimization");
+  }
+
+  const std::string type() override { return "Add Positional Embedding"; }
+
+  const std::string color() override { return "blue"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, scaleFactor_);
+    util::hash_combine(seed, startPos_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<PosEmbeddingNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(scaleFactor_ != cnode->scaleFactor_)
+      return false;
+    if(startPos_ != cnode->startPos_)
+      return false;
+    return true;
+  }
+
+  float scaleFactor_;
+  int startPos_;
 };
 
 struct RowsNodeOp : public NaryNodeOp {
@@ -1211,6 +1356,56 @@ public:
     if(!NaryNodeOp::equal(node))
       return false;
     auto cnode = std::dynamic_pointer_cast<LayerNormalizationOp>(node);
+    if(!cnode)
+      return false;
+    if(eps_ != cnode->eps_)
+      return false;
+    return true;
+  }
+
+private:
+  friend class SerializationHelpers; // @TODO: use the same name for this as SqrtNodeOp
+  float eps_;
+};
+
+struct BiasAddSkipAndNormLayerOp : public NaryNodeOp {
+Expr bias_;
+Expr beta_;
+public:
+  BiasAddSkipAndNormLayerOp(const std::vector<Expr>& nodes, Expr bias, Expr beta, float eps = 1e-9)
+      : NaryNodeOp(nodes), eps_(eps) {
+    // @TODO: dimension check
+    bias_ = bias;
+    beta_ = beta;
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+        AddBiasSkipAndLayerNormalization(val_,
+                                         child(0)->val(),
+                                         bias_? bias_->val() : nullptr,
+                                         child(1)->val(),
+                                         child(2)->val(),
+                                         beta_? beta_->val() : nullptr,
+                                         eps_))};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Not Implemented for Training");
+  }
+
+  const std::string type() override { return "biasAddThenSkipConnectionThenLayerNorm"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, eps_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<BiasAddSkipAndNormLayerOp>(node);
     if(!cnode)
       return false;
     if(eps_ != cnode->eps_)

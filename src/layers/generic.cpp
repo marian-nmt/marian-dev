@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "marian.h"
 
 #include "layers/generic.h"
@@ -91,8 +96,10 @@ namespace marian {
     }
 
     // if selIdx are given, then we must reshuffle accordingly
-    if (!hypIndices.empty()) // use the same function that shuffles decoder state
-      sel = rnn::State::select(sel, hypIndices, (int)beamSize, /*isBatchMajor=*/false);
+    if (!hypIndices.empty()) { // use the same function that shuffles decoder state
+      auto indices = graph()->indices(hypIndices);
+      sel = rnn::State::select(sel, indices, (int)beamSize, /*isBatchMajor=*/false);
+    }
     return sel;
   }
 

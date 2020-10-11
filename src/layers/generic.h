@@ -476,7 +476,7 @@ Expr addBiasSkipAndLayerNorm(Expr x, std::string prefix, Expr prevInput, Expr bi
   int dimModel = x->shape()[-1];
   auto scale = x->graph()->param(prefix + "_ln_scale" + suffix, { 1, dimModel }, inits::ones());
   auto beta  = x->graph()->param(prefix + "_ln_bias"  + suffix, { 1, dimModel }, inits::zeros());
-  return marian::addBiasSkipAndLayerNorm(x, prevInput, scale, beta, bias, 1e-6);
+  return marian::addBiasSkipAndLayerNorm(x, prevInput, scale, beta, bias, 1e-6f);
 }
 
 }  // namespace marian

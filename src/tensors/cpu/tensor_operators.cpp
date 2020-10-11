@@ -29,13 +29,13 @@ namespace cpu {
   ABORT("Not implemented");
 }
 
-void AddPosEmbeddings(marian::Tensor result, const marian::Tensor& embeddings, float scaleFactor, int startPos) {
+void AddPosEmbeddings(marian::Tensor /*result*/, const marian::Tensor& /*embeddings*/, float /*scaleFactor*/, int /*startPos*/) {
   ABORT("Not implemented");
 }
 
 
-void AddBiasSkipAndLayerNormalization(Tensor out, Tensor in, Tensor bias, Tensor prevInput, Tensor gamma,
-                                      Tensor beta, float eps) {
+void AddBiasSkipAndLayerNormalization(Tensor /*out*/, Tensor /*in*/, Tensor /*bias*/, Tensor /*prevInput*/, Tensor /*gamma*/,
+                                      Tensor /*beta*/, float /*eps*/) {
   ABORT("Not implemented");
 }
 

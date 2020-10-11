@@ -620,7 +620,7 @@ void CSRProd(marian::Tensor C,
 
 // NOTE: The allocator isn't used currently but is useful for CUDA >= 11.0.3 with cublasLt so that a workspace can be allocated.
 //       Earlier versions of cublasLT do not support bias addition for fp32 and fp16.
-void Affine(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
+void Affine(marian::Tensor C, Ptr<Allocator> /*allocator*/, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
             bool transA, bool transB, float beta, float scalar, bool do_relu) {
              
   if(C->type() == Type::float32) {

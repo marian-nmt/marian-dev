@@ -7,7 +7,6 @@
 #include "tensors/tensor_allocator.h"
 
 #include "data/factored_vocab.h"
-// #include "tensors/tensor_allocator.h"
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
 #include "data/shortlist.h"
@@ -51,7 +50,7 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
   std::vector<size_t> origBatchIndices;
   std::vector<size_t> oldBeamHypIndices;
   std::vector<size_t> newBeamHypIndices;
-  std::vector<std::vector<size_t>> flattenedLogitIndices(states.size());
+  std::vector<std::vector<uint64_t>> flattenedLogitIndices(states.size());
   
   for(size_t i = 0; i < nBestKeys.size(); ++i) { // [currentDimBatch, beamSize] flattened
     // Keys encode batchIdx, beamHypIdx, and word index in the entire beam.
@@ -138,10 +137,10 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
     if(options_->get<bool>("n-best")) {
       ABORT_IF(factoredVocab && factorGroup > 0 && !factoredVocab->canExpandFactoredWord(word, factorGroup),
                "A word without this factor snuck through to here??");
-      for(size_t j = 0; j < states.size(); ++j) {
+      for(uint64_t j = 0; j < states.size(); ++j) {
         auto lval = states[j]->getLogProbs().getFactoredLogitsTensor(factorGroup); // [maxBeamSize, 1, currentDimBatch, dimFactorVocab]
         // The flatting happens based on actual (current) batch size and batch index computed with batch-pruning as we are looking into the pruned tensor
-        size_t flattenedLogitIndex = (beamHypIdx * currentDimBatch + currentBatchIdx) * vocabSize + wordIdx;  // (beam idx, batch idx, word idx); note: beam and batch are transposed, compared to 'key'
+        uint64_t flattenedLogitIndex = (beamHypIdx * currentDimBatch + currentBatchIdx) * vocabSize + wordIdx;  // (beam idx, batch idx, word idx); note: beam and batch are transposed, compared to 'key'
 
         // @TODO: use a function on shape() to index, or new method val->at({i1, i2, i3, i4}) with broadcasting
         ABORT_IF(lval->shape() != Shape({(int)nBestBeamSize, 1, (int)currentDimBatch, (int)vocabSize}) &&

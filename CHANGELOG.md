@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Add --transformer-postprocess-top option to enable correctly normalized prenorm behavior
+- Add --task transformer-base-prenorm and --task transformer-big-prenorm
 - Turing and Ampere GPU optimisation support, if the CUDA version supports it.
 - Printing word-level scores in marian-scorer
 - Optimize LayerNormalization on CPU by 6x through vectorization (ffast-math) and fixing performance regression introduced with strides in 77a420
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - Fast implementation of Select for most cases on CPU
+- Print "server is listening on port" message after it is accepting connections
 - Fix compilation without BLAS installed
 - Providing a single value to vector-like options using the equals sign, e.g. --models=model.npz
 - Fix quiet-translation in marian-server

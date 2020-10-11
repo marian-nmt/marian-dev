@@ -222,13 +222,9 @@ namespace marian {
 
       // this option is only set in the decoder
       if(!lsh_ && options_->hasAndNotEmpty("output-approx-knn")) {
-#if BLAS_FOUND
         auto k     = opt<std::vector<int>>("output-approx-knn")[0];
         auto nbits = opt<std::vector<int>>("output-approx-knn")[1];
         lsh_ = New<LSH>(k, nbits);
-#else
-        ABORT("Requires BLAS library");
-#endif
       }
 
       auto name = options_->get<std::string>("prefix");
@@ -251,7 +247,8 @@ namespace marian {
           Wt_ = graph_->param(name + "_Wt", {numOutputClasses, inputDim}, inits::glorotUniform(false, true));
       }
 
-      b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
+      if(hasBias_)
+        b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
       ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
@@ -270,57 +267,59 @@ namespace marian {
     Logits Output::applyAsLogits(Expr input) /*override final*/ {
       lazyConstruct(input->shape()[-1]);
 
-#if BLAS_FOUND
-      auto affineOrLSH = [this](Expr x, Expr W, Expr b, bool transA, bool transB) {
+      auto affineOrDot = [](Expr x, Expr W, Expr b, bool transA, bool transB) {
+        if(b)
+          return affine(x, W, b, transA, transB);
+        else
+          return dot(x, W, transA, transB);
+      };
+
+      auto affineOrLSH = [this, affineOrDot](Expr x, Expr W, Expr b, bool transA, bool transB) {
         if(lsh_) {
           ABORT_IF( transA, "Transposed query not supported for LSH");
           ABORT_IF(!transB, "Untransposed indexed matrix not supported for LSH");
-          return lsh_->apply(x, W, b);
+          return lsh_->apply(x, W, b); // knows how to deal with undefined bias
         } else {
-          return affine(x, W, b, transA, transB);
+          return affineOrDot(x, W, b, transA, transB);
         }
       };
-#else
-      auto affineOrLSH = [](Expr x, Expr W, Expr b, bool transA, bool transB) {
-        return affine(x, W, b, transA, transB);
-      };
-#endif
 
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
-        Expr preparedBias = nullptr;
-        if ((graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
-          if (!isLegacyUntransposedW) {
-            Wt_ = transpose(Wt_);
-            isLegacyUntransposedW = true;
-          }
+#if COMPILE_CPU
+        // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
+        // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
+        Expr preparedBias = nullptr; //This is only necessary for the CPU codebase
+        if (graph_->getDeviceId().type == DeviceType::cpu) {
+          bool transposed = !isLegacyUntransposedW;
           Expr aQuantMult = nullptr;
           Expr bQuantMult = marian::cpu::integer::quantMult<Type::int8>(Wt_);
-          if (isIntgemm(Wt_->value_type())) {
-            if (graph_->getBackend()->isPrecomputedAlpha()) {
-              aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(Wt_);
-              preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, Wt_, aQuantMult, bQuantMult);
+          if (graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type())) {
+            if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
+              if (graph_->getBackend()->isPrecomputedAlpha()) {
+                aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(Wt_);
+                preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, Wt_, aQuantMult, bQuantMult);
+              }
+              cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
+            } else { // Else, convert the Wt_ matrix to intgemm format and then select vocabulary items from it.
+              cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */, transposed /*Use different routine as Wt is transposed*/);
+              if (graph_->getBackend()->isPrecomputedAlpha()) {
+                aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(cachedShortWt_);
+                preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, cachedShortWt_, aQuantMult, bQuantMult);
+              }
+              cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
             }
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          } else {
-            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */);
-            if (graph_->getBackend()->isPrecomputedAlpha()) {
-              aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(cachedShortWt_);
-              preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, cachedShortWt_, aQuantMult, bQuantMult);
+          } else if ((graph_->getBackend()->isInt16() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
+            if (isIntgemm(Wt_->value_type())) {
+              cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
+            } else {
+              cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */, transposed /*Use different routine as Wt is transposed*/);
+              cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
             }
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
           }
-        } else if ((graph_->getBackend()->isInt16() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
-          if (!isLegacyUntransposedW) {
-            Wt_ = transpose(Wt_);
-            isLegacyUntransposedW = true;
-          }
-          if (isIntgemm(Wt_->value_type())) {
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          } else {
-            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */);
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          }
-        } else if (graph_->getBackend()->isInt8() && graph_->getDeviceId().type == DeviceType::gpu) { // GPU 8bit prepare and index_select
+        }
+#endif
+#ifdef CUDA_FOUND
+        if (graph_->getBackend()->isInt8() && graph_->getDeviceId().type == DeviceType::gpu) { // GPU 8bit prepare and index_select
           std::string nodeName = Wt_->name();
           Expr BQuantMult = Expression<marian::gpu::integer::QuantMultNodeOp<marian::gpu::integer::Parameter> >(Wt_, nodeName);
           // Prepare it by just quantizing. We do this py setting tensorcores to FALSE regardless of whether we use them or not.
@@ -332,10 +331,17 @@ namespace marian {
         } else {
           cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         }
-        if (preparedBias) {
-          cachedShortb_  = index_select(preparedBias ,                             -1, shortlist_->indices());
-        } else {
+#endif
+        if(hasBias_) {
+#if COMPILE_CPU
+          if (preparedBias) {
+            cachedShortb_  = index_select(preparedBias ,                   -1, shortlist_->indices());
+          } else {
+            cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+          }
+#else
           cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+#endif
         }
       }
 
@@ -360,8 +366,9 @@ namespace marian {
             factorB  = cachedShortb_;
           }
           else {
-            factorWt = slice(Wt_, isLegacyUntransposedW ? -1 : 0, Slice((int)range.first, (int)range.second));
-            factorB  = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
+            factorWt  = slice(Wt_, isLegacyUntransposedW ? -1 : 0, Slice((int)range.first, (int)range.second));
+            if(hasBias_)
+              factorB = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
           }
           /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
           if ((lemmaDimEmb == -2 || lemmaDimEmb == -3) && g > 0) { // -2/-3 means a gated transformer-like structure (-3 = hard-max)
@@ -414,8 +421,8 @@ namespace marian {
           if(g == 0)
             factorLogits = affineOrLSH(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true); // [B... x U] factor logits
           else
-            factorLogits = affine(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true); // [B... x U] factor logits
-
+            factorLogits = affineOrDot(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true); // [B... x U] factor logits
+          
           // optionally add lemma-dependent bias
           if (Plemma) { // [B... x U0]
             int lemmaVocabDim = Plemma->shape()[-1];

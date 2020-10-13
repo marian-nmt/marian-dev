@@ -302,14 +302,14 @@ namespace marian {
           Expr bQuantMult = marian::cpu::integer::quantMult<Type::int8>(Wt_);
           if (graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type())) {
             if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
-              if (graph_->getBackend()->isPrecomputedAlpha()) {
+              if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted()) {
                 aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(Wt_);
                 preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, Wt_, aQuantMult, bQuantMult);
               }
               cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
             } else { // Else, convert the Wt_ matrix to intgemm format and then select vocabulary items from it.
               cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */, transposed /*Use different routine as Wt is transposed*/);
-              if (graph_->getBackend()->isPrecomputedAlpha()) {
+              if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted()) {
                 aQuantMult = Expression<marian::cpu::integer::fetchAlphaFromModelNodeOp>(cachedShortWt_);
                 preparedBias = Expression<marian::cpu::integer::PrepareBiasForBNodeOp>(b_, cachedShortWt_, aQuantMult, bQuantMult);
               }

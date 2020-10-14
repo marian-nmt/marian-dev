@@ -269,8 +269,8 @@ namespace marian {
         auto numGroups = factoredVocab_->getNumGroups();
         std::vector<Ptr<RationalLoss>> allLogits(numGroups, nullptr); // (note: null entries for absent factors)
         Expr input1 = input; // [B... x D]
-        Expr Plemma = nullptr;     // used for lemmaDimEmb=-1
-        Expr inputLemma = nullptr; // used for lemmaDimEmb=-2, -3
+        Expr Plemma = nullptr;     // used for factorPredictOption = lemmaDimEmb
+        Expr inputLemma = nullptr; // used for factorPredictOption= hard-transformer-layer and soft-transformer-layer
         for (size_t g = 0; g < numGroups; g++) {
           auto range = factoredVocab_->getGroupRange(g);
           if (g > 0 && range.first == range.second) // empty entry
@@ -287,8 +287,8 @@ namespace marian {
             factorB  = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
           }
           /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-          if ((lemmaDimEmb == -2 || lemmaDimEmb == -3) && g > 0) { // -2/-3 means a gated transformer-like structure (-3 = hard-max)
-            LOG_ONCE(info, "[embedding] using lemma conditioning with gate");
+          std::string factorPredictOption = options_->get<std::string>("factor-predictor");
+          if ((factorPredictOption == "soft-transformer-layer" || factorPredictOption == "hard-transformer-layer") && g > 0) {
             // this mimics one transformer layer
             //  - attention over two inputs:
             //     - e = current lemma. We use the original embedding vector; specifically, expectation over all lemmas.
@@ -346,28 +346,29 @@ namespace marian {
           allLogits[g] = New<RationalLoss>(factorLogits, nullptr);
           // optionally add a soft embedding of lemma back to create some lemma dependency
           // @TODO: if this works, move it into lazyConstruct
-          if (lemmaDimEmb == -2 && g == 0) { // -2 means a gated transformer-like structure
+          if (factorPredictOption == "soft-transformer-layer" && g == 0) {
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate, soft-max version");
             // get expected lemma embedding vector
             auto factorLogSoftmax = logsoftmax(factorLogits); // [B... x U] note: with shortlist, this is not the full lemma set
             auto factorSoftmax = exp(factorLogSoftmax);
             inputLemma = dot(factorSoftmax, factorWt, false, /*transB=*/isLegacyUntransposedW ? true : false); // [B... x D]
           }
-          else if (lemmaDimEmb == -3 && g == 0) { // same as -2 except with hard max
+          else if (factorPredictOption == "hard-transformer-layer" && g == 0) {
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate, hard-max version");
             // get max-lemma embedding vector
             auto maxVal = max(factorLogits, -1); // [B... x U] note: with shortlist, this is not the full lemma set
             auto factorHardmax = eq(factorLogits, maxVal);
             inputLemma = dot(factorHardmax, factorWt, false, /*transB=*/isLegacyUntransposedW ? true : false); // [B... x D]
           }
-          else if (lemmaDimEmb == -1 && g == 0) { // -1 means learn a lemma-dependent bias
+          else if (factorPredictOption == "lemma-dependent-bias" && g == 0) { // -1 means learn a lemma-dependent bias
             ABORT_IF(shortlist_, "Lemma-dependent bias with short list is not yet implemented");
             LOG_ONCE(info, "[embedding] using lemma-dependent bias");
             auto factorLogSoftmax = logsoftmax(factorLogits); // (we do that again later, CSE will kick in)
             auto z = /*stopGradient*/(factorLogSoftmax);
             Plemma = exp(z); // [B... x U]
           }
-          else if (lemmaDimEmb > 0 && g == 0) { // > 0 means learn a re-embedding matrix
+          else if (factorPredictOption == "re-embedding" && g == 0) {
+            ABORT_IF(lemmaDimEmb == 0, "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
             LOG_ONCE(info, "[embedding] enabled re-embedding of lemma, at dim {}", lemmaDimEmb);
             // compute softmax. We compute logsoftmax() separately because this way, computation will be reused later via CSE
             auto factorLogSoftmax = logsoftmax(factorLogits);

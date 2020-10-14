@@ -288,8 +288,11 @@ public:
 // EncoderDecoderLayerBase, which knows to pass on all required parameters from options.
 class Embedding : public LayerBase, public IEmbeddingLayer {
   Expr E_;
+  Expr FE_;
   Ptr<FactoredVocab> factoredVocab_;
   Expr multiRows(const Words& data, float dropProb) const;
+  Expr embedWithConcat(const Words& data) const;
+  
 public:
   Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options);
 

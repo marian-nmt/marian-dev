@@ -408,17 +408,26 @@ namespace marian {
     std::string name = opt<std::string>("prefix");
     int dimVoc = opt<int>("dimVocab");
     int dimEmb = opt<int>("dimEmb");
+    int dimFactorEmb = opt<int>("dimFactorEmb");
+    std::string factorCombine = opt<std::string>("factorsCombine");
 
     bool fixed = opt<bool>("fixed", false);
+
+    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
+    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true); // -> embedding vectors have roughly unit length
 
     factoredVocab_ = FactoredVocab::tryCreateAndLoad(options_->get<std::string>("vocab", ""));
     if (factoredVocab_) {
       dimVoc = (int)factoredVocab_->factorVocabSize();
       LOG_ONCE(info, "[embedding] Factored embeddings enabled");
+      if (factorCombine == "concat") {
+        ABORT_IF(dimFactorEmb == 0, "Embedding: If concatenation is chosen to combine the factor embeddings, a factor embedding size should be specified.");
+        int numberOfFactors = (int) factoredVocab_->getTotNumberFactors();
+        dimVoc -= numberOfFactors;
+        FE_ = graph_->param("factor_" + name, {numberOfFactors, dimFactorEmb}, initFunc, fixed);
+        LOG_ONCE(info, "[embedding] Combining factors concatenation enabled");
+      }      
     }
-
-    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
-    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true); // -> embedding vectors have roughly unit length
     
     if (options_->has("embFile")) {
       std::string file = opt<std::string>("embFile");
@@ -429,6 +438,21 @@ namespace marian {
     }
 
     E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
+  }
+
+  //Embeds a sequence of words (given as indices), where they have factor information. The matrices are concatenated
+  /*private*/ Expr Embedding::embedWithConcat(const Words& data) const {
+    auto graph = E_->graph();
+    std::vector<IndexType> lemmaIndices;
+    std::vector<float> factorIndices;
+    factoredVocab_->lemmaAndFactorsIndexes(data, lemmaIndices, factorIndices);
+    auto lemmaEmbs = rows(E_, lemmaIndices);
+    int dimFactors =  FE_->shape()[0];
+    auto factEmbs = dot(graph->constant({(int) data.size(), dimFactors}, inits::fromVector(factorIndices), Type::float32), FE_);
+
+    auto out = concatenate({lemmaEmbs, factEmbs}, -1);
+
+    return out;
   }
 
   // helper to embed a sequence of words (given as indices) via factored embeddings
@@ -453,7 +477,7 @@ namespace marian {
   std::tuple<Expr/*embeddings*/, Expr/*mask*/> Embedding::apply(Ptr<data::SubBatch> subBatch) const /*override final*/ {
     auto graph = E_->graph();
     int dimBatch = (int)subBatch->batchSize();
-    int dimEmb = E_->shape()[-1];
+    int dimEmb = (factoredVocab_ && opt<std::string>("factorsCombine") == "concat") ? E_->shape()[-1] + FE_->shape()[-1] : E_->shape()[-1];
     int dimWidth = (int)subBatch->batchWidth();
 
     // factored embeddings:
@@ -499,7 +523,11 @@ namespace marian {
 
   Expr Embedding::apply(const Words& words, const Shape& shape) const /*override final*/ {
     if (factoredVocab_) {
-      Expr selectedEmbs = multiRows(words, options_->get<float>("dropout", 0.0f));        // [(B*W) x E]
+      Expr selectedEmbs;
+      if (opt<std::string>("factorsCombine") == "concat")
+        selectedEmbs = embedWithConcat(words);        // [(B*W) x E]
+      else
+        selectedEmbs = multiRows(words, options_->get<float>("dropout", 0.0f));        // [(B*W) x E]
       selectedEmbs = reshape(selectedEmbs, shape); // [W, B, E]
       //selectedEmbs = dropout(selectedEmbs, options_->get<float>("dropout", 0.0f), { selectedEmbs->shape()[-3], 1, 1 }); // @TODO: replace with factor dropout
       return selectedEmbs;
@@ -522,6 +550,8 @@ namespace marian {
     auto options = New<Options>(
         "dimVocab", opt<std::vector<int>>("dim-vocabs")[batchIndex_],
         "dimEmb",   opt<int>("dim-emb"),
+        "dimFactorEmb", opt<int>("factors-dim-emb"),
+        "factorsCombine", opt<std::string>("factors-combine"),
         "dropout",  dropout_,
         "prefix",   (opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all")) ? "Wemb" : prefix_ + "_Wemb",
         "fixed",    embeddingFix_,

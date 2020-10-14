@@ -655,6 +655,34 @@ std::string FactoredVocab::surfaceForm(const Words& sentence) const /*override f
   return res;
 }
 
+size_t FactoredVocab::getTotNumberFactors() const {
+  return factorVocabSize() - groupRanges_[0].second;
+}
+
+void FactoredVocab::lemmaAndFactorsIndexes(const Words& words, std::vector<IndexType>& lemmaIndices, std::vector<float>& factorIndices) const {
+  
+  
+  lemmaIndices.reserve(words.size());
+  factorIndices.reserve(words.size() * getTotNumberFactors());
+
+  auto numGroups = getNumGroups();
+  std::vector<size_t> lemmaAndFactorIndices;
+    
+  for (auto &word : words) {
+    if (vocab_.contains(word.toWordIndex())) {  
+      word2factors(word, lemmaAndFactorIndices);
+      lemmaIndices.push_back((IndexType) lemmaAndFactorIndices[0]);
+      for (size_t g = 1; g < numGroups; g++) {
+        auto factorIndex = lemmaAndFactorIndices[g]; 
+        ABORT_IF(factorIndex == FACTOR_NOT_SPECIFIED, "Attempted to embed a word with a factor not specified");
+        for (int i = 0; i < factorShape_[g] - 1; i++) {
+          factorIndices.push_back((float) (factorIndex == i));
+        }
+      }      
+    }
+  }
+}
+
 // create a CSR matrix M[V,U] from words[] with M[v,u] = 1 if factor u is a factor of word v
 // This is used to form the embedding of a multi-factor token.
 // That embedding is a sum of the embeddings of the individual factors.

@@ -182,6 +182,11 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--dim-emb",
       "Size of embedding vector",
       512);
+  cli.add<int>("--factors-dim-emb",
+      "Embedding dimension of the factors. Only used if concat is selected as factors combining form");
+  cli.add<std::string>("--factors-combine", 
+    "How to combine the factors and lemma embeddings. Options available: sum, concat",
+    "sum");   
   cli.add<int>("--lemma-dim-emb",
       "Re-embedding dimension of lemma in factors",
       0);

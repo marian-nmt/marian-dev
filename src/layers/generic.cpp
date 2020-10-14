@@ -241,8 +241,10 @@ namespace marian {
       b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
+      std::string factorPredictOption = options_->get<std::string>("factor-predictor");
       ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
-      if (lemmaDimEmb > 0) { // > 0 means to embed the (expected) word with a different embedding matrix
+      if (factorPredictOption == "re-embedding") { // embed the (expected) word with a different embedding matrix
+        ABORT_IF(lemmaDimEmb == 0, "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
 #define HARDMAX_HACK
 #ifdef HARDMAX_HACK
         lemmaDimEmb = lemmaDimEmb & 0xfffffffe; // hack to select hard-max: use an odd number

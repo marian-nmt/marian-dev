@@ -509,7 +509,7 @@ namespace marian {
     //        - if it is required to be in a different range, the embeddings can still learn that, but more slowly
 
     auto batchEmbeddings = apply(subBatch->data(), {dimWidth, dimBatch, dimEmb});
-#if 0
+#if 1
     auto batchMask = graph->constant({dimWidth, dimBatch, 1},
                                      inits::fromVector(subBatch->mask()));
 #else

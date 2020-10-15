@@ -1,3 +1,7 @@
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
 #pragma once
 
 #include <thread>
@@ -1244,6 +1248,73 @@ private:
   friend class SerializationHelpers; // @TODO: use the same name for this as SqrtNodeOp
   float eps_;
 };
+
+struct AddFactorMaxesOp : public NaryNodeOp {
+size_t groupStart_;
+size_t numLemmas_;
+bool hasShortlist_;
+public:
+  AddFactorMaxesOp(const std::vector<Expr>& nodes, bool hasShortlist, size_t groupStart, size_t numLemmas)
+      : NaryNodeOp(nodes, getShape(nodes, hasShortlist), nodes[hasShortlist? 2 : 1]->value_type()) {
+    groupStart_ = groupStart;
+    numLemmas_ = hasShortlist? nodes[1]->shape().size(): numLemmas;
+    hasShortlist_ = hasShortlist;
+  }
+
+  Shape getShape(const std::vector<Expr>& nodes, bool hasShortlist) {
+    ABORT_IF(nodes.empty(), "No child nodes given");
+    int start = hasShortlist? 2 : 1;
+    return nodes[start]->shape();
+  }
+
+  NodeOps forwardOps() override {
+    int start = hasShortlist_? 2 : 1;
+    std::vector<Tensor> losses;
+    for(int i = start; i < children().size(); ++i) {
+      losses.push_back(child(i)->val());
+    }
+    return {NodeOp(
+                    AddFactorMaxes(val_,
+                                   graph()->allocator(),
+                                   child(0)->val(), // lemmaHasFactorGroupTensor
+                                   hasShortlist_? child(1)->val() : nullptr, // indices
+                                   losses,
+                                   groupStart_, numLemmas_))};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Not Implemented for Training");
+  }
+
+  const std::string type() override { return "AddFactorMaxesOp"; }
+
+  virtual size_t hash() override {
+    size_t seed = NaryNodeOp::hash();
+    util::hash_combine(seed, hasShortlist_);
+    util::hash_combine(seed, groupStart_);
+    util::hash_combine(seed, numLemmas_);
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<AddFactorMaxesOp>(node);
+    if(!cnode)
+      return false;
+    if(hasShortlist_ != cnode->hasShortlist_)
+      return false;
+    if(groupStart_ != cnode->groupStart_)
+      return false;
+    if(numLemmas_ != cnode->numLemmas_)
+      return false;
+    return true;
+  }
+
+private:
+  friend class SerializationHelpers; // @TODO: use the same name for this as SqrtNodeOp
+};
+
 
 struct HighwayNodeOp : public NaryNodeOp {
   HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes) {}

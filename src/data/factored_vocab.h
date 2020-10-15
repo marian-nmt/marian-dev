@@ -3,6 +3,11 @@
 // and via dynamic_cast to FactoredVocab for factored-specific things used by
 // the Embedding and Output layers.
 
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
 #include "common/definitions.h"
@@ -69,6 +74,7 @@ public:
   const std::string& getFactorGroupPrefix(size_t groupIndex) const { return groupPrefixes_[groupIndex]; } // for diagnostics only
   const std::string& getFactorName(size_t groupIndex, size_t factorIndex) const { return factorVocab_[(WordIndex)(factorIndex + groupRanges_[groupIndex].first)]; }
   std::string decodeForDiagnostics(const Words& sentence) const;
+  const std::vector<std::vector<bool>>& getLemmaHasFactorGroupVector() const {return lemmaHasFactorGroup_;};
 
   static constexpr size_t FACTOR_NOT_APPLICABLE = (SIZE_MAX - 1);
   static constexpr size_t FACTOR_NOT_SPECIFIED  = (SIZE_MAX - 2);

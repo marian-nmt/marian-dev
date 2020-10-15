@@ -3,6 +3,11 @@
  *   SPDX-License-Identifier: MIT
  */
 
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "tensors/tensor_operators.h"
 #include "tensors/cpu/backend.h"
 #include "tensors/allocator.h"
@@ -22,6 +27,16 @@ namespace cpu {
 
   void IsNaN(const Tensor /*in*/, Ptr<Allocator> /*allocator*/, bool& /*isNaN*/, bool& /*isInf*/) {
   ABORT("Not implemented");
+}
+
+void AddFactorMaxes(Tensor /*out*/,
+                    Ptr<Allocator> /*allocator*/,
+                    const Tensor /*lemmaHasFactorGroupTensor*/,
+                    const Tensor /*indices*/,
+                    const std::vector<marian::Tensor>& /*groupLosses*/,
+                    size_t /*groupStart*/,
+                    size_t /*numLemmas*/) {
+  ABORT("AddFactorMaxes not implemented on CPU");
 }
 
 template <typename To, typename From>

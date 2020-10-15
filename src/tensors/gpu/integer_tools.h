@@ -13,11 +13,20 @@ namespace marian {
 namespace gpu {
 namespace integer {
 
+/*Kept in CPU space so that we can easily format and print*/
+struct MeanStd {
+    float mean;
+    float stddev;
+    float absMean;
+    float absStddev;
+};
+
 //Convenient function to get rows and columns of a tensor, shadowed by namespace.
 inline int cols(Tensor& tensor) { return tensor->shape()[-1]; }
 inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tensor); }
 
 #ifdef CUDA_FOUND
+    float getMaxAbs(cublasHandle_t& handle, const float * input_gpu, size_t items);
     void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu);
     void quantize(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
     void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
@@ -44,12 +53,16 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
     void memCpyDevice(float * dest, float * source, size_t elems);
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems);
     void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr);
+    MeanStd getMeanStd(float * input, size_t elems);
     void fieldSetGPU(float * gpuMem, float value);
+    void memCpyHost(float * dest, float * source, size_t elems);
+    void memCpyHost(int8_t * dest, int8_t * source, size_t elems);
     /*
     float * unmanagedGPUAlloc(size_t num);
     void unmanagedFree(float * in);*/
 
 #else
+    inline float getMaxAbs(cublasHandle_t& /*handle*/, const float * /*input_gpu*/, size_t /*items*/) {}
     inline void maxAbsQuantMult(cublasHandle_t& /*handle*/, const float * /*input_gpu*/, size_t /*items*/, float * /*output_gpu*/) {}
     inline void quantize(const float * /*input*/, int8_t * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAddr*/) {}
     inline void quantizeToRowMajorWrapper(const float * /*input*/, int8_t * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAddr*/) {}
@@ -73,6 +86,7 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
     inline void memCpyDevice(float * /*dest*/, float * /*source*/, size_t /*elems*/) {}
     inline void memCpyDevice(int8_t * /*dest*/, int8_t * /*source*/, size_t /*elems*/) {}
     inline void getDequantMultWrapper(float * /*output*/, float * /*quantMultAaddr*/, float * /*quantMultBaddr*/) {}
+    inline MeanStd getMeanStd(float * /*input*/, size_t /*elems*/) {MeanStd ret; return ret;}
     inline void fieldSetGPU(float * /*gpuMem*/, float /*value*/) {}
     //void gpuPrinterDispatch(float * /*mem*/, size_t /*idx*/) {}
 #endif

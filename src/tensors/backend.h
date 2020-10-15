@@ -35,11 +35,17 @@ public:
     bool dumpQuantMults = options->get<bool>("dump-quantmult");
     if (dumpQuantMults) {
       setInt8(true);
-      setShifted(true);
-      setShiftedAll(true);
       setDumpQuantMult(true);
-      //float32, int16, int8, int8shift, int8shiftAlpha, int8shiftAll, int8shiftAlphaAll
-    } else if (gemmPrecision == "float32") {
+      if (deviceId_.type == DeviceType::cpu) {
+        setShifted(true);
+        setShiftedAll(true);
+      } else {
+        setFused(true); //TensorCores might not be available so we set them separately when dumping quantmults
+      }
+    }
+
+    //float32, int16, int8, int8shift, int8shiftAlpha, int8shiftAll, int8shiftAlphaAll
+    if (gemmPrecision == "float32") {
       return; // This is the default precisoin.
     } else if (gemmPrecision == "int16") {
       setInt16(true);

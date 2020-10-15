@@ -377,7 +377,7 @@ endif(COMPILE_CUDA)
 
 # TODO: make compatible with older CUDA versions
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; --use_fast_math; ${COMPUTE})
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; -G; --use_fast_math; ${COMPUTE})
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
   list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; ${COMPUTE})
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")

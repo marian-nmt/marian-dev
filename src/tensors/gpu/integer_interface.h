@@ -8,6 +8,8 @@
 #include "tensors/gpu/backend.h"
 #endif
 #include "tensors/gpu/integer_tools.h"
+#include <fstream>
+#include <string>
 
 //TMP
 //#include "tensors/gpu/uint8tools.h"
@@ -80,6 +82,13 @@ struct QuantMultNodeOp : public UnaryNodeOp {
           auto cublasHandle = backend->getCublasHandle();
 
           maxAbsQuantMult(cublasHandle, child(0)->val()->data(), child(0)->val()->shape().elements(), val_->data());
+
+          // DumpQuantmults if necessary
+          if (child(0)->graph()->getBackend()->DumpQuantMult()) {
+            MeanStd meanstd = getMeanStd(child(0)->val()->data(), child(0)->val()->shape().elements());
+            std::cerr << "Name: " << name() << " MeanAbs: " << meanstd.absMean << " stddevAbs: " << meanstd.absStddev << " Mean: " << meanstd.mean << " stddev: "
+            << meanstd.stddev << " MaxAbs: " << getMaxAbs(cublasHandle, child(0)->val()->data(), child(0)->val()->shape().elements()) << std::endl;
+          }
         }
 #endif
     )};
@@ -270,6 +279,75 @@ public:
         marian::gpu::Prod(val_, ones, bias, false, false, 1.f, 1.f);
 
       }
+      /*
+      static int i = 0;
+      if (i == 3) {
+        std::ofstream myfile;
+        myfile.open ("./debug/gpuresult" +  std::to_string(i));
+        int rowsC = rows(C);
+        int colsC = cols(C);
+        std::vector<float> mycpumem(rowsC*colsC);
+        memCpyHost(&mycpumem[0], val_->data<float>(), rowsC*colsC);
+        for (auto &&item : mycpumem) {
+          myfile << item << " ";
+        }
+        myfile.close();
+        std::cerr << "n: " << n << " m " << m << " k " << k << " ldb " 
+        << ldb << " lda " << lda << " ldc " << ldc << " transB " << transB_ << " transA " << transA_ <<
+        " RowsC: " << rows(C) << " ColsC: " << cols(C) << std::endl;
+        std::cerr << "DequantMult: ";
+        gpuPrinterDispatch(deQuantMult->data<float>(), 0);
+        val_->getBackend()->synchronize();
+        std::cerr << std::endl;
+
+        //print activatins
+        std::ofstream activations;
+        activations.open ("./debug/activationsColM" +  std::to_string(i));
+
+        int rowsA = rows(A);
+        int colsA = cols(A);
+        std::vector<int8_t> mycpumemA(rowsA*colsA);
+        memCpyHost(&mycpumemA[0], A->data<int8_t>(), rowsA*colsA);
+        for (auto&& item : mycpumemA) {
+          activations << (int)item << " ";
+        }
+        activations.close();
+        std::cerr << "RowsA " << rowsA << " colsA: " << colsA << std::endl;
+
+        //print parameters
+        std::ofstream parameters;
+        parameters.open ("./debug/parametersRowM" +  std::to_string(i));
+
+        int rowsB = rows(B);
+        int colsB = cols(B);
+        std::vector<int8_t> mycpumemB(rowsB*colsB);
+        memCpyHost(&mycpumemB[0], B->data<int8_t>(), rowsB*colsB);
+        for (auto&& item : mycpumemB) {
+          parameters << (int)item << " ";
+        }
+        parameters.close();
+        std::cerr << "RowsB " << rowsB << " colsB: " << colsB << std::endl;
+
+        //print bias
+        std::ofstream biasfile;
+        biasfile.open ("./debug/bias" +  std::to_string(i));
+
+        int rowsBias = rows(bias);
+        int colsBias = cols(bias);
+        std::vector<float> mycpumemBias(rowsBias*colsBias);
+        memCpyHost(&mycpumemBias[0], bias->data<float>(), rowsBias*colsBias);
+        for (auto&& item : mycpumemBias) {
+          biasfile << (int)item << " ";
+        }
+        biasfile.close();
+        std::cerr << "RowsBias " << rowsBias << " colsBias: " << colsBias << std::endl;
+
+        exit(1);
+      }
+      i++;
+      if (i > 30)
+        exit(1);
+        */
 #endif
     )};
   }
@@ -327,6 +405,10 @@ public:
       
       Tensor deQuantMult = child(2)->val();
 
+      //std::cerr << "UnquantMult Dot is: " << child(0)->name() << " " << child(1)->name() << " ";
+      //gpuPrinterDispatch(deQuantMult->data<float>(), 0);
+      //val_->getBackend()->synchronize();
+
       CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
 
       int m = A->shape().elements() / A->shape().back();
@@ -380,6 +462,24 @@ public:
         // Synchronize
         val_->getBackend()->synchronize();
       }
+/*
+      static int i = 0;
+      if (i < 30) {
+        std::ofstream myfile;
+        myfile.open ("./dump/gpudot" +  std::to_string(i));
+        int rowsC = rows(C);
+        int colsC = cols(C);
+        std::vector<float> mycpumem(rowsC*colsC);
+        memCpyHost(&mycpumem[0], val_->data<float>(), rowsC*colsC);
+        for (auto &&item : mycpumem) {
+          myfile << item << " ";
+        }
+        myfile.close();
+      }
+      i++;
+      if (i > 30)
+        exit(1);
+        */
 #endif
     )};
   }
@@ -411,21 +511,25 @@ public:
       auto map = child(0)->graph()->params()->getMap();
       const auto mapiter = map.find(name());
       if (mapiter != map.end()) {
-        val_ = mapiter->second->val();
+        //val_ = mapiter->second->val();
+        memCpyDevice(val_->data<float>(), reinterpret_cast<float *>(mapiter->second->val()->data()), 1);
+        // std::cerr << "QuantMult for: " << name() << std::endl;
+        // gpuPrinterDispatch(val_->data<float>(), 0);
+        // val_->getBackend()->synchronize();
       } else {
         ABORT("We did not find an alpha in the model named: {}.", name());
       }
     )};
   }
 
-  bool equal(Expr node) override {
-    if(hash() == node->hash()) return true;
-    return false;
-  }
+  //bool equal(Expr node) override {
+  //  if(hash() == node->hash()) return true;
+  //  return false;
+  //}
 
-  size_t hash() override {
-    return std::hash<std::string>{}(name());
-  }
+  //size_t hash() override {
+  //  return std::hash<std::string>{}(name() + type());
+  //}
 
   const std::string type() override { return "alphaNodeOp"; }
 };

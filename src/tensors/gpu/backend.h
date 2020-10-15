@@ -30,6 +30,7 @@ private:
   bool alpha_{false};
   bool tensorCore_{false};
   bool fused_{false};
+  bool dumpMatrices_{false};
   void setCudaComputeCapability() {
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.major, cudaDevAttrComputeCapabilityMajor, (int)deviceId_.no));
     CUDA_CHECK(cudaDeviceGetAttribute(&compute_.minor, cudaDevAttrComputeCapabilityMinor, (int)deviceId_.no));
@@ -130,11 +131,11 @@ public:
   }
 
   void setDumpQuantMult(bool dump) override {
-    LOG_ONCE(info, "setDumpQuantMult() not supported for GPU_{}", dump);
+    dumpMatrices_ = dump;
   }
 
   bool DumpQuantMult() override {
-    return false;
+    return dumpMatrices_;
   }
 
   void setPrecomputedAlpha(bool alpha) override {

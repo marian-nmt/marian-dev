@@ -344,6 +344,34 @@ namespace integer {
         CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
     }
     /**************************CUTLASS code ends here***********************/
+    __global__ void getMaxAbsKernel(const float * input_gpu, int idxMax, int idxMin, float * output) {
+        float absMax = abs(input_gpu[idxMax]);
+        float absMin = abs(input_gpu[idxMin]);
+        if (absMax > absMin) {
+            output[0] = absMax;
+        } else {
+            output[0] = absMin;
+        }
+    }
+
+    float getMaxAbs(cublasHandle_t& handle, const float * input_gpu, size_t items) {
+        // Allocate memory on the GPU
+        float * output_gpu;
+        CUDA_CHECK(cudaMallocManaged(&output_gpu, sizeof(float)));
+
+        //Get Max Absolute:
+        int resMaxIdx;
+        CUBLAS_CHECK(cublasIsamax(handle, items, input_gpu, 1, &resMaxIdx));
+        int resMinIdx;
+        CUBLAS_CHECK(cublasIsamin(handle, items, input_gpu, 1, &resMinIdx));
+
+        getMaxAbsKernel<<<1,1>>>(input_gpu, resMaxIdx - 1, resMinIdx - 1, output_gpu); //FUCK YOU FORTRAN INDEXING
+        CUDA_CHECK(cudaDeviceSynchronize()); // We need to synchronise in order to use the managed memory
+
+        float ret = *output_gpu;
+        cudaFree(output_gpu);
+        return ret;
+    }
 
     __global__ void findMaxMinAndQuantMult(const float * input_gpu, int idxMax, int idxMin, float * output) {
         float absMax = abs(input_gpu[idxMax]);
@@ -444,7 +472,7 @@ namespace integer {
         const float dequantMult = *dequantMultAddr; //@TODO ask nvidia if this is the most efficient way to do this here
         size_t x = blockIdx.x * blockDim.x + threadIdx.x;
         int i = threadIdx.x;
-        __shared__ int32_t share[256]; // Not sure if shared memory is necessary here to take advnatage of globale memory burst
+        __shared__ int32_t share[256]; // Not sure if shared memory is necessary here to take advnatage of global memory burst
         if (x < items) {
             share[i] = input[x];
             output[x] = ((float)share[i])*dequantMult;
@@ -458,6 +486,113 @@ namespace integer {
 
         dequantize<<<blocks, threads>>>(input, output, rows*cols, dequantMultAddr);
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
+    }
+
+    __global__ void meanStdkern(float * input, size_t elems, float * mean, float * stddev, float * absMean, float * absStddev, float * normal_sum, float * squares_sum, float * abs_normal_sum) {
+        size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+
+        float * global_sums[3];
+
+        global_sums[0] = normal_sum;
+        global_sums[1] = squares_sum;
+        global_sums[2] = abs_normal_sum;
+
+        // Initiate shared memory
+        __shared__ float shared_sums[3];
+        float * normal_sum_share = &shared_sums[0];
+        float * squares_sum_share = &shared_sums[1];
+        float * abs_normal_sum_share = &shared_sums[2];
+        if (threadIdx.x < 3) {
+            shared_sums[threadIdx.x] = 0.0f;
+        }
+        __syncthreads();
+
+        // Compute sums
+        if (i < elems) {
+            float current = input[i];
+            atomicAdd(normal_sum_share, current);
+            if (!isfinite(*normal_sum_share)) {
+                //printf("nan\\inf detected at line 517, sum %f current %f\n", *normal_sum_share, current);
+            }
+            atomicAdd(abs_normal_sum_share, fabs(current));
+            if (!isfinite(*abs_normal_sum_share)) {
+                //printf("nan\\inf detected at line 521, sum %f current %f\n", *abs_normal_sum_share, current);
+            }
+            atomicAdd(squares_sum_share, current*current);
+            if (!isfinite(*squares_sum_share)) {
+                //printf("nan\\inf detected at line 525, sum %f current %f\n", *squares_sum_share, current);
+            }
+        }
+        __syncthreads();
+        // The first three threads in each block should write to the global_memory
+        if (threadIdx.x < 3) {
+            atomicAdd(global_sums[threadIdx.x], shared_sums[threadIdx.x]);
+            if (!isfinite(*global_sums[threadIdx.x])) {
+                //printf("nan\\inf detected at line 533, i is: %d \n", (int)threadIdx.x);
+            }
+        }
+        __syncthreads();
+
+        // Write the results to global memory
+        if (i == 0) {
+            *mean = (*normal_sum)/elems;
+            *stddev = sqrtf(((*squares_sum)/elems) - ((*mean)*(*mean)));
+            if (!isfinite(((*mean)*(*mean)))) {
+                //printf("nan\\inf detected at line 543\n");
+            }
+        } else if (i == 1) {
+            *absMean = (*abs_normal_sum)/elems;
+            *absStddev = sqrtf(((*squares_sum)/elems) - ((*absMean)*(*absMean)));
+            if (!isfinite(((*absMean)*(*absMean)))) {
+                //printf("nan\\inf detected at line 549\n");
+            }
+        }
+    }
+
+    MeanStd getMeanStd(float * input, size_t elems) {
+        MeanStd ret;
+        // Allocate GPU memory. Use CudaMallocManaged to avoid copy to CPU memory after
+        float * mean;
+        float * stddev;
+        float * absMean;
+        float * absStddev;
+        float * normal_sum;
+        float * squares_sum;
+        float * abs_normal_sum;
+        CUDA_CHECK(cudaMallocManaged(&mean, sizeof(float)));
+        CUDA_CHECK(cudaMallocManaged(&stddev, sizeof(float)));
+        CUDA_CHECK(cudaMallocManaged(&absMean, sizeof(float)));
+        CUDA_CHECK(cudaMallocManaged(&absStddev, sizeof(float)));
+        CUDA_CHECK(cudaMallocManaged(&normal_sum, sizeof(float)));
+        CUDA_CHECK(cudaMallocManaged(&squares_sum, sizeof(float)));
+        CUDA_CHECK(cudaMallocManaged(&abs_normal_sum, sizeof(float)));
+
+        *normal_sum = 0.0f;
+        *squares_sum = 0.0f;
+        *abs_normal_sum = 0.0f;
+
+        // GPU kernel run
+        int threads = 256;
+        int blocks = (int)ceil(elems/256);
+        meanStdkern<<<blocks, threads>>>(input, elems, mean, stddev, absMean, absStddev, normal_sum, squares_sum, abs_normal_sum);
+        CUDA_CHECK(cudaDeviceSynchronize()); // Synchronizes GPU and CPU memory
+
+        // copy to the ret object
+        ret.mean = *mean;
+        ret.stddev = *stddev;
+        ret.absMean = *absMean;
+        ret.absStddev =  *absStddev;
+
+        // Free the memory
+        cudaFree(mean);
+        cudaFree(stddev);
+        cudaFree(absMean);
+        cudaFree(absStddev);
+        cudaFree(normal_sum);
+        cudaFree(squares_sum);
+        cudaFree(abs_normal_sum);
+
+        return ret;
     }
 
     __global__ void gpuPrinter(float * mem, size_t idx) {
@@ -490,6 +625,14 @@ namespace integer {
 
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems) {
         CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(int8_t), cudaMemcpyDeviceToDevice));
+    }
+
+    void memCpyHost(float * dest, float * source, size_t elems) {
+        CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(float), cudaMemcpyDeviceToHost));
+    }
+
+    void memCpyHost(int8_t * dest, int8_t * source, size_t elems) {
+        CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(int8_t), cudaMemcpyDeviceToHost));
     }
 
     void fieldSetGPU(float * gpuMem, float value) {

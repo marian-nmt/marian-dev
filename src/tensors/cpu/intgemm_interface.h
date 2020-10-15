@@ -3,6 +3,8 @@
 #include "graph/node.h"
 #include "graph/node_operators_unary.h"
 #include "integer_common.h"
+#include <fstream>
+#include <string>
 
 namespace marian {
 
@@ -351,6 +353,7 @@ public:
           }
           float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
 
+         // std::cerr << "UnquantMult Dot is: " << child(0)->name() << " " << child(1)->name() << " Value at 0 idx is " <<  unquant_mult << std::endl;
           unquant_mult = unquant_mult*scalar_;
           typedef typename intgemm_<vtype>::type Integer;
           intgemm_<vtype>::width::Multiply(reinterpret_cast<Integer *>(child(0)->val()->data()), /*A*/
@@ -359,6 +362,18 @@ public:
                                            cols(child(0)->val()),
                                            cols(child(1)->val()),
                                            intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
+          static int i = 0;
+          if (i < 30) {
+            std::ofstream myfile;
+            myfile.open ("./dump/cpudot" +  std::to_string(i));
+            for (int i = 0; i < rows(child(0)->val())*cols(child(1)->val()); i++) {
+              myfile << val_->data<float>()[i] << " ";
+            }
+            myfile.close();
+          }
+          i++;
+          if (i > 30)
+            exit(1);
 #endif
     )};
   }
@@ -421,6 +436,34 @@ public:
                                   cols(child(1)->val()),                                          /*child(2) is bias*/
                                   intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
           }
+          static int i = 0;
+          if (i == 3) {
+            std::ofstream myfile;
+            myfile.open ("./debug/cpuaffine" +  std::to_string(i));
+            for (int i = 0; i < rows(child(0)->val())*cols(child(1)->val()); i++) {
+              myfile << val_->data<float>()[i] << " ";
+            }
+            myfile.close();
+
+            std::ofstream activations;
+            activations.open ("./debug/cpuactivations" +  std::to_string(i));
+            for (int i = 0; i < rows(child(0)->val())*cols(child(0)->val()); i++) {
+              activations << (int)(child(0)->val()->data<int8_t>()[i]) << " ";
+            }
+            activations.close();
+
+            std::ofstream parameters;
+            parameters.open ("./debug/cpuparameters" +  std::to_string(i));
+            for (int i = 0; i < rows(child(1)->val())*cols(child(1)->val()); i++) {
+              parameters << (int)(child(1)->val()->data<int8_t>()[i]) << " ";
+            }
+            std::cerr << "Unquant mut: " << unquant_mult << std::endl;
+            parameters.close();
+            exit(0);
+          }
+          i++;
+          if (i > 30)
+            exit(1);
 #endif
     )};
   }

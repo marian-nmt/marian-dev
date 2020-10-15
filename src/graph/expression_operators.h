@@ -180,6 +180,8 @@ Expr atleast_nd(Expr a, size_t dims);
 
 Expr addPosEmbedding(Expr embeddings, float scaleFactor, int startPos);
 
+Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t groupStart, size_t numLemmas);
+
 // create a constant of shape a->shape() and initialize with init
 // @TODO: add a && version, to avoid a ref count. NodeInitializers are typically temps.
 // @TODO: and/or make this a template on init

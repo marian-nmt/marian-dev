@@ -128,6 +128,8 @@ DISPATCH4(ShiftGrad, marian::Tensor, marian::Tensor, marian::Shape, bool)
 
 DISPATCH3(Concatenate, marian::Tensor, const std::vector<marian::Tensor>&, int)
 
+DISPATCH7(AddFactorMaxes, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, const std::vector<marian::Tensor>&, size_t, size_t)
+
 // clang-format on
 
 // Bernoulli(tensor, 0.5f, 2.f, -1.f) generates a tensor composed of 50% of 1 and 50% of -1.

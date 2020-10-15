@@ -1,3 +1,8 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #pragma once
 
 #include "common/config.h"
@@ -26,6 +31,8 @@ private:
 
   typedef std::unordered_map<size_t, std::vector<WExpr>> WeakMemory;
   typedef std::unordered_map<size_t, std::vector<Expr>> Memory;
+
+  std::map<std::string, Expr> memoizationMap_;
 
   Ptr<WeakMemory> shortterm_;
   Ptr<Memory> longterm_;
@@ -97,6 +104,19 @@ public:
       }
     }
     (*shortterm_)[hash].push_back(node.get()); // weakPtr
+    return nullptr;
+  }
+
+  void rememberByName(const std::string& name, Expr e) {
+    ABORT_IF(e == nullptr, "Expression must be non-null");
+    ABORT_IF(e->type() == "param", "Not intended for graph parameters");
+    memoizationMap_[name] = e;
+    findOrRemember(e);
+  }
+
+  Expr findByName(const std::string&name) {
+    if(memoizationMap_.count(name))
+      return findOrRemember(memoizationMap_[name]);
     return nullptr;
   }
 
@@ -470,6 +490,14 @@ public:
 
   // Returns the tensor allocator of the graph workspace, different from above as proper tensor objects are allocated
   Ptr<TensorAllocator> getTensorAllocator() { return tensors_->getTensorAllocator(); }
+
+  void rememberByName(const std::string& name, Expr e) {
+    tensors_->rememberByName(name, e);
+  }
+
+  Expr findByName(const std::string&name) {
+    return tensors_->findByName(name);
+  }
 
   void clear() {
     // clear everything apart from parameters and memoized nodes

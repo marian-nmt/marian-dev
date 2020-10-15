@@ -3,6 +3,7 @@
  *   SPDX-License-Identifier: MIT
  */
 
+#include <limits>
 #include "common/logging.h"
 #include "common/types.h"
 #include "tensors/tensor_operators.h"
@@ -3114,6 +3115,145 @@ void AddBiasSkipAndLayerNormalization(Tensor out,
 #endif
   } else {
     ABORT("LayerNormalization not implemented for type {}", out->type());
+  }
+}
+
+// Finds max within warp. Assumes val in non-participating warps set to T::min()
+// or a valid non-garbage value
+template<typename T>
+__device__ __forceinline__ T dWarpReduceMax(T val) {
+  constexpr unsigned fullMask = 0xffffffff;
+  #pragma unroll
+  for (int offset = (warpSize / 2); offset > 0; offset /= 2) {
+    val = max(val, __shfl_down_sync(fullMask, val, offset));
+  }
+  return val;
+}
+
+// Elts to reduce must be <= blockDim.x. Needed since factorDims can be varied lengths. Caller of this
+// needs to call syncthreads before reading the values from the writeLoc
+template<typename T>
+__device__ __forceinline__ void dBlockReduceMax(T val, int eltsToReduce, volatile T* writeLoc) {
+  const int lane = threadIdx.x % warpSize;
+  const int wid = threadIdx.x / warpSize;
+  const int warpsNeeded = (eltsToReduce + warpSize - 1) / warpSize;
+
+  static __shared__ T shared[32]; 
+  if (wid < warpsNeeded) val = dWarpReduceMax(val);
+  if (lane==0) shared[wid]=val; 
+  __syncthreads();       
+
+  //read from shared memory lane only if that warp existed. Otherwise just get first lane.
+  val = (threadIdx.x < warpsNeeded) ? shared[lane] : shared[0];
+  if(wid==0) {
+    T temp = dWarpReduceMax(val);
+    if(lane == 0) writeLoc[0] = temp;
+  }
+}
+
+template <typename T>
+struct ptrInnerDimPair {
+  T* ptr;
+  int innerDim;
+};
+
+template <typename T>
+__global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup, const IndexType* const indices, 
+                                ptrInnerDimPair<T>* lossAndLastDimSize, size_t numGroups, size_t sizeWithoutInnerDim, 
+                                size_t groupStart, int lemmaHasFactorGroupWidth, size_t numLemmas, T minimal) {
+
+  extern __shared__ T _sharedMem[];
+  T* sel = _sharedMem;
+  T* factorMaximasInBlock = _sharedMem + blockDim.x;  
+  
+  // First, each block computes the max across the row for each group and stores in in factorMaximasInBlock[g]
+  for(int g = 1; g < (int)numGroups; ++g) {
+    T* groupLosses = lossAndLastDimSize[g].ptr;
+    int groupLossesInnerDim = lossAndLastDimSize[g].innerDim;
+    int groupLossSize = groupLossesInnerDim * sizeWithoutInnerDim;
+
+    // Now, we get the max for the factors. If the size of the inner dim is greater than the blocksize,
+    // first reduce maxes so they fit within a block.
+    T factorMaxima = minimal;
+    int blockRowStart = blockIdx.x * groupLossesInnerDim;
+    for(int lossCol = threadIdx.x; lossCol < groupLossesInnerDim; lossCol += blockDim.x) {
+      int offset = blockRowStart + lossCol;
+      if(offset < groupLossSize) {        
+        factorMaxima = max(factorMaxima, groupLosses[offset]);
+      }
+    }
+    dBlockReduceMax(factorMaxima, min(blockDim.x, groupLossesInnerDim), factorMaximasInBlock + g);
+  }
+
+  __syncthreads(); // Ensure factorMaximasInBlock[g] is written for all g
+
+  // Each block has the max for each factor, so we iterate over the groups again and accumulate the 
+  // output in shared mem one block at a time before writing the results for the row to out
+  T* selGlobal = lossAndLastDimSize[0].ptr;
+  const int outTensorInnerDim = lossAndLastDimSize[0].innerDim;
+  const int outputSize = sizeWithoutInnerDim * outTensorInnerDim;
+  const int outRowOffset = blockIdx.x * outTensorInnerDim;
+
+  for(int offset = threadIdx.x; offset < outTensorInnerDim; offset += blockDim.x) {
+    const int outOffset = outRowOffset + offset;
+    if(outOffset < outputSize) sel[threadIdx.x] = selGlobal[outOffset]; 
+
+    // Accumulate the row's portion in shared memory
+    for(int g = 1; g < (int)numGroups; ++g) {
+      int lemma = indices? indices[offset] - groupStart: offset;
+      T factorMask = static_cast<T>(lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]);
+      T factorMaxima = factorMaximasInBlock[g];
+
+      if(outOffset < outputSize) {
+        sel[threadIdx.x] += (factorMask * factorMaxima);
+      }
+    }
+    if(outOffset < outputSize) out[outOffset] = sel[threadIdx.x];
+  }
+}
+
+void AddFactorMaxes(Tensor out,
+                    Ptr<Allocator> allocator,
+                    const Tensor lemmaHasFactorGroupTensor,
+                    const Tensor indices,
+                    const std::vector<marian::Tensor>& groupLosses,
+                    size_t groupStart,
+                    size_t numLemmas) {
+
+  cudaSetDevice(out->getDeviceId().no);
+
+  ABORT_IF(lemmaHasFactorGroupTensor->type() != Type::int8, "lemmaHasFactor group tensor wrong type");
+  ABORT_IF(out->shape()[-1] != (int) numLemmas, "Output shape {} or numLemmas {} incorrect", out->shape(), numLemmas);
+
+  const int threads = std::min(MAX_THREADS, std::max(32, out->shape()[-1]));
+  const int sizeWithoutInnerDim = out->shape().elements() / out->shape()[-1];
+
+  if(out->type() == Type::float32) {
+    IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ptrInnerDimPair<float>>(groupLosses.size()); 
+    ptrInnerDimPair<float>* dest = mp_ptrs->data<ptrInnerDimPair<float>>();
+
+    std::vector<ptrInnerDimPair<float>> lossPtrs;
+    for(const auto& t : groupLosses) {
+      ptrInnerDimPair<float> pair = {t->data<float>(), t->shape()[-1]};
+      lossPtrs.push_back(pair);
+    }
+
+    // Async just so that call is issued in per thread default stream
+    CUDA_CHECK(cudaMemcpyAsync(dest, lossPtrs.data(), lossPtrs.size() * sizeof(ptrInnerDimPair<float>), cudaMemcpyHostToDevice, 0));
+    const int blocks = sizeWithoutInnerDim;
+    const int sharedBytes = sizeof(float) * (groupLosses.size() + threads);
+    gAddFactorMaxes<<<blocks, threads, sharedBytes>>>(out->data<float>(), 
+                                                      lemmaHasFactorGroupTensor->data<int8_t>(), 
+                                                      indices? indices->data<IndexType>(): nullptr, 
+                                                      dest,
+                                                      groupLosses.size(),
+                                                      sizeWithoutInnerDim,
+                                                      groupStart, lemmaHasFactorGroupTensor->shape()[1], numLemmas,
+                                                      std::numeric_limits<float>::lowest());
+    CUDA_CHECK(cudaStreamSynchronize(0));
+    allocator->free(mp_ptrs);
+  } else {
+    ABORT("MaskOutLemmas not implemented for type {}", out->type());
   }
 }
 

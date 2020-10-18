@@ -164,13 +164,9 @@ public:
     for(auto stoppingCriterionString : stoppingCriteria) {
       SchedulingParameter stoppingCriterion = SchedulingParameter::parse(stoppingCriterionString);
       if(stoppingCriterion.n > 0) { // is any stopping criterion defined?
-        switch(stoppingCriterion.unit) {
-          case SchedulingUnit::epochs    : return state_->epochs      >  stoppingCriterion.n;
-          case SchedulingUnit::updates   : return state_->batches     >= stoppingCriterion.n;
-          case SchedulingUnit::trgLabels : return state_->labelsTotal >= stoppingCriterion.n;
-          default:
-            ABORT("Unknown unit in {}??", stoppingCriterion);
-        }
+        if(stoppingCriterion.unit == SchedulingUnit::epochs    && state_->epochs      >  stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::updates   && state_->batches     >= stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::trgLabels && state_->labelsTotal >= stoppingCriterion.n) return false;
       }
     }
 

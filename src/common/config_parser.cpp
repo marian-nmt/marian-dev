@@ -347,7 +347,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   auto previous_group = cli.switchGroup("Training options");
   // clang-format off
   cli.add<std::string>("--cost-type", // @TODO: rename to loss-type
-      "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");
+      "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-sum");
   cli.add<std::string>("--multi-loss-type",
       "How to accumulate multi-objective losses: sum, scaled, mean", "sum");
   cli.add<bool>("--unlikelihood-loss",
@@ -391,7 +391,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<size_t>("--disp-first",
       "Display information for the first  arg  updates");
   cli.add<bool>("--disp-label-counts",
-      "Display label counts when logging loss progress");
+      "Display label counts when logging loss progress",
+      true);
 //   cli.add<int>("--disp-label-index",
 //       "Display label counts based on i-th input stream (-1 is last)", -1);
   cli.add<std::string/*SchedulerPeriod*/>("--save-freq",
@@ -907,7 +908,7 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
 
 cli::mode ConfigParser::getMode() const { return mode_; }
 
-Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
+Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   cmdLine_ = escapeCmdLine(argc,argv);
 
   // parse command-line options and fill wrapped YAML config
@@ -1024,7 +1025,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
 
 #if 1 // @TODO: remove once fully deprecated
   // Convert --after-batches N to --after Nu and --after-epochs N to --after Ne, different values get concatenated with ","
-  if(mode_ == cli::mode::training || get<size_t>("after-epochs") > 0) {
+  if(mode_ == cli::mode::training && get<size_t>("after-epochs") > 0) {
     auto afterValue = get<size_t>("after-epochs");
     LOG(info, "\"--after-epochs {}\" is deprecated, please use \"--after {}e\" instead (\"e\" stands for epoch)", afterValue, afterValue);
     YAML::Node config;
@@ -1039,12 +1040,12 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
                         cli::OptionPriority::CommandLine,
                         "Could not update --after with value from --after-epochs");
   }
-  if(mode_ == cli::mode::training || get<size_t>("after-batches") > 0) {
+  if(mode_ == cli::mode::training && get<size_t>("after-batches") > 0) {
     auto afterValue = get<size_t>("after-batches");
     LOG(info, "\"--after-batches {}\" is deprecated, please use \"--after {}u\" instead (\"u\" stands for updates)", afterValue, afterValue);
     YAML::Node config;
     std::string prevAfter = get<std::string>("after");
-    std::string converted = std::to_string(afterValue) + "e";
+    std::string converted = std::to_string(afterValue) + "u";
     if(prevAfter != "0e")
       config["after"] = prevAfter + "," + converted;
     else

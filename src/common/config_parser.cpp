@@ -375,10 +375,16 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       10000000);
 #endif
   // scheduling options
+
+  // @TODO: these should be re-defined as aliases for `--after` but the current frame work matches on value, so not doable.
   cli.add<size_t>("--after-epochs,-e",
-      "Finish after this many epochs, 0 is infinity");
+      "Finish after this many epochs, 0 is infinity (deprecated, '--after-epochs N' corresponds to '--after Ne')"); // @TODO: replace with alias
   cli.add<size_t>("--after-batches",
-      "Finish after this many batch updates, 0 is infinity");
+      "Finish after this many batch updates, 0 is infinity (deprecated, '--after-batches N' corresponds to '--after Nu')"); // @TODO: replace with alias
+
+  cli.add<std::string>("--after,-a",
+      "Finish after this many chosen training units, 0 is infinity (e.g. 100e = 100 epochs, 10Gt = 10 billion target labels, 100Ku = 100,000 updates",
+      "0e");
   cli.add<std::string/*SchedulerPeriod*/>("--disp-freq",
       "Display information every  arg  updates (append 't' for every  arg  target labels)",
       "1000u");
@@ -1015,6 +1021,40 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
                           "Extracting 'alignment' and 'weight' types from input-types failed.");
     }
   }
+
+#if 1 // @TODO: remove once fully deprecated
+  // Convert --after-batches N to --after Nu and --after-epochs N to --after Ne, different values get concatenated with ","
+  if(mode_ == cli::mode::training || get<size_t>("after-epochs") > 0) {
+    auto afterValue = get<size_t>("after-epochs");
+    LOG(info, "\"--after-epochs {}\" is deprecated, please use \"--after {}e\" instead (\"e\" stands for epoch)", afterValue, afterValue);
+    YAML::Node config;
+    std::string prevAfter = get<std::string>("after");
+    std::string converted = std::to_string(afterValue) + "e";
+    if(prevAfter != "0e")
+      config["after"] = prevAfter + "," + converted;
+    else
+      config["after"] = converted;
+    if(!config.IsNull())
+      cli_.updateConfig(config,
+                        cli::OptionPriority::CommandLine,
+                        "Could not update --after with value from --after-epochs");
+  }
+  if(mode_ == cli::mode::training || get<size_t>("after-batches") > 0) {
+    auto afterValue = get<size_t>("after-batches");
+    LOG(info, "\"--after-batches {}\" is deprecated, please use \"--after {}u\" instead (\"u\" stands for updates)", afterValue, afterValue);
+    YAML::Node config;
+    std::string prevAfter = get<std::string>("after");
+    std::string converted = std::to_string(afterValue) + "e";
+    if(prevAfter != "0e")
+      config["after"] = prevAfter + "," + converted;
+    else
+      config["after"] = converted;
+    if(!config.IsNull())
+      cli_.updateConfig(config,
+                        cli::OptionPriority::CommandLine,
+                        "Could not update --after with value from --after-updates");
+  }
+#endif
 
   cli_.parseAliases();
   auto opts = New<Options>();

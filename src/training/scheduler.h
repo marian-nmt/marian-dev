@@ -158,15 +158,21 @@ public:
     if(saveAndExitRequested()) // via SIGTERM
       return false;
 
-    // stop if it reached the maximum number of epochs
-    size_t stopAfterEpochs = options_->get<size_t>("after-epochs");
-    if(stopAfterEpochs > 0 && state_->epochs > stopAfterEpochs)
-      return false;
-
-    // stop if it reached the maximum number of batch updates
-    size_t stopAfterBatches = options_->get<size_t>("after-batches");
-    if(stopAfterBatches > 0 && state_->batches >= stopAfterBatches)
-      return false;
+    // get list of stopping criteria e.g. "10e,300Ku,20Gt" (10 epochs, 300,000 updates, 20 billion target labels)
+    // and stop for whatever criterion hits first.
+    std::vector<std::string> stoppingCriteria = utils::split(options_->get<std::string>("after"), ",");
+    for(auto stoppingCriterionString : stoppingCriteria) {
+      SchedulingParameter stoppingCriterion = SchedulingParameter::parse(stoppingCriterionString);
+      if(stoppingCriterion.n > 0) { // is any stopping criterion defined?
+        switch(stoppingCriterion.unit) {
+          case SchedulingUnit::epochs    : return state_->epochs      >  stoppingCriterion.n;
+          case SchedulingUnit::updates   : return state_->batches     >= stoppingCriterion.n;
+          case SchedulingUnit::trgLabels : return state_->labelsTotal >= stoppingCriterion.n;
+          default:
+            ABORT("Unknown unit in {}??", stoppingCriterion);
+        }
+      }
+    }
 
     // stop if the first validator did not improve for a given number of checks
     size_t stopAfterStalled = options_->get<size_t>("early-stopping");

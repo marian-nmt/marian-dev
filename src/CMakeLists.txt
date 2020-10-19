@@ -2,6 +2,7 @@
  #   Copyright (C) 2020 NVIDIA Corporation
  #   SPDX-License-Identifier: MIT
 
+add_definitions(-DCUB_IGNORE_DEPRECATED_CPP_DIALECT=1)
 add_subdirectory(3rd_party)
 
 include_directories(.)

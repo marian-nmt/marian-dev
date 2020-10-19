@@ -62,7 +62,7 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
     void unmanagedFree(float * in);*/
 
 #else
-    inline float getMaxAbs(cublasHandle_t& /*handle*/, const float * /*input_gpu*/, size_t /*items*/) {}
+    inline float getMaxAbs(cublasHandle_t& /*handle*/, const float * /*input_gpu*/, size_t /*items*/) {return 0.0f;}
     inline void maxAbsQuantMult(cublasHandle_t& /*handle*/, const float * /*input_gpu*/, size_t /*items*/, float * /*output_gpu*/) {}
     inline void quantize(const float * /*input*/, int8_t * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAddr*/) {}
     inline void quantizeToRowMajorWrapper(const float * /*input*/, int8_t * /*output*/, size_t /*rows*/, size_t /*cols*/, const float * /*quantMultAddr*/) {}

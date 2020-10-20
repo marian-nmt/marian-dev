@@ -24,3 +24,6 @@
 [submodule "src/3rd_party/cutlass"]
 	path = src/3rd_party/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
+[submodule "src/3rd_party/cub"]
+	path = src/3rd_party/cub
+	url = https://github.com/NVIDIA/cub

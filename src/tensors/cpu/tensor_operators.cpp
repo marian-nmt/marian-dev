@@ -39,6 +39,16 @@ void AddBiasSkipAndLayerNormalization(Tensor /*out*/, Tensor /*in*/, Tensor /*bi
   ABORT("Not implemented");
 }
 
+void AddFactorMaxes(Tensor /*out*/,
+                    Ptr<Allocator> /*allocator*/,
+                    const Tensor /*lemmaHasFactorGroupTensor*/,
+                    const Tensor /*indices*/,
+                    const std::vector<marian::Tensor>& /*groupLosses*/,
+                    size_t /*groupStart*/,
+                    size_t /*numLemmas*/) {
+  ABORT("AddFactorMaxes not implemented on CPU");
+}
+
 template <typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   for(int i = 0; i < length; ++i)

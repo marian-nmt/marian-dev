@@ -409,7 +409,7 @@ void ProdBatchedTyped(marian::Tensor C,
                                         ldc,
                                         batchC));
     unsetTensorMode(cublasHandle);
-
+    cudaStreamSynchronize(cublasStream);
     allocator->free(mp_ptrs);
   }
 }

@@ -1,4 +1,3 @@
-
 /* All or part of this file was contributed by NVIDIA under license:
  *   Copyright (C) 2020 NVIDIA Corporation
  *   SPDX-License-Identifier: MIT
@@ -747,6 +746,20 @@ Expr unlikelihood(Expr logits, Expr indices) {
   // This is currently implemented with multiple ops, might be worth doing a special operation like for cross_entropy
   return -log(gather(1.f - softmax(logits), /*axis=*/-1, indicesWithLayout));
 }
+
+Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t groupStart, size_t numLemmas) {
+  if(groupLosses.size() == 1) {
+    return groupLosses[0];
+  }
+  std::vector<Expr> nodes({lemmaHasFactorGroup});
+  if (hypIndices) {
+    nodes.push_back(hypIndices);
+  }
+  nodes.insert(nodes.end(), groupLosses.begin(), groupLosses.end());
+  bool hasShortList = hypIndices != nullptr;
+  return Expression<AddFactorMaxesOp>(nodes, hasShortList, groupStart, numLemmas);
+}
+
 
 Expr plus(const std::vector<Expr>& nodes) {
   ABORT_IF(nodes.size() > 1, "Not implemented");

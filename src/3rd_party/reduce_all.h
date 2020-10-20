@@ -130,7 +130,7 @@ __global__ void reduceSinglePass(Functor functor, AccType aggInit, AggFunctor ag
   cg::sync(cta);
 
   // leverage that blockSize is always pow of 2 so no special logic needed in reduction loop.
-  constexpr int partitionSize = blockSize > 32? 32 : blockSize;
+  constexpr int partitionSize = blockSize > 32 ? 32 : blockSize;
   cg::thread_block_tile<partitionSize> tile = cg::tiled_partition<partitionSize>(cta);
 
   if (cta.thread_rank() < 32) {

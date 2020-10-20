@@ -233,8 +233,8 @@ namespace marian {
     size_t n = indices ?  indices->shape().elements() : (factoredVocab_->getGroupRange(0).second - factoredVocab_->getGroupRange(0).first);
 
     std::vector<Expr> groupLosses(getNumFactorGroups());
-    for(int g = 0; g < getNumFactorGroups(); ++g) {
-      groupLosses[g] = logits_[g]->loss();
+    for(int group = 0; group < getNumFactorGroups(); ++group) {
+      groupLosses[group] = logits_[group]->loss();
     }
 
     return addFactorMaxes(lemmaHasFactorGroupTensor, groupLosses, indices, factoredVocab_->getGroupRange(0).first, n);

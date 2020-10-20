@@ -401,7 +401,7 @@ namespace integer {
         __shared__ float share[256]; // Not sure if shared memory is necessary here to take advnatage of globale memory burst
         if (x < items) {
             share[i] = input[x];
-            output[x] = (int8_t)llrintf((share[i]*quantMult));
+            output[x] = (int8_t)max(-128, min(127, (int)rintf(share[i]*quantMult)));
         }
     }
 

@@ -267,8 +267,6 @@ public:
   }
 
   NodeOps forwardOps() override {
-    //std::cerr << "TrueBias: " << child(0)->name() << " type: " << child(0)->type() << " bQuantMult: " << this->child(3)->val()->data()[0] <<  " aQuantMult: " << this->child(2)->val()->data()[0] << std::endl;
-    //std::cerr << "Bias name and val: " << child(0)->name() << " " << child(0)->val()->data()[0] << std::endl;
     return {NodeOp(
 #ifdef COMPILE_CPU
       if (alreadyPrepared_) {
@@ -305,7 +303,6 @@ public:
   }
 
   NodeOps forwardOps() override {
-    //std::cerr << "FakeBias: " << child(0)->name() << " bQuantMult: " << this->child(2)->val()->data()[0] << " aQuantMult: " << this->child(1)->val()->data()[0] << std::endl;
     return {NodeOp(
 #ifdef COMPILE_CPU
     auto b = this->child(0)->val();
@@ -353,7 +350,6 @@ public:
           }
           float unquant_mult = 1.0f/(aQuantMult*bQuantMult);
 
-         // std::cerr << "UnquantMult Dot is: " << child(0)->name() << " " << child(1)->name() << " Value at 0 idx is " <<  unquant_mult << std::endl;
           unquant_mult = unquant_mult*scalar_;
           typedef typename intgemm_<vtype>::type Integer;
           intgemm_<vtype>::width::Multiply(reinterpret_cast<Integer *>(child(0)->val()->data()), /*A*/
@@ -362,18 +358,7 @@ public:
                                            cols(child(0)->val()),
                                            cols(child(1)->val()),
                                            intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
-          static int i = 0;
-          if (i < 30) {
-            std::ofstream myfile;
-            myfile.open ("./dump/cpudot" +  std::to_string(i));
-            for (int i = 0; i < rows(child(0)->val())*cols(child(1)->val()); i++) {
-              myfile << val_->data<float>()[i] << " ";
-            }
-            myfile.close();
-          }
-          i++;
-          if (i > 30)
-            exit(1);
+
 #endif
     )};
   }
@@ -436,34 +421,6 @@ public:
                                   cols(child(1)->val()),                                          /*child(2) is bias*/
                                   intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, child(2)->val()->data(), val_->data()));
           }
-          static int i = 0;
-          if (i == 3) {
-            std::ofstream myfile;
-            myfile.open ("./debug/cpuaffine" +  std::to_string(i));
-            for (int i = 0; i < rows(child(0)->val())*cols(child(1)->val()); i++) {
-              myfile << val_->data<float>()[i] << " ";
-            }
-            myfile.close();
-
-            std::ofstream activations;
-            activations.open ("./debug/cpuactivations" +  std::to_string(i));
-            for (int i = 0; i < rows(child(0)->val())*cols(child(0)->val()); i++) {
-              activations << (int)(child(0)->val()->data<int8_t>()[i]) << " ";
-            }
-            activations.close();
-
-            std::ofstream parameters;
-            parameters.open ("./debug/cpuparameters" +  std::to_string(i));
-            for (int i = 0; i < rows(child(1)->val())*cols(child(1)->val()); i++) {
-              parameters << (int)(child(1)->val()->data<int8_t>()[i]) << " ";
-            }
-            std::cerr << "Unquant mut: " << unquant_mult << std::endl;
-            parameters.close();
-            exit(0);
-          }
-          i++;
-          if (i > 30)
-            exit(1);
 #endif
     )};
   }
@@ -521,7 +478,7 @@ public:
       }
     )};
   }
-
+/* Not necessary since we're hashing the expression
   bool equal(Expr node) override {
     if(hash() == node->hash()) return true;
     return false;
@@ -530,8 +487,9 @@ public:
   size_t hash() override {
     return std::hash<std::string>{}(name());
   }
-
+*/
   const std::string type() override { return "alphaNodeOp"; }
+
 };
 
 template<Type vtype>

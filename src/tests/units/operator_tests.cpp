@@ -1,3 +1,7 @@
+/* All or part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
 #include "catch.hpp"
 #include "graph/expression_graph.h"
 #include "graph/expression_operators.h"
@@ -64,6 +68,33 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(compare(rmax2,  [](float a) {return std::max(1.f, a);}));
     CHECK(compare(rmin1,  [](float a) {return std::min(a, 1.f);}));
     CHECK(compare(rmin2,  [](float a) {return std::min(1.f, a);}));
+  }
+
+  SECTION("Max all negative. <= 32 Elements") {
+    graph->clear();
+    values.clear();
+
+    std::vector<T> vA({-1, -2, -3, -4});
+    auto a = graph->constant({1, 1, 4}, inits::fromVector(vA));
+
+    auto compare = [&](Expr res, std::function<float(float, float)> op) -> bool {
+      if (res->shape().elements() != 1)
+          return false;
+      float val = res->val()->get(0);
+      
+      float reduced = vA[0];
+      for(const auto val : vA) {
+        reduced = op(reduced, val);
+      }
+      return floatApprox(reduced, val);
+    };
+
+    // @TODO: add all operators here for completeness
+    auto maxReduce = max(a, -1);
+
+    graph->forward();
+
+    CHECK(compare(maxReduce, [](float a, float b) {return std::max(a, b);}));
   }
 
   SECTION("elementwise binary operators with broadcasting") {
@@ -297,13 +328,14 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     s2->val()->get(values); CHECK(values == vS2);
 
     CHECK(m3->val()->scalar() == 9);
+    auto floatApproxLocal = [](T x, T y) -> bool { return x == Approx(y).margin(0.004); };
 
-    s4->val()->get(values); CHECK(std::equal(values.begin(), values.end(), vS4.begin(), floatApprox));
+    s4->val()->get(values); CHECK(std::equal(values.begin(), values.end(), vS4.begin(), floatApproxLocal));
     v5->val()->get(values); CHECK(values == vV5);
     m6->val()->get(values); CHECK(values == vM6);
     m7->val()->get(values); CHECK(values == vM7);
     p8->val()->get(values); CHECK(values == vP8);
-    l9->val()->get(values); CHECK(std::equal(values.begin(), values.end(), vL9.begin(), floatApprox));
+    l9->val()->get(values); CHECK(std::equal(values.begin(), values.end(), vL9.begin(), floatApproxLocal));
 
     CHECK(sp->val()->scalar() == 648);
 

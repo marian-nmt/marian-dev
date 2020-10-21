@@ -23,9 +23,13 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#if CUDA_VERSION >= 11000
+#include <cub/cub.cuh>
+#include <cub/util_type.cuh>
+#else
 #include "cub/cub/cub.cuh"
 #include "cub/cub/util_type.cuh"
-
+#endif
 #define MAX_BLOCKS_PER_BEAM 8
 
 struct TopK {

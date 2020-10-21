@@ -3130,18 +3130,16 @@ __device__ __forceinline__ T dWarpReduceMax(T val) {
   return val;
 }
 
-// Elts to reduce must be <= blockDim.x. Needed since factorDims can be varied lengths. Caller of this
-// needs to call syncthreads before reading the values from the writeLoc
+// Elts to reduce must be <= blockDim.x. Needed since factorDims can be varied lengths. 
 template<typename T>
-__device__ __forceinline__ void dBlockReduceMax(T val, int eltsToReduce, volatile T* writeLoc) {
+__device__ __forceinline__ void dBlockReduceMax(T val, int eltsToReduce, volatile T* shared, volatile T* writeLoc) {
   const int lane = threadIdx.x % warpSize;
   const int wid = threadIdx.x / warpSize;
   const int warpsNeeded = (eltsToReduce + warpSize - 1) / warpSize;
 
-  static __shared__ T shared[32]; 
   if (wid < warpsNeeded) val = dWarpReduceMax(val);
   if (lane==0) shared[wid]=val; 
-  __syncthreads();       
+  __syncthreads(); // Needed to ensure all threads write to shared before reading.       
 
   //read from shared memory lane only if that warp existed. Otherwise just get first lane.
   val = (threadIdx.x < warpsNeeded) ? shared[lane] : shared[0];
@@ -3165,6 +3163,7 @@ __global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup,
   extern __shared__ T _sharedMem[];
   T* sel = _sharedMem;
   T* factorMaximasInBlock = _sharedMem + blockDim.x;  
+  T shared[32];
   
   // First, each block computes the max across the row for each group and stores in in factorMaximasInBlock[g]
   for(int g = 1; g < (int)numGroups; ++g) {
@@ -3182,10 +3181,9 @@ __global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup,
         factorMaxima = max(factorMaxima, groupLosses[offset]);
       }
     }
-    dBlockReduceMax(factorMaxima, min(blockDim.x, groupLossesInnerDim), factorMaximasInBlock + g);
+    dBlockReduceMax(factorMaxima, min(blockDim.x, groupLossesInnerDim), shared, factorMaximasInBlock + g);
+    __syncthreads();  
   }
-
-  __syncthreads(); // Ensure factorMaximasInBlock[g] is written for all g
 
   // Each block has the max for each factor, so we iterate over the groups again and accumulate the 
   // output in shared mem one block at a time before writing the results for the row to out
@@ -3253,7 +3251,7 @@ void AddFactorMaxes(Tensor out,
     CUDA_CHECK(cudaStreamSynchronize(0));
     allocator->free(mp_ptrs);
   } else {
-    ABORT("MaskOutLemmas not implemented for type {}", out->type());
+    ABORT("AddFactorMaxes not implemented for type {}", out->type());
   }
 }
 

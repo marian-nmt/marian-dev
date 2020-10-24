@@ -352,7 +352,7 @@ namespace marian {
             // FF layer
             auto ffnDropProb = 0.1f;    // @TODO: get as a parameter
             auto ffnDim = inputDim * 2; // @TODO: get as a parameter
-            auto f = denseInline(input1, name + "_ffn", /*suffix=*/"1", ffnDim, (ActivationFunction*)relu, ffnDropProb);
+            auto f = denseInline(input1, name + "_ffn", /*suffix=*/"1", ffnDim, inits::glorotUniform(), (ActivationFunction*)relu, ffnDropProb);
             f      = denseInline(f,      name + "_ffn", /*suffix=*/"2", inputDim);
             // add & norm
             input1 = f + input1;

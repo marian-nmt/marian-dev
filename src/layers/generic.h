@@ -430,7 +430,13 @@ public:
 
 // like affine() but with built-in parameters, activation, and dropout
 static inline
-Expr denseInline(Expr x, std::string prefix, std::string suffix, int outDim, const std::function<Expr(Expr)>& actFn = nullptr, float dropProb = 0.0f)
+Expr denseInline(Expr x, 
+                std::string prefix, 
+                std::string suffix, 
+                int outDim,
+                Ptr<inits::NodeInitializer> initFn = inits::glorotUniform(), 
+                const std::function<Expr(Expr)>& actFn = nullptr, 
+                float dropProb = 0.0f)
 {
   auto graph = x->graph();
 

@@ -46,7 +46,8 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int ldc,
         bool tensorCore,
         bool fused,
-        float * bias);
+        float * bias,
+        bool doRelu);
     void gpuPrinterDispatch(float * mem, size_t idx);
     void gpuPrinterDispatch(int32_t * mem, size_t idx);
     void gpuPrinterDispatch(int8_t * mem, size_t idx);
@@ -82,7 +83,8 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         int /*ldc*/,
         bool /*tensorCore*/,
         bool /*fused*/,
-        float * /*bias*/) {}
+        float * /*bias*/,
+        bool /*doRelu*/) {}
     inline void memCpyDevice(float * /*dest*/, float * /*source*/, size_t /*elems*/) {}
     inline void memCpyDevice(int8_t * /*dest*/, int8_t * /*source*/, size_t /*elems*/) {}
     inline void getDequantMultWrapper(float * /*output*/, float * /*quantMultAaddr*/, float * /*quantMultBaddr*/) {}

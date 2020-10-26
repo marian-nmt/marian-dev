@@ -647,7 +647,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bo
     Expr affineTransform;
     // Default GEMM
     if(a->graph()->getBackend()->isInt8()) {
-      affineTransform = gpu::integer::affine(clip(a, clipValue), clip(b, clipValue),bias, transA, transB, scale, 0.0f /*unused clipvalue*/);
+      return gpu::integer::affine(clip(a, clipValue), clip(b, clipValue),bias, transA, transB, scale, 0.0f /*unused clipvalue*/, do_relu);
     } else {
       ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType),
              "GPU-based GEMM only supports float types, you have A: {} and B: {}",

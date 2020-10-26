@@ -170,18 +170,19 @@ private:
   bool transA_;
   bool transB_;
   bool useTensorcores_;
+  bool doRelu_;
 
 public:
-  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, Expr ones, bool transA, bool transB, float scalar, bool useTensorcores)
+  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, Expr ones, bool transA, bool transB, float scalar, bool useTensorcores, bool doRelu)
       : NaryNodeOp({a, b, Bias, deQuantMult, ones},
-        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores), doRelu_(doRelu) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
 
   /*Without ones, for fused*/
-  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, bool transA, bool transB, float scalar, bool useTensorcores)
+  AffineNodeOp(Expr a, Expr b, Expr Bias, Expr deQuantMult, bool transA, bool transB, float scalar, bool useTensorcores, bool doRelu)
       : NaryNodeOp({a, b, Bias, deQuantMult},
-        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores), doRelu_(doRelu) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
 
@@ -261,7 +262,8 @@ public:
                           ldc,
                           useTensorcores_,
                           fused,
-                          bias->data<float>()); /* Fused Bias GEMM. Only used if beta is not a nullptr and is 1 */
+                          bias->data<float>(), /* Fused Bias GEMM. Only used if beta is not a nullptr and is 1 */
+                          doRelu_); /*Perform fused relu. Only available if fused is also true, otherwise we will produce wrong results.*/
 
       /*If we are using the unfused codepath, we need to manually unquantize and perform a bias addition*/
       if (!fused) {
@@ -294,11 +296,12 @@ private:
   bool transA_;
   bool transB_;
   bool useTensorcores_;
+  bool doRelu_;
 
 public:
-  DotNodeOp(Expr a, Expr b, Expr deQuantMult, bool transA, bool transB, float scalar, bool useTensorcores)
+  DotNodeOp(Expr a, Expr b, Expr deQuantMult, bool transA, bool transB, float scalar, bool useTensorcores, bool doRelu)
       : NaryNodeOp({a, b, deQuantMult},
-        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores) {
+        newShape(a, b, transA, transB), Type::float32), scalar_(scalar), transA_(transA), transB_(transB), useTensorcores_(useTensorcores), doRelu_(doRelu) {
         setMemoize(false); // AFAIK affine is never called with the same matrices
       }
 
@@ -376,7 +379,8 @@ public:
                         ldc,
                         useTensorcores_,
                         fused,
-                        nullptr);
+                        nullptr,
+                        doRelu_); /*Perform fused relu. Only available if fused is also true, otherwise we will produce wrong results.*/
 
       // If we are using the non-fused codepath, we need to unquantize after the fact
       if (!fused) {
@@ -455,7 +459,9 @@ public:
   const std::string type() override { return "dequantMultNodeOp"; }
 };
 
-static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
+static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool doRelu=false) {
+  bool doReluTMP = doRelu; //Fused Relu is bugged for now
+  doRelu = false;
   bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm();
   ABORT_IF(useTensorcores && transA, "Using tensorcores and transposing the activations is not yet supported!");
   // Quantize to 8bits:
@@ -476,23 +482,29 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
 
   //Perform multiplication KNOWING that A and B are swapped
   static bool fused = A->graph()->getBackend()->isFused();
+  Expr ret = nullptr;
   if (bias) {                                       // @TODO move it onto BQuantMult or PrepareB, because this is really slow.
     if (fused) {
-      return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, transA, transB, scale, useTensorcores);
+      ret = Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, transA, transB, scale, useTensorcores, doRelu);
     } else {
       int rows = A->shape().elements() / A->shape()[-1]; /*For the unfused codepath, we need this to perform postprocess bias addition*/
       Expr ones = A->graph()->ones({ rows, 1 });
-      return Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, transA, transB, scale, useTensorcores);
+      ret = Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, transA, transB, scale, useTensorcores, false /*Unfused can't do Relu*/);
     }
   } else {
-    return Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores);
+    ret = Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores, doRelu);
+  }  // Fused relo is bugged for now
+  if (/*!fused &&*/ doReluTMP) { //We can't do RELU if we are not fused, so we need to explicitly perform it as a postprocessing step
+    return relu(ret);
+  } else {
+    return ret;
   }
 }
 
-static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
+static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale, bool doRelu=false) {
     // @TODO this will only work for k (cols(a) or rows(b)) % 4 == 0
 
-  return gpu::integer::affine(a, b, nullptr, transA, transB, scale, 0);
+  return gpu::integer::affine(a, b, nullptr, transA, transB, scale, 0, doRelu);
 }
 
 } // namespace integer

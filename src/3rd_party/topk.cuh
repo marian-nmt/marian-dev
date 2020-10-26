@@ -25,15 +25,15 @@
 #include <cuda_fp16.h>
 #if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>
-#include <cub/util_type.cuh>
 #else
 #include "cub/cub/cub.cuh"
-#include "cub/cub/util_type.cuh"
 #endif
+
+#define NOT_FOUND -1
 #define MAX_BLOCKS_PER_BEAM 8
 
 struct TopK {
-  int p = 0;
+  int p = NOT_FOUND;
   float u = cub::FpLimits<float>::Lowest();
 
   __device__ __forceinline__ void insert(float elem, int elem_id) {
@@ -45,7 +45,7 @@ struct TopK {
 
   __device__ __forceinline__ void init() {
     u = cub::FpLimits<float>::Lowest();
-    p = 0;
+    p = NOT_FOUND;
   }
 };
 
@@ -85,7 +85,8 @@ __global__ void topk_stage_1(T* log_probs,
       const int index = tmp_topk_buf_index + ite;
       topk_tmp_id_buf[index] = total.p;
       topk_tmp_val_buf[index] = total.u;
-      log_probs[total.p] = cub::FpLimits<T>::Lowest();
+      // If we found a max, blank out the value in the log prob array before starting the next iteration
+      if(total.p != NOT_FOUND) log_probs[total.p] = cub::FpLimits<T>::Lowest();
     }
     __syncthreads();
   }
@@ -93,7 +94,8 @@ __global__ void topk_stage_1(T* log_probs,
   // Update prob array with original values.
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
     const int index = tmp_topk_buf_index + beam;
-    log_probs[topk_tmp_id_buf[index]] = (T)topk_tmp_val_buf[index];
+    int k_idx = topk_tmp_id_buf[index];
+    if(k_idx != NOT_FOUND) log_probs[k_idx] = (T)topk_tmp_val_buf[index];
   }
 }
 
@@ -135,6 +137,7 @@ __global__ void topk_stage_2(const int* __restrict topk_tmp_id_buf,
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
     TopK beamOut; 
     beamOut.p = topk_tmp_id_buf[batch_id * size + topks[beam].p];
+    beamOut.p = beamOut.p == NOT_FOUND? 0 : beamOut.p; // If no max found, all values were equal to T::min so just return 0
     beamOut.u = topks[beam].u;
     top[batch_id * k + beam] = beamOut;
   }

@@ -23,6 +23,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <condition_variable>
 #if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>
 #else
@@ -136,7 +137,8 @@ __global__ void topk_stage_2(const int* __restrict topk_tmp_id_buf,
 
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
     TopK beamOut; 
-    beamOut.p = topk_tmp_id_buf[batch_id * size + topks[beam].p];
+    int indexInRow = topks[beam].p == NOT_FOUND? 0: topks[beam].p;
+    beamOut.p = topk_tmp_id_buf[batch_id * size + indexInRow];
     beamOut.p = beamOut.p == NOT_FOUND? 0 : beamOut.p; // If no max found, all values were equal to T::min so just return 0
     beamOut.u = topks[beam].u;
     top[batch_id * k + beam] = beamOut;

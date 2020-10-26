@@ -23,7 +23,6 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include "cub/cub/util_type.cuh"
 #if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>
 #else

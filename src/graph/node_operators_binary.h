@@ -126,12 +126,12 @@ public:
     };
 
     // if child A is not a parameter (i.e. activations) use computeType float32 for accumulation
-    Type computeTypeA = child(0)->grad()->type();
+    Type computeTypeA = child(0)->trainable() ? child(0)->grad()->type() : Type::float32;
     if(!isParameter(child(0)) && computeTypeA == Type::float16)
       computeTypeA = Type::float32;
 
     // if child B is not a parameter (i.e. activations) use computeType float32 for accumulation
-    Type computeTypeB = child(1)->grad()->type();
+    Type computeTypeB = child(1)->trainable() ? child(1)->grad()->type() : Type::float32;
     if(!isParameter(child(1)) && computeTypeB == Type::float16)
       computeTypeB = Type::float32;
 
@@ -292,17 +292,17 @@ public:
     };
 
     // if child A is not a parameter (i.e. activations) use computeType float32 for accumulation
-    Type computeTypeA = child(0)->grad()->type();
+    Type computeTypeA = child(0)->trainable() ? child(0)->grad()->type() : Type::float32;
     if(!isParameter(child(0)) && computeTypeA == Type::float16)
       computeTypeA = Type::float32;
 
     // if child B is not a parameter (i.e. activations) use computeType float32 for accumulation
-    Type computeTypeB = child(1)->grad()->type();
+    Type computeTypeB = child(1)->trainable() ? child(1)->grad()->type() : Type::float32;
     if(!isParameter(child(1)) && computeTypeB == Type::float16)
       computeTypeB = Type::float32;
 
     // if child C (bias) is not a parameter (i.e. activations) use computeType float32 for accumulation
-    Type computeTypeC = child(2)->grad()->type();
+    Type computeTypeC = child(2)->trainable() ? child(2)->grad()->type() : Type::float32;
     if(!isParameter(child(2)) && computeTypeC == Type::float16)
       computeTypeC = Type::float32;
 

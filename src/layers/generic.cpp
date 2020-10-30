@@ -424,9 +424,9 @@ namespace marian {
       LOG_ONCE(info, "[embedding] Factored embeddings enabled");
       if (opt<std::string>("factorsCombine") == "concat") {
         ABORT_IF(dimFactorEmb == 0, "Embedding: If concatenation is chosen to combine the factor embeddings, a factor embedding size should be specified.");
-        int numberOfFactors = (int) factoredVocab_->getTotNumberFactors();
+        int numberOfFactors = (int) factoredVocab_->getTotalFactorCount();
         dimVoc -= numberOfFactors;
-        FE_ = graph_->param("factor_" + name, {numberOfFactors, dimFactorEmb}, initFunc, fixed);
+        FactorEmbMatrix_ = graph_->param("factor_" + name, {numberOfFactors, dimFactorEmb}, initFunc, fixed);
         LOG_ONCE(info, "[embedding] Combining factors concatenation enabled");
       }      
     }
@@ -449,8 +449,8 @@ namespace marian {
     std::vector<float> factorIndices;
     factoredVocab_->lemmaAndFactorsIndexes(data, lemmaIndices, factorIndices);
     auto lemmaEmbs = rows(E_, lemmaIndices);
-    int dimFactors =  FE_->shape()[0];
-    auto factEmbs = dot(graph->constant({(int) data.size(), dimFactors}, inits::fromVector(factorIndices), Type::float32), FE_);
+    int dimFactors =  FactorEmbMatrix_->shape()[0];
+    auto factEmbs = dot(graph->constant({(int) data.size(), dimFactors}, inits::fromVector(factorIndices), Type::float32), FactorEmbMatrix_);
 
     auto out = concatenate({lemmaEmbs, factEmbs}, -1);
 
@@ -479,7 +479,7 @@ namespace marian {
   std::tuple<Expr/*embeddings*/, Expr/*mask*/> Embedding::apply(Ptr<data::SubBatch> subBatch) const /*override final*/ {
     auto graph = E_->graph();
     int dimBatch = (int)subBatch->batchSize();
-    int dimEmb = (factoredVocab_ && opt<std::string>("factorsCombine") == "concat") ? E_->shape()[-1] + FE_->shape()[-1] : E_->shape()[-1];
+    int dimEmb = (factoredVocab_ && opt<std::string>("factorsCombine") == "concat") ? E_->shape()[-1] + FactorEmbMatrix_->shape()[-1] : E_->shape()[-1];
     int dimWidth = (int)subBatch->batchWidth();
 
     // factored embeddings:
@@ -511,13 +511,13 @@ namespace marian {
     //        - if it is required to be in a different range, the embeddings can still learn that, but more slowly
 
     auto batchEmbeddings = apply(subBatch->data(), {dimWidth, dimBatch, dimEmb});
-#if 1
-    auto batchMask = graph->constant({dimWidth, dimBatch, 1},
-                                     inits::fromVector(subBatch->mask()));
-#else
+#if 0
     // experimental: hide inline-fix source tokens from cross attention
     auto batchMask = graph->constant({dimWidth, dimBatch, 1},
                                      inits::fromVector(subBatch->crossMaskWithInlineFixSourceSuppressed()));
+#else
+    auto batchMask = graph->constant({dimWidth, dimBatch, 1},
+                                     inits::fromVector(subBatch->mask()));
 #endif
 
     return std::make_tuple(batchEmbeddings, batchMask);

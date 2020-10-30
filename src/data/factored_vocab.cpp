@@ -655,15 +655,20 @@ std::string FactoredVocab::surfaceForm(const Words& sentence) const /*override f
   return res;
 }
 
-size_t FactoredVocab::getTotNumberFactors() const {
+size_t FactoredVocab::getTotalFactorCount() const {
   return factorVocabSize() - groupRanges_[0].second;
 }
 
+
+// decodes the indexes of lemma and factor for each word and outputs that information separately.
+// inputs:
+//  - words = vector of words
+// output:
+//  - lemmaIndices: lemma index for each word
+//  - factorIndices: factor usage information for each word (1 if the factor is used 0 if not)
 void FactoredVocab::lemmaAndFactorsIndexes(const Words& words, std::vector<IndexType>& lemmaIndices, std::vector<float>& factorIndices) const {
-  
-  
   lemmaIndices.reserve(words.size());
-  factorIndices.reserve(words.size() * getTotNumberFactors());
+  factorIndices.reserve(words.size() * getTotalFactorCount());
 
   auto numGroups = getNumGroups();
   std::vector<size_t> lemmaAndFactorIndices;

@@ -54,7 +54,7 @@ public:
 #endif
   size_t getNumGroups() const { return groupRanges_.size(); }
   std::pair<size_t, size_t> getGroupRange(size_t g)    const { return groupRanges_[g]; }   // [g] -> (u_begin, u_end)
-  size_t getTotNumberFactors() const;
+  size_t getTotalFactorCount() const;
 #ifdef FACTOR_FULL_EXPANSION
   const std::vector<float>& getGapLogMask() const { return gapLogMask_; } // [v] -inf if v is a gap entry, else 0
 #endif

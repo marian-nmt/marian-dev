@@ -16,6 +16,13 @@
 
 #include "tensors/gpu/add_all.h"
 
+#if COMPILE_FP16
+#include <cuda_fp16.h>
+__device__ __forceinline__ half max(const half a, const half b) {
+  return a > b ? a : b;
+}
+#endif
+
 namespace marian {
 
 namespace gpu {
@@ -2980,9 +2987,9 @@ __global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup,
                                 ptrInnerDimPair<T>* lossAndLastDimSize, size_t numGroups, size_t sizeWithoutInnerDim, 
                                 size_t groupStart, int lemmaHasFactorGroupWidth, size_t numLemmas, T minimal) {
 
-  extern __shared__ T _sharedMem[];
-  T* sel = _sharedMem;
-  T* factorMaximasInBlock = _sharedMem + blockDim.x;  
+  extern __shared__ uint8_t _sharedBytes[];
+  T* sel = (T*)_sharedBytes;
+  T* factorMaximasInBlock = sel + blockDim.x;  
   T shared[32];
   
   // First, each block computes the max across the row for each group and stores in in factorMaximasInBlock[g]
@@ -3070,6 +3077,32 @@ void AddFactorMaxes(Tensor out,
                                                       std::numeric_limits<float>::lowest());
     CUDA_CHECK(cudaStreamSynchronize(0));
     allocator->free(mp_ptrs);
+  #if COMPILE_FP16
+  } else if(out->type() == Type::float16) {
+    IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ptrInnerDimPair<half>>(groupLosses.size()); 
+    ptrInnerDimPair<half>* dest = mp_ptrs->data<ptrInnerDimPair<half>>();
+
+    std::vector<ptrInnerDimPair<half>> lossPtrs;
+    for(const auto& t : groupLosses) {
+      ptrInnerDimPair<half> pair = {t->data<half>(), t->shape()[-1]};
+      lossPtrs.push_back(pair);
+    }
+
+    // Async just so that call is issued in per thread default stream
+    CUDA_CHECK(cudaMemcpyAsync(dest, lossPtrs.data(), lossPtrs.size() * sizeof(ptrInnerDimPair<half>), cudaMemcpyHostToDevice, 0));
+    const int blocks = sizeWithoutInnerDim;
+    const int sharedBytes = sizeof(half) * (groupLosses.size() + threads);
+    gAddFactorMaxes<<<blocks, threads, sharedBytes>>>(out->data<half>(), 
+                                                      lemmaHasFactorGroupTensor->data<int8_t>(), 
+                                                      indices? indices->data<IndexType>(): nullptr, 
+                                                      dest,
+                                                      groupLosses.size(),
+                                                      sizeWithoutInnerDim,
+                                                      groupStart, lemmaHasFactorGroupTensor->shape()[1], numLemmas,
+                                                      __float2half(std::numeric_limits<float>::lowest()) );
+    CUDA_CHECK(cudaStreamSynchronize(0));
+    allocator->free(mp_ptrs);
+  #endif
   } else {
     ABORT("AddFactorMaxes not implemented for type {}", out->type());
   }

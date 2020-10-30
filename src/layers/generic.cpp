@@ -412,7 +412,6 @@ namespace marian {
     int dimVoc = opt<int>("dimVocab");
     int dimEmb = opt<int>("dimEmb");
     int dimFactorEmb = opt<int>("dimFactorEmb");
-    std::string factorCombine = opt<std::string>("factorsCombine");
 
     bool fixed = opt<bool>("fixed", false);
 
@@ -423,7 +422,7 @@ namespace marian {
     if (factoredVocab_) {
       dimVoc = (int)factoredVocab_->factorVocabSize();
       LOG_ONCE(info, "[embedding] Factored embeddings enabled");
-      if (factorCombine == "concat") {
+      if (opt<std::string>("factorsCombine") == "concat") {
         ABORT_IF(dimFactorEmb == 0, "Embedding: If concatenation is chosen to combine the factor embeddings, a factor embedding size should be specified.");
         int numberOfFactors = (int) factoredVocab_->getTotNumberFactors();
         dimVoc -= numberOfFactors;

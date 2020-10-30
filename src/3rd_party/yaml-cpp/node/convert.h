@@ -104,9 +104,8 @@ struct convert<_Null> {
       const std::string& input = node.Scalar();                          \
       std::stringstream stream(input);                                   \
       stream.unsetf(std::ios::dec);                                      \
-      double tst;                                                        \
-      if ((stream >> std::noskipws >> tst) && (stream >> std::ws).eof()) \
-        { rhs = (type)tst; return true; }                                \
+      if ((stream >> std::noskipws >> rhs) && (stream >> std::ws).eof()) \
+        return true;                                                     \
       if (std::numeric_limits<type>::has_infinity) {                     \
         if (conversion::IsInfinity(input)) {                             \
           rhs = std::numeric_limits<type>::infinity();                   \

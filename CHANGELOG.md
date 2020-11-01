@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 - --metric bleu now always detokenizes SacreBLEU-style if a vocabulary knows how to, use bleu-segmented to compute BLEU on word ids
+- Move label-smoothing computation into Cross-entropy node
 - Move Simple-WebSocket-Server to submodule
 - Python scripts start with #!/usr/bin/env python3 instead of python
 - Changed compile flags -Ofast to -O3 and remove --ffinite-math

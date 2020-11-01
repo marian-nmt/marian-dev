@@ -25,14 +25,8 @@ std::vector<Ptr<ValidatorBase/*<data::Corpus>*/>> Validators(
     } else if(metric == "translation") {
       auto validator = New<TranslationValidator>(vocabs, config);
       validators.push_back(validator);
-    } else if(metric == "bleu" || metric == "bleu-detok" /*for back-compat*/) {
-      auto validator = New<SacreBleuValidator>(vocabs, config, /*useWordIds=*/false, /*computeChrF=*/false);
-      validators.push_back(validator);
-    } else if(metric == "bleu-segmented") {
-      auto validator = New<SacreBleuValidator>(vocabs, config, /*useWordIds=*/true, /*computeChrF=*/false);
-      validators.push_back(validator);
-    } else if(metric == "chrf") {
-      auto validator = New<SacreBleuValidator>(vocabs, config, /*useWordIds=*/false, /*computeChrF=*/true);
+    } else if(metric == "bleu" || metric == "bleu-detok" || metric == "bleu-segmented" || metric == "chrf") {
+      auto validator = New<SacreBleuValidator>(vocabs, config, metric);
       validators.push_back(validator);
     } else if(metric == "accuracy") {
       auto validator = New<AccuracyValidator>(vocabs, config);
@@ -444,16 +438,17 @@ float TranslationValidator::validate(const std::vector<Ptr<ExpressionGraph>>& gr
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////
-SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool useWordIds, bool computeChrF)
+SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric)
     : Validator(vocabs, options, /*lowerIsBetter=*/false),
-      computeChrF_(computeChrF),
-      useWordIds_(useWordIds),
+      metric_(metric),
+      computeChrF_(metric == "chrf"),
+      useWordIds_(metric == "bleu-segmented"),
       quiet_(options_->get<bool>("quiet-translation")) {
 
-  ABORT_IF(computeChrF_ && useWordIds_, "Cannot compute ChrF on word ids");
+  ABORT_IF(computeChrF_ && useWordIds_, "Cannot compute ChrF on word ids"); // should not really happen, but let's check.
 
-  if(computeChrF_) 
-    order_ = 6;
+  if(computeChrF_) // according to SacreBLEU implementation this is the default for ChrF, 
+    order_ = 6;    // we compute stats over character ngrams up to length 6
 
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::translation);
@@ -489,10 +484,10 @@ float SacreBleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& grap
   if(!quiet_)
     LOG(info, "Translating validation set...");
 
-  // 0: 1-grams matched, 1: 1-grams total,
+  // For BLEU
+  // 0: 1-grams matched, 1: 1-grams cand total, 2: 1-grams ref total (used in ChrF)
   // ...,
-  // 6: 4-grams matched, 7: 4-grams total,
-  // 8: reference length
+  // n: reference length (used in BLEU)
   std::vector<float> stats(order_ * 3 + 1, 0.f);
 
   timer::Timer timer;
@@ -579,14 +574,14 @@ std::vector<std::string> SacreBleuValidator::decode(const Words& words, bool add
   if(vocabType == "FactoredVocab" || vocabType == "SentencePieceVocab") {
     LOG_VALID_ONCE(info, "Decoding validation set with {} for scoring", vocabType);
     tokenString = tokenize(tokenString); // tokenize according to SacreBLEU rules
-    if(!computeChrF_) // we break into characters below 
+    if(!computeChrF_) // for ChrF, we break into characters below, so no need to do this here
       tokenString = tokenizeContinuousScript(tokenString);  // CJT scripts only: further break into characters
   } else {
     LOG_VALID_ONCE(info, "{} keeps original segments for scoring", vocabType);
   }
 
-  auto tokens = computeChrF_ ? splitIntoUnicodeChars(tokenString, /*removeWhiteSpace=*/true) 
-                             : utils::splitAny(tokenString, " ", /*keepEmpty=*/false);
+  auto tokens = computeChrF_ ? splitIntoUnicodeChars(tokenString, /*removeWhiteSpace=*/true) // break into vector of unicode chars (as utf8 strings) for ChrF
+                             : utils::splitAny(tokenString, " ", /*keepEmpty=*/false);       // or just split according to whitespace for BLEU
 
   if(addEOS)
     tokens.push_back("</s>");
@@ -617,7 +612,7 @@ void SacreBleuValidator::updateStats(std::vector<float>& stats,
 
   LOG_VALID_ONCE(info, "[valid] First sentence's tokens as scored:");
   LOG_VALID_ONCE(info, "[valid]   Hyp: {}", utils::join(decode(cand, /*addEOS=*/false)));
-  LOG_VALID_ONCE(info, "[valid]   Ref: {}", utils::join(decode(ref, /*addEOS=*/false)));
+  LOG_VALID_ONCE(info, "[valid]   Ref: {}", utils::join(decode(ref,  /*addEOS=*/false)));
   
   if(useWordIds_)
     updateStats(stats, cand, ref);
@@ -626,6 +621,7 @@ void SacreBleuValidator::updateStats(std::vector<float>& stats,
   
 }
 
+// Re-implementation of BLEU metric from SacreBLEU
 float SacreBleuValidator::calcBLEU(const std::vector<float>& stats) {
   float logbleu = 0;
   for(int i = 0; i < order_; ++i) {
@@ -674,7 +670,7 @@ float SacreBleuValidator::calcChrF(const std::vector<float>& stats) {
   
   auto betaSquare = beta * beta;
   auto score = (1.f + betaSquare) * (avgPrecision * avgRecall) / ((betaSquare * avgPrecision) + avgRecall);
-  return score * 100.f;
+  return score * 100.f; // we multiply by 100 which is usually not done for ChrF, but this makes it more comparable to BLEU
 }
 
 }  // namespace marian

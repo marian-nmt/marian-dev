@@ -223,7 +223,7 @@ protected:
 // @TODO: combine with TranslationValidator (above) to avoid code duplication
 class SacreBleuValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool useWordIds = false, bool computeChrF = false);
+  SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric);
   virtual ~SacreBleuValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
@@ -231,10 +231,7 @@ public:
 
   // @TODO: why do we return this string, but not pass it to the constructor?
   std::string type() override { 
-    if(computeChrF_)
-      return "chrf";
-    else
-      return useWordIds_ ? "bleu-segmented" : "bleu";
+    return metric_;
   }
 
 protected:
@@ -356,6 +353,7 @@ protected:
   }
 
 private:
+  const std::string metric_;  // allowed values are: bleu, bleu-detok (same as bleu where applicable), bleu-segmented, chrf
   bool computeChrF_{ false }; // compute BLEU by default
   
   size_t order_{ 4 };         // 4-grams for BLEU by default

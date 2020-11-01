@@ -462,9 +462,6 @@ namespace marian {
       }      
     }
     
-    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
-    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true); // -> embedding vectors have roughly unit length
-
     if (options_->has("embFile")) {
       std::string file = opt<std::string>("embFile");
       if (!file.empty()) {

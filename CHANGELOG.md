@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Add --after option which is meant to replace --after-batches and --after-epochs and can take label based criteria
 - Add --transformer-postprocess-top option to enable correctly normalized prenorm behavior
 - Add --task transformer-base-prenorm and --task transformer-big-prenorm
 - Turing and Ampere GPU optimisation support, if the CUDA version supports it.
@@ -46,6 +47,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Improved handling for receiving SIGTERM during training. By default, SIGTERM triggers 'save (now) and exit'. Prior to this fix, batch pre-fetching did not check for this sigal, potentially delaying exit considerably. It now pays attention to that. Also, the default behaviour of save-and-exit can now be disabled on the command line with --sigterm exit-immediately.
 
 ### Changed
+- Move label-smoothing computation into Cross-entropy node
 - Move Simple-WebSocket-Server to submodule
 - Python scripts start with #!/usr/bin/env python3 instead of python
 - Changed compile flags -Ofast to -O3 and remove --ffinite-math

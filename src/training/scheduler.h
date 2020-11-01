@@ -171,6 +171,21 @@ public:
     if(saveAndExitRequested()) // via SIGTERM
       return false;
 
+<<<<<<< HEAD
+=======
+#if 1  // @TODO: to be removed once we deprecate after-epochs and after-batches   
+    // stop if it reached the maximum number of epochs
+    size_t stopAfterEpochs = options_->get<size_t>("after-epochs");
+    if(stopAfterEpochs > 0 && state_->epochs > stopAfterEpochs)
+      return false;
+
+    // stop if it reached the maximum number of batch updates
+    size_t stopAfterBatches = options_->get<size_t>("after-batches");
+    if(stopAfterBatches > 0 && state_->batches >= stopAfterBatches)
+      return false;
+#endif
+
+>>>>>>> master
     // get list of stopping criteria e.g. "10e,300Ku,20Gt" (10 epochs, 300,000 updates, 20 billion target labels)
     // and stop for whatever criterion hits first.
     std::vector<std::string> stoppingCriteria = utils::split(options_->get<std::string>("after"), ",");

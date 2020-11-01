@@ -241,8 +241,10 @@ namespace marian {
       b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
+      std::string factorPredictOption = options_->get<std::string>("factor-predictor");
       ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
-      if (lemmaDimEmb > 0) { // > 0 means to embed the (expected) word with a different embedding matrix
+      if (factorPredictOption == "re-embedding") { // embed the (expected) word with a different embedding matrix
+        ABORT_IF(lemmaDimEmb == 0, "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
 #define HARDMAX_HACK
 #ifdef HARDMAX_HACK
         lemmaDimEmb = lemmaDimEmb & 0xfffffffe; // hack to select hard-max: use an odd number
@@ -269,8 +271,8 @@ namespace marian {
         auto numGroups = factoredVocab_->getNumGroups();
         std::vector<Ptr<RationalLoss>> allLogits(numGroups, nullptr); // (note: null entries for absent factors)
         Expr input1 = input; // [B... x D]
-        Expr Plemma = nullptr;     // used for lemmaDimEmb=-1
-        Expr inputLemma = nullptr; // used for lemmaDimEmb=-2, -3
+        Expr Plemma = nullptr;     // used for factorPredictOption = lemmaDimEmb
+        Expr inputLemma = nullptr; // used for factorPredictOption= hard-transformer-layer and soft-transformer-layer
         for (size_t g = 0; g < numGroups; g++) {
           auto range = factoredVocab_->getGroupRange(g);
           if (g > 0 && range.first == range.second) // empty entry
@@ -287,8 +289,8 @@ namespace marian {
             factorB  = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
           }
           /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-          if ((lemmaDimEmb == -2 || lemmaDimEmb == -3) && g > 0) { // -2/-3 means a gated transformer-like structure (-3 = hard-max)
-            LOG_ONCE(info, "[embedding] using lemma conditioning with gate");
+          std::string factorPredictOption = options_->get<std::string>("factor-predictor");
+          if ((factorPredictOption == "soft-transformer-layer" || factorPredictOption == "hard-transformer-layer") && g > 0) {
             // this mimics one transformer layer
             //  - attention over two inputs:
             //     - e = current lemma. We use the original embedding vector; specifically, expectation over all lemmas.
@@ -346,28 +348,29 @@ namespace marian {
           allLogits[g] = New<RationalLoss>(factorLogits, nullptr);
           // optionally add a soft embedding of lemma back to create some lemma dependency
           // @TODO: if this works, move it into lazyConstruct
-          if (lemmaDimEmb == -2 && g == 0) { // -2 means a gated transformer-like structure
+          if (factorPredictOption == "soft-transformer-layer" && g == 0) {
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate, soft-max version");
             // get expected lemma embedding vector
             auto factorLogSoftmax = logsoftmax(factorLogits); // [B... x U] note: with shortlist, this is not the full lemma set
             auto factorSoftmax = exp(factorLogSoftmax);
             inputLemma = dot(factorSoftmax, factorWt, false, /*transB=*/isLegacyUntransposedW ? true : false); // [B... x D]
           }
-          else if (lemmaDimEmb == -3 && g == 0) { // same as -2 except with hard max
+          else if (factorPredictOption == "hard-transformer-layer" && g == 0) {
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate, hard-max version");
             // get max-lemma embedding vector
             auto maxVal = max(factorLogits, -1); // [B... x U] note: with shortlist, this is not the full lemma set
             auto factorHardmax = eq(factorLogits, maxVal);
             inputLemma = dot(factorHardmax, factorWt, false, /*transB=*/isLegacyUntransposedW ? true : false); // [B... x D]
           }
-          else if (lemmaDimEmb == -1 && g == 0) { // -1 means learn a lemma-dependent bias
+          else if (factorPredictOption == "lemma-dependent-bias" && g == 0) { // -1 means learn a lemma-dependent bias
             ABORT_IF(shortlist_, "Lemma-dependent bias with short list is not yet implemented");
             LOG_ONCE(info, "[embedding] using lemma-dependent bias");
             auto factorLogSoftmax = logsoftmax(factorLogits); // (we do that again later, CSE will kick in)
             auto z = /*stopGradient*/(factorLogSoftmax);
             Plemma = exp(z); // [B... x U]
           }
-          else if (lemmaDimEmb > 0 && g == 0) { // > 0 means learn a re-embedding matrix
+          else if (factorPredictOption == "re-embedding" && g == 0) {
+            ABORT_IF(lemmaDimEmb == 0, "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
             LOG_ONCE(info, "[embedding] enabled re-embedding of lemma, at dim {}", lemmaDimEmb);
             // compute softmax. We compute logsoftmax() separately because this way, computation will be reused later via CSE
             auto factorLogSoftmax = logsoftmax(factorLogits);
@@ -408,17 +411,25 @@ namespace marian {
     std::string name = opt<std::string>("prefix");
     int dimVoc = opt<int>("dimVocab");
     int dimEmb = opt<int>("dimEmb");
+    int dimFactorEmb = opt<int>("dimFactorEmb");
 
     bool fixed = opt<bool>("fixed", false);
+
+    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
+    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true); // -> embedding vectors have roughly unit length
 
     factoredVocab_ = FactoredVocab::tryCreateAndLoad(options_->get<std::string>("vocab", ""));
     if (factoredVocab_) {
       dimVoc = (int)factoredVocab_->factorVocabSize();
       LOG_ONCE(info, "[embedding] Factored embeddings enabled");
+      if (opt<std::string>("factorsCombine") == "concat") {
+        ABORT_IF(dimFactorEmb == 0, "Embedding: If concatenation is chosen to combine the factor embeddings, a factor embedding size should be specified.");
+        int numberOfFactors = (int) factoredVocab_->getTotalFactorCount();
+        dimVoc -= numberOfFactors;
+        FactorEmbMatrix_ = graph_->param("factor_" + name, {numberOfFactors, dimFactorEmb}, initFunc, fixed);
+        LOG_ONCE(info, "[embedding] Combining factors concatenation enabled");
+      }      
     }
-
-    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
-    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true); // -> embedding vectors have roughly unit length
     
     if (options_->has("embFile")) {
       std::string file = opt<std::string>("embFile");
@@ -429,6 +440,21 @@ namespace marian {
     }
 
     E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
+  }
+
+  //Embeds a sequence of words (given as indices), where they have factor information. The matrices are concatenated
+  /*private*/ Expr Embedding::embedWithConcat(const Words& data) const {
+    auto graph = E_->graph();
+    std::vector<IndexType> lemmaIndices;
+    std::vector<float> factorIndices;
+    factoredVocab_->lemmaAndFactorsIndexes(data, lemmaIndices, factorIndices);
+    auto lemmaEmbs = rows(E_, lemmaIndices);
+    int dimFactors =  FactorEmbMatrix_->shape()[0];
+    auto factEmbs = dot(graph->constant({(int) data.size(), dimFactors}, inits::fromVector(factorIndices), Type::float32), FactorEmbMatrix_);
+
+    auto out = concatenate({lemmaEmbs, factEmbs}, -1);
+
+    return out;
   }
 
   // helper to embed a sequence of words (given as indices) via factored embeddings
@@ -453,7 +479,7 @@ namespace marian {
   std::tuple<Expr/*embeddings*/, Expr/*mask*/> Embedding::apply(Ptr<data::SubBatch> subBatch) const /*override final*/ {
     auto graph = E_->graph();
     int dimBatch = (int)subBatch->batchSize();
-    int dimEmb = E_->shape()[-1];
+    int dimEmb = (factoredVocab_ && opt<std::string>("factorsCombine") == "concat") ? E_->shape()[-1] + FactorEmbMatrix_->shape()[-1] : E_->shape()[-1];
     int dimWidth = (int)subBatch->batchWidth();
 
     // factored embeddings:
@@ -486,12 +512,12 @@ namespace marian {
 
     auto batchEmbeddings = apply(subBatch->data(), {dimWidth, dimBatch, dimEmb});
 #if 0
-    auto batchMask = graph->constant({dimWidth, dimBatch, 1},
-                                     inits::fromVector(subBatch->mask()));
-#else
     // experimental: hide inline-fix source tokens from cross attention
     auto batchMask = graph->constant({dimWidth, dimBatch, 1},
                                      inits::fromVector(subBatch->crossMaskWithInlineFixSourceSuppressed()));
+#else
+    auto batchMask = graph->constant({dimWidth, dimBatch, 1},
+                                     inits::fromVector(subBatch->mask()));
 #endif
 
     return std::make_tuple(batchEmbeddings, batchMask);
@@ -499,7 +525,11 @@ namespace marian {
 
   Expr Embedding::apply(const Words& words, const Shape& shape) const /*override final*/ {
     if (factoredVocab_) {
-      Expr selectedEmbs = multiRows(words, options_->get<float>("dropout", 0.0f));        // [(B*W) x E]
+      Expr selectedEmbs;
+      if (opt<std::string>("factorsCombine") == "concat")
+        selectedEmbs = embedWithConcat(words);        // [(B*W) x E]
+      else
+        selectedEmbs = multiRows(words, options_->get<float>("dropout", 0.0f));        // [(B*W) x E]
       selectedEmbs = reshape(selectedEmbs, shape); // [W, B, E]
       //selectedEmbs = dropout(selectedEmbs, options_->get<float>("dropout", 0.0f), { selectedEmbs->shape()[-3], 1, 1 }); // @TODO: replace with factor dropout
       return selectedEmbs;
@@ -522,6 +552,8 @@ namespace marian {
     auto options = New<Options>(
         "dimVocab", opt<std::vector<int>>("dim-vocabs")[batchIndex_],
         "dimEmb",   opt<int>("dim-emb"),
+        "dimFactorEmb", opt<int>("factors-dim-emb"),
+        "factorsCombine", opt<std::string>("factors-combine"),
         "dropout",  dropout_,
         "prefix",   (opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all")) ? "Wemb" : prefix_ + "_Wemb",
         "fixed",    embeddingFix_,

@@ -265,7 +265,8 @@ public:
       kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
     }
     else {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform());
+      int dimKeys =  keys->shape()[-1];
+      auto Wk = graph_->param(prefix + "_Wk", {dimKeys, dimModel}, inits::glorotUniform());
       auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
@@ -279,7 +280,8 @@ public:
         && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
       vh = cache_[prefix + "_values"];
     } else {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform());
+      int dimValues = values->shape()[-1];
+      auto Wv = graph_->param(prefix + "_Wv", {dimValues, dimModel}, inits::glorotUniform());
       auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -600,7 +602,8 @@ private:
         "prefix", prefix_ + "_ff_logit_out",
         "dim", dimTrgVoc,
         "vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_], // for factored outputs
-        "lemma-dim-emb", opt<int>("lemma-dim-emb", 0)); // for factored outputs
+        "lemma-dim-emb", opt<int>("lemma-dim-emb", 0), // for factored outputs
+        "factor-predictor", opt<std::string>("factor-predictor")); // for factored outputs
 
     if(opt<bool>("tied-embeddings") || opt<bool>("tied-embeddings-all"))
       outputFactory.tieTransposed(opt<bool>("tied-embeddings-all") || opt<bool>("tied-embeddings-src") ? "Wemb" : prefix_ + "_Wemb");

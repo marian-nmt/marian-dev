@@ -516,10 +516,10 @@ namespace marian {
     //        - if it is required to be in a different range, the embeddings can still learn that, but more slowly
 
     auto batchEmbeddings = apply(subBatch->data(), {dimWidth, dimBatch, dimEmb});
-#if 0
+#if 1
     auto batchMask = graph->constant({dimWidth, dimBatch, 1},
                                      inits::fromVector(subBatch->mask()));
-#else
+#else // @TODO: this is dead code now, get rid of it
     // experimental: hide inline-fix source tokens from cross attention
     auto batchMask = graph->constant({dimWidth, dimBatch, 1},
                                      inits::fromVector(subBatch->crossMaskWithInlineFixSourceSuppressed()));

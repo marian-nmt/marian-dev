@@ -4,8 +4,7 @@ Following this README should allow the user to train a model with source- and/or
 
 ### Requirements:
 
-[Marian CEF marian-dev](https://github.com/marian-cef/marian-dev)
-
+Marian from this repository.
 
 ## Define factors
 

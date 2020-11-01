@@ -13,10 +13,6 @@ set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 # Custom CMake options
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
-option(COMPILE_CUDA_SM35 "Compile GPU version with SM35 support" ON)
-option(COMPILE_CUDA_SM50 "Compile GPU version with SM50 support" ON)
-option(COMPILE_CUDA_SM60 "Compile GPU version with SM60 support" ON)
-option(COMPILE_CUDA_SM70 "Compile GPU version with SM70 support" ON)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_SERVER "Compile marian-server" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
@@ -29,16 +25,36 @@ option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
+option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
+
+# fbgemm and sentencepiece are both defined with "non-local" installation targets (the source projects don't define them,
+# so we define them in src\3rd_party\CMakeLists.txt), but that isn't supported until CMake 3.12. Prior to CMake 3.12,
+# targets could only be install(...)ed in the same CMakeLists.txt they were defined. We currently target CMake 3.5.1
+# as our minimum supported CMake version, so this option exists to provide compatibility by disabling install targets.
+if(GENERATE_MARIAN_INSTALL_TARGETS AND ${CMAKE_VERSION} VERSION_LESS "3.12")
+  message(WARNING "Marian install targets cannot be generated on CMake <3.12.\
+    Please upgrade your CMake version or set GENERATE_MARIAN_INSTALL_TARGETS=OFF to remove this warning. Disabling installation targets.")
+  set(GENERATE_MARIAN_INSTALL_TARGETS OFF CACHE BOOL "Forcing disabled installation targets due to CMake <3.12." FORCE)
+endif()
+
+if(GENERATE_MARIAN_INSTALL_TARGETS)
+  include(GNUInstallDirs)                 # This defines default values for installation directories (all platforms even if named GNU)
+  include(InstallRequiredSystemLibraries) # Tell CMake that the `install` target needs to install required system libraries (eg: Windows SDK)
+  include(CMakePackageConfigHelpers)      # Helper to create relocatable packages
+
+  install(EXPORT marian-targets           # Installation target
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+endif(GENERATE_MARIAN_INSTALL_TARGETS)
 
 # use ccache (https://ccache.dev) for faster compilation if requested and available
 if(USE_CCACHE)
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-  message(STATUS "Will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-else(CCACHE_PROGRAM)
-  message(WARNING "Compilation with ccache requested but no ccache found.")
-endif(CCACHE_PROGRAM)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    message(STATUS "Will be using ccache for faster repeat compilation (use cmake -DUSE_CCACHE=off to disable).")
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+  else(CCACHE_PROGRAM)
+    message(WARNING "Compilation with ccache requested but no ccache found.")
+  endif(CCACHE_PROGRAM)
 endif(USE_CCACHE)
 
 # Project versioning
@@ -51,6 +67,8 @@ message(STATUS "Project version: ${PROJECT_VERSION_STRING_FULL}")
 execute_process(COMMAND git submodule update --init --recursive --no-fetch
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Note that with CMake MSVC build, the option CMAKE_BUILD_TYPE is automatically derived from the key
+# 'configurationType' in CMakeSettings.json configurations
 if(NOT CMAKE_BUILD_TYPE)
   message(WARNING "CMAKE_BUILD_TYPE not set; setting to Release")
   set(CMAKE_BUILD_TYPE "Release")
@@ -62,15 +80,17 @@ if(MSVC)
 # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS /WX; /W4;)
 
-  # Disabled bogus warnings for CPU intrincics:
+  # Disabled bogus warnings for CPU intrinsics:
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
-  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\"")
+  # C4702: unreachable code; note it is also disabled globally in the VS project file
+  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\"")
 
-  set(INTRINSICS "/arch:AVX")
+  # set(INTRINSICS "/arch:AVX")
+  add_definitions(-DUSE_SSE2=1)
 
   # Or maybe use these?
-  # set(INTRINSICS "/arch:AVX2")
+  set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
 
   set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
@@ -78,7 +98,9 @@ if(MSVC)
   set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
   # ignores warning LNK4049: locally defined symbol free imported - this comes from zlib
-  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /NODEFAULTLIB:MSVCRT /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT")
+  set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRTD")
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")
 
   find_library(SHLWAPI Shlwapi.lib)
@@ -186,6 +208,13 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 endif(MSVC)
 
+# with gcc 7.0 and above we need to mark fallthrough in switch case statements
+# that can be done in comments for backcompat, but CCACHE removes comments.
+# -C makes gcc keep comments.
+if(USE_CCACHE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -C")
+endif()
+
 ###############################################################################
 # Downloading SentencePiece if requested and set to compile with it.
 # Requires all the dependencies imposed by SentencePiece
@@ -193,6 +222,13 @@ if(USE_SENTENCEPIECE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
   LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
   set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+endif()
+
+if(USE_ONNX)
+  message(STATUS "Enabling experimental ONNX support")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ONNX")
+  set(EXT_LIBS ${EXT_LIBS} protobuf)
+  include_directories(${Protobuf_INCLUDE_DIRS})
 endif()
 
 # Find packages
@@ -203,7 +239,9 @@ if(COMPILE_CUDA)
 
 if(USE_STATIC_LIBS)
   # link statically to stdlib libraries
-  set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+  if(NOT MSVC)
+    set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+  endif()
 
   # look for libraries that have .a suffix
   set(_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -221,6 +259,30 @@ if(CUDA_FOUND)
       message(WARNING "On some Unix systems CUDA 10.0+ requires CMake 3.12.2+; you use CMake ${CMAKE_VERSION}")
   endif()
 
+  # We want to compile as many targets as possible but different CUDA versions support different targets.
+  # Let's instead enable options based on what cuda version we have.
+  if((CUDA_VERSION VERSION_EQUAL "9.0" OR CUDA_VERSION VERSION_GREATER "9.0") AND CUDA_VERSION VERSION_LESS "11.0")
+    option(COMPILE_CUDA_SM35 "Compile GPU version with SM35 support" ON)
+    option(COMPILE_CUDA_SM50 "Compile GPU version with SM50 support" ON)
+    option(COMPILE_CUDA_SM60 "Compile GPU version with SM60 support" ON)
+    option(COMPILE_CUDA_SM70 "Compile GPU version with SM70 support" ON)
+  endif()
+  if((CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0") AND CUDA_VERSION VERSION_LESS "11.0")
+    option(COMPILE_CUDA_SM35 "Compile GPU version with SM35 support" ON)
+    option(COMPILE_CUDA_SM50 "Compile GPU version with SM50 support" ON)
+    option(COMPILE_CUDA_SM60 "Compile GPU version with SM60 support" ON)
+    option(COMPILE_CUDA_SM70 "Compile GPU version with SM70 support" ON)
+    option(COMPILE_CUDA_SM75 "Compile GPU version with SM75 support" ON)
+  endif()
+  if(CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0")
+    option(COMPILE_CUDA_SM35 "Compile GPU version with SM35 support" ON)
+    option(COMPILE_CUDA_SM50 "Compile GPU version with SM50 support" ON)
+    option(COMPILE_CUDA_SM60 "Compile GPU version with SM60 support" ON)
+    option(COMPILE_CUDA_SM70 "Compile GPU version with SM70 support" ON)
+    option(COMPILE_CUDA_SM75 "Compile GPU version with SM75 support" ON)
+    option(COMPILE_CUDA_SM80 "Compile GPU version with SM80 support" ON)
+  endif()
+
   if(COMPILE_CUDA_SM35)
     LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35;)                             # Tesla K40 and above
   endif(COMPILE_CUDA_SM35)
@@ -233,14 +295,34 @@ if(CUDA_FOUND)
   if(COMPILE_CUDA_SM70)
     LIST(APPEND COMPUTE -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70) # Volta GPUs
   endif(COMPILE_CUDA_SM70)
+  if(CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0")
+    if(COMPILE_CUDA_SM75)
+        LIST(APPEND COMPUTE -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75) # Turing GPUs
+    endif(COMPILE_CUDA_SM75)
+  endif()
+  if(CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0")
+    if(COMPILE_CUDA_SM80)
+        LIST(APPEND COMPUTE -gencode=arch=compute_80,code=sm_80; -gencode=arch=compute_80,code=compute_80) # Ampere GPUs
+    endif(COMPILE_CUDA_SM80)
+  endif()
 
   if(USE_STATIC_LIBS)
-    find_library(CUDA_culibos_LIBRARY NAMES culibos PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
-    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_culibos_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
-    set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_culibos_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
+    find_library(CUDA_culibos_LIBRARY NAMES culibos PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+    # The cuLIBOS library does not seem to exist in Windows CUDA toolkit installs
+    if(CUDA_culibos_LIBRARY)
+      set(EXT_LIBS ${EXT_LIBS} ${CUDA_culibos_LIBRARY})
+      set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_culibos_LIBRARY})
+    elseif(NOT WIN32)
+      message(FATAL_ERROR "cuLIBOS library not found")
+    endif()
     # CUDA 10.1 introduces cublasLt library that is required on static build
     if ((CUDA_VERSION VERSION_EQUAL "10.1" OR CUDA_VERSION VERSION_GREATER "10.1"))
-      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+      if(NOT CUDA_cublasLt_LIBRARY)
+        message(FATAL_ERROR "cuBLASLt library not found")
+      endif()
       set(EXT_LIBS ${EXT_LIBS} ${CUDA_cublasLt_LIBRARY})
       set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_cublasLt_LIBRARY})
     endif()
@@ -304,7 +386,7 @@ if(NOT MSVC)
   list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
   list(APPEND CUDA_NVCC_FLAGS ${INTRINSICS_NVCC})
 else()
-  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; )
+  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
 endif()
 
 list(REMOVE_DUPLICATES CUDA_NVCC_FLAGS)
@@ -351,6 +433,7 @@ if(COMPILE_CPU)
   if(MKL_FOUND)
     include_directories(${MKL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})
+    set(BLAS_FOUND TRUE)
     add_definitions(-DBLAS_FOUND=1 -DMKL_FOUND=1)
   else(MKL_FOUND)
     set(BLAS_VENDOR "OpenBLAS")
@@ -375,6 +458,13 @@ if(COMPILE_SERVER)
     message(STATUS "Found OpenSSL")
     include_directories(${OPENSSL_INCLUDE_DIR})
     set(EXT_LIBS ${EXT_LIBS} ${OPENSSL_CRYPTO_LIBRARY})
+    if(MSVC AND USE_STATIC_LIBS)
+      # "If you link with static OpenSSL libraries then you're expected to additionally link your
+      # application with WS2_32.LIB, GDI32.LIB, ADVAPI32.LIB, CRYPT32.LIB and USER32.LIB"
+      # See https://github.com/openssl/openssl/blob/OpenSSL_1_1_1d/NOTES.WIN#L127
+      # Linking with crypt32.lib seem to be enough.
+      set(EXT_LIBS ${EXT_LIBS} crypt32.lib)
+    endif()
     set(BOOST_COMPONENTS ${BOOST_COMPONENTS} system)
   else(OpenSSL_FOUND)
     message(WARNING "Cannot find OpenSSL library. Not compiling server.")
@@ -420,8 +510,11 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/project_version.h.in
 # Generate build_info.cpp with CMake cache variables
 include(GetCacheVariables)
 
+# make sure src/common/build_info.cpp has been removed
+execute_process(COMMAND rm ${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp
+                OUTPUT_QUIET ERROR_QUIET)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp.in
-               ${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp @ONLY)
+               ${CMAKE_CURRENT_BINARY_DIR}/src/common/build_info.cpp @ONLY)
 
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)

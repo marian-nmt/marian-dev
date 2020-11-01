@@ -112,23 +112,33 @@ std::vector<std::string> splitAny(const std::string& line,
 }
 
 std::string join(const std::vector<std::string>& words, const std::string& del /*= " "*/) {
-  std::stringstream ss;
-  if(words.empty()) {
+  if(words.empty())
     return "";
-  }
 
+  std::stringstream ss;
   ss << words[0];
-  for(size_t i = 1; i < words.size(); ++i) {
+  for(size_t i = 1; i < words.size(); ++i)
     ss << del << words[i];
-  }
 
   return ss.str();
 }
 
 std::string join(const std::vector<size_t>& nums, const std::string& del /*= " "*/) {
   std::vector<std::string> words(nums.size());
-  std::transform(nums.begin(), nums.end(), words.begin(), [](int i) { return std::to_string(i); });
+  std::transform(nums.begin(), nums.end(), words.begin(), [](size_t i) { return std::to_string(i); });
   return join(words, del);
+}
+
+std::string join(const std::vector<float>& nums, const std::string& del /*= " "*/, size_t prec /*= 5*/) {
+  if(nums.empty())
+    return "";
+
+  std::stringstream ss;
+  ss << std::fixed << std::setprecision(prec) << nums[0];
+  for(size_t i = 1; i < nums.size(); ++i)
+    ss << del << nums[i];
+
+  return ss.str();
 }
 
 // escapes a string for passing to popen, which uses /bin/sh to parse its argument string
@@ -414,7 +424,8 @@ double parseNumber(std::string param) {
   }
   // we allow users to place commas in numbers (note: we are not actually verifying that they are in
   // the right place)
-  std::remove_if(param.begin(), param.end(), [](char c) { return c == ','; });
+  auto it = std::remove_if(param.begin(), param.end(), [](char c) { return c == ','; }); // use return value for future-proofing against nodiscard warning
+  param.erase(it, param.end()); // since we have that iterator now, we might as well shrink to fit
   return factor * parseDouble(param);
 }
 

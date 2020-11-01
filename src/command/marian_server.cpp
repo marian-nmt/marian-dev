@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
   // Initialize translation task
   auto options = parseOptions(argc, argv, cli::mode::server, true);
   auto task = New<TranslateService<BeamSearch>>(options);
+  auto quiet = options->get<bool>("quiet-translation");
 
   // Initialize web server
   WSServer server;
@@ -21,24 +22,23 @@ int main(int argc, char **argv) {
 
   auto &translate = server.endpoint["^/translate/?$"];
 
-  translate.on_message = [&task](Ptr<WSServer::Connection> connection,
-                                 Ptr<WSServer::Message> message) {
+  translate.on_message = [&task, quiet](Ptr<WSServer::Connection> connection,
+                                        Ptr<WSServer::InMessage> message) {
     // Get input text
     auto inputText = message->string();
-    auto sendStream = std::make_shared<WSServer::SendStream>();
+    auto sendStream = std::make_shared<WSServer::OutMessage>();
 
     // Translate
     timer::Timer timer;
     auto outputText = task->run(inputText);
-    LOG(info, "Best translation: {}", outputText);
     *sendStream << outputText << std::endl;
-    LOG(info, "Translation took: {:.5f}s", timer.elapsed());
+    if(!quiet)
+      LOG(info, "Translation took: {:.5f}s", timer.elapsed());
 
     // Send translation back
     connection->send(sendStream, [](const SimpleWeb::error_code &ec) {
-      if(ec) {
+      if(ec)
         LOG(error, "Error sending message: ({}) {}", ec.value(), ec.message());
-      }
     });
   };
 
@@ -51,8 +51,9 @@ int main(int argc, char **argv) {
 
   // Start server thread
   std::thread serverThread([&server]() {
-    LOG(info, "Server is listening on port {}", server.config.port);
-    server.start();
+    server.start([](unsigned short port) {
+      LOG(info, "Server is listening on port {}", port);
+    });
   });
 
   serverThread.join();

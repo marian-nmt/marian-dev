@@ -228,6 +228,12 @@ public:
   Expr apply(Expr input) override { return apply(std::vector<Expr>({input})); }
 };
 
+} // namespace mlp
+
+class LSH;
+
+namespace mlp {
+
 class Output : public LayerBase, public IUnaryLogitLayer, public IHasShortList {
 private:
   // parameters held by this layer
@@ -235,19 +241,23 @@ private:
   Expr b_;
   Expr lemmaEt_; // re-embedding matrix for lemmas [lemmaDimEmb x lemmaVocabSize]
   bool isLegacyUntransposedW{false}; // legacy-model emulation: W is stored in non-transposed form
+  bool hasBias_{true};
+
   Expr cachedShortWt_;  // short-listed version, cached (cleared by clear())
   Expr cachedShortb_;   // these match the current value of shortlist_
   Expr cachedShortLemmaEt_;
   Ptr<FactoredVocab> factoredVocab_;
-
+  
   // optional parameters set/updated after construction
   Expr tiedParam_;
   Ptr<data::Shortlist> shortlist_;
+  Ptr<LSH> lsh_;
 
   void lazyConstruct(int inputDim);
 public:
   Output(Ptr<ExpressionGraph> graph, Ptr<Options> options)
-      : LayerBase(graph, options) {
+    : LayerBase(graph, options), 
+      hasBias_{!options->get<bool>("output-omit-bias", false)} {
     clear();
   }
 

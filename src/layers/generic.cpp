@@ -6,8 +6,7 @@
 #include "data/factored_vocab.h"
 #include "rnn/types.h"     // for State::select()
 #include "models/states.h" // for EncoderState
-
-//using std::size_t; // not sure why this is needed
+#include "layers/lsh.h"
 
 namespace marian {
   Logits::Logits(Expr logits) : Logits(New<RationalLoss>(logits, nullptr)) {} // single-output constructor from Expr only (RationalLoss has no count)
@@ -24,7 +23,7 @@ namespace marian {
     ABORT_IF(empty(), "Attempted to read out logits on empty Logits object");
 
     auto firstLogits = logits_.front()->loss();
-    ABORT_IF(labels.size() * firstLogits->shape()[-1] != firstLogits->shape().elements(), 
+    ABORT_IF(labels.size() * firstLogits->shape()[-1] != firstLogits->shape().elements(),
              "Labels not matching logits shape ({} != {}, {})??",
              labels.size() * firstLogits->shape()[-1],
              firstLogits->shape().elements(),
@@ -218,6 +217,13 @@ namespace marian {
       if (Wt_)
         return;
 
+      // this option is only set in the decoder
+      if(!lsh_ && options_->hasAndNotEmpty("output-approx-knn")) {
+        auto k     = opt<std::vector<int>>("output-approx-knn")[0];
+        auto nbits = opt<std::vector<int>>("output-approx-knn")[1];
+        lsh_ = New<LSH>(k, nbits);
+      }
+
       auto name = options_->get<std::string>("prefix");
       auto numOutputClasses = options_->get<int>("dim");
 
@@ -238,7 +244,8 @@ namespace marian {
           Wt_ = graph_->param(name + "_Wt", {numOutputClasses, inputDim}, inits::glorotUniform(false, true));
       }
 
-      b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
+      if(hasBias_)
+        b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
       std::string factorPredictOption = options_->get<std::string>("factor-predictor");
@@ -259,9 +266,27 @@ namespace marian {
     Logits Output::applyAsLogits(Expr input) /*override final*/ {
       lazyConstruct(input->shape()[-1]);
 
+      auto affineOrDot = [](Expr x, Expr W, Expr b, bool transA, bool transB) {
+        if(b)
+          return affine(x, W, b, transA, transB);
+        else
+          return dot(x, W, transA, transB);
+      };
+
+      auto affineOrLSH = [this, affineOrDot](Expr x, Expr W, Expr b, bool transA, bool transB) {
+        if(lsh_) {
+          ABORT_IF( transA, "Transposed query not supported for LSH");
+          ABORT_IF(!transB, "Untransposed indexed matrix not supported for LSH");
+          return lsh_->apply(x, W, b); // knows how to deal with undefined bias
+        } else {
+          return affineOrDot(x, W, b, transA, transB);
+        }
+      };
+
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
-        cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
-        cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+        cachedShortWt_  = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
+        if(hasBias_)
+          cachedShortb_ = index_select(b_ ,                             -1, shortlist_->indices());
       }
 
       if (factoredVocab_) {
@@ -285,8 +310,9 @@ namespace marian {
             factorB  = cachedShortb_;
           }
           else {
-            factorWt = slice(Wt_, isLegacyUntransposedW ? -1 : 0, Slice((int)range.first, (int)range.second));
-            factorB  = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
+            factorWt  = slice(Wt_, isLegacyUntransposedW ? -1 : 0, Slice((int)range.first, (int)range.second));
+            if(hasBias_)
+              factorB = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
           }
           /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
           std::string factorPredictOption = options_->get<std::string>("factor-predictor");
@@ -335,7 +361,12 @@ namespace marian {
             input1 = layerNorm(input1, name + "_ffn");
           }
           // @TODO: b_ should be a vector, not a matrix; but shotlists use cols() in, which requires a matrix
-          auto factorLogits = affine(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true, /*scale=*/1.0f); // [B... x U] factor logits
+          Expr factorLogits;
+          if(g == 0)
+            factorLogits = affineOrLSH(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true); // [B... x U] factor logits
+          else
+            factorLogits = affineOrDot(input1, factorWt, factorB, false, /*transB=*/isLegacyUntransposedW ? false : true); // [B... x U] factor logits
+          
           // optionally add lemma-dependent bias
           if (Plemma) { // [B... x U0]
             int lemmaVocabDim = Plemma->shape()[-1];
@@ -399,11 +430,11 @@ namespace marian {
           }
         }
         return Logits(std::move(allLogits), factoredVocab_);
+      } else if (shortlist_) {
+        return Logits(affineOrLSH(input, cachedShortWt_, cachedShortb_, false, /*transB=*/isLegacyUntransposedW ? false : true));
+      } else {
+        return Logits(affineOrLSH(input, Wt_, b_, false, /*transB=*/isLegacyUntransposedW ? false : true));
       }
-      else if (shortlist_)
-        return Logits(affine(input, cachedShortWt_, cachedShortb_, false, /*transB=*/isLegacyUntransposedW ? false : true));
-      else
-        return Logits(affine(input, Wt_, b_, false, /*transB=*/isLegacyUntransposedW ? false : true));
     }
   }
 
@@ -431,6 +462,9 @@ namespace marian {
       }      
     }
     
+    // Embedding layer initialization should depend only on embedding size, hence fanIn=false
+    auto initFunc = inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true); // -> embedding vectors have roughly unit length
+
     if (options_->has("embFile")) {
       std::string file = opt<std::string>("embFile");
       if (!file.empty()) {
@@ -519,6 +553,8 @@ namespace marian {
     auto batchMask = graph->constant({dimWidth, dimBatch, 1},
                                      inits::fromVector(subBatch->mask()));
 #endif
+    // give the graph inputs readable names for debugging and ONNX
+    batchMask->set_name("data_" + std::to_string(/*batchIndex_=*/0) + "_mask");
 
     return std::make_tuple(batchEmbeddings, batchMask);
   }
@@ -540,8 +576,10 @@ namespace marian {
 
   Expr Embedding::applyIndices(const std::vector<WordIndex>& embIdx, const Shape& shape) const /*override final*/ {
     ABORT_IF(factoredVocab_, "Embedding: applyIndices must not be used with a factored vocabulary");
-    auto selectedEmbs = rows(E_, embIdx);        // [(B*W) x E]
-    selectedEmbs = reshape(selectedEmbs, shape); // [W, B, E]
+    auto embIdxExpr = E_->graph()->indices(embIdx);
+    embIdxExpr->set_name("data_" + std::to_string(/*batchIndex_=*/0));  // @TODO: how to know the batch index?
+    auto selectedEmbs = rows(E_, embIdxExpr);     // [(B*W) x E]
+    selectedEmbs = reshape(selectedEmbs, shape);  // [W, B, E]
     // @BUGBUG: We should not broadcast along dimBatch=[-2]. Then we can also dropout before reshape() (test that separately)
     selectedEmbs = dropout(selectedEmbs, options_->get<float>("dropout", 0.0f), { selectedEmbs->shape()[-3], 1, 1 });
     return selectedEmbs;

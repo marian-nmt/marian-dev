@@ -11,6 +11,8 @@
 #include "models/states.h"
 #include "models/transformer_factory.h"
 #include "rnn/constructors.h"
+#define _USE_MATH_DEFINES  // enables math constants. We need M_PI_2
+#include <math.h>
 
 namespace marian {
 
@@ -26,7 +28,8 @@ class Transformer : public EncoderOrDecoderBase {
 
 protected:
   using Base::options_; using Base::inference_; using Base::batchIndex_; using Base::graph_;
-  std::unordered_map<std::string, Expr> cache_;  // caching transformation of the encoder that should not be created again
+  std::unordered_map<std::string, Expr> cache_;    // caching transformation of the encoder that should not be created again
+  mutable/*lazy*/ std::vector<float> sinusoidalEmbeddingsFreq_, sinusoidalEmbeddingsOffs_;  // cached contributions to sinusoidal embeddings
 
   // attention weights produced by step()
   // If enabled, it is set once per batch during training, and once per step during translation.
@@ -84,8 +87,25 @@ public:
       // according to paper embeddings are scaled up by \sqrt(d_m)
       embeddings = std::sqrt((float)dimEmb) * embeddings; // embeddings were initialized to unit length; so norms will be in order of sqrt(dimEmb)
 
+#ifdef USE_ONNX // TODO 'Sin' op and constant sine generate different result. So, use constant when 'USE_ONNX' is not defined for now.
+      // precompute the arguments to sin() (the cos(x) are expressed as sin(x+pi/2))
+      if (sinusoidalEmbeddingsFreq_.empty()) {
+        auto numTimescales = dimEmb / 2;
+        for (size_t i = 0; i < dimEmb; i++) {
+          sinusoidalEmbeddingsFreq_.push_back((float)pow(1e-4, ((i % numTimescales) / (numTimescales - 1.0))));  // rotor frequency
+          sinusoidalEmbeddingsOffs_.push_back((float)          ((i / numTimescales) * M_PI_2                ));  // 0 (for sin) or pi/2 (for cos)
+        }
+      }
+      auto frequencies = graph_->constant({ dimEmb }, inits::fromVector(sinusoidalEmbeddingsFreq_));
+      auto cosOffsets  = graph_->constant({ dimEmb }, inits::fromVector(sinusoidalEmbeddingsOffs_));
+      auto positionRange = graph_->constant({ dimWords, 1, 1 }, inits::range((float)start, (float)start + (float)dimWords));
+      positionRange->set_name("data_" + std::to_string(batchIndex_) + "_posrange");
+      auto signal = sin(positionRange * frequencies + cosOffsets);
+#else // USE_ONNX
       auto signal = graph_->constant({dimWords, 1, dimEmb},
                                      inits::sinusoidalPositionEmbeddings(start));
+#endif // USE_ONNX
+
       embeddings = embeddings + signal;
     }
 
@@ -310,11 +330,35 @@ public:
     return output;
   }
 
+  // Reduce the encoder to a single sentence vector, here we just take the contextual embedding of the first word per sentence
+  // Replaces cross-attention in LASER-like models
+  Expr LayerPooling(std::string prefix,
+                    Expr input,            // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
+                    const Expr& values) {  // [-4: beam depth=1, -3: batch size, -2: max length (src or trg), -1: vector dim]
+    int dimModel = input->shape()[-1];
+    auto output = slice(values, -2, 0); // Select first word [-4: beam depth, -3: batch size, -2: 1, -1: vector dim]
+
+    int dimPool = output->shape()[-1];
+    bool project = !opt<bool>("transformer-no-projection");
+    if(project || dimPool != dimModel) {
+      auto Wo = graph_->param(prefix + "_Wo", {dimPool, dimModel}, inits::glorotUniform());
+      auto bo = graph_->param(prefix + "_bo", {1, dimModel}, inits::zeros());
+      output = affine(output, Wo, bo);  // [-4: beam depth, -3: batch size, -2: 1, -1: vector dim]
+    }
+
+    auto opsPost = opt<std::string>("transformer-postprocess");
+    output = postProcess(prefix + "_Wo", opsPost, output, input, 0.f);
+
+    return output;
+  }
+
+
   Expr LayerAttention(std::string prefix,
                       Expr input,         // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
                       const Expr& keys,   // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
                       const Expr& values, // ...?
                       const Expr& mask,   // [-4: batch size, -3: num heads broadcast=1, -2: max length broadcast=1, -1: max length]
+                      int dimHeads,
                       bool cache = false,
                       bool saveAttentionWeights = false) {
     int dimModel = input->shape()[-1];
@@ -323,10 +367,8 @@ public:
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
-    auto heads = opt<int>("transformer-heads");
-
     // multi-head self-attention over previous input
-    output = MultiHead(prefix, dimModel, heads, output, keys, values, mask, cache, saveAttentionWeights);
+    output = MultiHead(prefix, dimModel, dimHeads, output, keys, values, mask, cache, saveAttentionWeights);
     
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
@@ -349,7 +391,7 @@ public:
     decoderLayerState.output = values;
 
     return LayerAttention(prefix, input, values, values, selfMask,
-                          /*cache=*/false);
+                          opt<int>("transformer-heads"), /*cache=*/false);
   }
 
   static inline
@@ -518,6 +560,8 @@ public:
     auto layer     = transposeTimeBatch(batchEmbeddings); // [beam depth=1, batch size, max length, vector dim]
     auto layerMask = transposeTimeBatch(batchMask);       // [beam depth=1, batch size, max length, vector dim=1]
 
+    auto prevLayer = layer; // keep handle to untransformed embeddings, potentially used for a final skip connection
+
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     layer = preProcess(prefix_ + "_emb", opsEmb, layer, dropProb);
@@ -534,10 +578,17 @@ public:
                              layer, // query
                              layer, // keys
                              layer, // values
-                             layerMask); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
+                             layerMask, // [batch size, num heads broadcast=1, max length broadcast=1, max length]
+                             opt<int>("transformer-heads"));
       layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
       checkpoint(layer); // sets a manually specified checkpoint if gradient checkpointing is enabled, does nothing otherwise.
     }
+
+    // this allows to run a final layernorm operation after going through the transformer layer stack.
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
+    auto opsTop = opt<std::string>("transformer-postprocess-top", "");
+    layer = postProcess(prefix_ + "_top", opsTop, layer, prevLayer, dropProb);
 
     // restore organization of batch and time steps. This is currently required
     // to make RNN-based decoders and beam search work with this. We are looking
@@ -602,6 +653,8 @@ private:
         "prefix", prefix_ + "_ff_logit_out",
         "dim", dimTrgVoc,
         "vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_], // for factored outputs
+        "output-omit-bias", opt<bool>("output-omit-bias", false),
+        "output-approx-knn", opt<std::vector<int>>("output-approx-knn", {}),
         "lemma-dim-emb", opt<int>("lemma-dim-emb", 0), // for factored outputs
         "factor-predictor", opt<std::string>("factor-predictor")); // for factored outputs
 
@@ -624,6 +677,7 @@ public:
       int dim = opt<int>("dim-emb");
 
       auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros());
+      start->set_name("decoder_start_state_" + std::to_string(batchIndex_));
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers
@@ -663,6 +717,8 @@ public:
     // reorganize batch and timestep
     auto query = transposeTimeBatch(scaledEmbeddings); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 
+    auto prevQuery = query; // keep handle to untransformed embeddings, potentially used for a final skip connection
+
     auto opsEmb = opt<std::string>("transformer-postprocess-emb");
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
 
@@ -678,6 +734,7 @@ public:
       selfMask = selfMask * decoderMask;
     }
 
+    // gather encoder contexts
     std::vector<Expr> encoderContexts;
     std::vector<Expr> encoderMasks;
     for(auto encoderState : state->getEncoderStates()) {
@@ -744,7 +801,7 @@ public:
 
       checkpoint(query);
 
-      // source-target attention
+      // cross-attention (source-target)
       // Iterate over multiple encoders and simply stack the attention blocks
       if(encoderContexts.size() > 0) {
         for(size_t j = 0; j < encoderContexts.size(); ++j) { // multiple encoders are applied one after another
@@ -770,13 +827,20 @@ public:
             saveAttentionWeights = i == attLayer;
           }
 
-          query = LayerAttention(prefix,
+          if(options_->get<bool>("transformer-pool", false)) {
+            query = LayerPooling(prefix,
                                  query,
-                                 encoderContexts[j], // keys
-                                 encoderContexts[j], // values
-                                 encoderMasks[j],
-                                 /*cache=*/true,
-                                 saveAttentionWeights);
+                                 encoderContexts[j]); // values
+          } else {
+            query = LayerAttention(prefix,
+                                   query,
+                                   encoderContexts[j], // keys
+                                   encoderContexts[j], // values
+                                   encoderMasks[j],
+                                   opt<int>("transformer-heads"),
+                                   /*cache=*/true,
+                                   saveAttentionWeights);
+          }
         }
       }
 
@@ -789,6 +853,12 @@ public:
 
       checkpoint(query);
     }
+
+    // This allows to run a final layernorm operation after going through the transformer layer stack.
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
+    auto opsTop = opt<std::string>("transformer-postprocess-top", "");
+    query = postProcess(prefix_ + "_top", opsTop, query, prevQuery, dropProb);
 
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
 

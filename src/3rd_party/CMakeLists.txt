@@ -5,6 +5,8 @@ add_subdirectory(./yaml-cpp)
 add_subdirectory(./SQLiteCpp)
 add_subdirectory(./pathie-cpp)
 add_subdirectory(./zlib)
+add_subdirectory(./faiss)
+include_directories(./faiss)
 
 if(USE_FBGEMM)
   # @TODO: find out if this is somehow harmful. This is supppressing CMake warnings for CMAKE_SUPPRESS_DEVELOPER_WARNINGS
@@ -19,6 +21,9 @@ if(USE_FBGEMM)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused")
   endif()
 
+  # Do not compile cpuinfo executables due to a linker error, and they are not needed
+  set(CPUINFO_BUILD_TOOLS OFF CACHE BOOL "Build command-line tools")
+
   set(FBGEMM_BUILD_TESTS OFF CACHE BOOL "Disable fbgemm tests")
   set(FBGEMM_BUILD_BENCHMARKS OFF CACHE BOOL "Disable fbgemm benchmark")
   add_subdirectory(./fbgemm)
@@ -30,6 +35,12 @@ if(USE_FBGEMM)
   list(REMOVE_ITEM ASMJIT_COMPILE_OPTIONS -Wall -Wextra)
   set_property(TARGET asmjit PROPERTY COMPILE_OPTIONS ${ASMJIT_COMPILE_OPTIONS})
   message("   ASMJIT COMPILE FLAGS: ${ASMJIT_COMPILE_OPTIONS}")
+
+  if(GENERATE_MARIAN_INSTALL_TARGETS)
+    install(TARGETS fbgemm asmjit cpuinfo clog
+      EXPORT marian-targets
+      DESTINATION fbgemm)
+  endif(GENERATE_MARIAN_INSTALL_TARGETS)
 
 endif(USE_FBGEMM)
 
@@ -43,7 +54,7 @@ if(USE_SENTENCEPIECE)
     endif()
   endif()
 
-  set(SPM_ENABLE_TCMALLOC ON CACHE BOOL "Enable TCMalloc if available." FORCE)
+  set(SPM_ENABLE_TCMALLOC ON CACHE BOOL "Enable TCMalloc if available.")
 
   if(USE_STATIC_LIBS)
     message(WARNING "You are compiling SentencePiece binaries with -DUSE_STATIC_LIBS=on. \
@@ -53,8 +64,8 @@ if(USE_SENTENCEPIECE)
     set(SPM_ENABLE_SHARED OFF CACHE BOOL "Builds shared libaries in addition to static libraries." FORCE)
     set(SPM_TCMALLOC_STATIC ON CACHE BOOL "Link static library of TCMALLOC." FORCE)
   else(USE_STATIC_LIBS)
-    set(SPM_ENABLE_SHARED ON CACHE BOOL "Builds shared libaries in addition to static libraries." FORCE)
-    set(SPM_TCMALLOC_STATIC OFF CACHE BOOL "Link static library of TCMALLOC." FORCE)
+    set(SPM_ENABLE_SHARED ON CACHE BOOL "Builds shared libaries in addition to static libraries.")
+    set(SPM_TCMALLOC_STATIC OFF CACHE BOOL "Link static library of TCMALLOC.")
   endif(USE_STATIC_LIBS)
 
   add_subdirectory(./sentencepiece)
@@ -63,8 +74,15 @@ if(USE_SENTENCEPIECE)
   set_target_properties(spm_encode spm_decode spm_train spm_normalize spm_export_vocab
     PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+  if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0)
+    foreach(t sentencepiece-static sentencepiece_train-static
+        spm_decode spm_encode spm_export_vocab spm_normalize spm_train)
+        set_property(TARGET ${t} APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-class-memaccess")
+    endforeach(t)
+  endif()
+
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    foreach(t sentencepiece sentencepiece_train sentencepiece_train-static
+    foreach(t sentencepiece-static sentencepiece_train-static
         spm_decode spm_encode spm_export_vocab spm_normalize spm_train)
       set_property(TARGET ${t} APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-tautological-compare -Wno-unused")
       if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.0)
@@ -78,6 +96,18 @@ if(USE_SENTENCEPIECE)
   if(USE_STATIC_LIBS)
     set(CMAKE_FIND_LIBRARY_SUFFIXES ${_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
   endif()
+
+  if(GENERATE_MARIAN_INSTALL_TARGETS)
+    if(USE_STATIC_LIBS)
+      install(TARGETS sentencepiece-static sentencepiece_train-static
+        EXPORT marian-targets
+        DESTINATION sentencepiece)
+    else()
+      install(TARGETS sentencepiece sentencepiece_train
+        EXPORT marian-targets
+        DESTINATION sentencepiece)
+    endif()
+  endif(GENERATE_MARIAN_INSTALL_TARGETS)
 endif(USE_SENTENCEPIECE)
 
 include_directories(./SQLiteCpp/include)
@@ -97,8 +127,6 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
     " -fPIC -Wno-unused-value")
 endif()
-
-
 
 include_directories(./zlib)
 
@@ -123,6 +151,12 @@ if(CUDA_FOUND)
     if(COMPILE_CUDA_SM70)
       set(GENCODE "${GENCODE} -gencode=arch=compute_70,code=sm_70")
     endif(COMPILE_CUDA_SM70)
+    if(COMPILE_CUDA_SM75)
+      set(GENCODE "${GENCODE} -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75")
+    endif(COMPILE_CUDA_SM75)
+    if(COMPILE_CUDA_SM80)
+      set(GENCODE "${GENCODE} -gencode=arch=compute_80,code=sm_80; -gencode=arch=compute_80,code=compute_80")
+    endif(COMPILE_CUDA_SM80)
 
     # install nccl in ${CMAKE_BINARY_DIR}/local similar to /usr/local linux installation
     ExternalProject_Add(nccl_install
@@ -130,7 +164,7 @@ if(CUDA_FOUND)
       BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nccl
       CONFIGURE_COMMAND ""
       BUILD_COMMAND
-        $(MAKE) -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build
+        ${CMAKE_MAKE_PROGRAM} -f ${CMAKE_CURRENT_SOURCE_DIR}/nccl/Makefile src.build
         BUILDDIR=${CMAKE_BINARY_DIR}/local CUDA_HOME=${CUDA_TOOLKIT_ROOT_DIR}
         CUDA8_GENCODE=${GENCODE} CXX=${CMAKE_CXX_COMPILER}
       INSTALL_COMMAND "")

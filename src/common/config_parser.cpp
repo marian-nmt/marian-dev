@@ -91,6 +91,9 @@ ConfigParser::ConfigParser(cli::mode mode)
     case cli::mode::scoring:
       addOptionsScoring(cli_);
       break;
+    case cli::mode::embedding:
+      addOptionsEmbedding(cli_);
+      break;
     default:
       ABORT("wrong CLI mode");
       break;
@@ -140,6 +143,15 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<std::string>("--dump-config",
     "Dump current (modified) configuration to stdout and exit. Possible values: full, minimal, expand")
     ->implicit_val("full");
+  if(mode_ == cli::mode::training) {
+    // --sigterm is deliberately not a boolean, to allow for a consistent
+    // pattern of specifying custom signal handling in the future.
+    // (e.g., dump model but continue training upon SIGUSR1, or report current
+    // training status upon SIGINFO.)
+    cli.add<std::string>("--sigterm",
+      "What to do with SIGTERM: save-and-exit or exit-immediately.",
+      "save-and-exit");
+  }
   // clang-format on
 }
 
@@ -226,7 +238,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Train right-to-left model");
   cli.add<std::vector<std::string>>("--input-types",
       "Provide type of input data if different than 'sequence'. "
-      "Possible values: sequence, class. You need to provide one type per input.",
+      "Possible values: sequence, class, alignment, weight. "
+      "You need to provide one type per input file (if --train-sets) or per TSV field (if --tsv).",
       {});
   cli.add<bool>("--best-deep",
       "Use Edinburgh deep RNN configuration (s2s)");
@@ -236,13 +249,17 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Tie source and target embeddings");
   cli.add<bool>("--tied-embeddings-all",
       "Tie all embedding layers and output layer");
-
+  cli.add<bool>("--output-omit-bias",
+      "Do not use a bias vector in decoder output layer");
+  
   // Transformer options
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
       8);
   cli.add<bool>("--transformer-no-projection",
       "Omit linear projection after multi-head attention (transformer)");
+  cli.add<bool>("--transformer-pool",
+      "Pool encoder states instead of using cross attention (selects first encoder state, best used with special token)");
   cli.add<int>("--transformer-dim-ffn",
       "Size of position-wise feed-forward network (transformer)",
       2048);
@@ -279,6 +296,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<std::string>("--transformer-postprocess",
       "Operation after each transformer layer: d = dropout, a = add, n = normalize",
       "dan");
+  cli.add<std::string>("--transformer-postprocess-top",
+      "Final operation after a full transformer stack: d = dropout, a = add, n = normalize. The optional skip connection with 'a' by-passes the entire stack.",
+      "");
   cli.add<bool>("--transformer-train-position-embeddings",
       "Train positional embeddings instead of using static sinusoidal embeddings");
   cli.add<bool>("--transformer-depth-scaling",
@@ -470,7 +490,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Auto-adjusted to --mini-batch-words-ref if given.",
      0.f)->implicit_val("1e-4");
   cli.add<std::string>("--guided-alignment",
-     "Path to a file with word alignments. Use guided alignment to guide attention or 'none'",
+     "Path to a file with word alignments. Use guided alignment to guide attention or 'none'. "
+     "If --tsv it specifies the index of a TSV field that contains the alignments (0-based)",
      "none");
   cli.add<std::string>("--guided-alignment-cost",
      "Cost type for guided alignment: ce (cross-entropy), mse (mean square error), mult (multiplication)",
@@ -479,7 +500,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Weight for guided alignment cost",
      0.1);
   cli.add<std::string>("--data-weighting",
-     "Path to a file with sentence or word weights");
+     "Path to a file with sentence or word weights. "
+     "If --tsv it specifies the index of a TSV field that contains the weights (0-based)");
   cli.add<std::string>("--data-weighting-type",
      "Processing level for data weighting: sentence, word",
      "sentence");
@@ -561,7 +583,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<bool>("--n-best",
       "Generate n-best list");
   cli.add<bool>("--word-scores",
-      "Print word-level scores");
+      "Print word-level scores. One score per subword unit, not normalized even if --normalize");
 
   // efficiency options
   cli.add<int>("--valid-mini-batch",
@@ -626,7 +648,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      "Return word alignment. Possible values: 0.0-1.0, hard, soft")
     ->implicit_val("1");
   cli.add<bool>("--word-scores",
-      "Print word-level scores");
+      "Print word-level scores. One score per subword unit, not normalized even if --normalize");
 #ifdef USE_SENTENCEPIECE
   cli.add<bool>("--no-spm-decode",
       "Keep the output segmented into SentencePiece subwords");
@@ -654,6 +676,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--output-sampling",
      "Noise output layer with gumbel noise",
       false);
+  cli.add<std::vector<int>>("--output-approx-knn",
+     "Use approximate knn search in output layer (currently only in transformer)")
+     ->implicit_val("100 1024");
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
@@ -692,6 +717,47 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   cli.add<std::string>("--alignment",
      "Return word alignments. Possible values: 0.0-1.0, hard, soft")
      ->implicit_val("1"),
+  cli.add<bool>("--word-scores",
+      "Print word-level scores. One score per subword unit, not normalized even if --normalize");
+
+  addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
+  addSuboptionsDevices(cli);
+  addSuboptionsBatching(cli);
+
+  cli.add<bool>("--optimize",
+      "Optimize speed aggressively sacrificing memory or precision");
+  cli.add<bool>("--fp16",
+      "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision for inference, set parameter type in expression graph",
+      {"float32"});
+
+  cli.switchGroup(previous_group);
+  // clang-format on
+}
+
+void ConfigParser::addOptionsEmbedding(cli::CLIWrapper& cli) {
+  auto previous_group = cli.switchGroup("Scorer options");
+
+  // clang-format off
+  cli.add<bool>("--no-reload",
+      "Do not load existing model specified in --model arg");
+  // TODO: move options like vocabs and train-sets to a separate procedure as they are defined twice
+  cli.add<std::vector<std::string>>("--train-sets,-t",
+      "Paths to corpora to be scored: source target");
+  cli.add<std::string>("--output,-o",
+      "Path to output file, stdout by default",
+      "stdout");
+  cli.add<std::vector<std::string>>("--vocabs,-v",
+      "Paths to vocabulary files have to correspond to --train-sets. "
+      "If this parameter is not supplied we look for vocabulary files source.{yml,json} and target.{yml,json}. "
+      "If these files do not exists they are created");
+
+  cli.add<bool>("--compute-similarity",
+      "Expect two inputs and compute cosine similarity instead of outputting embedding vector");
+  cli.add<bool>("--binary",
+      "Output vectors as binary floats");
 
   addSuboptionsInputLength(cli);
   addSuboptionsTSV(cli);
@@ -807,7 +873,7 @@ void ConfigParser::addSuboptionsTSV(cli::CLIWrapper& cli) {
   cli.add<bool>("--tsv",
       "Tab-separated input");
   cli.add<size_t>("--tsv-fields",
-      "Number of fields in the TSV input, guessed based on the model type");
+      "Number of fields in the TSV input. By default, it is guessed based on the model type");
   // clang-format on
 }
 
@@ -907,6 +973,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   // remove extra config files from the config to avoid redundancy
   config_.remove("config");
 
+  // dump config and exit
   if(!get<std::string>("dump-config").empty() && get<std::string>("dump-config") != "false") {
     auto dumpMode = get<std::string>("dump-config");
     config_.remove("dump-config");
@@ -918,6 +985,43 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
     bool minimal = (dumpMode == "minimal" || dumpMode == "expand");
     std::cout << cli_.dumpConfig(minimal) << std::endl;
     exit(0);
+  }
+
+  // For TSV input, it is possible to use --input-types to determine fields that contain alignments
+  // or weights. In such case, the position of 'alignment' input type in --input-types determines
+  // the index of a TSV field that contains word alignments, and respectively, the position of
+  // 'weight' in --input-types determines the index of a TSV field that contains weights.
+  // Marian will abort if both the --guided-alignment and 'alignment' in --input-types are specified
+  // (or --data-weighting and 'weight').
+  //
+  // Note: this may modify the config, so it is safer to do it after --dump-config.
+  if(mode_ == cli::mode::training || get<bool>("tsv")) {
+    auto inputTypes = get<std::vector<std::string>>("input-types");
+    if(!inputTypes.empty()) {
+      bool seenAligns = false;
+      bool seenWeight = false;
+      YAML::Node config;
+      for(size_t i = 0; i < inputTypes.size(); ++i) {
+        if(inputTypes[i] == "alignment") {
+          ABORT_IF(seenAligns, "You can specify 'alignment' only once in input-types");
+          ABORT_IF(has("guided-alignment") && get<std::string>("guided-alignment") != "none",
+                   "You must use either guided-alignment or 'alignment' in input-types");
+          config["guided-alignment"] = std::to_string(i);
+          seenAligns = true;
+        }
+        if(inputTypes[i] == "weight") {
+          ABORT_IF(seenWeight, "You can specify 'weight' only once in input-types");
+          ABORT_IF(has("data-weighting") && !get<std::string>("data-weighting").empty(),
+                   "You must use either data-weighting or 'weight' in input-types");
+          config["data-weighting"] = std::to_string(i);
+          seenWeight = true;
+        }
+      }
+      if(!config.IsNull())
+        cli_.updateConfig(config,
+                          cli::OptionPriority::CommandLine,
+                          "Extracting 'alignment' and 'weight' types from input-types failed.");
+    }
   }
 
   cli_.parseAliases();

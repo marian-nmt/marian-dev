@@ -10,6 +10,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-override"
 #endif
+#undef HOST
+#define OMPI_SKIP_MPICXX 1 // Fixes compilation with GCC8+ https://github.com/open-mpi/ompi/issues/5157
 #include "mpi.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

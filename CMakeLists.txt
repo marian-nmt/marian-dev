@@ -427,6 +427,7 @@ endif(USE_MPI)
 ###############################################################################
 # Find MKL
 if(COMPILE_CPU)
+  set(EXT_LIBS ${EXT_LIBS} intgemm)
   if(USE_MKL)
     find_package(MKL)
   endif(USE_MKL)

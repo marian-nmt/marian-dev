@@ -44,7 +44,6 @@ set(MARIAN_SOURCES
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
   
-  3rd_party/intgemm/intgemm.cc
   3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
   3rd_party/phf/phf.cc

@@ -16,6 +16,7 @@ private:
   std::vector<Ptr<ValidatorBase>> validators_;
 
   bool first_{true};        // true if this is the first update after renewing the training
+  SchedulingParameter logicalEpoch_;
 
   timer::Timer timer_;
   timer::Timer heartBeatTimer_;
@@ -24,6 +25,27 @@ private:
   // (regardless if it's the 1st or nth epoch and if it's a new or continued training),
   // which indicates the end of the training data stream from STDIN
   bool endOfStdin_{false};  // true at the end of the epoch if training from STDIN;
+
+  // Here we calculate the logical epoch as defined by the user, by default this will just a traditional data epoch.
+  // We understand a data epoch as a complete pass throught the training data as far as that information is available.
+  float calculateLogicalEpoch() {
+    if(logicalEpoch_.unit == SchedulingUnit::epochs)
+      return (float)state_->epochs / (float)logicalEpoch_.n;      // epoch as multiple of n data epochs
+    else if(logicalEpoch_.unit == SchedulingUnit::trgLabels)
+      return (float)state_->labelsTotal / (float)logicalEpoch_.n; // epoch as multiple of n labels
+    else if(logicalEpoch_.unit == SchedulingUnit::updates)
+      return (float)state_->batches / (float)logicalEpoch_.n;     // epoch as multiple of n gradient updates (not actually batches @TODO: change name)
+    else
+      ABORT("Unknown SchedulingUnit??");
+  }
+
+  // Formatting for logical epochs
+  std::string formatLogicalEpoch() {
+    if(logicalEpoch_.unit == SchedulingUnit::epochs && logicalEpoch_.n == 1)
+      return fmt::format("{}", calculateLogicalEpoch());     // for a data epoch, output looks like before this feature
+    else
+      return fmt::format("{:.4f}", calculateLogicalEpoch()); // all other outputs can be fractional, hence floating point format
+  }
 
   // determine scheduled LR decay factor (--lr-decay-inv-sqrt option)
   float getScheduledLRDecayFactor(const TrainingState& state) const {
@@ -149,7 +171,8 @@ public:
   }
 
   Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
-      : options_(options), state_(state) {
+      : options_(options), state_(state), 
+        logicalEpoch_(SchedulingParameter::parse(options->get<std::string>("logical-epoch", "1e"))) {
     ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
     updateLearningRate(*state);
   }
@@ -161,7 +184,7 @@ public:
 #if 1  // @TODO: to be removed once we deprecate after-epochs and after-batches   
     // stop if it reached the maximum number of epochs
     size_t stopAfterEpochs = options_->get<size_t>("after-epochs");
-    if(stopAfterEpochs > 0 && state_->epochs > stopAfterEpochs)
+    if(stopAfterEpochs > 0 && calculateLogicalEpoch() > stopAfterEpochs)
       return false;
 
     // stop if it reached the maximum number of batch updates
@@ -176,9 +199,9 @@ public:
     for(auto stoppingCriterionString : stoppingCriteria) {
       SchedulingParameter stoppingCriterion = SchedulingParameter::parse(stoppingCriterionString);
       if(stoppingCriterion.n > 0) { // is any stopping criterion defined?
-        if(stoppingCriterion.unit == SchedulingUnit::epochs    && state_->epochs      >  stoppingCriterion.n) return false;
-        if(stoppingCriterion.unit == SchedulingUnit::updates   && state_->batches     >= stoppingCriterion.n) return false;
-        if(stoppingCriterion.unit == SchedulingUnit::trgLabels && state_->labelsTotal >= stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::epochs    && calculateLogicalEpoch() >  stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::updates   && state_->batches         >= stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::trgLabels && state_->labelsTotal     >= stoppingCriterion.n) return false;
       }
     }
 
@@ -198,7 +221,10 @@ public:
   void increaseEpoch() {
     LOG(info, "Seen {} samples", state_->samplesEpoch);
     state_->newEpoch();
-    LOG(info, "Starting epoch {}", state_->epochs);
+    if(std::to_string(logicalEpoch_) == "1e")
+      LOG(info, "Starting epoch {}", state_->epochs);
+    else
+      LOG(info, "Starting data epoch {} in logical epoch {}", state_->epochs, formatLogicalEpoch());
   }
 
   void started() { LOG(info, "Training started"); }
@@ -251,15 +277,15 @@ public:
       if(validator->stalled() > 0) {
         LOG_VALID(info,
                   "Ep. {} : Up. {} : {} : {} : stalled {} times (last best: {})",
-                  state_->epochs,
+                  formatLogicalEpoch(),
                   state_->batches,
                   validator->type(),
                   value,
                   validator->stalled(), validator->lastBest());
       } else {
         LOG_VALID(info,
-                  "Ep. {} : Up. {} : {} : {} : new best",
-                  state_->epochs,
+                  "Ep. {:.2f} : Up. {} : {} : {} : new best",
+                  formatLogicalEpoch(),
                   state_->batches,
                   validator->type(),
                   value);
@@ -341,7 +367,7 @@ public:
       } else if(options_->get<bool>("lr-report")) {
         LOG(info,
             "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
-            state_->epochs,
+            formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
@@ -351,7 +377,7 @@ public:
       } else {
         LOG(info,
             "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s",
-            state_->epochs,
+            formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
@@ -375,7 +401,7 @@ public:
     if((!mpi || mpi->myMPIRank() == 0) && getenv("PHILLY_JOB_ID")
        && heartBeatTimer_.elapsed<std::chrono::minutes>() >= 10) {
       printf("PROGRESS: %.2f%%\nEVALERR: %.7f%%\n",
-          (double)state_->epochs,
+          (double)calculateLogicalEpoch(),
           state_->costSum / (state_->costCount ? state_->costCount : 1) / (mpi ? mpi->numMPIProcesses() : 1));
       fflush(stdout);
       std::cout << "MBSIZE: " << batchLabels << " after " << state_->batches << " updates = " << state_->labelsTotal << " labels" << std::endl << std::flush;

@@ -261,7 +261,7 @@ public:
         indexSet.insert(it.first);
     }
     //TODO better solution here? This could potentially be very slow
-    WordIndex i = firstNum_;
+    WordIndex i = (WordIndex)firstNum_;
     while (indexSet.size() % 8 != 0) {
       indexSet.insert(i);
       i++;

@@ -173,7 +173,8 @@ struct QuantMultNodeOp : public UnaryNodeOp {
       set_name(input->name() + "_QuantMultB");
     }
   }
-
+#pragma warning(push)
+#pragma warning(disable: 4127) //VSCODE thinks line 222 is constant conditional expression, which it is only after the template resolution, not before.
   NodeOps forwardOps() override {
     return {NodeOp(
       if (vtype == Type::int16) {
@@ -194,7 +195,7 @@ struct QuantMultNodeOp : public UnaryNodeOp {
       }
     )};
   }
-
+#pragma warning(pop)
   NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp(0)};

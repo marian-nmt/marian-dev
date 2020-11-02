@@ -32,8 +32,6 @@ public:
 
 protected:
   void quantizeImpl(Tensor t);
-  //static void fixedPointQuantization(Tensor data, Tensor res, int numCenters, float S);
-  //static void logQuantization(Tensor data, Tensor res, int numCenters, float S, float base = 2.0f); 
 
   size_t bits_;
   size_t optSteps_;

@@ -398,8 +398,8 @@ public:
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
             timer_.elapsed(),
-            state_->gradientNormAvg,
             state_->wordsDisp / timer_.elapsed(),
+            state_->gradientNormAvg,
             state_->eta);
       } else {
         LOG(info,
@@ -407,10 +407,10 @@ public:
             formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
-            formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
+            formatLoss(lossType, dispLabelCounts, batchLabels, state_), 
             timer_.elapsed(),
-            state_->wordsDisp / timer_.elapsed()),
-            state_->gradientNormAvg;
+            state_->wordsDisp / timer_.elapsed(),
+            state_->gradientNormAvg);
       }
 
       timer_.start();

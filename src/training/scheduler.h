@@ -284,7 +284,7 @@ public:
                   validator->stalled(), validator->lastBest());
       } else {
         LOG_VALID(info,
-                  "Ep. {:.2f} : Up. {} : {} : {} : new best",
+                  "Ep. {} : Up. {} : {} : {} : new best",
                   formatLogicalEpoch(),
                   state_->batches,
                   validator->type(),

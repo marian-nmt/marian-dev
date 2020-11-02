@@ -458,7 +458,7 @@ public:
 };
 
 template<Type vtype>
-static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool shiftedBias=false) {
+static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float /* clipValue currently unused */ = 0.0f, bool shiftedBias=false) {
   Type bElementType = b->value_type();
   Expr aQuantMult = nullptr;
   static bool precomputedAlphas = b->graph()->getBackend()->isPrecomputedAlpha();

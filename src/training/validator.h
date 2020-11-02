@@ -219,7 +219,8 @@ protected:
   }
 };
 
-// validator that translates and computes BLEU internally, with or without decoding
+// validator that translates and computes BLEU/ChrF internally, with or without decoding
+// Aims to follow SacreBLEU as close as possible.
 // @TODO: combine with TranslationValidator (above) to avoid code duplication
 class SacreBleuValidator : public Validator<data::Corpus, models::IModel> {
 public:
@@ -229,10 +230,7 @@ public:
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                          Ptr<const TrainingState> state) override;
 
-  // @TODO: why do we return this string, but not pass it to the constructor?
-  std::string type() override { 
-    return metric_;
-  }
+  std::string type() override { return metric_; }
 
 protected:
   // Tokenizer function adapted from multi-bleu-detok.pl, corresponds to sacreBLEU.py
@@ -324,19 +322,19 @@ protected:
       size_t order = ngramcount.first.size() - 1;
       size_t tc  = ngramcount.second;
       size_t rc  = rgrams[ngramcount.first];
-      stats[3 * order + 0] += std::min<size_t>(tc, rc); // count common ngrams (for BLEU and ChrF)
-      stats[3 * order + 1] += tc;                       // count hypotheses ngrams (for BLEU and ChrF)
+      stats[statsPerOrder * order + 0] += std::min<size_t>(tc, rc); // count common ngrams (for BLEU and ChrF)
+      stats[statsPerOrder * order + 1] += tc;                       // count hypotheses ngrams (for BLEU and ChrF)
     }
 
     if(computeChrF_) {
       for(auto& ngramcount : rgrams) {
         size_t order = ngramcount.first.size() - 1;
         size_t rc  = ngramcount.second;
-        stats[3 * order + 2] += rc; // count reference ngrams (for ChrF)
+        stats[statsPerOrder * order + 2] += rc; // count reference ngrams (for ChrF)
       }
     }
 
-    stats[3 * order_] += ref.size(); // reference length for BLEU (technically same as stats[2], but let's keep it separate)
+    stats[statsPerOrder * order_] += ref.size(); // reference length for BLEU (technically same as stats[2], but let's keep it separate)
   }
 
   // Extract matching target reference from batch and pass on to update BLEU stats
@@ -353,11 +351,12 @@ protected:
   }
 
 private:
-  const std::string metric_;  // allowed values are: bleu, bleu-detok (same as bleu where applicable), bleu-segmented, chrf
-  bool computeChrF_{ false }; // compute BLEU by default
+  const std::string metric_;  // allowed values are: bleu, bleu-detok (same as bleu), bleu-segmented, chrf
+  bool computeChrF_{ false }; // should we compute ChrF instead of BLEU (BLEU by default)?
   
-  size_t order_{ 4 };         // 4-grams for BLEU by default
-  bool useWordIds_{ false };
+  size_t order_{ 4 };                      // 4-grams for BLEU by default
+  static const size_t statsPerOrder = 3;   // 0: common ngrams, 1: candidate ngrams, 2: reference ngrams
+  bool useWordIds_{ false };               // compute BLEU score by matching numeric segment ids
   bool quiet_{ false };
 };
 

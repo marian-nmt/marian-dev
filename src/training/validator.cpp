@@ -488,7 +488,7 @@ float SacreBleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& grap
   // 0: 1-grams matched, 1: 1-grams cand total, 2: 1-grams ref total (used in ChrF)
   // ...,
   // n: reference length (used in BLEU)
-  std::vector<float> stats(order_ * 3 + 1, 0.f);
+  std::vector<float> stats(statsPerOrder * order_ + 1, 0.f);
 
   timer::Timer timer;
   {
@@ -625,8 +625,8 @@ void SacreBleuValidator::updateStats(std::vector<float>& stats,
 float SacreBleuValidator::calcBLEU(const std::vector<float>& stats) {
   float logbleu = 0;
   for(int i = 0; i < order_; ++i) {
-    float commonNgrams     = stats[3 * i + 0];
-    float hypothesesNgrams = stats[3 * i + 1];
+    float commonNgrams     = stats[statsPerOrder * i + 0];
+    float hypothesesNgrams = stats[statsPerOrder * i + 1];
     
     if(commonNgrams == 0.f)
       return 0.f;
@@ -635,7 +635,9 @@ float SacreBleuValidator::calcBLEU(const std::vector<float>& stats) {
 
   logbleu /= order_;
 
-  float brev_penalty = 1.f - std::max(stats[order_ * 3] / stats[1], 1.f);
+  float refLen = stats[statsPerOrder * order_];
+  float hypUnigrams = stats[1];
+  float brev_penalty = 1.f - std::max(refLen / hypUnigrams, 1.f);
   return std::exp(logbleu + brev_penalty) * 100.f;
 }
 
@@ -648,9 +650,9 @@ float SacreBleuValidator::calcChrF(const std::vector<float>& stats) {
   size_t effectiveOrder = 0;
 
   for(size_t i = 0; i < order_; ++i) {
-    float commonNgrams     = stats[3 * i + 0];
-    float hypothesesNgrams = stats[3 * i + 1];
-    float referencesNgrams = stats[3 * i + 2];
+    float commonNgrams     = stats[statsPerOrder * i + 0];
+    float hypothesesNgrams = stats[statsPerOrder * i + 1];
+    float referencesNgrams = stats[statsPerOrder * i + 2];
     
     if(hypothesesNgrams > 0 && referencesNgrams > 0) {
         avgPrecision += commonNgrams / hypothesesNgrams;

@@ -27,23 +27,25 @@ private:
   // which indicates the end of the training data stream from STDIN
   bool endOfStdin_{false};  // true at the end of the epoch if training from STDIN;
 
-  // Here we calculate the logical epoch as defined by the user, by default this will just a traditional data epoch.
+  // Here we calculate the logical epoch as defined by the user, by default this will be just a traditional data epoch.
   // We understand a data epoch as a complete pass throught the training data as far as that information is available.
+  // By contrast, a logical epoch is defined somewhat indepdently of the number of data passes as by the number of seen updates or labels
+  // or as a multitude of data epochs.
   float calculateLogicalEpoch() {
     if(logicalEpoch_.unit == SchedulingUnit::epochs)
-      return (float)state_->epochs / (float)logicalEpoch_.n;      // epoch as multiple of n data epochs
+      return (float)state_->epochs / (float)logicalEpoch_.n;      // logical epoch as multiple of n data epochs
     else if(logicalEpoch_.unit == SchedulingUnit::trgLabels)
-      return (float)state_->labelsTotal / (float)logicalEpoch_.n; // epoch as multiple of n labels
+      return (float)state_->labelsTotal / (float)logicalEpoch_.n; // logical epoch as multiple of n labels
     else if(logicalEpoch_.unit == SchedulingUnit::updates)
-      return (float)state_->batches / (float)logicalEpoch_.n;     // epoch as multiple of n gradient updates (not actually batches @TODO: change name)
+      return (float)state_->batches / (float)logicalEpoch_.n;     // logical epoch as multiple of n gradient updates (not actually batches @TODO: change name)
     else
-      ABORT("Unknown SchedulingUnit??");
+      ABORT("Unknown scheduling unit occurred in logical epoch"); // shouldn't really happen unless we add a new unit in the corresponding enum
   }
 
   // Formatting for logical epochs
   std::string formatLogicalEpoch() {
     if(logicalEpoch_.unit == SchedulingUnit::epochs && logicalEpoch_.n == 1)
-      return fmt::format("{}", calculateLogicalEpoch());     // for a data epoch, output looks like before this feature
+      return fmt::format("{}", calculateLogicalEpoch());     // for a data epoch, output is an integer and looks like before this feature was introduced
     else
       return fmt::format("{:.4f}", calculateLogicalEpoch()); // all other outputs can be fractional, hence floating point format
   }

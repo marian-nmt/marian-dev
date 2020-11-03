@@ -3,6 +3,7 @@
  *   SPDX-License-Identifier: MIT
  */
 
+#include "graph/node_initializers.h"
 #include "marian.h"
 
 #include "layers/generic.h"
@@ -514,12 +515,18 @@ namespace marian {
     }
 
     E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
+    if(E_->value_type() == Type::float16 && graph->isInference()) {
+      // During inference, we keep the embedding matrix as fp32 since csr_dot does not support fp16.
+      E_fp32_ = graph->constant(E_->shape(), inits::fromTensor(E_->val()), Type::float32);
+      E_fp32_->setMemoize(true);
+    }
   }
 
   // helper to embed a sequence of words (given as indices) via factored embeddings
   /*private*/ Expr Embedding::multiRows(const Words& data, float dropProb) const
   {
     auto graph = E_->graph();
+    Expr embedding = E_fp32_? E_fp32_ : E_; // Always uses a fp32 embedding matrix
     auto factoredData = factoredVocab_->csr_rows(data);
     // multi-hot factor vectors are represented as a sparse CSR matrix
     // [row index = word position index] -> set of factor indices for word at this position
@@ -532,7 +539,8 @@ namespace marian {
     // We apply it to the weights, i.e. factors get dropped out separately, but always as entire vectors.
     weights = dropout(weights, dropProb);
     // perform the product
-    return csr_dot(factoredData.shape, weights, indices, offsets, E_);
+    Expr wordEmb = csr_dot(factoredData.shape, weights, indices, offsets, embedding);
+    return E_fp32_? cast(wordEmb, Type::float16) : wordEmb;
   }
 
   std::tuple<Expr/*embeddings*/, Expr/*mask*/> Embedding::apply(Ptr<data::SubBatch> subBatch) const /*override final*/ {

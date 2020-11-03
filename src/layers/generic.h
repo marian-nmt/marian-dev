@@ -306,6 +306,7 @@ public:
 // EncoderDecoderLayerBase, which knows to pass on all required parameters from options.
 class Embedding : public LayerBase, public IEmbeddingLayer {
   Expr E_;
+  Expr E_fp32_; // Keep this around so that multi-row can work with fp16 params
   Ptr<FactoredVocab> factoredVocab_;
   Expr multiRows(const Words& data, float dropProb) const;
 public:

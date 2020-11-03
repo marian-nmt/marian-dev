@@ -1,7 +1,7 @@
 Triton-AML
 ======
 
-*Triton-AML* is a Triton custom backend running with Marian in the AzureML Inference Environment, it's one of implementation of [Triton Backend Shared Library](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/backend.html#backend-shared-library).
+*Triton-AML* is a Triton custom backend running with Marian in the AzureML Inference Environment, it's one of the implementation of [Triton Backend Shared Library](https://docs.nvidia.com/deeplearning/triton-inference-server/user-guide/docs/backend.html#backend-shared-library).
 
 This backend is compiled with the static library of Marian on a specific version.
 
@@ -12,7 +12,7 @@ Layout:
 - Dockerfile: Used for compiling the backend with the static library of Marian
 - build.sh: A simple shell script to run the Dockerfile to get the generated libtriton_marian.so
 
-## Usage:
+## Usage
 
 Run `./build.sh` to get the Triton Marian backend shared library.
 
@@ -27,10 +27,10 @@ For the AzureML Inference team members, you can put it into the following place 
 
 Where <backend_directory> is by default /opt/tritonserver/backends.
 
-## Make changes:
+## Make changes
 
 If you want to compile with another version of Marian, you need to replace `RUN git checkout youki/quantize-embedding` in the Dockerfile, then copy the new CMakeLists.txt replace the old one, add src/cmarian.cpp into CMakeLists.txt and make some changes to make sure it will build a static library of Marian.
 
-## Limitation:
+## Limitation
 
 For now, it's only used for *nlxseq2seq* model, some hard code is in the `ModelState::SetMarianConfigPath` function, some changes must be done if you want to run other models with Marian.

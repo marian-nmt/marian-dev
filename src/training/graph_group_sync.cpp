@@ -56,6 +56,14 @@ void SyncGraphGroup::initialize(const Ptr<data::Batch>& exampleBatch) {
       graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
     return true; // dummy success
   });
+  
+  // initialize model quantization
+  if (options_->get<size_t>("quantize-bits") > 0) {
+    for (int idx = 0; idx < graphs_.size(); idx++)
+      quantizers_.push_back(New<ModelQuantizer>(options_));
+    
+    comm_->foreach([&](size_t idx, size_t /*begin*/, size_t /*end*/) { quantizers_[idx]->quantize(graphs_[idx]); return true; });
+  }
 
   // We compute the readerMultiplier in collectStats(...) and the updateMultiplier_ here
   // as collectStats maybe called for a different instance of this object and fields would not
@@ -351,6 +359,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       gradNorm /= updateTrgWords; // normalize for logging
 
     comm_->allGatherParams(); // distribute param value shards back
+
+    // Re-add the error residual from previous quantization,
+    // then re-quantize the model back and update the error residual
+    if (options_->get<size_t>("quantize-bits") > 0)
+      comm_->foreach([&](size_t idx, size_t /*begin*/, size_t /*end*/) { quantizers_[idx]->quantize(graphs_[idx]); return true; });
+
   } else {
     LOG(debug, "Seen NaN in gradient, skipping update, resetting gradient");
 

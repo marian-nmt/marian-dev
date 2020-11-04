@@ -1,5 +1,6 @@
 #pragma once
 
+#include "optimizers/quantizer.h"
 #include "training/graph_group.h"
 #include "training/communicator.h"
 
@@ -15,6 +16,9 @@ class SyncGraphGroup : public GraphGroup {
   // @TODO: instead, create an array of ExponentialSmoothing objects, and don't use ExponentialSmoothing as a base class
   std::vector<Ptr<TensorAllocator>> paramsAllocs_; // [deviceIndex] we must hold a reference to the memory until this class dies
 
+  // model quantizer
+  std::vector<Ptr<ModelQuantizer>> quantizers_;
+  
   // state for update()
   bool first_{ true };                           // gets interpreted and cleared by update()
   std::vector<Ptr<data::Batch>> pendingBatches_; // in case of dynamic MB-size scaling, we temporarly buffer up batches across update() calls until enough

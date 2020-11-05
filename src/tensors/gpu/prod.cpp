@@ -387,6 +387,7 @@ static cusparseSgemmiEx(cusparseHandle_t handle, int m,
 }
 
 // Computes C = A x B for row-major matrices where C is dense, A is sparse and B is dense
+#if CUDA_VERSION >= 11000
 cusparseStatus_t static cusparseSpMMTyped(cusparseHandle_t handle,
                                           Ptr<Allocator> allocator,
                                           bool transA, bool transB,
@@ -432,6 +433,7 @@ cusparseStatus_t static cusparseSpMMTyped(cusparseHandle_t handle,
 
   return status;
 }
+#endif
 
 // @TODO: make this work with fp16
 

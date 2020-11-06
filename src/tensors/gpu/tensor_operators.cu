@@ -23,6 +23,13 @@ __device__ __forceinline__ half max(const half a, const half b) {
 }
 #endif
 
+
+#if CUDA_VERSION >= 11000
+#include <cub/cub.cuh>
+#else
+#include "cub/cub/cub.cuh"
+#endif
+
 namespace marian {
 
 namespace gpu {
@@ -3125,37 +3132,6 @@ void AddBiasSkipAndLayerNormalization(Tensor out,
   }
 }
 
-// Finds max within warp. Assumes val in non-participating warps set to T::min()
-// or a valid non-garbage value
-template<typename T>
-__device__ __forceinline__ T dWarpReduceMax(T val) {
-  constexpr unsigned fullMask = 0xffffffff;
-  #pragma unroll
-  for (int offset = (warpSize / 2); offset > 0; offset /= 2) {
-    val = max(val, __shfl_down_sync(fullMask, val, offset));
-  }
-  return val;
-}
-
-// Elts to reduce must be <= blockDim.x. Needed since factorDims can be varied lengths. 
-template<typename T>
-__device__ __forceinline__ void dBlockReduceMax(T val, int eltsToReduce, volatile T* shared, volatile T* writeLoc) {
-  const int lane = threadIdx.x % warpSize;
-  const int wid = threadIdx.x / warpSize;
-  const int warpsNeeded = (eltsToReduce + warpSize - 1) / warpSize;
-
-  if (wid < warpsNeeded) val = dWarpReduceMax(val);
-  if (lane==0) shared[wid]=val; 
-  __syncthreads(); // Needed to ensure all threads write to shared before reading.       
-
-  //read from shared memory lane only if that warp existed. Otherwise just get first lane.
-  val = (threadIdx.x < warpsNeeded) ? shared[lane] : shared[0];
-  if(wid==0) {
-    T temp = dWarpReduceMax(val);
-    if(lane == 0) writeLoc[0] = temp;
-  }
-}
-
 template <typename T>
 struct ptrInnerDimPair {
   T* ptr;
@@ -3170,28 +3146,46 @@ __global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup,
   extern __shared__ uint8_t _sharedBytes[];
   T* sel = (T*)_sharedBytes;
   T* factorMaximasInBlock = sel + blockDim.x;  
-  T shared[32];
-  
-  // First, each block computes the max across the row for each group and stores in in factorMaximasInBlock[g]
-  for(int g = 1; g < (int)numGroups; ++g) {
-    T* groupLosses = lossAndLastDimSize[g].ptr;
-    int groupLossesInnerDim = lossAndLastDimSize[g].innerDim;
+  typedef cub::WarpReduce<T> WarpReduce;
+  __shared__ typename WarpReduce::TempStorage temp_storage[32]; // Max thread size (1024) divided by warp size (32)
+
+
+  // We exploit the fact that the factor groups (except for the lemmas) tends to be small. Therefore, we perform
+  // all of the reductions across factor groups in parallel by splitting the work across warps.
+  const int lane = threadIdx.x % warpSize;
+  const int wid = threadIdx.x / warpSize;
+  const int numWarps = blockDim.x / warpSize; 
+
+  for(int warpFactorGroup = wid + 1; warpFactorGroup < numGroups; warpFactorGroup+=numWarps) {
+    T* groupLosses = lossAndLastDimSize[warpFactorGroup].ptr;
+    int groupLossesInnerDim = lossAndLastDimSize[warpFactorGroup].innerDim;
     int groupLossSize = groupLossesInnerDim * sizeWithoutInnerDim;
 
-    // Now, we get the max for the factors. If the size of the inner dim is greater than the blocksize,
-    // first reduce maxes so they fit within a block.
     T factorMaxima = minimal;
-    int blockRowStart = blockIdx.x * groupLossesInnerDim;
-    for(int lossCol = threadIdx.x; lossCol < groupLossesInnerDim; lossCol += blockDim.x) {
-      int offset = blockRowStart + lossCol;
-      if(offset < groupLossSize) {        
-        factorMaxima = max(factorMaxima, groupLosses[offset]);
+    // Each block computes the factor maxes within a given row.
+    // We start by each warp computing offset to the row its block is responsible for in the loss
+
+    // This is per warp since groupLossesInnerDim is warp specific and the groupLossesPtr is also warp specific.
+    const int blockRowStart = blockIdx.x * groupLossesInnerDim;
+    for(int lossCol = lane; lossCol < groupLossesInnerDim; lossCol += warpSize) {
+      int warpOffset = blockRowStart + lossCol;
+      if(warpOffset < groupLossSize) {
+        factorMaxima = max(factorMaxima, groupLosses[warpOffset]);
       }
     }
-    dBlockReduceMax(factorMaxima, min(blockDim.x, groupLossesInnerDim), shared, factorMaximasInBlock + g);
-    __syncthreads();  
+
+    // Each warp reduces the accumulated values. Warps can do this in parallel. Then each each writes its final value to shared mem.
+    factorMaxima = WarpReduce(temp_storage[wid]).Reduce(factorMaxima, cub::Max());
+    if(lane == 0) {
+      factorMaximasInBlock[warpFactorGroup] = factorMaxima;
+    }
   }
 
+  // Wait for all warps to write out to shared mem so the second phase of this kernel can proceed.
+  __syncthreads();
+  
+  // First, each block computes the max across the row for each group and stores in in factorMaximasInBlock[g]
+  
   // Each block has the max for each factor, so we iterate over the groups again and accumulate the 
   // output in shared mem one block at a time before writing the results for the row to out
   T* selGlobal = lossAndLastDimSize[0].ptr;

@@ -27,7 +27,7 @@ namespace gpu {
 // It seems that the bias must be 8 byte aligned for the cublasLt epilogue to work. Therefore,
 // if the bias pointer is not 8 byte aligned, we do a normal matmul in cublasLt and invoke a 
 // custom epilogue kernel.
-static constexpr int REQUIRED_BIAS_ALIGNMENT = 1;  
+static constexpr int REQUIRED_BIAS_ALIGNMENT = 8;  
 
 // Used to set preferences for cublasLt to filter out algos if matrices to not meet default 256 byte alignment
 int getAlignmentUpTo256(const void *ptr) {

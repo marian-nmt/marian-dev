@@ -236,7 +236,7 @@ endif()
 if(USE_ONNX)
   message(STATUS "Enabling experimental ONNX support")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ONNX")
-  # updated sentencepiece likely requires this to find protobuf by itself
+  # TODO: likely required to find protobuf by itself, we should check/fix this. Before it would take advantage of sentencepiece doing that.
   set(EXT_LIBS ${EXT_LIBS} protobuf)
   include_directories(${Protobuf_INCLUDE_DIRS})
 endif()

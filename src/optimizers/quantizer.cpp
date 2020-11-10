@@ -90,6 +90,8 @@ void ModelQuantizer::quantize(Ptr<ExpressionGraph> graph) {
     allocator->reserveExact(graph->params()->vals()->memory()->size());
     allocator->allocate(errorResidual_, {1, numElements});
 
+    errorResidual_->set(0);
+
     allocators_.push_back(allocator);
     isFirstError_ = true;
   }

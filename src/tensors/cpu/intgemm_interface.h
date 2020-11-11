@@ -456,7 +456,11 @@ template<Type vtype>
 static inline Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/) {
 #if COMPILE_CPU
   clipValue;
+#if 0 // @TODO to be enabled in the future
   bool shiftedBias = a->graph()->getBackend()->isInt8Shift() && bias; // Use shifted multiplication if we have a enabled it in the options, and we have a bias
+#else
+  bool shiftedBias = false;
+#endif
 
   Type bElementType = b->value_type();
   auto aQuantMult = quantMult<vtype>(a, true);

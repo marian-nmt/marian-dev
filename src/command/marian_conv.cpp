@@ -48,9 +48,6 @@ int main(int argc, char** argv) {
 
   auto load = [&](Ptr<ExpressionGraph> graph) {
     graph->setDevice(CPU0);
-    graph->getBackend()->setInt8(false);  // Since win run graph->forward() we need to make sure it does not get converted to an intgemm format during it.
-    graph->getBackend()->setInt16(false); // We manually do the compression later.
-
     graph->load(modelFrom);
     graph->forward();  // run the initializers
   };

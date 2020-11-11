@@ -670,7 +670,6 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
-  addSuboptionsIntgemm(cli);
 
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
@@ -735,10 +734,7 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
-  addSuboptionsIntgemm(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
@@ -775,7 +771,6 @@ void ConfigParser::addOptionsEmbedding(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
-  addSuboptionsIntgemm(cli);
 
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
@@ -915,18 +910,6 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
       "ULR softmax temperature to control randomness of predictions. Deafult is 1.0: no temperature",
       1.0f);
   // clang-format on
-}
-
-void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
-  // clang-format off
-  cli.add<bool>("--int16",
-      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");
-  cli.add<bool>("--int8",
-      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int8");
-  cli.add<bool>("--int8shift",
-      "Use a faster, shifted integer 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
-  cli.add<std::string>("--gemm-precision",
-      "Use lower precision for the GEMM operations only. Supported values: float32, int16, int8, int8shift", "float32");
 }
 
 void ConfigParser::addSuboptionsQuantization(cli::CLIWrapper& cli) {

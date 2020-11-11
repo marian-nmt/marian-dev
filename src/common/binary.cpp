@@ -59,7 +59,8 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
 
   for(int i = 0; i < numHeaders; ++i) {
     if(items[i].mapped) { // memory-mapped, hence only set pointer
-      ABORT_IF(isIntgemm(items[i].type), "mmap format not supported for intgemm matrices");
+      // @TOOD: verify this actually works for the hardware-specific ones like intgemm8avx2
+      ABORT_IF(items[i].type == Type::intgemm8 || items[i].type == Type::intgemm16, "mmap format not supported for hardware non-specific intgemm matrices");
       items[i].ptr = get<char>(current, headers[i].dataLength);
     } else { // reading into item data
       size_t len = headers[i].dataLength;

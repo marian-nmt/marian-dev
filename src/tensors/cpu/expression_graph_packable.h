@@ -201,36 +201,76 @@ public:
         Tensor tmp;
         allocator->allocate(tmp, val->shape(), val->type());
         Transpose10(tmp, val);
+  
         if(sizeOf(gemmElementType) == 1) { // is 8-bit Intgemm type
-          float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());  
-          if(isSse3(gemmElementType)) {
-            ABORT("Sse3");
+          float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+
+          // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
+          if(isSsse3(gemmElementType)) {
+            // @TODO: we should croak here if the hardware type is not supported?
+            intgemm::SSSE3_8bit::PrepareBTransposed(tmp->data(), /*input*/
+                                                    paramMat->data<int8_t>(), /*output*/
+                                                    quantMult, /*Quant Mult*/
+                                                    rows(val),
+                                                    cols(val));
           } else if(isAvx2(gemmElementType)) {
-            // @TODO: there should be a way to pass in the expected hardware depdendent type, so the function can abort if mismatch like in FBGEMM
-            intgemm::AVX2_8bit::PrepareB(tmp->data(), /*input*/
-                                         paramMat->data<int8_t>(), /*output*/
-                                         quantMult, /*Quant Mult*/
-                                         rows(val),
-                                         cols(val));
+            // @TODO: we should croak here if the hardware type is not supported?
+            intgemm::AVX2_8bit::PrepareBTransposed(tmp->data(), /*input*/
+                                                   paramMat->data<int8_t>(), /*output*/
+                                                   quantMult, /*Quant Mult*/
+                                                   rows(val),
+                                                   cols(val));
           } else if(isAvx512(gemmElementType)) {
-            ABORT("AVX512");
+            // @TODO: we should croak here if the hardware type is not supported?
+            intgemm::AVX512_8bit::PrepareBTransposed(tmp->data(), /*input*/
+                                                     paramMat->data<int8_t>(), /*output*/
+                                                     quantMult, /*Quant Mult*/
+                                                     rows(val),
+                                                     cols(val));
           } else {
+            ABORT_IF(gemmElementType != Type::intgemm8, "Type {} is not supported {}", gemmElementType); // shouldn't really happen, but let's make sure
             intgemm::Int8::PrepareA(tmp->data(), /*input*/
-                                   paramMat->data<int8_t>(), /*output*/
-                                   quantMult, /*Quant Mult*/
-                                   rows(val),
-                                   cols(val));
+                                    paramMat->data<int8_t>(), /*output*/
+                                    quantMult, /*Quant Mult*/
+                                    rows(val),
+                                    cols(val));
           }
           //Put the quantMult at the back of the tensor
           *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
 
         } else if(sizeOf(gemmElementType) == 2) { // is 16-bit Intgemm type
           float quantMult = 1024.0f;
-          intgemm::Int16::PrepareA(tmp->data(), /*input*/
-                                paramMat->data<int16_t>(), /*output*/
-                                quantMult, /*Quant Mult*/
-                                rows(val),
-                                cols(val));
+
+           // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
+          if(isSse2(gemmElementType)) {
+            // @TODO: we should croak here if the hardware type is not supported?
+            intgemm::SSE2_16bit::PrepareBTransposed(tmp->data(), /*input*/
+                                                    paramMat->data<int16_t>(), /*output*/
+                                                    quantMult, /*Quant Mult*/
+                                                    rows(val),
+                                                    cols(val));
+          } else if(isAvx2(gemmElementType)) {
+            // @TODO: we should croak here if the hardware type is not supported?
+            intgemm::AVX2_16bit::PrepareBTransposed(tmp->data(), /*input*/
+                                                    paramMat->data<int16_t>(), /*output*/
+                                                    quantMult, /*Quant Mult*/
+                                                    rows(val),
+                                                    cols(val));
+          } else if(isAvx512(gemmElementType)) {
+            // @TODO: we should croak here if the hardware type is not supported?
+            intgemm::AVX512_16bit::PrepareBTransposed(tmp->data(), /*input*/
+                                                      paramMat->data<int16_t>(), /*output*/
+                                                      quantMult, /*Quant Mult*/
+                                                      rows(val),
+                                                      cols(val));
+          } else {
+            ABORT_IF(gemmElementType != Type::intgemm8, "Type {} is not supported {}", gemmElementType); // shouldn't really happen, but let's make sure
+            intgemm::Int16::PrepareA(tmp->data(), /*input*/
+                                     paramMat->data<int16_t>(), /*output*/
+                                     quantMult, /*Quant Mult*/
+                                     rows(val),
+                                     cols(val));
+          }
           //Put the quantMult at the back of the tensor
           *(reinterpret_cast<float *>(paramMat->data<int16_t>() + val->shape().elements())) = quantMult;
         } else {
@@ -251,6 +291,7 @@ public:
         ABORT("Packed type {} only supported when compiled with -DCOMPILE_CPU=on", gemmElementType);
 #endif
       } else {
+        ABORT_IF(saveElementType != Type::float32, "We currently do not know how to save matrices as {}", saveElementType);
         io::Item item;
         val->get(item, pName);
         item.convert(saveElementType);

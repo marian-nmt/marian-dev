@@ -207,19 +207,19 @@ public:
             ABORT("Sse3");
           } else if(isAvx2(gemmElementType)) {
             // @TODO: there should be a way to pass in the expected hardware depdendent type, so the function can abort if mismatch like in FBGEMM
-            intgemm::Int8::PrepareB(tmp->data(), /*input*/
-                                    paramMat->data<int8_t>(), /*output*/
-                                    quantMult, /*Quant Mult*/
-                                    rows(val),
-                                    cols(val));
+            intgemm::AVX2_8bit::PrepareB(tmp->data(), /*input*/
+                                         paramMat->data<int8_t>(), /*output*/
+                                         quantMult, /*Quant Mult*/
+                                         rows(val),
+                                         cols(val));
           } else if(isAvx512(gemmElementType)) {
             ABORT("AVX512");
           } else {
             intgemm::Int8::PrepareA(tmp->data(), /*input*/
-                                  paramMat->data<int8_t>(), /*output*/
-                                  quantMult, /*Quant Mult*/
-                                  rows(val),
-                                  cols(val));
+                                   paramMat->data<int8_t>(), /*output*/
+                                   quantMult, /*Quant Mult*/
+                                   rows(val),
+                                   cols(val));
           }
           //Put the quantMult at the back of the tensor
           *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;

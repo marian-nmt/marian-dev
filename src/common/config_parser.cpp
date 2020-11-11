@@ -347,7 +347,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   auto previous_group = cli.switchGroup("Training options");
   // clang-format off
   cli.add<std::string>("--cost-type", // @TODO: rename to loss-type
-      "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-mean");
+      "Optimization criterion: ce-mean, ce-mean-words, ce-sum, perplexity", "ce-sum");
   cli.add<std::string>("--multi-loss-type",
       "How to accumulate multi-objective losses: sum, scaled, mean", "sum");
   cli.add<bool>("--unlikelihood-loss",
@@ -372,25 +372,36 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<size_t>("--sentencepiece-max-lines",
       "Maximum lines to train SentencePiece vocabulary, selected with sampling from all data. "
       "When set to 0 all lines are going to be used.",
-      10000000);
+      2000000);
 #endif
   // scheduling options
+
+  // @TODO: these should be re-defined as aliases for `--after` but the current frame work matches on value, so not doable.
   cli.add<size_t>("--after-epochs,-e",
-      "Finish after this many epochs, 0 is infinity");
+      "Finish after this many epochs, 0 is infinity (deprecated, '--after-epochs N' corresponds to '--after Ne')"); // @TODO: replace with alias
   cli.add<size_t>("--after-batches",
-      "Finish after this many batch updates, 0 is infinity");
+      "Finish after this many batch updates, 0 is infinity (deprecated, '--after-batches N' corresponds to '--after Nu')"); // @TODO: replace with alias
+
+  cli.add<std::string>("--after,-a",
+      "Finish after this many chosen training units, 0 is infinity (e.g. 100e = 100 epochs, 10Gt = 10 billion target labels, 100Ku = 100,000 updates",
+      "0e");
   cli.add<std::string/*SchedulerPeriod*/>("--disp-freq",
       "Display information every  arg  updates (append 't' for every  arg  target labels)",
       "1000u");
   cli.add<size_t>("--disp-first",
       "Display information for the first  arg  updates");
   cli.add<bool>("--disp-label-counts",
-      "Display label counts when logging loss progress");
+      "Display label counts when logging loss progress",
+      true);
 //   cli.add<int>("--disp-label-index",
 //       "Display label counts based on i-th input stream (-1 is last)", -1);
   cli.add<std::string/*SchedulerPeriod*/>("--save-freq",
       "Save model file every  arg  updates (append 't' for every  arg  target labels)",
       "10000u");
+  cli.add<std::vector<std::string>>("--logical-epoch",
+      "Redefine logical epoch counter as multiple of data epochs (e.g. 1e), updates (e.g. 100Ku) or labels (e.g. 1Gt). "
+      "Second parameter defines width of fractional display, 0 by default.",
+      {"1e", "0"});
 
   addSuboptionsInputLength(cli);
   addSuboptionsTSV(cli);
@@ -447,7 +458,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "epoch+stalled");
   cli.add<std::vector<size_t>>("--lr-decay-start",
      "The first number of (epoch, batches, stalled) validations to start learning rate decaying (tuple)",
-     {10,1});
+     {10, 1});
   cli.add<size_t>("--lr-decay-freq",
      "Learning rate decaying frequency for batches, requires --lr-decay-strategy to be batches",
      50000);
@@ -523,12 +534,20 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--normalize-gradient",
       "Normalize gradient by multiplying with no. devices / total labels");
 
+  cli.add<std::vector<std::string>>("--train-embedder-rank",
+      "Override model configuration and train a embedding similarity ranker with the model encoder, "
+      "parameters encode margin and an optional normalization factor")
+    ->implicit_val("0.3f 0.0f");
+
   // multi-node training
   cli.add<bool>("--multi-node",
      "Enable asynchronous multi-node training through MPI (and legacy sync if combined with --sync-sgd)");
   cli.add<bool>("--multi-node-overlap",
      "Overlap model computations with MPI communication",
      true);
+
+  // model quantization training
+  addSuboptionsQuantization(cli);
 
   // add ULR settings
   addSuboptionsULR(cli);
@@ -550,7 +569,8 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "10000u");
   cli.add<std::vector<std::string>>("--valid-metrics",
       "Metric to use during validation: cross-entropy, ce-mean-words, perplexity, valid-script, "
-      "translation, bleu, bleu-detok. Multiple metrics can be specified",
+      "translation, bleu, bleu-detok (deprecated, same as bleu), bleu-segmented, chrf. "
+      "Multiple metrics can be specified",
       {"cross-entropy"});
   cli.add<bool>("--valid-reset-stalled",
      "Reset all stalled validation metrics when the training is restarted");
@@ -907,13 +927,27 @@ void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
       "Use a faster, shifted integer 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
   cli.add<std::string>("--gemm-precision",
       "Use lower precision for the GEMM operations only. Supported values: float32, int16, int8, int8shift", "float32");
+}
+
+void ConfigParser::addSuboptionsQuantization(cli::CLIWrapper& cli) {
+  // clang-format off
+  // model quantization training
+  cli.add<size_t>("--quantize-bits",
+     "Number of bits to compress model to. Set to 0 to disable",
+      0);
+  cli.add<size_t>("--quantize-optimization-steps",
+     "Adjust quantization scaling factor for N steps",
+     0);
+  cli.add<bool>("--quantize-log-based",
+     "Uses log-based quantization");
+  cli.add<bool>("--quantize-biases",
+     "Apply quantization to biases");
   // clang-format on
 }
 
-
 cli::mode ConfigParser::getMode() const { return mode_; }
 
-Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
+Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) {
   cmdLine_ = escapeCmdLine(argc,argv);
 
   // parse command-line options and fill wrapped YAML config

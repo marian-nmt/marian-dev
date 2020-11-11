@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Add --train-embedder-rank for fine-tuning any encoder(-decoder) model for multi-lingual similarity via softmax-margin loss
+- Add --logical-epoch that allows to redefine the displayed epoch counter as a multiple of n data epochs, updates or labels. Also allows to define width of fractional part with second argument.
+- Add --metrics chrf for computing ChrF according to https://www.aclweb.org/anthology/W15-3049/ and SacreBLEU reference implementation
+- Add --after option which is meant to replace --after-batches and --after-epochs and can take label based criteria
 - Add --transformer-postprocess-top option to enable correctly normalized prenorm behavior
 - Add --task transformer-base-prenorm and --task transformer-big-prenorm
 - Turing and Ampere GPU optimisation support, if the CUDA version supports it.
@@ -29,8 +33,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `--gemmm-precision` which specifies the numerical precision used for the GEMM computations. Valid values `float32` (default) `int16`, `int8` and `int8shift`. Also added aliases for the latter three. All integer based GEMM use intgemm as a computational backend.
 - Added intgemm 8/16bit integer binary architecture agnostic format.
 - Internal optional parameter in n-best list generation that skips empty hypotheses.
+- Quantized training (fixed point or log-based quantization) with --quantize-bits N command
 
 ### Fixed
+- Segfault of spm_train when compiled with -DUSE_STATIC_LIBS=ON seems to have gone away with update to newer SentencePiece version.
+- Fix bug causing certain reductions into scalars to be 0 on the GPU backend. Removed unnecessary warp shuffle instructions.
+- Do not apply dropout in embeddings layers during inference with dropout-src/trg
 - Print "server is listening on port" message after it is accepting connections
 - Fix compilation without BLAS installed
 - Providing a single value to vector-like options using the equals sign, e.g. --models=model.npz
@@ -50,6 +58,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Improved handling for receiving SIGTERM during training. By default, SIGTERM triggers 'save (now) and exit'. Prior to this fix, batch pre-fetching did not check for this sigal, potentially delaying exit considerably. It now pays attention to that. Also, the default behaviour of save-and-exit can now be disabled on the command line with --sigterm exit-immediately.
 
 ### Changed
+- Updated SentencePiece repository to version 8336bbd0c1cfba02a879afe625bf1ddaf7cd93c5 from https://github.com/google/sentencepiece. 
+- Enabled compilation of SentencePiece by default since no dependency on protobuf anymore. 
+- Changed default value of --sentencepiece-max-lines from 10000000 to 2000000 since apparently the new version doesn't sample automatically anymore (Not quite clear how that affects quality of the vocabulary).
+- Change mini-batch-fit search stopping criterion to stop at ideal binary search threshold.
+- --metric bleu now always detokenizes SacreBLEU-style if a vocabulary knows how to, use bleu-segmented to compute BLEU on word ids. bleu-detok is now a synonym for bleu.
+- Move label-smoothing computation into Cross-entropy node
 - Move Simple-WebSocket-Server to submodule
 - Python scripts start with #!/usr/bin/env python3 instead of python
 - Changed compile flags -Ofast to -O3 and remove --ffinite-math

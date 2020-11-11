@@ -68,8 +68,7 @@ public:
 
   // for CPU, sets to use optimized (intgemm8/intgemm16) code for matrix multiplication.
   // for GPU, this is invalid. for gpu, all the functions below always returns false and the setters abort.
-  void setInt16(bool optimize) override {
-    optimize;
+  void setInt16(bool /*optimize*/) override {
     ABORT("setInt16() is not supported on the GPU.");
   }
 
@@ -77,8 +76,7 @@ public:
     return false;
   }
 
-  void setInt8(bool optimize) override {
-    optimize;
+  void setInt8(bool /*optimize*/) override {
     ABORT("setInt8() is not supported on the GPU.");
   }
 
@@ -86,8 +84,7 @@ public:
     return false;
   }
 
-  void setInt8Shift(bool shifted) override {
-    shifted;
+  void setInt8Shift(bool /*shifted*/) override {
     ABORT("setInt8Shift() is not supported on the GPU.");
   }
 

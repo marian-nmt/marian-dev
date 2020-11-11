@@ -474,14 +474,16 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isInt8() || matchType<intgemm8>(bElementType)) {
+    if(isFloat(aElementType) && isFloat(bElementType)) {
+      return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      // @TODO: this branch should move into cpu::integer::*
+      if(sizeOf(bElementType) == 1) {
         return cpu::integer::dot<Type::int8>(a, b, transA, transB, scale);
-      } else if(a->graph()->getBackend()->isInt16() || matchType<intgemm16>(bElementType)) {
+      } else if(sizeOf(bElementType) == 2) {
         return cpu::integer::dot<Type::int16>(a, b, transA, transB, scale);
       } else {
-        return Expression<DotNodeOp>(
-          clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+        ABORT("Wrong size for Intgemm type {}??", sizeOf(bElementType));
       }
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
@@ -546,13 +548,16 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isInt8()  || matchType<intgemm8>(bElementType) ) {
+    if(isFloat(aElementType) && isFloat(bElementType)) {
+      return affineDefault(a, b, bias, transA, transB, scale);
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      // @TODO: this branch should move into cpu::integer::*
+      if(sizeOf(bElementType) == 1) {
         return cpu::integer::affine<Type::int8>(a, b, bias, transA, transB, scale, clipValue);
-      } else if(a->graph()->getBackend()->isInt16()  || matchType<intgemm16>(bElementType) ) {
+      } else if(sizeOf(bElementType) == 2) {
         return cpu::integer::affine<Type::int16>(a, b, bias, transA, transB, scale, clipValue);
       } else {
-        return affineDefault(a, b, bias, transA, transB, scale);
+        ABORT("Wrong size for Intgemm type {}??", sizeOf(bElementType));
       }
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM

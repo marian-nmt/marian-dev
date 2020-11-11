@@ -186,7 +186,7 @@ public:
 #else
         ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
 #endif
-      } else if ((gemmElementType == Type::intgemm8 || gemmElementType == Type::intgemm16) &&
+      } else if (isIntgemm(gemmElementType) &&
       (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 /* || pName.find("Wemb") != std::string::npos*/)) {
 #if COMPILE_CPU
         using cpu::integer::cols;
@@ -201,16 +201,30 @@ public:
         Tensor tmp;
         allocator->allocate(tmp, val->shape(), val->type());
         Transpose10(tmp, val);
-        if (gemmElementType == Type::intgemm8) {
-          float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
-          intgemm::Int8::PrepareA(tmp->data(), /*input*/
-                                paramMat->data<int8_t>(), /*output*/
-                                quantMult, /*Quant Mult*/
-                                rows(val),
-                                cols(val));
+        if(sizeOf(gemmElementType) == 1) { // is 8-bit Intgemm type
+          float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());  
+          if(isSse3(gemmElementType)) {
+            ABORT("Sse3");
+          } else if(isAvx2(gemmElementType)) {
+            // @TODO: there should be a way to pass in the expected hardware depdendent type, so the function can abort if mismatch like in FBGEMM
+            intgemm::Int8::PrepareB(tmp->data(), /*input*/
+                                    paramMat->data<int8_t>(), /*output*/
+                                    quantMult, /*Quant Mult*/
+                                    rows(val),
+                                    cols(val));
+          } else if(isAvx512(gemmElementType)) {
+            ABORT("AVX512");
+          } else {
+            intgemm::Int8::PrepareA(tmp->data(), /*input*/
+                                  paramMat->data<int8_t>(), /*output*/
+                                  quantMult, /*Quant Mult*/
+                                  rows(val),
+                                  cols(val));
+          }
           //Put the quantMult at the back of the tensor
           *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
-        } else {
+
+        } else if(sizeOf(gemmElementType) == 2) { // is 16-bit Intgemm type
           float quantMult = 1024.0f;
           intgemm::Int16::PrepareA(tmp->data(), /*input*/
                                 paramMat->data<int16_t>(), /*output*/
@@ -219,6 +233,8 @@ public:
                                 cols(val));
           //Put the quantMult at the back of the tensor
           *(reinterpret_cast<float *>(paramMat->data<int16_t>() + val->shape().elements())) = quantMult;
+        } else {
+          ABORT("Incorrect Intgemm type size: {}", sizeOf(gemmElementType));
         }
 
         //Save... Same as the fbgemm case

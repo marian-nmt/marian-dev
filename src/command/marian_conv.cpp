@@ -50,6 +50,12 @@ int main(int argc, char** argv) {
     saveGemmType = Type::intgemm8;
   } else if(saveGemmTypeStr == "intgemm16") { // intgemm 16 bit format
     saveGemmType = Type::intgemm16;
+  } else if(saveGemmTypeStr == "intgemm8sse3") { // intgemm 16 bit format
+    saveGemmType = Type::intgemm8sse3;
+  } else if(saveGemmTypeStr == "intgemm8avx2") { // intgemm 16 bit format
+    saveGemmType = Type::intgemm8avx2;
+  } else if(saveGemmTypeStr == "intgemm8avx512") { // intgemm 8 bit format
+    saveGemmType = Type::intgemm8avx512;
   } else {
     ABORT("Unknown gemm-type: {}", saveGemmTypeStr);
   }

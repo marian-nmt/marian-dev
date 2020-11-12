@@ -189,7 +189,7 @@ public:
                                                      rows(val),
                                                      cols(val));
           } else {
-            ABORT_IF(gemmElementType != Type::intgemm8, "Type {} is not supported {}", gemmElementType); // shouldn't really happen, but let's make sure
+            ABORT_IF(gemmElementType != Type::intgemm8, "Type {} is not supported", gemmElementType); // shouldn't really happen, but let's make sure
             intgemm::Int8::PrepareA(tmp->data(), /*input*/
                                     paramMat->data<int8_t>(), /*output*/
                                     quantMult, /*Quant Mult*/
@@ -225,7 +225,7 @@ public:
                                                       rows(val),
                                                       cols(val));
           } else {
-            ABORT_IF(gemmElementType != Type::intgemm8, "Type {} is not supported {}", gemmElementType); // shouldn't really happen, but let's make sure
+            ABORT_IF(gemmElementType != Type::intgemm16, "Type {} is not supported", gemmElementType); // shouldn't really happen, but let's make sure
             intgemm::Int16::PrepareA(tmp->data(), /*input*/
                                      paramMat->data<int16_t>(), /*output*/
                                      quantMult, /*Quant Mult*/

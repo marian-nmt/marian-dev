@@ -7,7 +7,9 @@ int main(int /*argc*/, char** /*argv*/) {
     {
         auto g = New<ExpressionGraph>(true);
         g->setDevice({0, DeviceType::cpu});
+#if 0 // this file is not a real test, just used for manual stuff. Disable here by hand for now.
         g->getBackend()->setInt16(false);
+#endif
         g->reserveWorkspaceMB(2512);
 
         timer::AutoTimer timer;
@@ -40,7 +42,9 @@ int main(int /*argc*/, char** /*argv*/) {
     {
         auto g = New<ExpressionGraph>(true);
         g->setDevice({0, DeviceType::cpu});
+#if 0
         g->getBackend()->setInt16(true);
+#endif
         g->reserveWorkspaceMB(2512);
 
         timer::AutoTimer timer;
@@ -73,7 +77,9 @@ int main(int /*argc*/, char** /*argv*/) {
     {
         auto g = New<ExpressionGraph>(true);
         g->setDevice({0, DeviceType::cpu});
+#if 0
         g->getBackend()->setInt8(true);
+#endif
         g->reserveWorkspaceMB(2512);
 
         timer::AutoTimer timer;

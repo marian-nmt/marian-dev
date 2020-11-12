@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added `intgemm8(ssse3|avx|avx512)?`, `intgemm16(sse2|avx|avx512)?` types to marian-conv with uses intgemm backend. Types intgemm8 and intgemm16 are hardware-agnostic, the other ones hardware-specific.
+- Shortlist is now always multiple-of-eight.
+- Added intgemm 8/16bit integer binary architecture agnostic format.
 - Add --train-embedder-rank for fine-tuning any encoder(-decoder) model for multi-lingual similarity via softmax-margin loss
 - Add --logical-epoch that allows to redefine the displayed epoch counter as a multiple of n data epochs, updates or labels. Also allows to define width of fractional part with second argument.
 - Add --metrics chrf for computing ChrF according to https://www.aclweb.org/anthology/W15-3049/ and SacreBLEU reference implementation
@@ -28,10 +31,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Training and scoring from STDIN
 - Support for reading from TSV files from STDIN and other sources during training
   and translation with options --tsv and --tsv-fields n.
-- Shortlist is now always multiple-of-eight.
-- Changed the `--optimize` switch to `--int16` and replaced the computational backend to intgemm.
-- Added `--gemmm-precision` which specifies the numerical precision used for the GEMM computations. Valid values `float32` (default) `int16`, `int8` and `int8shift`. Also added aliases for the latter three. All integer based GEMM use intgemm as a computational backend.
-- Added intgemm 8/16bit integer binary architecture agnostic format.
 - Internal optional parameter in n-best list generation that skips empty hypotheses.
 - Quantized training (fixed point or log-based quantization) with --quantize-bits N command
 
@@ -58,6 +57,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Improved handling for receiving SIGTERM during training. By default, SIGTERM triggers 'save (now) and exit'. Prior to this fix, batch pre-fetching did not check for this sigal, potentially delaying exit considerably. It now pays attention to that. Also, the default behaviour of save-and-exit can now be disabled on the command line with --sigterm exit-immediately.
 
 ### Changed
+- Removed `--optimize` switch, instead we now determine compute type based on binary model.
 - Updated SentencePiece repository to version 8336bbd0c1cfba02a879afe625bf1ddaf7cd93c5 from https://github.com/google/sentencepiece. 
 - Enabled compilation of SentencePiece by default since no dependency on protobuf anymore. 
 - Changed default value of --sentencepiece-max-lines from 10000000 to 2000000 since apparently the new version doesn't sample automatically anymore (Not quite clear how that affects quality of the vocabulary).

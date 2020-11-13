@@ -15,11 +15,10 @@ namespace integer {
  * Prepare an activation matrix into intgemm8/16 format. For now the activation matrix is just quantized.
  * Expr input: The input tensor
  */
-
 template<Type vtype>
 static inline Expr prepareA(Expr a) {
-  auto nodeOp = [](Expr out, const std::vector<Expr>& nodes) {
-    Expr in = nodes[0];
+  auto nodeOp = [](Expr out, const std::vector<Expr>& children) {
+    Expr in = children[0];
     auto quantMult = computeQuantMult<vtype>(in->val());
     typedef typename intgemm_<vtype>::type Integer;
     intgemm_<vtype>::width::PrepareA(in->val()->data(), /*input*/
@@ -34,6 +33,17 @@ static inline Expr prepareA(Expr a) {
 }
 #endif
 
+/*	
+ * This computes A*B (+ bias if available) in intgemm.	
+ * Expr a: The activation matrix in intgemm format	
+ * Expr b: The parameter matrix in intgemm fromat	
+ * Expr bias: The bias	
+ * bool transA - tranpose input A if true
+ * bool transB - unused here (@TODO remove?)
+ * float scale - scale the output by `scale`
+ * the template argument controls whether we're doing 16bit integers or 8bit integers. 
+ * It can be Type::intgemm8 or Type::intgemm16 and all hardware-specific variants	
+ */
 template<Type vtype>
 static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool /*transB*/, float scale) {
 #if COMPILE_CPU
@@ -42,14 +52,18 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a); // A should not be quantized yet as seen above, hence quantize here
   
+  // determine the output shape m x n for A: m x k and B: k x n
+  // since we transpose a beforehand we don't need to take care of transposed shapes here 
   Shape outShape = aQuant->shape();
   outShape.set(-1, bQuant->shape()[-1]);
 
-  auto dotOrAffineNodeOp = [=](Expr out, const std::vector<Expr>& nodes) {
-    Expr aQuant = nodes[0];
-    Expr bQuant = nodes[1];
-    Expr bias   = nodes.size() > 2 ? nodes[2] : nullptr;
+  // wrap the multiply finctions to be executed in the forward step of a Lambda node
+  auto dotOrAffineNodeOp = [=](Expr out, const std::vector<Expr>& children) {
+    Expr aQuant = children[0];
+    Expr bQuant = children[1];
+    Expr bias   = children.size() > 2 ? children[2] : nullptr;
 
+    // when we arrive here, A and B are already quantized, so just get the multipliers
     float aQuantMult = getQuantMult<vtype>(aQuant->val());
     float bQuantMult = getQuantMult<vtype>(bQuant->val());
         
@@ -57,14 +71,14 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     unquant_mult = unquant_mult * scale;
 
     typedef typename intgemm_<vtype>::type Integer;
-    if(bias) {
+    if(bias) { // dispatch a multiply with integrated bias addition i.e affine(...)
       intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
                                        /*B=*/bQuant->val()->data<Integer>(),
                                        rows(aQuant->val()),
                                        cols(aQuant->val()),
                                        cols(bQuant->val()),
                                        intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
-    } else {
+    } else { // dispatch a multiply without bias addition i.e dot(...)
       intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
                                        /*B=*/bQuant->val()->data<Integer>(),
                                        rows(aQuant->val()),
@@ -74,17 +88,18 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     }
   };
 
-  std::vector<Expr> nodes = {aQuant, bQuant};
+  std::vector<Expr> children = {aQuant, bQuant};
   if(bias)
-    nodes.push_back(bias);
+    children.push_back(bias);
 
-  return lambda(nodes, outShape, Type::float32, dotOrAffineNodeOp);
+  return lambda(children, outShape, Type::float32, dotOrAffineNodeOp); // inference-only Lambda node
 #else
   a, b, bias, transA, scale, clipValue;
   ABORT("You need to enable CPU compilation to use this feature. Use cmake .. -DCOMPILE_CPU=ON");
 #endif
 }
 
+// Dispatch correct hardware-agnostic or hardware-specific matrix multiplies
 static inline Expr affineOrDot(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale) {
   Type bQuantElementType = bQuant->value_type();
   switch(bQuantElementType) {

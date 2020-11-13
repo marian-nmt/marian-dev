@@ -11,23 +11,6 @@ namespace integer {
 
 #if COMPILE_CPU
 
-template <Type vtype>
-static inline float& getQuantMult(marian::Tensor val) {
-  ABORT_IF(!isIntgemm(val->type()), "getQuantMult does not work for type {}", val->type());
-  typedef typename intgemm_<vtype>::type Integer;
-  return *(reinterpret_cast<float*>(val->data<Integer>() + val->shape().elements()));
-}
-
-template <Type vtype>
-static inline float computeQuantMult(marian::Tensor val) {
-  if(sizeOf(vtype) == 1)
-    return 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
-  else if(sizeOf(vtype) == 2)
-    return 1024.0f;
-  else
-    ABORT("Unhandled type size {}", sizeOf(vtype));
-}
-
 /*
  * Prepare an activation matrix into intgemm8/16 format. For now the activation matrix is just quantized.
  * Expr input: The input tensor
@@ -104,11 +87,23 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
 static inline Expr affineOrDot(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale) {
   Type bQuantElementType = bQuant->value_type();
-  switch(sizeOf(bQuantElementType)) {
-    case 1 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm8>(a, bQuant, bias, transA, transB, scale);
-    case 2 :
+  switch(bQuantElementType) {
+    case Type::intgemm8 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm8>(a, bQuant, bias, transA, transB, scale);    
+    case Type::intgemm8ssse3 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm8ssse3>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm8avx2 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm8avx2>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm8avx512 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm8avx512>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm16 :
       return cpu::integer::affineOrDotTyped<Type::intgemm16>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm16sse2 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm16sse2>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm16avx2 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm16avx2>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm16avx512 :
+      return cpu::integer::affineOrDotTyped<Type::intgemm16avx512>(a, bQuant, bias, transA, transB, scale);
     default:
       ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
   }

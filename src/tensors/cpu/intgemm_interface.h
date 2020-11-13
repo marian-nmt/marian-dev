@@ -10,7 +10,6 @@ namespace cpu {
 namespace integer {
 
 #if COMPILE_CPU
-
 /*
  * Prepare an activation matrix into intgemm8/16 format. For now the activation matrix is just quantized.
  * Expr input: The input tensor
@@ -53,7 +52,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a); // A should not be quantized yet as seen above, hence quantize here
   
   // determine the output shape m x n for A: m x k and B: k x n
-  // since we transpose a beforehand we don't need to take care of transposed shapes here 
+  // since we transpose A beforehand we don't need to take care of transposed shapes here 
   Shape outShape = aQuant->shape();
   outShape.set(-1, bQuant->shape()[-1]);
 

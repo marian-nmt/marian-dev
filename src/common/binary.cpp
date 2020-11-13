@@ -70,9 +70,9 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
       // Reordering depends on the architecture (SSE/AVX2/AVX512) so we read in the quantized matrices and
       // then reorder them before adding them as a parameter in the graph.
       if (matchType<intgemm8>(items[i].type)) {
-        cpu::integer::prepareAndTransposeB<Type::int8>(items[i], ptr);
+        cpu::integer::prepareAndTransposeB<Type::intgemm8>(items[i], ptr);
       } else if (matchType<intgemm16>(items[i].type)) {
-        cpu::integer::prepareAndTransposeB<Type::int16>(items[i], ptr);
+        cpu::integer::prepareAndTransposeB<Type::intgemm16>(items[i], ptr);
       } else {
         std::copy(ptr, ptr + len, items[i].bytes.begin());
       }

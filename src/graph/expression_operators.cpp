@@ -477,14 +477,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
     } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
-      // @TODO: this branch should move into cpu::integer::*
-      if(sizeOf(bElementType) == 1) {
-        return cpu::integer::dot<Type::int8>(a, b, transA, transB, scale);
-      } else if(sizeOf(bElementType) == 2) {
-        return cpu::integer::dot<Type::int16>(a, b, transA, transB, scale);
-      } else {
-        ABORT("Wrong size for Intgemm type {}??", sizeOf(bElementType));
-      }
+      return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -543,7 +536,7 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
-  float clipValue = a->graph()->getBackend()->getClip();
+  float clipValue = a->graph()->getBackend()->getClip(); // @TODO: do we use that at all?
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
 
@@ -551,14 +544,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       return affineDefault(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
-      // @TODO: this branch should move into cpu::integer::*
-      if(sizeOf(bElementType) == 1) {
-        return cpu::integer::affine<Type::int8>(a, b, bias, transA, transB, scale, clipValue);
-      } else if(sizeOf(bElementType) == 2) {
-        return cpu::integer::affine<Type::int16>(a, b, bias, transA, transB, scale, clipValue);
-      } else {
-        ABORT("Wrong size for Intgemm type {}??", sizeOf(bElementType));
-      }
+      return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2

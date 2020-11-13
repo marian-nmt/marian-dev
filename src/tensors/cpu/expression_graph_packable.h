@@ -2,7 +2,7 @@
 
 #include "graph/expression_graph.h"
 #include "fbgemm/packed_gemm.h"
-#include "tensors/cpu/integer_common.h"
+#include "tensors/cpu/intgemm_interface.h"
 
 namespace marian {
   namespace cpu {
@@ -164,7 +164,7 @@ public:
         cpu::Transpose10(tmp, val);
   
         if(sizeOf(gemmElementType) == 1) { // is 8-bit Intgemm type
-          float quantMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+          float quantMult = cpu::integer::computeQuantMult<Type::intgemm8>(val);
 
           // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
           if(isSsse3(gemmElementType)) {
@@ -197,10 +197,10 @@ public:
                                     cols(val));
           }
           //Put the quantMult at the back of the tensor
-          *(reinterpret_cast<float *>(paramMat->data<int8_t>() + val->shape().elements())) = quantMult;
+          cpu::integer::getQuantMult<Type::intgemm8>(paramMat) = quantMult;
 
         } else if(sizeOf(gemmElementType) == 2) { // is 16-bit Intgemm type
-          float quantMult = 1024.0f;
+          float quantMult = cpu::integer::computeQuantMult<Type::intgemm16>(val);
 
            // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
           if(isSse2(gemmElementType)) {
@@ -233,7 +233,8 @@ public:
                                      cols(val));
           }
           //Put the quantMult at the back of the tensor
-          *(reinterpret_cast<float *>(paramMat->data<int16_t>() + val->shape().elements())) = quantMult;
+          cpu::integer::getQuantMult<Type::intgemm16>(paramMat) = quantMult;
+          
         } else {
           ABORT("Incorrect Intgemm type size: {}", sizeOf(gemmElementType));
         }

@@ -9,7 +9,6 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
-// #define COMPILE_CPU 1
 #if COMPILE_CPU
 
 template <Type vtype>
@@ -41,10 +40,10 @@ static inline Expr prepareA(Expr a) {
     auto quantMult = computeQuantMult<vtype>(in->val());
     typedef typename intgemm_<vtype>::type Integer;
     intgemm_<vtype>::width::PrepareA(in->val()->data(), /*input*/
-                                    out->val()->data<Integer>(), /*output*/
-                                    quantMult, /*Quant Mult*/
-                                    rows(in->val()),
-                                    cols(in->val()));
+                                     out->val()->data<Integer>(), /*output*/
+                                     quantMult, /*Quant Mult*/
+                                     rows(in->val()),
+                                     cols(in->val()));
     getQuantMult<vtype>(out->val()) = quantMult;
   };
 
@@ -98,7 +97,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
   return lambda(nodes, outShape, Type::float32, dotOrAffineNodeOp);
 #else
-  a, b, bias, transA, transB, scale, clipValue;
+  a, b, bias, transA, scale, clipValue;
   ABORT("You need to enable CPU compilation to use this feature. Use cmake .. -DCOMPILE_CPU=ON");
 #endif
 }

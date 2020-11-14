@@ -7,7 +7,6 @@
 #include "rnn/types.h"     // for State::select()
 #include "models/states.h" // for EncoderState
 #include "layers/lsh.h"
-#include "tensors/cpu/intgemm_interface.h"
 
 namespace marian {
   Logits::Logits(Expr logits) : Logits(New<RationalLoss>(logits, nullptr)) {} // single-output constructor from Expr only (RationalLoss has no count)
@@ -283,31 +282,7 @@ namespace marian {
       };
 
       if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
-#if COMPILE_CPU
-        // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
-        // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
-        bool transposed = !isLegacyUntransposedW;
-        if ((graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
-          if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
-            std::cerr << "Are we ever here" << std::endl;
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          } else { // Else, convert the Wt_ matrix to intgemm format and then select vocabulary items from it.
-            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int8>(Wt_, marian::cpu::integer::quantMult<Type::int8>(Wt_), -1000.0 /*clip_value currently unused */, transposed /*Use different routine as Wt is transposed*/);
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int8>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          }
-        } else if ((graph_->getBackend()->isInt16() || matchType<intgemm16>(Wt_->value_type()) )&& graph_->getDeviceId().type == DeviceType::cpu) {
-          if (isIntgemm(Wt_->value_type())) {
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(Wt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          } else {
-            cachedShortWt_ = marian::cpu::integer::prepareB<Type::int16>(Wt_, marian::cpu::integer::quantMult<Type::int16>(Wt_), -1000.0 /*clip_value currently unused */, transposed /*Use different routine as Wt is transposed*/);
-            cachedShortWt_ = marian::cpu::integer::selectColumnsB<Type::int16>(cachedShortWt_, shortlist_->indices(), -1000.0 /*clip_value currently unused */);
-          }
-        } else {
-          cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
-        }
-#else
-        cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
-#endif
+        cachedShortWt_  = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
         if(hasBias_)
           cachedShortb_ = index_select(b_ ,                             -1, shortlist_->indices());
       }

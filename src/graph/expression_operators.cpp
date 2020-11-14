@@ -474,15 +474,10 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isInt8() || matchType<intgemm8>(bElementType)) {
-        return cpu::integer::dot<Type::int8>(a, b, transA, transB, scale);
-      } else if(a->graph()->getBackend()->isInt16() || matchType<intgemm16>(bElementType)) {
-        return cpu::integer::dot<Type::int16>(a, b, transA, transB, scale);
-      } else {
-        return Expression<DotNodeOp>(
-          clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
-      }
+    if(isFloat(aElementType) && isFloat(bElementType)) {
+      return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -541,19 +536,15 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
-  float clipValue = a->graph()->getBackend()->getClip();
+  float clipValue = a->graph()->getBackend()->getClip(); // @TODO: do we use that at all?
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
-    if(isFloat(aElementType) && (isFloat(bElementType) || isIntgemm(bElementType))) {
-      if(a->graph()->getBackend()->isInt8()  || matchType<intgemm8>(bElementType) ) {
-        return cpu::integer::affine<Type::int8>(a, b, bias, transA, transB, scale, clipValue);
-      } else if(a->graph()->getBackend()->isInt16()  || matchType<intgemm16>(bElementType) ) {
-        return cpu::integer::affine<Type::int16>(a, b, bias, transA, transB, scale, clipValue);
-      } else {
-        return affineDefault(a, b, bias, transA, transB, scale);
-      }
+    if(isFloat(aElementType) && isFloat(bElementType)) {
+      return affineDefault(a, b, bias, transA, transB, scale);
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2

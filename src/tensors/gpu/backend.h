@@ -66,32 +66,6 @@ public:
 
   CudaCompute getCudaComputeCapability() { return compute_; }
 
-  // for CPU, sets to use optimized (intgemm8/intgemm16) code for matrix multiplication.
-  // for GPU, this is invalid. for gpu, all the functions below always returns false and the setters abort.
-  void setInt16(bool /*optimize*/) override {
-    ABORT("setInt16() is not supported on the GPU.");
-  }
-
-  bool isInt16() override {
-    return false;
-  }
-
-  void setInt8(bool /*optimize*/) override {
-    ABORT("setInt8() is not supported on the GPU.");
-  }
-
-  bool isInt8() override {
-    return false;
-  }
-
-  void setInt8Shift(bool /*shifted*/) override {
-    ABORT("setInt8Shift() is not supported on the GPU.");
-  }
-
-  bool isInt8Shift() override {
-    return false;
-  }
-
 private:
   cublasHandle_t cublasHandle_{0};     // make sure it's 0, so it can be initalized lazily
   cusparseHandle_t cusparseHandle_{0}; // as above

@@ -36,23 +36,8 @@ int main(int argc, char** argv) {
   auto exportAs = options->get<std::string>("export-as");
   auto vocabPaths = options->get<std::vector<std::string>>("vocabs");// , std::vector<std::string>());
   
-  auto saveGemmTypeStr = options->get<std::string>("gemm-type", "float32");
-  Type saveGemmType;
-  if(saveGemmTypeStr == "float32") {
-    saveGemmType = Type::float32;
-  } else if(saveGemmTypeStr == "packed16") {  // packed16 (fbgemm) only supports AVX2. AVX512 might be added later
-    saveGemmType = Type::packed16;
-  } else if(saveGemmTypeStr == "packed8avx2") { // packed8 for AVX2 (fbgemm)
-    saveGemmType = Type::packed8avx2;
-  } else if(saveGemmTypeStr == "packed8avx512") { // packed8 for AVX512 (fbgemm)
-    saveGemmType = Type::packed8avx512;
-  } else if(saveGemmTypeStr == "intgemm8") { // intgemm 8 bit format
-    saveGemmType = Type::intgemm8;
-  } else if(saveGemmTypeStr == "intgemm16") { // intgemm 16 bit format
-    saveGemmType = Type::intgemm16;
-  } else {
-    ABORT("Unknown gemm-type: {}", saveGemmTypeStr);
-  }
+  // We accept any type here and will later croak during packAndSave if the type cannot be used for conversion
+  Type saveGemmType = typeFromString(options->get<std::string>("gemm-type", "float32"));
 
   LOG(info, "Outputting {}, precision: {}", modelTo, saveGemmType);
 
@@ -63,9 +48,6 @@ int main(int argc, char** argv) {
 
   auto load = [&](Ptr<ExpressionGraph> graph) {
     graph->setDevice(CPU0);
-    graph->getBackend()->setInt8(false);  // Since win run graph->forward() we need to make sure it does not get converted to an intgemm format during it.
-    graph->getBackend()->setInt16(false); // We manually do the compression later.
-
     graph->load(modelFrom);
     graph->forward();  // run the initializers
   };

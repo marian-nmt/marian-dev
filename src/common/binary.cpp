@@ -59,7 +59,8 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
 
   for(int i = 0; i < numHeaders; ++i) {
     if(items[i].mapped) { // memory-mapped, hence only set pointer
-      ABORT_IF(isIntgemm(items[i].type), "mmap format not supported for intgemm matrices");
+      // @TOOD: verify this actually works for the hardware-specific ones like intgemm8avx2
+      ABORT_IF(items[i].type == Type::intgemm8 || items[i].type == Type::intgemm16, "mmap format not supported for hardware non-specific intgemm matrices");
       items[i].ptr = get<char>(current, headers[i].dataLength);
     } else { // reading into item data
       size_t len = headers[i].dataLength;
@@ -69,9 +70,9 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
       // Reordering depends on the architecture (SSE/AVX2/AVX512) so we read in the quantized matrices and
       // then reorder them before adding them as a parameter in the graph.
       if (matchType<intgemm8>(items[i].type)) {
-        cpu::integer::prepareAndTransposeB<Type::int8>(items[i], ptr);
+        cpu::integer::prepareAndTransposeB<Type::intgemm8>(items[i], ptr);
       } else if (matchType<intgemm16>(items[i].type)) {
-        cpu::integer::prepareAndTransposeB<Type::int16>(items[i], ptr);
+        cpu::integer::prepareAndTransposeB<Type::intgemm16>(items[i], ptr);
       } else {
         std::copy(ptr, ptr + len, items[i].bytes.begin());
       }

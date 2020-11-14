@@ -30,13 +30,64 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
 inline int cols(Shape& shape) { return shape[-1]; }
 inline int rows(Shape& shape) { return shape.elements() / cols(shape); }
 
-template<Type type> struct intgemm_;
-template <> struct intgemm_<Type::int8> {using width = intgemm::Int8;
-                                         using type = int8_t;
-                                         constexpr static const Type intgemmType = Type::intgemm8;};
-template <> struct intgemm_<Type::int16> {using width = intgemm::Int16;
-                                          using type = int16_t;
-                                          constexpr static const Type intgemmType = Type::intgemm16;};
+template <Type type> struct intgemm_;
+
+template <> struct intgemm_<Type::intgemm8> {
+  using width = intgemm::Int8;
+  using type = int8_t;
+};
+
+template <> struct intgemm_<Type::intgemm8ssse3> {
+  using width = intgemm::SSSE3_8bit;
+  using type = int8_t;
+};
+
+template <> struct intgemm_<Type::intgemm8avx2> {
+  using width = intgemm::AVX2_8bit;
+  using type = int8_t;
+};
+
+template <> struct intgemm_<Type::intgemm8avx512> {
+  using width = intgemm::AVX512_8bit;
+  using type = int8_t;
+};
+
+template <> struct intgemm_<Type::intgemm16> {
+  using width = intgemm::Int16;
+  using type = int16_t;
+};
+
+template <> struct intgemm_<Type::intgemm16sse2> {
+  using width = intgemm::SSE2_16bit;
+  using type = int16_t;
+};
+
+template <> struct intgemm_<Type::intgemm16avx2> {
+  using width = intgemm::AVX2_16bit;
+  using type = int16_t;
+};
+
+template <> struct intgemm_<Type::intgemm16avx512> {
+  using width = intgemm::AVX512_16bit;
+  using type = int16_t;
+};
+
+template <Type vtype>
+static inline float& getQuantMult(marian::Tensor val) {
+  ABORT_IF(!isIntgemm(val->type()), "getQuantMult does not work for type {}", val->type());
+  typedef typename intgemm_<vtype>::type Integer;
+  return *(reinterpret_cast<float*>(val->data<Integer>() + val->shape().elements()));
+}
+
+template <Type vtype>
+static inline float computeQuantMult(marian::Tensor val) {
+  if(sizeOf(vtype) == 1)
+    return 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+  else if(sizeOf(vtype) == 2)
+    return 1024.0f;
+  else
+    ABORT("Unhandled type size {}", sizeOf(vtype));
+}
 
 // This operates on floats after processing so doesn't care about int8_t vs int16_t.
 void AddBias(marian::Tensor C, const marian::Tensor Bias);

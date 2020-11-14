@@ -82,19 +82,27 @@ template <> struct intgemm_<Type::intgemm16avx512> {
 
 template <Type vtype>
 static inline float& getQuantMult(marian::Tensor val) {
+#if COMPILE_CPU
   ABORT_IF(!isIntgemm(val->type()), "getQuantMult does not work for type {}", val->type());
   typedef typename intgemm_<vtype>::type Integer;
   return *(reinterpret_cast<float*>(val->data<Integer>() + val->shape().elements()));
+#else
+  val;
+#endif
 }
 
 template <Type vtype>
 static inline float computeQuantMult(marian::Tensor val) {
+#if COMPILE_CPU
   if(sizeOf(vtype) == 1)
     return 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
   else if(sizeOf(vtype) == 2)
     return 1024.0f;
   else
     ABORT("Unhandled type size {}", sizeOf(vtype));
+#else
+  val;
+#endif
 }
 
 // This operates on floats after processing so doesn't care about int8_t vs int16_t.

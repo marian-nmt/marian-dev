@@ -466,7 +466,6 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
-  float clipValue = a->graph()->getBackend()->getClip();
   // added support for packed GEMM API (fp16, int8)
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
@@ -475,7 +474,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      return Expression<DotNodeOp>(clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+      return Expression<DotNodeOp>(a, b, transA, transB, scale);
     } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
       return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
@@ -487,7 +486,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of dot product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::dot(clip(a, clipValue),
+        return cpu::variant::dot(a,
                                  b,
                                  b->shape(),
                                  transA,
@@ -503,8 +502,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
   } else {
-    return Expression<DotNodeOp>(
-        clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+    return Expression<DotNodeOp>(a, b, transA, transB, scale);
   }
 }
 
@@ -515,16 +513,9 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
 static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
 
-  // if clipValue > 0, the inputs will be clipped to range [-clipValue,
-  // clipValue] This is meant to keep values at the same range as used during
-  // training when optimizing for 8-bit integer products. Likely to be removed
-  // in the future when we explore better ways to handle this.
-  float clipValue = a->graph()->getBackend()->getClip();
-
   int rows = a->shape().elements() / a->shape()[-1];
   Expr ones = a->graph()->ones({ rows, 1 });
-  std::vector<Expr> nodes
-    = { clip(a, clipValue), clip(b, clipValue), bias, ones };
+  std::vector<Expr> nodes = { a, b, bias, ones };
   return Expression<AffineNodeOp>(nodes, transA, transB, scale);
 }
 
@@ -536,7 +527,6 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
-  float clipValue = a->graph()->getBackend()->getClip(); // @TODO: do we use that at all?
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
 
@@ -554,7 +544,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::affine(clip(a, clipValue),
+        return cpu::variant::affine(a,
                                     b,
                                     b->shape(),
                                     bias,

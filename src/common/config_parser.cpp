@@ -134,8 +134,6 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
     "Suppress logging for translation");
   cli.add<size_t>("--seed",
     "Seed for all random number generators. 0 means initialize randomly");
-  cli.add<float>("--clip-gemm",
-    "If not 0 clip GEMM input values to +/- arg");
   cli.add<bool>("--interpolate-env-vars",
     "allow the use of environment variables in paths, of the form ${VAR_NAME}");
   cli.add<bool>("--relative-paths",

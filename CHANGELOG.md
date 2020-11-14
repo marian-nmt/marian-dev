@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Improved handling for receiving SIGTERM during training. By default, SIGTERM triggers 'save (now) and exit'. Prior to this fix, batch pre-fetching did not check for this sigal, potentially delaying exit considerably. It now pays attention to that. Also, the default behaviour of save-and-exit can now be disabled on the command line with --sigterm exit-immediately.
 
 ### Changed
+- Remove `--clip-gemm` which is obsolete and was never used anyway
 - Removed `--optimize` switch, instead we now determine compute type based on binary model.
 - Updated SentencePiece repository to version 8336bbd0c1cfba02a879afe625bf1ddaf7cd93c5 from https://github.com/google/sentencepiece. 
 - Enabled compilation of SentencePiece by default since no dependency on protobuf anymore. 

@@ -57,14 +57,12 @@ struct FbgemmPacked16PackNodeOp : public UnaryNodeOp {
   int nbcol_;
   uint64_t packsize_;
 
-  FbgemmPacked16PackNodeOp(Expr a, PackMatrix packMat, bool transpose, float clipValue)
+  FbgemmPacked16PackNodeOp(Expr a, PackMatrix packMat, bool transpose)
       : UnaryNodeOp(a, newShape(a, transpose), Type::uint8),
         packMat_(packMat),
         transpose_(transpose) {
     if(packMat != PackMatrix::B)
       ABORT("Only prepacking of B (weight matrix) is supported");
-    if(clipValue != 0)
-      ABORT("Clipping is not supported");
     if(!memoize_)
       ABORT("Only constant weight node can be packed");
   }
@@ -144,16 +142,13 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
   FbgemmPacked8PackNodeOp(Expr a,
                           PackMatrix packMat,
                           marian::Type packType,
-                          bool transpose,
-                          float clipValue)
+                          bool transpose)
       : UnaryNodeOp(a, newShape(a, transpose), Type::uint8),
         packMat_(packMat),
         packType_(packType),
         transpose_(transpose) {
     if(packMat != PackMatrix::B)
       ABORT("Only prepacking of B (weight matrix) is supported");
-    if(clipValue != 0)
-      ABORT("Clipping is not supported");
     if(!memoize_)
       ABORT("Only constant weight node can be packed");
   }
@@ -377,11 +372,11 @@ static inline Expr affine(Expr a, Expr b, Shape bShape, Expr c, bool transA, boo
   }
 }
 
-static inline Expr pack(Type elementType, Expr a, PackMatrix packMat, bool transpose, float clipValue) {
+static inline Expr pack(Type elementType, Expr a, PackMatrix packMat, bool transpose) {
   if (elementType == Type::packed16)
-    return Expression<FbgemmPacked16PackNodeOp>(a, packMat, transpose, clipValue);
+    return Expression<FbgemmPacked16PackNodeOp>(a, packMat, transpose);
   else if (isPacked(elementType) && sizeOf(elementType) == 1)
-    return Expression<FbgemmPacked8PackNodeOp>(a, packMat, elementType, transpose, clipValue);
+    return Expression<FbgemmPacked8PackNodeOp>(a, packMat, elementType, transpose);
   else {
     ABORT("Only int8 and fp16 are available. {}", elementType);
     return nullptr;

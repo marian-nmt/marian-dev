@@ -93,7 +93,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
   return lambda(children, outShape, Type::float32, dotOrAffineNodeOp); // inference-only Lambda node
 #else
-  a, b, bias, transA, scale, clipValue;
+  a, bQuant, bias, transA, scale;
   ABORT("You need to enable CPU compilation to use this feature. Use cmake .. -DCOMPILE_CPU=ON");
 #endif
 }

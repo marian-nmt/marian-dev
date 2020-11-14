@@ -88,6 +88,7 @@ static inline float& getQuantMult(marian::Tensor val) {
   return *(reinterpret_cast<float*>(val->data<Integer>() + val->shape().elements()));
 #else
   val;
+  ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
 #endif
 }
 
@@ -101,7 +102,8 @@ static inline float computeQuantMult(marian::Tensor val) {
   else
     ABORT("Unhandled type size {}", sizeOf(vtype));
 #else
-  val;
+  val; 
+  ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
 #endif
 }
 

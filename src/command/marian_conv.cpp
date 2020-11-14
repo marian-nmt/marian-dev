@@ -1,12 +1,9 @@
 #include "marian.h"
-
 #include "common/cli_wrapper.h"
-
-#include <sstream>
-
-
 #include "tensors/cpu/expression_graph_packable.h"
 #include "onnx/expression_graph_onnx_exporter.h"
+
+#include <sstream>
 
 int main(int argc, char** argv) {
   using namespace marian;
@@ -25,7 +22,9 @@ int main(int argc, char** argv) {
     cli->add<std::string>("--from,-f", "Input model", "model.npz");
     cli->add<std::string>("--to,-t", "Output model", "model.bin");
     cli->add<std::string>("--export-as", "Kind of conversion: marian-bin or onnx-{encode,decoder-step,decoder-init,decoder-stop}", "marian-bin");
-    cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512, intgemm8, intgemm16", "float32");
+    cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512, "
+                          "intgemm8, intgemm8ssse3, intgemm8avx2, intgemm8avx512, intgemm16, intgemm16sse2, intgemm16avx2, intgemm16avx512", 
+                          "float32");
     cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export");
     cli->parse(argc, argv);
     options->merge(config);

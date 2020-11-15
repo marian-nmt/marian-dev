@@ -167,22 +167,20 @@ public:
           float quantMult = cpu::integer::computeQuantMult<Type::intgemm8>(val);
 
           // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
+          cpu::integer::passOrAbort(gemmElementType); // Check if the hardware supports the GEMM type
           if(isSsse3(gemmElementType)) {
-            // @TODO: we should croak here if the hardware type is not supported?
             intgemm::ssse3::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int8_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
           } else if(isAvx2(gemmElementType)) {
-            // @TODO: we should croak here if the hardware type is not supported?
             intgemm::avx2::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                    paramMat->data<int8_t>(), /*output*/
                                                    quantMult, /*Quant Mult*/
                                                    rows(val),
                                                    cols(val));
           } else if(isAvx512(gemmElementType)) {
-            // @TODO: we should croak here if the hardware type is not supported?
             intgemm::avx512bw::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                      paramMat->data<int8_t>(), /*output*/
                                                      quantMult, /*Quant Mult*/
@@ -203,22 +201,20 @@ public:
           float quantMult = cpu::integer::computeQuantMult<Type::intgemm16>(val);
 
            // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
+           cpu::integer::passOrAbort(gemmElementType); // Check if the hardware supports the GEMM type
           if(isSse2(gemmElementType)) {
-            // @TODO: we should croak here if the hardware type is not supported?
             intgemm::sse2::Kernels16::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int16_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
           } else if(isAvx2(gemmElementType)) {
-            // @TODO: we should croak here if the hardware type is not supported?
             intgemm::avx2::Kernels16::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int16_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
           } else if(isAvx512(gemmElementType)) {
-            // @TODO: we should croak here if the hardware type is not supported?
             intgemm::avx512bw::Kernels16::PrepareBTransposed(tmp->data(), /*input*/
                                                       paramMat->data<int16_t>(), /*output*/
                                                       quantMult, /*Quant Mult*/

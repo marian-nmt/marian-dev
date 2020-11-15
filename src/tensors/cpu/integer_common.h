@@ -141,6 +141,29 @@ static inline Type getIntgemmType(Type vtype) {
 #endif
 }
 
+static inline bool passOrAbort(Type vtype) {
+#if COMPILE_CPU
+  if (vtype == Type::intgemm8 || vtype == Type::intgemm16) {
+    return true;
+  } else if (vtype == Type::intgemm16sse2) {
+    ABORT_IF(intgemm::kCPU < intgemm::CPUType::SSE2, "Your CPU doesn't support the architecture necessary to decode model of type {}. Try older architecture instead.", vtype);
+  } else if (vtype == Type::intgemm8ssse3) {
+    ABORT_IF(intgemm::kCPU < intgemm::CPUType::SSSE3, "Your CPU doesn't support the architecture necessary to decode model of type {}. Try older architecture instead.", vtype);
+  } else if (vtype == Type::intgemm8avx2 || vtype == Type::intgemm16avx2) {
+    ABORT_IF(intgemm::kCPU < intgemm::CPUType::AVX2, "Your CPU doesn't support the architecture necessary to decode model of type {}. Try older architecture instead.", vtype);
+  } else if (vtype == Type::intgemm8avx512 || vtype == Type::intgemm16avx512) {
+    ABORT_IF(intgemm::kCPU < intgemm::CPUType::AVX512BW, "Your CPU doesn't support the architecture necessary to decode model of type {}. Try older architecture instead.", vtype);
+  } else if (vtype == Type::intgemm8avx512vnni) {
+    ABORT_IF(intgemm::kCPU < intgemm::CPUType::AVX512VNNI, "Your CPU doesn't support the architecture necessary to decode model of type {}. Try older architecture instead.", vtype);
+  }
+  return true;
+#else
+  vtype;
+  ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
+  return false;
+#endif
+}
+
 template <Type vtype>
 static inline float computeQuantMult(marian::Tensor val) {
 #if COMPILE_CPU

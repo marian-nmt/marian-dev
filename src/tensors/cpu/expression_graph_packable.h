@@ -169,21 +169,21 @@ public:
           // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
           if(isSsse3(gemmElementType)) {
             // @TODO: we should croak here if the hardware type is not supported?
-            intgemm::SSSE3_8bit::PrepareBTransposed(tmp->data(), /*input*/
+            intgemm::ssse3::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int8_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
           } else if(isAvx2(gemmElementType)) {
             // @TODO: we should croak here if the hardware type is not supported?
-            intgemm::AVX2_8bit::PrepareBTransposed(tmp->data(), /*input*/
+            intgemm::avx2::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                    paramMat->data<int8_t>(), /*output*/
                                                    quantMult, /*Quant Mult*/
                                                    rows(val),
                                                    cols(val));
           } else if(isAvx512(gemmElementType)) {
             // @TODO: we should croak here if the hardware type is not supported?
-            intgemm::AVX512_8bit::PrepareBTransposed(tmp->data(), /*input*/
+            intgemm::avx512bw::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                      paramMat->data<int8_t>(), /*output*/
                                                      quantMult, /*Quant Mult*/
                                                      rows(val),
@@ -205,21 +205,21 @@ public:
            // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
           if(isSse2(gemmElementType)) {
             // @TODO: we should croak here if the hardware type is not supported?
-            intgemm::SSE2_16bit::PrepareBTransposed(tmp->data(), /*input*/
+            intgemm::sse2::Kernels16::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int16_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
           } else if(isAvx2(gemmElementType)) {
             // @TODO: we should croak here if the hardware type is not supported?
-            intgemm::AVX2_16bit::PrepareBTransposed(tmp->data(), /*input*/
+            intgemm::avx2::Kernels16::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int16_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
           } else if(isAvx512(gemmElementType)) {
             // @TODO: we should croak here if the hardware type is not supported?
-            intgemm::AVX512_16bit::PrepareBTransposed(tmp->data(), /*input*/
+            intgemm::avx512bw::Kernels16::PrepareBTransposed(tmp->data(), /*input*/
                                                       paramMat->data<int16_t>(), /*output*/
                                                       quantMult, /*Quant Mult*/
                                                       rows(val),

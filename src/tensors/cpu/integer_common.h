@@ -6,17 +6,28 @@
 #include "common/io_item.h"
 
 #if COMPILE_CPU
-#include "3rd_party/intgemm/intgemm.h"
+#include "3rd_party/intgemm/intgemm/intgemm.h"
 #else
 namespace intgemm {
   struct Int8;
   struct Int16;
-  struct SSSE3_8bit;
-  struct AVX2_8bit;
-  struct AVX512_8bit;
-  struct SSE2_16bit;
-  struct AVX2_16bit;
-  struct AVX512_16bit;
+  namespace ssse3 {
+    struct Kernels8;
+  }
+  namespace sse2 {
+    struct Kernels16;
+  }
+  namespace avx2 {
+    struct Kernels8;
+    struct Kernels16;
+  }
+  namespace avx512bw {
+    struct Kernels8;
+    struct Kernels16;
+  }
+  namespace avx512vnni {
+    struct Kernels8;
+  }
 }
 #endif
 
@@ -46,17 +57,22 @@ template <> struct intgemm_<Type::intgemm8> {
 };
 
 template <> struct intgemm_<Type::intgemm8ssse3> {
-  using width = intgemm::SSSE3_8bit;
+  using width = intgemm::ssse3::Kernels8;
   using type = int8_t;
 };
 
 template <> struct intgemm_<Type::intgemm8avx2> {
-  using width = intgemm::AVX2_8bit;
+  using width = intgemm::avx2::Kernels8;
   using type = int8_t;
 };
 
 template <> struct intgemm_<Type::intgemm8avx512> {
-  using width = intgemm::AVX512_8bit;
+  using width = intgemm::avx512bw::Kernels8;
+  using type = int8_t;
+};
+
+template <> struct intgemm_<Type::intgemm8avx512vnni> {
+  using width = intgemm::avx512vnni::Kernels8;
   using type = int8_t;
 };
 
@@ -66,17 +82,17 @@ template <> struct intgemm_<Type::intgemm16> {
 };
 
 template <> struct intgemm_<Type::intgemm16sse2> {
-  using width = intgemm::SSE2_16bit;
+  using width = intgemm::sse2::Kernels16;
   using type = int16_t;
 };
 
 template <> struct intgemm_<Type::intgemm16avx2> {
-  using width = intgemm::AVX2_16bit;
+  using width = intgemm::avx2::Kernels16;
   using type = int16_t;
 };
 
 template <> struct intgemm_<Type::intgemm16avx512> {
-  using width = intgemm::AVX512_16bit;
+  using width = intgemm::avx512bw::Kernels16;
   using type = int16_t;
 };
 
@@ -89,6 +105,39 @@ static inline float& getQuantMult(marian::Tensor val) {
 #else
   val;
   ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
+#endif
+}
+
+static inline Type getIntgemmType(Type vtype) {
+#if COMPILE_CPU
+  if (vtype == Type::intgemm8) {
+    if (intgemm::kCPU == intgemm::CPUType::AVX512VNNI) {
+      return Type::intgemm8avx512vnni;
+    } else if (intgemm::kCPU == intgemm::CPUType::AVX512BW) {
+      return Type::intgemm8avx512;
+    } else if (intgemm::kCPU == intgemm::CPUType::AVX2) {
+      return Type::intgemm8avx2;
+    } else if (intgemm::kCPU == intgemm::CPUType::SSSE3) {
+      return Type::intgemm8ssse3;
+    } else {
+      ABORT("Your CPU doesn't support SSSE3, necessary for 8bit intgemm to work.");
+    }
+  } else if (vtype == Type::intgemm16) {
+    if (intgemm::kCPU > intgemm::CPUType::AVX2) {
+      return Type::intgemm16avx512;
+    } else if (intgemm::kCPU == intgemm::CPUType::AVX2) {
+      return Type::intgemm16avx2;
+    } else if (intgemm::kCPU == intgemm::CPUType::SSE2) {
+      return Type::intgemm16sse2;
+    } else {
+      ABORT("Your CPU doesn't support SSE2, necessary for 16bit intgemm to work.");
+    }
+  } else {
+    ABORT("Unrecognised type {}.", vtype);
+  }
+#else
+  ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
+  return vtype;
 #endif
 }
 

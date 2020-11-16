@@ -127,7 +127,7 @@ static inline Type getIntgemmType(Type vtype) {
       return Type::intgemm16avx512;
     } else if (intgemm::kCPU == intgemm::CPUType::AVX2) {
       return Type::intgemm16avx2;
-    } else if (intgemm::kCPU => intgemm::CPUType::SSE2) {
+    } else if (intgemm::kCPU >= intgemm::CPUType::SSE2) {
       return Type::intgemm16sse2;
     } else {
       ABORT("Your CPU doesn't support SSE2, necessary for 16bit intgemm to work.");

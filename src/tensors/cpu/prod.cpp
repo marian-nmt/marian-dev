@@ -124,7 +124,7 @@ void ProdBatchedOld(marian::Tensor C,
   auto strideC = n * m;
 
   auto batchC = std::max(batchA, batchB);
-#if 0 // TODO Accuracy regression. Batched GEMM generate different output. Investigating and disable for now.
+#if MKL_FOUND
   CBLAS_TRANSPOSE transA_forarr = CblasNoTrans;
   CBLAS_TRANSPOSE transB_forarr = CblasNoTrans;
 

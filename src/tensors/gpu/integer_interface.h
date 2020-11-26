@@ -245,8 +245,11 @@ public:
       }
       float * beta = nullptr;
       static bool fused = child(0)->graph()->getBackend()->isFused();
-      if (fused)
+      if (fused) {
         beta = gpuOne;
+      } else if (!fused && doRelu_) {
+        ABORT("We can't do fused relu in unfused GEMM."); // Unfused GEMM can't do RELU. ensure that we don't
+      }
 
       cutlass_igemm_dispatcher(transB_, transA_,
                           n,
@@ -362,9 +365,11 @@ public:
       }
       float * beta = nullptr;
       static bool fused = child(0)->graph()->getBackend()->isFused();
-      if (fused)
+      if (fused) {
         beta = gpuZero;
-
+      } else if (!fused && doRelu_) {
+        ABORT("We can't do fused relu in unfused GEMM."); // Unfused GEMM can't do RELU. ensure that we don't
+      }
       cutlass_igemm_dispatcher(transB_, transA_, //@TODO cutlass Check
                         n,
                         m,
@@ -460,8 +465,6 @@ public:
 };
 
 static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, float scale, float clipValue=0 /*currently unused*/, bool doRelu=false) {
-  bool doReluTMP = doRelu; //Fused Relu is bugged for now
-  doRelu = false;
   bool useTensorcores = A->graph()->getBackend()->useTensorCoreGemm();
   ABORT_IF(useTensorcores && transA, "Using tensorcores and transposing the activations is not yet supported!");
   // Quantize to 8bits:
@@ -492,9 +495,13 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
       ret = Expression<AffineNodeOp>(AQuantized, BQuantized, bias, deQuantMult, ones, transA, transB, scale, useTensorcores, false /*Unfused can't do Relu*/);
     }
   } else {
-    ret = Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores, doRelu);
-  }  // Fused relo is bugged for now
-  if (/*!fused &&*/ doReluTMP) { //We can't do RELU if we are not fused, so we need to explicitly perform it as a postprocessing step
+    if (fused) {
+      ret = Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores, doRelu);
+    } else {
+      ret = Expression<DotNodeOp>(AQuantized, BQuantized, deQuantMult, transA, transB, scale, useTensorcores, false /*Unfused can't do Relu*/);
+    }
+  }
+  if (!fused && doRelu) { //We can't do RELU if we are not fused, so we need to explicitly perform it as a postprocessing step
     return relu(ret);
   } else {
     return ret;
@@ -502,8 +509,6 @@ static inline Expr affine(Expr A, Expr B, Expr bias, bool transA, bool transB, f
 }
 
 static inline Expr dot(Expr a, Expr b, bool transA, bool transB, float scale, bool doRelu=false) {
-    // @TODO this will only work for k (cols(a) or rows(b)) % 4 == 0
-
   return gpu::integer::affine(a, b, nullptr, transA, transB, scale, 0, doRelu);
 }
 

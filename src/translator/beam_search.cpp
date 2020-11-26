@@ -1,3 +1,8 @@
+ /* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "translator/beam_search.h"
 
 #include "data/factored_vocab.h"
@@ -334,8 +339,9 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
     if (maxBeamSize == 0)
       break;
 
-    for (size_t factorGroup = 0; factorGroup < numFactorGroups; factorGroup++) {
-      // for factored vocabs, we do one factor at a time, but without updating the scorer for secondary factors
+    // We first process the lemmas then all of the remaining factor groups in parallel.
+    for(int processingLemmas = 1; processingLemmas >= 0; --processingLemmas) {
+      // for factored vocabs, we do lemmas then all the factor groups, the scorer is not updated for the secondary factor
 
       //**********************************************************************
       // create constant containing previous path scores for current beam
@@ -344,69 +350,107 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
       std::vector<IndexType> hypIndices;      // [maxBeamSize, 1, currentDimBatch, 1] (flattened) tensor index ((beamHypIdx, batchIdx), flattened) of prev hyp that a hyp originated from
       std::vector<Word> prevWords;            // [maxBeamSize, 1, currentDimBatch, 1] (flattened) word that a hyp ended in, for advancing the decoder-model's history
       Expr prevPathScores;                    // [maxBeamSize, 1, currentDimBatch, 1], path score that a hyp ended in (last axis will broadcast into vocab size when adding expandedPathScores)
+      std::vector<size_t> factorGroupsToExpand; // A list of all of the factor groups to be expanded
 
       bool anyCanExpand = false; // stays false if all hyps are invalid factor expansions
-      if(t == 0 && factorGroup == 0) { // no scores yet
+      if(t == 0 && processingLemmas) { // no scores yet
         prevPathScores = graph->constant({1, 1, 1, 1}, inits::fromValue(0));
         anyCanExpand = true;
+
+        // We need to expand factorGroup 0 only
+        factorGroupsToExpand.push_back(0);
 
         // at the beginning all batch entries are used
         batchIndices.resize(origDimBatch);
         std::iota(batchIndices.begin(), batchIndices.end(), 0);
       } else {
-        if(factorGroup == 0)                                                              // only factorGroup==0 can subselect neural state
+        if(processingLemmas)                                                              // only factorGroup==0 can subselect neural state
           for(int currentBatchIdx = 0; currentBatchIdx < beams.size(); ++currentBatchIdx) // loop over batch entries (active sentences)
             if(!beams[currentBatchIdx].empty() || !PURGE_BATCH)                           // for each beam check
               batchIndices.push_back(prevBatchIdxMap[currentBatchIdx]);                   // which batch entries were active in previous step
 
         std::vector<float> prevScores;
-        for(size_t beamHypIdx = 0; beamHypIdx < maxBeamSize; ++beamHypIdx) { // loop over globally maximal beam-size (maxBeamSize)
-          for(int origBatchIdx = 0; origBatchIdx < origDimBatch; ++origBatchIdx) { // loop over all batch entries (active and inactive)
-            auto& beam = beams[origBatchIdx];
-            if(beamHypIdx < beam.size()) {
-              auto hyp = beam[beamHypIdx];
-              auto word = hyp->getWord();
-              auto canExpand = (!factoredVocab || factoredVocab->canExpandFactoredWord(hyp->getWord(), factorGroup));
-              //LOG(info, "[{}, {}] Can expand {} with {} -> {}", batchIdx, beamHypIdx, (*batch->back()->vocab())[hyp->getWord()], factorGroup, canExpand);
-              anyCanExpand |= canExpand;
+        // If we are processing the lemmas, we want to only process factor group 0. Therefore the bound is [0, 1)
+        // For all other factors, we batch the [1, numFactorGroups) factors together and process them in parallel.
+        size_t factorGroupBound = processingLemmas? 1 : numFactorGroups;
+        size_t factorGroupStart = processingLemmas? 0 : 1;
+        for(size_t factorGroup = factorGroupStart; factorGroup < factorGroupBound; ++factorGroup) {
+          bool factorCanExpand = false;
+          for(size_t beamHypIdx = 0; beamHypIdx < maxBeamSize; ++beamHypIdx) { // loop over globally maximal beam-size (maxBeamSize)
+            for(int origBatchIdx = 0; origBatchIdx < origDimBatch; ++origBatchIdx) { // loop over all batch entries (active and inactive)
+              auto& beam = beams[origBatchIdx];
+              if(beamHypIdx < beam.size()) {
+                auto hyp = beam[beamHypIdx];
+                auto word = hyp->getWord();
+                auto canExpand = (!factoredVocab || factoredVocab->canExpandFactoredWord(hyp->getWord(), factorGroup));
 
-              auto currentBatchIdx = origBatchIdx;
-              if(PURGE_BATCH) {
-                if(factorGroup == 0)
-                  currentBatchIdx = prevBatchIdxMap[origBatchIdx]; // subselection may happen for factorGroup == 0
-                else
-                  currentBatchIdx = batchIdxMap[origBatchIdx];     // no subselection happens for factorGroup > 0,
-                                                                   // but we treat it like a next step, since a step
-                                                                   // happened for factorGroup == 0
-              }
+                //LOG(info, "[{}, {}] Can expand {} with {} -> {}", batchIdx, beamHypIdx, (*batch->back()->vocab())[hyp->getWord()], factorGroup, canExpand);
+                factorCanExpand |= canExpand;
+                anyCanExpand |= canExpand;
 
-              auto hypIndex = (IndexType)(hyp->getPrevStateIndex() * currentDimBatch + currentBatchIdx); // (beamHypIdx, batchIdx), flattened, for index_select() operation
+                auto currentBatchIdx = origBatchIdx;
+                if(PURGE_BATCH) {
+                  if(factorGroup == 0)
+                    currentBatchIdx = prevBatchIdxMap[origBatchIdx]; // subselection may happen for factorGroup == 0
+                  else
+                    currentBatchIdx = batchIdxMap[origBatchIdx];     // no subselection happens for factorGroup > 0,
+                                                                    // but we treat it like a next step, since a step
+                                                                    // happened for factorGroup == 0
+                }
 
-              hypIndices.push_back(hypIndex); // (beamHypIdx, batchIdx), flattened as said above.
-              prevWords .push_back(word);
-              prevScores.push_back(canExpand ? hyp->getPathScore() : INVALID_PATH_SCORE);
-            } else {  // pad to maxBeamSize (dummy hypothesis)
-              if(!PURGE_BATCH || !beam.empty()) { // but only if we are not pruning and the beam is not deactivated yet
-                hypIndices.push_back(0);
-                prevWords.push_back(trgEosId);    // (unused, but must be valid)
-                prevScores.push_back((float)INVALID_PATH_SCORE);
+                auto hypIndex = (IndexType)(hyp->getPrevStateIndex() * currentDimBatch + currentBatchIdx); // (beamHypIdx, batchIdx), flattened, for index_select() operation
+
+                hypIndices.push_back(hypIndex); // (beamHypIdx, batchIdx), flattened as said above.
+                prevWords .push_back(word);
+                prevScores.push_back(canExpand ? hyp->getPathScore() : INVALID_PATH_SCORE);
+              } else {  // pad to maxBeamSize (dummy hypothesis)
+                if(!PURGE_BATCH || !beam.empty()) { // but only if we are not pruning and the beam is not deactivated yet
+                  hypIndices.push_back(0);
+                  prevWords.push_back(trgEosId);    // (unused, but must be valid)
+                  prevScores.push_back((float)INVALID_PATH_SCORE);
+                }
               }
             }
           }
+
+          // If none of the factor groups can be expanded
+          if(!factorCanExpand && !processingLemmas) {
+            int newElts = currentDimBatch * maxBeamSize;
+            hypIndices.resize(hypIndices.size() - newElts);
+            prevWords.resize(prevWords.size() - newElts);
+            prevScores.resize(prevScores.size() - newElts);
+          } else {
+            factorGroupsToExpand.push_back(factorGroup);
+          }
         }
-        if(factorGroup == 0)
-          currentDimBatch = (IndexType) batchIndices.size(); // keep batch size constant for all factor groups in a time step
-        prevPathScores = graph->constant({(int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores));
+        
+        // keep batch size constant for all factor groups in a time step
+        if(processingLemmas) currentDimBatch = (IndexType) batchIndices.size(); 
+        
+        // Avoid unnecessary memcpy on GPU if no words can expand this factor.
+        if(anyCanExpand) prevPathScores = graph->constant({(int)factorGroupsToExpand.size() * (int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores));
       }
+
       if (!anyCanExpand) // all words cannot expand this factor: skip
         continue;
 
+      std::vector<Expr> expandedPathScoresForFactorGroups(factorGroupsToExpand.size());
+      if(processingLemmas) {
+        expandedPathScoresForFactorGroups[0] = prevPathScores;
+      } else {
+        for(int fgIndex = 0; fgIndex < factorGroupsToExpand.size(); ++fgIndex) {
+          Slice window(fgIndex * maxBeamSize, (fgIndex + 1) * maxBeamSize, 1);
+          auto scoreSlice = slice(prevPathScores, 0, window);
+          scoreSlice = reshape(scoreSlice, {(int)maxBeamSize, 1, (int)currentDimBatch, 1});
+          expandedPathScoresForFactorGroups[fgIndex] = scoreSlice;
+        }
+      }
+
       //**********************************************************************
       // compute expanded path scores with word prediction probs from all scorers
-      auto expandedPathScores = prevPathScores; // will become [maxBeamSize, 1, currDimBatch, dimVocab]
-      Expr logProbs;
       for(size_t i = 0; i < scorers_.size(); ++i) {
-        if (factorGroup == 0) {
+        if (processingLemmas) {
+          Expr logProbs;
           // compute output probabilities for current output time step
           //  - uses hypIndices[index in beam, 1, batch index, 1] to reorder scorer state to reflect the top-N in beams[][]
           //  - adds prevWords [index in beam, 1, batch index, 1] to the scorer's target history
@@ -424,8 +468,10 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           else
           {
             auto shortlist = scorers_[i]->getShortlist();
-            logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, shortlist); // [maxBeamSize, 1, currentDimBatch, dimVocab]
+            logProbs = states[i]->getLogProbs().getFactoredLogits(0 /*factorGroup*/, shortlist); // [maxBeamSize, 1, currentDimBatch, dimVocab]
           }
+          // expand all hypotheses, [maxBeamSize, 1, currentDimBatch, 1] -> [maxBeamSize, 1, currentDimBatch, dimVocab]
+          expandedPathScoresForFactorGroups[0] = expandedPathScoresForFactorGroups[0] + scorers_[i]->getWeight() * logProbs;          
         }
         else {
           // add secondary factors
@@ -437,53 +483,63 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           // and push out other hypotheses. Hence, we exclude those here by setting the path score to
           // INVALID_PATH_SCORE. Instead, toHyps() explicitly propagates those hyps by simply copying the
           // previous hypothesis.
-          logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, /*shortlist=*/ nullptr, hypIndices, maxBeamSize); // [maxBeamSize, 1, currentDimBatch, dimVocab]
+
+          std::vector<Expr> logProbs =  states[i]->getLogProbs().getSecondaryFactorLogits(factorGroupsToExpand, hypIndices, currentDimBatch, maxBeamSize);
+          for(int fgIndex = 0; fgIndex < (int)factorGroupsToExpand.size(); ++fgIndex) {
+            expandedPathScoresForFactorGroups[fgIndex] = expandedPathScoresForFactorGroups[fgIndex] + scorers_[i]->getWeight() * logProbs[fgIndex];  
+          }
         }
-        // expand all hypotheses, [maxBeamSize, 1, currentDimBatch, 1] -> [maxBeamSize, 1, currentDimBatch, dimVocab]
-        expandedPathScores = expandedPathScores + scorers_[i]->getWeight() * logProbs;
       }
 
       // make beams continuous
-      expandedPathScores = swapAxes(expandedPathScores, 0, 2); // -> [currentDimBatch, 1, maxBeamSize, dimVocab]
-
+      for(auto& expandedPathScores : expandedPathScoresForFactorGroups) {
+        expandedPathScores = swapAxes(expandedPathScores, 0, 2); // -> [currentDimBatch, 1, maxBeamSize, dimVocab]
+      }
+      
       // perform NN computation
-      if(t == 0 && factorGroup == 0)
+      if(t == 0 && processingLemmas)
         graph->forward();
       else
         graph->forwardNext();
 
       //**********************************************************************
       // suppress specific symbols if not at right positions
-      if(unkColId != -1 && factorGroup == 0)
-        suppressWord(expandedPathScores, unkColId);
-      for(auto state : states)
-        state->blacklist(expandedPathScores, batch);
+      for(auto& expandedPathScores : expandedPathScoresForFactorGroups) {
+        if(unkColId != -1 && processingLemmas)
+          suppressWord(expandedPathScores, unkColId);
+        for(auto state : states)
+          state->blacklist(expandedPathScores, batch);
+      }
 
       //**********************************************************************
       // perform beam search
+      for(int fgIndex = 0; fgIndex < (int) factorGroupsToExpand.size(); ++fgIndex) {
+        Expr expandedPathScores = expandedPathScoresForFactorGroups[fgIndex];
+        int factorGroup = factorGroupsToExpand[fgIndex];
 
-      // find N best amongst the (maxBeamSize * dimVocab) hypotheses
-      std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
-      std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
-      getNBestList(/*in*/   expandedPathScores->val(),   // [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
-                  /*N=*/    maxBeamSize,                 // desired beam size
-                  /*out*/   nBestPathScores,
-                   /*out*/  nBestKeys,
-                  /*first=*/t == 0 && factorGroup == 0); // @TODO: this is only used for checking presently, and should be removed altogether
-      // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
-      // and nBestKeys for each their original location (batchIdx, beamHypIdx, word).
+        // find N best amongst the (maxBeamSize * dimVocab) hypotheses
+        std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
+        std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
+        getNBestList(/*in*/   expandedPathScores->val(),   // [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
+                    /*N=*/    maxBeamSize,                 // desired beam size
+                    /*out*/   nBestPathScores,
+                    /*out*/  nBestKeys,
+                    /*first=*/t == 0 && processingLemmas); // @TODO: this is only used for checking presently, and should be removed altogether
+        // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
+        // and nBestKeys for each their original location (batchIdx, beamHypIdx, word).
 
-      // combine N-best sets with existing search space (beams) to updated search space
-      beams = toHyps(nBestKeys, nBestPathScores,
-                     /*nBestBeamSize*/expandedPathScores->shape()[-2], // used for interpretation of keys
-                     /*vocabSize=*/expandedPathScores->shape()[-1],    // used for interpretation of keys
-                     beams,
-                     states,            // used for keeping track of per-ensemble-member path score
-                     batch,             // only used for propagating alignment info
-                     factoredVocab, factorGroup,
-                     emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
-                     batchIdxMap);      // used to create a reverse batch index map to recover original batch indices for this step
-    } // END FOR factorGroup = 0 .. numFactorGroups-1
+        // combine N-best sets with existing search space (beams) to updated search space
+        beams = toHyps(nBestKeys, nBestPathScores,
+                      /*nBestBeamSize*/expandedPathScores->shape()[-2], // used for interpretation of keys
+                      /*vocabSize=*/expandedPathScores->shape()[-1],    // used for interpretation of keys
+                      beams,
+                      states,            // used for keeping track of per-ensemble-member path score
+                      batch,             // only used for propagating alignment info
+                      factoredVocab, factorGroup,
+                      emptyBatchEntries, // [origDimBatch] - empty source batch entries are marked with true
+                      batchIdxMap);      // used to create a reverse batch index map to recover original batch indices for this step
+      }
+    } // END FOR processingLemmas = 1 .. 0
 
     prevBatchIdxMap = batchIdxMap; // save current batchIdx map to be used in next step; we are then going to look one step back
 

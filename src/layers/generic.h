@@ -120,7 +120,8 @@ public:
     Logits(std::vector<Ptr<RationalLoss>>&& logits, Ptr<FactoredVocab> embeddingFactorMapping) // factored-output constructor
       : logits_(std::move(logits)), factoredVocab_(embeddingFactorMapping) {}
     Expr getLogits() const; // assume it holds logits: get them, possibly aggregating over factors
-    std::vector<Expr> getSecondaryFactorLogits(std::vector<size_t> factorGroups, const std::vector<IndexType>& hypIndices, size_t batchSize, size_t beamSize) const; // get logits all secondary factor groups in factorGroups vector
+    std::vector<Expr> getSecondaryFactorLogits(std::vector<size_t> factorGroups, const std::vector<IndexType>& hypIndices, size_t batchSize, size_t beamSize,
+                                               const std::vector<Expr>& expandedPathScores, float scorerWeight) const; // get logits all secondary factor groups in factorGroups vector
     Expr getFactoredLogits(size_t groupIndex, Ptr<data::Shortlist> shortlist = nullptr, const std::vector<IndexType>& hypIndices = {}, size_t beamSize = 0) const; // get logits for only one factor group, with optional reshuffle
     //Ptr<RationalLoss> getRationalLoss() const; // assume it holds a loss: get that
     Expr applyLossFunction(const Words& labels, const std::function<Expr(Expr/*logits*/,Expr/*indices*/)>& lossFn) const;

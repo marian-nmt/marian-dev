@@ -484,10 +484,8 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           // INVALID_PATH_SCORE. Instead, toHyps() explicitly propagates those hyps by simply copying the
           // previous hypothesis.
 
-          std::vector<Expr> logProbs =  states[i]->getLogProbs().getSecondaryFactorLogits(factorGroupsToExpand, hypIndices, currentDimBatch, maxBeamSize);
-          for(int fgIndex = 0; fgIndex < (int)factorGroupsToExpand.size(); ++fgIndex) {
-            expandedPathScoresForFactorGroups[fgIndex] = expandedPathScoresForFactorGroups[fgIndex] + scorers_[i]->getWeight() * logProbs[fgIndex];  
-          }
+          expandedPathScoresForFactorGroups =  states[i]->getLogProbs().getSecondaryFactorLogits(factorGroupsToExpand, hypIndices, currentDimBatch, maxBeamSize, 
+                                                                                                 expandedPathScoresForFactorGroups, scorers_[i]->getWeight());
         }
       }
 

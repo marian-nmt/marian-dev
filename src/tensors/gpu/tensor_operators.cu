@@ -786,7 +786,7 @@ void LogSoftmax(Tensor out, Tensor in) {
   size_t m = out->shape().elements() / out->shape().back();
   size_t k = out->shape().back();
 
-  int blocks = std::min(MAX_BLOCKS, (int)m);
+  int blocks = (int)m;
   int threads = std::min(MAX_THREADS, (int)k);
   int shared = sizeof(float) * threads; // use float32 as accumulation type
 
@@ -2990,13 +2990,11 @@ struct ptrInnerDimPair {
 };
 
 template <typename T>
-__global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup, const IndexType* const indices, 
-                                ptrInnerDimPair<T>* lossAndLastDimSize, size_t numGroups, size_t sizeWithoutInnerDim, 
-                                size_t groupStart, int lemmaHasFactorGroupWidth, size_t numLemmas, T minimal) {
+__global__ void gAddFactorMaxesPhase1(T* maxes, // [#blocks, numGroups - 1] 
+                                      ptrInnerDimPair<T>* lossAndLastDimSize, 
+                                      size_t numGroups, size_t sizeWithoutInnerDim, 
+                                      T minimal) {
 
-  extern __shared__ uint8_t _sharedBytes[];
-  T* sel = (T*)_sharedBytes;
-  T* factorMaximasInBlock = sel + blockDim.x;  
   typedef cub::WarpReduce<T> WarpReduce;
   __shared__ typename WarpReduce::TempStorage temp_storage[32]; // Max thread size (1024) divided by warp size (32)
 
@@ -3013,7 +3011,7 @@ __global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup,
     int groupLossSize = groupLossesInnerDim * sizeWithoutInnerDim;
 
     T factorMaxima = minimal;
-    // Each block computes the factor maxes within a given row.
+    // Each block computes the maxes for each secondary factor within a given row.
     // We start by each warp computing offset to the row its block is responsible for in the loss
 
     // This is per warp since groupLossesInnerDim is warp specific and the groupLossesPtr is also warp specific.
@@ -3025,40 +3023,68 @@ __global__ void gAddFactorMaxes(T* out, const int8_t* const lemmaHasFactorGroup,
       }
     }
 
-    // Each warp reduces the accumulated values. Warps can do this in parallel. Then each each writes its final value to shared mem.
+    // Each warp reduces the accumulated values. Then each each writes its final value to global for phase 2 of this op
     factorMaxima = WarpReduce(temp_storage[wid]).Reduce(factorMaxima, cub::Max());
     if(lane == 0) {
-      factorMaximasInBlock[warpFactorGroup] = factorMaxima;
+      T* factorMaximasInBlock = maxes + blockIdx.x * (numGroups - 1);
+      factorMaximasInBlock[warpFactorGroup - 1] = factorMaxima;
     }
   }
+}
 
-  // Wait for all warps to write out to shared mem so the second phase of this kernel can proceed.
+
+  template <typename T, int BLOCKS_PER_ROW>
+__global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactorGroup, 
+                                      const IndexType* const indices, 
+                                      const T* lemmaLosses, 
+                                      size_t numGroups, 
+                                      const int sizeWithoutInnerDim, 
+                                      const T* maxes,
+                                      size_t groupStart, 
+                                      int lemmaHasFactorGroupWidth, 
+                                      size_t numLemmas, T minimal) {
+
+  extern __shared__ uint8_t _sharedBytes[];
+  T* sums = (T*)_sharedBytes;
+  T* factorMaxesInBlockShared = sums + blockDim.x;  
+  
+  // A group of blocks is assigned a row to process. We compute some the row index for each block in the group
+  // and the row each group of blocks is responsible for processing.
+  const int blockStartIndexInRow = blockIdx.x % BLOCKS_PER_ROW;
+  const int blockRow = blockIdx.x / BLOCKS_PER_ROW;
+
+  // We need to know the total number of chunks in a row to safely iterate over the input and output
+  const int totalBlockChunksInRow = (numLemmas + blockDim.x - 1) / blockDim.x;
+
+  // Calculate the row pointer for the global memory which holds for max for each factor. This is the same for
+  // all blocks in a given group
+  const T* factorMaxesInBlock = maxes + blockRow * (numGroups - 1);
+  T* outputRowForBlockGroup = out + blockRow * numLemmas;
+  const T* inputRowForBlockGroup = lemmaLosses + blockRow * numLemmas;
+  if(threadIdx.x < (numGroups - 1)) factorMaxesInBlockShared[threadIdx.x] = factorMaxesInBlock[threadIdx.x];
   __syncthreads();
-  
-  // First, each block computes the max across the row for each group and stores in in factorMaximasInBlock[g]
-  
-  // Each block has the max for each factor, so we iterate over the groups again and accumulate the 
-  // output in shared mem one block at a time before writing the results for the row to out
-  T* selGlobal = lossAndLastDimSize[0].ptr;
-  const int outTensorInnerDim = lossAndLastDimSize[0].innerDim;
-  const int outputSize = sizeWithoutInnerDim * outTensorInnerDim;
-  const int outRowOffset = blockIdx.x * outTensorInnerDim;
 
-  for(int offset = threadIdx.x; offset < outTensorInnerDim; offset += blockDim.x) {
-    const int outOffset = outRowOffset + offset;
-    if(outOffset < outputSize) sel[threadIdx.x] = selGlobal[outOffset]; 
+  for(int rowChunk = blockStartIndexInRow; rowChunk < totalBlockChunksInRow; rowChunk += BLOCKS_PER_ROW) {
+    // Compute the start of the chunk each block needs to read from in the input and output tensors
+    const T* lemmaLossesChunk = inputRowForBlockGroup + rowChunk * blockDim.x;
+    T* blockOutputChunk = outputRowForBlockGroup + rowChunk * blockDim.x;
 
-    // Accumulate the row's portion in shared memory
+    // Calculate the column being read to/written from to use as a read/write guard
+    const int columnIndex = threadIdx.x * rowChunk;
+    if(columnIndex < numLemmas) sums[threadIdx.x] = lemmaLossesChunk[threadIdx.x]; 
+
+    // Each block accumulates its output in shared memory then writes the final result to global. We use __ldg since the 
+    // data being read does not change throughout the life of the kernel so the constant cache can be used.
     for(int g = 1; g < (int)numGroups; ++g) {
-      int lemma = indices? indices[offset] - groupStart: offset;
-      T factorMask = static_cast<T>(lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]);
-      T factorMaxima = factorMaximasInBlock[g];
+      int lemma = indices? indices[columnIndex] - groupStart: columnIndex;
+      T factorMask = static_cast<T>(__ldg(&lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]));
+      T factorMaxima = factorMaxesInBlockShared[g-1];
 
-      if(outOffset < outputSize) {
-        sel[threadIdx.x] += (factorMask * factorMaxima);
+      if(columnIndex < numLemmas) {
+        sums[threadIdx.x] += (factorMask * factorMaxima);
       }
     }
-    if(outOffset < outputSize) out[outOffset] = sel[threadIdx.x];
+    if(columnIndex < numLemmas) blockOutputChunk[threadIdx.x] = sums[threadIdx.x];
   }
 }
 
@@ -3075,11 +3101,18 @@ void AddFactorMaxes(Tensor out,
   ABORT_IF(lemmaHasFactorGroupTensor->type() != Type::int8, "lemmaHasFactor group tensor wrong type");
   ABORT_IF(out->shape()[-1] != (int) numLemmas, "Output shape {} or numLemmas {} incorrect", out->shape(), numLemmas);
 
-  const int threads = std::min(MAX_THREADS, std::max(32, out->shape()[-1]));
   const int sizeWithoutInnerDim = out->shape().elements() / out->shape()[-1];
+  constexpr int warpSize = 32;
+  const int blocksPhase1 = sizeWithoutInnerDim;
+  const int threadsPhase1 = std::min(MAX_THREADS, (int)(warpSize * (groupLosses.size() - 1)) );
+
+  constexpr int blocksPerRow = 8;
+  const int threadsPhase2 = std::min(MAX_THREADS, std::max(32, out->shape()[-1]));
+  const int blocksPhase2 = sizeWithoutInnerDim * blocksPerRow;
 
   if(out->type() == Type::float32) {
     IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ptrInnerDimPair<float>>(groupLosses.size()); 
+    IPtr<MemoryPiece> factorMaxes = allocator->alloc<float>(sizeWithoutInnerDim * (groupLosses.size() - 1));
     ptrInnerDimPair<float>* dest = mp_ptrs->data<ptrInnerDimPair<float>>();
 
     std::vector<ptrInnerDimPair<float>> lossPtrs;
@@ -3090,20 +3123,29 @@ void AddFactorMaxes(Tensor out,
 
     // Async just so that call is issued in per thread default stream
     CUDA_CHECK(cudaMemcpyAsync(dest, lossPtrs.data(), lossPtrs.size() * sizeof(ptrInnerDimPair<float>), cudaMemcpyHostToDevice, 0));
-    const int blocks = sizeWithoutInnerDim;
-    const int sharedBytes = sizeof(float) * (groupLosses.size() + threads);
-    gAddFactorMaxes<<<blocks, threads, sharedBytes>>>(out->data<float>(), 
-                                                      lemmaHasFactorGroupTensor->data<int8_t>(), 
-                                                      indices? indices->data<IndexType>(): nullptr, 
-                                                      dest,
-                                                      groupLosses.size(),
-                                                      sizeWithoutInnerDim,
-                                                      groupStart, lemmaHasFactorGroupTensor->shape()[1], numLemmas,
-                                                      std::numeric_limits<float>::lowest());
+    gAddFactorMaxesPhase1<<<blocksPhase1, threadsPhase1>>>(factorMaxes->data<float>(), // [#rows, numGroups - 1] 
+                                                           dest, 
+                                                           groupLosses.size(), 
+                                                           sizeWithoutInnerDim, 
+                                                           std::numeric_limits<float>::lowest());
+
+    const int sharedBytes = sizeof(float) * (groupLosses.size() + threadsPhase2);
+    gAddFactorMaxesPhase2<float, blocksPerRow><<<blocksPhase2, threadsPhase2, sharedBytes>>>(out->data<float>(), 
+                                                                                             lemmaHasFactorGroupTensor->data<int8_t>(), 
+                                                                                             indices? indices->data<IndexType>(): nullptr,
+                                                                                             groupLosses[0]->data<float>(),
+                                                                                             groupLosses.size(), sizeWithoutInnerDim, 
+                                                                                             factorMaxes->data<float>(), groupStart, 
+                                                                                             lemmaHasFactorGroupTensor->shape()[1], 
+                                                                                             numLemmas, 
+                                                                                             std::numeric_limits<float>::lowest());
+
     allocator->free(mp_ptrs);
+    allocator->free(factorMaxes);
   #if COMPILE_FP16
   } else if(out->type() == Type::float16) {
     IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ptrInnerDimPair<half>>(groupLosses.size()); 
+    IPtr<MemoryPiece> factorMaxes = allocator->alloc<half>(sizeWithoutInnerDim * (groupLosses.size() - 1));
     ptrInnerDimPair<half>* dest = mp_ptrs->data<ptrInnerDimPair<half>>();
 
     std::vector<ptrInnerDimPair<half>> lossPtrs;
@@ -3114,17 +3156,24 @@ void AddFactorMaxes(Tensor out,
 
     // Async just so that call is issued in per thread default stream
     CUDA_CHECK(cudaMemcpyAsync(dest, lossPtrs.data(), lossPtrs.size() * sizeof(ptrInnerDimPair<half>), cudaMemcpyHostToDevice, 0));
-    const int blocks = sizeWithoutInnerDim;
-    const int sharedBytes = sizeof(half) * (groupLosses.size() + threads);
-    gAddFactorMaxes<<<blocks, threads, sharedBytes>>>(out->data<half>(), 
-                                                      lemmaHasFactorGroupTensor->data<int8_t>(), 
-                                                      indices? indices->data<IndexType>(): nullptr, 
-                                                      dest,
-                                                      groupLosses.size(),
-                                                      sizeWithoutInnerDim,
-                                                      groupStart, lemmaHasFactorGroupTensor->shape()[1], numLemmas,
-                                                      __float2half(std::numeric_limits<float>::lowest()) );
+    gAddFactorMaxesPhase1<<<blocksPhase1, threadsPhase1>>>(factorMaxes->data<half>(), // [#rows, numGroups - 1] 
+                                                           dest, 
+                                                           groupLosses.size(), 
+                                                           sizeWithoutInnerDim, 
+                                                           __float2half(std::numeric_limits<float>::lowest()) );
+
+    const int sharedBytes = sizeof(half) * (groupLosses.size() + threadsPhase2);
+    gAddFactorMaxesPhase2<half, blocksPerRow><<<blocksPhase2, threadsPhase2, sharedBytes>>>(out->data<half>(), 
+                                                                                            lemmaHasFactorGroupTensor->data<int8_t>(), 
+                                                                                            indices? indices->data<IndexType>(): nullptr,
+                                                                                            groupLosses[0]->data<half>(),
+                                                                                            groupLosses.size(), sizeWithoutInnerDim, 
+                                                                                            factorMaxes->data<half>(), groupStart, 
+                                                                                            lemmaHasFactorGroupTensor->shape()[1], 
+                                                                                            numLemmas, 
+                                                                                            __float2half(std::numeric_limits<float>::lowest()) );
     allocator->free(mp_ptrs);
+    allocator->free(factorMaxes);
   #endif
   } else {
     ABORT("AddFactorMaxes not implemented for type {}", out->type());

@@ -1,3 +1,8 @@
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "data/corpus.h"
 
 #include <numeric>
@@ -265,6 +270,14 @@ CorpusBase::batch_ptr Corpus::toBatch(const std::vector<Sample>& batchVector) {
         maxDims[i] = (int)ex[i].size();
     }
     sentenceIds.push_back(ex.getId());
+  }
+  
+  // When running on GPU, we want the batchWidth to be a multiple of 8 for better tensorcore usage
+  if(options_->get<int>("cpu-threads") == 0) {
+    constexpr int roundingFactor = 8;
+    for(size_t j = 0; j < maxDims.size(); ++j) {
+      maxDims[j] = roundingFactor * ((maxDims[j] + roundingFactor - 1) / roundingFactor);
+    }
   }
 
   std::vector<Ptr<SubBatch>> subBatches;

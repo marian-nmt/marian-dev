@@ -29,14 +29,14 @@
 #include "cub/cub/cub.cuh"
 #endif
 
-#define NOT_FOUND -1
 #define MAX_BLOCKS_PER_BEAM 8
 
+template<typename IndexType, typename T>
 struct TopK {
-  int p = NOT_FOUND;
-  float u = cub::FpLimits<float>::Lowest();
+  IndexType p = 0;
+  T u = cub::FpLimits<T>::Lowest();
 
-  __device__ __forceinline__ void insert(float elem, int elem_id) {
+  __device__ __forceinline__ void insert(T elem, IndexType elem_id) {
     if(elem > u) {
       u = elem;
       p = elem_id;
@@ -44,65 +44,78 @@ struct TopK {
   }
 
   __device__ __forceinline__ void init() {
-    u = cub::FpLimits<float>::Lowest();
-    p = NOT_FOUND;
+    u = cub::FpLimits<T>::Lowest();
+    p = 0;
   }
 };
 
-__device__ __forceinline__ TopK reduce_topk_op(const TopK& a, const TopK& b) {
+template<typename IndexType, typename T>
+__device__ __forceinline__ TopK<IndexType, T> reduce_topk_op(const TopK<IndexType, T>& a, const TopK<IndexType, T>& b) {
   return a.u > b.u ? a : b;
 }
 
-template<typename T, int BLOCK_SIZE_, int BLOCKS_PER_BEAM_>
+template<typename IndexType, typename T, int BLOCK_SIZE_, int BLOCKS_PER_BEAM_>
 __global__ void topk_stage_1(T* log_probs, 
-                             int* topk_tmp_id_buf,
-                             float* topk_tmp_val_buf, 
+                             IndexType* topk_tmp_id_buf,
+                             T* topk_tmp_val_buf, 
                              const int k, 
                              const int vocab_size) {
 
-  typedef cub::BlockReduce<TopK, BLOCK_SIZE_> BlockReduce;
+  typedef cub::BlockReduce<TopK<IndexType, T>, BLOCK_SIZE_> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
 
-  const int tid = threadIdx.x;
-  const int bid = blockIdx.x;
-  const int row_id = bid / BLOCKS_PER_BEAM_; // row id for log_probs
-  const int block_lane = bid % BLOCKS_PER_BEAM_; // block id for a beam 
-  const int tmp_log_buf_index = row_id * vocab_size; 
-  const int tmp_topk_buf_index = row_id * BLOCKS_PER_BEAM_ * k + block_lane * k;
-  TopK partial;
+  const IndexType tid = threadIdx.x;
+  const IndexType bid = blockIdx.x;
+  const IndexType row_id = bid / BLOCKS_PER_BEAM_; // row id for log_probs
+  const IndexType block_lane = bid % BLOCKS_PER_BEAM_; // block id for a beam 
+  const IndexType tmp_log_buf_index = row_id * vocab_size; 
+  const IndexType tmp_topk_buf_index = row_id * BLOCKS_PER_BEAM_ * k + block_lane * k;
+  TopK<IndexType, T> partial;
 
   for(int ite = 0; ite < k; ite++) {
     partial.init();
+    const IndexType threadStart = tid + block_lane * BLOCK_SIZE_;
+
+    // This is needed to ensure the indices for the threads in each valid block starts in a valid range for that block.
+    if(threadStart < vocab_size) partial.p = threadStart;
     #pragma unroll
-    for(int elem_id = tid + block_lane * BLOCK_SIZE_; elem_id < vocab_size; elem_id += BLOCK_SIZE_ * BLOCKS_PER_BEAM_) {
-      int index = elem_id + tmp_log_buf_index;
+    for(IndexType elem_id = threadStart; elem_id < vocab_size; elem_id += BLOCK_SIZE_ * BLOCKS_PER_BEAM_) {
+      IndexType index = elem_id + tmp_log_buf_index;
       partial.insert(log_probs[index], index);
     }
 
-    TopK total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op);
+    TopK<IndexType, T> total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op<IndexType, T>);
 
     if (tid == 0) {
       const int index = tmp_topk_buf_index + ite;
       topk_tmp_id_buf[index] = total.p;
       topk_tmp_val_buf[index] = total.u;
-      // If we found a max, blank out the value in the log prob array before starting the next iteration
-      if(total.p != NOT_FOUND) log_probs[total.p] = cub::FpLimits<T>::Lowest();
+      // If we found a max, blank out the value in the log prob array before starting the next iteration.
+      // Otherwise, we don't need to issue a write since all prob values must have been T::min()
+      if(total.u != cub::FpLimits<T>::Lowest()) log_probs[total.p] = cub::FpLimits<T>::Lowest();
     }
     __syncthreads();
   }
 
   // Update prob array with original values.
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
-    const int index = tmp_topk_buf_index + beam;
-    int k_idx = topk_tmp_id_buf[index];
-    if(k_idx != NOT_FOUND) log_probs[k_idx] = (T)topk_tmp_val_buf[index];
+    const IndexType index = tmp_topk_buf_index + beam;
+    T max_val = topk_tmp_val_buf[index];
+    // We only want to replace the value in the log prob array if a value was blanked out (we found a max).
+    // When a max isn't found, topk_tmp_val_buf[index] will be T::min()
+    if(max_val != cub::FpLimits<T>::Lowest()) {
+      IndexType k_idx = topk_tmp_id_buf[index];
+      log_probs[k_idx] = (T)topk_tmp_val_buf[index];
+    } 
   }
 }
 
-template<int BLOCK_SIZE_, int BLOCKS_PER_BEAM_>
-__global__ void topk_stage_2(const int* __restrict topk_tmp_id_buf,
-                             float* topk_tmp_val_buf,
-                             TopK* top,
+template<typename IndexType, typename T, int BLOCK_SIZE_, int BLOCKS_PER_BEAM_>
+__global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
+                             T* topk_tmp_val_buf,
+                             TopK<IndexType, T>* top,
+                             IndexType* outIndices,
+                             T* outVals,
                              const int beams_per_batch,
                              const int k) {
 
@@ -110,65 +123,71 @@ __global__ void topk_stage_2(const int* __restrict topk_tmp_id_buf,
   const int tid = threadIdx.x;
   const int batch_id = blockIdx.x;
 
-  typedef cub::BlockReduce<TopK, BLOCK_SIZE_> BlockReduce;
+  typedef cub::BlockReduce<TopK<IndexType, T>, BLOCK_SIZE_> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   extern __shared__ char array[];
-  float *s_val = topk_tmp_val_buf + batch_id * size;
-  TopK *topks = (TopK*)(array);
+  T *s_val = topk_tmp_val_buf + batch_id * size;
+  TopK<IndexType, T> *topks = (TopK<IndexType, T>*)(array);
   
-  TopK partial;
+  TopK<IndexType, T> partial;
 
   for(int ite = 0; ite < k; ite++) {
     partial.init();
     #pragma unroll
-    for(int i = tid; i < size; i+= BLOCK_SIZE_) {
+    for(IndexType i = tid; i < size; i+= BLOCK_SIZE_) {
       partial.insert(s_val[i], i); 
     }
 
-    TopK total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op);
+    TopK<IndexType, T> total = BlockReduce(temp_storage).Reduce(partial, reduce_topk_op<IndexType, T>);
 
     if(tid == 0) {
       topks[ite] = total;
-      s_val[total.p] = cub::FpLimits<float>::Lowest();
+      s_val[total.p] = cub::FpLimits<T>::Lowest();
     }
     __syncthreads();
   }
 
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
-    TopK beamOut; 
-    int indexInRow = topks[beam].p == NOT_FOUND? 0: topks[beam].p;
+    TopK<IndexType, T> beamOut; 
+    IndexType indexInRow = topks[beam].p;
     beamOut.p = topk_tmp_id_buf[batch_id * size + indexInRow];
-    beamOut.p = beamOut.p == NOT_FOUND? 0 : beamOut.p; // If no max found, all values were equal to T::min so just return 0
     beamOut.u = topks[beam].u;
-    top[batch_id * k + beam] = beamOut;
+    if(top) top[batch_id * k + beam] = beamOut;
+    if(outIndices) outIndices[batch_id * k + beam] = beamOut.p;
+    if(outVals) outVals[batch_id * k + beam] = beamOut.u;
   }
 }
 
 #define CASE_K(K,BLOCK_SIZE_1_, BLOCK_SIZE_2_, BLOCKS_PER_BEAM_) \
   case K: \
-    topk_stage_1<T, BLOCK_SIZE_1_, BLOCKS_PER_BEAM_><<<batch_size * beams_per_batch * BLOCKS_PER_BEAM_, BLOCK_SIZE_1_, 0, stream>>>( \
+    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_BEAM_><<<batch_size * beams_per_batch * BLOCKS_PER_BEAM_, BLOCK_SIZE_1_, 0, stream>>>( \
         log_probs, \
         topk_tmp_id_buf, \
         topk_tmp_val_buf, \
         k, vocab_size); \
-    topk_stage_2<BLOCK_SIZE_2_, BLOCKS_PER_BEAM_><<<batch_size, BLOCK_SIZE_2_, K * sizeof(TopK), stream>>>( \
+    topk_stage_2<IndexType, T, BLOCK_SIZE_2_, BLOCKS_PER_BEAM_><<<batch_size, BLOCK_SIZE_2_, K * sizeof(TopK<IndexType, T>), stream>>>( \
         topk_tmp_id_buf, \
         topk_tmp_val_buf, \
         tops, \
+        outIndices, \
+        outVals, \
         beams_per_batch, \
         k); \
   break; \
 
-template <typename T>
+template <typename IndexType, typename T>
 void topK_kernelLauncher(T* log_probs,
-                         int* topk_tmp_id_buf,
-                         float* topk_tmp_val_buf,
-                         TopK* tops,
+                         IndexType* topk_tmp_id_buf,
+                         T* topk_tmp_val_buf,
+                         TopK<IndexType, T>* tops,
                          const int batch_size,
                          const int beams_per_batch,
                          const int k,
                          const int vocab_size,
                          cudaStream_t stream) {
+  
+  IndexType* outIndices = nullptr;
+  T* outVals = nullptr;                        
   switch(k) {
     CASE_K(1,128,128,MAX_BLOCKS_PER_BEAM);
     CASE_K(2,128,128,MAX_BLOCKS_PER_BEAM);
@@ -180,17 +199,60 @@ void topK_kernelLauncher(T* log_probs,
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<T, 128, 1><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
-                                                                                    topk_tmp_id_buf, 
-                                                                                    topk_tmp_val_buf,
-                                                                                    k, 
-                                                                                    vocab_size);
+      topk_stage_1<IndexType, T, 128, 1><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
+                                                                                               topk_tmp_id_buf, 
+                                                                                               topk_tmp_val_buf,
+                                                                                               k, 
+                                                                                               vocab_size);
 
-      topk_stage_2<128, 1><<<batch_size, 128, k * sizeof(TopK), stream>>>(topk_tmp_id_buf,
-                                                                                           topk_tmp_val_buf,
-                                                                                           tops,
-                                                                                           beams_per_batch,
-                                                                                           k);
+      topk_stage_2<IndexType, T, 128, 1><<<batch_size, 128, k * sizeof(TopK<IndexType, T>), stream>>>(topk_tmp_id_buf,
+                                                                                                      topk_tmp_val_buf,
+                                                                                                      tops,
+                                                                                                      outIndices,
+                                                                                                      outVals,
+                                                                                                      beams_per_batch,
+                                                                                                      k);
+    break;
+  }
+}
+
+template <typename IndexType, typename T>
+void topK_kernelLauncher(T* log_probs,
+                         IndexType* topk_tmp_id_buf,
+                         T* topk_tmp_val_buf,
+                         IndexType* outIndices,
+                         T* outVals,
+                         const int batch_size,
+                         const int beams_per_batch,
+                         const int k,
+                         const int vocab_size,
+                         cudaStream_t stream) {
+  
+  TopK<IndexType, T>* tops = nullptr;
+  switch(k) {
+    CASE_K(1,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(2,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(4,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(6,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(8,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(10,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(16,128,128,5);
+    CASE_K(32,256,128,1);
+    CASE_K(64,256,256,1);
+    default:
+      topk_stage_1<IndexType, T, 128, 1><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
+                                                                                               topk_tmp_id_buf, 
+                                                                                               topk_tmp_val_buf,
+                                                                                               k, 
+                                                                                               vocab_size);
+
+      topk_stage_2<IndexType, T, 128, 1><<<batch_size, 128, k * sizeof(TopK<IndexType, T>), stream>>>(topk_tmp_id_buf,
+                                                                                                      topk_tmp_val_buf,
+                                                                                                      tops,
+                                                                                                      outIndices,
+                                                                                                      outVals,
+                                                                                                      beams_per_batch,
+                                                                                                      k);
     break;
   }
 }

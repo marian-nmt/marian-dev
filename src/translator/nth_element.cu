@@ -10,6 +10,7 @@
 
 #include <iostream>
 
+#include "common/definitions.h"
 #include "translator/nth_element.h"
 #include "3rd_party/topk.cuh"
 
@@ -32,10 +33,10 @@ public:
     cudaSetDevice(deviceId_.no);
 
     const int tempElts = maxBatchSize * maxBeamSize * maxBeamSize * MAX_BLOCKS_PER_BEAM;
-    CUDA_CHECK(cudaMalloc((void**)&topk_tmp_id_buf, tempElts * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&topk_tmp_id_buf, tempElts * sizeof(IndexType)));
     CUDA_CHECK(cudaMalloc((void**)&topk_tmp_val_buf, tempElts * sizeof(float)));
-    CUDA_CHECK(cudaMalloc((void**)&tops, maxBatchSize * maxBeamSize * sizeof(TopK)));
-    CUDA_CHECK(cudaHostAlloc((void**)&topsHost, maxBeamSize * maxBatchSize * sizeof(TopK), cudaHostAllocDefault));
+    CUDA_CHECK(cudaMalloc((void**)&tops, maxBatchSize * maxBeamSize * sizeof(TopK<IndexType, float>)));
+    CUDA_CHECK(cudaHostAlloc((void**)&topsHost, maxBeamSize * maxBatchSize * sizeof(TopK<IndexType, float>), cudaHostAllocDefault));
   }
 
   ~NthElementGPU() {
@@ -56,7 +57,7 @@ private:
                    const int vocabSize) {
     cudaSetDevice(deviceId_.no);
 
-    topK_kernelLauncher(probs, topk_tmp_id_buf, topk_tmp_val_buf, tops,
+    topK_kernelLauncher(probs, topk_tmp_id_buf, (T*)topk_tmp_val_buf, (TopK<IndexType, T>*)tops,
                         batchSize, beamsPerBatch, beamWidth, vocabSize, 0);    
   }
 
@@ -79,33 +80,38 @@ public:
 
     if(scores->type() == Type::float32) {
       selectNBest(scores->data<float>(), dimBatch, inputN, N, vocabSize);
+      getPairs<float>(dimBatch * N, outKeys, outCosts);
 #if COMPILE_FP16
     } else if(scores->type() == Type::float16) {
       selectNBest(scores->data<half>(), dimBatch, inputN, N, vocabSize);
+      getPairs<half>(dimBatch * N, outKeys, outCosts);
 #endif
     } else {
       ABORT("getNBestList not implemented for type {}", scores->type());
     }
-    getPairs(dimBatch * N, outKeys, outCosts);
+    
     ABORT_IF(outKeys.size() != dimBatch * N, "Expected {} but got {} values during topk", outKeys.size(), dimBatch * N);
   }
 
 private:
+  template<typename Intermediate>
   void getPairs(size_t numElts,
                 std::vector<unsigned>& outKeys,
                 std::vector<float>& outValues) {
     cudaSetDevice(deviceId_.no);
-    CUDA_CHECK(cudaMemcpyAsync(topsHost,
+    TopK<IndexType, Intermediate>* topsHostCasted = (TopK<IndexType, Intermediate>*)topsHost;               
+
+    CUDA_CHECK(cudaMemcpyAsync(topsHostCasted,
                                tops,
-                               numElts * sizeof(TopK),
+                               numElts * sizeof(TopK<IndexType, Intermediate>),
                                cudaMemcpyDeviceToHost,
                                /* stream_ */ 0));
 
     CUDA_CHECK(cudaStreamSynchronize(/* stream_ */ 0));
 
     for(size_t i = 0; i < numElts; ++i) {
-      outKeys.push_back(topsHost[i].p);
-      outValues.push_back(topsHost[i].u);
+      outKeys.push_back(topsHostCasted[i].p);
+      outValues.push_back((float)topsHostCasted[i].u);
     }
   }
 
@@ -115,10 +121,10 @@ private:
   size_t maxBeamSize_;
   size_t maxBatchSize_;
 
-  int* topk_tmp_id_buf; // [maxBatchSize * maxBeamSize, maxBeamSize * MAX_BLOCKS_PER_BEAM]
+  IndexType* topk_tmp_id_buf; // [maxBatchSize * maxBeamSize, maxBeamSize * MAX_BLOCKS_PER_BEAM]
   float* topk_tmp_val_buf; // [maxBatchSize * maxBeamSize, maxBeamSize * MAX_BLOCKS_PER_BEAM]
-  TopK* tops; // [maxBatchSize, maxBeamSize]
-  TopK* topsHost; // [maxBatchSize, maxBeamSize]
+  TopK<IndexType, float>* tops; // [maxBatchSize, maxBeamSize]
+  TopK<IndexType, float>* topsHost; // [maxBatchSize, maxBeamSize]
 };
 
 // factory function

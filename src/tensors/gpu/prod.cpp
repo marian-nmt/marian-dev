@@ -320,8 +320,8 @@ void ProdBatchedTyped(marian::Tensor C,
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
   T alpha = scalar;
 
-  int batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
-  int batchB = B->shape().elements() / (B->shape()[-1] * B->shape()[-2]);
+  int batchDimA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
+  int batchDimB = B->shape().elements() / (B->shape()[-1] * B->shape()[-2]);
 
   int m = A->shape()[-2];
   int k = A->shape()[-1];
@@ -347,11 +347,11 @@ void ProdBatchedTyped(marian::Tensor C,
   auto cublasHandle = backend->getCublasHandle();
   auto compute = backend->getCudaComputeCapability();
 
-  auto strideA = batchA == 1 ? 0 : m * k;
-  auto strideB = batchB == 1 ? 0 : n * k;
+  auto strideA = batchDimA == 1 ? 0 : m * k;
+  auto strideB = batchDimB == 1 ? 0 : n * k;
   auto strideC = n * m;
 
-  if(batchA == batchB) {
+  if(batchDimA == batchDimB) {
     setTensorMode(cublasHandle);
     CUBLAS_CHECK(cublasGemmBatchedStridedTyped(cublasHandle, 
                                                compute, 
@@ -368,19 +368,19 @@ void ProdBatchedTyped(marian::Tensor C,
                                                &beta, 
                                                C->data<T>(), 
                                                ldc, strideC, 
-                                               batchA));
+                                               batchDimA));
     unsetTensorMode(cublasHandle);
   } else {
-    auto batchC = std::max(batchA, batchB);
-    size_t size = 3*batchC;
+    auto batchDimC = std::max(batchDimA, batchDimB);
+    size_t size = 3*batchDimC;
     std::vector<T*> ptrs(size);
     auto aStart = 0;
-    auto bStart = batchC;
-    auto cStart = bStart + batchC;
+    auto bStart = batchDimC;
+    auto cStart = bStart + batchDimC;
 
-    for(int i = 0; i < batchC; i++) {
-      ptrs[aStart + i] = A->data<T>() + (i % batchA) * strideA;
-      ptrs[bStart + i] = B->data<T>() + (i % batchB) * strideB;
+    for(int i = 0; i < batchDimC; i++) {
+      ptrs[aStart + i] = A->data<T>() + (i % batchDimA) * strideA;
+      ptrs[bStart + i] = B->data<T>() + (i % batchDimB) * strideB;
       ptrs[cStart + i] = C->data<T>() + i * strideC;
     }
 
@@ -407,7 +407,7 @@ void ProdBatchedTyped(marian::Tensor C,
                                         &beta,
                                         mp_ptrs->data<T*>() + cStart,
                                         ldc,
-                                        batchC));
+                                        batchDimC));
     unsetTensorMode(cublasHandle);
 
     allocator->free(mp_ptrs);

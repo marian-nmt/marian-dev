@@ -261,13 +261,13 @@ CorpusBase::batch_ptr Corpus::toBatch(const std::vector<Sample>& batchVector) {
 
   std::vector<size_t> sentenceIds;
 
-  std::vector<int> maxDims;      // @TODO: What's this? widths? maxLengths?
+  std::vector<int> maxWordsInBatchSentence;  
   for(auto& ex : batchVector) {  // @TODO: rename 'ex' to 'sample' or 'sentenceTuple'
-    if(maxDims.size() < ex.size())
-      maxDims.resize(ex.size(), 0);
+    if(maxWordsInBatchSentence.size() < ex.size())
+      maxWordsInBatchSentence.resize(ex.size(), 0);
     for(size_t i = 0; i < ex.size(); ++i) {
-      if(ex[i].size() > (size_t)maxDims[i])
-        maxDims[i] = (int)ex[i].size();
+      if(ex[i].size() > (size_t)maxWordsInBatchSentence[i])
+        maxWordsInBatchSentence[i] = (int)ex[i].size();
     }
     sentenceIds.push_back(ex.getId());
   }
@@ -275,19 +275,19 @@ CorpusBase::batch_ptr Corpus::toBatch(const std::vector<Sample>& batchVector) {
   // When running on GPU, we want the batchWidth to be a multiple of 8 for better tensorcore usage
   if(options_->get<int>("cpu-threads") == 0) {
     constexpr int roundingFactor = 8;
-    for(size_t j = 0; j < maxDims.size(); ++j) {
-      maxDims[j] = roundingFactor * ((maxDims[j] + roundingFactor - 1) / roundingFactor);
+    for(size_t j = 0; j < maxWordsInBatchSentence.size(); ++j) {
+      maxWordsInBatchSentence[j] = roundingFactor * ((maxWordsInBatchSentence[j] + roundingFactor - 1) / roundingFactor);
     }
   }
 
   std::vector<Ptr<SubBatch>> subBatches;
-  for(size_t j = 0; j < maxDims.size(); ++j) {
-    subBatches.emplace_back(New<SubBatch>(batchSize, maxDims[j], vocabs_[j]));
+  for(size_t j = 0; j < maxWordsInBatchSentence.size(); ++j) {
+    subBatches.emplace_back(New<SubBatch>(batchSize, maxWordsInBatchSentence[j], vocabs_[j]));
   }
 
-  std::vector<size_t> words(maxDims.size(), 0);
+  std::vector<size_t> words(maxWordsInBatchSentence.size(), 0);
   for(size_t b = 0; b < batchSize; ++b) {                    // loop over batch entries
-    for(size_t j = 0; j < maxDims.size(); ++j) {             // loop over streams
+    for(size_t j = 0; j < maxWordsInBatchSentence.size(); ++j) {             // loop over streams
       auto subBatch = subBatches[j];
       for(size_t s = 0; s < batchVector[b][j].size(); ++s) { // loop over word positions
         subBatch->data()[subBatch->locate(/*batchIdx=*/b, /*wordPos=*/s)/*s * batchSize + b*/] = batchVector[b][j][s];
@@ -297,7 +297,7 @@ CorpusBase::batch_ptr Corpus::toBatch(const std::vector<Sample>& batchVector) {
     }
   }
 
-  for(size_t j = 0; j < maxDims.size(); ++j)
+  for(size_t j = 0; j < maxWordsInBatchSentence.size(); ++j)
     subBatches[j]->setWords(words[j]);
 
   auto batch = batch_ptr(new batch_type(subBatches));

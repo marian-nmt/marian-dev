@@ -67,7 +67,7 @@ __device__ __forceinline__ TopK<IndexType, T> reduce_topk_min(const TopK<IndexTy
   return a.u < b.u ? a : b;
 }
 
-template<typename IndexType, typename T, int BLOCK_SIZE_, int BLOCKS_PER_BEAM_>
+template<typename IndexType, typename T, int BLOCK_SIZE_, int BLOCKS_PER_BEAM_, bool getRowOffsets>
 __global__ void topk_stage_1(T* log_probs, 
                              IndexType* topk_tmp_id_buf,
                              T* topk_tmp_val_buf, 
@@ -103,7 +103,7 @@ __global__ void topk_stage_1(T* log_probs,
 
     if (tid == 0) {
       const int index = tmp_topk_buf_index + ite;
-      topk_tmp_id_buf[index] = total.p;
+      topk_tmp_id_buf[index] = getRowOffsets? total.p - tmp_log_buf_index : total.p;
       topk_tmp_val_buf[index] = total.u;
       // If we found a max, blank out the value in the log prob array before starting the next iteration.
       // Otherwise, we don't need to issue a write since all prob values must have been T::min()
@@ -119,7 +119,7 @@ __global__ void topk_stage_1(T* log_probs,
     // We only want to replace the value in the log prob array if a value was blanked out (we found a max).
     // When a max isn't found, topk_tmp_val_buf[index] will be T::min()
     if(val != minimal) {
-      IndexType k_idx = topk_tmp_id_buf[index];
+      IndexType k_idx = getRowOffsets? topk_tmp_id_buf[index] + tmp_log_buf_index : topk_tmp_id_buf[index];
       log_probs[k_idx] = (T)topk_tmp_val_buf[index];
     } 
   }
@@ -166,8 +166,8 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
 
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
     TopK<IndexType, T> beamOut; 
-    IndexType indexInRow = topks[beam].p;
-    beamOut.p = topk_tmp_id_buf[batch_id * size + indexInRow];
+    IndexType indexInTmpValRow = topks[beam].p;
+    beamOut.p = topk_tmp_id_buf[batch_id * size + indexInTmpValRow];
     beamOut.u = topks[beam].u;
     if(top) top[batch_id * k + beam] = beamOut;
     if(outIndices) outIndices[batch_id * k + beam] = beamOut.p;
@@ -177,7 +177,7 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
 
 #define CASE_K(K,BLOCK_SIZE_1_, BLOCK_SIZE_2_, BLOCKS_PER_BEAM_) \
   case K: \
-    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_BEAM_><<<batch_size * beams_per_batch * BLOCKS_PER_BEAM_, BLOCK_SIZE_1_, 0, stream>>>( \
+    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_BEAM_, getRowOffsets><<<batch_size * beams_per_batch * BLOCKS_PER_BEAM_, BLOCK_SIZE_1_, 0, stream>>>( \
         log_probs, \
         topk_tmp_id_buf, \
         topk_tmp_val_buf, \
@@ -192,7 +192,11 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
         k, descendingOrder); \
   break; \
 
-template <typename IndexType, typename T>
+// The getRowOffsets template parameter is added so the topk implementation works with both nth_element.cu and the topk operator.
+// It is a template parameter since we know at compile time which version of topk we want to call. This flag can be removed whenever nth
+// element.cu is removed. When this flag is true, the indices returns are the offsets within the row. When the flag is false, the indices
+// returned are offset from the base pointer.
+template <typename IndexType, typename T, bool getRowOffsets=false>
 void topK_kernelLauncher(T* log_probs,
                          IndexType* topk_tmp_id_buf,
                          T* topk_tmp_val_buf,
@@ -217,7 +221,7 @@ void topK_kernelLauncher(T* log_probs,
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<IndexType, T, 128, 1><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
+      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
                                                                                                topk_tmp_id_buf, 
                                                                                                topk_tmp_val_buf,
                                                                                                k, 
@@ -236,7 +240,7 @@ void topK_kernelLauncher(T* log_probs,
   }
 }
 
-template <typename IndexType, typename T>
+template <typename IndexType, typename T, bool getRowOffsets=false>
 void topK_kernelLauncher(T* log_probs,
                          IndexType* topk_tmp_id_buf,
                          T* topk_tmp_val_buf,
@@ -261,7 +265,7 @@ void topK_kernelLauncher(T* log_probs,
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<IndexType, T, 128, 1><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
+      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(log_probs, 
                                                                                                topk_tmp_id_buf, 
                                                                                                topk_tmp_val_buf,
                                                                                                k, 

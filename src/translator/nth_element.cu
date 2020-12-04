@@ -58,7 +58,7 @@ private:
     cudaSetDevice(deviceId_.no);
 
     topK_kernelLauncher(probs, topk_tmp_id_buf, (T*)topk_tmp_val_buf, (TopK<IndexType, T>*)tops,
-                        batchSize, beamsPerBatch, beamWidth, vocabSize, 0);    
+                        batchSize, beamsPerBatch, beamWidth, vocabSize, true, 0);    
   }
 
 public:

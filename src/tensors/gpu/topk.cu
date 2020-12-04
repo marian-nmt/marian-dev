@@ -41,7 +41,7 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
   MemoryPiece::PtrType tempMemVal;
   if(in->type() == Type::float32) {
     tempMemVal = allocator->alloc<float>(tempElts);
-    topK_kernelLauncher<IndexType, float, true>(in->data<float>(), 
+    topK_kernelLauncher<IndexType, float, true /*get indices relative to row */>(in->data<float>(), 
                         tempMemInd->data<IndexType>(),
                         tempMemVal->data<float>(),
                         outInd->data<IndexType>(),
@@ -55,7 +55,7 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
 #if COMPILE_FP16
   } else if(in->type() == Type::float16) {
     tempMemVal = allocator->alloc<__half>(tempElts);
-    topK_kernelLauncher<IndexType, __half, true>(in->data<__half>(), 
+    topK_kernelLauncher<IndexType, __half, true /*get indices relative to row */>(in->data<__half>(), 
                         tempMemInd->data<IndexType>(),
                         tempMemVal->data<__half>(),
                         outInd->data<IndexType>(),

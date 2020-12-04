@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Add Uses the per thread default stream for cublas
-- Add Uses the strided batched gemm cublas call when possible for the batchedGemm.
-- Add In the general batchedGemm case, reduces the number of memcpy calls from 3 to 1.
-- Add Rounds the width of input batches to a multiple of 8 when the GPU backend is being used. This is to enable better use of tensorcores on Volta architectures and newer.
-- Add Places NVIDIA notices to some files
+- Uses the per thread default stream for cublas
+- Uses the strided batched gemm cublas call when possible for the batchedGemm.
+- In the general batchedGemm case, reduces the number of memcpy calls from 3 to 1.
+- Rounds the width of input batches to a multiple of 8 when the GPU backend is being used. This is to enable better use of tensorcores on Volta architectures and newer.
+- Places NVIDIA notices to some files
 - Add --train-embedder-rank for fine-tuning any encoder(-decoder) model for multi-lingual similarity via softmax-margin loss
 - Add --logical-epoch that allows to redefine the displayed epoch counter as a multiple of n data epochs, updates or labels. Also allows to define width of fractional part with second argument.
 - Add --metrics chrf for computing ChrF according to https://www.aclweb.org/anthology/W15-3049/ and SacreBLEU reference implementation

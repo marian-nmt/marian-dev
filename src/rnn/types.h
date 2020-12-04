@@ -90,8 +90,10 @@ public:
                 int beamSize, bool isBatchMajor) const {
     States selected;
     Expr indices;
-    // I think this doesn't work if model split among gpus but not sure if it matters
     
+    // We need to check if either a states's cell or output fields are non-null. In this case, we need
+    // to select rows from at least one of the tensors. If only some exprs are non-null, the call to
+    // select will handle this for us by returning a null expr naturally.
     for (auto& state : states_) {
       if (state.cell) {
         indices = state.cell->graph()->indices(selIdx);
@@ -103,6 +105,10 @@ public:
         break;
       }
     }
+
+    // If indices is null here, then all of the state.cell and state.output entries are null. Therefore,
+    // select will ignore the null indices expr and simply return a null pointer which is the expected
+    // behavior
     
     // GPU OPT: Implement kernel to batch these on GPU
     for(auto& state : states_)

@@ -1,3 +1,8 @@
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "common/types.h"
 #include "tensors/tensor_operators.h"
 
@@ -8,6 +13,22 @@
 #include "tensors/gpu/cuda_helpers.h"
 
 #include "tensors/gpu/add_all.h"
+#include "3rd_party/reduce_all.h"
+
+#if COMPILE_FP16
+#include <cuda_fp16.h>
+__device__ __forceinline__ half max(const half a, const half b) {
+  return a > b ? a : b;
+}
+#endif
+
+
+#if CUDA_VERSION >= 11000
+#include <cub/cub.cuh>
+#else
+#include "cub/cub/cub.cuh"
+#endif
+
 
 namespace marian {
 
@@ -2929,6 +2950,71 @@ void PoolingWithMaskingBackward(Tensor adj,
                                            mask->shape()[2],
                                            width,
                                            lastWidth);
+}
+
+template<typename T, int BLOCK_THREADS>
+__global__ void gReduceMaxLastAxis(T* outTensor, const T* inputTensor, int innerDimSize) {
+
+  typedef cub::BlockReduce<T, BLOCK_THREADS> BlockReduce;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+
+  size_t inputBlockStartOffset = blockIdx.x * innerDimSize;
+  const T* blockInputPtr = inputTensor + inputBlockStartOffset;
+  T blockMax = cub::FpLimits<T>::Lowest();
+
+  for(int tid = threadIdx.x; tid < innerDimSize; tid += BLOCK_THREADS) {
+    blockMax = max(blockMax, blockInputPtr[tid]);
+  }
+
+  int aggregate = BlockReduce(temp_storage).Reduce(blockMax, cub::Max());
+  if(threadIdx.x == 0) outTensor[blockIdx.x] = aggregate;
+}
+
+#define CASE_THREADS(BLOCKS, THREADS) \
+  case THREADS: \
+    gReduceMaxLastAxis<T, THREADS><<<BLOCKS, THREADS>>>( \
+          out, \
+          input, \
+          sizeOfLastDim); \
+  break; \
+
+template<typename T>
+void ReduceMaxLastAxisTyped(T* out, const T* input, int sizeOfLastDim, int blocks, int threads) {
+  threads = std::max(nextPow2((unsigned int)threads), 32U);
+  switch(threads) {
+    CASE_THREADS(blocks, 32);
+    CASE_THREADS(blocks, 64);
+    CASE_THREADS(blocks, 128);
+    CASE_THREADS(blocks, 256);
+    CASE_THREADS(blocks, 512);
+    CASE_THREADS(blocks, 1024);
+    default:
+      ABORT("Invalid number of threads in config for ReduceMaxLastAxis");
+  }
+}
+
+void ReduceMaxLastAxis(Tensor out,
+                       const marian::Tensor& input) {
+
+  cudaSetDevice(out->getDeviceId().no);
+  int outputElts = out->shape().elements();
+  int inputElts = input->shape().elements();
+
+  int sizeOfLastDim = input->shape()[-1];
+  int blocks = inputElts / sizeOfLastDim;
+
+  ABORT_IF(blocks != outputElts, "Expected {} elts in output tensor but tensor has size {}", blocks, outputElts);
+  int threads = std::min(sizeOfLastDim, MAX_THREADS);
+
+  if(out->type() == Type::float32) {
+    ReduceMaxLastAxisTyped(out->data<float>(), input->data<float>(), sizeOfLastDim, blocks, threads);
+  #if COMPILE_FP16
+  } else if(out->type() == Type::float16) {
+    ReduceMaxLastAxisTyped(out->data<half>(), input->data<half>(), sizeOfLastDim, blocks, threads);
+  #endif
+  } else {
+    ABORT("ReduceMaxLastAxis not implemented for type {}", out->type());
+  }
 }
 }  // namespace gpu
 }  // namespace marian

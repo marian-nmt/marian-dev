@@ -3,6 +3,12 @@
  *   SPDX-License-Identifier: MIT
  */
 
+ /* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
+
 #include "tensors/tensor_operators.h"
 #include "tensors/cpu/backend.h"
 #include "tensors/allocator.h"
@@ -21,6 +27,11 @@ namespace marian {
 namespace cpu {
 
   void IsNaN(const Tensor /*in*/, Ptr<Allocator> /*allocator*/, bool& /*isNaN*/, bool& /*isInf*/) {
+  ABORT("Not implemented");
+}
+
+void ReduceMaxLastAxis(Tensor /*out*/,
+                       const marian::Tensor& /*input*/) {
   ABORT("Not implemented");
 }
 

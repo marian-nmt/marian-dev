@@ -90,8 +90,8 @@ namespace marian {
       sel = sel - max(sel, -1);
       
       // Obtain slice for indices
-      size_t start = totalElts * fgIndex;
-      size_t end = totalElts * (fgIndex + 1);
+      int start = (int)totalElts * fgIndex;
+      int end = (int)totalElts * (fgIndex + 1);
       Slice fgSlice(start, end, 1);
       Expr fgIndices = slice(indices, 0, fgSlice);
 

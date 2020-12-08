@@ -415,7 +415,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
 
           // If none of the factor groups can be expanded
           if(!factorCanExpand && !processingLemmas) {
-            int newElts = currentDimBatch * maxBeamSize;
+            int newElts = currentDimBatch * (int)maxBeamSize;
             hypIndices.resize(hypIndices.size() - newElts);
             prevWords.resize(prevWords.size() - newElts);
             prevScores.resize(prevScores.size() - newElts);
@@ -439,7 +439,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
         expandedPathScoresForFactorGroups[0] = prevPathScores;
       } else {
         for(int fgIndex = 0; fgIndex < factorGroupsToExpand.size(); ++fgIndex) {
-          Slice window(fgIndex * maxBeamSize, (fgIndex + 1) * maxBeamSize, 1);
+          Slice window(fgIndex * (int)maxBeamSize, (fgIndex + 1) * (int)maxBeamSize, 1);
           auto scoreSlice = slice(prevPathScores, 0, window);
           scoreSlice = reshape(scoreSlice, {(int)maxBeamSize, 1, (int)currentDimBatch, 1});
           expandedPathScoresForFactorGroups[fgIndex] = scoreSlice;
@@ -513,7 +513,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
       // perform beam search
       for(int fgIndex = 0; fgIndex < (int) factorGroupsToExpand.size(); ++fgIndex) {
         Expr expandedPathScores = expandedPathScoresForFactorGroups[fgIndex];
-        int factorGroup = factorGroupsToExpand[fgIndex];
+        int factorGroup = (int)factorGroupsToExpand[fgIndex];
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened

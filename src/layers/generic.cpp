@@ -77,12 +77,12 @@ namespace marian {
                                                      size_t batchSize, size_t beamSize,
                                                      const std::vector<Expr>& expandedPathScores, 
                                                      float scorerWeight) const {
-    const int totalElts = batchSize * beamSize;
+    const size_t totalElts = batchSize * beamSize;
     std::vector<Expr> updatedPathScores(factorGroups.size());
     auto indices = graph()->indices(hypIndices);
 
     for(int fgIndex = 0; fgIndex < (int)factorGroups.size(); ++fgIndex) {
-      int factorGroup = factorGroups[fgIndex];
+      size_t factorGroup = factorGroups[fgIndex];
       ABORT_IF(factorGroup == 0, "Lemmas not supported");
 
       // Find and subtract max from factor scores
@@ -90,8 +90,8 @@ namespace marian {
       sel = sel - max(sel, -1);
       
       // Obtain slice for indices
-      int start = totalElts * fgIndex;
-      int end = totalElts * (fgIndex + 1);
+      size_t start = totalElts * fgIndex;
+      size_t end = totalElts * (fgIndex + 1);
       Slice fgSlice(start, end, 1);
       Expr fgIndices = slice(indices, 0, fgSlice);
 

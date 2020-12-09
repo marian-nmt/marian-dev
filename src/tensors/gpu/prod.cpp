@@ -12,6 +12,10 @@
 #include "tensors/gpu/cuda_helpers.h"
 // clang-format on
 
+#if CUDA_VERSION >= 11000
+#include <cublasLt.h>
+#endif
+
 namespace marian {
 
 namespace gpu {
@@ -382,6 +386,53 @@ static cusparseSgemmiEx(cusparseHandle_t handle, int m,
   return CUSPARSE_STATUS_SUCCESS;
 }
 
+// Computes C = A x B for row-major matrices where C is dense, A is sparse and B is dense
+cusparseStatus_t static cusparseSpMMTyped(cusparseHandle_t handle,
+                                          Ptr<Allocator> allocator,
+                                          bool transA, bool transB,
+                                          int m, int n, 
+                                          int k, int nnz,
+                                          const float* alpha,
+                                          const float* csrValA,
+                                          const int* csrRowPtrA,
+                                          const int* csrColIndA,
+                                          const float* B,
+                                          int ldb,
+                                          const float* beta,
+                                          float* C,
+                                          int ldc) 
+{
+  cusparseOperation_t opA = transA? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
+  cusparseOperation_t opB = transB? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
+
+  cusparseSpMatDescr_t matA;
+  CUSPARSE_CHECK(cusparseCreateCsr(&matA, m, k, nnz, (void*)csrRowPtrA, (void*)csrColIndA, (void*)csrValA, 
+                                   CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F));
+  
+  cusparseDnMatDescr_t matB;
+  CUSPARSE_CHECK(cusparseCreateDnMat(&matB, k, n, ldb, (void*)B, CUDA_R_32F, CUSPARSE_ORDER_ROW));
+
+  cusparseDnMatDescr_t matC;
+  CUSPARSE_CHECK(cusparseCreateDnMat(&matC, m, n, ldc, (void*)C , CUDA_R_32F, CUSPARSE_ORDER_ROW));
+
+  cusparseSpMMAlg_t alg = CUSPARSE_SPMM_ALG_DEFAULT;
+
+  size_t bufferSize = 0;
+  CUSPARSE_CHECK(cusparseSpMM_bufferSize(handle, opA, opB, (const void*)alpha, matA, matB, 
+                                         beta, matC, CUDA_R_32F, alg, &bufferSize));
+
+  MemoryPiece::PtrType buffer = allocator->alloc<uint8_t>(bufferSize);
+  auto status = cusparseSpMM(handle, opA, opB, (const void*) alpha, matA, matB, 
+                             (const void*)beta, matC, CUDA_R_32F, alg, (void*)buffer->data());
+
+  cusparseDestroySpMat(matA);
+  cusparseDestroyDnMat(matB);
+  cusparseDestroyDnMat(matC);
+  allocator->free(buffer);
+
+  return status;
+}
+
 // @TODO: make this work with fp16
 
 // C = op(S) x D if not swapOperands else C = D x op(S)
@@ -514,6 +565,23 @@ void CSRProd(marian::Tensor C,
 #endif
   }
   else {
+
+#if CUDA_VERSION >= 11000
+    CUSPARSE_CHECK(cusparseSpMMTyped(cusparseHandle, allocator, transS, 
+                                     /*transB*/ false,
+                                     rowsS, colsD, rowsD, 
+                                     /*nnz*/ (int)numValues,
+                                     &alpha,
+                                     /*csrValA*/ St_values ? St_values ->data<float>() : S_values ->data<float>(),
+                                     /*csrRowPtrA*/ St_offsets ? St_offsets->data<int>() : (int*)S_offsets->data<IndexType>(),
+                                     /*csrColIndA*/ St_indices ? St_indices->data<int>() : (int*)S_indices->data<IndexType>(),
+                                     D->data<float>(),
+                                     colsD,
+                                     &beta,
+                                     C->data<float>(),
+                                     colsC));
+#else
+    // Gemmi calls will be deprecated afater CUDA 11 so replace with cuparseSpmm
     // C = S x D for row-major matrices
     // Implemented via cusparse as C' = D' x S' ("gemmi") where C' and D' are column-major.
     CUSPARSE_CHECK(cusparseSgemmiEx(cusparseHandle,
@@ -533,6 +601,7 @@ void CSRProd(marian::Tensor C,
     // Note: cuSparse 10 docs says this about cscColPtrB:
     //   "integer array of k + 1 elements that contains the start of every row and the end of the last row plus one."
     // This is wrong. It should be col instead of row, and n instead of k.
+#endif
   }
   if(St_values ) allocator->free(St_values );
   if(St_indices) allocator->free(St_indices);

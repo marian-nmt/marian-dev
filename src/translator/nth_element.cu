@@ -398,11 +398,11 @@ public:
     }
 
     if(scores->type() == Type::float32) {
-      float disabledPathScore = NumericLimits<float>(scores->type()).lowest;
+      float disabledPathScore = -std::numeric_limits<float>::infinity(); 
       selectNBest(scores->data<float>(), batchFirstElementIdxs, cumulativeBeamSizes, disabledPathScore);
 #if COMPILE_FP16
     } else if(scores->type() == Type::float16) {
-      float disabledPathScore = NumericLimits<float>(scores->type()).lowest;
+      float disabledPathScore = -std::numeric_limits<float>::infinity(); 
       selectNBest(scores->data<half>(), batchFirstElementIdxs, cumulativeBeamSizes, disabledPathScore);
 #endif
     } else {

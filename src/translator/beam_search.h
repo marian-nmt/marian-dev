@@ -13,7 +13,7 @@ private:
   size_t beamSize_;
   Ptr<const Vocab> trgVocab_;
 
-  const float INVALID_PATH_SCORE = std::numeric_limits<float>::lowest(); // @TODO: observe this closely
+  const float INVALID_PATH_SCORE = -std::numeric_limits<float>::infinity(); // @TODO: observe this closely
   const bool PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
 
 public:

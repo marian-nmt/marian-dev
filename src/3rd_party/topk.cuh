@@ -49,7 +49,6 @@ struct FpInfinity<__half> {
   }
 };
 
-
 template<typename IndexType, typename T>
 struct TopK {
   IndexType p = 0;
@@ -103,7 +102,7 @@ __global__ void topk_stage_1(T* log_probs,
   const IndexType tmp_log_buf_index = row_id * vocab_size; 
   const IndexType tmp_topk_buf_index = row_id * BLOCKS_PER_BEAM_ * k + block_lane * k;
   TopK<IndexType, T> partial;
-  const T minimal = descendingOrder? cub::FpLimits<T>::Lowest() : cub::FpLimits<T>::Max();
+  const T minimal = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();;
 
   for(int ite = 0; ite < k; ite++) {
     partial.init(descendingOrder);
@@ -156,7 +155,7 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
   const int size = beams_per_batch * k * BLOCKS_PER_BEAM_; 
   const int tid = threadIdx.x;
   const int batch_id = blockIdx.x;
-  const T minimal = descendingOrder? cub::FpLimits<T>::Lowest() : cub::FpLimits<T>::Max();
+  const T minimal = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();;
 
   typedef cub::BlockReduce<TopK<IndexType, T>, BLOCK_SIZE_> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;

@@ -3018,14 +3018,14 @@ __global__ void gAddFactorMaxesPhase1(T* maxes, // [#blocks, numGroups - 1]
     const int blockRowStart = blockIdx.x * groupLossesInnerDim;
     for(int lossCol = lane; lossCol < groupLossesInnerDim; lossCol += warpSize) {
       int warpOffset = blockRowStart + lossCol;
-      if(warpOffset < groupLossSize) {
+      if (warpOffset < groupLossSize) {
         factorMaxima = max(factorMaxima, groupLosses[warpOffset]);
       }
     }
 
     // Each warp reduces the accumulated values. Then each each writes its final value to global for phase 2 of this op
     factorMaxima = WarpReduce(temp_storage[wid]).Reduce(factorMaxima, cub::Max());
-    if(lane == 0) {
+    if (lane == 0) {
       T* factorMaximasInBlock = maxes + blockIdx.x * (numGroups - 1);
       factorMaximasInBlock[warpFactorGroup - 1] = factorMaxima;
     }
@@ -3061,7 +3061,10 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
   const T* factorMaxesInBlock = maxes + blockRow * (numGroups - 1);
   T* outputRowForBlockGroup = out + blockRow * numLemmas;
   const T* inputRowForBlockGroup = lemmaLosses + blockRow * numLemmas;
-  if(threadIdx.x < (numGroups - 1)) factorMaxesInBlockShared[threadIdx.x] = factorMaxesInBlock[threadIdx.x];
+
+  if (threadIdx.x < (numGroups - 1)) 
+    factorMaxesInBlockShared[threadIdx.x] = factorMaxesInBlock[threadIdx.x];
+
   __syncthreads();
 
   for(int rowChunk = blockStartIndexInRow; rowChunk < totalBlockChunksInRow; rowChunk += BLOCKS_PER_ROW) {
@@ -3071,20 +3074,21 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
 
     // Calculate the column being read to/written from to use as a read/write guard
     const int columnIndex = threadIdx.x * rowChunk;
-    if(columnIndex < numLemmas) sums[threadIdx.x] = lemmaLossesChunk[threadIdx.x]; 
+    if (columnIndex < numLemmas) 
+      sums[threadIdx.x] = lemmaLossesChunk[threadIdx.x]; 
 
     // Each block accumulates its output in shared memory then writes the final result to global. We use __ldg since the 
     // data being read does not change throughout the life of the kernel so the constant cache can be used.
     for(int g = 1; g < (int)numGroups; ++g) {
-      int lemma = indices? indices[columnIndex] - groupStart: columnIndex;
+      int lemma = indices? indices[columnIndex] - groupStart : columnIndex;
       T factorMask = static_cast<T>(__ldg(&lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]));
       T factorMaxima = factorMaxesInBlockShared[g-1];
 
-      if(columnIndex < numLemmas) {
+      if (columnIndex < numLemmas) 
         sums[threadIdx.x] += (factorMask * factorMaxima);
-      }
     }
-    if(columnIndex < numLemmas) blockOutputChunk[threadIdx.x] = sums[threadIdx.x];
+    if (columnIndex < numLemmas) 
+      blockOutputChunk[threadIdx.x] = sums[threadIdx.x];
   }
 }
 

@@ -23,6 +23,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <cmath>
 #if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>
 #else
@@ -31,10 +32,28 @@
 
 #define MAX_BLOCKS_PER_BEAM 8
 
+template<typename T> 
+struct FpInfinity;
+
+template <>
+struct FpInfinity<float> {
+  static __host__ __device__ __forceinline__ float infinity() {
+      return INFINITY;
+  }
+};
+
+template <>
+struct FpInfinity<__half> {
+  static __host__ __device__ __forceinline__ __half infinity() {
+      return __float2half(INFINITY);
+  }
+};
+
+
 template<typename IndexType, typename T>
 struct TopK {
   IndexType p = 0;
-  T u = cub::FpLimits<T>::Lowest();
+  T u = -FpInfinity<T>::infinity();
 
   __device__ __forceinline__ void insertKeepMax(T elem, IndexType elem_id) {
     if(elem > u) {
@@ -51,7 +70,7 @@ struct TopK {
   }
 
   __device__ __forceinline__ void init(bool descendingOrder) {
-    u = descendingOrder? cub::FpLimits<T>::Lowest() : cub::FpLimits<T>::Max();
+    u = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();
     p = 0;
   }
 };

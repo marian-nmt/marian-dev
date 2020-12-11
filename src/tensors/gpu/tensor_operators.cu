@@ -3042,7 +3042,7 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
                                       const T* maxes,
                                       size_t groupStart, 
                                       int lemmaHasFactorGroupWidth, 
-                                      size_t numLemmas, T minimal) {
+                                      size_t numLemmas) {
 
   extern __shared__ uint8_t _sharedBytes[];
   T* sums = (T*)_sharedBytes;
@@ -3114,7 +3114,7 @@ void AddFactorMaxes(Tensor out,
   const int threadsPhase2 = std::min(MAX_THREADS, std::max(32, out->shape()[-1]));
   const int blocksPhase2 = sizeWithoutInnerDim * blocksPerRow;
 
-  if(out->type() == Type::float32) {
+  if (out->type() == Type::float32) {
     IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ptrInnerDimPair<float>>(groupLosses.size()); 
     IPtr<MemoryPiece> factorMaxes = allocator->alloc<float>(sizeWithoutInnerDim * (groupLosses.size() - 1));
     ptrInnerDimPair<float>* dest = mp_ptrs->data<ptrInnerDimPair<float>>();
@@ -3131,7 +3131,7 @@ void AddFactorMaxes(Tensor out,
                                                            dest, 
                                                            groupLosses.size(), 
                                                            sizeWithoutInnerDim, 
-                                                           std::numeric_limits<float>::lowest());
+                                                           -std::numeric_limits<float>::infinity());
 
     const int sharedBytes = sizeof(float) * (groupLosses.size() + threadsPhase2);
     gAddFactorMaxesPhase2<float, blocksPerRow><<<blocksPhase2, threadsPhase2, sharedBytes>>>(out->data<float>(), 
@@ -3141,13 +3141,12 @@ void AddFactorMaxes(Tensor out,
                                                                                              groupLosses.size(), sizeWithoutInnerDim, 
                                                                                              factorMaxes->data<float>(), groupStart, 
                                                                                              lemmaHasFactorGroupTensor->shape()[1], 
-                                                                                             numLemmas, 
-                                                                                             std::numeric_limits<float>::lowest());
+                                                                                             numLemmas);
 
     allocator->free(mp_ptrs);
     allocator->free(factorMaxes);
   #if COMPILE_FP16
-  } else if(out->type() == Type::float16) {
+  } else if (out->type() == Type::float16) {
     IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ptrInnerDimPair<half>>(groupLosses.size()); 
     IPtr<MemoryPiece> factorMaxes = allocator->alloc<half>(sizeWithoutInnerDim * (groupLosses.size() - 1));
     ptrInnerDimPair<half>* dest = mp_ptrs->data<ptrInnerDimPair<half>>();
@@ -3164,7 +3163,7 @@ void AddFactorMaxes(Tensor out,
                                                            dest, 
                                                            groupLosses.size(), 
                                                            sizeWithoutInnerDim, 
-                                                           __float2half(std::numeric_limits<float>::lowest()) );
+                                                           __float2half(-std::numeric_limits<float>::infinity()) );
 
     const int sharedBytes = sizeof(half) * (groupLosses.size() + threadsPhase2);
     gAddFactorMaxesPhase2<half, blocksPerRow><<<blocksPhase2, threadsPhase2, sharedBytes>>>(out->data<half>(), 
@@ -3174,8 +3173,7 @@ void AddFactorMaxes(Tensor out,
                                                                                             groupLosses.size(), sizeWithoutInnerDim, 
                                                                                             factorMaxes->data<half>(), groupStart, 
                                                                                             lemmaHasFactorGroupTensor->shape()[1], 
-                                                                                            numLemmas, 
-                                                                                            __float2half(std::numeric_limits<float>::lowest()) );
+                                                                                            numLemmas);
     allocator->free(mp_ptrs);
     allocator->free(factorMaxes);
   #endif

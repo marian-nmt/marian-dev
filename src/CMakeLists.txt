@@ -4,6 +4,7 @@ include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/3rd_party/sentencepiece/src)
 include_directories(3rd_party/fbgemm/include)
 include_directories(3rd_party/intgemm)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/3rd_party/intgemm)
@@ -43,7 +44,7 @@ set(MARIAN_SOURCES
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
-  
+
   3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
   3rd_party/phf/phf.cc
@@ -55,7 +56,7 @@ set(MARIAN_SOURCES
   tensors/cpu/prod.cpp
   tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
-  
+
   tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
 

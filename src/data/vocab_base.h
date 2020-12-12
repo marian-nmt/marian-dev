@@ -5,6 +5,25 @@
 #include "common/utils.h"
 #include "common/file_stream.h"
 
+#ifdef USE_SENTENCEPIECE
+#  if __GNUC__ >= 5
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wsuggest-override"
+#  endif
+#  include "sentencepiece/src/sentencepiece_processor.h"
+#  include "sentencepiece.pb.h"
+#  if __GNUC__ >= 5
+#    pragma GCC diagnostic push
+#  endif
+#else
+namespace sentencepiece {
+namespace util {
+  class min_string_view;
+}
+class SentencePieceText;
+}
+#endif
+
 namespace marian {
 
 class IVocab {
@@ -34,6 +53,20 @@ public:
 
   virtual std::string decode(const Words& sentence,
                              bool ignoreEos = true) const = 0;
+
+  virtual void encode(sentencepiece::util::min_string_view /*textSpan*/, // span of text to be encoded
+                      sentencepiece::SentencePieceText* /*encoded*/) const {
+    ABORT("Not yet implemented for this type of vocabulary.");
+  }
+
+  // Note for decode(const Words&, sentencepiece::SentencePieceText*) below:
+  // The SPM decoder ALWAYS ignores EOS, see the implementation in
+  // src/3rd_party/sentencepiece/src/sentencepiece_processor.cc
+  virtual void decode(const Words& /*sentence*/, // array of word ids to be decoded
+                      sentencepiece::SentencePieceText* /*decoded*/) const {
+    ABORT("Not yet implemented for this type of vocabulary.");
+  }
+
   virtual std::string surfaceForm(const Words& sentence) const = 0;
 
   virtual const std::string& operator[](Word id) const = 0;

@@ -222,6 +222,24 @@ public:
     return words;
   }
 
+  void encode(sentencepiece::util::min_string_view textSpan,
+              sentencepiece::SentencePieceText* encoded) const override {
+    spm_->Encode(textSpan, encoded);
+  }
+
+  void decode(const Words& sentence, sentencepiece::SentencePieceText* decoded) const override {
+    ABORT_IF(keepEncoded_, "Not yet implemented.");
+    // the following comes almost directly from the SentencePiece implementation
+    // We can't use SentencePieceProcessor directly because SentencePieceProcessor
+    // uses int and Marian uses Word
+    std::vector<std::string> pieces;
+    for (const auto w : sentence) {
+      pieces.emplace_back(spm_->IdToPiece(w.toWordIndex()));
+    }
+    spm_->Decode(pieces, decoded);
+    // @TODO: check return status of spm_->Decode()
+  }
+
   std::string decode(const Words& sentence, bool /*ignoreEOS*/) const override {
     std::string line;
     if(keepEncoded_) {  // i.e. keep the sentence segmented into subword units

@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Support for reading from TSV files from STDIN and other sources during training
   and translation with options --tsv and --tsv-fields n.
 - Internal optional parameter in n-best list generation that skips empty hypotheses.
+- add member function in the Vocab class to encode / decode into SentencePieceText.
 
 ### Fixed
 - Fix bug causing certain reductions into scalars to be 0 on the GPU backend. Removed unnecessary warp shuffle instructions.

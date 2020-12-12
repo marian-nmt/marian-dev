@@ -3016,9 +3016,6 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
                                       int lemmaHasFactorGroupWidth, 
                                       size_t numLemmas) {
 
-  extern __shared__ uint8_t _sharedBytes[];
-  T* factorMaxesInBlockShared = (T*)_sharedBytes;
-
   // Each thread is given an element in the output to construct. First we compute every thread's offset from the 
   // base pointer along with the row and column indicies for the output cell the thread is responsible for constructing.
   const int offsetFromBasePtr = blockIdx.x * blockDim.x + threadIdx.x;
@@ -3027,13 +3024,6 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
 
   // We keep the maxes in shared memory since they are read repeatedly by each thread in a block
   const T* globalFactorMaxesRow = maxes + rowForThread * (numGroups - 1);
-  for(int factorGroup = threadIdx.x; factorGroup < (numGroups - 1); factorGroup += blockDim.x) {
-    factorMaxesInBlockShared[factorGroup] = globalFactorMaxesRow[factorGroup];
-  }
-    
-  // Sync here to ensure all factor maxes are in shared memory before other threads attempt to read the
-  // shared memory array.  
-  __syncthreads();
 
   // Compute a write guard for the output array
   const int outputSize = numLemmas * sizeWithoutInnerDim;
@@ -3049,8 +3039,7 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
     for(int g = 1; g < (int)numGroups; ++g) {
       int lemma = indices? indices[colForThread] - groupStart : colForThread;
       T factorMask = static_cast<T>(__ldg(&lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]));
-      T factorMaxima = factorMaxesInBlockShared[g-1];
-
+      T factorMaxima = globalFactorMaxesRow[g-1];
       threadSum += (factorMask * factorMaxima);
     }
 
@@ -3103,15 +3092,14 @@ void AddFactorMaxes(Tensor out,
                                                            sizeWithoutInnerDim, 
                                                            -std::numeric_limits<float>::infinity());
 
-    const int sharedBytes = sizeof(float) * (groupLosses.size());
-    gAddFactorMaxesPhase2<float><<<blocksPhase2, threadsPhase2, sharedBytes>>>(out->data<float>(), 
-                                                                               lemmaHasFactorGroupTensor->data<int8_t>(), 
-                                                                               indices? indices->data<IndexType>(): nullptr,
-                                                                               groupLosses[0]->data<float>(),
-                                                                               groupLosses.size(), sizeWithoutInnerDim, 
-                                                                               factorMaxes->data<float>(), groupStart, 
-                                                                               lemmaHasFactorGroupTensor->shape()[1], 
-                                                                               numLemmas);
+    gAddFactorMaxesPhase2<float><<<blocksPhase2, threadsPhase2>>>(out->data<float>(), 
+                                                                  lemmaHasFactorGroupTensor->data<int8_t>(), 
+                                                                  indices? indices->data<IndexType>(): nullptr,
+                                                                  groupLosses[0]->data<float>(),
+                                                                  groupLosses.size(), sizeWithoutInnerDim, 
+                                                                  factorMaxes->data<float>(), groupStart, 
+                                                                  lemmaHasFactorGroupTensor->shape()[1], 
+                                                                  numLemmas);
   #if COMPILE_FP16
   } else if (out->type() == Type::float16) {
     mp_ptrs = allocator->alloc<ptrInnerDimPair<half>>(groupLosses.size()); 
@@ -3132,15 +3120,14 @@ void AddFactorMaxes(Tensor out,
                                                            sizeWithoutInnerDim, 
                                                            __float2half(-std::numeric_limits<float>::infinity()) );
 
-    const int sharedBytes = sizeof(half) * (groupLosses.size());
-    gAddFactorMaxesPhase2<half><<<blocksPhase2, threadsPhase2, sharedBytes>>>(out->data<half>(), 
-                                                                              lemmaHasFactorGroupTensor->data<int8_t>(), 
-                                                                              indices? indices->data<IndexType>(): nullptr,
-                                                                              groupLosses[0]->data<half>(),
-                                                                              groupLosses.size(), sizeWithoutInnerDim, 
-                                                                              factorMaxes->data<half>(), groupStart, 
-                                                                              lemmaHasFactorGroupTensor->shape()[1], 
-                                                                              numLemmas);
+    gAddFactorMaxesPhase2<half><<<blocksPhase2, threadsPhase2>>>(out->data<half>(), 
+                                                                 lemmaHasFactorGroupTensor->data<int8_t>(), 
+                                                                 indices? indices->data<IndexType>(): nullptr,
+                                                                 groupLosses[0]->data<half>(),
+                                                                 groupLosses.size(), sizeWithoutInnerDim, 
+                                                                 factorMaxes->data<half>(), groupStart, 
+                                                                 lemmaHasFactorGroupTensor->shape()[1], 
+                                                                 numLemmas);
   #endif
   } else {
     ABORT("AddFactorMaxes not implemented for type {}", out->type());

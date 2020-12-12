@@ -3038,27 +3038,25 @@ __global__ void gAddFactorMaxesPhase2(T* out, const int8_t* const lemmaHasFactor
   // Compute a write guard for the output array
   const int outputSize = numLemmas * sizeWithoutInnerDim;
 
-  // Now we start accumulating the thread's sum by initializing the the lemma value. The out tensor and lemmaLosses
-  // tensor are the same size.
-  T threadSum = 0;
-  if (offsetFromBasePtr < outputSize)
-    threadSum = lemmaLosses[offsetFromBasePtr];
+  // Now we start accumulating the thread's sum by initializing to the lemma value. The out tensor and lemmaLosses
+  // tensor are the same size so the output guard is used to prevent invalid reads.
+  if (offsetFromBasePtr < outputSize) {
+    T threadSum = lemmaLosses[offsetFromBasePtr];
 
-  // Each block accumulates its output locally then writes the final result to global. We use __ldg since the 
-  // data being read does not change throughout the life of the kernel so the constant cache can be used.
-  // This is more of a compiler hint than a necessity.
-  for(int g = 1; g < (int)numGroups; ++g) {
-    int lemma = indices? indices[colForThread] - groupStart : colForThread;
-    T factorMask = static_cast<T>(__ldg(&lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]));
-    T factorMaxima = factorMaxesInBlockShared[g-1];
+    // Each block accumulates its output locally then writes the final result to global. We use __ldg since the 
+    // data being read does not change throughout the life of the kernel so the constant cache can be used.
+    // This is more of a compiler hint than a necessity.
+    for(int g = 1; g < (int)numGroups; ++g) {
+      int lemma = indices? indices[colForThread] - groupStart : colForThread;
+      T factorMask = static_cast<T>(__ldg(&lemmaHasFactorGroup[lemma * lemmaHasFactorGroupWidth + g]));
+      T factorMaxima = factorMaxesInBlockShared[g-1];
 
-    if (offsetFromBasePtr < outputSize) 
       threadSum += (factorMask * factorMaxima);
-  }
+    }
 
-  // Finally, the accumulated sum is written back out to global memory.
-  if (offsetFromBasePtr < outputSize) 
+    // Finally, the accumulated sum is written back out to global memory.
     out[offsetFromBasePtr] = threadSum;
+  }
   
 }
 

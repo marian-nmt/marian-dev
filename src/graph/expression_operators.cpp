@@ -683,19 +683,21 @@ Expr unlikelihood(Expr logits, Expr indices) {
   return -log(gather(1.f - softmax(logits), /*axis=*/-1, indicesWithLayout));
 }
 
-Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t groupStart, size_t numLemmas) {
+Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t group0Start) {
   if(groupLosses.size() == 1) {
     return groupLosses[0];
   }
+
+  int numLemmas = groupLosses[0]->shape()[-1];
+
   std::vector<Expr> nodes({lemmaHasFactorGroup});
   if (hypIndices) {
     nodes.push_back(hypIndices);
   }
   nodes.insert(nodes.end(), groupLosses.begin(), groupLosses.end());
   bool hasShortList = hypIndices != nullptr;
-  return Expression<AddFactorMaxesOp>(nodes, hasShortList, groupStart, numLemmas);
+  return Expression<AddFactorMaxesOp>(nodes, hasShortList, group0Start, numLemmas);
 }
-
 
 Expr plus(const std::vector<Expr>& nodes) {
   ABORT_IF(nodes.size() > 1, "Not implemented");

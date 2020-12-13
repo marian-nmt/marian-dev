@@ -3,6 +3,7 @@
  *   SPDX-License-Identifier: MIT
  */
 
+#include <algorithm>
 #include "marian.h"
 
 #include "layers/generic.h"
@@ -85,8 +86,13 @@ namespace marian {
     } else {
       auto numGroups = getNumFactorGroups();
       if(numGroups > 1 && graph()->isInference() && graph()->getBackend()->getDeviceId().type == DeviceType::gpu) {
-        Expr shortlistExpr = shortlist? constant(shortlist->indices()) : nullptr;
-        sel = addFactorMaxesHelper(shortlistExpr); 
+        Expr shortlistIndices = shortlist? constant(shortlist->indices()) : nullptr;
+        Expr lemmaHasFactorGroupTensor = getLemmaHasFactorGroupTensor();
+        std::vector<Expr> groupLosses(logits_.size());
+        std::transform(logits_.begin(), logits_.end(), groupLosses.begin(), [](const Ptr<RationalLoss>& loss) -> Expr {return loss->loss();});
+
+        sel = addFactorMaxes(lemmaHasFactorGroupTensor, groupLosses, 
+                             shortlistIndices, factoredVocab_->getGroupRange(0).first);
       } else {
         for (size_t g = 1; g < numGroups; g++) {
           auto factorMaxima = max(logits_[g]->loss(), -1);
@@ -196,11 +202,12 @@ namespace marian {
     return res;
   }
 
-  Expr Logits::addFactorMaxesHelper(Expr indices) const {
-  auto g = graph();
-  const std::string name = "lemmaHasFactorGroup";
-  auto lemmaHasFactorGroupTensor = g->findByName(name);
-  if(!lemmaHasFactorGroupTensor) {
+  Expr Logits::getLemmaHasFactorGroupTensor() const {
+    auto g = graph();
+    const std::string name = "lemmaHasFactorGroup";
+    auto lemmaHasFactorGroupTensor = g->findByName(name);
+
+    if(!lemmaHasFactorGroupTensor) {
       // We want to make this a graph param so the GPU can use this to implement lemmaHasFactorGroup to avoid unneeded memcpys.
       const auto lemmaHasFactorGroup = factoredVocab_->getLemmaHasFactorGroupVector();
       int dimLemma = (int)lemmaHasFactorGroup.size();
@@ -228,14 +235,8 @@ namespace marian {
       lemmaHasFactorGroupTensor->setMemoize(true);
       g->rememberByName(name, lemmaHasFactorGroupTensor);
     }
-    size_t n = indices ?  indices->shape().elements() : (factoredVocab_->getGroupRange(0).second - factoredVocab_->getGroupRange(0).first);
-
-    std::vector<Expr> groupLosses(getNumFactorGroups());
-    for(int g = 0; g < getNumFactorGroups(); ++g) {
-      groupLosses[g] = logits_[g]->loss();
-    }
-
-    return addFactorMaxes(lemmaHasFactorGroupTensor, groupLosses, indices, factoredVocab_->getGroupRange(0).first, n);
+    ABORT_IF(!lemmaHasFactorGroupTensor, "Lemma has factor group tensor undefined?");
+    return lemmaHasFactorGroupTensor;
   }
 
   Logits Logits::applyUnaryFunction(const std::function<Expr(Expr)>& f) const { // clone this but apply f to all loss values

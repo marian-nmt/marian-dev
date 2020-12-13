@@ -177,7 +177,7 @@ Expr atleast_3d(Expr a);
 Expr atleast_4d(Expr a);
 Expr atleast_nd(Expr a, size_t dims);
 
-Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t groupStart, size_t numLemmas);
+Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t group0Start);
 
 // create a constant of shape a->shape() and initialize with init
 // @TODO: add a && version, to avoid a ref count. NodeInitializers are typically temps.

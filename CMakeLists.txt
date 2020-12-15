@@ -1,7 +1,3 @@
-# All or part of this file was contributed by NVIDIA under license:
-#   Copyright (C) 2020 NVIDIA Corporation
-#   SPDX-License-Identifier: MIT
-
 cmake_minimum_required(VERSION 3.5.1)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 

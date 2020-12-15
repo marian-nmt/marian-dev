@@ -83,6 +83,7 @@ namespace marian {
       for (size_t g = 1; g < numGroups; g++) {
         auto factorMaxima = max(logits_[g]->loss(), -1);
         std::vector<float> factorMasksVec = getFactorMasks(g, shortlist ? shortlist->indices() : std::vector<WordIndex>());
+        // We explicitly use the graph constant method so that the node is cast to the graph's default type
         auto factorMasks = graph()->constant(Shape{(int)factorMasksVec.size()}, inits::fromVector(factorMasksVec)); 
         sel = sel + factorMaxima * factorMasks; // those lemmas that don't have a factor get multiplied with 0
       }
@@ -474,7 +475,10 @@ namespace marian {
     ABORT_IF(factoredData.shape != Shape({(int)factoredData.offsets.size()-1/*=rows of CSR*/, E_->shape()[0]}), "shape mismatch??");
     // the CSR matrix is passed in pieces
     auto weights = graph->constant({ (int)factoredData.weights.size() }, inits::fromVector(factoredData.weights), Type::float32);
-    if(E_->value_type() == Type::float16) weights = cast(weights, Type::float16);
+
+    if (E_->value_type() == Type::float16) 
+      weights = cast(weights, Type::float16);
+      
     auto indices = graph->constant({ (int)factoredData.indices.size() }, inits::fromVector(factoredData.indices), Type::uint32);
     auto offsets = graph->constant({ (int)factoredData.offsets.size() }, inits::fromVector(factoredData.offsets), Type::uint32);
     // apply dropout

@@ -1,8 +1,3 @@
-/* Part of this file was contributed by NVIDIA under license:
- *   Copyright (C) 2020 NVIDIA Corporation
- *   SPDX-License-Identifier: MIT
- */
- 
 #ifdef _MSC_VER
 #pragma warning(disable: 4505) // warning C4505: '__float2half_rz': unreferenced local function has been removed (missing 'static inline')
 #endif

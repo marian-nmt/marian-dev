@@ -1,9 +1,3 @@
- 
-/* Part of this file was contributed by NVIDIA under license:
- *   Copyright (C) 2020 NVIDIA Corporation
- *   SPDX-License-Identifier: MIT
- */
-
 #include "marian.h"
 
 #include "layers/generic.h"

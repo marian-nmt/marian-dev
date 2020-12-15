@@ -14,19 +14,18 @@ namespace marian {
 
 namespace cpu {
 
-void Affine(marian::Tensor C,
-            Ptr<Allocator> allocator,
-            const marian::Tensor& A,
-            const marian::Tensor& B,
-            const marian::Tensor& bias,
-            bool transA,
-            bool transB,
-            float beta,
-            float scalar,
-            bool relu_postprocess) {
-
-    ABORT("Not supported on CPU");
-  }
+void Affine(marian::Tensor /*C*/,
+            Ptr<Allocator> /*allocator*/,
+            const marian::Tensor& /*A*/,
+            const marian::Tensor& /*B*/,
+            const marian::Tensor& /*bias*/,
+            bool /*transA*/,
+            bool /*transB*/,
+            float /*beta*/,
+            float /*scalar*/,
+            bool /*relu_postprocess*/) {
+  ABORT("Not supported on CPU");
+}
 
 void Prod(marian::Tensor C,
           const marian::Tensor& A,

@@ -701,9 +701,10 @@ void affineTyped(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tenso
                                    bias->data<T>(),
                                    workspace->data<T>(),
                                    workspaceSizeBytes,
-                                   do_relu));
+                                   do_relu,
+                                   stream));
   
-  allocator->free(workspace); // TODO fix without synchronize (bad for small batch)
+  allocator->free(workspace);
 }
 
 // This version is needed so that Windows doesn't complain when compiling CUDA < 11. Otherwise, the ifdef could be inside of one

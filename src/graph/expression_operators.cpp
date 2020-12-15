@@ -535,15 +535,15 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
   std::vector<Expr> nodes = { clip(a, clipValue), clip(b, clipValue), bias };
 
   // If we are using CPU, we broadcast the ones vector. On GPU, the bias addition can be fused into the GEMM with CUDA >= 11
-  if(g->getBackend()->getDeviceId().type == DeviceType::cpu || !g->isInference()) {
+  if (g->getBackend()->getDeviceId().type == DeviceType::cpu || !g->isInference()) {
     int rows = a->shape().elements() / a->shape()[-1];
     Expr ones = g->ones({ rows, 1 });
     nodes.push_back(ones);
   }
 
-  if(do_relu) {
+  if (do_relu) {
     // For GPU inference, we can fuse the RELU into the bias addition.
-    if(g->isInference() && g->getBackend()->getDeviceId().type == DeviceType::gpu) {
+    if (g->isInference() && g->getBackend()->getDeviceId().type == DeviceType::gpu) {
       return Expression<AffineNodeOp>(nodes, transA, transB, scale, do_relu);
     }
     Expr affineOp = Expression<AffineNodeOp>(nodes, transA, transB, scale, false);

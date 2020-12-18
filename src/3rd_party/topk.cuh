@@ -32,9 +32,11 @@
 
 #define MAX_BLOCKS_PER_BEAM 8
 
+/// A struct to access the infinity constant on device based on type. 
 template<typename T> 
 struct FpInfinity;
 
+/// Specialization of FpInfinity for float
 template <>
 struct FpInfinity<float> {
   static __host__ __device__ __forceinline__ float infinity() {
@@ -42,6 +44,7 @@ struct FpInfinity<float> {
   }
 };
 
+/// Specialization of FpInfinity for half
 template <>
 struct FpInfinity<__half> {
   static __host__ __device__ __forceinline__ __half infinity() {
@@ -49,39 +52,57 @@ struct FpInfinity<__half> {
   }
 };
 
+/// A struct used to track the largest value along with the index at which 
+/// it occurs at when performing the topk reduction.
+
+/// It is assumed that IndexType is an integral type and T is a floating point
+/// type.
 template<typename IndexType, typename T>
 struct TopK {
-  IndexType p = 0;
-  T u = -FpInfinity<T>::infinity();
+  // The index of the largest/smallest value in the large
+  IndexType index = 0;
+  // The largest/smallest value encountered
+  T value = -FpInfinity<T>::infinity();
 
-  __device__ __forceinline__ void insertKeepMax(T elem, IndexType elem_id) {
-    if(elem > u) {
-      u = elem;
-      p = elem_id;
+  /// Updates the value and index in the topk struct if elem is larger than the current
+  /// value field of the struct. This is intended to be used during the initial reduction 
+  /// before we reduce across a block to ensure all threads in the block have the largest
+  /// values within the block's range.
+  __device__ __forceinline__ void updateIfLarger(T elem, IndexType elem_id) {
+    if (elem > value) {
+      value = elem;
+      index = elem_id;
     }
   }
 
-  __device__ __forceinline__ void insertKeepMin(T elem, IndexType elem_id) {
-    if(elem < u) {
-      u = elem;
-      p = elem_id;
+  /// Updates the value and index in the topk struct if elem is smaller than the current
+  /// value field of the struct. This is intended to be used during the initial reduction 
+  /// before we reduce across a block to ensure all threads in the block have the smallest
+  /// values within the block's range.
+  __device__ __forceinline__ void updateIfSmaller(T elem, IndexType elem_id) {
+    if (elem < value) {
+      value = elem;
+      index = elem_id;
     }
   }
 
+  /// Initializes the value and index fields of the topk struct before starting a reduction.
+  /// If the descendingOrder flag is true, the value starts at negative infinity so that we 
+  /// store the max values. We do the opposite if descendingOrder is false.
   __device__ __forceinline__ void init(bool descendingOrder) {
-    u = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();
-    p = 0;
+    value = descendingOrder ? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();
+    index = 0;
   }
 };
 
 template<typename IndexType, typename T>
 __device__ __forceinline__ TopK<IndexType, T> reduce_topk_max(const TopK<IndexType, T>& a, const TopK<IndexType, T>& b) {
-  return a.u > b.u ? a : b;
+  return a.value > b.value ? a : b;
 }
 
 template<typename IndexType, typename T>
 __device__ __forceinline__ TopK<IndexType, T> reduce_topk_min(const TopK<IndexType, T>& a, const TopK<IndexType, T>& b) {
-  return a.u < b.u ? a : b;
+  return a.value < b.value ? a : b;
 }
 
 template<typename IndexType, typename T, int BLOCK_SIZE_, int BLOCKS_PER_BEAM_, bool getRowOffsets>
@@ -109,22 +130,22 @@ __global__ void topk_stage_1(T* log_probs,
     const IndexType threadStart = tid + block_lane * BLOCK_SIZE_;
 
     // This is needed to ensure the indices for the threads in each valid block starts in a valid range for that block.
-    if(threadStart < vocab_size) partial.p = threadStart;
+    if(threadStart < vocab_size) partial.index = threadStart;
     #pragma unroll
     for(IndexType elem_id = threadStart; elem_id < vocab_size; elem_id += BLOCK_SIZE_ * BLOCKS_PER_BEAM_) {
       IndexType index = elem_id + tmp_log_buf_index;
-      descendingOrder? partial.insertKeepMax(log_probs[index], index) : partial.insertKeepMin(log_probs[index], index);
+      descendingOrder? partial.updateIfLarger(log_probs[index], index) : partial.updateIfSmaller(log_probs[index], index);
     }
 
     TopK<IndexType, T> total = BlockReduce(temp_storage).Reduce(partial, descendingOrder? reduce_topk_max<IndexType, T>: reduce_topk_min<IndexType, T>);
 
     if (tid == 0) {
       const int index = tmp_topk_buf_index + ite;
-      topk_tmp_id_buf[index] = getRowOffsets? total.p - tmp_log_buf_index : total.p;
-      topk_tmp_val_buf[index] = total.u;
+      topk_tmp_id_buf[index] = getRowOffsets? total.index - tmp_log_buf_index : total.index;
+      topk_tmp_val_buf[index] = total.value;
       // If we found a max, blank out the value in the log prob array before starting the next iteration.
       // Otherwise, we don't need to issue a write since all prob values must have been T::min()
-      if(total.u != minimal) log_probs[total.p] = minimal;
+      if(total.value != minimal) log_probs[total.index] = minimal;
     }
     __syncthreads();
   }
@@ -169,26 +190,26 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
     partial.init(descendingOrder);
     #pragma unroll
     for(IndexType i = tid; i < size; i+= BLOCK_SIZE_) {
-      descendingOrder? partial.insertKeepMax(s_val[i], i) : partial.insertKeepMin(s_val[i], i);
+      descendingOrder? partial.updateIfLarger(s_val[i], i) : partial.updateIfSmaller(s_val[i], i);
     }
 
     TopK<IndexType, T> total = BlockReduce(temp_storage).Reduce(partial, descendingOrder? reduce_topk_max<IndexType, T>: reduce_topk_min<IndexType, T>);
 
     if(tid == 0) {
       topks[ite] = total;
-      s_val[total.p] = minimal;
+      s_val[total.index] = minimal;
     }
     __syncthreads();
   }
 
   for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
     TopK<IndexType, T> beamOut; 
-    IndexType indexInTmpValRow = topks[beam].p;
-    beamOut.p = topk_tmp_id_buf[batch_id * size + indexInTmpValRow];
-    beamOut.u = topks[beam].u;
+    IndexType indexInTmpValRow = topks[beam].index;
+    beamOut.index = topk_tmp_id_buf[batch_id * size + indexInTmpValRow];
+    beamOut.value = topks[beam].value;
     if(top) top[batch_id * k + beam] = beamOut;
-    if(outIndices) outIndices[batch_id * k + beam] = beamOut.p;
-    if(outVals) outVals[batch_id * k + beam] = beamOut.u;
+    if(outIndices) outIndices[batch_id * k + beam] = beamOut.index;
+    if(outVals) outVals[batch_id * k + beam] = beamOut.value;
   }
 }
 

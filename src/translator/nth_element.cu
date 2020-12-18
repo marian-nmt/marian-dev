@@ -110,8 +110,8 @@ private:
     CUDA_CHECK(cudaStreamSynchronize(/* stream_ */ 0));
 
     for(size_t i = 0; i < numElts; ++i) {
-      outKeys.push_back(topsHostCasted[i].p);
-      outValues.push_back((float)topsHostCasted[i].u);
+      outKeys.push_back(topsHostCasted[i].index);
+      outValues.push_back((float)topsHostCasted[i].value);
     }
   }
 

@@ -1,7 +1,3 @@
- # Part of this file was contributed by NVIDIA under license:
- #   Copyright (C) 2020 NVIDIA Corporation
- #   SPDX-License-Identifier: MIT
-
 add_definitions(-DCUB_IGNORE_DEPRECATED_CPP_DIALECT=1)
 add_definitions(-DTHRUST_IGNORE_DEPRECATED_CPP_DIALECT=1)
 add_subdirectory(3rd_party)

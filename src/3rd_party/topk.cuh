@@ -165,8 +165,11 @@ __global__ void topk_stage_1(T* input_array,
   // Compute constants used within each block. 
   const IndexType tid = threadIdx.x;
   const IndexType bid = blockIdx.x;
-  const IndexType row_id = bid / BLOCKS_PER_ITEM_; // row id for input_array
-  const IndexType block_lane = bid % BLOCKS_PER_ITEM_; // block id for a beam 
+
+  // The row in the tmp array to write the topk elements for each BLOCKS_PER_ITEM_ blocks
+  // The tmp array is interpreted as have one row per item in this function. 
+  const IndexType row_id = bid / BLOCKS_PER_ITEM_; 
+  const IndexType block_lane = bid % BLOCKS_PER_ITEM_; // block id for an item 
   const T minimal = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();;
 
   // Computes the index offset from the temp id and value arrays that each block should write its tmp output

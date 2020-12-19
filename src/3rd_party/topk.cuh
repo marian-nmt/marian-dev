@@ -246,30 +246,35 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
   
   TopK<IndexType, T> partial;
 
-  for(int ite = 0; ite < k; ite++) {
+  for (int ite = 0; ite < k; ite++) {
     partial.init(descendingOrder);
     #pragma unroll
-    for(IndexType i = tid; i < size; i+= BLOCK_SIZE_) {
+    for (IndexType i = tid; i < size; i+= BLOCK_SIZE_) {
       descendingOrder? partial.updateIfLarger(s_val[i], i) : partial.updateIfSmaller(s_val[i], i);
     }
 
     TopK<IndexType, T> total = BlockReduce(temp_storage).Reduce(partial, descendingOrder? reduce_topk_max<IndexType, T>: reduce_topk_min<IndexType, T>);
 
-    if(tid == 0) {
+    if (tid == 0) {
       topks[ite] = total;
       s_val[total.index] = minimal;
     }
     __syncthreads();
   }
 
-  for(int beam = tid; beam < k; beam += BLOCK_SIZE_) {
+  for (int beam = tid; beam < k; beam += BLOCK_SIZE_) {
     TopK<IndexType, T> beamOut; 
     IndexType indexInTmpValRow = topks[beam].index;
     beamOut.index = topk_tmp_id_buf[batch_id * size + indexInTmpValRow];
     beamOut.value = topks[beam].value;
-    if(top) top[batch_id * k + beam] = beamOut;
-    if(outIndices) outIndices[batch_id * k + beam] = beamOut.index;
-    if(outVals) outVals[batch_id * k + beam] = beamOut.value;
+    if (top) 
+      top[batch_id * k + beam] = beamOut;
+
+    if (outIndices) 
+      outIndices[batch_id * k + beam] = beamOut.index;
+
+    if (outVals) 
+      outVals[batch_id * k + beam] = beamOut.value;
   }
 }
 

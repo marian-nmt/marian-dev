@@ -32,7 +32,7 @@ public:
 
     cudaSetDevice(deviceId_.no);
 
-    const int tempElts = maxBatchSize * maxBeamSize * maxBeamSize * MAX_BLOCKS_PER_BEAM;
+    const int tempElts = maxBatchSize * maxBeamSize * maxBeamSize * MAX_BLOCKS_PER_ITEM;
     CUDA_CHECK(cudaMalloc((void**)&topk_tmp_id_buf, tempElts * sizeof(IndexType)));
     CUDA_CHECK(cudaMalloc((void**)&topk_tmp_val_buf, tempElts * sizeof(float)));
     CUDA_CHECK(cudaMalloc((void**)&tops, maxBatchSize * maxBeamSize * sizeof(TopK<IndexType, float>)));

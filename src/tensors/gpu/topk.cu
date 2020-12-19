@@ -34,12 +34,8 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
 
   ABORT_IF(k > cols, "Cannot select more than {} elements for axis {}", cols, axis);
 
-  // @TODO: When nth_element is removed, rename MAX_BLOCKS_PER_BEAM to MAX_BLOCKS_PER_ROW and increase
-  //        the number of blocks per row for the kernel launches after benchmarking. The current set of
-  //        params assume that each group of blocks processes 1 beam instead of potentially several beams
-  //        in this case.
   const int beams = 1;
-  const int tempElts = rows * beams * beams * MAX_BLOCKS_PER_BEAM;
+  const int tempElts = rows * beams * beams * MAX_BLOCKS_PER_ITEM;
 
   auto tempMemInd = allocator->alloc<IndexType>(tempElts);
 

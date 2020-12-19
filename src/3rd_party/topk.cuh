@@ -30,7 +30,7 @@
 #include "cub/cub/cub.cuh"
 #endif
 
-#define MAX_BLOCKS_PER_BEAM 8
+#define MAX_BLOCKS_PER_ITEM 8
 
 /// A struct to access the infinity constant on device based on type. 
 template<typename T> 
@@ -136,7 +136,7 @@ __device__ __forceinline__ TopK<IndexType, T> reduce_topk_min(const TopK<IndexTy
   Function params:
     input_array - The input matrix to the topk operator
 
-    topk_tmp_id_buf - Stores the intermediate indicies for the next phase of the kernel. Must be at least #rows * k * k * BLOCKS_PER_ITEM_
+    topk_tmp_id_buf - Stores the intermediate indicies for the next phase of the kernel. Must be at least #rows * items_per_row * k * BLOCKS_PER_ITEM_
 
     topk_tmp_val_buf - Stores the intermediate values for the next phase of the kernel. Must be at least #rows * items_per_row * k * BLOCKS_PER_ITEM_
 
@@ -238,13 +238,17 @@ __global__ void topk_stage_1(T* input_array,
 
     topk_tmp_val_buf - Stores the intermediate values for the next phase of the kernel. Must be at least #rows * items_per_row * k * BLOCKS_PER_ITEM_
 
-    top (OPTIONAL: cam be NULL) -
+    top (OPTIONAL: cam be NULL) - An array of structs of TopK objects. This exists so that the topk elements can be read back using one call to
+                                  cudaMemcpy. However, it exposes the user to some implementation details so it is optional. If the pointer is NULL,
+                                  it is ignored.
 
-    outIndices (OPTIONAL: can be NULL) -
+    outIndices (OPTIONAL: can be NULL) - An array of IndexType containing the index locations where the topk items are found. It is ignored if the pointer 
+                                         is NULL
 
-    outVals (OPTIONAL: can be NULL)- 
+    outVals (OPTIONAL: can be NULL) - An array of IndexType containing the index locations where the topk items are found. It is ignored if the pointer 
+                                      is NULL
 
-    items_per_row -
+    items_per_row - The number of items to be processed within each row of the input. (eg. For beam search, this would be the hypotheses per beam)
     
     k - the k in top k. Specifies that in each row, the k largest/smallest elements should be retrieved
     
@@ -259,29 +263,42 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
                              const int items_per_row,
                              const int k,
                              bool descendingOrder) {
-
+  
+  // Size of one row in the tmp array.
   const int size = items_per_row * k * BLOCKS_PER_ITEM_; 
+
+  // Some constants needed for eahc block
   const int tid = threadIdx.x;
   const int batch_id = blockIdx.x;
   const T minimal = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();;
-
+  
+  // CUB reduction declarations
   typedef cub::BlockReduce<TopK<IndexType, T>, BLOCK_SIZE_> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
+
+  // Shared memory used to keep the topk items found by each block on the SM until the final write.
   extern __shared__ char array[];
   T *s_val = topk_tmp_val_buf + batch_id * size;
   TopK<IndexType, T> *topks = (TopK<IndexType, T>*)(array);
   
+  // Partial reduction for topk (reducing across global before the blockwide reduce.)
   TopK<IndexType, T> partial;
 
+  // Finds the largest/smallest element within a block's given range then blanks out that value in the input array 
+  // before starting the next iteration. The blanked out values are not fixed since we no longer care about them.
   for (int ite = 0; ite < k; ite++) {
     partial.init(descendingOrder);
+
+    // First reduce across global mem if needed so that the max/min values per row reside in the block.
     #pragma unroll
     for (IndexType i = tid; i < size; i+= BLOCK_SIZE_) {
       descendingOrder? partial.updateIfLarger(s_val[i], i) : partial.updateIfSmaller(s_val[i], i);
     }
 
+    // Use CUB to perform the blockwise reduction
     TopK<IndexType, T> total = BlockReduce(temp_storage).Reduce(partial, descendingOrder? reduce_topk_max<IndexType, T>: reduce_topk_min<IndexType, T>);
 
+    // Store the kth largest/smallest index, element pair in shared and blank out value stored in the global array before the next loop iteration.
     if (tid == 0) {
       topks[ite] = total;
       s_val[total.index] = minimal;
@@ -289,30 +306,32 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
     __syncthreads();
   }
 
-  for (int beam = tid; beam < k; beam += BLOCK_SIZE_) {
+  // Now that we have all of the topk items in shared, write them out to global to the defined arrays.
+  for (int elt = tid; elt < k; elt += BLOCK_SIZE_) {
     TopK<IndexType, T> beamOut; 
-    IndexType indexInTmpValRow = topks[beam].index;
+    IndexType indexInTmpValRow = topks[elt].index;
     beamOut.index = topk_tmp_id_buf[batch_id * size + indexInTmpValRow];
-    beamOut.value = topks[beam].value;
+    beamOut.value = topks[elt].value;
     if (top) 
-      top[batch_id * k + beam] = beamOut;
+      top[batch_id * k + elt] = beamOut;
 
     if (outIndices) 
-      outIndices[batch_id * k + beam] = beamOut.index;
+      outIndices[batch_id * k + elt] = beamOut.index;
 
     if (outVals) 
-      outVals[batch_id * k + beam] = beamOut.value;
+      outVals[batch_id * k + elt] = beamOut.value;
   }
 }
 
+// A helper for launching the kernels due to needed to set some template parameters
 #define CASE_K(K,BLOCK_SIZE_1_, BLOCK_SIZE_2_, BLOCKS_PER_ITEM_) \
   case K: \
-    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_ITEM_, getRowOffsets><<<batch_size * items_per_row * BLOCKS_PER_ITEM_, BLOCK_SIZE_1_, 0, stream>>>( \
+    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_ITEM_, getRowOffsets><<<rows * items_per_row * BLOCKS_PER_ITEM_, BLOCK_SIZE_1_, 0, stream>>>( \
         input_array, \
         topk_tmp_id_buf, \
         topk_tmp_val_buf, \
         k, values_per_item, descendingOrder); \
-    topk_stage_2<IndexType, T, BLOCK_SIZE_2_, BLOCKS_PER_ITEM_><<<batch_size, BLOCK_SIZE_2_, K * sizeof(TopK<IndexType, T>), stream>>>( \
+    topk_stage_2<IndexType, T, BLOCK_SIZE_2_, BLOCKS_PER_ITEM_><<<rows, BLOCK_SIZE_2_, K * sizeof(TopK<IndexType, T>), stream>>>( \
         topk_tmp_id_buf, \
         topk_tmp_val_buf, \
         tops, \
@@ -322,16 +341,53 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
         k, descendingOrder); \
   break; \
 
-// The getRowOffsets template parameter is added so the topk implementation works with both nth_element.cu and the topk operator.
-// It is a template parameter since we know at compile time which version of topk we want to call. This flag can be removed whenever nth
-// element.cu is removed. When this flag is true, the indices returns are the offsets within the row. When the flag is false, the indices
-// returned are offset from the base pointer.
+/**  
+  This overload launches the cuda kernels needed to perform the topk operation. It returns the topk items in an array of structs in the tops array. 
+  The benefit is that one call to cudaMemcpy is needed to read back the index, value pairs. However, it needs to expose the TopK struct externally to 
+  achieve this. If possible, and if reading back to the host, it is recommended to use this version to reduce the host/device communication required.
+
+  Template params:
+    IndexType - the type of the array used to store the index values. This must be an integral type
+
+    T - the type of input_array
+
+    getRowOffsets - A boolean indicating whether we want the indices returned to be relative to the start of a row or relative to 
+                    the base pointer of the array.
+
+  The getRowOffsets template parameter is added so the topk implementation works with both nth_element.cu and the topk operator.
+  It is a template parameter since we know at compile time which version of topk we want to call. This flag can be removed whenever nth
+  element.cu is removed. When this flag is true, the indices returns are the offsets within the row. When the flag is false, the indices
+  returned are offset from the base pointer.
+
+  Function params:
+    input_array - The input matrix to the topk operator
+
+    topk_tmp_id_buf - Stores the intermediate indicies for the next phase of the kernel. Must be at least rows * items_per_row * k * MAX_BLOCKS_PER_ITEM
+
+    topk_tmp_val_buf - Stores the intermediate values for the next phase of the kernel. Must be at least #rows * items_per_row * k * MAX_BLOCKS_PER_ITEM
+
+    tops - An array on TopK<IndexType, T> structs where the final topk values will be written. This should be of shape (rows, k).
+
+    rows - The number of rows in the input array.
+
+    items_per_row - The number of items in a row of the input array. For a normal topk, this would be one and values per item would be #cols. For beam search
+                    topk, this should be the number of hypotheses in one batch input assuming the number of rows is set to the batch_size.
+    
+    k - the k in top k. Specifies that in each row, the k largest/smallest elements should be retrieved
+
+    values_per_item - the number of values within each item in a given row. Eg. For a normal topk, this is #cols. For beam search topk, this could be the vocab_size
+                      provided that the items_per_row is set to the # of hypotheses and the rows is set to the current batch size.
+    
+    descendingOrder - If true, the k largest elements are returned. Otherwise, the k smallest elements are returned.
+
+    stream - the stream in which this operation should be run.
+*/
 template <typename IndexType, typename T, bool getRowOffsets=false>
 void topK_kernelLauncher(T* input_array,
                          IndexType* topk_tmp_id_buf,
                          T* topk_tmp_val_buf,
                          TopK<IndexType, T>* tops,
-                         const int batch_size,
+                         const int rows,
                          const int items_per_row,
                          const int k,
                          const int values_per_item,
@@ -341,24 +397,24 @@ void topK_kernelLauncher(T* input_array,
   IndexType* outIndices = nullptr;
   T* outVals = nullptr;                        
   switch(k) {
-    CASE_K(1,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(2,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(4,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(6,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(8,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(10,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(1,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(2,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(4,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(6,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(8,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(10,128,128,MAX_BLOCKS_PER_ITEM);
     CASE_K(16,128,128,5);
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * items_per_row * 1, 128, 0, stream>>>(input_array, 
+      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<rows * items_per_row * 1, 128, 0, stream>>>(input_array, 
                                                                                                topk_tmp_id_buf, 
                                                                                                topk_tmp_val_buf,
                                                                                                k, 
                                                                                                values_per_item, 
                                                                                                descendingOrder);
 
-      topk_stage_2<IndexType, T, 128, 1><<<batch_size, 128, k * sizeof(TopK<IndexType, T>), stream>>>(topk_tmp_id_buf,
+      topk_stage_2<IndexType, T, 128, 1><<<rows, 128, k * sizeof(TopK<IndexType, T>), stream>>>(topk_tmp_id_buf,
                                                                                                       topk_tmp_val_buf,
                                                                                                       tops,
                                                                                                       outIndices,
@@ -370,13 +426,27 @@ void topK_kernelLauncher(T* input_array,
   }
 }
 
+/**  
+  This overload launches the cuda kernels needed to perform the topk operation. It returns the topk items in the outIndices and outVals arrays. This
+  needs two cudaMemcpy calls to read the topk values from the device to the host but it does not expose the topk struct. It is recommened to use the
+  other overload if possible and reading back to host memory to reduce the communication needed between the host and device.
+
+  Template params: same as previous overload.
+
+  Function params: same as previous overload except:
+
+    outIndices - The array to write the topk indices. This should be (rows, k)
+
+    outVals - The array to write the topk values. This should be (rows, k)
+
+*/
 template <typename IndexType, typename T, bool getRowOffsets=false>
 void topK_kernelLauncher(T* input_array,
                          IndexType* topk_tmp_id_buf,
                          T* topk_tmp_val_buf,
                          IndexType* outIndices,
                          T* outVals,
-                         const int batch_size,
+                         const int rows,
                          const int items_per_row,
                          const int k,
                          const int values_per_item,
@@ -385,24 +455,24 @@ void topK_kernelLauncher(T* input_array,
   
   TopK<IndexType, T>* tops = nullptr;
   switch(k) {
-    CASE_K(1,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(2,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(4,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(6,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(8,128,128,MAX_BLOCKS_PER_BEAM);
-    CASE_K(10,128,128,MAX_BLOCKS_PER_BEAM);
+    CASE_K(1,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(2,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(4,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(6,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(8,128,128,MAX_BLOCKS_PER_ITEM);
+    CASE_K(10,128,128,MAX_BLOCKS_PER_ITEM);
     CASE_K(16,128,128,5);
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * items_per_row * 1, 128, 0, stream>>>(input_array, 
+      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<rows * items_per_row * 1, 128, 0, stream>>>(input_array, 
                                                                                                topk_tmp_id_buf, 
                                                                                                topk_tmp_val_buf,
                                                                                                k, 
                                                                                                values_per_item, 
                                                                                                descendingOrder);
 
-      topk_stage_2<IndexType, T, 128, 1><<<batch_size, 128, k * sizeof(TopK<IndexType, T>), stream>>>(topk_tmp_id_buf,
+      topk_stage_2<IndexType, T, 128, 1><<<rows, 128, k * sizeof(TopK<IndexType, T>), stream>>>(topk_tmp_id_buf,
                                                                                                       topk_tmp_val_buf,
                                                                                                       tops,
                                                                                                       outIndices,

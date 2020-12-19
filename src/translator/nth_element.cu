@@ -47,13 +47,13 @@ private:
   template <typename T>
   void selectNBest(T* probs, 
                    const int batchSize,
-                   const int beamsPerBatch,
-                   const int beamWidth,
+                   const int hypsPerBeam, // current hypotheses in each beam
+                   const int beamWidth, // k
                    const int vocabSize) {
     cudaSetDevice(deviceId_.no);
 
     topK_kernelLauncher(probs, topk_tmp_id_buf, (T*)topk_tmp_val_buf, (TopK<IndexType, T>*)tops,
-                        batchSize, beamsPerBatch, beamWidth, vocabSize, true, 0);    
+                        batchSize, hypsPerBeam, beamWidth, vocabSize, true, 0);    
   }
 
 public:

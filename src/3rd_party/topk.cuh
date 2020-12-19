@@ -226,17 +226,41 @@ __global__ void topk_stage_1(T* input_array,
   }
 }
 
+/**
+  Reduces the values in the tmp arrays to find the topk values in each row. The tmp arrays have items_per_row * k * BLOCKS_PER_ITEM_ entries for each
+  row of the input array. This kernel finds the k largest entries amount those values and writes the outputs to the top array, outVals array and outIndices
+  array as specified below.
+
+  Template params: same meaning as topk_stage_1
+
+  Function params:
+    topk_tmp_id_buf - Stores the intermediate indicies for the next phase of the kernel. Must be at least #rows * items_per_row * k * BLOCKS_PER_ITEM_
+
+    topk_tmp_val_buf - Stores the intermediate values for the next phase of the kernel. Must be at least #rows * items_per_row * k * BLOCKS_PER_ITEM_
+
+    top (OPTIONAL: cam be NULL) -
+
+    outIndices (OPTIONAL: can be NULL) -
+
+    outVals (OPTIONAL: can be NULL)- 
+
+    items_per_row -
+    
+    k - the k in top k. Specifies that in each row, the k largest/smallest elements should be retrieved
+    
+    descendingOrder - If true, the k largest elements are returned. Otherwise, the k smallest elements are returned.
+*/
 template<typename IndexType, typename T, int BLOCK_SIZE_, int BLOCKS_PER_ITEM_>
 __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
                              T* topk_tmp_val_buf,
                              TopK<IndexType, T>* top,
                              IndexType* outIndices,
                              T* outVals,
-                             const int beams_per_batch,
+                             const int items_per_row,
                              const int k,
                              bool descendingOrder) {
 
-  const int size = beams_per_batch * k * BLOCKS_PER_ITEM_; 
+  const int size = items_per_row * k * BLOCKS_PER_ITEM_; 
   const int tid = threadIdx.x;
   const int batch_id = blockIdx.x;
   const T minimal = descendingOrder? -FpInfinity<T>::infinity() : FpInfinity<T>::infinity();;
@@ -283,7 +307,7 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
 
 #define CASE_K(K,BLOCK_SIZE_1_, BLOCK_SIZE_2_, BLOCKS_PER_ITEM_) \
   case K: \
-    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_ITEM_, getRowOffsets><<<batch_size * beams_per_batch * BLOCKS_PER_ITEM_, BLOCK_SIZE_1_, 0, stream>>>( \
+    topk_stage_1<IndexType, T, BLOCK_SIZE_1_, BLOCKS_PER_ITEM_, getRowOffsets><<<batch_size * items_per_row * BLOCKS_PER_ITEM_, BLOCK_SIZE_1_, 0, stream>>>( \
         input_array, \
         topk_tmp_id_buf, \
         topk_tmp_val_buf, \
@@ -294,7 +318,7 @@ __global__ void topk_stage_2(const IndexType* __restrict topk_tmp_id_buf,
         tops, \
         outIndices, \
         outVals, \
-        beams_per_batch, \
+        items_per_row, \
         k, descendingOrder); \
   break; \
 
@@ -308,7 +332,7 @@ void topK_kernelLauncher(T* input_array,
                          T* topk_tmp_val_buf,
                          TopK<IndexType, T>* tops,
                          const int batch_size,
-                         const int beams_per_batch,
+                         const int items_per_row,
                          const int k,
                          const int values_per_item,
                          bool descendingOrder,
@@ -327,7 +351,7 @@ void topK_kernelLauncher(T* input_array,
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(input_array, 
+      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * items_per_row * 1, 128, 0, stream>>>(input_array, 
                                                                                                topk_tmp_id_buf, 
                                                                                                topk_tmp_val_buf,
                                                                                                k, 
@@ -339,7 +363,7 @@ void topK_kernelLauncher(T* input_array,
                                                                                                       tops,
                                                                                                       outIndices,
                                                                                                       outVals,
-                                                                                                      beams_per_batch,
+                                                                                                      items_per_row,
                                                                                                       k,
                                                                                                       descendingOrder);
     break;
@@ -353,7 +377,7 @@ void topK_kernelLauncher(T* input_array,
                          IndexType* outIndices,
                          T* outVals,
                          const int batch_size,
-                         const int beams_per_batch,
+                         const int items_per_row,
                          const int k,
                          const int values_per_item,
                          bool descendingOrder,
@@ -371,7 +395,7 @@ void topK_kernelLauncher(T* input_array,
     CASE_K(32,256,128,1);
     CASE_K(64,256,256,1);
     default:
-      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * beams_per_batch * 1, 128, 0, stream>>>(input_array, 
+      topk_stage_1<IndexType, T, 128, 1, getRowOffsets><<<batch_size * items_per_row * 1, 128, 0, stream>>>(input_array, 
                                                                                                topk_tmp_id_buf, 
                                                                                                topk_tmp_val_buf,
                                                                                                k, 
@@ -383,7 +407,7 @@ void topK_kernelLauncher(T* input_array,
                                                                                                       tops,
                                                                                                       outIndices,
                                                                                                       outVals,
-                                                                                                      beams_per_batch,
+                                                                                                      items_per_row,
                                                                                                       k,
                                                                                                       descendingOrder);
     break;

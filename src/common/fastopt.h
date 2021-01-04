@@ -134,7 +134,7 @@ private:
   }
 
   // Used to find elements if isMap() is true.
-  inline const std::unique_ptr<const FastOpt>& phLookup(size_t keyId) const {
+  inline const std::unique_ptr<const FastOpt>& phLookup(uint64_t keyId) const {
     if(ph_)
       return array_[(*ph_)[keyId]];
     else
@@ -155,8 +155,8 @@ private:
     elements_ = 0;
     try {
       // Cast node to text first, that works for any scalar node and test that it does not contain single characters
-      // that according to YAML could be boolean values. Unfortunately, we do not have any type information at this point. 
-      // This means we are disabling support for boolean values in YAML that are expressed with these characters. 
+      // that according to YAML could be boolean values. Unfortunately, we do not have any type information at this point.
+      // This means we are disabling support for boolean values in YAML that are expressed with these characters.
       auto asText = v.as<std::string>();
       if(asText.size() == 1 && asText.find_first_of("nyNYtfTF") == 0) // @TODO: should we disallow other strings too?
         throw YAML::BadConversion(YAML::Mark()); // get's picked up by next catch block
@@ -172,7 +172,7 @@ private:
           value_ = v.as<double>();
           type_ = NodeType::Float64;
         } catch(const YAML::BadConversion& /*e*/) {
-          try { 
+          try {
             value_ = v.as<std::string>();
             type_ = NodeType::String;
           } catch (const YAML::BadConversion& /*e*/) {
@@ -181,7 +181,7 @@ private:
         }
       }
     }
-    
+
     ABORT_IF(ph_, "ph_ should be undefined");
     ABORT_IF(!array_.empty(), "array_ should be empty");
   }
@@ -223,7 +223,7 @@ private:
     type_ = NodeType::Map;
   }
 
-  // Build a Map node, uses std::string as key, which gets hashed to size_t and used in the function above.
+  // Build a Map node, uses std::string as key, which gets hashed to uint64_t and used in the function above.
   void makeMap(const std::map<std::string, YAML::Node>& m) {
     std::map<uint64_t, YAML::Node> mi;
     for(const auto& it : m) {
@@ -265,10 +265,10 @@ private:
 
 public:
   // Constructor to recursively create a FastOpt object from a YAML::Node following the yaml structure.
-  FastOpt(const YAML::Node& node) 
+  FastOpt(const YAML::Node& node)
   { construct(node); }
 
-  FastOpt(const YAML::Node& node, uint64_t fingerprint) 
+  FastOpt(const YAML::Node& node, uint64_t fingerprint)
      : fingerprint_{fingerprint}
   { construct(node); }
 
@@ -281,20 +281,20 @@ public:
   }
 
   bool isScalar() const {
-    return type_ == NodeType::Bool 
-      || type_ == NodeType::Float64 
-      || type_ == NodeType::Int64 
+    return type_ == NodeType::Bool
+      || type_ == NodeType::Float64
+      || type_ == NodeType::Int64
       || type_ == NodeType::String;
   }
 
   bool isNull() const {
     return type_ == NodeType::Null;
-  }  
+  }
 
   bool isInt() const {
     return type_ == NodeType::Int64;
-  }  
-  
+  }
+
   bool isBool() const {
     return type_ == NodeType::Bool;
   }
@@ -320,11 +320,11 @@ public:
     std::swap(array_, other.array_);
     std::swap(type_, other.type_);
     std::swap(elements_, other.elements_);
-    // leave fingerprint alone as it needed by parent node. 
+    // leave fingerprint alone as it needed by parent node.
   }
 
-  // Is the hashed key in a map? 
-  bool has(size_t keyId) const {
+  // Is the hashed key in a map?
+  bool has(uint64_t keyId) const {
     if(isMap() && elements_ > 0) {
       const auto& ptr = phLookup(keyId);
       return ptr ? ptr->fingerprint_ == keyId : false;
@@ -348,27 +348,26 @@ public:
   }
 
   // access sequence or map element
-  const FastOpt& operator[](size_t keyId) const {
+  const FastOpt& operator[](uint64_t keyId) const {
     if(isSequence()) {
-      const auto& ptr = arrayLookup(keyId);
+      const auto& ptr = arrayLookup((size_t)keyId);
       ABORT_IF(!ptr, "Unseen key {}" , keyId);
       return *ptr;
     } else if(isMap()) {
       const auto& ptr = phLookup(keyId);
       ABORT_IF(!ptr || ptr->fingerprint_ != keyId, "Unseen key {}", keyId);
-      return *ptr; 
+      return *ptr;
     } else {
       ABORT("Not a sequence or map node");
     }
   }
 
   const FastOpt& operator[](int key) const {
-    return operator[]((size_t)key);
+    return operator[]((uint64_t)key);
   }
 
   const FastOpt& operator[](const char* const key) const {
-    // MacOS requires explicit cast to size_t before we can use it.
-    return operator[]((size_t)crc::crc(key));
+    return operator[](crc::crc(key));
   }
 
   const FastOpt& operator[](const std::string& key) const {

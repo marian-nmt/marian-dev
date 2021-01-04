@@ -38,9 +38,10 @@ inline constexpr uint64_t crc(const char* const str) noexcept {
 /*****************************************************************************/
 
 // PerfectHash constructs a perfect hash for a set K of n numeric keys. The size of 
-// the hash is m > n (not much larger) and n << max(K) (much smaller). If I am not wrong m 
-// is the next power of 2 larger than n? We then build an array of size m with n fields defined.
-// m - n fields stay undefined (a bit of waste).
+// the hash is m > n (not much larger) and n << max(K) (much smaller). The output array size is
+// determined by PHF::init in "src/3rd_party/phf/phf.h". m - n fields stay undefined (a bit of waste).
+
+// Wrapper class for the 3rd-party library in "src/3rd_party/phf"
 class PerfectHash {
 private:
   phf phf_;
@@ -62,10 +63,12 @@ public:
     PHF::destroy(&phf_);
   }
 
+  // subscript operator [] overloading: if the key is uint64_t, return the hash code directly
   uint32_t operator[](const uint64_t& key) const {
     return PHF::hash<uint64_t>(const_cast<phf*>(&phf_), key);
   }
 
+  // If the key is a string, return the hash code for the string's CRC code
   uint32_t operator[](const char* const keyStr) const {
     return (*this)[crc::crc(keyStr)];
   }
@@ -109,6 +112,9 @@ private:
 
 public:
   // Node types for FastOpt, seem to be enough to cover YAML:NodeType
+  // Multi-element types include "Sequence" and "Map"
+  // "Sequence" is implemented with STL vectors
+  // "Map" is implemented with a 3rd-party PHF library (see the PerfectHash class)
   enum struct NodeType {
     Null, Bool, Int64, Float64, String, Sequence, Map
   };
@@ -126,6 +132,7 @@ private:
   size_t elements_{0};      // Number of elements if isMap or isSequence is true, 0 otherwise.
 
   // Used to find elements if isSequence() is true.
+  // Retrieve the entry using array indexing.
   inline const std::unique_ptr<const FastOpt>& arrayLookup(size_t keyId) const {
     if(keyId < array_.size())
       return array_[keyId];
@@ -134,6 +141,7 @@ private:
   }
 
   // Used to find elements if isMap() is true.
+  // Retrieve the entry from the hash table.
   inline const std::unique_ptr<const FastOpt>& phLookup(uint64_t keyId) const {
     if(ph_)
       return array_[(*ph_)[keyId]];
@@ -141,6 +149,7 @@ private:
       return uniqueNullPtr;
   }
 
+  // Builders for different types of nodes.
   // Build Null node.
   void makeNull() {
     elements_ = 0;
@@ -272,6 +281,7 @@ public:
      : fingerprint_{fingerprint}
   { construct(node); }
 
+  // Predicates for node types
   bool isSequence() const {
     return type_ == NodeType::Sequence;
   }
@@ -362,6 +372,7 @@ public:
     }
   }
 
+  // operator [] overloading for non-uint64_t keys
   const FastOpt& operator[](int key) const {
     return operator[]((uint64_t)key);
   }

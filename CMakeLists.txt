@@ -443,6 +443,8 @@ if(COMPILE_CPU)
       message(FATAL_ERROR "FATAL ERROR: Apple Accelerate only works on macOS.")
     endif()
     set(BLAS_VENDOR "Accelerate")
+    # see https://developer.apple.com/documentation/accelerate for more info
+    # you may need to install Xcode command line tools if you don't have them already (https://developer.apple.com/xcode/features/)
     include_directories("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/Headers")
     set(EXT_LIBS ${EXT_LIBS} "-framework Accelerate")
     add_definitions(-DBLAS_FOUND=1)

@@ -39,7 +39,8 @@ public:
       // int8 - all the weights used for affine op and dot op
       // fp16 - all the weights used for affine op
       if ((gemmElementType == Type::packed8avx2 || gemmElementType == Type::packed8avx512)
-        && (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2)) {
+         && ((pName.find("_W") == pName.length() - 3 && pName.back() != 't')
+             || pName.find("_W") == pName.length() - 2)) {
 #if USE_FBGEMM
         using namespace marian::cpu::variant;
         // packing information - size
@@ -85,7 +86,8 @@ public:
         ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
 #endif
       // fp16 quantization option
-      } else if (gemmElementType == Type::packed16 && pName.find("_W") == pName.length() - 3) {
+      } else if(gemmElementType == Type::packed16 && pName.find("_W") == pName.length() - 3
+                && pName.back() != 't') {
 #if USE_FBGEMM
         using namespace marian::cpu::variant;
 

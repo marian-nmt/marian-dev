@@ -1,3 +1,9 @@
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
+#include <algorithm>
 #include "marian.h"
 
 #include "layers/generic.h"
@@ -77,15 +83,25 @@ namespace marian {
     //  - lemma: add all maxes of applicable factors
     if (groupIndex > 0) {
       sel = sel - max(sel, -1);
-    }
-    else {
+    } else {
       auto numGroups = getNumFactorGroups();
-      for (size_t g = 1; g < numGroups; g++) {
-        auto factorMaxima = max(logits_[g]->loss(), -1);
-        auto factorMasks = constant(getFactorMasks(g, shortlist ? shortlist->indices() : std::vector<WordIndex>()));
-        sel = sel + factorMaxima * factorMasks; // those lemmas that don't have a factor get multiplied with 0
+      if(numGroups > 1 && graph()->isInference() && graph()->getBackend()->getDeviceId().type == DeviceType::gpu) {
+        Expr shortlistIndices = shortlist? constant(shortlist->indices()) : nullptr;
+        Expr lemmaHasFactorGroupTensor = getLemmaHasFactorGroupTensor();
+        std::vector<Expr> groupLosses(logits_.size());
+        std::transform(logits_.begin(), logits_.end(), groupLosses.begin(), [](const Ptr<RationalLoss>& loss) -> Expr {return loss->loss();});
+
+        sel = addFactorMaxes(lemmaHasFactorGroupTensor, groupLosses, 
+                             shortlistIndices, factoredVocab_->getGroupRange(0).first);
+      } else {
+        for (size_t g = 1; g < numGroups; g++) {
+          auto factorMaxima = max(logits_[g]->loss(), -1);
+          Expr factorMasks = constant(getFactorMasks(g, shortlist ? shortlist->indices() : std::vector<WordIndex>()));
+          sel = sel + factorMaxima * factorMasks; // those lemmas that don't have a factor get multiplied with 0
+        }
       }
     }
+    
 
     // if selIdx are given, then we must reshuffle accordingly
     if (!hypIndices.empty()) // use the same function that shuffles decoder state
@@ -184,6 +200,43 @@ namespace marian {
       res.push_back((float)factoredVocab_->lemmaHasFactorGroup(lemma, factorGroup));
     }
     return res;
+  }
+
+  Expr Logits::getLemmaHasFactorGroupTensor() const {
+    auto g = graph();
+    const std::string name = "lemmaHasFactorGroup";
+    auto lemmaHasFactorGroupTensor = g->findByName(name);
+
+    if(!lemmaHasFactorGroupTensor) {
+      // We want to make this a graph param so the GPU can use this to implement lemmaHasFactorGroup to avoid unneeded memcpys.
+      const auto lemmaHasFactorGroup = factoredVocab_->getLemmaHasFactorGroupVector();
+      int dimLemma = (int)lemmaHasFactorGroup.size();
+      int dimFactorGroup = (int)lemmaHasFactorGroup[0].size();
+
+      for(const auto&  lemma : lemmaHasFactorGroup) {
+        // Paranoid check - Instead of aborting I think we can pad here and copy the array
+        ABORT_IF(lemma.size() != dimFactorGroup, "All groups must be the same size");
+      }
+
+      auto initFunc = [lemmaHasFactorGroup, dimLemma, dimFactorGroup] (Tensor t) {
+        std::vector<int8_t> flattened(dimLemma * dimFactorGroup);
+        int row = 0;
+        for(const auto& v : lemmaHasFactorGroup) {
+          int offset = row * dimFactorGroup;
+          for(int i = 0; i < v.size(); ++i) {
+            flattened[offset + i] = static_cast<int8_t>(v[i]);
+          }
+          ++row;
+        }
+        t->set(flattened);
+      };
+
+      lemmaHasFactorGroupTensor = graph()->constant({dimLemma, dimFactorGroup}, inits::fromLambda(initFunc), Type::int8);
+      lemmaHasFactorGroupTensor->setMemoize(true);
+      g->rememberByName(name, lemmaHasFactorGroupTensor);
+    }
+    ABORT_IF(!lemmaHasFactorGroupTensor, "Lemma has factor group tensor undefined?");
+    return lemmaHasFactorGroupTensor;
   }
 
   Logits Logits::applyUnaryFunction(const std::function<Expr(Expr)>& f) const { // clone this but apply f to all loss values

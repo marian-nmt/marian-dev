@@ -1,3 +1,7 @@
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */ 
 #include "graph/expression_operators.h"
 #include "layers/constructors.h"
 
@@ -677,6 +681,22 @@ Expr unlikelihood(Expr logits, Expr indices) {
 
   // This is currently implemented with multiple ops, might be worth doing a special operation like for cross_entropy
   return -log(gather(1.f - softmax(logits), /*axis=*/-1, indicesWithLayout));
+}
+
+Expr addFactorMaxes(Expr lemmaHasFactorGroup, std::vector<Expr> groupLosses, Expr hypIndices, size_t group0Start) {
+  if(groupLosses.size() == 1) {
+    return groupLosses[0];
+  }
+
+  int numLemmas = groupLosses[0]->shape()[-1];
+
+  std::vector<Expr> nodes({lemmaHasFactorGroup});
+  if (hypIndices) {
+    nodes.push_back(hypIndices);
+  }
+  nodes.insert(nodes.end(), groupLosses.begin(), groupLosses.end());
+  bool hasShortList = hypIndices != nullptr;
+  return Expression<AddFactorMaxesOp>(nodes, hasShortList, group0Start, numLemmas);
 }
 
 Expr plus(const std::vector<Expr>& nodes) {

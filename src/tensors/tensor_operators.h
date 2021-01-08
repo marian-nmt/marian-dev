@@ -1,3 +1,8 @@
+/* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+ 
 #pragma once
 
 #include "common/definitions.h"
@@ -119,6 +124,8 @@ DISPATCH5(Shift, marian::Tensor, marian::Tensor, marian::Shape, float, bool)
 DISPATCH4(ShiftGrad, marian::Tensor, marian::Tensor, marian::Shape, bool)
 
 DISPATCH3(Concatenate, marian::Tensor, const std::vector<marian::Tensor>&, int)
+
+DISPATCH7(AddFactorMaxes, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, const std::vector<marian::Tensor>&, size_t, size_t)
 
 // clang-format on
 

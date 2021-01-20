@@ -18,9 +18,9 @@ namespace inits {
  * Base class for specialized NodeInitializers.
  *
  * A NodeInitializer is a functor that is associated with parameters
- * and constants, and is invoked on a tensor during node intialization.
- * You need to override NodeIntializer::apply(Tensor) with your own
- * functionality or use a fromLambda intializer.
+ * and constants, and is invoked on a tensor during node initialization.
+ * You need to override NodeInitializer::apply(Tensor) with your own
+ * functionality or use a fromLambda initializer.
  *
  * See node_initializers.cpp for examples.
  */
@@ -35,12 +35,12 @@ public:
 };
 
 /**
- * Use a lambda function of form [](Tensor t) { do something with t } to initalize tensor
+ * Use a lambda function of form [](Tensor t) { do something with t } to initialize tensor
  */
 Ptr<NodeInitializer> fromLambda(std::function<void(Tensor)>&& func);
 
 /**
- * Use a lambda function of form [](Tensor t) { do something with t } to initalize tensor
+ * Use a lambda function of form [](Tensor t) { do something with t } to initialize tensor
  * Create temporary tensor of Type intermediateType first, initialize and then copy/convert to actual Tensor
  * Useful for functions that can only operate on a specific type of tensor
  */
@@ -49,7 +49,7 @@ Ptr<NodeInitializer> fromLambda(std::function<void(Tensor)>&& func, Type interme
 /**
  * Initialize tensor with given value
  *
- * Creates a NodeInitializer that will intialize the given tensor
+ * Creates a NodeInitializer that will initialize the given tensor
  * with `value`. Works with any underlying numeric tensor type.
  *
  * @return A NodeInitializer
@@ -59,7 +59,7 @@ Ptr<NodeInitializer> fromValue(float value);
 /**
  * Fill tensor with `0`
  *
- * Creates a NodeInitializer that will intialize the given tensor
+ * Creates a NodeInitializer that will initialize the given tensor
  * with `0`. Works with any underlying numeric tensor type.
  *
  * @return A NodeInitializer
@@ -69,7 +69,7 @@ static Ptr<NodeInitializer> zeros() { return fromValue(0.0f); }
 /**
  * Fill tensor with `1`
  *
- * Creates a NodeInitializer that will intialize the given tensor
+ * Creates a NodeInitializer that will initialize the given tensor
  * with `1`. Works with any underlying numeric tensor type.
  *
  * @return A NodeInitializer
@@ -79,7 +79,7 @@ static Ptr<NodeInitializer> ones() { return fromValue(1.0f); }
 /**
  * Set diagonal of two dimensional quadratic matrix to `value`.
  *
- * Sets all values of the tensor to 0 and intializes the diagonal with
+ * Sets all values of the tensor to 0 and initializes the diagonal with
  * the given `value`. If no value is specified `1` is used by default.
  *
  * @return A NodeInitializer
@@ -87,7 +87,7 @@ static Ptr<NodeInitializer> ones() { return fromValue(1.0f); }
 Ptr<NodeInitializer> eye(float value = 1.f);
 
 /**
- * Intialize tensor with normally distributed random numbers
+ * Initialize tensor with normally distributed random numbers
  *
  * Be default this generates floating point numbers from the
  * normal distribution Normal(0, 1) unless specified differently.
@@ -105,7 +105,7 @@ Ptr<NodeInitializer> eye(float value = 1.f);
 Ptr<NodeInitializer> normal(float mean = 0.f, float stddev = 1.f);
 
 /**
- * Intialize tensor with uniformly distributed random numbers
+ * Initialize tensor with uniformly distributed random numbers
  *
  * Be default this generates floating point numbers from the
  * uniform distribution Uniform(0, 1) unless specified differently.
@@ -131,11 +131,18 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn = false, bool fanOut = false, floa
 // @TODO: add documentation
 Ptr<NodeInitializer> glorotNormal(bool fanIn = false, bool fanOut = false, float scale = 1.f);
 
-// @TODO: add documentation
-Ptr<NodeInitializer> dropout(float dropoutProbabilty);
+/**
+ * Initialize a dropout mask (a tensor of 0 and 1) with given dropout probability
+ * @param dropoutProbability a float type defines the dropout probability.
+ *        E.g., dropoutProbability=0.1 means 90% of values are kept.
+ * <a href=https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf>Dropout</a>
+ * is proposed as a technique to prevent Neural Networks from overfitting.
+ * @return A NodeInitializer
+ */
+Ptr<NodeInitializer> dropout(float dropoutProbability);
 
 /**
- * Intialize with gumbel noise, i.e. -log(-log(u)) where u ~ Uniform(0 + eps, 1 - eps)
+ * Initialize with gumbel noise, i.e. -log(-log(u)) where u ~ Uniform(0 + eps, 1 - eps)
  *
  * @return A NodeInitializer
  */

@@ -30,7 +30,7 @@ Expr ExpressionGraph::add(Expr node) {
   } else {
     node->setId(count_++);
 
-    // record in foward graph
+    // record in forward graph
     nodesForward_.push_back(node);
 
     // record in backward graph if training, and keep track of roots
@@ -143,6 +143,11 @@ void ExpressionGraph::forward(std::list<Expr>& forwardTape, bool finalPass) {
     if(inferenceOnly_)
       v->children().clear();
 
+    // If checkpointing is disabled, keep the memory for forward signals for all nodes.
+    // If checkpointing is enabled:
+    //  (a) In the forward pass before the backward pass, free the memory for the nodes in the subtape to save memory.
+    //  (b) In the forward calls during the backward pass, keep the memory in the current subtape to accelerate
+    //      gradient computation.
     if(checkpointing_ && !finalPass) {
       auto subtape = v->getSubtape();
       if(subtape) {

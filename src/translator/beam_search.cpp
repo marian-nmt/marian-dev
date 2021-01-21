@@ -1,4 +1,5 @@
 #include "translator/beam_search.h"
+#include <sstream>
 
 #include "data/factored_vocab.h"
 #include "translator/helpers.h"
@@ -248,7 +249,8 @@ Beams BeamSearch::purgeBeams(const Beams& beams, /*in/out=*/std::vector<IndexTyp
 
 //**********************************************************************
 // main decoding function
-Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
+Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, std::function<void(const int, const std::string&)> callback) {
+  const bool nbest = options_->get<bool>("n-best");
   auto factoredVocab = trgVocab_->tryAs<FactoredVocab>();
   size_t numFactorGroups = factoredVocab ? factoredVocab->getNumGroups() : 1;
   if (numFactorGroups == 1) // if no factors then we didn't need this object in the first place
@@ -500,7 +502,18 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
         if (histories[batchIdx]->size() >= options_->get<float>("max-length-factor") * batch->front()->batchWidth())
           maxLengthReached = true;
         histories[batchIdx]->add(beams[batchIdx], trgEosId, purgedNewBeams[batchIdx].empty() || maxLengthReached);
-      }
+
+        // If this is the last beam and translation and the function passed in has a callable target, run the callback function on 
+        // the translated sentence.
+        if (callback != nullptr && (purgedNewBeams[batchIdx].empty() || maxLengthReached)) {
+            std::stringstream best1;
+            std::stringstream bestn;
+            printer_->print(histories[batchIdx], best1, bestn);
+            std::string result = nbest ? bestn.str() : best1.str();
+            callback(histories[batchIdx]->getLineNum(), result);
+        }
+
+      } 
     }
     if (maxLengthReached) // early exit if max length limit was reached
       break;

@@ -2,7 +2,9 @@
 
 #include "marian.h"
 #include "translator/history.h"
+#include "translator/output_printer.h"
 #include "translator/scorers.h"
+#include <functional>
 
 namespace marian {
 
@@ -12,13 +14,15 @@ private:
   std::vector<Ptr<Scorer>> scorers_;
   size_t beamSize_;
   Ptr<const Vocab> trgVocab_;
+  Ptr<OutputPrinter> printer_; 
 
   const float INVALID_PATH_SCORE = std::numeric_limits<float>::lowest(); // @TODO: observe this closely
   const bool PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
 
 public:
   BeamSearch(Ptr<Options> options, const std::vector<Ptr<Scorer>>& scorers, const Ptr<const Vocab> trgVocab)
-      : options_(options), scorers_(scorers), beamSize_(options_->get<size_t>("beam-size")), trgVocab_(trgVocab)
+      : options_(options), scorers_(scorers), beamSize_(options_->get<size_t>("beam-size")), trgVocab_(trgVocab),
+        printer_(New<OutputPrinter>(options_, trgVocab_))
   {}
 
   // combine new expandedPathScores and previous beams into new set of beams
@@ -45,7 +49,7 @@ public:
   Beams purgeBeams(const Beams& beams, /*in/out=*/std::vector<IndexType>& batchIdxMap);
 
   // main decoding function
-  Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch);
+  Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, std::function<void(const int, const std::string&)> callback = nullptr);
 };
 
 }  // namespace marian

@@ -293,6 +293,7 @@ public:
   /**
    * @brief Perform one backpropagation process on the graph to test
    * whether the graph workspace fits into a given workspace memory
+   *
    * This function is used for searching the maximum batch size
    * that fits into given workspace memory
    */
@@ -350,6 +351,7 @@ public:
 
   /**
    * @brief Perform the backward pass on the nodes of the graph
+   *
    * The back pass refers to the process of computing the output error.
    * It traverses through all nodes from output layer to input layer.
    */
@@ -558,7 +560,7 @@ public:
   /**
    * @brief Specify the indexes of elements to be taken from a tensor
    *
-   * this version sets up the shape such that the indices are in a given axis.
+   * This version sets up the shape such that the indices are in a given axis.
    * Use this if you want to pass these indices to gather().
    *
    * E.g., indexee shape = (3, 2, 5, 2); axis = 1 -> resulting shape = (1, size of indicesVector, 1, 1):
@@ -581,7 +583,7 @@ public:
 
   /**
    * @brief construct a constant node filled with `1`
-   * @param  shape a struct type defines the shape of the constant dataset
+   * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
    */
@@ -592,7 +594,7 @@ public:
   /**
    * @brief construct a constant node filled with `1` without a specified type,
    *        and the type is set to defaultElementType_
-   * @param  shape a struct type defines the shape of the constant dataset
+   * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    */
   Expr ones(const Shape& shape) {
@@ -601,7 +603,7 @@ public:
 
   /**
    * @brief construct a constant node filled with `0`
-   * @param  shape a struct type defines the shape of the constant dataset
+   * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
    */
@@ -612,7 +614,7 @@ public:
   /**
    * @brief construct a constant node filled with `0` without a specified type,
    *        and the type is set to defaultElementType_
-   * @param  shape a struct type defines the shape of the constant dataset
+   * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    */
   Expr zeros(const Shape& shape) {

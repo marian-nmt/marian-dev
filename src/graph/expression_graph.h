@@ -527,16 +527,22 @@ public:
   }
 
   // @TODO: add version with iterators
+  // Specify the indexes of elements to be taken from a tensor
   // shortcut to turn vector of indices to integer tensor, to be used with operators
-  // like rows or select
+  // like rows() or index_select()
   Expr indices(const std::vector<IndexType>& indicesVector) {
     return constant({(int)indicesVector.size()},
                     inits::fromVector(indicesVector),
                     Type::uint32);
   }
+
+  // Specify the indexes of elements to be taken from a tensor
   // this version sets up the shape such that the indices are in a given axis
   // Use this if you want to pass these indices to gather().
-  // indexee shape = (3, 2, 5, 2); axis = 1 -> resulting shape = (1, size of indicesVector, 1, 1)
+  // E.g., indexee shape = (3, 2, 5, 2); axis = 1 -> resulting shape = (1, size of indicesVector, 1, 1)
+  // The size of the resulting shape is the same as that of the indexee; here is 4.
+  // The shape of the specified axis is equal to the size of given indicesVector
+  // The shapes of the rest axes are filled with 1.
   Expr indices(const std::vector<IndexType>& indicesVector, Expr indexee, int axis = -1) {
     Shape shape;
     shape.resize(indexee->shape().size());

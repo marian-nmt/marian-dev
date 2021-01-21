@@ -27,7 +27,7 @@
 namespace marian {
 
 template <class Search>
-class Translate : public ModelTask {
+class Translate : public ModelCallbackTask {
 private:
   Ptr<Options> options_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
@@ -124,7 +124,7 @@ public:
     }
   }
 
-  void run() override {
+  void run(std::function<void(const int, const std::string&)> callback = nullptr) override {
     data::BatchGenerator<data::Corpus> bg(corpus_, options_);
 
     ThreadPool threadPool(numDevices_, numDevices_);
@@ -149,7 +149,7 @@ public:
         }
 
         auto search = New<Search>(options_, scorers, trgVocab_);
-        auto histories = search->search(graph, batch);
+        auto histories = search->search(graph, batch, callback);
 
         for(auto history : histories) {
           std::stringstream best1;
@@ -246,7 +246,7 @@ public:
     }
   }
 
-  std::string run(const std::string& input) override {
+  std::string run(const std::string& input, std::function<void(const int, const std::string&)> callback = nullptr) override {
     // split tab-separated input into fields if necessary
     auto inputs = options_->get<bool>("tsv", false)
                       ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
@@ -274,7 +274,7 @@ public:
           }
 
           auto search = New<Search>(options_, scorers, trgVocab_);
-          auto histories = search->search(graph, batch);
+          auto histories = search->search(graph, batch, callback);
 
           for(auto history : histories) {
             std::stringstream best1;

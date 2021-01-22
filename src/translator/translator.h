@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ostream>
 #include <string>
 
 #include "data/batch_generator.h"
@@ -198,6 +199,8 @@ public:
 
     threadPool.join_all();
     latencyTimer.getTimeStatistics();
+    std::ofstream os("callback.txt");
+    latencyTimer.writeInBatchOrder(os);
   }
 };
 

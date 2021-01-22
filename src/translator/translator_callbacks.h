@@ -15,7 +15,6 @@
 #include <map>
 
 struct TimeSentenceLatencies {
-    std::ostream& os_;
     int numThreads_;
     volatile int currentIndex_;
     int batchSize_;
@@ -30,15 +29,13 @@ struct TimeSentenceLatencies {
     std::shared_ptr<std::vector<std::vector<double>>> times_;
     std::shared_ptr<std::vector<std::vector<std::string>>> sentences_;
 
-    TimeSentenceLatencies(std:: ostream& os, int numThreads) : os_(os), numThreads_(numThreads), currentIndex_(0) {
+    explicit TimeSentenceLatencies(int numThreads) : numThreads_(numThreads), currentIndex_(0) {
         timers_ = std::make_shared<std::vector<marian::timer::Timer>>(numThreads);
         sentenceIds_ = std::make_shared<std::vector<std::vector<int>>>(numThreads);
         times_ = std::make_shared<std::vector<std::vector<double>>>(numThreads);
         sentences_ = std::make_shared<std::vector<std::vector<std::string>>>(numThreads);
     }
     
-    explicit TimeSentenceLatencies(int numThreads) : TimeSentenceLatencies(std::cout, numThreads) {}
-
     int getThreadId(std::mutex& mutex) {
         int tid = 0;
         std::lock_guard<std::mutex> lock(mutex);
@@ -80,7 +77,7 @@ struct TimeSentenceLatencies {
         std::cout << "99.9th percentile " << getPercentile(sortedTimes, 0.999) << std::endl;
     }
 
-    void writeInBatchOrder() {
+    void writeInBatchOrder(std::ostream& os) {
         // First, flatten the sentence ids and the sentences
         std::vector<int> ids;
         std::vector<std::string> sentences;
@@ -96,7 +93,7 @@ struct TimeSentenceLatencies {
 
         // Use the sorted vector to write out the sentences in order
         for (const auto& idx : indices) {
-            os_ << sentences[idx] << "\n";
+            os << sentences[idx] << "\n";
         }
     }
 

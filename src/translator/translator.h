@@ -12,6 +12,7 @@
 #include "translator/history.h"
 #include "translator/output_collector.h"
 #include "translator/output_printer.h"
+#include "translator/translator_callbacks.h"
 
 #include "models/model_task.h"
 #include "translator/scorers.h"
@@ -128,6 +129,8 @@ public:
     data::BatchGenerator<data::Corpus> bg(corpus_, options_);
 
     ThreadPool threadPool(numDevices_, numDevices_);
+    TimeSentenceLatencies latencyTimer(numDevices_);
+    std::mutex mutex;
 
     size_t batchId = 0;
     auto collector = New<OutputCollector>(options_->get<std::string>("output"));
@@ -139,7 +142,14 @@ public:
 
     bool doNbest = options_->get<bool>("n-best");
     for(auto batch : bg) {
-      auto task = [=](size_t id) {
+      auto task = [=, &latencyTimer, &mutex](size_t id) {
+        thread_local int tid = -1;
+        thread_local bool first = true;
+        if (tid == -1) {
+          tid = latencyTimer.getThreadId(mutex);
+        }
+
+        latencyTimer.resetThreadTimer(tid);
         thread_local Ptr<ExpressionGraph> graph;
         thread_local std::vector<Ptr<Scorer>> scorers;
 
@@ -149,7 +159,15 @@ public:
         }
 
         auto search = New<Search>(options_, scorers, trgVocab_);
-        auto histories = search->search(graph, batch, callback);
+        // warm
+        if(first) {
+          search->search(graph, batch, nullptr);
+          first = false;
+          latencyTimer.resetThreadTimer(tid);
+        }
+        
+        marian::timer::Timer timer;
+        auto histories = search->search(graph, batch, latencyTimer);
 
         for(auto history : histories) {
           std::stringstream best1;
@@ -161,6 +179,7 @@ public:
                            doNbest);
         }
 
+        std::cout << "Batch time " << timer.elapsed() << std::endl;
 
         // progress heartbeat for MS-internal Philly compute cluster
         // otherwise this job may be killed prematurely if no log for 4 hrs
@@ -176,6 +195,9 @@ public:
       threadPool.enqueue(task, batchId++);
 
     }
+
+    threadPool.join_all();
+    latencyTimer.getTimeStatistics();
   }
 };
 

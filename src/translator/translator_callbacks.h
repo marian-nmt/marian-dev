@@ -11,54 +11,95 @@
 #include <vector>
 #include <algorithm>
 #include "common/logging.h"
+#include <thread>
+#include <map>
 
 struct TimeSentenceLatencies {
-    marian::timer::Timer timer_;
-    std::mutex mutex_;
-    std::vector<int> sentenceIds_;
-    std::vector<double> times_;
-    std::vector<std::string> sentences_;
     std::ostream& os_;
+    int numThreads_;
+    volatile int currentIndex_;
+    int batchSize_;
 
-    explicit TimeSentenceLatencies(std:: ostream& os) : os_(os) {}
+    // Things for thread safety with Marian
+    std::map<std::thread::id, int> threadIndex_;
 
-    void startTimingBatch() {
-        timer_.start();
+
+    // Data
+    std::shared_ptr<std::vector<marian::timer::Timer>> timers_;
+    std::shared_ptr<std::vector<std::vector<int>>> sentenceIds_;
+    std::shared_ptr<std::vector<std::vector<double>>> times_;
+    std::shared_ptr<std::vector<std::vector<std::string>>> sentences_;
+
+    TimeSentenceLatencies(std:: ostream& os, int numThreads) : os_(os), numThreads_(numThreads), currentIndex_(0) {
+        timers_ = std::make_shared<std::vector<marian::timer::Timer>>(numThreads);
+        sentenceIds_ = std::make_shared<std::vector<std::vector<int>>>(numThreads);
+        times_ = std::make_shared<std::vector<std::vector<double>>>(numThreads);
+        sentences_ = std::make_shared<std::vector<std::vector<std::string>>>(numThreads);
+    }
+    
+    explicit TimeSentenceLatencies(int numThreads) : TimeSentenceLatencies(std::cout, numThreads) {}
+
+    int getThreadId(std::mutex& mutex) {
+        int tid = 0;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (threadIndex_.count(std::this_thread::get_id()) == 0) {
+            threadIndex_[std::this_thread::get_id()] = currentIndex_; 
+            tid = currentIndex_;
+            ++currentIndex_;
+        } else {
+            tid = threadIndex_.at(std::this_thread::get_id());
+        }
+        return tid;
+    }
+
+    void resetThreadTimer(const int tid) {
+        timers_->at(tid).start();
     }
 
     void operator()(const int sentenceId, const std::string& sentence) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        sentenceIds_.push_back(sentenceId);
-        sentences_.push_back(sentence);
-        times_.push_back(timer_.elapsed());
+        int tid = threadIndex_.at(std::this_thread::get_id());
+        
+        sentenceIds_->data()[tid].push_back(sentenceId);
+        sentences_->data()[tid].push_back(sentence);
+        times_->data()[tid].push_back(timers_->data()[tid].elapsed());
     }
 
     void getTimeStatistics() const {
-        // Get median, average and some latency percentiles
-        std::vector<double> sortedTimes(times_);
+        // Get average and some latency percentiles
+        std::vector<double> sortedTimes;
+        for (size_t i = 0; i < times_->size(); ++i ) {
+            sortedTimes.insert(sortedTimes.end(), times_->at(i).begin(), times_->at(i).end());
+        }
         std::sort(sortedTimes.begin(), sortedTimes.end());
         double sum = std::accumulate(sortedTimes.begin(), sortedTimes.end(), 0.0);
-        LOG(info, "Average is ", sum / sortedTimes.size());
-        LOG(info, "50th percentile ", getPercentile(sortedTimes, 0.5));
-        LOG(info, "90th percentile ", getPercentile(sortedTimes, 0.9));
-        LOG(info, "95th percentile ", getPercentile(sortedTimes, 0.95));
-        LOG(info, "99th percentile ", getPercentile(sortedTimes, 0.99));
-        LOG(info, "99.9th percentile ", getPercentile(sortedTimes, 0.999));
-    }
-
-    const std::vector<std::string>& getAllTranslatedSentences() const {
-        return sentences_;
+        std::cout << "Average is " << sum / sortedTimes.size() << std::endl;
+        std::cout << "50th percentile " << getPercentile(sortedTimes, 0.5) << std::endl;
+        std::cout << "90th percentile " << getPercentile(sortedTimes, 0.90) << std::endl;
+        std::cout << "95th percentile " << getPercentile(sortedTimes, 0.95) << std::endl;
+        std::cout << "99th percentile " << getPercentile(sortedTimes, 0.99) << std::endl;
+        std::cout << "99.9th percentile " << getPercentile(sortedTimes, 0.999) << std::endl;
     }
 
     void writeInBatchOrder() {
-        std::vector<int> ids(sentenceIds_);
-        std::sort(ids.begin(), ids.end());
-        for (const auto id : ids) {
-            os_ << sentences_[id] << "\n";
+        // First, flatten the sentence ids and the sentences
+        std::vector<int> ids;
+        std::vector<std::string> sentences;
+        for (size_t i = 0; i < sentences_->size(); ++i) {
+            ids.insert(ids.end(), sentenceIds_->at(i).begin(), sentenceIds_->at(i).end());
+            sentences.insert(sentences.end(), sentences_->at(i).begin(), sentences_->at(i).end());
+        }
+
+        // Get a vector of indices sorted by sentence ids.
+        std::vector<int> indices(ids.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        std::sort(indices.begin(), indices.end(), [&](const int a, const int b) -> bool {return ids[a] < ids[b];});
+
+        // Use the sorted vector to write out the sentences in order
+        for (const auto& idx : indices) {
+            os_ << sentences[idx] << "\n";
         }
     }
 
-private:
     double getPercentile(const std::vector<double> sortedTimes, double percentile) const {
         ABORT_IF(sortedTimes.empty(), "No times available");
         const int numTimes = (int) sortedTimes.size();

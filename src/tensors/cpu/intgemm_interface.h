@@ -101,17 +101,21 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 // Dispatch correct hardware-agnostic or hardware-specific matrix multiplies
 static inline Expr affineOrDot(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale) {
   Type bQuantElementType = bQuant->value_type();
+  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
+  pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
   switch(bQuantElementType) {
-    case Type::intgemm8 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm8>(a, bQuant, bias, transA, transB, scale);    
+    //case Type::intgemm8 :  // The generic case selects CPU automatically, but we set all the types manually anyways.
+    //  return cpu::integer::affineOrDotTyped<Type::intgemm8>(a, bQuant, bias, transA, transB, scale);    
     case Type::intgemm8ssse3 :
       return cpu::integer::affineOrDotTyped<Type::intgemm8ssse3>(a, bQuant, bias, transA, transB, scale);
     case Type::intgemm8avx2 :
       return cpu::integer::affineOrDotTyped<Type::intgemm8avx2>(a, bQuant, bias, transA, transB, scale);
     case Type::intgemm8avx512 :
       return cpu::integer::affineOrDotTyped<Type::intgemm8avx512>(a, bQuant, bias, transA, transB, scale);
-    case Type::intgemm16 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm16>(a, bQuant, bias, transA, transB, scale);
+    case Type::intgemm8avx512vnni :
+      return cpu::integer::affineOrDotTyped<Type::intgemm8avx512vnni>(a, bQuant, bias, transA, transB, scale);
+    //case Type::intgemm16 :  // The generic case selects CPU automatically, but we set all the types manually anyways.
+    //  return cpu::integer::affineOrDotTyped<Type::intgemm16>(a, bQuant, bias, transA, transB, scale);
     case Type::intgemm16sse2 :
       return cpu::integer::affineOrDotTyped<Type::intgemm16sse2>(a, bQuant, bias, transA, transB, scale);
     case Type::intgemm16avx2 :

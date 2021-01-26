@@ -444,8 +444,8 @@ TRITONBACKEND_ModelInstanceExecute(
             if (output_content == nullptr) {
                 output_content = pos;
             } else {
-                strcat(output_content, "\n");
-                strcat(output_content, pos);
+                // Replace the null terminator of the prev sentence with new line char
+                *(pos - 1) = "\n";
             }
             // Move to next output content.
             if (p != nullptr) {

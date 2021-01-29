@@ -57,25 +57,70 @@ Expr tan(Expr a);
 
 Expr clip(Expr a, float c);
 
+/**
+ * @addtogroup graph_ops_arithmetic Arithmetic
+ * @ingroup graph_ops
+ * @brief Performs arithmetic in the expression graph
+ *
+ * @{
+*/
+
+/**
+ * Returns \f$ -a \f$
+ * @see NegNodeOp for implementation.
+ */
+///@{
 Expr operator-(Expr a);
+///@}
 
 /*********************************************************/
 
-Expr operator+(Expr a, Expr b);
-Expr operator+(float a, Expr b);
-Expr operator+(Expr a, float b);
+/**
+ * @name Addition
+ * @brief Performs \f$ a + b \f$ in the expression graph
+ *
+ * @{
+*/
+Expr operator+(Expr a, Expr b);   //!< @see Implementation in PlusNodeOp
+Expr operator+(float a, Expr b);  //!< @see Implementation in ScalarAddNodeOp
+Expr operator+(Expr a, float b);  //!< @see Implementation in ScalarAddNodeOp
+/** @} */
 
-Expr operator-(Expr a, Expr b);
-Expr operator-(float a, Expr b);
-Expr operator-(Expr a, float b);
+/**
+ * @name Subtraction
+ * @brief Performs \f$ a - b \f$ in the expression graph
+ *
+ * @{
+*/
+Expr operator-(Expr a, Expr b);   //!< @see Implementation in MinusNodeOp
+Expr operator-(float a, Expr b);  //!< @see Implementation in ScalarAddNodeOp
+Expr operator-(Expr a, float b);  //!< @see Implementation in ScalarAddNodeOp
+/** @} */
 
-Expr operator*(Expr a, Expr b);
-Expr operator*(float a, Expr b);
-Expr operator*(Expr a, float b);
+/**
+ * @name Multiplication
+ * @brief Performs \f$ a * b \f$ in the expression graph
+ *
+ * @{
+*/
+Expr operator*(Expr a, Expr b);   //!< @see Implementation in MultNodeOp
+Expr operator*(float a, Expr b);  //!< @see Implementation in ScalarMultNodeOp
+Expr operator*(Expr a, float b);  //!< @see Implementation in ScalarMultNodeOp
+/** @} */
 
-Expr operator/(Expr a, Expr b);
-Expr operator/(float a, Expr b);
-Expr operator/(Expr a, float b);
+/**
+ * @name Division
+ * @brief Performs \f$ a / b \f$ in the expression graph
+ *
+ * @{
+*/
+Expr operator/(Expr a, Expr b);   //!< @see Implementation in DivNodeOp
+Expr operator/(float a, Expr b);  //!< Promotes @p a to Expression<ConstantNode> and uses operator/(Expr a, Expr b).
+                                  //!< @todo efficient version of this without ExpressionGraph::constant
+Expr operator/(Expr a, float b);  //!< Implementation via \f$ a * \frac{1}{b} \f$.
+/** @} */
+
+/** @} */
 
 Expr abs(Expr a);
 

@@ -3,6 +3,11 @@
 #include "graph/node_initializers.h"
 
 namespace marian {
+/**
+ * @defgroup graph_ops Expression Graph Operators
+ *
+ * @{
+ */
 
 Expr debug(Expr a, const std::string& message = "");
 
@@ -324,4 +329,6 @@ Expr max_pooling(Expr x,
                  int strideWidth = 1);
 
 Expr pooling_with_masking(Expr x, Expr mask, int width, bool isEven = false);
+
+/** @} */
 }  // namespace marian

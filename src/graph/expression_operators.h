@@ -157,28 +157,55 @@ Expr2 argmax(Expr a, int axis);
 // Convenience operator that maps to topk(a, k=1, axis, descending=false)
 Expr2 argmin(Expr a, int axis);
 
-// Note: We cannot overload the relational operators, as they also mean something for Expr itself.
-// Note: These names follow PyTorch convention.
-Expr lt(Expr a, Expr b);
-Expr eq(Expr a, Expr b);
-Expr gt(Expr a, Expr b);
-Expr ge(Expr a, Expr b);
-Expr ne(Expr a, Expr b);
-Expr le(Expr a, Expr b);
 
-Expr lt(float a, Expr b);
-Expr eq(float a, Expr b);
-Expr gt(float a, Expr b);
-Expr ge(float a, Expr b);
-Expr ne(float a, Expr b);
-Expr le(float a, Expr b);
+/**
+ * @addtogroup graph_ops_cmp Comparison
+ * @ingroup graph_ops
+ * @brief Performs comparision operations in the expression graph
+ *
+ * Uses CmpNodeOp to perform comparison of graph expression e.g. \f$ a < b \f$.
+ *
+ * @note
+ * We cannot overload the relational operators, as they also mean something for Expr itself.
+ * @par
+ * @note
+ * These names follow <a href="https://pytorch.org/docs">PyTorch</a> convention.
+ *
+ * @{
+ */
+/**
+ * @name Expr-Expr comparisons
+ * @{
+ */
+Expr lt(Expr a, Expr b);  //!< \f$ a < b \f$
+Expr eq(Expr a, Expr b);  //!< \f$ a \equiv b \f$
+Expr gt(Expr a, Expr b);  //!< \f$ a > b \f$
+Expr ge(Expr a, Expr b);  //!< \f$ a \geq b \f$
+Expr ne(Expr a, Expr b);  //!< \f$ a \neq b \f$
+Expr le(Expr a, Expr b);  //!< \f$ a \leq b \f$
+/** @} */
 
-Expr lt(Expr a, float b);
-Expr eq(Expr a, float b);
-Expr gt(Expr a, float b);
-Expr ge(Expr a, float b);
-Expr ne(Expr a, float b);
-Expr le(Expr a, float b);
+/**
+ * @name Float-Expr comparisons
+ * Floats are promoted to a @ref ExpressionGraph::constant and use the Expr-Expr methods
+ * @{
+ */
+Expr lt(float a, Expr b);  //!< \f$ a < b \f$
+Expr eq(float a, Expr b);  //!< \f$ a \equiv b \f$
+Expr gt(float a, Expr b);  //!< \f$ a > b \f$
+Expr ge(float a, Expr b);  //!< \f$ a \geq b \f$
+Expr ne(float a, Expr b);  //!< \f$ a \neq b \f$
+Expr le(float a, Expr b);  //!< \f$ a \leq b \f$
+
+Expr lt(Expr a, float b);  //!< \f$ a < b \f$
+Expr eq(Expr a, float b);  //!< \f$ a \equiv b \f$
+Expr gt(Expr a, float b);  //!< \f$ a > b \f$
+Expr ge(Expr a, float b);  //!< \f$ a \geq b \f$
+Expr ne(Expr a, float b);  //!< \f$ a \neq b \f$
+Expr le(Expr a, float b);  //!< \f$ a \leq b \f$
+/** @} */
+
+/** @} */
 
 Expr dot(Expr a,
          Expr b,

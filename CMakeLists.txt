@@ -307,16 +307,16 @@ if(CUDA_FOUND)
     LIST(APPEND COMPUTE -gencode=arch=compute_60,code=sm_60; -gencode=arch=compute_61,code=sm_61;)     # Pascal GPUs
   endif(COMPILE_CUDA_SM60)
   if(COMPILE_CUDA_SM70)
-    LIST(APPEND COMPUTE -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70; -DCUTLASS_NVCC_ARCHS=70; -DCUTLASS_LIBRARY_KERNELS=all; -DCUTLASS_UNITY_BUILD_ENABLED=ON) # Volta GPUs
+    LIST(APPEND COMPUTE -gencode=arch=compute_70,code=sm_70; -gencode=arch=compute_70,code=compute_70) # Volta GPUs
   endif(COMPILE_CUDA_SM70)
   if(CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0")
     if(COMPILE_CUDA_SM75)
-        LIST(APPEND COMPUTE -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75; -DCUTLASS_NVCC_ARCHS=75; -DCUTLASS_LIBRARY_KERNELS=all; -DCUTLASS_UNITY_BUILD_ENABLED=ON) # Turing GPUs
+        LIST(APPEND COMPUTE -gencode=arch=compute_75,code=sm_75; -gencode=arch=compute_75,code=compute_75) # Turing GPUs
     endif(COMPILE_CUDA_SM75)
   endif()
   if(CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0")
     if(COMPILE_CUDA_SM80)
-        LIST(APPEND COMPUTE -gencode=arch=compute_80,code=sm_80; -gencode=arch=compute_80,code=compute_80; -DCUTLASS_NVCC_ARCHS=80; -DCUTLASS_LIBRARY_KERNELS=all; -DCUTLASS_UNITY_BUILD_ENABLED=ON) # Ampere GPUs
+        LIST(APPEND COMPUTE -gencode=arch=compute_80,code=sm_80; -gencode=arch=compute_80,code=compute_80) # Ampere GPUs
     endif(COMPILE_CUDA_SM80)
   endif()
 
@@ -403,9 +403,9 @@ endif(COMPILE_CUDA)
 
 # TODO: make compatible with older CUDA versions
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; -G; --use_fast_math; ${COMPUTE})
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; -G; --use_fast_math; -DCUTLASS_LIBRARY_KERNELS=all; -DCUTLASS_UNITY_BUILD_ENABLED=ON; ${COMPUTE})
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; ${COMPUTE})
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; -DCUTLASS_LIBRARY_KERNELS=all; -DCUTLASS_UNITY_BUILD_ENABLED=ON; ${COMPUTE})
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
   # @TODO: add warnings here too

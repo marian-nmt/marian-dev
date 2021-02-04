@@ -28,6 +28,13 @@ struct Slice // Python-like slice/index descriptor
 };
 typedef std::vector<Slice> Slices;
 
+/**
+ * @brief Shape class for Node
+ *
+ * Shape class mainly defines the shape or dimensionality of the node.
+ * Basically, Shape is a wrapper of a std::vector.
+ * It implements most common functions demanded by operations.
+ */
 struct Shape {
 private:
   std::vector<int> shape_;

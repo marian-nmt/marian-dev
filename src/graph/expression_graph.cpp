@@ -176,12 +176,14 @@ void ExpressionGraph::backward(bool reset, float clipValue) {
     ABORT("Aborting");
   }
 
+  // allocates memory and initialise gradients for parameters
   for(auto kvParams : paramsByElementType_) {
     kvParams.second->allocateBackward();
     if(reset)
       kvParams.second->set_zero_adjoint();
   }
 
+  // for top nodes: allocates memory and initialise gradients to 1
   for(auto&& v : topNodes_)
     v->init_dependent();
 
@@ -191,13 +193,16 @@ void ExpressionGraph::backward(bool reset, float clipValue) {
 
   bool firstNaN = true;
   while(!nodesBackward_.empty()) {
-    auto v = nodesBackward_.back();
+    auto v = nodesBackward_.back();  // return
     nodesBackward_.pop_back();
 
+    // for non-top nodes: allocates memory and initialise gradients to 0
     for(auto&& child : v->children())
       if(child->trainable() && child->type() != "param")
         child->set_zero_adjoint();
 
+    // if using gradient checkpointing,
+    // recompute the forward pass from checkpoint to the root
     if(checkpointing_ && v->getSubtape()) {
       forward(*v->getSubtape(), /*finalPass=*/true);
     }

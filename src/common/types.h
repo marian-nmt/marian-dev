@@ -131,7 +131,7 @@ do { \
     default: ABORT("Unknown type {}", type); \
   } \
 } while(0)
-
+/// namespace marian
 namespace marian {
 
 // small struct to enable templating based on types use for packing
@@ -236,24 +236,25 @@ constexpr inline size_t operator+(size_t val, TypeClass typeClass) {
 }
 
 // @TODO: rename to ElementType when things become stable, so it's easier to review
+/// enum class Type: stores all supported data type in Marian
 enum class Type : size_t {
-  int8     = TypeClass::signed_type + 1u,
-  int16    = TypeClass::signed_type + 2u,
-  int32    = TypeClass::signed_type + 4u,
-  int64    = TypeClass::signed_type + 8u,
+  int8     = TypeClass::signed_type + 1u,  ///< int8 type
+  int16    = TypeClass::signed_type + 2u,  ///< int16 type
+  int32    = TypeClass::signed_type + 4u,  ///< int32 type
+  int64    = TypeClass::signed_type + 8u,  ///< int64 type
 
-  uint8    = TypeClass::unsigned_type + 1u,
-  uint16   = TypeClass::unsigned_type + 2u,
-  uint32   = TypeClass::unsigned_type + 4u,
-  uint64   = TypeClass::unsigned_type + 8u,
+  uint8    = TypeClass::unsigned_type + 1u,  ///< uint8 type
+  uint16   = TypeClass::unsigned_type + 2u,  ///< uint16 type
+  uint32   = TypeClass::unsigned_type + 4u,  ///< uint32 type
+  uint64   = TypeClass::unsigned_type + 8u,  ///< uint64 type
 
-  float16  = TypeClass::float_type + 2u,
-  float32  = TypeClass::float_type + 4u,
-  float64  = TypeClass::float_type + 8u,
+  float16  = TypeClass::float_type + 2u,  ///< float16 type
+  float32  = TypeClass::float_type + 4u,  ///< float32 type
+  float64  = TypeClass::float_type + 8u,  ///< float64 type
 
-  packed16      = TypeClass::packed_type + 2u,                          // special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
-  packed8avx2   = TypeClass::packed_type + 1u + TypeClass::avx2_type,   // special type for FBGEMM with AVX2, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
-  packed8avx512 = TypeClass::packed_type + 1u + TypeClass::avx512_type, // special type for FBGEMM with AVX512, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
+  packed16      = TypeClass::packed_type + 2u,                          ///< special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
+  packed8avx2   = TypeClass::packed_type + 1u + TypeClass::avx2_type,   ///< special type for FBGEMM with AVX2, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
+  packed8avx512 = TypeClass::packed_type + 1u + TypeClass::avx512_type, ///< special type for FBGEMM with AVX512, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
 
 };
 

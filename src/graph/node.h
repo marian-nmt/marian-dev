@@ -28,19 +28,19 @@ protected:
   std::vector<Expr> children_;
 
   Weak<ExpressionGraph> graph_;
-  Shape shape_{1, 1, 1, 1};
-  Type valueType_{Type::float32};
+  Shape shape_{1, 1, 1, 1};   /**< defines the dimensionality of the node (for tensors) */
+  Type valueType_{Type::float32};  /**< defines the element type of the node (for tensors) */
 
   std::string name_{"none"};
 
-  Tensor val_{nullptr};
-  Tensor adj_{nullptr};
+  Tensor val_{nullptr};  /**< @brief the resulting new tensor in forward pass */
+  Tensor adj_{nullptr};  /**< @brief the accumulated gradients (a tensor) in backward pass */
 
   bool markedForDebug_{false};
   std::string debugMessage_;
 
-  Ptr<std::list<Expr>> subtape_; // a subtape is used to keep track of nodes that need to be freed and recomputed with gradient-checkpointing.
-  bool isCheckpoint_{false};     // true if this node has been selected to be a checkpoint, currently only done manually.
+  Ptr<std::list<Expr>> subtape_; /**< @brief a subtape is used to keep track of nodes that need to be freed and recomputed with gradient-checkpointing. */
+  bool isCheckpoint_{false};     /**< @brief true if this node has been selected to be a checkpoint, currently only done manually. */
 
   Ptr<AutoTunerRecorder> recorder_;
   size_t recorderHash_;
@@ -105,9 +105,19 @@ public:
   virtual void free() override;
 
   virtual void init() override {};
-
+  /**
+   * Initialization for backward step of top node
+   * in computation graph. Allocates memory and sets gradient
+   * to 1 (df/df == 1).
+   */
   virtual void init_dependent() override;
 
+  /**
+   * Initialization for backward step of any non-top node
+   * in computation graph. Allocates memory and sets gradient
+   * to 0 for further accumulation of gradients from all
+   * parents.
+   */
   virtual void set_zero_adjoint() override;
 
   virtual Tensor& val() override { return val_; };

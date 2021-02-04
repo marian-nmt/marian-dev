@@ -28,7 +28,7 @@ Expr Expression(Args&&... args);
 /**
  * @brief The whole tensor set in the graph
  *
- * Holds all tensor objects (memory and expressions) for a graph
+ * Holds all tensor objects (memory and nodes) for a graph
  */
 class Tensors {
 private:
@@ -38,8 +38,8 @@ private:
   typedef std::unordered_map<size_t, std::vector<WExpr>> WeakMemory;
   typedef std::unordered_map<size_t, std::vector<Expr>> Memory;
 
-  Ptr<WeakMemory> shortterm_;
-  Ptr<Memory> longterm_;
+  Ptr<WeakMemory> shortterm_;  // holds all nodes for a graph
+  Ptr<Memory> longterm_;  // holds memoized nodes
 
 public:
   Tensors(Ptr<Backend> backend)
@@ -140,9 +140,11 @@ protected:  // (these are protected, not private, for ONNX exporting)
   std::list<Expr> nodesBackward_;  /**< @brief contains trainable nodes used for backward() */
 
   /**
-   * @brief a pointer to the tensor objects in the graph
+   * @brief a shared pointer to the tensor objects in the graph
    *
-   * Holds memory and expressions that correspond to temporary expressions.
+   * Holds memory and nodes that corresponds to tensors in a graph.
+   * Since operations will result in new tensors, this attribute is used
+   * to allocate memory for new tensors during forward() and backward().
    * This gets cleared before a new graph is built
    */
   Ptr<Tensors> tensors_;
@@ -166,12 +168,12 @@ protected:
   ExpressionGraph(ExpressionGraph&&) = delete;
 
   /**
-   * @brief A map object holds memory and expressions that correspond to graph parameters
+   * @brief A map holds memory and nodes that corresponds to graph parameters
    *
    * The key is Type and the mapped value is a set of parameter objects with corresponding type.
    * Now we can have multiple types of parameters in a separate parameters object per value type.
    * This is currently only accessible through private functions during loading, will abort during training
-   * hen params() is called (e.g. optimizer) and there is more or other types than the default parameter type.
+   * when params() is called (e.g. optimizer) and there is more or other types than the default parameter type.
    * Currently the only usecase is inference. Trying to access params() for non-default parameter type is going
    * to abort. Inference does not need to access a whole set of parameters.
    */
@@ -190,7 +192,7 @@ public:
   /**
    * @brief Destructor
    *
-   * Clear everything related to the graph
+   * Clear everything related to the graph except memoized nodes
    */
   virtual ~ExpressionGraph() {
     clear();
@@ -333,7 +335,7 @@ public:
   }
 
   /**
-   * @brief Perform the forward pass without memory allocation
+   * @brief Perform the forward pass without memory allocation for parameters
    *
    * Helper function for forward()
    */
@@ -350,7 +352,7 @@ public:
   void forward(std::list<Expr>& forwardTape, bool finalPass);
 
   /**
-   * @brief Perform the backward pass on the nodes of the graph
+   * @brief Perform the backward pass on the trainable nodes of the graph
    *
    * The back pass refers to the process of computing the output error.
    * It traverses through all nodes from output layer to input layer.
@@ -479,7 +481,7 @@ public:
   /**
    * @brief Construct a parameter node in the graph
    * @param pname a string type holds the name of the parameter node
-   * @param shape a struct type defines the shape of the parameter dataset
+   * @param shape a struct type defines the shape of the parameter tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param init a pointer to a NodeInitializer object, e.g., inits::zeros()
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
@@ -500,7 +502,7 @@ public:
    * @brief Construct a parameter node in the graph without a specified type, and
    *  the type is set to defaultElementType_
    * @param pname a string type holds the name of the parameter node
-   * @param shape a struct type defines the shape of the parameter dataset
+   * @param shape a struct type defines the shape of the parameter tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param init a pointer to a NodeInitializer object, e.g., inits::zeros()
    * @param fixed a bool type specifies whether the parameter object is fixed (not trainable) or not.
@@ -518,7 +520,7 @@ public:
   /**
    * @brief Construct a constant node in the graph without a specified type, and
    *  the type is set to defaultElementType_
-   * @param shape a struct type defines the shape of the constant dataset
+   * @param shape a struct type defines the shape of the constant tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param init a pointer to a NodeInitializer object, e.g., inits::zeros()
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
@@ -533,7 +535,7 @@ public:
   /**
    * @brief Construct a constant node in the graph without a specified type, and
    *  the type is set to defaultElementType_
-   * @param shape a struct type defines the shape of the constant dataset
+   * @param shape a struct type defines the shape of the constant tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param init a pointer to a NodeInitializer object, e.g., inits::zeros()
    * @return a pointer to the constant node
@@ -736,7 +738,7 @@ public:
 
   /**
    * @brief Returns the memory allocator of the graph workspace,
-   * allocates row unstructured memory (but 256-byte aligned)
+   * allocates raw unstructured memory (but 256-byte aligned)
    */
   Ptr<Allocator> allocator() { return tensors_->getAllocator(); } // @TODO: rename this to getAllocator();
 

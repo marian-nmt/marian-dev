@@ -48,12 +48,63 @@ Expr leakyrelu(const std::vector<Expr>&);
 Expr prelu(Expr a, float alpha = 0.01);
 Expr prelu(const std::vector<Expr>&, float alpha = 0.01);
 
+/**
+ * @addtogroup graph_ops_mathematical Mathematical
+ * @ingroup graph_ops
+ * @brief Performs mathematical operations in the expression graph
+ *
+ * @{
+*/
+/**
+ * @name Exponentiation and Logarithmic functions
+ * @{
+ */
+/**
+* @brief Natural logarithm
+*
+* Computes the element-wise natural logarithm of the expression: \f$ \log(a) \f$
+* @see LogNodeOp
+*/
 Expr log(Expr a);
-Expr exp(Expr a);
 
+/**
+ * @brief Natural exponentiation
+ *
+ * Computes the element-wise natural logarithm of the expression: \f$ e^a \f$
+ * @see ExpNodeOp
+ */
+Expr exp(Expr a);
+/** @} */
+
+/**
+ * @name Trigonometric functions
+ * @{
+ */
+/**
+* @brief Sine
+*
+* Computes the element-wise natural logarithm of the expression: \f$ \sin(a) \f$
+* @see SinNodeOp
+*/
 Expr sin(Expr a);
+
+/**
+* @brief Cosine
+*
+* Computes the element-wise cosine of the expression: \f$ \cos(a) \f$
+* @see CosNodeOp
+*/
 Expr cos(Expr a);
+
+/**
+* @brief Tangent
+*
+* Computes the element-wise tangent of the expression: \f$ \tan(a) \f$
+* @see TanNodeOp
+*/
 Expr tan(Expr a);
+/** @} */
+/** @} */
 
 Expr clip(Expr a, float c);
 

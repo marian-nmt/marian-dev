@@ -83,7 +83,7 @@ Expr exp(Expr a);
 /**
 * @brief Sine
 *
-* Computes the element-wise natural logarithm of the expression: \f$ \sin(a) \f$
+* Computes the element-wise sine of the expression: \f$ \sin(a) \f$
 * @see SinNodeOp
 */
 Expr sin(Expr a);

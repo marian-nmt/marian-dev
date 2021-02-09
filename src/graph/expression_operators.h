@@ -172,6 +172,34 @@ Expr operator/(Expr a, float b);  //!< Implementation via \f$ a * \frac{1}{b} \f
 
 /** @} */
 
+/**
+ * @ingroup graph_ops_mathematical
+ * @brief Computes the square root of an expression.
+ *
+ * Evaluates \f$\sqrt{a + \mathrm{eps}} \f$ element-wise on the expression
+ *
+ * @param a Expression to square root
+ * @param eps Optional positive epsilon to avoid domain errors for small values in @p a
+ */
+Expr sqrt(Expr a, float eps = 0.f);
+
+/**
+ * @ingroup graph_ops_mathematical
+ * @brief Computes the square of an expression.
+ *
+ * Evaluates \f$a^2 \f$ element-wise on the expression
+ *
+ * @param a Expression to square
+ */
+Expr square(Expr a);
+
+/**
+ * @ingroup graph_ops_mathematical
+ * @brief Calculate the element-wise abolute value of an expression.
+ *
+ * Returns the value of \f$ |a| \f$ element-wise for the expression @p a.
+ * @see AbsNodeOp.
+ */
 Expr abs(Expr a);
 
 // Expr pow(Expr a, Expr b);
@@ -545,8 +573,6 @@ Expr scalar_product(Expr a, Expr b, int ax = 0);
 
 Expr weighted_average(Expr in, Expr weights, int ax = 0);
 
-Expr sqrt(Expr a, float eps = 0.f);
-Expr square(Expr a);
 
 Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 

@@ -106,7 +106,6 @@ Expr tan(Expr a);
 /** @} */
 /** @} */
 
-Expr clip(Expr a, float c);
 
 /**
  * @addtogroup graph_ops_arithmetic Arithmetic
@@ -280,41 +279,187 @@ Expr affine(Expr a,
 Expr csr_dot(const Shape& A_shape, Expr Avalues, Expr Aindices, Expr Aoffsets, Expr B, bool transA = false);
 Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB = false);
 
+/**
+ * @addtogroup graph_ops_manipulation Manipulation Operations
+ * @ingroup graph_ops
+ * @brief Operators that manipulate expressions.
+ *
+ * @{
+ */
+
+/**
+ * @brief Returns the transpose of an expression.
+ *
+ * Swaps the last two axes of an expression.
+ * @see TransposeNodeOp
+ */
 Expr transpose(Expr a);
+
+/**
+ * @brief Returns the transpose of an expression.
+ *
+ * Permutes the axes of an expression to resemble @p axes. Axis @c i of the returned
+ * expression corresponds to @c axes[i] of the input @p a.
+ *
+ * @param a Expression to manipulate
+ * @param axes Desired permutation of axes
+ * @see TransposeNodeOp
+ */
 Expr transpose(Expr a, const std::vector<int>& axes);
 
+/**
+ * @brief Swap two axes of an expression.
+ *
+ * Swaps two axes of an expression via reshaping, if possible, or transpose.
+ *
+ * @param x      Expression to manipulate
+ * @param axis1  Axis to be swapped
+ * @param axis2  Axis to swap with
+ *
+ * @returns Expression with the axes @p axis1 and @p axis2 interchanged
+ * @see reshape() and transpose()
+ */
 Expr swapAxes(Expr x, int axis1, int axis2);
 
+/**
+ * @brief Cast an expression to a specified type.
+ *
+ * @param a    Expression to cast
+ * @param type Desired type
+ * @returns    Expression with data cast to @p type
+ */
 Expr cast(Expr a, Type type = Type::float32);
 
+/**
+ * @brief Join a list of expressions along an axis.
+ *
+ * Concatenates the elements of the expressions in @p concats along the axis @p ax.
+ * By default, @p ax operates on the first axis.
+ */
 Expr concatenate(const std::vector<Expr>& concats, int ax = 0);
+
+/**
+ * @brief Repeat elements of an expression.
+ *
+ * Repeats the elements of @p a along the  @p ax axis @p repeats times.
+ * By default, @p ax operates on the first axis.
+ * @see concatenate()
+ */
 Expr repeat(Expr a, size_t repeats, int ax = 0);
 
+/**
+ * @brief Reshape expression to a given shape.
+ *
+ * @param a The expression to be reshaped
+ * @param shape The new shape
+ * @returns An expression with shape @p shape.
+ */
 Expr reshape(Expr a, Shape shape);
 
-Expr clipGradient(Expr a, float clipValue);
+/**
+ * @brief Clip the values in an expression.
+ *
+ * Clips the values of the Expr @p a to be within the interval \f$ [-c, c] \f$.
+ *
+ * @param a Expr to clip
+ * @param c Threshold to clip at
+ *
+ * @see ClipNodeOp
+ */
+Expr clip(Expr a, float c);
 
+/**
+ * @brief Clip the gradient in an expression.
+ *
+ * Clips the gradient of the Expr @p a to be within the interval \f$ [-c, c] \f$
+ *
+ * @see clip for the equivalent function which clips values
+ * @see ClipGradientNodeOp
+ */
+Expr clipGradient(Expr a, float c);
+
+/**
+ * @brief Converts input to an expression with a least one dimension.
+ * @see atleast_nd()
+ */
 Expr atleast_1d(Expr a);
-Expr atleast_2d(Expr a);
-Expr atleast_3d(Expr a);
-Expr atleast_4d(Expr a);
-Expr atleast_nd(Expr a, size_t dims);
 
-// create a constant of shape a->shape() and initialize with init
-// @TODO: add a && version, to avoid a ref count. NodeInitializers are typically temps.
-// @TODO: and/or make this a template on init
+/**
+ * @brief Converts input to an expression with a least two dimensions.
+ * @see atleast_nd()
+ */
+Expr atleast_2d(Expr a);
+
+/**
+ * @brief Converts input to an expression with a least three dimensions.
+ * @see atleast_nd()
+ */
+Expr atleast_3d(Expr a);
+
+/**
+ * @brief Converts input to an expression with a least four dimensions.
+ * @see atleast_nd()
+ */
+Expr atleast_4d(Expr a);
+
+/**
+ * @brief Converts input to an expression with a least n-dimension dimensions.
+ * @param a Expression
+ * @param dims Required number of dimensions
+ * @returns An expression with at least n-dimensions
+ */
+Expr atleast_nd(Expr a, size_t dims);
+/** @} */
+
+/**
+ * @addtogroup graph_ops_creation Creation Operations
+ * @ingroup graph_ops
+ * @brief Operators that create expressions.
+ *
+ * @{
+ */
+
+/**
+ * @brief Create a constant of with the shape of @p a and initialize with @p init.
+ * @todo add a && version, to avoid a ref count. NodeInitializers are typically temps.
+ * and/or make this a template on init
+ */
 static inline Expr constant_like(Expr a, const Ptr<inits::NodeInitializer>& init) {
   return a->graph()->constant(a->shape(), init, a->value_type());
 }
 
-// short-cut to init from std::vector, since we do this so often
+/**
+ * @brief Convenience function to initialize from a vector.
+ */
 template<typename ElementType>
 Expr constant_like(Expr a, const std::vector<ElementType>& v) { return constant_like(a, inits::fromVector(std::move(v))); }
+
+/**
+ * @brief Convenience function to initialize from a vector.
+ */
 template<typename ElementType>
 Expr constant_like(Expr a, std::vector<ElementType>&& v) { return constant_like(a, inits::fromVector(v)); }
 
+/** @} */
+
+/**
+ * @addtogroup graph_ops_manipulation
+ * @{
+ */
+
+/**
+ * @brief Flattens an expression to one dimension.
+ * @see ReshapeNodeOp
+ */
 Expr flatten(Expr a);
+
+/**
+ * @brief Flattens an expression to two-dimensions preserving the last dimension.
+ * @see ReshapeNodeOp
+ */
 Expr flatten_2d(Expr a);
+
+/** @} */
 
 Expr stopGradient(Expr a);
 

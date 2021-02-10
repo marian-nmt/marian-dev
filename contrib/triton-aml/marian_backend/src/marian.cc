@@ -201,9 +201,8 @@ extern "C" {
 void
 handler(int sig) {
     void* array[30];
-    size_t size;
 
-    size = backtrace(array, 30);
+    size_t size = backtrace(array, 30);
 
     fprintf(stderr, "Error: signal %d, Exception info:\n", sig);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
@@ -445,7 +444,7 @@ TRITONBACKEND_ModelInstanceExecute(
                 output_content = pos;
             } else {
                 // Replace the null terminator of the prev sentence with new line char
-                *(pos - 1) = "\n";
+                *(pos - 1) = '\n';
             }
             // Move to next output content.
             if (p != nullptr) {

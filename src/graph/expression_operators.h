@@ -19,34 +19,159 @@ typedef std::function<void(Expr, const std::vector<Expr>&)> LambdaNodeFunctor;
 Expr lambda(const std::vector<Expr>&, Shape, Type, LambdaNodeFunctor);
 Expr lambda(const std::vector<Expr>&, Shape, Type, LambdaNodeFunctor, LambdaNodeFunctor);
 
-Expr plus(const std::vector<Expr>&);
+/**
+ * @addtogroup graph_ops_activation Activation Functions
+ * @ingroup graph_ops
+ * @brief Provides various activation functions for use in the expression
+ *
+ * @{
+*/
+/**
+ * @brief Linear Activation Function
+ *
+ * Returns @p nodes[0]
+ */
+Expr plus(const std::vector<Expr>& nodes);
 
-// TODO: should be logistic(), not sigmoid()
+/**
+ * @brief Logistic Activation Function
+ *
+ * Computes the <a href="https://en.wikipedia.org/wiki/Logistic_function">logistic function</a>
+ * of the given expression
+ *
+ * @todo rename sigmoid to logistic
+ */
 Expr sigmoid(Expr a);
-Expr sigmoid(const std::vector<Expr>&);
 
+/**
+ * @copybrief sigmoid
+ * @warning not implemented
+ */
+Expr sigmoid(const std::vector<Expr>& nodes);
+
+/**
+ * @brief Swish node
+ *
+ * Computes the Swish activation function with \f$\beta=1 \f$
+ * \f[
+ *    \operatorname{swish}(x) = x \cdot \operatorname{sigmoid}(\beta x)
+ * \f]
+ *
+ * @see SwishNodeOp
+ */
 Expr swish(Expr a);
-Expr swish(const std::vector<Expr>&);
 
+/**
+ * @copybrief swish
+ * @warning not implemented for @p nodes of size > 1
+ * @returns swish(nodes[0])
+ */
+Expr swish(const std::vector<Expr>& nodes);
+
+/**
+ * @brief Gaussian Error Linear Unit (GELU)
+ *
+ * Computes an _approxmiation_ to the Gaussian Error Linear Unit
+ * \f[
+ *    \operatorname{gelu}(x) = x \cdot \Phi(x)
+ *      = x \cdot \frac{1}{2}\left[
+ *         1 + \operatorname{erf}\left(\frac{x}{\sqrt{2}}\right)
+ *      \right]
+ *      \sim \operatorname{swish}(x, 1.702)
+ * \f]
+ *
+ * using @ref SwishNodeOp(a, 1.702)
+ * @see SwishNodeOp
+ */
 Expr gelu(Expr a);
+
+/**
+ * @copybrief gelu
+ * @warning not implemented for @p nodes of size > 1
+ * @returns gelu(nodes[0])
+ */
 Expr gelu(const std::vector<Expr>&);
 
-Expr tanh(const std::vector<Expr>&);
+/**
+ * @brief Tanh
+ *
+ * @see TanhNodeOp
+ */
+Expr tanh(const std::vector<Expr>& nodes);
 
+/**
+ * @copybrief tanh
+ * Convience function to put parameter pack @p Args into a Expr vector
+ */
 template <typename... Args>
 Expr tanh(Args... args) {
   std::vector<Expr> nodes{args...};
   return tanh(nodes);
 }
 
+/**
+ * @brief Rectified Linear Unit (ReLU)
+ *
+ * Computes the ReLU activation for the Expr
+ * @see ReLUNodeOp
+ */
 Expr relu(Expr a);
-Expr relu(const std::vector<Expr>&);
 
+/**
+ * @copybrief relu
+ * @warning not implemented for @p nodes of size > 1
+ * @returns relu(nodes[0])
+ */
+Expr relu(const std::vector<Expr>& nodes);
+
+/**
+ * @brief Leaky ReLU (LeakyReLU)
+ *
+ * Computes the <a href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)#LeakyReLU">
+ * LeakyReLU</a> activation for the expression
+ * Activation function:
+ * \f[
+ *   \operatorname{leakyrelu}(x) =
+ *   \begin{cases}
+ *     0.01x & \text{if } x \leq 0 \\
+ *     x & \text{if } x > 0
+ *   \end{cases}
+ * \f]
+
+ * @see PReLUNodeOp
+ */
 Expr leakyrelu(Expr a);
-Expr leakyrelu(const std::vector<Expr>&);
 
+/**
+ * @copybrief leakyrelu
+ * @warning not implemented
+ */
+Expr leakyrelu(const std::vector<Expr>& nodes);
+
+/**
+ * @brief Parametric Rectified Linear Unit (PReLU)
+ *
+ * Computes the <a href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)#Parametric_ReLU">
+ * Parametric ReLU</a> activation for the expression
+ * \f[
+ *   \operatorname{leakyrelu}(x) =
+ *   \begin{cases}
+ *     \alpha x & \text{if } x \leq 0 \\
+ *     x & \text{if } x > 0
+ *   \end{cases}
+ * \f]
+
+ * @see PReLUNodeOp
+ * @note @p alpha is **not** trainable.
+ */
 Expr prelu(Expr a, float alpha = 0.01);
+
+/**
+ * @copybrief prelu
+ * @warning not implemented
+ */
 Expr prelu(const std::vector<Expr>&, float alpha = 0.01);
+/** @} */
 
 /**
  * @addtogroup graph_ops_mathematical Mathematical

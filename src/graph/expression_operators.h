@@ -696,6 +696,16 @@ Expr flatten_2d(Expr a);
  */
 Expr stopGradient(Expr a);
 
+/**
+ * @brief Gathers elements along an axis.
+ *
+ * @param a input expression
+ * @param axis The axis along which to index
+ * @param indices The indices to be gathered
+ * @returns Gathered expression with the same shape as @p indices
+ * @note @p a and @p indices must have the same rank
+ * @note The non-target axes of @p a and @p indicies must have the same size, or be broadcastable.
+ */
 Expr gather(Expr a, int axis, Expr indices);
 
 #if 0
@@ -722,32 +732,80 @@ Expr scatter(Expr a, int axis, Expr indices, Expr b);
 
 #endif
 
-// Warning: Don't try to pass a scalar literal 0 as indices; it will compile but pass nullptr...
+/**
+ * @brief Returns a new expression containing the @p indicies of expression @p a
+ * along the specified @p axis.
+ *
+ * @warning Do not pass a scalar literal 0 as @p indices;
+ * it will compile but pass a nullptr.
+ */
 Expr index_select(Expr a, int axis, Expr indices);
 
-// convenience wrappers for index_select()
+/**
+ * @copybrief index_select
+ *
+ * Convenience wrapper that promotes a vector of @ref IndexType to an Expr
+ */
 Expr index_select(Expr a, int axis, const std::vector<IndexType>& indices);
+
+/**
+ * @brief Performs an @ref index_select() along the first axis.
+ * @see index_select()
+ */
 static inline Expr rows(Expr a, Expr indices) {
   return index_select(a, 0, indices);
 }
+
+/**
+ * @copybrief rows
+ *
+ * Convenience wrapper that promotes a vector of @ref IndexType to an Expr
+ */
 static inline Expr rows(Expr a, const std::vector<IndexType>& indexVector) {
   return index_select(a, 0, indexVector);
 }
+
+/**
+ * @brief Performs an @ref index_select() along the last axis.
+ * @see index_select()
+ */
 static inline Expr cols(Expr a, Expr indices) {
   return index_select(a, -1, indices);
 }
+
+/**
+ * @copybrief cols
+ *
+ * Convenience wrapper that promotes a vector of @ref IndexType to an Expr
+ */
 static inline Expr cols(Expr a, const std::vector<IndexType>& indexVector) {
   return index_select(a, -1, indexVector);
 }
 
+/**
+ * @brief Returns the @p slice of the expression @p a along @p axis.
+ * @see Slice
+ */
 Expr slice(Expr a, int axis, Slice slice);
 
-// convenience wrappers for slice()
-static inline Expr slice(Expr a, int axis, int index) { // single index  @NOTE: This was formerlly called step()
+/**
+ * @copybrief slice
+ *
+ * Convenience wrapper for slice() that returns the slice along @p axis
+ * from @p index to @p index+1
+ */
+static inline Expr slice(Expr a, int axis, int index) {
   return slice(a, axis, Slice(index));
 }
 
-static inline Expr narrow(Expr a, int axis, size_t start, size_t length) { // PyTorch name
+/**
+ * @copybrief slice
+ *
+ * Convenience wrapper for slice() that returns the slice along @p axis
+ * from @p index to @p index + @p length
+ * @note this is named after an equivalent function in PyTorch
+ */
+static inline Expr narrow(Expr a, int axis, size_t start, size_t length) {
   return slice(a, axis, Slice((int)start, (int)(start + length)));
 }
 

@@ -387,22 +387,54 @@ Expr minimum(float a, Expr b);
 Expr minimum(Expr a, float b);
 /** @} */
 
-// Pair of expressions, currently used for topk nodes only
+/**
+ * @brief Pair of expressions.
+ * Currently only used for topk-like nodes
+ * @see topk(), argmin(), argmax()
+ */
 typedef std::tuple<Expr, Expr> Expr2;
 
-// Marian pseudo-operator to access elements of a tuple, just the same as std::get<N>(tuple)
+/**
+ * @brief Pseudo-operator to access elements of a tuple.
+ *
+ * Provides the same utility as @c std::get<I>(tuple)
+ * @see Expr2
+ */
 template <int I>
 Expr get(Expr2 tuple) { return std::get<I>(tuple); }
 
-// PyTorch-like topk operator, returns a 2-tuple of nodes, first node is top-k values
-// second node is indices of these values according to given axis. Order is descending
-// by default, outputs are ordered.
+/**
+ * @brief Returns top k elements of an expression along an axis.
+ *
+ * Return a 2-tuple (values, indices) of the @p k largest, or smallest, elements of an expression
+ * along a specified @p axis.
+ * The output is ordered according to the value of @p descending.
+ *
+ * @param a Expression to search
+ * @param k Number of elements to return
+ * @param axis Axis to along which to operate
+ * @param descending If true, consider the largest elements. Otherwise, consider the smallest elements.
+ *                   Default is true.
+ * @returns An ordered 2-tuple of Expressions
+ */
 Expr2 topk(Expr a, int k, int axis, bool descending = true);
 
-// Convenience operator that maps to topk(a, k=1, axis, descending=true) 
+/**
+ * @brief Returns largest elements of an expression along an axis.
+ *
+ * Return a 2-tuple (values, indices) of largest elements of an expression
+ * along a specified @p axis.
+ * @see topk(a, k=1, axis, descending=true)
+ */
 Expr2 argmax(Expr a, int axis);
 
-// Convenience operator that maps to topk(a, k=1, axis, descending=false)
+/**
+ * @brief Returns smallest elements of an expression along an axis.
+ *
+ * Return a 2-tuple (values, indices) of smallest elements of an expression
+ * along a specified @p axis.
+ * @see topk(a, k=1, axis, descending=false)
+ */
 Expr2 argmin(Expr a, int axis);
 
 

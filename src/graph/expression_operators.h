@@ -811,13 +811,60 @@ static inline Expr narrow(Expr a, int axis, size_t start, size_t length) {
 
 /*********************************************************/
 
+/**
+ * @brief Compute the sum along the specified axis.
+ * @param ax Axis along which to compute the sum. Default is @c 0.
+ * @see ReduceNodeOp
+ */
 Expr sum(Expr a, int ax = 0);
+
+/**
+ * @brief Compute the arithmetic mean along the specified axis.
+ * @param ax Axis along which to compute the mean. Default is @c 0.
+ * @see ReduceNodeOp
+ */
 Expr mean(Expr a, int ax = 0);
+
+/**
+ * @brief Compute the standard deviation along the specified axis.
+ * @param ax Axis along which to compute the standard deviation
+ * @see ReduceNodeOp
+ */
 Expr std(Expr a, int ax);
+
+/**
+ * @brief Compute the variance along the specified axis.
+ * @param ax Axis along which to compute the variance
+ * @see ReduceNodeOp
+ */
 Expr var(Expr a, int ax);
+
+/**
+ * @brief Compute the maximum along the specified axis.
+ * @param ax Axis along which to find the maximum
+ * @see ReduceNodeOp
+ */
 Expr max(Expr a, int ax);
+
+/**
+ * @brief Compute the minimum along the specified axis.
+ * @param ax Axis along which to find the minimum
+ * @see ReduceNodeOp
+ */
 Expr min(Expr a, int ax);
+
+/**
+ * @brief Compute the product along the specified axis.
+ * @param ax Axis along which to compute the product
+ * @see ReduceNodeOp
+ */
 Expr prod(Expr a, int ax);
+
+/**
+ * @brief Compute the log of the sum of exponentials along the specified axis.
+ * @param ax Axis along which to perform the operation
+ * @see ReduceNodeOp
+ */
 Expr logsumexp(Expr a, int ax);
 
 Expr softmax(Expr x, int axis = -1);

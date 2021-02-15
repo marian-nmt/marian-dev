@@ -9,11 +9,17 @@ namespace marian {
  * @{
  */
 
+/**
+ * @brief Assigns a debug message to the expression.
+ */
 Expr debug(Expr a, const std::string& message = "");
 
+/**
+ * @brief Marks the expression as a gradient-checkpoint.
+ */
 Expr checkpoint(Expr a);
 
-typedef Expr(ActivationFunction)(Expr);
+typedef Expr(ActivationFunction)(Expr);  //!< ActivationFunction has signature Expr(Expr)
 
 typedef std::function<void(Expr, const std::vector<Expr>&)> LambdaNodeFunctor;
 Expr lambda(const std::vector<Expr>&, Shape, Type, LambdaNodeFunctor);
@@ -653,6 +659,9 @@ Expr flatten_2d(Expr a);
 
 /** @} */
 
+/**
+ * @brief Wraps an expression as a non-trainable expression.
+ */
 Expr stopGradient(Expr a);
 
 Expr gather(Expr a, int axis, Expr indices);
@@ -766,8 +775,14 @@ static inline Expr dropout(Expr x, float dropProb) {
 
 Expr shift(Expr, Shape, float padValue = 0);
 
+/**
+ * @brief Reindexes an expression from internal to cuDNN format.
+ */
 Expr convert2cudnnFormat(Expr x);
 
+/**
+ * @brief Reindexes an expression from cuDNN to internal format.
+ */
 Expr convertFromcudnnFormat(Expr x);
 
 Expr avg_pooling(Expr x,

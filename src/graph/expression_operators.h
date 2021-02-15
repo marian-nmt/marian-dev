@@ -333,14 +333,53 @@ Expr abs(Expr a);
 
 Expr logaddexp(Expr a, Expr b);
 
-// Note: Following numpy, minimum() is element-wise, while min() is along an axis in both Numpy and PyTorch.
+/**
+ * @name Element-wise min/max
+ * @brief Performs an element-wise min max comparison between expressions
+ *
+ * @see min, max for axis level operations
+ * @see MinimumNodeOp, MaximumNodeOp
+ * @todo implement version without ExpressionGraph::constant.
+ * @{
+*/
+/**
+ * @brief Computes the element-wise maximum of its inputs.
+ */
 Expr maximum(Expr a, Expr b);
+
+/**
+ * @copybrief maximum
+ *
+ * Promotes float input to a @ref ExpressionGraph::constant.
+ */
 Expr maximum(float a, Expr b);
+
+/**
+ * @copybrief maximum
+ *
+ * Promotes float input to a @ref ExpressionGraph::constant.
+ */
 Expr maximum(Expr a, float b);
 
+/**
+ * @brief Computes the element-wise minimum its inputs.
+ */
 Expr minimum(Expr a, Expr b);
+
+/**
+ * @copybrief minimum
+ *
+ * Promotes float input to a @ref ExpressionGraph::constant.
+ */
 Expr minimum(float a, Expr b);
+
+/**
+ * @copybrief minimum
+ *
+ * Promotes float input to a @ref ExpressionGraph::constant.
+ */
 Expr minimum(Expr a, float b);
+/** @} */
 
 // Pair of expressions, currently used for topk nodes only
 typedef std::tuple<Expr, Expr> Expr2;

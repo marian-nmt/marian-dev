@@ -17,17 +17,15 @@
 namespace marian {
 
 /**
- * @brief Create a expression node of any type, and pass all
- * arguments to any available constructor
- *
+ * Create a expression node of any type, and pass all
+ * arguments to any available constructor.
  * E.g., to create a ConstantNode: Expression<ConstantNode>(...)
- * */
+ */
 template <class T, typename... Args>
 Expr Expression(Args&&... args);
 
 /**
- * @brief The whole tensor set in the graph
- *
+ * The whole tensor set in the graph.
  * Holds all tensor objects (memory and nodes) for a graph
  */
 class Tensors {
@@ -124,43 +122,40 @@ public:
 typedef std::map<Type, Ptr<Parameters>> ElementTypeParamsMap; // keep it sorted, hence map not unordered map
 
 /**
- * @brief Main implementation of a computation graph
- *
- *  Keeps a record of data (tensors) & all operations
- *  Each operation in a computation graph is a Node.
+ *  Main implementation of a computation graph.
+ *  Keeps a record of data (tensors) and all operations. Each operation in a computation graph is a Node.
  *  Each Node defines its forward and backward steps.
  */
 class ExpressionGraph : public std::enable_shared_from_this<ExpressionGraph> {
-  size_t count_{0};  /**< @brief counter for nodes in the graph; hold current node index */
+  size_t count_{0};  // counter for nodes in the graph; hold current node index
 
-  std::unordered_set<Expr> topNodes_; /**< @brief current set of roots. In the end, all but one must have been consumed */
+  std::unordered_set<Expr> topNodes_; // current set of roots. In the end, all but one must have been consumed
 
 protected:  // (these are protected, not private, for ONNX exporting)
-  std::list<Expr> nodesForward_;  /**< @brief contains all nodes used for forward() */
-  std::list<Expr> nodesBackward_;  /**< @brief contains trainable nodes used for backward() */
+  std::list<Expr> nodesForward_;     ///< contains all nodes used for forward()
+  std::list<Expr> nodesBackward_;    ///< contains trainable nodes used for backward()
 
   /**
-   * @brief a shared pointer to the tensor objects in the graph
-   *
+   * A shared pointer to the tensor objects in the graph.
    * Holds memory and nodes that corresponds to tensors in a graph.
    * Since operations will result in new tensors, this attribute is used
    * to allocate memory for new tensors during forward() and backward().
-   * This gets cleared before a new graph is built
+   * This gets cleared before a new graph is built.
    */
   Ptr<Tensors> tensors_;
 private:
 
   std::unordered_map<size_t, std::vector<Expr>> memoized_;
 
-  Type defaultElementType_{Type::float32}; /**< Type used for storing parameters, currently all parameters have to have the same type */
+  Type defaultElementType_{Type::float32};  // Type used for storing parameters, currently all parameters have to have the same type
 
-  bool inferenceOnly_{false}; /**< a flag holds whether the graph is used for inference only */
+  bool inferenceOnly_{false};               // a flag holds whether the graph is used for inference only
 
-  bool checkpointing_{false}; /**< use gradient checkpointing if true */
+  bool checkpointing_{false};               // use gradient checkpointing if true
 
-  bool reloaded_{false}; /**< a flag holds whether the graph is reloaded: reloaded is true if the graph loads parameters by load() function. */
+  bool reloaded_{false};                    // a flag holds whether the graph is reloaded: reloaded is true if the graph loads parameters by load() function.
 
-  bool throwNaN_{false}; /**< a flag holds whether the graph throws a NaN exception */
+  bool throwNaN_{false};                    // a flag holds whether the graph throws a NaN exception
 
 protected:
   // Delete, copy and move constructors
@@ -168,8 +163,7 @@ protected:
   ExpressionGraph(ExpressionGraph&&) = delete;
 
   /**
-   * @brief A map holds memory and nodes that corresponds to graph parameters
-   *
+   * A map holds memory and nodes that corresponds to graph parameters.
    * The key is Type and the mapped value is a set of parameter objects with corresponding type.
    * Now we can have multiple types of parameters in a separate parameters object per value type.
    * This is currently only accessible through private functions during loading, will abort during training
@@ -178,22 +172,14 @@ protected:
    * to abort. Inference does not need to access a whole set of parameters.
    */
   ElementTypeParamsMap paramsByElementType_;
-  Ptr<Backend> backend_;  /**< @brief a pointer to the backend for the graph */
-  std::string namespace_; /**< @brief a string defines the namespace of the graph. Each graph has its own unique namespace. */
+  Ptr<Backend> backend_;      ///< a shared pointer to the backend for the graph
+  std::string namespace_;     ///< a string defines the namespace of the graph. Each graph has its own unique namespace.
 
 public:
-  /**
-   * @brief Constructs a new expression graph
-   *
-   * Constructor should be used as New<ExpressionGraph>()
-   */
+  /** Constructs a new expression graph. Constructor should be used as New<ExpressionGraph>(). */
   ExpressionGraph(bool inference = false);
 
-  /**
-   * @brief Destructor
-   *
-   * Clear everything related to the graph except memoized nodes
-   */
+  /** Destructor. Clear everything related to the graph except memoized nodes. */
   virtual ~ExpressionGraph() {
     clear();
     for(auto kvParams : paramsByElementType_)
@@ -201,7 +187,7 @@ public:
   }
 
   /**
-   * @brief Set device options used to run the graph
+   * Set device options used to run the graph.
    * @param deviceId a struct type which stores device no. (size_t)
    * and device type (DeviceType::cpu or DeviceType::gpu)
    * @param device a pointer to the device
@@ -210,53 +196,44 @@ public:
                          Ptr<Device> device = nullptr);
 
   /**
-   * @brief Get device info for the graph
+   * Get device info for the graph.
    * @return deviceId a struct type which stores device no. (size_t)
    * and device type (DeviceType::cpu or DeviceType::gpu)
    */
   DeviceId getDeviceId() { return backend_->getDeviceId(); }
 
   /**
-   * @brief Get backend pointer for the graph
+   * Get backend pointer for the graph.
    * @return Ptr<Backend> pointer to backend
    */
   Ptr<Backend> getBackend() { return backend_; }
 
-  /**
-   * @brief Set whether the graph is used for inference
-   */
+  /** Set whether the graph is used for inference only */
   void setInference(bool inference) { inferenceOnly_ = inference; }
 
-  /**
-   * @brief Check whether the graph is used for inference (true) or not
-   */
+  /** Check whether the graph is used for inference only (true) or not */
   bool isInference() { return inferenceOnly_; }
 
   /**
-   * @brief Set whether the graph uses gradient checkpointing
-   *
-   * <a
-   * href="https://github.com/cybertronai/gradient-checkpointing">Gradient Checkpointing</a>
-   * works by trading compute for memory,
-   * which reruns a forward-pass segment for each checkpoint segment during backward
+   * Set whether the graph uses gradient checkpointing.
+   * <a href="https://github.com/cybertronai/gradient-checkpointing">Gradient Checkpointing</a>
+   * works by trading compute for memory, which reruns a forward-pass segment for each checkpoint segment during backward.
    */
   void setCheckpointing(bool checkpointing) { checkpointing_ = checkpointing; }
 
-  /**
-   * @brief Check whether the graph uses gradient checkpointing or not
-   */
+  /** Check whether the graph uses gradient checkpointing or not */
   bool isCheckpointing() { return checkpointing_; }
 
   /**
-   * @brief Set namespace (std::string) for the graph
-   * Each graph has its own unique namespace, which is used to form the name of a parameter object
+   * Set namespace (std::string) for the graph.
+   * Each graph has its own unique namespace, which is used to form the name of a parameter object.
    */
   void switchParams(const std::string& newNamespace) {
     namespace_ = newNamespace;
   }
 
   /**
-   * @brief Copy all parameter objects from one graph to current graph
+   * Copy all parameter objects from one graph to current graph.
    * @param graph a pointer to a graph object
    */
   virtual void copyParams(Ptr<ExpressionGraph> graph) {
@@ -266,7 +243,9 @@ public:
   }
 
   /**
-   * @brief Preallocate workspace memory (MB) for the graph
+   * Preallocate workspace memory (MB) for the graph.
+   * Sets the size of the memory available for the forward and backward step of the training procedure.
+   * This does not include model size and optimizer parameters that are allocated outsize workspace.
    */
   void reserveWorkspaceMB(size_t num) {
     size_t bytes = num * 1024 * 1024 - 1;
@@ -274,15 +253,14 @@ public:
   }
 
   /**
-   * @brief Copy tensor objects from one graph to current graph
+   * Copy tensor objects from one graph to current graph
    */
   void reuseWorkspace(Ptr<ExpressionGraph> graph) {
     tensors_ = graph->tensors_;
   }
 
   /**
-   * @brief Performs backpropagation on this expression graph.
-   *
+   * Performs backpropagation on this expression graph.
    * Backpropagation is implemented by performing first the forward pass and
    * then the backward pass of algorithmic differentiation (AD) on the nodes of
    * the graph.
@@ -293,11 +271,10 @@ public:
   }
 
   /**
-   * @brief Perform one backpropagation process on the graph to test
-   * whether the graph workspace fits into a given workspace memory
-   *
+   * Perform one backpropagation process on the graph to test
+   * whether the graph workspace fits into a given workspace memory.
    * This function is used for searching the maximum batch size
-   * that fits into given workspace memory
+   * that fits into given workspace memory.
    */
   bool fits() {
     try {
@@ -312,19 +289,15 @@ public:
   }
 
   /**
-   * @brief Check whether the memory allocated for a tensor object
-   * contains a NaN or infinite value
+   * Check whether the memory allocated for a tensor object contains a NaN or infinite value.
    * @param t a Tensor object
-   * @param isNaN a bool type holds the result whether the tensor
-   * contains a NaN value (pass by reference)
-   * @param isInf a bool type holds the result whether the tensor
-   * contains a infinite value (pass by reference)
+   * @param isNaN a bool type holds the result whether the tensor contains a NaN value (pass by reference)
+   * @param isInf a bool type holds the result whether the tensor contains a infinite value (pass by reference)
    */
   void checkNaN(Tensor t, bool& isNaN, bool& isInf);
 
   /**
-   * @brief Perform the forward pass on the nodes of the graph
-   *
+   * Perform the forward pass on the nodes of the graph.
    * The forward pass refers to the calculation process.
    * It traverses through all nodes from input layer to output layer.
    */
@@ -335,32 +308,28 @@ public:
   }
 
   /**
-   * @brief Perform the forward pass without memory allocation for parameters
-   *
-   * Helper function for forward()
+   * Perform the forward pass without memory allocation for parameters.
+   * Helper function for forward().
    */
   void forwardNext();
 
   /**
-   * @brief Perform forward pass on a given nodes with finalPass flag
-   *
-   * Helper function for forward() and backward()
+   * Perform forward pass on a given nodes with finalPass flag.
+   * Helper function for forward() and backward().
    * @param forwardTape a pointer to the nodes used for forward pass
-   * @param finalPass a bool type which controls whether nodes
-   *        should be freed with gradient-checkpointing
+   * @param finalPass a bool type which controls whether nodes should be freed with gradient-checkpointing
    */
   void forward(std::list<Expr>& forwardTape, bool finalPass);
 
   /**
-   * @brief Perform the backward pass on the trainable nodes of the graph
-   *
+   * Perform the backward pass on the trainable nodes of the graph.
    * The back pass refers to the process of computing the output error.
    * It traverses through all nodes from output layer to input layer.
    */
   void backward(bool reset = true, float clipValue = 0.f);
 
   /**
-   * @brief Generate graph layout in Graphviz format for visualisation
+   * Generate graph layout in Graphviz format for visualisation.
    * @return a string presenting graph layout in Graphviz format (dot)
    */
   std::string graphviz() {
@@ -381,9 +350,8 @@ public:
   }
 
   /**
-   * @brief Write graph layout in Graphviz format to a file
-   * @param filename a string type specifies filename
-   *        that writes the graph layout
+   * Write graph layout in Graphviz format to a file.
+   * @param filename a string type specifies filename that writes the graph layout
    */
   void graphviz(const std::string& filename) {
     std::ofstream dot(filename);
@@ -479,7 +447,7 @@ private:
 public:
 
   /**
-   * @brief Construct a parameter node in the graph
+   * Construct a parameter node in the graph.
    * @param pname a string type holds the name of the parameter node
    * @param shape a struct type defines the shape of the parameter tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
@@ -499,8 +467,8 @@ public:
   }
 
   /**
-   * @brief Construct a parameter node in the graph without a specified type, and
-   *  the type is set to defaultElementType_
+   * Construct a parameter node in the graph without a specified type, and
+   * the type is set to defaultElementType_.
    * @param pname a string type holds the name of the parameter node
    * @param shape a struct type defines the shape of the parameter tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
@@ -518,8 +486,8 @@ public:
   }
 
   /**
-   * @brief Construct a constant node in the graph without a specified type, and
-   *  the type is set to defaultElementType_
+   * Construct a constant node in the graph without a specified type, and
+   * the type is set to defaultElementType_.
    * @param shape a struct type defines the shape of the constant tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param init a pointer to a NodeInitializer object, e.g., inits::zeros()
@@ -533,8 +501,8 @@ public:
   }
 
   /**
-   * @brief Construct a constant node in the graph without a specified type, and
-   *  the type is set to defaultElementType_
+   * Construct a constant node in the graph without a specified type, and
+   * the type is set to defaultElementType_.
    * @param shape a struct type defines the shape of the constant tensor
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param init a pointer to a NodeInitializer object, e.g., inits::zeros()
@@ -547,9 +515,8 @@ public:
 
   // @TODO: add version with iterators
   /**
-   * @brief Specify the indexes of elements to be taken from a tensor
-   *
-   * a shortcut version to turn vector of indices to integer tensor, to be used with operators
+   * Turn vector of indices to integer tensor.
+   * A shortcut version to turn vector of indices to integer tensor, to be used with operators
    * like rows() or index_select()
    * @param indicesVector a vector of IndexType (uint32_t) specifies the indexes
    */
@@ -560,16 +527,13 @@ public:
   }
 
   /**
-   * @brief Specify the indexes of elements to be taken from a tensor
-   *
+   * Specify the indexes of elements to be taken from a tensor.
    * This version sets up the shape such that the indices are in a given axis.
    * Use this if you want to pass these indices to gather().
-   *
    * E.g., indexee shape = (3, 2, 5, 2); axis = 1 -> resulting shape = (1, size of indicesVector, 1, 1):
    *  - The size of the resulting shape is the same as that of the indexee; here is 4.
    *  - The shape of the specified axis is equal to the size of given indicesVector.
    *  - The shapes of the rest axes are filled with 1.
-   *
    * @param indicesVector a vector of IndexType (uint32_t) specifies the indexes
    * @param indexee the source tensor that we want to select elements from
    * @param axis specifies the axis that we want to collect along
@@ -584,7 +548,7 @@ public:
   }
 
   /**
-   * @brief construct a constant node filled with `1`
+   * Construct a constant node filled with `1`.
    * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
@@ -594,8 +558,8 @@ public:
   }
 
   /**
-   * @brief construct a constant node filled with `1` without a specified type,
-   *        and the type is set to defaultElementType_
+   * Construct a constant node filled with `1` without a specified type,
+   * and the type is set to defaultElementType_.
    * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    */
@@ -604,7 +568,7 @@ public:
   }
 
   /**
-   * @brief construct a constant node filled with `0`
+   * Construct a constant node filled with `0`.
    * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
@@ -614,8 +578,8 @@ public:
   }
 
   /**
-   * @brief construct a constant node filled with `0` without a specified type,
-   *        and the type is set to defaultElementType_
+   * Construct a constant node filled with `0` without a specified type,
+   * and the type is set to defaultElementType_.
    * @param shape a struct type defines the shape of the constant dataset
    *        e.g., shape={2,3} means 2D matrix with dim[0]=2 and dim[1]=3
    */
@@ -624,7 +588,7 @@ public:
   }
 
   /**
-   * @brief construct a dropout mask (a tensor of 0 and 1)
+   * Construct a dropout mask (a tensor of 0 and 1).
    * @param dropProb a float type specifies the dropout probability.
    *        E.g., dropProb=0.1 means 90% of values are kept.
    * @param shape a struct type defines the shape of the constant dataset
@@ -634,8 +598,8 @@ public:
   Expr dropoutMask(float dropProb, const Shape& shape, Type elementType);
 
   /**
-   * @brief construct a dropout mask (a tensor of 0 and 1) without a specified type,
-   *        and the type is set to defaultElementType_
+   * Construct a dropout mask (a tensor of 0 and 1) without a specified type,
+   * and the type is set to defaultElementType_.
    * @param dropProb a float type specifies the dropout probability.
    *        E.g., dropProb=0.1 means 90% of values are kept.
    * @param shape a struct type defines the shape of the constant dataset
@@ -644,7 +608,7 @@ public:
   Expr dropoutMask(float dropProb, const Shape& shape);
 
   /**
-   * @brief get the parameter object by name
+   * Get the parameter object by name.
    * @param name a string specifies the name of the parameter object
    */
   Expr get(std::string name) {
@@ -656,7 +620,7 @@ public:
   }
 
   /**
-   * @brief get the parameter object by name and type
+   * Get the parameter object by name and type.
    * @param name a string specifies the name of the parameter object
    * @param elementType a scoped enumerator (enum class) defines the element type, e.g., Type::float16
    */
@@ -669,8 +633,7 @@ public:
   }
 
   /**
-   * @brief return the Parameters object related to the graph
-   *
+   * Return the Parameters object related to the graph.
    * The Parameters object holds the whole set of the parameter nodes.
    */
   Ptr<Parameters>& params() { 
@@ -688,8 +651,7 @@ public:
   }
 
   /**
-   * @brief set default element type for the graph
-   *
+   * Set default element type for the graph.
    * The default value is used if some node type is not specified.
    */
   void setDefaultElementType(Type defaultElementType) {
@@ -700,15 +662,13 @@ public:
   }
 
   /**
-   * @brief add a expression node (a operation) to the graph
-   *
+   * Add a expression node to the graph.
    * @param node a pointer to a expression node
    */
   Expr add(Expr node);
 
   /**
-   * @brief allocate memory for the forward pass of the given node
-   *
+   * Allocate memory for the forward pass of the given node.
    * @param node a pointer to a expression node
    */
   void allocateForward(Expr node) {
@@ -717,8 +677,7 @@ public:
   }
 
   /**
-   * @brief allocate memory for the backward pass of the given node
-   *
+   * Allocate memory for the backward pass of the given node.
    * @param node a pointer to a expression node
    */
   void allocateBackward(Expr node) {
@@ -727,8 +686,7 @@ public:
   }
 
   /**
-   * @brief free the memory for a tensor object
-   *
+   * Free the memory for a tensor object.
    * @param tensor a reference to the tensor object
    */
   void free(const Tensor& tensor) {
@@ -737,20 +695,18 @@ public:
   }
 
   /**
-   * @brief Returns the memory allocator of the graph workspace,
-   * allocates raw unstructured memory (but 256-byte aligned)
+   * Returns the memory allocator of the graph workspace,
+   * allocates raw unstructured memory (but 256-byte aligned).
    */
   Ptr<Allocator> allocator() { return tensors_->getAllocator(); } // @TODO: rename this to getAllocator();
 
   /**
-   * @brief Returns the tensor allocator of the graph workspace,
-   * different from allocator() as proper tensor objects are allocated
+   * Returns the tensor allocator of the graph workspace,
+   * different from allocator() as proper tensor objects are allocated.
    */
   Ptr<TensorAllocator> getTensorAllocator() { return tensors_->getTensorAllocator(); }
 
-  /**
-   * @brief clear everything apart from parameters and memoized nodes
-   */
+  /** Clear everything apart from parameters and memoized nodes */
   void clear() {
     count_ = 0;
     nodesForward_.clear();
@@ -761,29 +717,17 @@ public:
     tensors_->clear();
   }
 
-  /**
-   * @brief set the flag value whether the graph is reloaded (true) or not
-   */
+  /** Set the flag value whether the graph is reloaded (true) or not */
   void setReloaded(bool reloaded) { reloaded_ = reloaded; }
 
-  /**
-   * @brief set the flag value whether the graph throws a NaN exception (true) or not
-   *
-   * (currently not in use)
-   */
+  /** Set the flag value whether the graph throws a NaN exception (true) or not */
   void setThrowNaN(bool throwNaN) { throwNaN_ = throwNaN; }
 
-  /**
-   * @brief get the flag value whether the graph throws a NaN exception (true) or not
-   *
-   * (currently not in use)
-   */
+  /** Get the flag value whether the graph throws a NaN exception (true) or not */
   bool getThrowNaN() { return throwNaN_; }
 
 public:
-  /**
-   * @brief load model (mainly parameter objects) from array of io::Items
-   */
+  /** Load model (mainly parameter objects) from array of io::Items */
   void load(std::vector<io::Item>& ioItems, bool markReloaded = true) {
     setReloaded(false);
     for(auto& item : ioItems) {
@@ -802,18 +746,14 @@ public:
       setReloaded(true);
   }
 
-  /**
-   * @brief load model by filename
-   */
+  /** Load model by filename */
   void load(const std::string& name, bool markReloaded = true) {
     LOG(info, "Loading model from {}", name);
     auto items = io::loadItems(name);
     load(items, markReloaded);
   }
 
-  /**
-   * @brief load model from buffer (a file pointer)
-   */
+  /** Load model from buffer (a file pointer) */
   void load(const void* ptr, bool markReloaded = true) {
     LOG(info, "Loading model from buffer at {}", ptr);
     auto items = io::loadItems(ptr);
@@ -821,9 +761,8 @@ public:
   }
 
   /**
-   * @brief turn the model (given a file pointer) into a memory-mapped type
-   * by converting all the parameter object to memory-mapped version,
-   * i.e., MappedParameters
+   * Turn the model (given a file pointer) into a memory-mapped type
+   * by converting all the parameter object to memory-mapped version, i.e., MappedParameters.
    */
   void mmap(const void* ptr, bool markReloaded = true) {
     ABORT_IF(backend_->getDeviceId().type != DeviceType::cpu || !inferenceOnly_,
@@ -862,14 +801,14 @@ public:
 
 public:
   /**
-   * @brief convert all parameters into an array of io::Item elements, for saving
+   * Convert all parameters into an array of io::Item elements, for saving.
    * @param ioItems an array of io::Item elements
    * @param saveElementType the element type for saving
    */
   void save(std::vector<io::Item>& ioItems, Type saveElementType = Type::float32);
 
   /**
-   * @brief save all parameters into a file (.npz or .bin)
+   * Save all parameters into a file (.npz or .bin).
    * @param name a string specifies the filename
    * @param meta a string specifies the name of io::Item elements. If not specified, the parameter name is reserved.
    * @param saveElementType the element type for saving

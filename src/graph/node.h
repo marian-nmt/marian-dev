@@ -28,19 +28,19 @@ protected:
   std::vector<Expr> children_;
 
   Weak<ExpressionGraph> graph_;
-  Shape shape_{1, 1, 1, 1};   /**< defines the dimensionality of the node (for tensors) */
-  Type valueType_{Type::float32};  /**< defines the element type of the node (for tensors) */
+  Shape shape_{1, 1, 1, 1};         // defines the dimensionality of the node (for tensors)
+  Type valueType_{Type::float32};   // defines the element type of the node (for tensors)
 
   std::string name_{"none"};
 
-  Tensor val_{nullptr};  /**< @brief the resulting new tensor in forward pass */
-  Tensor adj_{nullptr};  /**< @brief the accumulated gradients (a tensor) in backward pass */
+  Tensor val_{nullptr};  // the resulting new tensor in forward pass
+  Tensor adj_{nullptr};  // the accumulated gradients (a tensor) in backward pass
 
   bool markedForDebug_{false};
   std::string debugMessage_;
 
-  Ptr<std::list<Expr>> subtape_; /**< @brief a subtape is used to keep track of nodes that need to be freed and recomputed with gradient-checkpointing. */
-  bool isCheckpoint_{false};     /**< @brief true if this node has been selected to be a checkpoint, currently only done manually. */
+  Ptr<std::list<Expr>> subtape_; // a subtape is used to keep track of nodes that need to be freed and recomputed with gradient-checkpointing.
+  bool isCheckpoint_{false};     // true if this node has been selected to be a checkpoint, currently only done manually.
 
   Ptr<AutoTunerRecorder> recorder_;
   size_t recorderHash_;

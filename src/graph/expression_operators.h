@@ -20,10 +20,22 @@ Expr debug(Expr a, const std::string& message = "");
 Expr checkpoint(Expr a);
 
 typedef Expr(ActivationFunction)(Expr);  //!< ActivationFunction has signature Expr(Expr)
+// using ActivationFunction = std::function<Expr(Expr)>;
 
-typedef std::function<void(Expr, const std::vector<Expr>&)> LambdaNodeFunctor;
-Expr lambda(const std::vector<Expr>&, Shape, Type, LambdaNodeFunctor);
-Expr lambda(const std::vector<Expr>&, Shape, Type, LambdaNodeFunctor, LambdaNodeFunctor);
+/**
+ * @brief Convience typedef for graph @ref lambda expressions.
+ */
+typedef std::function<void(Expr out, const std::vector<Expr>& in)> LambdaNodeFunctor;
+
+/**
+ * @brief Arbitrary node with forward operation only.
+ */
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd);
+
+/**
+ * @brief Arbitrary node with forward and backward operation.
+ */
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, LambdaNodeFunctor bwd);
 
 /**
  * @addtogroup graph_ops_activation Activation Functions

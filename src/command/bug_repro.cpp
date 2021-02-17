@@ -1,3 +1,4 @@
+#include "../common/config_parser.h"
 #include "../common/options.h"
 #include "../data/text_input.h"
 #include "../models/model_factory.h"
@@ -12,11 +13,20 @@ public:
   ReproTask() {
   }
   void run() override {
-    io::InputFileStream strm("/home/rihards/exp/marian-adaptive-crash-repro/models/model.npz.repro.yml");
-    YAML::Node optionsNode = YAML::Load(strm);
-    auto optionsBig = New<Options>(optionsNode);
-    auto options = New<Options>("after", "0e");
-    options->merge(optionsBig);
+    auto parser = ConfigParser(cli::mode::training);
+    // i'm prob leaking memory at the end of run() but i don't care
+    const char* argseasy[]
+        = {"marian",
+           "-c",
+           "/home/rihards/exp/marian-adaptive-crash-repro/models/model.npz.repro.yml"};
+    int argc = sizeof(argseasy) / sizeof(char*);
+    // this is as close as i could get to initializing a char** in a sane manner
+    char** args = new char*[argc];
+    for (int i = 0; i < argc; i++) {
+      args[i] = strdup(argseasy[i]);
+    }
+    auto options = parser.parseOptions(argc, args, false);
+
     auto builder = models::createCriterionFunctionFromOptions(options, models::usage::training);
     auto optimizer = Optimizer<Adam>(0.01);
 

@@ -6,11 +6,10 @@
 
 namespace marian {
 /**
- * @brief A constant node for the graph
- *
+ *  A constant node for the graph.
  *  A constant node is actually a constant tensor whose value is
  *  immutable during the training. ConstantNode instance is usually
- *  used to feed the inputs. To construct a constant node in the
+ *  used as the inputs. To construct a constant node in the
  *  graph, we use constant() function in ExpressionGraph class.
  */
 struct ConstantNode : public Node {
@@ -43,8 +42,7 @@ private:
   bool initialized_;
 };
 /**
- * @brief A parameter node for the graph
- *
+ * A parameter node for the graph.
  * A parameter node is used to store model parameters whose value can be
  * changed during the training, such as weights and biases. To construct
  * a parameter node in the graph, we use param() function in

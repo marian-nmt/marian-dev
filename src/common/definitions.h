@@ -127,7 +127,7 @@ IPtr<T> INew(Ptr<T> p) {
   return IPtr<T>(p);
 }
 
-/// enum class DeviceType
+/// enum class DeviceType: defines which device is used for computation
 enum class DeviceType : size_t { gpu = 0, cpu = 1 };
 
 struct DeviceId {

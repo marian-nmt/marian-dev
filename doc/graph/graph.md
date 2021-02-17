@@ -4,7 +4,7 @@ The design of deep learning framework in Marian is based on reverse-mode [auto-d
 Computation graphs allow a great deal of freedom in network architectures, and they can deal with complicated structures like conditions and loops.
 Dynamic declaration, which means a new graph is created for each training instance (for a training example or a batch), is also advantageous.
 It allows handling of variably sized inputs, as well as the cases where the graph may change depending on the results of previous steps.
-Compared to static declaration, dynamic computation graph could be expensive in terms of creating and optimiz-ing computation graphs.
+Compared to static declaration, dynamic computation graph could be expensive in terms of creating and optimising computation graphs.
 Marian uses careful memory management to remove overhead in computation graph construction, and supports efficient execution on both CPU and GPU.
 The main implementation of computation graph is in under `src/graph` directory.  
 

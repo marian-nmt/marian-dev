@@ -25,9 +25,9 @@ Marian.
 The central component in the graph is the `Chainable<Tensor>` object. This
 object provides the abstract interface necessary to interact with elements in
 the computation graph. The details of this interface can be found in
-`src/graph/chainable.h`. Note that the template parameter corresponds to the
-underlying data structure, which in Marian is the `Tensor`. Therefore, for
-convenience, the type `Expr` is defined:
+[/src/graph/chainable.h](/src/graph/chainable.h). Note that the template
+parameter corresponds to the underlying data structure, which in Marian is the
+`Tensor`. Therefore, for convenience, the type `Expr` is defined:
 
 ```cpp
 typedef IPtr<Chainable<Tensor>> Expr;
@@ -37,22 +37,22 @@ The implementation of the different operator components are divided across
 several files:
 
   - Expression Operator
-    - `src/graph/expression_operators.h`
-    - `src/graph/expression_operators.cpp`
+    - [/src/graph/expression_operators.h](/src/graph/expression_operators.h)
+    - [/src/graph/expression_operators.cpp](/src/graph/expression_operators.cpp)
   - Node Operator
-    - `src/graph/node_operators_unary.h`
-    - `src/graph/node_operators_binary.h`
-    - `src/graph/node_operators_tuple.h`
+    - [/src/graph/node_operators_unary.h](/src/graph/node_operators_unary.h)
+    - [/src/graph/node_operators_binary.h](/src/graph/node_operators_binary.h)
+    - [/src/graph/node_operators_tuple.h](/src/graph/node_operators_tuple.h)
   - Functional Operator
-    - `src/functional/operators.h`
+    - [/src/functional/operators.h](/src/functional/operators.h)
   - Tensor operation
-    - `src/tensor/tensor_operators.h`
-    - `src/tensors/cpu/tensor_operators.cpp`
-    - `src/tensors/gpu/tensor_operators.cpp`
+    - [/src/tensor/tensor_operators.h](/src/tensor/tensor_operators.h)
+    - [/src/tensors/cpu/tensor_operators.cpp](/src/tensors/cpu/tensor_operators.cpp)
+    - [/src/tensors/gpu/tensor_operators.cpp](/src/tensors/gpu/tensor_operators.cpp)
   - Declared Specialization
-    - `src/tensors/gpu/element.inc`
-    - `src/tensors/gpu/add.inc`
-    - `src/tensors/gpu/add_all.inc`
+    - [/src/tensors/gpu/element.inc](/src/tensors/gpu/element.inc)
+    - [/src/tensors/gpu/add.inc](/src/tensors/gpu/add.inc)
+    - [/src/tensors/gpu/add_all.inc](/src/tensors/gpu/add_all.inc)
 
 To understand how the different components are inter-linked, we'll look at each
 of them in turn.
@@ -189,17 +189,18 @@ struct MyNodeOp : public NaryNodeOp {
   NodeOps backwardOps() override {}
 ```
 
-This outline describes a node operator that takes a single argument `a`. The shape and
-type of the node would be determined by the result of `newShape` and `newType`
-when constructing the `NaryNodeOp`. These functions represent any custom logic used to determine the shape and type of the node. As indicated in this example code, these are
-optional and, when omitted, calling `NaryNodeOp({a})` would result in a node
-with the same shape and type as `a`. The `type()` method returns the friendly
-name for the node. In the absence of any member variables the `hash()` and
-`equal()` methods can be omitted, and defer to their `NaryNodeOp` definition.
-However, if such variables exists then `hash()` should implement a hashed
-representation and `equal()` should provide the necessary conditions to consider
-nodes equivalent. Finally, the operations of the node are defined in
-`forwardOps()` and `backwardOps()`.
+This outline describes a node operator that takes a single argument `a`. The
+shape and type of the node would be determined by the result of `newShape` and
+`newType` when constructing the `NaryNodeOp`. These functions represent any
+custom logic used to determine the shape and type of the node. As indicated in
+this example code, these are optional and, when omitted, calling
+`NaryNodeOp({a})` would result in a node with the same shape and type as `a`.
+The `type()` method returns the friendly name for the node. In the absence of
+any member variables the `hash()` and `equal()` methods can be omitted, and
+defer to their `NaryNodeOp` definition. However, if such variables exists then
+`hash()` should implement a hashed representation and `equal()` should provide
+the necessary conditions to consider nodes equivalent. Finally, the operations
+of the node are defined in `forwardOps()` and `backwardOps()`.
 
 Continuing with the example of `sin(x)`, the code responsible for implementing
 the behaviour is
@@ -243,11 +244,12 @@ element-wise operation described by the functor:
 _1 = sin(_2)
 ```
 
-The placeholders `_1`, `_2` are enabled by code in `src/functional` and
-interoperate with the functional operators. In the call to `Element`, `val_` is
-assigned to `_1` and `child(0)->val()` to `_2`. Therefore, this has the action of
-setting the elements of this node to the result obtained by applying `sin` to
-the elements of `child(0)`.
+The placeholders `_1`, `_2` are enabled by code in
+[/src/functional](/src/functional) and interoperate with the functional
+operators. In the call to `Element`, `val_` is assigned to `_1` and
+`child(0)->val()` to `_2`. Therefore, this has the action of setting the
+elements of this node to the result obtained by applying `sin` to the elements
+of `child(0)`.
 
 #### Backward Operation
 
@@ -325,9 +327,10 @@ specialization required for each type. The current required types are:
   - float32x8 (see `src/3rd_party/avx_mathfun.h`)
   - half (see `cuda_fp16.h` in the CUDA Math API)
 
-Further details are available in `src/common/types.h`.
+Further details are available in [/src/common/types.h](/src/common/types.h).
 
-Returning to the example of `sin(x)`, the specialization for `float` and `double` requires
+Returning to the example of `sin(x)`, the specialization for `float` and
+`double` requires
 
 ```cpp
 // src/functional/operators.h
@@ -350,12 +353,13 @@ struct Ops<double> {
 };
 ```
 
-The remaining specializations can be seen in `src/functional/operators.h`. Note
-that the general template must produce a runtime abort.
+The remaining specializations can be seen in
+[/src/functional/operators.h](/src/functional/operators.h). Note that the
+general template must produce a runtime abort.
 
 The final component of the functional operator is to call the macro that enables
-interoperability with the framework of `src/functional`. For a unary operator,
-this is the marco `UNARY`.
+interoperability with the framework of [/src/functional](/src/functional). For a
+unary operator, this is the marco `UNARY`.
 
 ```cpp
 UNARY(Sin,     sin,        Ops<ElementType>::sin(x));
@@ -386,10 +390,12 @@ An important subtlety is that while the CPU focused libraries use a row-major
 representation, the cuBLAS library (GPU) instead uses a column-major
 representation.
 
-Tensor operators are declared in `src/tensors/tensor_operators.h`, these are
+Tensor operators are declared in
+[/src/tensors/tensor_operators.h](/src/tensors/tensor_operators.h), these are
 device-agnostic function that call the relevant device-specific implementation.
 The CPU- and GPU-specific implementation are defined in `cpu` namespace in
-`src/tensors/cpu/` and the `gpu` namespace `src/tensors/gpu/`.
+[/src/tensors/cpu/](/src/tensors/cpu/) and the `gpu` namespace
+[/src/tensors/gpu/](/src/tensors/gpu/).
 
 Therefore a typical operator defers to an implementation in the device-specific
 namespace.
@@ -423,14 +429,16 @@ compilation:
 ```
 
 To fix these undefined references, we must explicitly add the specialization to
-the `.inc` files of `src/tensors/gpu/`. Each `.inc` file is included at the end
-of its corresponding `.cu` file, ensuring that the specialization is compiled.
+the `.inc` files of [/src/tensors/gpu/](/src/tensors/gpu/). Each `.inc` file is
+included at the end of its corresponding `.cu` file, ensuring that the
+specialization is compiled.
 
 The undefined references should be added to the `.inc` file that corresponds to
 the header file in which contains the declaration of the missing functions.
 
-The file `element.inc` contains the specializations of the function defined in
-`element.h`:
+The file [element.inc](/src/tensors/gpu/element.inc) contains the
+specializations of the function defined in
+[element.h](/src/tensors/gpu/element.h):
 
 ```cpp
 // src/tensors/gpu/element.h
@@ -438,8 +446,9 @@ template <class Functor, class... Tensors>
 void Element(Functor functor, Tensor out, Tensors... tensors);
 ```
 
-Similarly, `add.inc` contains the specializations for functions matching either
-of the two signatures in `add.h`:
+Similarly, [add.inc](/src/tensors/gpu/add.inc) contains the specializations for
+functions matching either of the two signatures in
+[add.h](/src/tensors/gpu/add.h):
 
 ```cpp
 // src/tensors/gpu/add.h
@@ -450,8 +459,8 @@ template <class Functor, class AggFunctor, class... Tensors>
 void Aggregate(Functor functor, float initAgg, AggFunctor aggFunctor, float scale, marian::Tensor out, Tensors... tensors);
 ```
 
-Finally `add_all.inc` contains the specializations for `add_all.h`, which are several
-versions of:
+Finally [add_all.inc](/src/tensors/gpu/add_all.inc) contains the specializations
+for [add_all.h](/src/tensors/gpu/add_all.h), which are several versions of:
 
 ```cpp
 // src/tensors/gpu/add_all.h
@@ -465,8 +474,8 @@ void AggregateAll(Ptr<Allocator> allocator,
                   const Tensor in1);
 ```
 
-However, for `add_all.h`, there is an additional type dependence in the first
-template parameter, which requires two entries:
+However, for [add_all.h](/src/tensors/gpu/add_all.h), there is an additional
+type dependence in the first template parameter, which requires two entries:
 
 ```cpp
 marian::gpu::AggregateAll< float, ... >( ... );

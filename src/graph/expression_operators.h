@@ -20,7 +20,6 @@ Expr debug(Expr a, const std::string& message = "");
 Expr checkpoint(Expr a);
 
 typedef Expr(ActivationFunction)(Expr);  //!< ActivationFunction has signature Expr(Expr)
-// using ActivationFunction = std::function<Expr(Expr)>;
 
 /**
  * @brief Convience typedef for graph @ref lambda expressions.

@@ -312,7 +312,8 @@ Shape newShape(Expr a, int axis) {
 ```
 
 The output shape is the same as the input but with the processed axis is reduced
-to single element. Other use cases include transpose and slicing operations.
+to single element. Other use cases include transpose and slicing operations, as
+well as tensor products.
 
 
 ### Functional Operator
@@ -384,21 +385,30 @@ libraries containing device-specific optimisations. These libraries include:
   - GPU
     - CUDA (cuBLAS)
 
-<!-- TODO: OpenMPI, OpenMP and MARIAN_FFAST_MATH_BEGIN -->
-
 An important subtlety is that while the CPU focused libraries use a row-major
 representation, the cuBLAS library (GPU) instead uses a column-major
 representation.
+
+Furthermore, the OpenMPI and OpenMP libraries are employed for parallelisation.
+While macros provided in [/src/common/definitions.h](/src/common/definitions.h)
+locally enable faster floating-point math in supported compilers.
+
+```cpp
+MARIAN_FFAST_MATH_BEGIN
+// ffmath code
+MARIAN_FFAST_MATH_END
+```
+
+The usual caveats apply when enabling `fast_math`, and can be found in
+[/src/common/definitions.h](/src/common/definitions.h)
 
 Tensor operators are declared in
 [/src/tensors/tensor_operators.h](/src/tensors/tensor_operators.h), these are
 device-agnostic function that call the relevant device-specific implementation.
 The CPU- and GPU-specific implementation are defined in `cpu` namespace in
 [/src/tensors/cpu/](/src/tensors/cpu/) and the `gpu` namespace
-[/src/tensors/gpu/](/src/tensors/gpu/).
-
-Therefore a typical operator defers to an implementation in the device-specific
-namespace.
+[/src/tensors/gpu/](/src/tensors/gpu/). Therefore a typical operator defers to
+an implementation in the device-specific namespace.
 
 ```cpp
 void TensorOp(marian::Tensor out, marian::Tensor in) {
@@ -416,6 +426,26 @@ implementation that corresponds to the backend device type configured in the
 graph (either GPU or CPU). Without GPU support, only the CPU implementation is
 available.
 
+Many operations are covered by three general tensor operators: `Element`,
+`Aggregate` and `Prod`. The `Element` operator applies a function element-wise
+across an arbitrary number of input tensors and stores the result in the output
+tensor. The `Aggregate` operator also applies a function element-wise across its
+inputs, but instead aggregates the results in the output via a given aggregation
+function. A common aggregation function used is addition, which is the basis of
+the `Add` and `Reduce` operators. Finally, `Prod` deals with products of
+tensors. This operator performs a general matrix multiplication with the
+underlying implementation relying on the libraries mentioned above.
+
+Specialized operators exist to manipulation tensors beyond the cases covered
+above; such as under transposition and concatenation. These operators may even
+be expressed in terms of existing tensor operators.
+
+Furthermore, for complicated multi-operation computations, performance gains and
+memory improvements may be realised by implementing a tensor operator for that
+specific purpose. An example of this is `softmax`, which could be implemented
+using multiple expression operators (`exp`, `sum`), but is instead implemented
+directly as a tensor operator. These optimized implementations may be device
+specific.
 
 ### Declared Specialization
 
@@ -500,7 +530,6 @@ as well. Following these rules for the example of `SinNodeOp` results in the
 following entries:
 
 **element**
-
 ```cpp
 template void Element<Assign<Var<1>, UnaryFunctor<elem::Sin, Assignee<2> > >, marian::Tensor >(Assign<Var<1>, UnaryFunctor<elem::Sin, Assignee<2> > >, marian::Tensor, marian::Tensor);
 ```

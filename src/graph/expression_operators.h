@@ -499,18 +499,41 @@ Expr le(Expr a, float b);  //!< \f$ a \leq b \f$
 
 /** @} */
 
+/**
+ * @brief Computes the dot product of @p a and @p b.
+ *
+ * Computes \f$ C = \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) \f$,
+ * where \f$ \operatorname{op}(A) = A \f$ if @p transA is @c false, and
+ * \f$ \operatorname{op}(A) = A^\top \f$ if @c true. The \f$\alpha\f$ parameter
+ * is set by @p scalar.
+ */
 Expr dot(Expr a,
          Expr b,
          bool transA = false,
          bool transB = false,
          float scalar = 1.f);
 
+/**
+ * @brief Computes the batch dot product of @p a and @p b.
+ * @copydetails dot
+ */
 Expr bdot(Expr a,
           Expr b,
           bool transA = false,
           bool transB = false,
           float scalar = 1.f);
 
+/**
+ * @brief Performs an affine transformation.
+ *
+ * Computes
+ * \f[
+ *    C \leftarrow \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) + C
+ * \f]
+ * where \f$ \operatorname{op}(A) = A \f$ if @p transA is @c false, and
+ * \f$ \operatorname{op}(A) = A^\top \f$ if @c true. The \f$\alpha\f$ parameter
+ * is set by @p scalar.
+ */
 Expr affine(Expr a,
             Expr b,
             Expr c,
@@ -518,7 +541,14 @@ Expr affine(Expr a,
             bool transB = false,
             float scalar = 1.f);
 
+/**
+ * @brief Computes the dot product of CSR-tensor @p A with @p B.
+ */
 Expr csr_dot(const Shape& A_shape, Expr Avalues, Expr Aindices, Expr Aoffsets, Expr B, bool transA = false);
+
+/**
+ * @brief Computes the dot product of @p A with CSR-tensor @p B.
+ */
 Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB = false);
 
 /**

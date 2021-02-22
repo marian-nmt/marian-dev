@@ -965,9 +965,30 @@ Expr scalar_product(Expr a, Expr b, int ax = 0);
 Expr weighted_average(Expr in, Expr weights, int ax = 0);
 
 
+/**
+ * @brief Applies layer normalization over the last dimension.
+ * \f[
+   \frac{x - \mathrm{E}[x]}{\sqrt{\mathrm{Var}[x] + \mathrm{eps}}} \times \gamma + \beta
+ * \f]
+ * @see LayerNormalizationOp
+ */
 Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
+/**
+ * @brief Highway transformation.
+ *
+ * Computes the highway tranform on @p y and @p x as gated by @p t:
+ * \f$ \operatorname{sigmoid}(t) y + (1-\operatorname{sigmoid}(t)) x \f$
+ * @see HighwayNodeOp
+ */
 Expr highway(Expr y, Expr x, Expr t);
+
+/** @copybrief highway
+ *
+ * Generates a highway network for @p x with a @ref relu activated layer and
+ * @ref sigmoid activated layer for gating.
+ * @see mlp::dense()
+ */
 Expr highway(const std::string prefix, Expr x);
 
 /**
@@ -1012,6 +1033,10 @@ Expr convert2cudnnFormat(Expr x);
  */
 Expr convertFromcudnnFormat(Expr x);
 
+/**
+ * @brief Performs average pooling.
+ * @see PoolingOp
+ */
 Expr avg_pooling(Expr x,
                  int height,
                  int width,
@@ -1020,6 +1045,10 @@ Expr avg_pooling(Expr x,
                  int strideHeight = 1,
                  int strideWidth = 1);
 
+/**
+ * @brief Performs max pooling.
+ * @see PoolingOp
+ */
 Expr max_pooling(Expr x,
                  int height,
                  int width,
@@ -1028,6 +1057,10 @@ Expr max_pooling(Expr x,
                  int strideHeight = 1,
                  int strideWidth = 1);
 
+/**
+ * @brief Pooling operation with masking.
+ * @warning not implemented
+ */
 Expr pooling_with_masking(Expr x, Expr mask, int width, bool isEven = false);
 
 /** @} */

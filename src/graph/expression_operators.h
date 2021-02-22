@@ -953,8 +953,15 @@ Expr cross_entropy(Expr a, Expr b, float labelSmoothingAlpha = 0.f, Type outputT
  */
 Expr unlikelihood(Expr a, Expr b);
 
+/**
+ * @brief Computes the scalar product along the specified axis.
+ * @see ScalarProductNodeOp
+ */
 Expr scalar_product(Expr a, Expr b, int ax = 0);
 
+/**
+ * @brief Compute the weighted arithmetic mean along the specified axis.
+ */
 Expr weighted_average(Expr in, Expr weights, int ax = 0);
 
 

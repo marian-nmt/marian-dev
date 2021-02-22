@@ -19,7 +19,7 @@ Expr debug(Expr a, const std::string& message = "");
  */
 Expr checkpoint(Expr a);
 
-typedef Expr(ActivationFunction)(Expr);  //!< ActivationFunction has signature Expr(Expr)
+typedef Expr(ActivationFunction)(Expr);  ///< ActivationFunction has signature Expr(Expr)
 
 /**
  * @brief Convience typedef for graph @ref lambda expressions.
@@ -273,9 +273,9 @@ Expr operator-(Expr a);
  *
  * @{
 */
-Expr operator+(Expr a, Expr b);   //!< @see Implementation in PlusNodeOp
-Expr operator+(float a, Expr b);  //!< @see Implementation in ScalarAddNodeOp
-Expr operator+(Expr a, float b);  //!< @see Implementation in ScalarAddNodeOp
+Expr operator+(Expr a, Expr b);   ///< @see Implementation in PlusNodeOp
+Expr operator+(float a, Expr b);  ///< @see Implementation in ScalarAddNodeOp
+Expr operator+(Expr a, float b);  ///< @see Implementation in ScalarAddNodeOp
 /** @} */
 
 /**
@@ -284,9 +284,9 @@ Expr operator+(Expr a, float b);  //!< @see Implementation in ScalarAddNodeOp
  *
  * @{
 */
-Expr operator-(Expr a, Expr b);   //!< @see Implementation in MinusNodeOp
-Expr operator-(float a, Expr b);  //!< @see Implementation in ScalarAddNodeOp
-Expr operator-(Expr a, float b);  //!< @see Implementation in ScalarAddNodeOp
+Expr operator-(Expr a, Expr b);   ///< @see Implementation in MinusNodeOp
+Expr operator-(float a, Expr b);  ///< @see Implementation in ScalarAddNodeOp
+Expr operator-(Expr a, float b);  ///< @see Implementation in ScalarAddNodeOp
 /** @} */
 
 /**
@@ -295,9 +295,9 @@ Expr operator-(Expr a, float b);  //!< @see Implementation in ScalarAddNodeOp
  *
  * @{
 */
-Expr operator*(Expr a, Expr b);   //!< @see Implementation in MultNodeOp
-Expr operator*(float a, Expr b);  //!< @see Implementation in ScalarMultNodeOp
-Expr operator*(Expr a, float b);  //!< @see Implementation in ScalarMultNodeOp
+Expr operator*(Expr a, Expr b);   ///< @see Implementation in MultNodeOp
+Expr operator*(float a, Expr b);  ///< @see Implementation in ScalarMultNodeOp
+Expr operator*(Expr a, float b);  ///< @see Implementation in ScalarMultNodeOp
 /** @} */
 
 /**
@@ -306,10 +306,10 @@ Expr operator*(Expr a, float b);  //!< @see Implementation in ScalarMultNodeOp
  *
  * @{
 */
-Expr operator/(Expr a, Expr b);   //!< @see Implementation in DivNodeOp
-Expr operator/(float a, Expr b);  //!< Promotes @p a to Expression<ConstantNode> and uses operator/(Expr a, Expr b).
-                                  //!< @todo efficient version of this without ExpressionGraph::constant
-Expr operator/(Expr a, float b);  //!< Implementation via \f$ a * \frac{1}{b} \f$.
+Expr operator/(Expr a, Expr b);   ///< @see Implementation in DivNodeOp
+Expr operator/(float a, Expr b);  ///< Promotes @p a to Expression<ConstantNode> and uses operator/(Expr a, Expr b).
+                                  ///< @todo efficient version of this without ExpressionGraph::constant
+Expr operator/(Expr a, float b);  ///< Implementation via \f$ a * \frac{1}{b} \f$.
 /** @} */
 
 /** @} */
@@ -468,12 +468,12 @@ Expr2 argmin(Expr a, int axis);
  * @name Expr-Expr comparisons
  * @{
  */
-Expr lt(Expr a, Expr b);  //!< \f$ a < b \f$
-Expr eq(Expr a, Expr b);  //!< \f$ a \equiv b \f$
-Expr gt(Expr a, Expr b);  //!< \f$ a > b \f$
-Expr ge(Expr a, Expr b);  //!< \f$ a \geq b \f$
-Expr ne(Expr a, Expr b);  //!< \f$ a \neq b \f$
-Expr le(Expr a, Expr b);  //!< \f$ a \leq b \f$
+Expr lt(Expr a, Expr b);  ///< \f$ a < b \f$
+Expr eq(Expr a, Expr b);  ///< \f$ a \equiv b \f$
+Expr gt(Expr a, Expr b);  ///< \f$ a > b \f$
+Expr ge(Expr a, Expr b);  ///< \f$ a \geq b \f$
+Expr ne(Expr a, Expr b);  ///< \f$ a \neq b \f$
+Expr le(Expr a, Expr b);  ///< \f$ a \leq b \f$
 /** @} */
 
 /**
@@ -481,19 +481,19 @@ Expr le(Expr a, Expr b);  //!< \f$ a \leq b \f$
  * Floats are promoted to a @ref ExpressionGraph::constant and use the Expr-Expr methods
  * @{
  */
-Expr lt(float a, Expr b);  //!< \f$ a < b \f$
-Expr eq(float a, Expr b);  //!< \f$ a \equiv b \f$
-Expr gt(float a, Expr b);  //!< \f$ a > b \f$
-Expr ge(float a, Expr b);  //!< \f$ a \geq b \f$
-Expr ne(float a, Expr b);  //!< \f$ a \neq b \f$
-Expr le(float a, Expr b);  //!< \f$ a \leq b \f$
+Expr lt(float a, Expr b);  ///< \f$ a < b \f$
+Expr eq(float a, Expr b);  ///< \f$ a \equiv b \f$
+Expr gt(float a, Expr b);  ///< \f$ a > b \f$
+Expr ge(float a, Expr b);  ///< \f$ a \geq b \f$
+Expr ne(float a, Expr b);  ///< \f$ a \neq b \f$
+Expr le(float a, Expr b);  ///< \f$ a \leq b \f$
 
-Expr lt(Expr a, float b);  //!< \f$ a < b \f$
-Expr eq(Expr a, float b);  //!< \f$ a \equiv b \f$
-Expr gt(Expr a, float b);  //!< \f$ a > b \f$
-Expr ge(Expr a, float b);  //!< \f$ a \geq b \f$
-Expr ne(Expr a, float b);  //!< \f$ a \neq b \f$
-Expr le(Expr a, float b);  //!< \f$ a \leq b \f$
+Expr lt(Expr a, float b);  ///< \f$ a < b \f$
+Expr eq(Expr a, float b);  ///< \f$ a \equiv b \f$
+Expr gt(Expr a, float b);  ///< \f$ a > b \f$
+Expr ge(Expr a, float b);  ///< \f$ a \geq b \f$
+Expr ne(Expr a, float b);  ///< \f$ a \neq b \f$
+Expr le(Expr a, float b);  ///< \f$ a \leq b \f$
 /** @} */
 
 /** @} */

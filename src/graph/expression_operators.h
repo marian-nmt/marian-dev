@@ -66,10 +66,10 @@ Expr sigmoid(const std::vector<Expr>& nodes);
 /**
  * Swish node.
  *
- * Computes the Swish activation function with \f$\beta=1 \f$
- * \f[
+ * Computes the Swish activation function with @f$\beta=1 @f$
+ * @f[
  *    \operatorname{swish}(x) = x \cdot \operatorname{sigmoid}(\beta x)
- * \f]
+ * @f]
  *
  * @see SwishNodeOp
  */
@@ -86,13 +86,13 @@ Expr swish(const std::vector<Expr>& nodes);
  * Gaussian Error Linear Unit (GELU).
  *
  * Computes an _approxmiation_ to the Gaussian Error Linear Unit
- * \f[
+ * @f[
  *    \operatorname{gelu}(x) = x \cdot \Phi(x)
  *      = x \cdot \frac{1}{2}\left[
  *         1 + \operatorname{erf}\left(\frac{x}{\sqrt{2}}\right)
  *      \right]
  *      \sim \operatorname{swish}(x, 1.702)
- * \f]
+ * @f]
  *
  * using @ref SwishNodeOp(a, 1.702)
  * @see SwishNodeOp
@@ -143,13 +143,13 @@ Expr relu(const std::vector<Expr>& nodes);
  * Computes the <a href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)#LeakyReLU">
  * LeakyReLU</a> activation for the expression
  * Activation function:
- * \f[
+ * @f[
  *   \operatorname{leakyrelu}(x) =
  *   \begin{cases}
  *     0.01x & \text{if } x \leq 0 \\
  *     x & \text{if } x > 0
  *   \end{cases}
- * \f]
+ * @f]
  *
  * @see PReLUNodeOp
  */
@@ -166,13 +166,13 @@ Expr leakyrelu(const std::vector<Expr>& nodes);
  *
  * Computes the <a href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)#Parametric_ReLU">
  * Parametric ReLU</a> activation for the expression
- * \f[
+ * @f[
  *   \operatorname{leakyrelu}(x) =
  *   \begin{cases}
  *     \alpha x & \text{if } x \leq 0 \\
  *     x & \text{if } x > 0
  *   \end{cases}
- * \f]
+ * @f]
  *
  * @see PReLUNodeOp
  * @note @p alpha is **not** trainable.
@@ -198,7 +198,7 @@ Expr prelu(const std::vector<Expr>&, float alpha = 0.01);
 /**
  * Natural logarithm.
  *
- * Computes the element-wise natural logarithm of the expression: \f$ \log(a) \f$
+ * Computes the element-wise natural logarithm of the expression: @f$ \log(a) @f$
  * @see LogNodeOp
  */
 Expr log(Expr a);
@@ -206,7 +206,7 @@ Expr log(Expr a);
 /**
  * Natural exponentiation.
  *
- * Computes the element-wise natural logarithm of the expression: \f$ e^a \f$
+ * Computes the element-wise natural logarithm of the expression: @f$ e^a @f$
  * @see ExpNodeOp
  */
 Expr exp(Expr a);
@@ -215,19 +215,19 @@ Expr exp(Expr a);
 ///@name Trigonometric functions
 ///@{
 /**
-* Sine. Computes the element-wise sine of the expression: \f$ \sin(a) \f$.
+* Sine. Computes the element-wise sine of the expression: @f$ \sin(a) @f$.
 * @see SinNodeOp
 */
 Expr sin(Expr a);
 
 /**
-* Cosine. Computes the element-wise cosine of the expression: \f$ \cos(a) \f$.
+* Cosine. Computes the element-wise cosine of the expression: @f$ \cos(a) @f$.
 * @see CosNodeOp
 */
 Expr cos(Expr a);
 
 /**
-* Tangent. Computes the element-wise tangent of the expression: \f$ \tan(a) \f$.
+* Tangent. Computes the element-wise tangent of the expression: @f$ \tan(a) @f$.
 * @see TanNodeOp
 */
 Expr tan(Expr a);
@@ -235,14 +235,14 @@ Expr tan(Expr a);
 ///@}
 
 /**
- * @addtogroup graph_ops_arithmetic Arithmetic
+* @addtogroup graph_ops_arithmetic Arithmetic
  * Performs arithmetic in the expression graph.
  * @ingroup graph_ops
  * @{
  */
 
 /**
- * Returns \f$ -a \f$.
+ * Returns @f$ -a @f$.
  * @see NegNodeOp for implementation.
  */
 ///@{
@@ -253,7 +253,7 @@ Expr operator-(Expr a);
 
 /**
  * @name Addition
- * Performs \f$ a + b \f$ in the expression graph.
+ * Performs @f$ a + b @f$ in the expression graph.
 */
 ///@{
 Expr operator+(Expr a, Expr b);   ///< @see Implementation in PlusNodeOp
@@ -263,7 +263,7 @@ Expr operator+(Expr a, float b);  ///< @see Implementation in ScalarAddNodeOp
 
 /**
  * @name Subtraction
- * Performs \f$ a - b \f$ in the expression graph.
+ * Performs @f$ a - b @f$ in the expression graph.
  *
  */
 ///@{
@@ -274,7 +274,7 @@ Expr operator-(Expr a, float b);  ///< @see Implementation in ScalarAddNodeOp
 
 /**
  * @name Multiplication
- * Performs \f$ a * b \f$ in the expression graph.
+ * Performs @f$ a * b @f$ in the expression graph.
  */
 ///@{
 Expr operator*(Expr a, Expr b);   ///< @see Implementation in MultNodeOp
@@ -284,13 +284,13 @@ Expr operator*(Expr a, float b);  ///< @see Implementation in ScalarMultNodeOp
 
 /**
  * @name Division
- * Performs \f$ a / b \f$ in the expression graph.
+ * Performs @f$ a / b @f$ in the expression graph.
  */
 ///@{
 Expr operator/(Expr a, Expr b);   ///< @see Implementation in DivNodeOp
 Expr operator/(float a, Expr b);  ///< Promotes @p a to Expression<ConstantNode> and uses operator/(Expr a, Expr b).
                                   ///< @todo efficient version of this without ExpressionGraph::constant
-Expr operator/(Expr a, float b);  ///< Implementation via \f$ a * \frac{1}{b} \f$.
+Expr operator/(Expr a, float b);  ///< Implementation via @f$ a * \frac{1}{b} @f$.
 ///@}
 
 ///@}
@@ -298,7 +298,7 @@ Expr operator/(Expr a, float b);  ///< Implementation via \f$ a * \frac{1}{b} \f
 /**
  * Computes the square root of an expression.
  *
- * Evaluates \f$\sqrt{a + \mathrm{eps}} \f$ element-wise on the expression
+ * Evaluates @f$\sqrt{a + \mathrm{eps}} @f$ element-wise on the expression
  *
  * @param a   Expression to square root
  * @param eps Optional positive epsilon to avoid domain errors for small values in @p a
@@ -309,7 +309,7 @@ Expr sqrt(Expr a, float eps = 0.f);
 /**
  * Computes the square of an expression.
  *
- * Evaluates \f$a^2 \f$ element-wise on the expression
+ * Evaluates @f$a^2 @f$ element-wise on the expression
  *
  * @param a Expression to square
  * @ingroup graph_ops_mathematical
@@ -319,7 +319,7 @@ Expr square(Expr a);
 /**
  * Calculate the element-wise abolute value of an expression.
  *
- * Returns the value of \f$ |a| \f$ element-wise for the expression @p a.
+ * Returns the value of @f$ |a| @f$ element-wise for the expression @p a.
  * @see AbsNodeOp.
  * @ingroup graph_ops_mathematical
  */
@@ -330,7 +330,7 @@ Expr abs(Expr a);
 // Expr pow(Expr a, float b);
 
 /**
- * Computes \f$\log(e^a + e^b)\f$.
+ * Computes @f$\log(e^a + e^b)@f$.
  */
 Expr logaddexp(Expr a, Expr b);
 
@@ -443,7 +443,7 @@ Expr2 argmin(Expr a, int axis);
  * Performs comparision operations in the expression graph.
  * @ingroup graph_ops
  *
- * Uses CmpNodeOp to perform comparison of graph expression e.g. \f$ a < b \f$.
+ * Uses CmpNodeOp to perform comparison of graph expression e.g. @f$ a < b @f$.
  *
  * @note
  * We cannot overload the relational operators, as they also mean something for Expr itself.
@@ -457,12 +457,12 @@ Expr2 argmin(Expr a, int axis);
  * @name Expr-Expr comparisons
  */
 ///@{
-Expr lt(Expr a, Expr b);  ///< \f$ a < b \f$
-Expr eq(Expr a, Expr b);  ///< \f$ a \equiv b \f$
-Expr gt(Expr a, Expr b);  ///< \f$ a > b \f$
-Expr ge(Expr a, Expr b);  ///< \f$ a \geq b \f$
-Expr ne(Expr a, Expr b);  ///< \f$ a \neq b \f$
-Expr le(Expr a, Expr b);  ///< \f$ a \leq b \f$
+Expr lt(Expr a, Expr b);  ///< @f$ a < b @f$
+Expr eq(Expr a, Expr b);  ///< @f$ a \equiv b @f$
+Expr gt(Expr a, Expr b);  ///< @f$ a > b @f$
+Expr ge(Expr a, Expr b);  ///< @f$ a \geq b @f$
+Expr ne(Expr a, Expr b);  ///< @f$ a \neq b @f$
+Expr le(Expr a, Expr b);  ///< @f$ a \leq b @f$
 ///@}
 
 /**
@@ -470,19 +470,19 @@ Expr le(Expr a, Expr b);  ///< \f$ a \leq b \f$
  * Floats are promoted to a @ref ExpressionGraph::constant and use the Expr-Expr methods
  */
 ///@{
-Expr lt(float a, Expr b);  ///< \f$ a < b \f$
-Expr eq(float a, Expr b);  ///< \f$ a \equiv b \f$
-Expr gt(float a, Expr b);  ///< \f$ a > b \f$
-Expr ge(float a, Expr b);  ///< \f$ a \geq b \f$
-Expr ne(float a, Expr b);  ///< \f$ a \neq b \f$
-Expr le(float a, Expr b);  ///< \f$ a \leq b \f$
+Expr lt(float a, Expr b);  ///< @f$ a < b @f$
+Expr eq(float a, Expr b);  ///< @f$ a \equiv b @f$
+Expr gt(float a, Expr b);  ///< @f$ a > b @f$
+Expr ge(float a, Expr b);  ///< @f$ a \geq b @f$
+Expr ne(float a, Expr b);  ///< @f$ a \neq b @f$
+Expr le(float a, Expr b);  ///< @f$ a \leq b @f$
 
-Expr lt(Expr a, float b);  ///< \f$ a < b \f$
-Expr eq(Expr a, float b);  ///< \f$ a \equiv b \f$
-Expr gt(Expr a, float b);  ///< \f$ a > b \f$
-Expr ge(Expr a, float b);  ///< \f$ a \geq b \f$
-Expr ne(Expr a, float b);  ///< \f$ a \neq b \f$
-Expr le(Expr a, float b);  ///< \f$ a \leq b \f$
+Expr lt(Expr a, float b);  ///< @f$ a < b @f$
+Expr eq(Expr a, float b);  ///< @f$ a \equiv b @f$
+Expr gt(Expr a, float b);  ///< @f$ a > b @f$
+Expr ge(Expr a, float b);  ///< @f$ a \geq b @f$
+Expr ne(Expr a, float b);  ///< @f$ a \neq b @f$
+Expr le(Expr a, float b);  ///< @f$ a \leq b @f$
 ///@}
 
 ///@}
@@ -490,9 +490,9 @@ Expr le(Expr a, float b);  ///< \f$ a \leq b \f$
 /**
  * Computes the dot product of @p a and @p b.
  *
- * Computes \f$ C = \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) \f$,
- * where \f$ \operatorname{op}(A) = A \f$ if @p transA is @c false, and
- * \f$ \operatorname{op}(A) = A^\top \f$ if @c true. The \f$\alpha\f$ parameter
+ * Computes @f$ C = \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) @f$,
+ * where @f$ \operatorname{op}(A) = A @f$ if @p transA is @c false, and
+ * @f$ \operatorname{op}(A) = A^\top @f$ if @c true. The @f$\alpha@f$ parameter
  * is set by @p scalar.
  */
 Expr dot(Expr a,
@@ -515,9 +515,9 @@ Expr bdot(Expr a,
  * Performs an affine transformation.
  *
  * Computes
- * \f$ C \leftarrow \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) + C\f$,
- * where \f$ \operatorname{op}(A) = A \f$ if @p transA is @c false, and
- * \f$ \operatorname{op}(A) = A^\top \f$ if @c true. The \f$\alpha\f$ parameter
+ * @f$ C \leftarrow \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) + C@f$,
+ * where @f$ \operatorname{op}(A) = A @f$ if @p transA is @c false, and
+ * @f$ \operatorname{op}(A) = A^\top @f$ if @c true. The @f$\alpha@f$ parameter
  * is set by @p scalar.
  */
 Expr affine(Expr a,
@@ -616,7 +616,7 @@ Expr reshape(Expr a, Shape shape);
 /**
  * Clip the values in an expression.
  *
- * Clips the values of the Expr @p a to be within the interval \f$ [-c, c] \f$.
+ * Clips the values of the Expr @p a to be within the interval @f$ [-c, c] @f$.
  *
  * @param a Expr to clip
  * @param c Threshold to clip at
@@ -628,7 +628,7 @@ Expr clip(Expr a, float c);
 /**
  * Clip the gradient in an expression.
  *
- * Clips the gradient of the Expr @p a to be within the interval \f$ [-c, c] \f$
+ * Clips the gradient of the Expr @p a to be within the interval @f$ [-c, c] @f$
  *
  * @see clip for the equivalent function which clips values
  * @see ClipGradientNodeOp
@@ -905,9 +905,9 @@ Expr logsumexp(Expr a, int ax);
  * Computes the softmax fuction along the given axis.
  *
  * Applies the softmax function
- * \f[
+ * @f[
     \operatorname{softmax}(x_i) = \frac{\exp(x_i)}{\sum_j \exp(x_j)}
- * \f]
+ * @f]
  * @see SoftmaxNodeOp
  */
 Expr softmax(Expr x, int axis = -1);
@@ -923,7 +923,7 @@ Expr softmax(Expr a, Expr zeroOneMask, int axis = -1);
 /**
  * Computes the log of the softmax function along the last axis.
  *
- * Applies \f$ \log(\operatorname{softmax}(x)) \f$.
+ * Applies @f$ \log(\operatorname{softmax}(x)) @f$.
  * @see LogSoftmaxNodeOp
  */
 Expr logsoftmax(Expr a);
@@ -931,8 +931,8 @@ Expr logsoftmax(Expr a);
 /**
  * Computes the cross-entropy loss.
  *
- * @param labelSmoothingAlpha The amount of label smoothing \f$\alpha \in [0,1]\f$.
- * Default is no smoothing, \f$\alpha = 0 \f$.
+ * @param labelSmoothingAlpha The amount of label smoothing @f$\alpha \in [0,1]@f$.
+ * Default is no smoothing, @f$\alpha = 0 @f$.
  * @see CrossEntropyNodeOp
  */
 Expr cross_entropy(Expr a, Expr b, float labelSmoothingAlpha = 0.f, Type outputType = Type::float32);
@@ -941,7 +941,7 @@ Expr cross_entropy(Expr a, Expr b, float labelSmoothingAlpha = 0.f, Type outputT
  * Computes the unlikelihood loss.
  *
  * Computes the <a href="https://arxiv.org/abs/1908.04319">unlikelihood</a> loss
- * \f$ -\log \sum (1 - \operatorname{softmax}(x)) \f$
+ * @f$ -\log \sum (1 - \operatorname{softmax}(x)) @f$
  */
 Expr unlikelihood(Expr a, Expr b);
 
@@ -959,9 +959,9 @@ Expr weighted_average(Expr in, Expr weights, int ax = 0);
 
 /**
  * Applies layer normalization over the last dimension.
- * \f[
+ * @f[
    \frac{x - \mathrm{E}[x]}{\sqrt{\mathrm{Var}[x] + \mathrm{eps}}} \times \gamma + \beta
- * \f]
+ * @f]
  * @see LayerNormalizationOp
  */
 Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
@@ -970,7 +970,7 @@ Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
  * Highway transformation.
  *
  * Computes the highway tranform on @p y and @p x as gated by @p t:
- * \f$ \operatorname{sigmoid}(t) y + (1-\operatorname{sigmoid}(t)) x \f$
+ * @f$ \operatorname{sigmoid}(t) y + (1-\operatorname{sigmoid}(t)) x @f$
  * @see HighwayNodeOp
  */
 Expr highway(Expr y, Expr x, Expr t);

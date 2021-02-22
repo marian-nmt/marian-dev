@@ -46,7 +46,7 @@ several files:
   - Functional Operator
     - [/src/functional/operators.h](/src/functional/operators.h)
   - Tensor operation
-    - [/src/tensor/tensor_operators.h](/src/tensor/tensor_operators.h)
+    - [/src/tensors/tensor_operators.h](/src/tensors/tensor_operators.h)
     - [/src/tensors/cpu/tensor_operators.cpp](/src/tensors/cpu/tensor_operators.cpp)
     - [/src/tensors/gpu/tensor_operators.cpp](/src/tensors/gpu/tensor_operators.cpp)
   - Declared Specialization
@@ -222,8 +222,8 @@ struct SinNodeOp : public UnaryNodeOp {
 
   const std::string type() override { return "sin"; }
 };
-
 ```
+
 In this code, the constructor trivially initialises the `UnaryNodeOp`, passing
 the the expression `x` as its input. This propagates up to `NaryNodeOp` and
 becomes `child(0)` of the node. The size and type of the SinNodeOp are
@@ -359,7 +359,7 @@ general template must produce a runtime abort.
 
 The final component of the functional operator is to call the macro that enables
 interoperability with the framework of [/src/functional](/src/functional). For a
-unary operator, this is the marco `UNARY`.
+unary operator, this is the macro `UNARY`.
 
 ```cpp
 UNARY(Sin,     sin,        Ops<ElementType>::sin(x));

@@ -493,5 +493,7 @@ error output and extract the needed signature. To extract the signature:
 
 To conform with definitions in the codebase, we should replace
 `IntrusivePtr<marian::TensorBase>` with its typedef `marian::Tensor`. Note that
-as these files use the `marian::functional` namespace it is also possible to
-omit the `marian::functional::` prefix.
+as these files are included in `marian::gpu` namespace, and explicitly use
+`marian::functional` namespace it is also possible to omit both of these
+prefixes. Typically, the namespace prefix of the specialized function is removed
+as well.

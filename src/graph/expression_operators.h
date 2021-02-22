@@ -1020,7 +1020,11 @@ static inline Expr dropout(Expr x, float dropProb) {
   return dropout(x, dropProb, x->shape());
 }
 
-Expr shift(Expr, Shape, float padValue = 0);
+/**
+ * @brief Shifts the elements of an expression by a per-axis offset @p shift
+ * padded with @p padValue.
+ */
+Expr shift(Expr x, Shape shift, float padValue = 0);
 
 /**
  * @brief Reindexes an expression from internal to cuDNN format.

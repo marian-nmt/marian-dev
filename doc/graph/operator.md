@@ -496,4 +496,25 @@ To conform with definitions in the codebase, we should replace
 as these files are included in `marian::gpu` namespace, and explicitly use
 `marian::functional` namespace it is also possible to omit both of these
 prefixes. Typically, the namespace prefix of the specialized function is removed
-as well.
+as well. Following these rules for the example of `SinNodeOp` results in the
+following entries:
+
+**element**
+
+```cpp
+template void Element<Assign<Var<1>, UnaryFunctor<elem::Sin, Assignee<2> > >, marian::Tensor >(Assign<Var<1>, UnaryFunctor<elem::Sin, Assignee<2> > >, marian::Tensor, marian::Tensor);
+```
+
+**add**
+```cpp
+template void Add<BinaryFunctor<elem::Mult,Assignee<1>,UnaryFunctor<elem::Cos,Assignee<2> > >,class marian::Tensor,class marian::Tensor >(BinaryFunctor<elem::Mult,Assignee<1>,UnaryFunctor<elem::Cos,Assignee<2> > >,float,class marian::Tensor,class marian::Tensor,class marian::Tensor);
+```
+
+**add_all**
+```cpp
+template void AggregateAll<float,float,BinaryFunctor<elem::Mult,Assignee<1>,UnaryFunctor<elem::Cos,Assignee<2> > >,BinaryFunctor<elem::Plus,Assignee<1>,Assignee<2> > >(std::shared_ptr<marian::Allocator>,BinaryFunctor<elem::Mult,Assignee<1>,UnaryFunctor<elem::Cos,Assignee<2> > >,float,BinaryFunctor<elem::Plus,Assignee<1>,Assignee<2> >,float,marian::Tensor,marian::Tensor,marian::Tensor);
+
+#if COMPILE_FP16
+template void AggregateAll<__half,float,BinaryFunctor<elem::Mult,Assignee<1>,UnaryFunctor<elem::Cos,Assignee<2> > >,BinaryFunctor<elem::Plus,Assignee<1>,Assignee<2> > >(std::shared_ptr<marian::Allocator>,BinaryFunctor<elem::Mult,Assignee<1>,UnaryFunctor<elem::Cos,Assignee<2> > >,float,BinaryFunctor<elem::Plus,Assignee<1>,Assignee<2> >,float,marian::Tensor,marian::Tensor,marian::Tensor);
+#endif
+```

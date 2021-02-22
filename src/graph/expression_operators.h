@@ -963,6 +963,9 @@ Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 Expr highway(Expr y, Expr x, Expr t);
 Expr highway(const std::string prefix, Expr x);
 
+/**
+ * @brief Performs dropout using a given mask.
+ */
 static inline Expr dropout(Expr x, Expr mask) {
   if (mask)
     return x * mask;
@@ -970,6 +973,9 @@ static inline Expr dropout(Expr x, Expr mask) {
     return x;
 }
 
+/**
+ * @brief Performs dropout with a given probably and explicit shape.
+ */
 static inline Expr dropout(Expr x, float dropProb, Shape shape) {
   if(dropProb == 0)
     return x;
@@ -978,6 +984,9 @@ static inline Expr dropout(Expr x, float dropProb, Shape shape) {
   return dropout(x, mask);
 }
 
+/**
+ * @brief Performs dropout with a given probably.
+ */
 static inline Expr dropout(Expr x, float dropProb) {
   if(dropProb == 0)
     return x;

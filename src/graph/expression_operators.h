@@ -909,16 +909,48 @@ Expr prod(Expr a, int ax);
  */
 Expr logsumexp(Expr a, int ax);
 
+/**
+ * @brief Computes the softmax fuction along the given axis.
+ *
+ * Applies the softmax function
+ * \f[
+    \operatorname{softmax}(x_i) = \frac{\exp(x_i)}{\sum_j \exp(x_j)}
+ * \f]
+ * @see SoftmaxNodeOp
+ */
 Expr softmax(Expr x, int axis = -1);
 
-// @TODO: maybe get rid of this entirely to not obfuscate, what's going on inside.
-// @TODO: switch to log-masking everywhere?
+/**
+ * @copybrief softmax
+ *
+ * Applies the softmax function over the unmasked values.
+ * @see SoftmaxNodeOp
+ */
 Expr softmax(Expr a, Expr zeroOneMask, int axis = -1);
 
+/**
+ * @brief Computes the log of the softmax function along the last axis.
+ *
+ * Applies \f$ \log(\operatorname{softmax}(x)) \f$.
+ * @see LogSoftmaxNodeOp
+ */
 Expr logsoftmax(Expr a);
 
+/**
+ * @brief Computes the cross-entropy loss.
+ *
+ * @param labelSmoothingAlpha The amount of label smoothing \f$\alpha \in [0,1]\f$.
+ * Default is no smoothing, \f$\alpha = 0 \f$.
+ * @see CrossEntropyNodeOp
+ */
 Expr cross_entropy(Expr a, Expr b, float labelSmoothingAlpha = 0.f, Type outputType = Type::float32);
 
+/**
+ * @brief Computes the unlikelihood loss.
+ *
+ * Computes the <a href="https://arxiv.org/abs/1908.04319">unlikelihood</a> loss
+ * \f$ -\log \sum (1 - \operatorname{softmax}(x)) \f$
+ */
 Expr unlikelihood(Expr a, Expr b);
 
 Expr scalar_product(Expr a, Expr b, int ax = 0);

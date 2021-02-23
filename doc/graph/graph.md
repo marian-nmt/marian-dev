@@ -6,7 +6,7 @@ Dynamic declaration, which means a new graph is created for each training instan
 It allows handling of variably sized inputs, as well as the cases where the graph may change depending on the results of previous steps.
 Compared to static declaration, dynamic computation graph could be expensive in terms of creating and optimising computation graphs.
 Marian uses careful memory management to remove overhead in computation graph construction, and supports efficient execution on both CPU and GPU.
-The main implementation of computation graph is in under `src/graph` directory.  
+The main implementation of computation graph is in under [`src/graph`](../../src/graph) directory.  
 
 Building blocks for graphs:
 
@@ -61,7 +61,7 @@ The _workspace memory_ means the size of the memory available for the forward an
 This does not include model size and optimizer parameters that are allocated outsize workspace. 
 Hence you cannot allocate all device memory to workspace.
 
-To create a graph, Marian offer a set of shortcut functions that implements the common expression operators for a neural network (see `src/graph/expression_operators.h`), such as `affine()`. 
+To create a graph, Marian offer a set of shortcut functions that implements the common expression operators for a neural network (see [`src/graph/expression_operators.h`](../../src/graph/expression_operators.h)), such as `affine()`. 
 These functions actually construct the corresponding operation nodes in the graph, make links with other nodes. 
 E.g., `affine()` construct a `AffineNodeOp` node in the graph. 
 Thus, building a graph turns into a simple task of defining expressions by using those functions. 
@@ -143,7 +143,7 @@ auto x = graph->constant({N, NUM_FEATURES}, inits::fromVector(inputData));
 
 For the above example, the shape of the constant node is `{N, NUM_FEATURES}`, and the value of the constant node is initialised from a vector `inputData`.
 `inits::fromVector()` returns a `NodeInitializers` which is a functor used to initialise a tensor by copying from the given vector. 
-More functions used to initialise a node can be found in `node_initializers.h` file. 
+More functions used to initialise a node can be found in [`src/graph/node_initializers.h`](../../src/graph/node_initializers.h) file. 
 Marian also provides some shortcut functions to construct special constant nodes, such as `ones()` and `zeros()`:
 
 ```cpp
@@ -157,8 +157,8 @@ auto zeros = graph()->zeros({10,10});
 
 `ParamNode` is used to store model parameters whose value can be changed during the training, such as weights and biases. 
 In addition to the shape and the element type, we need to specify wether a `ParamNode` object is _trainable_ or not. 
-If a parameter node is  _trainable_, then its value will be traced and updated during the training procedure.
-For a  `ParamNode`, the default value of `trainable_` is `true`. 
+If a parameter node is _trainable_, then its value will be traced and updated during the training procedure.
+For a `ParamNode`, the default value of `trainable_` is `true`. 
 We can define whether this parameter node is trainable by `Node::setTrainable()` function.
 To construct a parameter node in the graph, we use `param()` function in `ExpressionGraph` class. 
 For a parameter node, we need to specify its name.
@@ -187,7 +187,7 @@ auto h = tanh(affine(x, W1, b1));
 ```
 
 In the above example, `affine()` and `tanh()` actually add `AffineNodeOp` and `TanhNodeOp` nodes to the graph. 
-For more shortcut functions used to add operations in the graph, you can find in `expression_operators.h` file.
+For more shortcut functions used to add operations in the graph, you can find in [`src/graph/expression_operators.h`](../../src/graph/expression_operators.h) file.
 
 ## Graph execution
 
@@ -280,7 +280,7 @@ This comes to how to define the loss function and optimiser for the graph.
 A loss function is used to calculate the model error between the predicated value and the actual value. 
 The goal is to minimise this error during training. 
 In a graph, the loss function is also represented as a group of node(s). 
-You can also use the operators provided in  `expression_operators.h` file to define the loss function. 
+You can also use the operators provided in [`expression_operators.h`](../../src/graph/expression_operators.h) file to define the loss function. 
 E.g., Marian offers `cross_entropy()` function to compute the cross-entropy loss between true labels and predicted labels.
 
 **Define a loss function for modified Example 1**
@@ -371,8 +371,7 @@ All the tensor objects for a graph is stored in its `tensors_` attribute.
 Since each `Node` can result in new tensors, this attribute is used to allocate memory for new tensors during the forward and backward pass.
 This `tensors_` attribute gets cleared before a new graph is built. 
 Another important attribute in `ExpressionGraph` is `paramsByElementType_`. 
-This attribute holds memory and nodes that corresponds to graph parameters. 
-The key is a `Type` and the mapped value is a set of parameter objects with corresponding type. 
+This attribute holds memory and nodes that corresponds to graph parameters.
 You can call `params()` function in a graph to get all the parameter objects:
 
 ```cpp
@@ -403,6 +402,3 @@ graph->save(filename);
 // load model from a file
 graph->load(filename);
 ```
-
-## Layers
-It is under development.

@@ -194,7 +194,7 @@ void ExpressionGraph::backward(bool reset, float clipValue) {
   bool firstNaN = true;
   while(!nodesBackward_.empty()) {
     auto v = nodesBackward_.back();  // return the last element
-    nodesBackward_.pop_back();            // remove the last element
+    nodesBackward_.pop_back();       // remove the last element
 
     // for non-top nodes: allocates memory and initialises gradients to 0
     for(auto&& child : v->children())

@@ -99,9 +99,9 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn, bool fanOut, float scalingFactor)
     float scale = sqrtf(6.0f / (t->shape()[-2] + t->shape()[-1]));
     if(fanIn && !fanOut)
       scale = sqrtf(3.0f / t->shape()[-2]); // fanIn mode: the scale of tensor is adapted by the input variance
-                                               // results in columns of matrix to be ~unit range
+                                            // results in columns of matrix to be ~unit range
     if(!fanIn && fanOut)
-      scale = sqrtf(3.0f / t->shape()[-1]);  // fanOut mode: the scale of tensor is adapted by the output variance
+      scale = sqrtf(3.0f / t->shape()[-1]); // fanOut mode: the scale of tensor is adapted by the output variance
 
     scale *= scalingFactor;
 

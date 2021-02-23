@@ -13,8 +13,7 @@ namespace marian {
 class ExpressionGraph; // Forward declaration
 /**
  * The namespace inits.
- * Declare class NodeInitializer and all the available
- * functions to initialise a node
+ * Declare class NodeInitializer and all the available functions to initialise a node.
 */
 namespace inits {
 
@@ -44,8 +43,8 @@ Ptr<NodeInitializer> fromLambda(std::function<void(Tensor)>&& func);
 
 /**
  * Use a lambda function of form [](Tensor t) { do something with t } to initialize tensor.
- * Create temporary tensor of Type intermediateType first, initialize and then copy/convert to actual Tensor
- * Useful for functions that can only operate on a specific type of tensor
+ * Create temporary tensor of Type intermediateType first, initialize and then copy/convert to actual Tensor.
+ * Useful for functions that can only operate on a specific type of tensor.
  */
 Ptr<NodeInitializer> fromLambda(std::function<void(Tensor)>&& func, Type intermediateType);
 
@@ -105,6 +104,8 @@ Ptr<NodeInitializer> normal(float mean = 0.f, float stddev = 1.f);
  * If `marian` is compiled without `CUDA`, a random generator
  * from the C++ standard library is used. These random generators
  * do not have the same random sequences.
+ * @param a the lower bound of interval
+ * @param b the upper bound of interval
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> uniform(float a = 0.f, float b = 1.f);
@@ -115,11 +116,11 @@ Ptr<NodeInitializer> uniform(float a = 0.f, float b = 1.f);
  * a random variable which takes value `1` with probability p, and
  * value `0` with probability (1-p).
  * By default this function generates a tensor of 0 and 1 with probability p
- * if bernoulli(p) is called.
- * We offer `scale` and `shift` parameters which can map {0,1} to {0,1}*`scale`+`shift`.
+ * if bernoulli(p) is called. We offer `scale` and `shift` parameters which
+ * can map {0,1} to {0,1}*`scale`+`shift`.
  * E.g., bernoulli(tensor, 0.5f, 2.f, -1.f) where p=0.5f, scale=2.f, shift=-1.f.
- * {0,1} is mapped to {0,1}*2+(-1)= {-1,1}.
- * It generates a tensor composed of 50% of 1 and 50% of -1.
+ * {0,1} is mapped to {0,1}*2+(-1)= {-1,1}. It generates a tensor composed of
+ * 50% of 1 and 50% of -1.
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> bernoulli(float p, float scale = 1.f, float shift = 0.f);
@@ -162,7 +163,7 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn = false, bool fanOut = false, floa
 Ptr<NodeInitializer> glorotNormal(bool fanIn = false, bool fanOut = false, float scale = 1.f);
 
 /**
- * @brief Initialize a dropout mask (a tensor of 0 and 1) with given dropout probability.
+ * Initialize a dropout mask (a tensor of 0 and 1) with given dropout probability.
  * <a href=https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf>Dropout</a>
  * is proposed as a technique to prevent Neural Networks from overfitting.
  * @param dropoutProbability a float type defines the dropout probability.
@@ -173,6 +174,7 @@ Ptr<NodeInitializer> dropout(float dropoutProbability);
 
 /**
  * Initialize with gumbel noise, i.e. -log(-log(u)) where u ~ Uniform(0 + eps, 1 - eps).
+ * @param eps parameter controls the model shape
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> gumbel(float eps = 1e-5f);
@@ -181,6 +183,7 @@ Ptr<NodeInitializer> gumbel(float eps = 1e-5f);
  * Initialize tensor by *copying* from the given vector.
  * Creates a NodeInitializer that will initialize the tensor
  * by *copying* the values from the given vector
+ * @param v vector
  * @return A NodeInitializer
  */
 template <typename T>
@@ -188,12 +191,11 @@ Ptr<NodeInitializer> fromVector(const std::vector<T>& v);
 
 /**
  * Initialize tensor by *moving* from the given vector.
- * Creates a NodeInitializer that will initialize the tensor
- * by *moving* the values from the given vector into this tensor,
- * and the given vector may be emptied.
- * This version is the
- * <a href=https://en.cppreference.com/w/cpp/language/reference>
+ * Creates a NodeInitializer that will initialize the tensor by *moving* the values
+ * from the given vector into this tensor, and the given vector may be emptied.
+ * This version is the <a href=https://en.cppreference.com/w/cpp/language/reference>
  * rvalue reference</a> overloading.
+ * @param v vector
  * @return A NodeInitializer
  */
 template <typename T>
@@ -201,28 +203,24 @@ Ptr<NodeInitializer> fromVector(std::vector<T>&& v);
 
 /**
  * Initialize tensor from a given sparse vector.
- * Creates a NodeInitializer that will initialize the tensor
- * from a given sparse vector (stored in std::pair). The resulting
- * tensor is first filled with `1e-6` (a placeholder for non-zero
- * element), then set the value to the given sparse vector.
- * @param v the sparse vector is stored in std::pair where
- * the first object (v.first) holds the indexes (in a vector),
- * and the second object (v.second) holds the corresponding
- * values (in a vector).
- * This means the value of the resulting tensor at index v.first[i]
- * is v.second[i].
+ * Creates a NodeInitializer that will initialize the tensor from a given
+ * sparse vector (stored in std::pair). The resulting tensor is first filled
+ * with `1e-6` (a placeholder for non-zero element), then set the value to
+ * the given sparse vector.
+ * @param v the sparse vector is stored in `std::pair`:
+ *   - the first object (v.first) holds the indexes (in a vector)
+ *   - the second object (v.second) holds the corresponding values (in a vector).
+ *   This means the value of the resulting tensor at index v.first[i] is v.second[i].
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> fromSparseVector(std::pair<std::vector<size_t>, std::vector<float>>& v);
 
 /**
  * Initialize tensor by copying from the given io::Item.
- * Creates a NodeInitializer that will initialize the tensor
- * by copying the values from the given io::Item.
- * If this io::Item is a memory-mapped item, then the function
- * will set the memory pointing to this item.
- * If this io::Item is a regular item, then the function will
- * copy the values from this item.
+ * Creates a NodeInitializer that will initialize the tensor by copying the values
+ * from the given io::Item. If this io::Item is a memory-mapped item, then the
+ * function will set the memory region pointing to this item. If this io::Item is
+ * a regular item, then the function will copy the values from this item.
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> fromItem(const io::Item& item);
@@ -258,12 +256,10 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
  * Computes Google's sinusoidal position embeddings.
  * Computes Google's Transformer-style sinusoidal position embeddings
  * starting from position 'start' taking into account batch and time
- * dimensions of the tensor.
- * Expected tensor layout {-2: time, -1: model}.
- * Usually gets later reshaped to {time, 1, model} and
- * added with a broadcast to learned embeddings. Positional
- * embeddings are the same for each batch entry and change
- * over time steps.
+ * dimensions of the tensor. Expected tensor layout {-2: time, -1: model}.
+ * Usually gets later reshaped to {time, 1, model} and added with a broadcast
+ * to learned embeddings. Positional embeddings are the same for each batch
+ * entry and change over time steps.
  */
 Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start);
 

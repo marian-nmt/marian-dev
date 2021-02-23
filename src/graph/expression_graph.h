@@ -26,7 +26,7 @@ Expr Expression(Args&&... args);
 
 /**
  * The whole tensor set in the graph.
- * Holds all tensor objects (memory and nodes) for a graph
+ * Holds all tensor objects (memory and nodes) for a graph.
  */
 class Tensors {
 private:
@@ -252,9 +252,7 @@ public:
     tensors_->reserve(bytes);
   }
 
-  /**
-   * Copy tensor objects from one graph to current graph
-   */
+  /** Copy tensor objects from one graph to current graph */
   void reuseWorkspace(Ptr<ExpressionGraph> graph) {
     tensors_ = graph->tensors_;
   }
@@ -695,14 +693,14 @@ public:
   }
 
   /**
-   * Returns the memory allocator of the graph workspace,
-   * allocates raw unstructured memory (but 256-byte aligned).
+   * Returns the memory allocator of the graph workspace.
+   * Allocates raw unstructured memory (but 256-byte aligned).
    */
   Ptr<Allocator> allocator() { return tensors_->getAllocator(); } // @TODO: rename this to getAllocator();
 
   /**
-   * Returns the tensor allocator of the graph workspace,
-   * different from allocator() as proper tensor objects are allocated.
+   * Returns the tensor allocator of the graph workspace.
+   * Different from allocator() as proper tensor objects are allocated.
    */
   Ptr<TensorAllocator> getTensorAllocator() { return tensors_->getTensorAllocator(); }
 

@@ -13,7 +13,6 @@ Building blocks for graphs:
 - [graph construction](#graph-construction)
 - [node types](#node-types)
 - [graph execution](#graph-execution)
-- [layers](#layers)
 
 ## Graph construction
 

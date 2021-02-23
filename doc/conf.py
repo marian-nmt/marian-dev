@@ -82,8 +82,9 @@ INPUT                = ../src
 EXCLUDE             += ../src/3rd_party
 EXCLUDE             += ../src/tests
 EXCLUDE_PATTERNS     = *.inc *.md *.txt
-WARN_IF_UNDOCUMENTED = NO
 ENABLE_PREPROCESSING = YES
+JAVADOC_AUTOBRIEF    = YES
+WARN_IF_UNDOCUMENTED = NO
 """
 
 exhale_args = {

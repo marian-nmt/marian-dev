@@ -6,6 +6,8 @@ Welcome to Marian's documentation!
 Marian is an efficient and self-contained Neural Machine Translation framework with an integrated
 automatic differentiation engine based on dynamic computation graphs, written entirely in C++.
 
+This is developer documentation. User documentation is available at https://marian-nmt.github.io/docs/
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

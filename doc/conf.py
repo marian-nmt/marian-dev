@@ -51,8 +51,9 @@ templates_path = ['_templates']
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = [
-    'doxygen',
     'build',
+    'doxygen',
+    'venv',
     'README.md',
 ]
 
@@ -70,6 +71,9 @@ htmlhelp_basename = 'marian'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 html_css_files = ['css/custom.css']
+
+# The base URL which points to the root of the HTML documentation
+html_baseurl = 'http://marian-nmt.github.io/docs/api'
 
 
 # -- Extension configuration -------------------------------------------------

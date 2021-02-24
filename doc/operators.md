@@ -195,12 +195,15 @@ shape and type of the node would be determined by the result of `newShape` and
 custom logic used to determine the shape and type of the node. As indicated in
 this example code, these are optional and, when omitted, calling
 `NaryNodeOp({a})` would result in a node with the same shape and type as `a`.
-The `type()` method returns the friendly name for the node. In the absence of
-any member variables the `hash()` and `equal()` methods can be omitted, and
-defer to their `NaryNodeOp` definition. However, if such variables exists then
-`hash()` should implement a hashed representation and `equal()` should provide
-the necessary conditions to consider nodes equivalent. Finally, the operations
-of the node are defined in `forwardOps()` and `backwardOps()`.
+The `type()` method returns the friendly name for the node. Note that the
+[ONNX](https://onnx.ai)
+[interface](api/program_listing_file_src_onnx_expression_graph_onnx_serialization.cpp.html)
+maintains a mapping of these friendly names to their ONNX representation. In the
+absence of any member variables the `hash()` and `equal()` methods can be
+omitted, and defer to their `NaryNodeOp` definition. However, if such variables
+exists then `hash()` should implement a hashed representation and `equal()`
+should provide the necessary conditions to consider nodes equivalent. Finally,
+the operations of the node are defined in `forwardOps()` and `backwardOps()`.
 
 Continuing with the example of `sin(x)`, the code responsible for implementing
 the behaviour is
@@ -231,9 +234,6 @@ equivalent to that of `x`. The lack of any member variables allows the `hash()`
 and `equal()` methods to be omitted. The friendly name for this node is the
 string `sin`. The forward and backward implementation are accomplished using a
 single NodeOp each.
-
-<!-- TODO: src/ONNX has mapExprOp containing a map of expressions and nodes;
-status of ONNX? -->
 
 ### Forward operation
 

@@ -248,9 +248,9 @@ namespace marian {
         b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-      std::string factorPredictOption = options_->get<std::string>("factor-predictor");
+      std::string lemmaDependency = options_->get<std::string>("lemma-dependency", "");
       ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
-      if (factorPredictOption == "re-embedding") { // embed the (expected) word with a different embedding matrix
+      if (lemmaDependency == "re-embedding") { // embed the (expected) word with a different embedding matrix
         ABORT_IF(lemmaDimEmb == 0, "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
 #define HARDMAX_HACK
 #ifdef HARDMAX_HACK
@@ -296,8 +296,8 @@ namespace marian {
         auto numGroups = factoredVocab_->getNumGroups();
         std::vector<Ptr<RationalLoss>> allLogits(numGroups, nullptr); // (note: null entries for absent factors)
         Expr input1 = input; // [B... x D]
-        Expr Plemma = nullptr;     // used for factorPredictOption = lemmaDimEmb
-        Expr inputLemma = nullptr; // used for factorPredictOption= hard-transformer-layer and soft-transformer-layer
+        Expr Plemma = nullptr;     // used for lemmaDependency = lemma-dependent-bias
+        Expr inputLemma = nullptr; // used for lemmaDependency = hard-transformer-layer and soft-transformer-layer
         for (size_t g = 0; g < numGroups; g++) {
           auto range = factoredVocab_->getGroupRange(g);
           if (g > 0 && range.first == range.second) // empty entry
@@ -315,8 +315,8 @@ namespace marian {
               factorB = slice(b_,                              -1, Slice((int)range.first, (int)range.second));
           }
           /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-          std::string factorPredictOption = options_->get<std::string>("factor-predictor");
-          if ((factorPredictOption == "soft-transformer-layer" || factorPredictOption == "hard-transformer-layer") && g > 0) {
+          std::string lemmaDependency = options_->get<std::string>("lemma-dependency", "");
+          if ((lemmaDependency == "soft-transformer-layer" || lemmaDependency == "hard-transformer-layer") && g > 0) {
             // this mimics one transformer layer
             //  - attention over two inputs:
             //     - e = current lemma. We use the original embedding vector; specifically, expectation over all lemmas.
@@ -379,28 +379,28 @@ namespace marian {
           allLogits[g] = New<RationalLoss>(factorLogits, nullptr);
           // optionally add a soft embedding of lemma back to create some lemma dependency
           // @TODO: if this works, move it into lazyConstruct
-          if (factorPredictOption == "soft-transformer-layer" && g == 0) {
+          if (lemmaDependency == "soft-transformer-layer" && g == 0) {
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate, soft-max version");
             // get expected lemma embedding vector
             auto factorLogSoftmax = logsoftmax(factorLogits); // [B... x U] note: with shortlist, this is not the full lemma set
             auto factorSoftmax = exp(factorLogSoftmax);
             inputLemma = dot(factorSoftmax, factorWt, false, /*transB=*/isLegacyUntransposedW ? true : false); // [B... x D]
           }
-          else if (factorPredictOption == "hard-transformer-layer" && g == 0) {
+          else if (lemmaDependency == "hard-transformer-layer" && g == 0) {
             LOG_ONCE(info, "[embedding] using lemma conditioning with gate, hard-max version");
             // get max-lemma embedding vector
             auto maxVal = max(factorLogits, -1); // [B... x U] note: with shortlist, this is not the full lemma set
             auto factorHardmax = eq(factorLogits, maxVal);
             inputLemma = dot(factorHardmax, factorWt, false, /*transB=*/isLegacyUntransposedW ? true : false); // [B... x D]
           }
-          else if (factorPredictOption == "lemma-dependent-bias" && g == 0) { // -1 means learn a lemma-dependent bias
+          else if (lemmaDependency == "lemma-dependent-bias" && g == 0) { // -1 means learn a lemma-dependent bias
             ABORT_IF(shortlist_, "Lemma-dependent bias with short list is not yet implemented");
             LOG_ONCE(info, "[embedding] using lemma-dependent bias");
             auto factorLogSoftmax = logsoftmax(factorLogits); // (we do that again later, CSE will kick in)
             auto z = /*stopGradient*/(factorLogSoftmax);
             Plemma = exp(z); // [B... x U]
           }
-          else if (factorPredictOption == "re-embedding" && g == 0) {
+          else if (lemmaDependency == "re-embedding" && g == 0) {
             ABORT_IF(lemmaDimEmb == 0, "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
             LOG_ONCE(info, "[embedding] enabled re-embedding of lemma, at dim {}", lemmaDimEmb);
             // compute softmax. We compute logsoftmax() separately because this way, computation will be reused later via CSE
@@ -458,7 +458,7 @@ namespace marian {
         int numberOfFactors = (int) factoredVocab_->getTotalFactorCount();
         dimVoc -= numberOfFactors;
         FactorEmbMatrix_ = graph_->param("factor_" + name, {numberOfFactors, dimFactorEmb}, initFunc, fixed);
-        LOG_ONCE(info, "[embedding] Combining factors concatenation enabled");
+        LOG_ONCE(info, "[embedding] Combining lemma and factors embeddings with concatenation enabled");
       }      
     }
     

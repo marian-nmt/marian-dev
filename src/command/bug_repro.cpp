@@ -18,7 +18,8 @@ public:
     const char* argseasy[]
         = {"marian",
            "-c",
-           "/home/rihards/exp/marian-adaptive-crash-repro/models/model.npz.repro.yml"};
+           "/home/rihards/exp/marian-adaptive-crash-repro/models/model.npz.repro.yml",
+           "-t", "dummy-value", "-t", "dummy-value"};
     int argc = sizeof(argseasy) / sizeof(char*);
     // this is as close as i could get to initializing a char** in a sane manner
     char** args = new char*[argc];

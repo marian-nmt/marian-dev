@@ -58,7 +58,7 @@ To understand how the different components are inter-linked, we'll look at each
 of them in turn.
 
 
-### Expression Operator
+## Expression Operator
 
 The expression operator is the user-facing method used when building a graph. It
 is responsible for constructing the corresponding Node Operation and inserting
@@ -119,7 +119,7 @@ While useful, composition at this level may be less efficient than lower-level
 implementations.
 
 
-### Node Operator
+## Node Operator
 
 The `Node` subclass of `Chainable<Tensor>` provides concrete implementations for
 much of the abstract interface, while subclasses of `Node` enable different node
@@ -235,7 +235,7 @@ single NodeOp each.
 <!-- TODO: src/ONNX has mapExprOp containing a map of expressions and nodes;
 status of ONNX? -->
 
-#### Forward operation
+### Forward operation
 
 The forward NodeOp calls the tensor operation Element, that execute the
 element-wise operation described by the functor:
@@ -251,7 +251,7 @@ operators. In the call to `Element`, `val_` is assigned to `_1` and
 elements of this node to the result obtained by applying `sin` to the elements
 of `child(0)`.
 
-#### Backward Operation
+### Backward Operation
 
 The backward NodeOp is responsible for backpropagation of the gradients via
 reverse-mode automatic differentiation. In this example, where `y = sin(x)`,
@@ -272,7 +272,7 @@ Therefore, this functor represents `dJ/dy * dy/dx`: the product of the gradient
 at the current node and the gradient of the operation. This value is then added
 to the gradient of the child `child(0)->grad()` as required.
 
-#### Shape and Type Changes
+### Shape and Type Changes
 
 The `newShape` and `newType` methods are just a suggestion of how custom logic
 may be encapsulated where needed. However, in practice, many operations do not
@@ -316,7 +316,7 @@ to single element. Other use cases include transpose and slicing operations, as
 well as tensor products.
 
 
-### Functional Operator
+## Functional Operator
 
 As the NodeOp are evaluated, they encounter the underlying datatype of the
 `Tensor`. At this stage, type-specific intrinsic functions are required. These
@@ -370,7 +370,7 @@ where template parameter `ElementType` **must** be used. There are equivalent
 macros for `BINARY` and `TERNARY` Ops.
 
 
-### Tensor Operator
+## Tensor Operator
 
 Tensor operations use less abstracted interfaces to interact with the Tensors,
 often working with the Tensor data directly. They also rely on BLAS (Basic
@@ -447,7 +447,7 @@ using multiple expression operators (`exp`, `sum`), but is instead implemented
 directly as a tensor operator. These optimized implementations may be device
 specific.
 
-### Declared Specialization
+## Declared Specialization
 
 The operations performed in the forward and backward methods of NodeOp require
 their GPU templates to be explicitly declared. When a new specialization is

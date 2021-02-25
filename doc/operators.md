@@ -201,7 +201,7 @@ The `type()` method returns the friendly name for the node. Note that the
 maintains a mapping of these friendly names to their ONNX representation. In the
 absence of any member variables the `hash()` and `equal()` methods can be
 omitted, and defer to their `NaryNodeOp` definition. However, if such variables
-exists then `hash()` should implement a hashed representation and `equal()`
+exist then `hash()` should implement a hashed representation and `equal()`
 should provide the necessary conditions to consider nodes equivalent. Finally,
 the operations of the node are defined in `forwardOps()` and `backwardOps()`.
 
@@ -228,12 +228,11 @@ struct SinNodeOp : public UnaryNodeOp {
 ```
 
 In this code, the constructor trivially initialises the `UnaryNodeOp`, passing
-the the expression `x` as its input. This propagates up to `NaryNodeOp` and
-becomes `child(0)` of the node. The size and type of the SinNodeOp are
-equivalent to that of `x`. The lack of any member variables allows the `hash()`
-and `equal()` methods to be omitted. The friendly name for this node is the
-string `sin`. The forward and backward implementation are accomplished using a
-single NodeOp each.
+the expression `x` as its input. This propagates up to `NaryNodeOp` and becomes
+`child(0)` of the node. The size and type of the SinNodeOp are equivalent to
+that of `x`. The lack of any member variables allows the `hash()` and `equal()`
+methods to be omitted. The friendly name for this node is the string `sin`. The
+forward and backward implementation are accomplished using a single NodeOp each.
 
 ### Forward operation
 
@@ -312,8 +311,8 @@ Shape newShape(Expr a, int axis) {
 ```
 
 The output shape is the same as the input but with the processed axis is reduced
-to single element. Other use cases include transpose and slicing operations, as
-well as tensor products.
+to a single element. Other use cases include transpose and slicing operations,
+as well as tensor products.
 
 
 ## Functional Operator

@@ -41,7 +41,6 @@ struct BinaryFunctor {
 
 /**
  * Macro to set up unary-functions from marian::functional::Ops.
- *
  * @param name name for the struct
  * @param name2 callable typedef
  * @param func function wrapped
@@ -64,7 +63,6 @@ struct BinaryFunctor {
 
 /**
  * Macro to set up binary-functions from marian::functional::Ops.
- *
  * @param name name for the struct
  * @param name2 callable typedef
  * @param func function wrapped
@@ -111,7 +109,6 @@ struct TernaryFunctor {
 
 /**
  * Macro to set up ternary-functions from marian::functional::Ops.
- *
  * @param name name for the struct
  * @param name2 callable typedef
  * @param func function wrapped

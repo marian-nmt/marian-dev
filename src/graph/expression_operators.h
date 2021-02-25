@@ -42,17 +42,14 @@ Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFu
 
 /**
  * Linear Activation Function.
- *
  * Returns @p nodes[0]
  */
 Expr plus(const std::vector<Expr>& nodes);
 
 /**
  * Logistic Activation Function.
- *
  * Computes the <a href="https://en.wikipedia.org/wiki/Logistic_function">logistic function</a>
  * of the given expression
- *
  * @todo rename sigmoid to logistic
  */
 Expr sigmoid(Expr a);
@@ -65,12 +62,10 @@ Expr sigmoid(const std::vector<Expr>& nodes);
 
 /**
  * Swish node.
- *
  * Computes the Swish activation function with @f$\beta=1 @f$
  * @f[
  *    \operatorname{swish}(x) = x \cdot \operatorname{sigmoid}(\beta x)
  * @f]
- *
  * @see SwishNodeOp
  */
 Expr swish(Expr a);
@@ -84,7 +79,6 @@ Expr swish(const std::vector<Expr>& nodes);
 
 /**
  * Gaussian Error Linear Unit (GELU).
- *
  * Computes an _approxmiation_ to the Gaussian Error Linear Unit
  * @f[
  *    \operatorname{gelu}(x) = x \cdot \Phi(x)
@@ -93,7 +87,6 @@ Expr swish(const std::vector<Expr>& nodes);
  *      \right]
  *      \sim \operatorname{swish}(x, 1.702)
  * @f]
- *
  * using @ref SwishNodeOp(a, 1.702)
  * @see SwishNodeOp
  */
@@ -124,7 +117,6 @@ Expr tanh(Args... args) {
 
 /**
  * Rectified Linear Unit (ReLU).
- *
  * Computes the ReLU activation for the Expr
  * @see ReLUNodeOp
  */
@@ -139,7 +131,6 @@ Expr relu(const std::vector<Expr>& nodes);
 
 /**
  * Leaky ReLU (LeakyReLU).
- *
  * Computes the <a href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)#LeakyReLU">
  * LeakyReLU</a> activation for the expression
  * Activation function:
@@ -150,7 +141,6 @@ Expr relu(const std::vector<Expr>& nodes);
  *     x & \text{if } x > 0
  *   \end{cases}
  * @f]
- *
  * @see PReLUNodeOp
  */
 Expr leakyrelu(Expr a);
@@ -163,7 +153,6 @@ Expr leakyrelu(const std::vector<Expr>& nodes);
 
 /**
  * Parametric Rectified Linear Unit (PReLU).
- *
  * Computes the <a href="https://en.wikipedia.org/wiki/Rectifier_(neural_networks)#Parametric_ReLU">
  * Parametric ReLU</a> activation for the expression
  * @f[
@@ -173,7 +162,6 @@ Expr leakyrelu(const std::vector<Expr>& nodes);
  *     x & \text{if } x > 0
  *   \end{cases}
  * @f]
- *
  * @see PReLUNodeOp
  * @note @p alpha is **not** trainable.
  */
@@ -197,7 +185,6 @@ Expr prelu(const std::vector<Expr>&, float alpha = 0.01);
 ///@{
 /**
  * Natural logarithm.
- *
  * Computes the element-wise natural logarithm of the expression: @f$ \log(a) @f$
  * @see LogNodeOp
  */
@@ -205,7 +192,6 @@ Expr log(Expr a);
 
 /**
  * Natural exponentiation.
- *
  * Computes the element-wise natural logarithm of the expression: @f$ e^a @f$
  * @see ExpNodeOp
  */
@@ -235,7 +221,7 @@ Expr tan(Expr a);
 ///@}
 
 /**
-* @addtogroup graph_ops_arithmetic Arithmetic
+ * @addtogroup graph_ops_arithmetic Arithmetic
  * Performs arithmetic in the expression graph.
  * @ingroup graph_ops
  * @{
@@ -264,7 +250,6 @@ Expr operator+(Expr a, float b);  ///< @see Implementation in ScalarAddNodeOp
 /**
  * @name Subtraction
  * Performs @f$ a - b @f$ in the expression graph.
- *
  */
 ///@{
 Expr operator-(Expr a, Expr b);   ///< @see Implementation in MinusNodeOp
@@ -297,9 +282,7 @@ Expr operator/(Expr a, float b);  ///< Implementation via @f$ a * \frac{1}{b} @f
 
 /**
  * Computes the square root of an expression.
- *
  * Evaluates @f$\sqrt{a + \mathrm{eps}} @f$ element-wise on the expression
- *
  * @param a   Expression to square root
  * @param eps Optional positive epsilon to avoid domain errors for small values in @p a
  * @ingroup graph_ops_mathematical
@@ -308,9 +291,7 @@ Expr sqrt(Expr a, float eps = 0.f);
 
 /**
  * Computes the square of an expression.
- *
  * Evaluates @f$a^2 @f$ element-wise on the expression
- *
  * @param a Expression to square
  * @ingroup graph_ops_mathematical
  */
@@ -318,7 +299,6 @@ Expr square(Expr a);
 
 /**
  * Calculate the element-wise abolute value of an expression.
- *
  * Returns the value of @f$ |a| @f$ element-wise for the expression @p a.
  * @see AbsNodeOp.
  * @ingroup graph_ops_mathematical
@@ -339,8 +319,7 @@ Expr logaddexp(Expr a, Expr b);
 ///@{
 /**
  * @name Element-wise min/max
- * Performs an element-wise min max comparison between expressions
- *
+ * Performs an element-wise min max comparison between expressions.
  * @see min, max for axis level operations
  * @see MinimumNodeOp, MaximumNodeOp
  * @todo implement version without ExpressionGraph::constant.
@@ -354,14 +333,12 @@ Expr maximum(Expr a, Expr b);
 
 /**
  * @copybrief maximum
- *
  * Promotes float input to a @ref ExpressionGraph::constant.
  */
 Expr maximum(float a, Expr b);
 
 /**
  * @copybrief maximum
- *
  * Promotes float input to a @ref ExpressionGraph::constant.
  */
 Expr maximum(Expr a, float b);
@@ -373,14 +350,12 @@ Expr minimum(Expr a, Expr b);
 
 /**
  * @copybrief minimum
- *
  * Promotes float input to a @ref ExpressionGraph::constant.
  */
 Expr minimum(float a, Expr b);
 
 /**
  * @copybrief minimum
- *
  * Promotes float input to a @ref ExpressionGraph::constant.
  */
 Expr minimum(Expr a, float b);
@@ -396,7 +371,6 @@ typedef std::tuple<Expr, Expr> Expr2;
 
 /**
  * Pseudo-operator to access elements of a tuple.
- *
  * Provides the same utility as @c std::get<I>(tuple)
  * @see Expr2
  */
@@ -405,11 +379,9 @@ Expr get(Expr2 tuple) { return std::get<I>(tuple); }
 
 /**
  * Returns top k elements of an expression along an axis.
- *
  * Return a 2-tuple (values, indices) of the @p k largest, or smallest, elements of an expression
  * along a specified @p axis.
  * The output is ordered according to the value of @p descending.
- *
  * @param a           Expression to search
  * @param k           Number of elements to return
  * @param axis        Axis to along which to operate
@@ -421,7 +393,6 @@ Expr2 topk(Expr a, int k, int axis, bool descending = true);
 
 /**
  * Returns largest elements of an expression along an axis.
- *
  * Return a 2-tuple (values, indices) of largest elements of an expression
  * along a specified @p axis.
  * @see topk(a, k=1, axis, descending=true)
@@ -430,7 +401,6 @@ Expr2 argmax(Expr a, int axis);
 
 /**
  * Returns smallest elements of an expression along an axis.
- *
  * Return a 2-tuple (values, indices) of smallest elements of an expression
  * along a specified @p axis.
  * @see topk(a, k=1, axis, descending=false)
@@ -442,9 +412,7 @@ Expr2 argmin(Expr a, int axis);
  * @addtogroup graph_ops_cmp Comparison
  * Performs comparision operations in the expression graph.
  * @ingroup graph_ops
- *
  * Uses CmpNodeOp to perform comparison of graph expression e.g. @f$ a < b @f$.
- *
  * @note
  * We cannot overload the relational operators, as they also mean something for Expr itself.
  * @par
@@ -489,7 +457,6 @@ Expr le(Expr a, float b);  ///< @f$ a \leq b @f$
 
 /**
  * Computes the dot product of @p a and @p b.
- *
  * Computes @f$ C = \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) @f$,
  * where @f$ \operatorname{op}(A) = A @f$ if @p transA is @c false, and
  * @f$ \operatorname{op}(A) = A^\top @f$ if @c true. The @f$\alpha@f$ parameter
@@ -513,7 +480,6 @@ Expr bdot(Expr a,
 
 /**
  * Performs an affine transformation.
- *
  * Computes
  * @f$ C \leftarrow \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) + C@f$,
  * where @f$ \operatorname{op}(A) = A @f$ if @p transA is @c false, and
@@ -546,7 +512,6 @@ Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B
 
 /**
  * Returns the transpose of an expression.
- *
  * Swaps the last two axes of an expression.
  * @see TransposeNodeOp
  */
@@ -554,10 +519,8 @@ Expr transpose(Expr a);
 
 /**
  * Returns the transpose of an expression.
- *
  * Permutes the axes of an expression to resemble @p axes. Axis @c i of the returned
  * expression corresponds to @c axes[i] of the input @p a.
- *
  * @param a     Expression to manipulate
  * @param axes  Desired permutation of axes
  * @see TransposeNodeOp
@@ -566,13 +529,10 @@ Expr transpose(Expr a, const std::vector<int>& axes);
 
 /**
  * Swap two axes of an expression.
- *
  * Swaps two axes of an expression via reshaping, if possible, or transpose.
- *
  * @param x      Expression to manipulate
  * @param axis1  Axis to be swapped
  * @param axis2  Axis to swap with
- *
  * @returns Expression with the axes @p axis1 and @p axis2 interchanged
  * @see reshape() and transpose()
  */
@@ -580,7 +540,6 @@ Expr swapAxes(Expr x, int axis1, int axis2);
 
 /**
  * Cast an expression to a specified type.
- *
  * @param a     Expression to cast
  * @param type  Desired type
  * @returns     Expression with data cast to @p type
@@ -589,7 +548,6 @@ Expr cast(Expr a, Type type = Type::float32);
 
 /**
  * Join a list of expressions along an axis.
- *
  * Concatenates the elements of the expressions in @p concats along the axis @p ax.
  * By default, @p ax operates on the first axis.
  */
@@ -597,7 +555,6 @@ Expr concatenate(const std::vector<Expr>& concats, int ax = 0);
 
 /**
  * Repeat elements of an expression.
- *
  * Repeats the elements of @p a along the  @p ax axis @p repeats times.
  * By default, @p ax operates on the first axis.
  * @see concatenate()
@@ -606,7 +563,6 @@ Expr repeat(Expr a, size_t repeats, int ax = 0);
 
 /**
  * Reshape expression to a given shape.
- *
  * @param a     The expression to be reshaped
  * @param shape The new shape
  * @returns An expression with shape @p shape.
@@ -615,21 +571,16 @@ Expr reshape(Expr a, Shape shape);
 
 /**
  * Clip the values in an expression.
- *
  * Clips the values of the Expr @p a to be within the interval @f$ [-c, c] @f$.
- *
  * @param a Expr to clip
  * @param c Threshold to clip at
- *
  * @see ClipNodeOp
  */
 Expr clip(Expr a, float c);
 
 /**
  * Clip the gradient in an expression.
- *
  * Clips the gradient of the Expr @p a to be within the interval @f$ [-c, c] @f$
- *
  * @see clip for the equivalent function which clips values
  * @see ClipGradientNodeOp
  */
@@ -724,7 +675,6 @@ Expr stopGradient(Expr a);
 
 /**
  * Gathers elements along an axis.
- *
  * @param a       The input expression
  * @param axis    The axis along which to index
  * @param indices The indices to be gathered
@@ -761,7 +711,6 @@ Expr scatter(Expr a, int axis, Expr indices, Expr b);
 /**
  * Returns a new expression containing the @p indicies of expression @p a
  * along the specified @p axis.
- *
  * @warning Do not pass a scalar literal 0 as @p indices;
  * it will compile but pass a nullptr.
  */
@@ -769,7 +718,6 @@ Expr index_select(Expr a, int axis, Expr indices);
 
 /**
  * @copybrief index_select
- *
  * Convenience wrapper that promotes a vector of @ref IndexType to an Expr
  */
 Expr index_select(Expr a, int axis, const std::vector<IndexType>& indices);
@@ -784,7 +732,6 @@ static inline Expr rows(Expr a, Expr indices) {
 
 /**
  * @copybrief rows
- *
  * Convenience wrapper that promotes a vector of @ref IndexType to an Expr
  */
 static inline Expr rows(Expr a, const std::vector<IndexType>& indexVector) {
@@ -801,7 +748,6 @@ static inline Expr cols(Expr a, Expr indices) {
 
 /**
  * @copybrief cols
- *
  * Convenience wrapper that promotes a vector of @ref IndexType to an Expr
  */
 static inline Expr cols(Expr a, const std::vector<IndexType>& indexVector) {
@@ -816,7 +762,6 @@ Expr slice(Expr a, int axis, Slice slice);
 
 /**
  * @copybrief slice
- *
  * Convenience wrapper for slice() that returns the slice along @p axis
  * from @p index to @p index+1
  */
@@ -826,7 +771,6 @@ static inline Expr slice(Expr a, int axis, int index) {
 
 /**
  * @copybrief slice
- *
  * Convenience wrapper for slice() that returns the slice along @p axis
  * from @p index to @p index + @p length
  * @note this is named after an equivalent function in PyTorch
@@ -903,7 +847,6 @@ Expr logsumexp(Expr a, int ax);
 
 /**
  * Computes the softmax fuction along the given axis.
- *
  * Applies the softmax function
  * @f[
     \operatorname{softmax}(x_i) = \frac{\exp(x_i)}{\sum_j \exp(x_j)}
@@ -914,7 +857,6 @@ Expr softmax(Expr x, int axis = -1);
 
 /**
  * @copybrief softmax
- *
  * Applies the softmax function over the unmasked values.
  * @see SoftmaxNodeOp
  */
@@ -922,7 +864,6 @@ Expr softmax(Expr a, Expr zeroOneMask, int axis = -1);
 
 /**
  * Computes the log of the softmax function along the last axis.
- *
  * Applies @f$ \log(\operatorname{softmax}(x)) @f$.
  * @see LogSoftmaxNodeOp
  */
@@ -930,7 +871,6 @@ Expr logsoftmax(Expr a);
 
 /**
  * Computes the cross-entropy loss.
- *
  * @param labelSmoothingAlpha The amount of label smoothing @f$\alpha \in [0,1]@f$.
  * Default is no smoothing, @f$\alpha = 0 @f$.
  * @see CrossEntropyNodeOp
@@ -939,7 +879,6 @@ Expr cross_entropy(Expr a, Expr b, float labelSmoothingAlpha = 0.f, Type outputT
 
 /**
  * Computes the unlikelihood loss.
- *
  * Computes the <a href="https://arxiv.org/abs/1908.04319">unlikelihood</a> loss
  * @f$ -\log \sum (1 - \operatorname{softmax}(x)) @f$
  */
@@ -968,7 +907,6 @@ Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
 /**
  * Highway transformation.
- *
  * Computes the highway tranform on @p y and @p x as gated by @p t:
  * @f$ \operatorname{sigmoid}(t) y + (1-\operatorname{sigmoid}(t)) x @f$
  * @see HighwayNodeOp
@@ -976,7 +914,6 @@ Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 Expr highway(Expr y, Expr x, Expr t);
 
 /** @copybrief highway
- *
  * Generates a highway network for @p x with a @ref relu activated layer and
  * @ref sigmoid activated layer for gating.
  * @see mlp::dense()

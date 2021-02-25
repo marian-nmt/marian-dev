@@ -82,7 +82,7 @@ Ptr<NodeInitializer> eye(float value = 1.f);
 
 /**
  * Initialize tensor with normally distributed random numbers.
- * Be default this generates floating point numbers from the
+ * By default this generates floating point numbers from the
  * normal distribution Normal(0, 1) unless specified differently.
  * If compiled with `CUDA`, `marian` will use the `cuRand` library
  * for both, GPU and CPU computation. The random sequences generated
@@ -96,7 +96,7 @@ Ptr<NodeInitializer> normal(float mean = 0.f, float stddev = 1.f);
 
 /**
  * Initialize tensor with uniformly distributed random numbers.
- * Be default this generates floating point numbers from the
+ * By default this generates floating point numbers from the
  * uniform distribution Uniform(0, 1) unless specified differently.
  * If compiled with `CUDA`, `marian` will use the `cuRand` library
  * for both, GPU and CPU computation. The random sequences generated
@@ -130,7 +130,7 @@ Ptr<NodeInitializer> bernoulli(float p, float scale = 1.f, float shift = 0.f);
  * The <a href=http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf>Glorot uniform</a>,
  * also called Xavier uniform, is designed to keep the scale of
  * the gradients roughly the same in all layers.
- * This function we offer three variances (modes).
+ * This function offers three variants (modes).
  * The values of the tensor is sampled from Uniform(-x*scale, x*scale):
  *   - when fanIn=false and fanOut=false (by default):
  *      x = sqrt(6 / (in + out))
@@ -148,7 +148,7 @@ Ptr<NodeInitializer> glorotUniform(bool fanIn = false, bool fanOut = false, floa
  * Initialize tensor with random numbers from Glorot Normal distribution.
  * Similar to function glorotUniform(), this function adopts Normal distribution instead of
  * uniform distribution.
- * This function we offer three variances (modes).
+ * This function offers three variants (modes).
  * The values of the tensor is sampled from Normal(-x*scale, x*scale):
  *   - when fanIn=false and fanOut=false (by default):
  *      x = sqrt(2 / (in + out))
@@ -174,7 +174,7 @@ Ptr<NodeInitializer> dropout(float dropoutProbability);
 
 /**
  * Initialize with gumbel noise, i.e. -log(-log(u)) where u ~ Uniform(0 + eps, 1 - eps).
- * @param eps parameter controls the model shape
+ * @param eps a variable protects from log(0)
  * @return A NodeInitializer
  */
 Ptr<NodeInitializer> gumbel(float eps = 1e-5f);

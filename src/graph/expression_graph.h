@@ -17,7 +17,7 @@
 namespace marian {
 
 /**
- * Create a expression node of any type, and pass all
+ * Create an expression node of any type, and pass all
  * arguments to any available constructor.
  * E.g., to create a ConstantNode uses `Expression<ConstantNode>(...)`.
  */

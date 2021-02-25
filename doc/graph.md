@@ -1,6 +1,6 @@
 # Expression graphs
 
-The design of deep learning framework in Marian is based on reverse-mode [auto-differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) (also known as backpropagation) with dynamic computation graphs. 
+The design of the deep learning framework in Marian is based on reverse-mode [auto-differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation) (also known as backpropagation) with dynamic computation graphs. 
 Computation graphs allow a great deal of freedom in network architectures, and they can deal with complicated structures like conditions and loops.
 The dynamic declaration, which means a new graph is created for each training instance (for a training example or a batch), is also advantageous.
 It allows handling of variably sized inputs, as well as the cases where the graph may change depending on the results of previous steps.
@@ -19,7 +19,7 @@ Building blocks for graphs:
 What is a computation graph? 
 All the numerical computations are expressed as a computation graph. 
 A computation graph (or graph in short) is a series of operations arranged into a graph of nodes. 
-To put simply, a graph is just an arrangement of nodes that represent what you want to do with the data. 
+To put it simply, a graph is just an arrangement of nodes that represent what you want to do with the data. 
 
 **Example 1**
 
@@ -31,7 +31,7 @@ The computation graph of this expression is something like Figure 1.
 
 *Figure 1 An example of computation graph*
 
-In Marian, `ExpressionGraph` class is the main implementation of computation graph. 
+In Marian, the `ExpressionGraph` class is the main implementation of a computation graph.
 An `ExpressionGraph` object keeps a record of data (tensors) and all operations in a directed graph consisting of `Node` objects. 
 A `Node` is the basic unit of a graph. It can be an operation (e.g., dot()), or a tensor. 
 Each operation in a graph is a `NaryNodeOp` (a child of `Node` class). 
@@ -66,7 +66,7 @@ Thus, building a graph turns into a simple task of defining expressions by using
 
 **Building graph of Example 1 using Marian**
 
-The following code is to build the graph in Example 1 with input `x=2`, `y=3`.
+The following code is used to build the graph in Example 1 with inputs `x=2` and `y=3`.
 
 ```cpp
 // create and initialise a graph object
@@ -106,7 +106,7 @@ The resulting graph is shown in Figure 2. Here we use an online Graphviz editor 
 *Figure 2 Graph layout of Example 1*
 
 In Figure 2, there are two numbers (between the pair of parentheses) in each node. 
-The first number indicates the node ID, and the second number specified whether the node is trainable (0 means no; 1 means yes). 
+The first number indicates the node ID, and the second number specifies whether the node is trainable (0 means no; 1 means yes). 
 We will cover the concept of *trainable* in [**ParamNode section**](#paramnode).
 
 One thing to notice here is that Marian adopts dynamic computation graphs; 
@@ -118,19 +118,22 @@ Thus, we need to call `graphviz()` function before performing the computation.
 As mentioned earlier, `Node` is the basic unit of a graph. 
 Each `Node` defines its forward steps in `Node::forward()` and backward steps in `Node::backward()`. 
 To access the resulting new tensor in the forward pass, we can call `Node::val()`. 
-While `Node::grad()` returns the accumulated gradients (a tensor) in backward pass.
+While `Node::grad()` returns the accumulated gradients (a tensor) in the backward pass.
 There are three main classes of Node in Marian: `ConstantNode`, `ParamNode` and `NaryNodeOp`.
 
 ### ConstantNode
 
-`ConstantNode` class is used to construct a constant node in the graph. A constant node is actually a constant tensor whose value is immutable during the training. A `ConstantNode` instance is usually used to construct the input layer.
-To construct a constant node in the graph, we can use `constant()` function in `ExpressionGraph` class. 
+The `ConstantNode` class is used to construct a constant node in the graph. 
+A constant node is actually a constant tensor whose value is immutable during the training. 
+A `ConstantNode` instance is usually used to construct the input layer.
+To construct a constant node in the graph, we can use `constant()` function in the `ExpressionGraph` class. 
 We need to specify the shape and element type for the constant node. 
 For the shape, we can initialise a `Shape` instance in the way of vector initialisation. 
 E.g., `Shape shape={2,3};` this means 2D matrix with `dim[0]`=2 and `dim[1]`=3.
 The element type must be one of the values stored in `Type` enumeration. 
 `Type` stores all supported data type in Marian, e.g., `Type::float16`.
-If the type is not specified, the default type of graph will be used. The default type of the graph is usually `Type::float32` unless you change it by `setDefaultElementType()`. 
+If the type is not specified, the default type of graph will be used. 
+The default type of the graph is usually `Type::float32` unless you change it by `setDefaultElementType()`. 
 
 ```cpp
 // construct a constant node in the graph with default type
@@ -138,7 +141,7 @@ auto x = graph->constant({N, NUM_FEATURES}, inits::fromVector(inputData));
 ```
 
 For the above example, the shape of the constant node is `{N, NUM_FEATURES}`, and the value of the constant node is initialised from a vector `inputData`.
-`inits::fromVector()` returns a `NodeInitializers` which is a functor used to initialise a tensor by copying from the given vector. 
+`inits::fromVector()` returns a `NodeInitializer` which is a functor used to initialise a tensor by copying from the given vector. 
 More functions used to initialise a node can be found in [`src/graph/node_initializers.h`](api/namespace_marian__inits.html#namespace-marian-inits) file. 
 Marian also provides some shortcut functions to construct special constant nodes, such as `ones()` and `zeros()`:
 
@@ -156,7 +159,7 @@ In addition to the shape and the element type, we need to specify whether a `Par
 If a parameter node is _trainable_, then its value will be tracked and updated during the training procedure.
 For a `ParamNode`, the default value of `trainable_` is `true`. 
 We can define whether this parameter node is trainable by `Node::setTrainable()` function.
-To construct a parameter node in the graph, we use `param()` function in `ExpressionGraph` class. 
+To construct a parameter node in the graph, we use the `param()` function in the `ExpressionGraph` class. 
 For a parameter node, we need to specify its name.
 
 ```cpp
@@ -164,14 +167,14 @@ For a parameter node, we need to specify its name.
 auto W1 = graph->param("W1", {NUM_FEATURES, 5}, inits::uniform(-0.1f, 0.1f));
 ```
 
-The parameter node `W1` has a shape of `{NUM_FEATURES, 5}`, and is initialised with random numbers from uniform distribution `Uniform(-0.1, 0.1)`. 
+The parameter node `W1` has a shape of `{NUM_FEATURES, 5}`, and is initialised with random numbers from the uniform distribution `Uniform(-0.1, 0.1)`. 
 
 ### NaryNodeOp
 
 `NaryNodeOp` is the base class that defines the operations in a graph. 
 It mainly contains unary and binary operators. 
 Each `NaryNodeOp` defines its forward operations in `Node::forwardOps()` and backward operations in `Node::backwardOps()`. 
-In current version of Marian, we provide a set of common operations (inherited from `NaryNodeOp`) used to build a neural network, 
+In the current version of Marian, we provide a set of common operations (inherited from `NaryNodeOp`) used to build a neural network, 
 such as `AffineNodeOp` (affine transformation), `CrossEntropyNodeOp` (cross-entropy loss function) and `TanhNodeOp` (tanh activation function). 
 As mentioned earlier, Marian implements a set of APIs that can easily add operations to the graph. 
 E.g., we can use `affine()` to perform affine transformation and then `tanh()` to perform tanh activation function on the results:
@@ -220,7 +223,7 @@ You can call `backward()` to perform the backward pass.
 The `backward()` function mainly computes the gradients using the chain rule:
 
 - allocates memory and initialise gradients for each *trainable* Node
-- computes the gradients based on backward steps (`Node::backwardOps()`) from each Node, and accumulates them in `adj_` attribute in each Node
+- computes the gradients based on backward steps (`Node::backwardOps()`) from each Node, and stores them in `adj_` attribute in each Node
 - using the chain rule, propagates all the way to the input layer
 
 We also provide a shortcut function `backprop()` which performs first the forward pass and then the backward pass on the nodes of the graph:
@@ -271,7 +274,7 @@ std::cout<<"dz/dx="<<b[0]<<std::endl;
 After the backward pass, we obtain the gradients of the leaves. 
 However, the job is not done yet. 
 To train a model, we need to update the model parameters according to the gradients.
-This comes to how to define the loss function and optimiser for the graph. 
+This comes to how we define the loss function and optimiser for the graph. 
 
 A loss function is used to calculate the model error between the predicted value and the actual value. 
 The goal is to minimise this error during training. 
@@ -297,14 +300,14 @@ The graph is changed to Figure 4.
 
 *Figure 4 Graph layout of modified Example 1 with loss function*
 
-The optimiser is to adjust the variables to fit the data. 
+The purpose of the optimiser is to adjust the variables to fit the data. 
 In Marian, there are three built-in optimiser classes: `Sgd`, `Adagrad` and `Adam`.
 `Sgd` is an optimiser based on [stochastic gradient descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent). 
 For each iteration, it updates the parameter `w` according to the rule of `w = w - learning_rate * gradient`. 
 `Adagrad` implements [Adagrad algorithm](https://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf), 
 an optimiser with parameter-specific learning rates, which are adapted relative to how frequently a parameter gets updated during training.
-`Adam` is based on [Adam algorithm](https://arxiv.org/abs/1412.6980), 
-a stochastic gradient descent method that is based on the adaptive estimation of first-order and second-order moments. 
+`Adam` is an implementation of the [Adam algorithm](https://arxiv.org/abs/1412.6980),
+ a stochastic gradient descent method that is based on an adaptive estimation of first-order and second-order moments. . 
 We use `Optimizer<>` to set up an optimiser with the learning rate:
 
 ```cpp
@@ -335,7 +338,9 @@ std::cout<<"x="<<v[0]<<std::endl;
 // The output is: x=1.98708
 ```
 ### Debugging
-For debugging, we can call `debug()` to print node parameters. The `debug()` function has to be called prior to graph execution. Once a node is marked for debugging, its value (resulting tensor) and the gradient will be printed out during the forward and backward pass. It is also recommended to turn on Marian logger by calling `createLoggers()` for more information.
+For debugging, we can call `debug()` to print node parameters. The `debug()` function has to be called prior to graph execution. 
+Once a node is marked for debugging, its value (resulting tensor) and the gradient will be printed out during the forward and backward pass. 
+It is also recommended to turn on Marian logger by calling `createLoggers()` for more information.
 
 **Debugging for modified Example 1**
 
@@ -363,7 +368,7 @@ min: 2.58385324 max: 2.58385324 l2-norm: 2.58385324
 
 For more details about graph execution, a graph keeps track of all the `Node` objects in its `nodesForward_` and `nodesBackward_` lists. 
 `nodesForward_` contains all nodes used for the forward pass and `nodesBackward_` contains all trainable nodes used for the backward pass. 
-All the tensor objects for a graph is stored in its `tensors_` attribute. 
+All the tensor objects for a graph are stored in its `tensors_` attribute. 
 `tensors_` is a shared pointer holding memory and nodes for a graph. 
 Since each `Node` can result in new tensors, this attribute is used to allocate memory for new tensors during the forward and backward pass.
 This `tensors_` attribute gets cleared before a new graph is built. 
@@ -379,17 +384,17 @@ graph->params();
 
 Besides, we provide APIs to support the mechanism of Gradient Checkpointing. 
 This method works by trading compute for memory, which reruns a forward-pass segment for each checkpoint segment during the backward pass. 
-Currently, Marian only support set checkpoint nodes manually (by calling `Node::markCheckpoint()` or `checkpoint()`). 
-To enable the mode of gradient-checkpointing for a graph, we use `setCheckpointing()`:
+Currently, Marian only supports setting checkpoint nodes manually by calling `Node::markCheckpoint()` or `checkpoint()`. 
+To enable the gradient-checkpointing mode for a graph, we use `setCheckpointing()`:
 
 ```cpp
 // enable gradient-checkpointing for a graph
 graph->setCheckpointing(true);
 ```
 
-We can also save and load the model (containing all the parameters) in Marian. 
-To save a model, we can call `save()` to save all parameters into a file (`.npz` or `.bin` format). 
-The function `load()` is to load a model (either from an array of `io::Items`, a file or a buffer).
+We can also save and load the parameters of a graph in Marian. 
+We can call `save()` to save all parameters in the graph into a file (`.npz` or `.bin` format). 
+The function `load()` can load all model parameters to the graph (either from an array of `io::Items`, a file or a buffer).
 
 ```cpp
 // specify the filename

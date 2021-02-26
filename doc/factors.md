@@ -132,26 +132,27 @@ for: _lemma _has_c _has_s
 There are two choices for how factor embeddings are combined with *lemma* embeddings: summation and concatenation.
 
 ```
---factors-combine TEXT=sum                      How to combine the factors and lemma embeddings.
-                                                Options available: sum, concat
+--factors-combine TEXT=sum      How to combine the factors and lemma embeddings.
+                                Options available: sum, concat
 ```
 
 The dimension of the factor embeddings must be specified if using combine option `concat`. If using `sum`, the factor embedding dimension matches that of the lemmas.
 
 ```
---factors-dim-emb INT                           Embedding dimension of the factors. Only used if 
-                                                concat is selected as factors combining form
+--factors-dim-emb INT           Embedding dimension of the factors. Only used if concat is selected as factors combining form
 ```
+
+Note: At the moment `concat` is only implemented for usage in the source side. 
 
 ### Prediction
 
-If using factors on the target side, there are multiple options for how factor predictions are generated related to the form of conditioning / dependencies of factors and lemmas:
+If using factors on the target side, there are multiple options for how factor predictions are generated related to the form of conditioning / dependencies of factors and lemmas. If no option is set with `--lemma-dependency`, the default behavior will be predicting the factors with no lemma dependency.
 
 ```
---factor-predictor TEXT=soft-transformer-layer  Method to use when predicting target factors. 
-                                                Options: soft-transformer-layer, hard-transformer-layer,
-                                                lemma-dependent-bias, re-embedding
---lemma-dim-emb INT=0                           Re-embedding dimension of lemma in factors
+--lemma-dependency TEXT         Lemma dependency method to use when predicting target factors. 
+                                Options: soft-transformer-layer, hard-transformer-layer, lemma-dependent-bias, re-embedding
+
+--lemma-dim-emb INT=0           Re-embedding dimension of lemma in factors
 ```
 
 * `soft-transformer-layer`: Uses an additional transformer layer to predict the factors using the previously predicted lemma
@@ -163,10 +164,10 @@ If using factors on the target side, there are multiple options for how factor p
 
 ### Weight tying
 
-If using factors only on the source or target side but using a joint vocabulary, there are two options to tie source and target embedding weights:
+If using factors only on the source or target side but using a joint vocabulary, there are two different options to tie source and target embedding weights:
 
-1. Use combine option `concat`
-2. Create "dummy" factors for the side initially without factors. This entails creating a factored vocabulary where the same number of factors are present as are on the side with meaningful factors. In the previous example, if we have the capitalization and subword factors on the source side, the target side would have five different dummy factors (they can all be in the same group). In the *lemma* section of the `.fsv` file we would just not put `_has_X` for any lemma.
+1. Use combine option `concat` (If using factors only on the source side).
+2. Use combine option `sum`, and create "dummy" factors for the side initially without factors. This entails creating a factored vocabulary where the same number of factors are present as are on the side with meaningful factors. In the previous example, if we have the capitalization and subword factors on the source side, the target side would have five different dummy factors (they can all be in the same group). In the *lemma* section of the `.fsv` file we would just not put `_has_X` for any lemma.
 
     ```
     # factors
@@ -190,3 +191,18 @@ If using factors only on the source or target side but using a joint vocabulary,
     le : _lemma
     pour: _lemma
     ```
+
+## Examples
+Some examples of possible commands to train factored models in marian:
+* Using factors on both source and target. Using `sum` to combine lemma and factor embeddings. No tied embeddings and no lemma dependency when predicting the factors:
+```
+path_to/build/marian -t corpus.fact.{src,trg} -v vocab.{src,trg}.fsv 
+```
+* Using factors only on the source side. Using `concat` to combine lemma and factor embeddings. Source, target and output embeddings matrices tied:
+```
+path_to/build/marian -t corpus.fact.src corpus.trg -v vocab.src.fsv vocab.trg.yml --factors-combine concat --factors-dim-emb 8 --tied-embeddings-all 
+```
+* Using factors only on the target side. Using `sum` to combine lemma and factor embeddings. Target and output embedding matrices tied. Predicting factors with `soft-transformer-layer` lemma dependency:
+```
+path_to/build/marian -t corpus.src corpus.fact.trg -v vocab.src.yml vocab.fsv.trg --tied-embeddings --lemma-dependency soft-transformer-layer
+```

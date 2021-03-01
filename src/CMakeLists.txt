@@ -5,6 +5,8 @@ include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(3rd_party/fbgemm/include)
+include_directories(3rd_party/intgemm)
+include_directories(${CMAKE_BINARY_DIR}/src/3rd_party/intgemm) # running cmake on the intgemm submodule triggers config file generation in this directory.
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 set(MARIAN_SOURCES
@@ -41,6 +43,7 @@ set(MARIAN_SOURCES
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
+
   3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
   3rd_party/phf/phf.cc
@@ -52,10 +55,7 @@ set(MARIAN_SOURCES
   tensors/cpu/prod.cpp
   tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
-
-  tensors/cpu/sharp/int_gemm.cpp
-  tensors/cpu/sharp/avx_gemm.cpp
-  tensors/cpu/sharp/sse_gemm.cpp
+  tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
 
   graph/expression_graph.cpp
@@ -76,6 +76,7 @@ set(MARIAN_SOURCES
   rnn/cells.cpp
   rnn/attention.cpp
 
+  optimizers/quantizer.cpp
   optimizers/clippers.cpp
   optimizers/optimizers.cpp
 
@@ -176,8 +177,6 @@ if(CUDA_FOUND)
   target_compile_options(marian_cuda PRIVATE ${ALL_WARNINGS})
   # make sure all local dependencies are installed first before this is built
   add_dependencies(marian_cuda 3rd_party_installs)
-  # Add external libs to the public interface of the library
-  target_link_libraries(marian_cuda ${EXT_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 
   # Add the CUDA Marian dependency to the core Marian target
   target_link_libraries(marian marian_cuda)

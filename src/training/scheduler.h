@@ -16,6 +16,8 @@ private:
   std::vector<Ptr<ValidatorBase>> validators_;
 
   bool first_{true};        // true if this is the first update after renewing the training
+  SchedulingParameter logicalEpoch_;
+  size_t logicalEpochWidth_{0};
 
   timer::Timer timer_;
   timer::Timer heartBeatTimer_;
@@ -110,7 +112,51 @@ private:
     return ss.str();
   }
 
+  // Here we calculate the logical epoch as defined by the user, by default this will be just a traditional data epoch.
+  // We understand a data epoch as a complete pass throught the training data as far as that information is available.
+  // By contrast, a logical epoch is defined somewhat indepdently of the number of data passes as by the number of seen updates or labels
+  // or as a multitude of data epochs.
+  float calculateLogicalEpoch() {
+    if(logicalEpoch_.unit == SchedulingUnit::epochs)
+      return (float)state_->epochs / (float)logicalEpoch_.n;      // logical epoch as multiple of n data epochs
+    else if(logicalEpoch_.unit == SchedulingUnit::trgLabels)
+      return (float)state_->labelsTotal / (float)logicalEpoch_.n; // logical epoch as multiple of n labels
+    else if(logicalEpoch_.unit == SchedulingUnit::updates)
+      return (float)state_->batches / (float)logicalEpoch_.n;     // logical epoch as multiple of n gradient updates (not actually batches @TODO: change name)
+    else
+      ABORT("Unknown scheduling unit occurred in logical epoch"); // shouldn't really happen unless we add a new unit in the corresponding enum
+  }
+
+  // Formatting for logical epochs
+  std::string formatLogicalEpoch() {
+    return fmt::format("{:." + std::to_string(logicalEpochWidth_) + "f}", calculateLogicalEpoch());
+  }
+
 public:
+  Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
+      : options_(options), state_(state) {
+
+    // parse logical-epoch parameters
+    auto logicalEpochStr = options->get<std::vector<std::string>>("logical-epoch", {"1e", "0"});
+    ABORT_IF(logicalEpochStr.empty(), "Logical epoch information is missing?");
+
+    logicalEpoch_ = SchedulingParameter::parse(logicalEpochStr[0]);
+
+    // here we deduce the floating point width to be used in formatLogicalEpoch()
+    if(logicalEpochStr.size() > 1) { // if the width is given, just use that
+      logicalEpochWidth_ = std::stoul(logicalEpochStr[1]);
+    } else { // the width is not given so we deduce a suitable display width
+      if(logicalEpoch_.unit == SchedulingUnit::epochs && logicalEpoch_.n == 1)
+        logicalEpochWidth_ = 0; // for a data epoch, output is an integer and looks like before this feature was introduced
+      else
+        logicalEpochWidth_ = 3; // all other outputs can be fractional, hence floating point format. We choose
+                                // 3 as a default which corresponds to a multiplier of 1000 (3 orders of magnitude).
+    }
+
+    ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
+    updateLearningRate(*state);
+  }
+
   // test if any parameters specify dynamic MB scaling
   bool isDynamicMBSizeScaling() const {
     auto mbWarmup = SchedulingParameter::parse(options_->get<std::string>("mini-batch-warmup"));
@@ -148,25 +194,33 @@ public:
     return ratio;
   }
 
-  Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
-      : options_(options), state_(state) {
-    ABORT_IF(state_->factor != 1, "state.factor unexpectedly not 1 at this point??");
-    updateLearningRate(*state);
-  }
-
   bool keepGoing() {
     if(saveAndExitRequested()) // via SIGTERM
       return false;
 
+#if 1  // @TODO: to be removed once we deprecate after-epochs and after-batches   
     // stop if it reached the maximum number of epochs
     size_t stopAfterEpochs = options_->get<size_t>("after-epochs");
-    if(stopAfterEpochs > 0 && state_->epochs > stopAfterEpochs)
+    if(stopAfterEpochs > 0 && calculateLogicalEpoch() > stopAfterEpochs)
       return false;
 
     // stop if it reached the maximum number of batch updates
     size_t stopAfterBatches = options_->get<size_t>("after-batches");
     if(stopAfterBatches > 0 && state_->batches >= stopAfterBatches)
       return false;
+#endif
+
+    // get list of stopping criteria e.g. "10e,300Ku,20Gt" (10 epochs, 300,000 updates, 20 billion target labels)
+    // and stop for whatever criterion hits first.
+    std::vector<std::string> stoppingCriteria = utils::split(options_->get<std::string>("after"), ",");
+    for(auto stoppingCriterionString : stoppingCriteria) {
+      SchedulingParameter stoppingCriterion = SchedulingParameter::parse(stoppingCriterionString);
+      if(stoppingCriterion.n > 0) { // is any stopping criterion defined?
+        if(stoppingCriterion.unit == SchedulingUnit::epochs    && calculateLogicalEpoch() >  stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::updates   && state_->batches         >= stoppingCriterion.n) return false;
+        if(stoppingCriterion.unit == SchedulingUnit::trgLabels && state_->labelsTotal     >= stoppingCriterion.n) return false;
+      }
+    }
 
     // stop if the first validator did not improve for a given number of checks
     size_t stopAfterStalled = options_->get<size_t>("early-stopping");
@@ -184,7 +238,10 @@ public:
   void increaseEpoch() {
     LOG(info, "Seen {} samples", state_->samplesEpoch);
     state_->newEpoch();
-    LOG(info, "Starting epoch {}", state_->epochs);
+    if(std::to_string(logicalEpoch_) == "1e")
+      LOG(info, "Starting epoch {}", state_->epochs);
+    else
+      LOG(info, "Starting data epoch {} in logical epoch {}", state_->epochs, formatLogicalEpoch());
   }
 
   void started() { LOG(info, "Training started"); }
@@ -237,7 +294,7 @@ public:
       if(validator->stalled() > 0) {
         LOG_VALID(info,
                   "Ep. {} : Up. {} : {} : {} : stalled {} times (last best: {})",
-                  state_->epochs,
+                  formatLogicalEpoch(),
                   state_->batches,
                   validator->type(),
                   value,
@@ -245,7 +302,7 @@ public:
       } else {
         LOG_VALID(info,
                   "Ep. {} : Up. {} : {} : {} : new best",
-                  state_->epochs,
+                  formatLogicalEpoch(),
                   state_->batches,
                   validator->type(),
                   value);
@@ -327,7 +384,7 @@ public:
       } else if(options_->get<bool>("lr-report")) {
         LOG(info,
             "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
-            state_->epochs,
+            formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
@@ -337,7 +394,7 @@ public:
       } else {
         LOG(info,
             "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s",
-            state_->epochs,
+            formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
@@ -361,7 +418,7 @@ public:
     if((!mpi || mpi->myMPIRank() == 0) && getenv("PHILLY_JOB_ID")
        && heartBeatTimer_.elapsed<std::chrono::minutes>() >= 10) {
       printf("PROGRESS: %.2f%%\nEVALERR: %.7f%%\n",
-          (double)state_->epochs,
+          (double)calculateLogicalEpoch(),
           state_->costSum / (state_->costCount ? state_->costCount : 1) / (mpi ? mpi->numMPIProcesses() : 1));
       fflush(stdout);
       std::cout << "MBSIZE: " << batchLabels << " after " << state_->batches << " updates = " << state_->labelsTotal << " labels" << std::endl << std::flush;

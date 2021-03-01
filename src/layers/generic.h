@@ -14,9 +14,12 @@ namespace marian { namespace mlp {
 
 namespace marian {
 
-// Each layer consists of LayerBase and IXXXLayer which defines one or more apply()
-// functions for the respective layer type (different layers may require different signatures).
-// This base class contains configuration info for creating parameters and executing apply().
+/**
+ * Base class for a layer.
+ * Each layer consists of LayerBase and IXXXLayer which defines one or more apply()
+ * functions for the respective layer type (different layers may require different signatures).
+ * This base class contains configuration info for creating parameters and executing apply().
+ */
 class LayerBase {
 protected:
   Ptr<ExpressionGraph> graph_;
@@ -37,16 +40,19 @@ public:
   }
 };
 
-// Simplest layer interface: Unary function
+/** Simplest layer interface: Unary function */
 struct IUnaryLayer {
   virtual ~IUnaryLayer() {}
+  /** Link a node as the input for this layer */
   virtual Expr apply(Expr) = 0;
+  /** Link a list of nodes as the inputs for this layer*/
   virtual Expr apply(const std::vector<Expr>& es) {
     ABORT_IF(es.size() > 1, "Not implemented"); // simple stub
     return apply(es.front());
   }
 };
 
+/** Shortlist interface for layers */
 struct IHasShortList {
   virtual void setShortlist(Ptr<data::Shortlist> shortlist) = 0;
   virtual void clear() = 0;

@@ -10,6 +10,11 @@ namespace mlp {
  * Base class for layer factories, can be used in a multi-layer network factory.
  */
 struct LayerFactory : public Factory {
+  /**
+   * Construct a layer instance in a given graph.
+   * @param graph a shared pointer a graph
+   * @return a shared pointer to the layer object
+   */
   virtual Ptr<IUnaryLayer> construct(Ptr<ExpressionGraph> graph) = 0;
 };
 

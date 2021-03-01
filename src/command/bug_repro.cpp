@@ -19,7 +19,11 @@ public:
         = {"marian",
            "-c",
            "/home/rihards/exp/marian-adaptive-crash-repro/models/model.npz.repro.yml",
-           "-t", "dummy-value", "-t", "dummy-value"};
+           "-t", "dummy-value", "-t", "dummy-value",
+           "--after-batches", "20",
+           "--after-epochs", "20",
+           "--learn-rate", "0.1",
+           "--mini-batch", "1"};
     int argc = sizeof(argseasy) / sizeof(char*);
     // this is as close as i could get to initializing a char** in a sane manner
     char** args = new char*[argc];
@@ -55,43 +59,45 @@ public:
     auto inputs = New<data::TextInput>(std::vector<std::string>({sources, targets}), vocabs, options);
     auto batches = New<data::BatchGenerator<data::TextInput>>(inputs, options);
 
-    auto state = New<TrainingState>(options->get<float>("learn-rate"));
-    auto scheduler = New<Scheduler>(options, state);
-    scheduler->registerTrainingObserver(scheduler);
-    scheduler->registerTrainingObserver(optimizer);
+    for(size_t i = 0; i < 10; i++) {
+      auto state = New<TrainingState>(options->get<float>("learn-rate"));
+      auto scheduler = New<Scheduler>(options, state);
+      scheduler->registerTrainingObserver(scheduler);
+      scheduler->registerTrainingObserver(optimizer);
 
-    Ptr<ExpressionGraph> graph;
+      Ptr<ExpressionGraph> graph;
 
-    bool first = true;
-    scheduler->started();
-    while(scheduler->keepGoing()) {
-      batches->prepare();
+      bool first = true;
+      scheduler->started();
+      while(scheduler->keepGoing()) {
+        batches->prepare();
 
-      for(auto batch : *batches) {
-        if(!scheduler->keepGoing()) {
-          break;
+        for(auto batch : *batches) {
+          if(!scheduler->keepGoing()) {
+            break;
+          }
+
+          if(first) {
+            graph = New<ExpressionGraph>();
+            graph->setDevice({0, DeviceType::cpu});
+            graph->reserveWorkspaceMB(128);
+            first = false;
+          }
+
+          auto lossNode = builder->build(graph, batch);
+          graph->forward();
+          StaticLoss loss = *lossNode;
+          graph->backward();
+
+          optimizer->update(graph);
+          scheduler->update(loss, batch);
         }
 
-        if(first) {
-          graph = New<ExpressionGraph>();
-          graph->setDevice({0, DeviceType::cpu});
-          graph->reserveWorkspaceMB(128);
-          first = false;
-        }
-
-        auto lossNode = builder->build(graph, batch);
-        graph->forward();
-        StaticLoss loss = *lossNode;
-        graph->backward();
-
-        optimizer->update(graph);
-        scheduler->update(loss, batch);
+        if(scheduler->keepGoing())
+          scheduler->increaseEpoch();
       }
-
-      if(scheduler->keepGoing())
-        scheduler->increaseEpoch();
+      scheduler->finished();
     }
-    scheduler->finished();
   }
 };
 }

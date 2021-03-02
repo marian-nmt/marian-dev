@@ -246,6 +246,7 @@ if (NOT COMPILE_LIBRARY_ONLY)
                 "${CMAKE_BINARY_DIR}/marian-scorer"
                 "${CMAKE_BINARY_DIR}/marian-vocab"
                 "${CMAKE_BINARY_DIR}/marian-conv"
+                "${CMAKE_BINARY_DIR}/marian-adaptive"
     DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_zip DEPENDS "${CMAKE_BINARY_DIR}/marian.zip")
 
@@ -257,6 +258,7 @@ if (NOT COMPILE_LIBRARY_ONLY)
                 "marian-scorer"
                 "marian-vocab"
                 "marian-conv"
+                "marian-adaptive"
     DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
   add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
   add_custom_target(philly DEPENDS marian_tgz marian_zip)
@@ -278,6 +280,12 @@ if (NOT COMPILE_LIBRARY_ONLY)
     endif(MSVC)
     set(EXECUTABLES ${EXECUTABLES} marian_server)
   endif(COMPILE_SERVER)
+
+  if(COMPILE_ADAPTIVE)
+    add_executable(marian_adaptive command/marian_adaptive.cpp)
+    set_target_properties(marian_adaptive PROPERTIES OUTPUT_NAME marian-adaptive)
+    set(EXECUTABLES ${EXECUTABLES} marian_adaptive)
+  endif(COMPILE_ADAPTIVE)
 
   foreach(exec ${EXECUTABLES})
     target_link_libraries(${exec} marian)

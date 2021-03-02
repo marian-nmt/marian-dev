@@ -81,6 +81,10 @@ void OutputCollector::Write(long sourceId,
 
 StringCollector::StringCollector(bool quiet /*=false*/) : maxId_(-1), quiet_(quiet) {}
 
+void StringCollector::Write(long sourceId, const std::string &best1, const std::string &bestn, bool) {
+  StringCollector::add(sourceId, best1, bestn);
+}
+
 void StringCollector::add(long sourceId,
                           const std::string& best1,
                           const std::string& bestn) {

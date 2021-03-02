@@ -14,7 +14,7 @@
 namespace marian {
 
 namespace cli {
-enum struct mode { training, translation, scoring, server, embedding };
+enum struct mode { training, translation, scoring, server, embedding, selfadaptive };
 }  // namespace cli
 
 /**

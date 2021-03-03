@@ -39,6 +39,8 @@ jobs:
         working-directory: ./doc
         run: make html
 
+      # This artifact contains the HTML output of Sphinx only.
+      # With index.html at the root of the produced zip file.
       - name: Upload documentation
         uses: actions/upload-artifact@v2
         with:

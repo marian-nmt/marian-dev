@@ -257,7 +257,7 @@ private:
         graphAdapt_->backward();
 
         // Notify optimizer and scheduler
-        optimizer_->update(graphAdapt_);
+        optimizer_->update(graphAdapt_, 1);
         scheduler->update(loss, batch);
       }
       if(scheduler->keepGoing())

@@ -33,7 +33,7 @@ public:
     auto options = parser.parseOptions(argc, args, false);
 
     auto builder = models::createCriterionFunctionFromOptions(options, models::usage::training);
-    auto optimizer = Optimizer<Adam>(0.01);
+    auto optimizer = Optimizer(New<Options>("optimizer", "adam", "learn-rate", 0.01));
 
     std::vector<std::string> vocabPaths
         = {"/home/rihards/exp/marian-adaptive-crash-repro/models/train.1-to-1.bpe.en-lv.yml",
@@ -89,7 +89,7 @@ public:
           StaticLoss loss = *lossNode;
           graph->backward();
 
-          optimizer->update(graph);
+          optimizer->update(graph, 1);
           scheduler->update(loss, batch);
         }
 

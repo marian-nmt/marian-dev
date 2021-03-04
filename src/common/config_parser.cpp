@@ -96,7 +96,7 @@ ConfigParser::ConfigParser(cli::mode mode)
       break;
     case cli::mode::selfadaptive:
       addOptionsTraining(cli_);
-      addOptionsValidation(cli_);
+      addOptionsTranslation(cli_);
       addOptionsServer(cli_);
       break;
     default:
@@ -646,11 +646,11 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--input,-i",
       "Paths to input file(s), stdin by default",
       {"stdin"});
-  cli.add<std::string>("--output,-o",
-      "Path to output file, stdout by default",
-      "stdout");
-  // for self-adaptive mode vocabs are already added via the training options
+  // for self-adaptive mode these are already added via the training options
   if(mode_ != cli::mode::selfadaptive) {
+    cli.add<std::string>("--output,-o",
+        "Path to output file, stdout by default",
+        "stdout");
     cli.add<std::vector<std::string>>("--vocabs,-v",
         "Paths to vocabulary files have to correspond to --input");
   }
@@ -723,7 +723,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 
   cli.switchGroup(previous_group);
   // clang-format on
-}
+  }
 
 void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   auto previous_group = cli.switchGroup("Scorer options");

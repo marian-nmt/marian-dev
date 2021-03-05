@@ -5,6 +5,8 @@ include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(3rd_party/fbgemm/include)
+include_directories(3rd_party/intgemm)
+include_directories(${CMAKE_BINARY_DIR}/src/3rd_party/intgemm) # running cmake on the intgemm submodule triggers config file generation in this directory.
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 set(MARIAN_SOURCES
@@ -41,6 +43,7 @@ set(MARIAN_SOURCES
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
+
   3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
   3rd_party/phf/phf.cc
@@ -52,10 +55,7 @@ set(MARIAN_SOURCES
   tensors/cpu/prod.cpp
   tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
-
-  tensors/cpu/sharp/int_gemm.cpp
-  tensors/cpu/sharp/avx_gemm.cpp
-  tensors/cpu/sharp/sse_gemm.cpp
+  tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
 
   graph/expression_graph.cpp
@@ -79,6 +79,7 @@ set(MARIAN_SOURCES
   optimizers/quantizer.cpp
   optimizers/clippers.cpp
   optimizers/optimizers.cpp
+  optimizers/exponential_smoothing.cpp
 
   models/model_factory.cpp
   models/encoder_decoder.cpp
@@ -164,6 +165,7 @@ if(CUDA_FOUND)
     tensors/gpu/device.cu
     tensors/gpu/algorithm.cu
     tensors/gpu/prod.cpp
+    tensors/gpu/prod_sparse.cpp
     tensors/gpu/topk.cu
     tensors/gpu/element.cu
     tensors/gpu/add.cu
@@ -220,30 +222,28 @@ if (NOT COMPILE_LIBRARY_ONLY)
   # execution in MSFT internal tools FLO and Philly.
   # For Philly submission, we need statically-linked versions to deal with
   # library dependencies, so this target is only enabled for static builds.
-  if(USE_STATIC_LIBS)
-    add_custom_command(
-      OUTPUT "${CMAKE_BINARY_DIR}/marian.zip"
-      COMMAND zip -v -0 -j "${CMAKE_BINARY_DIR}/marian.zip"
-                  "${CMAKE_BINARY_DIR}/marian"
-                  "${CMAKE_BINARY_DIR}/marian-decoder"
-                  "${CMAKE_BINARY_DIR}/marian-scorer"
-                  "${CMAKE_BINARY_DIR}/marian-vocab"
-                  "${CMAKE_BINARY_DIR}/marian-conv"
-      DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
-    add_custom_target(marian_zip DEPENDS "${CMAKE_BINARY_DIR}/marian.zip")
+  add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/marian.zip"
+    COMMAND zip -v -0 -j "${CMAKE_BINARY_DIR}/marian.zip"
+                "${CMAKE_BINARY_DIR}/marian"
+                "${CMAKE_BINARY_DIR}/marian-decoder"
+                "${CMAKE_BINARY_DIR}/marian-scorer"
+                "${CMAKE_BINARY_DIR}/marian-vocab"
+                "${CMAKE_BINARY_DIR}/marian-conv"
+    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
+  add_custom_target(marian_zip DEPENDS "${CMAKE_BINARY_DIR}/marian.zip")
 
-    add_custom_command(
-      OUTPUT "${CMAKE_BINARY_DIR}/marian.tgz"
-      COMMAND tar -cvvzf "${CMAKE_BINARY_DIR}/marian.tgz" -C "${CMAKE_BINARY_DIR}"
-                  "marian"
-                  "marian-decoder"
-                  "marian-scorer"
-                  "marian-vocab"
-                  "marian-conv"
-      DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
-    add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
-    add_custom_target(philly DEPENDS marian_tgz marian_zip)
-  endif(USE_STATIC_LIBS)
+  add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/marian.tgz"
+    COMMAND tar -cvvzf "${CMAKE_BINARY_DIR}/marian.tgz" -C "${CMAKE_BINARY_DIR}"
+                "marian"
+                "marian-decoder"
+                "marian-scorer"
+                "marian-vocab"
+                "marian-conv"
+    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
+  add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
+  add_custom_target(philly DEPENDS marian_tgz marian_zip)
 
   if(COMPILE_SERVER)
     add_executable(marian_server command/marian_server.cpp)

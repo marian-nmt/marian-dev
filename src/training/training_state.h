@@ -49,7 +49,7 @@ struct SchedulingParameter {
     }
     double number = utils::parseNumber(param);
     res.n = (size_t)number;
-    ABORT_IF(number != (double)res.n, "Scheduling parameters must be whole numbers");
+    ABORT_IF(number != (double)res.n, "Scheduling parameters must be whole numbers"); // @TODO: do they?
     return res;
   }
 
@@ -100,13 +100,14 @@ public:
   }
   // State-based multiplication factor for learning rate
   float factor{1.f};
+  // @TODO: should also have warmup period here?
   SchedulingParameter warmupStart; // has same unit as lr-warmup
 
   // Sum of costs since last display
   float costSum{0};
   // Number of labels aggregated in
   // costSum since last display
-  size_t costCount{0};
+  float costCount{0};
 
   // Number of words seen since last display
   size_t wordsDisp{0};
@@ -114,6 +115,16 @@ public:
   size_t samplesDisp{0};
   // Number of updates seen since last display
   size_t updatesDisp{0};
+
+  // Running average of gradient norm
+  float gradientNormAvg{0};
+  // Running variance of gradient norm
+  float gradientNormVar{0};
+
+  // Running average of log gradient norm
+  float logGradientNormAvg{0};
+  // Running variance of log gradient norm
+  float logGradientNormVar{0};
 
   // The state of the random number generator from a batch generator
   std::string seedBatch;
@@ -255,14 +266,21 @@ public:
 
     eta = config["eta"].as<float>();
     factor = config["eta-factor"].as<float>();
+
     warmupStart = SchedulingParameter::parse(config["warmup-start"].as<std::string>());
 
     costSum = config["cost-sum"].as<float>();
-    costCount = config["cost-count"].as<size_t>();
+    costCount = config["cost-count"].as<float>();
 
     wordsDisp = config["disp-words"].as<size_t>();
     samplesDisp = config["disp-samples"].as<size_t>();
     updatesDisp = config["disp-updates"].as<size_t>();
+
+    gradientNormAvg = config["gradient-norm-avg"].as<float>();
+    gradientNormVar = config["gradient-norm-var"].as<float>();
+
+    logGradientNormAvg = config["log-gradient-norm-avg"].as<float>();
+    logGradientNormVar = config["log-gradient-norm-var"].as<float>();
 
     seedBatch = config["seed-batch"].as<std::string>();
     seedCorpus = config["seed-corpus"].as<std::string>();
@@ -298,6 +316,12 @@ public:
     config["disp-updates"] = updatesDisp;
     config["disp-samples"] = samplesDisp;
     config["disp-words"] = wordsDisp;
+
+    config["gradient-norm-avg"] = gradientNormAvg;
+    config["gradient-norm-var"] = gradientNormVar;
+
+    config["log-gradient-norm-avg"] = logGradientNormAvg;
+    config["log-gradient-norm-var"] = logGradientNormVar;
 
     config["seed-batch"] = seedBatch;
     config["seed-corpus"] = seedCorpus;

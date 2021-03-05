@@ -7,7 +7,7 @@
 #include "graph/node_operators_tuple.h"
 
 #include "graph/auto_tuner.h"
-#include "tensors/cpu/int16.h"
+#include "tensors/cpu/intgemm_interface.h"
 #include "tensors/cpu/fbgemm/expanded_gemm.h"
 
 #if USE_FBGEMM
@@ -70,6 +70,14 @@ Expr exp(Expr a) {
 
 Expr sin(Expr a) {
   return Expression<SinNodeOp>(a);
+};
+
+Expr cos(Expr a) {
+  return Expression<CosNodeOp>(a);
+};
+
+Expr tan(Expr a) {
+  return Expression<TanNodeOp>(a);
 };
 
 Expr swish(Expr a) {
@@ -466,7 +474,6 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
-  float clipValue = a->graph()->getBackend()->getClip();
   // added support for packed GEMM API (fp16, int8)
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
@@ -475,18 +482,9 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
-        // dotInt16 computes A * B.T, hence the transpose for B to get A * B
-        // if transA = false and transB = false.
-
-        return cpu::int16::dot(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-          scale);
-      } else {
-        return Expression<DotNodeOp>(
-          clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
-      }
+      return Expression<DotNodeOp>(a, b, transA, transB, scale);
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -496,7 +494,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of dot product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::dot(clip(a, clipValue),
+        return cpu::variant::dot(a,
                                  b,
                                  b->shape(),
                                  transA,
@@ -512,8 +510,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
   } else {
-    return Expression<DotNodeOp>(
-        clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+    return Expression<DotNodeOp>(a, b, transA, transB, scale);
   }
 }
 
@@ -524,16 +521,9 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
 static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
 
-  // if clipValue > 0, the inputs will be clipped to range [-clipValue,
-  // clipValue] This is meant to keep values at the same range as used during
-  // training when optimizing for 8-bit integer products. Likely to be removed
-  // in the future when we explore better ways to handle this.
-  float clipValue = a->graph()->getBackend()->getClip();
-
   int rows = a->shape().elements() / a->shape()[-1];
   Expr ones = a->graph()->ones({ rows, 1 });
-  std::vector<Expr> nodes
-    = { clip(a, clipValue), clip(b, clipValue), bias, ones };
+  std::vector<Expr> nodes = { a, b, bias, ones };
   return Expression<AffineNodeOp>(nodes, transA, transB, scale);
 }
 
@@ -545,22 +535,14 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
-  float clipValue = a->graph()->getBackend()->getClip();
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->isOptimized()) {
-        // cpu int16 version
-        return cpu::int16::affine(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-          bias,
-          scale);
-      } else {
-        return affineDefault(a, b, bias, transA, transB, scale);
-      }
+      return affineDefault(a, b, bias, transA, transB, scale);
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -570,7 +552,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::affine(clip(a, clipValue),
+        return cpu::variant::affine(a,
                                     b,
                                     b->shape(),
                                     bias,
@@ -595,10 +577,30 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   }
 }
 
+// @TODO: Not a great place to check this
+#if CUDA_VERSION < 11000
 // multiply a CSR matrix A with a matrix B
 // A[i,j] is at A_values[A_offsets[i]+k], where k is position of j in A_indices[A_offsets[i]:A_offsets[i+1]]
 // @TODO: Define a proper sparse tensor type.
 Expr csr_dot(const Shape& A_shape, Expr A_values, Expr A_indices, Expr A_offsets, Expr B, bool transA /*= false*/) {
+  if(A_values->value_type() == Type::float16)
+    LOG_ONCE(warn, "Using very slow version of sparse matrix operations with explicity cast to {}. Use CUDA 11.0 or higher.", Type::float16);
+  return cast(Expression<CSRDotNodeOp>(A_shape, cast(A_values, Type::float32), A_indices, A_offsets, cast(B, Type::float32), transA, /*swapOperands=*/false), A_values->value_type());
+}
+
+// multiply a matrix A with a CSR matrix B
+// @TODO: Define a proper sparse tensor type.
+Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB /*= false*/) {
+  if(B_values->value_type() == Type::float16)
+    LOG_ONCE(warn, "Using very slow version of sparse matrix operations with explicity cast to {}. Use CUDA 11.0 or higher.", Type::float16);
+  return cast(Expression<CSRDotNodeOp>(B_shape, cast(B_values, Type::float32), B_indices, B_offsets, cast(A, Type::float32), transB, /*swapOperands=*/true), B_values->value_type());
+}
+#else
+// multiply a CSR matrix A with a matrix B
+// A[i,j] is at A_values[A_offsets[i]+k], where k is position of j in A_indices[A_offsets[i]:A_offsets[i+1]]
+// @TODO: Define a proper sparse tensor type.
+Expr csr_dot(const Shape& A_shape, Expr A_values, Expr A_indices, Expr A_offsets, Expr B, bool transA /*= false*/) {
+  // @TODO: implement this without cast
   return Expression<CSRDotNodeOp>(A_shape, A_values, A_indices, A_offsets, B, transA, /*swapOperands=*/false);
 }
 
@@ -607,6 +609,8 @@ Expr csr_dot(const Shape& A_shape, Expr A_values, Expr A_indices, Expr A_offsets
 Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB /*= false*/) {
   return Expression<CSRDotNodeOp>(B_shape, B_values, B_indices, B_offsets, A, transB, /*swapOperands=*/true);
 }
+#endif
+
 
 // swap the last two axes
 // @TODO: change to swapAxes(a, -1, -2)
@@ -657,7 +661,7 @@ Expr swapAxes(Expr x, int axis1, int axis2)
 
 Expr cast(Expr a, Type type) {
   if(a->value_type() == type) {
-    return a;
+    return a; // it's the correct type already, so nothing to do here
   } else {
     return Expression<CastNodeOp>(a, type);
   }

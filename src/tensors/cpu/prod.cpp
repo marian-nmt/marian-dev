@@ -7,8 +7,17 @@
 #include "tensors/tensor.h"
 #include "tensors/tensor_allocator.h"
 
+#if MKL_FOUND
+#include <mkl.h>
+#else
+#if BLAS_FOUND
+#include <cblas.h>
+#endif
+#endif
+
+#include "integer_common.h"
 #include "prod_blas.h"
-#include "sharp/int_gemm.h"
+
 
 namespace marian {
 
@@ -58,6 +67,19 @@ void Prod(marian::Tensor C,
   C; A; B; transA; transB; beta; scalar;
   ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
+}
+
+// dummy implementation, computeType doesn't do anything on CPU
+void Prod(marian::Tensor C,
+          const marian::Tensor& A,
+          const marian::Tensor& B,
+          bool transA,
+          bool transB,
+          float beta,
+          float scalar,
+          Type computeType) {
+  computeType; // make compiler happy
+  cpu::Prod(C, A, B, transA, transB, beta, scalar);
 }
 
 void ProdBatched(marian::Tensor C,
@@ -187,7 +209,7 @@ void ProdWithBias(marian::Tensor C,
                   float beta,
                   float scalar) {
   cpu::Prod(C, A, B, transA, transB, beta, scalar);
-  cpu::int16::AddBias(C, bias);
+  cpu::integer::AddBias(C, bias);
 }
 
 void CSRProd(marian::Tensor C,

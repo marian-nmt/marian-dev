@@ -14,8 +14,10 @@ private:
   Ptr<Options> options_;
   Ptr<TrainingState> state_;
   std::vector<Ptr<ValidatorBase>> validators_;
+  Ptr<IMPIWrapper> mpi_;
 
-  bool first_{true};        // true if this is the first update after renewing the training
+  bool first_{true};                  // true if this is the first update after renewing the training
+  size_t gradientNormAvgWindow_{100}; // window size for recording the exponential average of gradient norms, after this many updates about 90% of the mass comes from this many last updates
   SchedulingParameter logicalEpoch_;
   size_t logicalEpochWidth_{0};
 
@@ -26,7 +28,8 @@ private:
   // (regardless if it's the 1st or nth epoch and if it's a new or continued training),
   // which indicates the end of the training data stream from STDIN
   bool endOfStdin_{false};  // true at the end of the epoch if training from STDIN;
-
+ 
+  // @TODO: figure out how to compute this with regard to updates as well, although maybe harder since no final value
   // determine scheduled LR decay factor (--lr-decay-inv-sqrt option)
   float getScheduledLRDecayFactor(const TrainingState& state) const {
     auto args = options_->get<std::vector<std::string>>("lr-decay-inv-sqrt");
@@ -48,12 +51,6 @@ private:
       return 1.f;
   }
 
-  // update current learning rate in state.eta
-  // This considers
-  //  - base LR (--learn-rate)
-  //  - LR warm-up (--lr-warmup, --lr=warmup-start-rate)
-  //  - scheduled LR decay (--lr-decay-inv-sqrt)
-  //  - state-based LR decay (--lr-decay, --lr-decay-strategy)
   void updateLearningRate(TrainingState& state) const {
     float baselr = options_->get<float>("learn-rate");
 
@@ -95,7 +92,7 @@ private:
       ss << state->costSum / state->costCount;
     } else if(lossType == "ce-sum" && dispLabelCounts) {
       ss << state->costSum / state->costCount
-         << " * " << utils::withCommas(state->costCount);
+         << " * " << utils::withCommas((size_t)state->costCount);
       if(batchLabels > 0)
          ss << " @ " << utils::withCommas(batchLabels);
       ss << " after " << utils::withCommas(state->labelsTotal);
@@ -133,9 +130,10 @@ private:
   }
 
 public:
-  Scheduler(Ptr<Options> options, Ptr<TrainingState> state)
-      : options_(options), state_(state) {
-
+  Scheduler(Ptr<Options> options, Ptr<TrainingState> state, Ptr<IMPIWrapper> mpi = nullptr)
+      : options_(options), state_(state), mpi_(mpi),
+        gradientNormAvgWindow_(options_->get<size_t>("gradient-norm-average-window", 100)) {
+  
     // parse logical-epoch parameters
     auto logicalEpochStr = options->get<std::vector<std::string>>("logical-epoch", {"1e", "0"});
     ABORT_IF(logicalEpochStr.empty(), "Logical epoch information is missing?");
@@ -176,8 +174,10 @@ public:
       size_t progress = state_->getProgressIn(mbWarmup.unit); // number of updates/labels processed
       auto progressRatio = (double)progress / (double)mbWarmup.n; // where are we relatively within target warm-up period
       // if unit is labels, then account for the fact that our increment itself is not constant
+#if 1  // this seems to hurt convergence quite a bit compared to when updates is used     
       if (mbWarmup.unit == SchedulingUnit::trgLabels)
         progressRatio = std::sqrt(progressRatio);
+#endif
       if (progressRatio < 1)
         ratio *= progressRatio;
     }
@@ -186,12 +186,21 @@ public:
     // As LR goes down, MB gets ramped up by the same ratio, which has been found to be safe.
     auto mbTracking = options_->get<bool>("mini-batch-track-lr");
     if (mbTracking) {
+      ABORT("Please review this code");
       auto lrFactor = getScheduledLRDecayFactor(*state_) * state_->factor; // (don't include lr-warmup)
       if (lrFactor != 1)
         LOG_ONCE(info, "[scheduler] Dynamic mini-batch size adjustment enabled and kicking in");
       ratio /= lrFactor;
     }
     return ratio;
+  }
+
+  std::tuple<size_t, float, float> getGradientNormStats() const {
+    return std::make_tuple(gradientNormAvgWindow_, state_->gradientNormAvg, state_->gradientNormVar);
+  }
+
+  std::tuple<size_t, float, float> getLogGradientNormStats() const {
+    return std::make_tuple(gradientNormAvgWindow_, state_->logGradientNormAvg, state_->logGradientNormVar);
   }
 
   bool keepGoing() {
@@ -236,7 +245,7 @@ public:
   }
 
   void increaseEpoch() {
-    LOG(info, "Seen {} samples", state_->samplesEpoch);
+    LOG(info, "Seen {} samples", utils::withCommas(state_->samplesEpoch));
     state_->newEpoch();
     if(std::to_string(logicalEpoch_) == "1e")
       LOG(info, "Starting epoch {}", state_->epochs);
@@ -274,6 +283,10 @@ public:
     return state_->enteredNewPeriodOf(options_->get<std::string>("save-freq"));
   }
 
+  bool syncing() {
+    return state_->enteredNewPeriodOf(options_->get<std::string>("sync-freq", "0"));
+  }
+
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                 bool isFinal = false) {
     // Do not validate if already validated (for instance, after the model is loaded)
@@ -290,30 +303,44 @@ public:
         continue;
 
       size_t stalledPrev = validator->stalled();
-      float value = validator->validate(graphs, state_);
-      if(validator->stalled() > 0) {
-        LOG_VALID(info,
-                  "Ep. {} : Up. {} : {} : {} : stalled {} times (last best: {})",
-                  formatLogicalEpoch(),
-                  state_->batches,
-                  validator->type(),
-                  value,
-                  validator->stalled(), validator->lastBest());
-      } else {
-        LOG_VALID(info,
-                  "Ep. {} : Up. {} : {} : {} : new best",
-                  formatLogicalEpoch(),
-                  state_->batches,
-                  validator->type(),
-                  value);
-
-        if(firstValidator)
-          state_->validBest = value;
+      float value = 0;
+      if(!mpi_ || mpi_->isMainProcess()) {
+        // We run validation only in the main process, but this is risky with MPI.
+        // Validators might modify random state etc., maybe we should run validators
+        // everywhere, but not report and not save on the other processes.
+        value = validator->validate(graphs, state_);
+        if(validator->stalled() > 0) {
+          LOG_VALID(info,
+                    "Ep. {} : Up. {} : {} : {} : stalled {} times (last best: {})",
+                    formatLogicalEpoch(),
+                    state_->batches,
+                    validator->type(),
+                    value,
+                    validator->stalled(), validator->lastBest());
+        } else {
+          LOG_VALID(info,
+                    "Ep. {} : Up. {} : {} : {} : new best",
+                    formatLogicalEpoch(),
+                    state_->batches,
+                    validator->type(),
+                    value);
+        }
       }
 
-      state_->validators[validator->type()]["last-best"]
-          = validator->lastBest();
-      state_->validators[validator->type()]["stalled"] = validator->stalled();
+      if(mpi_) {
+        // collect and broadcast validation result to all processes and bring validator up-to-date
+        mpi_->bCast(&value, 1, IMPIWrapper::getDataType(&value));
+        
+        // @TODO: add function to validator?
+        mpi_->bCast(&validator->stalled(), 1, IMPIWrapper::getDataType(&validator->stalled()));
+        mpi_->bCast(&validator->lastBest(), 1, IMPIWrapper::getDataType(&validator->lastBest()));
+      }
+
+      if(firstValidator)
+        state_->validBest = value;
+
+      state_->validators[validator->type()]["last-best"] = validator->lastBest();
+      state_->validators[validator->type()]["stalled"]   = validator->stalled();
 
       // notify training observers if the first validator did not improve
       if(firstValidator && validator->stalled() > stalledPrev)
@@ -332,7 +359,7 @@ public:
   }
 
   void update(StaticLoss rationalLoss, Ptr<data::Batch> batch) {
-    update(rationalLoss, /*numReadBatches=*/1, /*batchSize=*/batch->size(), /*batchLabels=*/batch->wordsTrg());
+    update(rationalLoss, /*numReadBatches=*/1, /*batchSize=*/batch->size(), /*batchLabels=*/batch->wordsTrg(), /*gradientNorm=*/0.f);
   }
 
   // @TODO: go back to function which takes batch as an argument? The current arguments make it hard
@@ -342,7 +369,7 @@ public:
               size_t numReadBatches, // number of batches read by the reader (for seeking in case of restart)
               size_t batchSize,      // total number of sentences in batch
               size_t batchLabels,    // total number of target words in batch
-              Ptr<IMPIWrapper> mpi = nullptr) {
+              float gradientNorm) {  // gradientNorm of update
     state_->rememberPreviousProgress();  // note: epoch increases happen at the wrong place, hence
                                          // -freq parameters do not support epoch units
     state_->validated = false;
@@ -350,58 +377,74 @@ public:
     // Since batchLabels is counted across all MPI processes, we also should temporarily
     // extrapolate cost across MPI processes, to have numbers in the right range.
     // When doing the actual log, we then aggregate across MPI processes to get the accurate number.
-    if(mpi)
-      rationalLoss.loss *= mpi->numMPIProcesses();
+    if(mpi_) {
+      rationalLoss.loss  *= mpi_->numMPIProcesses();
+      rationalLoss.count *= mpi_->numMPIProcesses();
+    }
 
     // @BUGBUG: rationalLoss.count is float, not a count. Possible solution: make (costSum, costCount) a StaticLoss object as well
     state_->costSum      += rationalLoss.loss;   // aggregate sum cost since last display
-    state_->costCount    += (size_t)rationalLoss.count; // cost gets normalized w.r.t. this in display
+    state_->costCount    += rationalLoss.count; // cost gets normalized w.r.t. this in display
 
     state_->updatesDisp  += 1;
     state_->samplesDisp  += batchSize;
-    state_->wordsDisp    += batchLabels;  //@TODO: this is wrong        // words at given input processed since last display, for speed display
+    state_->wordsDisp    += batchLabels; // words at given input processed since last display, for speed display
 
-    state_->samplesEpoch += batchSize;          // sentences processed in this epoch
-    // @BUGBUG: rationalLoss.count is float, not a count
-    state_->labelsTotal  += (size_t)rationalLoss.count; // total labels processed
+    state_->samplesEpoch += batchSize;   // sentences processed in this epoch
+    state_->labelsTotal  += batchLabels; // total labels processed
 
     state_->newUpdate(numReadBatches);
+
+    if(gradientNorm) {
+      size_t range = std::min(gradientNormAvgWindow_, state_->batches);
+      float alpha = 2.f / (float)(range + 1); 
+      
+      float delta = gradientNorm - state_->gradientNormAvg;
+      state_->gradientNormAvg = state_->gradientNormAvg + alpha * delta;
+      state_->gradientNormVar = (1.0f - alpha) * (state_->gradientNormVar + alpha * delta * delta);
+
+      float logDelta = std::log(gradientNorm) - state_->logGradientNormAvg;
+      state_->logGradientNormAvg = state_->logGradientNormAvg + alpha * logDelta;
+      state_->logGradientNormVar = (1.0f - alpha) * (state_->logGradientNormVar + alpha * logDelta * logDelta);
+    }
 
     // reconstruct sum cost, for displaying epoch-level averages instead of minibatch-level
     auto lossType = options_->get<std::string>("cost-type");
     auto dispLabelCounts = options_->get<bool>("disp-label-counts");  // if true then show as "cost per label * number of labels"
 
-    if(state_->enteredNewPeriodOf(options_->get<std::string>("disp-freq")) ||
-       state_->batches <= options_->get<size_t>("disp-first")) {
+    if(state_->enteredNewPeriodOf(options_->get<std::string>("disp-freq")) || state_->batches <= options_->get<size_t>("disp-first")) {
       // if MPI then aggregate precise cost across workers
-      if(mpi) {
-        state_->costSum /= mpi->numMPIProcesses(); // undo the extra scaling
-        mpi->allReduce(&state_->costSum, &state_->costSum, 1, MPI_FLOAT, MPI_SUM);
+      if(mpi_) {
+        state_->costSum   /= mpi_->numMPIProcesses(); // undo the extra scaling
+        state_->costCount /= mpi_->numMPIProcesses(); // undo the extra scaling
+        mpi_->allReduce(&state_->costSum, &state_->costSum, 1, MPI_FLOAT, MPI_SUM);
+        mpi_->allReduce(&state_->costCount, &state_->costCount, 1, MPI_FLOAT, MPI_SUM);
       }
 
-      if(mpi && mpi->myMPIRank() != 0) {
+      if(mpi_ && mpi_->myMPIRank() != 0) {
         // skip the report on alternate worker processes
       } else if(options_->get<bool>("lr-report")) {
         LOG(info,
-            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : L.r. {:.4e}",
+            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : gNorm {:.4f} : L.r. {:.4e}",
             formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
             formatLoss(lossType, dispLabelCounts, batchLabels, state_),
             timer_.elapsed(),
             state_->wordsDisp / timer_.elapsed(),
+            state_->gradientNormAvg,
             state_->eta);
       } else {
         LOG(info,
-            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s",
+            "Ep. {} : Up. {} : Sen. {} : {} : Time {:.2f}s : {:.2f} words/s : gNorm {:.4f}",
             formatLogicalEpoch(),
             state_->batches,
             utils::withCommas(state_->samplesEpoch),
-            formatLoss(lossType, dispLabelCounts, 0, state_), // ignore batchLabels
+            formatLoss(lossType, dispLabelCounts, batchLabels, state_), 
             timer_.elapsed(),
-            state_->wordsDisp / timer_.elapsed());
+            state_->wordsDisp / timer_.elapsed(),
+            state_->gradientNormAvg);
       }
-
 
       timer_.start();
       state_->costSum      = 0;
@@ -415,13 +458,12 @@ public:
     // progress heartbeat for MS-internal Philly compute cluster
     // This environment variable exists when running on the cluster.
     using namespace std::chrono;
-    if((!mpi || mpi->myMPIRank() == 0) && getenv("PHILLY_JOB_ID")
-       && heartBeatTimer_.elapsed<std::chrono::minutes>() >= 10) {
-      printf("PROGRESS: %.2f%%\nEVALERR: %.7f%%\n",
+    if((!mpi_ || mpi_->myMPIRank() == 0) && getenv("PHILLY_JOB_ID")
+       && heartBeatTimer_.elapsed<std::chrono::minutes>() >= 30) {
+      fprintf(stderr, "PROGRESS: %.2f%%\nEVALERR: %.7f%%\n",
           (double)calculateLogicalEpoch(),
-          state_->costSum / (state_->costCount ? state_->costCount : 1) / (mpi ? mpi->numMPIProcesses() : 1));
-      fflush(stdout);
-      std::cout << "MBSIZE: " << batchLabels << " after " << state_->batches << " updates = " << state_->labelsTotal << " labels" << std::endl << std::flush;
+          state_->costSum / (state_->costCount ? state_->costCount : 1));
+      fflush(stderr);
       heartBeatTimer_.start();
     }
   }

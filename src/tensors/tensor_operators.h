@@ -43,6 +43,7 @@ void copy(Ptr<Backend>& backend, const InIt beg, const InIt end, OutIt it) {
 }
 
 DISPATCH2(CopyCast, marian::Tensor, const marian::Tensor);
+DISPATCH2(AddCast, marian::Tensor, const marian::Tensor);
 DISPATCH4(IsNaN, const Tensor, Ptr<Allocator>, bool&, bool&);
 
 template <class Functor, class... Tensors>
@@ -105,6 +106,8 @@ void Reduce(Functor functor, AggFunctor aggFunctor, float aggInit,
 
 // clang-format off
 DISPATCH7(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float)
+DISPATCH8(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float, Type) // overloading since we want the default to for computeType be C->type() which difficult otherwise.
+
 DISPATCH8(ProdBatched, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
 DISPATCH9(CSRProd, marian::Tensor, Ptr<Allocator>, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, bool, bool, float)
 
@@ -143,6 +146,8 @@ static inline void Dropout(Tensor tensor, float dropProb) {
   float scale = 1.f / keepProb;
   Bernoulli(tensor, keepProb, scale, /*shift=*/0.f);
 }
+
+DISPATCH2(SinusoidalPositionEmbeddings, marian::Tensor, int);
 
 #ifdef CUDA_FOUND
 namespace gpu {
@@ -290,7 +295,8 @@ DISPATCH3(GRUFastForward, marian::Tensor, std::vector<marian::Tensor>, bool)
 
 #ifdef CUDA_FOUND
 namespace gpu {
-void GRUFastBackward(std::vector<marian::Tensor> outputs,
+void GRUFastBackward(Ptr<Allocator> allocator,
+                     std::vector<marian::Tensor> outputs,
                      std::vector<marian::Tensor> inputs,
                      marian::Tensor adj,
                      bool final);
@@ -298,22 +304,24 @@ void GRUFastBackward(std::vector<marian::Tensor> outputs,
 #endif
 
 namespace cpu {
-void GRUFastBackward(std::vector<marian::Tensor> outputs,
+void GRUFastBackward(Ptr<Allocator> allocator,
+                     std::vector<marian::Tensor> outputs,
                      std::vector<marian::Tensor> inputs,
                      marian::Tensor adj,
                      bool final);
 }
 
-static inline void GRUFastBackward(std::vector<marian::Tensor> outputs,
+static inline void GRUFastBackward(Ptr<Allocator> allocator,
+                                   std::vector<marian::Tensor> outputs,
                                    std::vector<marian::Tensor> inputs,
                                    marian::Tensor adj,
                                    bool final = false) {
 #ifdef CUDA_FOUND
   if(adj->getBackend()->getDeviceId().type == DeviceType::gpu)
-    gpu::GRUFastBackward(outputs, inputs, adj, final);
+    gpu::GRUFastBackward(allocator, outputs, inputs, adj, final);
   else
 #endif
-    cpu::GRUFastBackward(outputs, inputs, adj, final);
+    cpu::GRUFastBackward(allocator, outputs, inputs, adj, final);
 }
 
 // clang-format off

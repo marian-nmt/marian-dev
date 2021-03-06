@@ -124,6 +124,21 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
+    
+    auto isParameter = [](Expr p) {
+      return std::dynamic_pointer_cast<ParamNode>(p) != nullptr;
+    };
+
+    // if child A is not a parameter (i.e. activations) use computeType float32 for accumulation
+    Type computeTypeA = child(0)->trainable() ? child(0)->grad()->type() : Type::float32;
+    if(!isParameter(child(0)) && computeTypeA == Type::float16)
+      computeTypeA = Type::float32;
+
+    // if child B is not a parameter (i.e. activations) use computeType float32 for accumulation
+    Type computeTypeB = child(1)->trainable() ? child(1)->grad()->type() : Type::float32;
+    if(!isParameter(child(1)) && computeTypeB == Type::float16)
+      computeTypeB = Type::float32;
+
     if(!transA_ && transB_)
       return {NodeOp(Prod(child(0)->grad(),
                           adj_,
@@ -131,14 +146,14 @@ public:
                           false,
                           false,
                           1.0,
-                          scalar_)),
+                          scalar_, computeTypeA)),
               NodeOp(Prod(child(1)->grad(),
                           adj_,
                           child(0)->val(),
                           true,
                           false,
                           1.0,
-                          scalar_))};
+                          scalar_, computeTypeB))};
 
     if(transA_ && !transB_)
       return {NodeOp(Prod(child(0)->grad(),
@@ -147,14 +162,14 @@ public:
                           false,
                           true,
                           1.0,
-                          scalar_)),
+                          scalar_, computeTypeA)),
               NodeOp(Prod(child(1)->grad(),
                           child(0)->val(),
                           adj_,
                           false,
                           false,
                           1.0,
-                          scalar_))};
+                          scalar_, computeTypeB))};
 
     if(transA_ && transB_)
       return {NodeOp(Prod(child(0)->grad(),
@@ -163,14 +178,14 @@ public:
                           true,
                           true,
                           1.0,
-                          scalar_)),
+                          scalar_, computeTypeA)),
               NodeOp(Prod(child(1)->grad(),
                           adj_,
                           child(0)->val(),
                           true,
                           true,
                           1.0,
-                          scalar_))};
+                          scalar_, computeTypeB))};
 
     return {NodeOp(Prod(child(0)->grad(),
                         adj_,
@@ -178,14 +193,14 @@ public:
                         false,
                         true,
                         1.0,
-                        scalar_)),
+                        scalar_, computeTypeA)),
             NodeOp(Prod(child(1)->grad(),
                         child(0)->val(),
                         adj_,
                         true,
                         false,
                         1.0,
-                        scalar_))};
+                        scalar_, computeTypeB))};
   }
 
   const std::string type() override { return "dot"; }
@@ -275,8 +290,27 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
-    using namespace functional;
 
+    auto isParameter = [](Expr p) {
+      return std::dynamic_pointer_cast<ParamNode>(p) != nullptr;
+    };
+
+    // if child A is not a parameter (i.e. activations) use computeType float32 for accumulation
+    Type computeTypeA = child(0)->trainable() ? child(0)->grad()->type() : Type::float32;
+    if(!isParameter(child(0)) && computeTypeA == Type::float16)
+      computeTypeA = Type::float32;
+
+    // if child B is not a parameter (i.e. activations) use computeType float32 for accumulation
+    Type computeTypeB = child(1)->trainable() ? child(1)->grad()->type() : Type::float32;
+    if(!isParameter(child(1)) && computeTypeB == Type::float16)
+      computeTypeB = Type::float32;
+
+    // if child C (bias) is not a parameter (i.e. activations) use computeType float32 for accumulation
+    Type computeTypeC = child(2)->trainable() ? child(2)->grad()->type() : Type::float32;
+    if(!isParameter(child(2)) && computeTypeC == Type::float16)
+      computeTypeC = Type::float32;
+
+    // We reduce bias gradients with a matrix multiply
     if(!transA_ && transB_)
       return {
           NodeOp(Prod(child(0)->grad(),
@@ -285,16 +319,16 @@ public:
                       false,
                       false,
                       1.0,
-                      scalar_)),
+                      scalar_, computeTypeA)),
           NodeOp(Prod(child(1)->grad(),
                       adj_,
                       child(0)->val(),
                       true,
                       false,
                       1.0,
-                      scalar_)),
+                      scalar_, computeTypeB)),
           NodeOp(Prod(
-              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, computeTypeC))
       };
 
     if(transA_ && !transB_)
@@ -305,16 +339,16 @@ public:
                       false,
                       true,
                       1.0,
-                      scalar_)),
+                      scalar_, computeTypeA)),
           NodeOp(Prod(child(1)->grad(),
                       child(0)->val(),
                       adj_,
                       false,
                       false,
                       1.0,
-                      scalar_)),
+                      scalar_, computeTypeB)),
           NodeOp(Prod(
-              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, computeTypeC))
       };
 
     if(transA_ && transB_)
@@ -325,16 +359,16 @@ public:
                       true,
                       true,
                       1.0,
-                      scalar_)),
+                      scalar_, computeTypeA)),
           NodeOp(Prod(child(1)->grad(),
                       adj_,
                       child(0)->val(),
                       true,
                       true,
                       1.0,
-                      scalar_)),
+                      scalar_, computeTypeB)),
           NodeOp(Prod(
-              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+              child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, computeTypeC))
       };
 
     return {
@@ -344,16 +378,16 @@ public:
                     false,
                     true,
                     1.0,
-                    scalar_)),
+                    scalar_, computeTypeA)),
         NodeOp(Prod(child(1)->grad(),
                     child(0)->val(),
                     adj_,
                     true,
                     false,
                     1.0,
-                    scalar_)),
+                    scalar_, computeTypeB)),
         NodeOp(Prod(
-            child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f))
+            child(2)->grad(), child(3)->val(), adj_, true, false, 0.f, 1.f, computeTypeC))
     };
   }
 
@@ -551,6 +585,8 @@ public:
       transS_(transS), swapOperands_(swapOperands) {
     matchOrAbort<IndexType>(S_indices->value_type());
     matchOrAbort<IndexType>(S_offsets->value_type());
+
+    ABORT_IF(swapOperands_, "Implementation for this is wonky, if you use this tell us.");
   }
 
   Shape newShape(const Shape& S_shape, Expr S_values, Expr S_indices, Expr S_offsets, Expr D, bool transS, bool swapOperands) {

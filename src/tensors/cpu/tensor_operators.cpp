@@ -25,7 +25,7 @@ namespace marian {
 
 namespace cpu {
 
-  void IsNaN(const Tensor /*in*/, Ptr<Allocator> /*allocator*/, bool& /*isNaN*/, bool& /*isInf*/) {
+void IsNaN(const Tensor /*in*/, Ptr<Allocator> /*allocator*/, bool& /*isNaN*/, bool& /*isInf*/) {
   ABORT("Not implemented");
 }
 
@@ -39,14 +39,17 @@ void AddFactorMaxes(Tensor /*out*/,
   ABORT("AddFactorMaxes not implemented on CPU");
 }
 
-template <typename To, typename From>
+template <bool add, typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   for(int i = 0; i < length; ++i)
 #ifdef _MSC_VER
 #pragma warning (push)
 #pragma warning (disable: 4244)  // 'argument': conversion from 'const From' to 'float', possible loss of data
 #endif
-    out[i] = (To)in[i];
+    if(add)
+      out[i] += (To)in[i];
+    else
+      out[i]  = (To)in[i];
 #ifdef _MSC_VER
 #pragma warning (pop)
 #endif
@@ -57,12 +60,12 @@ void CopyCastTo(To* out, const From* in, int length) {
 // the full Carthesian product of possible type cast via template magic.
 // Extending CopyCast and CopyCastFrom with a new branch in the "if" clause
 // adds all possible variants.
-template <typename T>
+template <bool add, typename T>
 void CopyCastFrom(Tensor out, const T* in, int length) {
   if(out->type() == Type::float32) {
-    CopyCastTo(out->data<float>(), in, length);
+    CopyCastTo<add>(out->data<float>(), in, length);
   } else if(out->type() == Type::float16) {
-    CopyCastTo(out->data<float16>(), in, length);
+    CopyCastTo<add>(out->data<float16>(), in, length);
   } else {
     ABORT("CopyCastTo to type {} not implemented", out->type());
   }
@@ -71,11 +74,24 @@ void CopyCastFrom(Tensor out, const T* in, int length) {
 // currently useless on the CPU until more types are added
 void CopyCast(Tensor out, const Tensor in) {
   if(in->type() == Type::float32) {
-    CopyCastFrom(out, in->data<float>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<float>(), (int)in->size());
   } else if(in->type() == Type::float16) {
-    CopyCastFrom(out, in->data<float16>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<float16>(), (int)in->size());
   } else if(in->type() == Type::uint32) {
-    CopyCastFrom(out, in->data<uint32_t>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<uint32_t>(), (int)in->size());
+  } else {
+    ABORT("CopyCastFrom from type {} not implemented", in->type());
+  }
+}
+
+// currently useless on the CPU until more types are added
+void AddCast(Tensor out, const Tensor in) {
+  if(in->type() == Type::float32) {
+    CopyCastFrom</*add=*/true>(out, in->data<float>(), (int)in->size());
+  } else if(in->type() == Type::float16) {
+    CopyCastFrom</*add=*/true>(out, in->data<float16>(), (int)in->size());
+  } else if(in->type() == Type::uint32) {
+    CopyCastFrom</*add=*/true>(out, in->data<uint32_t>(), (int)in->size());
   } else {
     ABORT("CopyCastFrom from type {} not implemented", in->type());
   }
@@ -801,7 +817,8 @@ void GRUFastForward(Tensor out_, std::vector<Tensor> inputs, bool final) {
   }
 }
 
-void GRUFastBackward(std::vector<Tensor> outputs,
+void GRUFastBackward(Ptr<Allocator> /*allocator*/,
+                     std::vector<Tensor> outputs,
                      std::vector<Tensor> inputs,
                      Tensor adj_,
                      bool final) {
@@ -912,13 +929,13 @@ void CrossEntropyPick(Tensor out, Tensor in, Tensor labelIndices, float labelSmo
     }
 
     float sumexp = 0.f;
-    #pragma omp simd reduction(+ : sum)
+    #pragma omp simd reduction(+ : sumexp)
     for(int i = 0; i < cols; ++i) {
       sumexp += std::exp(sp[i] - max);
     }
 
     float mean = 0.f;
-    #pragma omp simd reduction(+ : sum)
+    #pragma omp simd reduction(+ : mean)
     for(int i = 0; i < cols; ++i) {
       mean += sp[i] - max;
     }
@@ -1547,6 +1564,21 @@ void LSTMOutputBackward(std::vector<Tensor> outputs,
       if(outB) {
         outB[k] += dcdxo;
       }
+    }
+  }
+}
+
+void SinusoidalPositionEmbeddings(marian::Tensor t, int start) {
+  int dimEmb   = t->shape()[-1];
+  int dimWords = (int)t->size() / dimEmb;
+
+  float numTimescales = (float)dimEmb / 2;
+  float logTimescaleIncrement = std::log(10000.f) / (numTimescales - 1.f);
+
+  for(int j = 0; j < dimWords; ++j) {
+    for(int i = 0; i < dimEmb; ++i) {
+      float v = (j + start) * std::exp((i % (int)numTimescales) * -logTimescaleIncrement);
+      t->data()[j * dimEmb + i] = i < (int)numTimescales ? std::sin(v) : std::cos(v);
     }
   }
 }

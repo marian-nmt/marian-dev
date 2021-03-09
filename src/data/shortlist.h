@@ -6,12 +6,13 @@
 #include "data/corpus_base.h"
 #include "data/types.h"
 
+#include <common/timer.h>
+#include <algorithm>
+#include <iostream>
 #include <random>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <iostream>
-#include <algorithm>
 
 namespace marian {
 namespace data {
@@ -335,7 +336,6 @@ public:
     ABORT_IF(!io::isBin(fname),"Not a binary file");
 
     firstNum_ = vals.size() > 1 ? std::stoi(vals[1]) : 100;
-    //bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
     float threshold = vals.size() > 2 ? std::stof(vals[2]) : 0;
     std::string dumpPath = vals.size() > 3 ? vals[3] : "";
 
@@ -343,7 +343,6 @@ public:
         "[data] Loading binary shortlist as {} {} {}",
         fname,
         firstNum_,
-        //bestNum_,
         threshold);
 
     load(fname);
@@ -353,31 +352,56 @@ public:
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override {
     auto srcBatch = (*batch)[srcIdx_];
 
-    // add firstNum most frequent words
-    short *srcTruthTable = new short[srcVocab_->size()];
-    short *trgTruthTable = new short[trgVocab_->size()];
+    // Since V=trgVocab_->size() is not large, anchor the time and space complexity to O(V).
+    // Attempt to squeeze the truth tables into CPU cache
+    bool *srcTruthTable = new bool[srcVocab_->size()]();    // holds selected source words
+    bool *trgTruthTable = new bool[trgVocab_->size()]();    // holds selected target words
 
+    // add firstNum most frequent words
     for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
       trgTruthTable[i] = 1;
+
+    // collect unique words from source
+    // add aligned target words: mark trgTruthTable[word] to 1
     for(auto word : srcBatch->data()) {
       WordIndex srcIndex = word.toWordIndex();
       if(shared_)
         trgTruthTable[srcIndex] = 1;
-      if (!srcTruthTable[srcIndex])
+      // If srcIndex has not been encountered, add the corresponding target words
+      if (!srcTruthTable[srcIndex]) {
         for (size_t j = word_to_offset_[srcIndex]; j < word_to_offset_[srcIndex+1]; j++)
-            trgTruthTable[short_lists_[j]] = 1;
-      srcTruthTable[srcIndex] = 1;
+          trgTruthTable[short_lists_[j]] = 1;
+        srcTruthTable[srcIndex] = 1;
+      }
     }
 
+    // Due to the 'multiple-of-eight' issue, the following O(N) patch is inserted
+    size_t trgTruthTableOnes = 0;   // counter for no. of selected target words
+    for (size_t i = 0; i < trgVocab_->size(); i++) {
+      if(trgTruthTable[i])
+        trgTruthTableOnes++;
+    }
+
+    // Ensure that the generated vocabulary items from a shortlist are a multiple-of-eight
+    // This is necessary until intgemm supports non-multiple-of-eight matrices.
+    for (size_t i = firstNum_; i < trgVocab_->size() && trgTruthTableOnes%8!=0; i++){
+      if (!trgTruthTable[i]){
+        trgTruthTable[i] = 1;
+        trgTruthTableOnes++;
+      }
+    }
+
+    // turn selected indices into vector and sort (Bucket sort: O(V))
     std::vector<WordIndex> indices;
-    for (WordIndex i = 0; i < trgVocab_->size(); i++)
-      if (trgTruthTable[i])
+    for (WordIndex i = 0; i < trgVocab_->size(); i++) {
+      if(trgTruthTable[i])
         indices.push_back(i);
+    }
 
     return New<Shortlist>(indices);
   }
 
-    virtual void dump(const std::string& prefix) const override {
+  virtual void dump(const std::string& prefix) const override {
       // Dump top most frequent words from target vocabulary
       LOG(info, "[data] Saving shortlist dump to {}", prefix + ".{top,dic}");
       io::OutputFileStream outTop(prefix + ".top");

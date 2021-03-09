@@ -203,7 +203,6 @@ public:
     bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
     float threshold = vals.size() > 3 ? std::stof(vals[3]) : 0;
     std::string dumpPath = vals.size() > 4 ? vals[4] : "";
-
     LOG(info,
         "[data] Loading lexical shortlist as {} {} {} {}",
         fname,
@@ -275,6 +274,128 @@ public:
 
     return New<Shortlist>(indices);
   }
+};
+
+class BinaryShortlistGenerator : public ShortlistGenerator {
+private:
+  Ptr<Options> options_;
+  Ptr<const Vocab> srcVocab_;
+  Ptr<const Vocab> trgVocab_;
+
+  size_t srcIdx_;
+  bool shared_{false};
+
+  size_t firstNum_{100};
+  //size_t bestNum_{100}; not in use for binary shortlist
+
+  // shortlist is stored in a skip list
+  std::vector<size_t> word_to_offset_;
+  std::vector<WordIndex> short_lists_;
+
+  void load(const std::string& fname) {
+    size_t word_to_offset_size = 0;
+    size_t short_lists_size = 0;
+
+    // read the skip list from binary file
+    std::fstream binIn(fname, std::ios::in | std::ios::binary);
+
+    // read the lengths of the vectors from header
+    binIn.read((char*)(&word_to_offset_size), sizeof(size_t));
+    binIn.read((char*)(&short_lists_size), sizeof(size_t));
+
+    // create the vectors for reading
+    size_t word_to_offset_buf[word_to_offset_size];
+    WordIndex short_lists_buf[short_lists_size];
+
+    // read the contents of the vectors
+    binIn.read((char*)(&word_to_offset_buf), sizeof(size_t)* word_to_offset_size);
+    binIn.read((char*)(&short_lists_buf), sizeof(WordIndex)* short_lists_size);
+    word_to_offset_.assign(word_to_offset_buf, word_to_offset_buf+ word_to_offset_size);
+    short_lists_.assign(short_lists_buf, short_lists_buf+ short_lists_size);
+    binIn.close();
+  }
+
+public:
+  BinaryShortlistGenerator(Ptr<Options> options,
+                           Ptr<const Vocab> srcVocab,
+                           Ptr<const Vocab> trgVocab,
+                           size_t srcIdx = 0,
+                           size_t /*trgIdx*/ = 1,
+                           bool shared = false)
+      : options_(options),
+        srcVocab_(srcVocab),
+        trgVocab_(trgVocab),
+        srcIdx_(srcIdx),
+        shared_(shared) {
+
+    std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
+
+    ABORT_IF(vals.empty(), "No path to filter path given");
+    std::string fname = vals[0];
+    ABORT_IF(!io::isBin(fname),"Not a binary file");
+
+    firstNum_ = vals.size() > 1 ? std::stoi(vals[1]) : 100;
+    //bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
+    float threshold = vals.size() > 2 ? std::stof(vals[2]) : 0;
+    std::string dumpPath = vals.size() > 3 ? vals[3] : "";
+
+    LOG(info,
+        "[data] Loading binary shortlist as {} {} {}",
+        fname,
+        firstNum_,
+        //bestNum_,
+        threshold);
+
+    load(fname);
+
+  }
+
+  virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override {
+    auto srcBatch = (*batch)[srcIdx_];
+
+    // add firstNum most frequent words
+    short *srcTruthTable = new short[srcVocab_->size()];
+    short *trgTruthTable = new short[trgVocab_->size()];
+
+    for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
+      trgTruthTable[i] = 1;
+    for(auto word : srcBatch->data()) {
+      WordIndex srcIndex = word.toWordIndex();
+      if(shared_)
+        trgTruthTable[srcIndex] = 1;
+      if (!srcTruthTable[srcIndex])
+        for (size_t j = word_to_offset_[srcIndex]; j < word_to_offset_[srcIndex+1]; j++)
+            trgTruthTable[short_lists_[j]] = 1;
+      srcTruthTable[srcIndex] = 1;
+    }
+
+    std::vector<WordIndex> indices;
+    for (WordIndex i = 0; i < trgVocab_->size(); i++)
+      if (trgTruthTable[i])
+        indices.push_back(i);
+
+    return New<Shortlist>(indices);
+  }
+
+    virtual void dump(const std::string& prefix) const override {
+      // Dump top most frequent words from target vocabulary
+      LOG(info, "[data] Saving shortlist dump to {}", prefix + ".{top,dic}");
+      io::OutputFileStream outTop(prefix + ".top");
+      for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
+        outTop << (*trgVocab_)[Word::fromWordIndex(i)] << std::endl;
+
+      // Dump translation pairs from dictionary
+      io::OutputFileStream outDic(prefix + ".dic");
+      int slowIndex = 0;
+      for(int i =1; i <word_to_offset_.size(); i++){
+        for (slowIndex=word_to_offset_[i-1]; slowIndex<word_to_offset_[i]; slowIndex++) {
+          WordIndex srcId = i-1;
+          WordIndex trgId = short_lists_[slowIndex];
+          outDic << (*srcVocab_)[Word::fromWordIndex(srcId)] << "\t" << (*trgVocab_)[Word::fromWordIndex(trgId)] << std::endl;
+        }
+      }
+  }
+
 };
 
 class FakeShortlistGenerator : public ShortlistGenerator {

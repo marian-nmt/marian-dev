@@ -42,7 +42,7 @@ public:
 
   virtual void clear(Ptr<ExpressionGraph> graph) override = 0;
 
-  virtual Expr apply(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>, bool) = 0;
+  virtual std::vector<Expr> apply(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>, bool) = 0;
 
   virtual Logits build(Ptr<ExpressionGraph> graph,
                        Ptr<data::Batch> batch,
@@ -149,6 +149,9 @@ public:
     modelFeatures_.insert("ulr-trainable-transformation");
     modelFeatures_.insert("ulr-dim-emb");
     modelFeatures_.insert("lemma-dim-emb");
+    modelFeatures_.insert("lemma-dependency");
+    modelFeatures_.insert("factors-combine");
+    modelFeatures_.insert("factors-dim-emb");
   }
 
   virtual Ptr<Options> getOptions() override { return options_; }
@@ -204,7 +207,7 @@ public:
 
   /*********************************************************************/
 
-  virtual Expr apply(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, bool clearGraph) override {
+  virtual std::vector<Expr> apply(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, bool clearGraph) override {
     if(clearGraph)
       clear(graph);
 

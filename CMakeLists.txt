@@ -16,6 +16,7 @@ option(COMPILE_CUDA "Compile GPU version" ON)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_SERVER "Compile marian-server" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
+option(USE_APPLE_ACCELERATE "Compile with Apple Accelerate" OFF)
 option(USE_CCACHE "Use ccache compiler cache (https://ccache.dev)" OFF)
 option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_DOXYGEN "Build documentation with Doxygen" ON)
@@ -23,7 +24,7 @@ option(USE_FBGEMM "Use FBGEMM" OFF)
 option(USE_MKL "Compile with MKL support" ON)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" OFF)
+option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
 
@@ -92,19 +93,28 @@ if(MSVC)
   # Or maybe use these?
   set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
-
-  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS ${DISABLE_GLOBALLY}")
+  # /bigobj is necessary for expression_operators.cpp. See https://stackoverflow.com/questions/15110580/penalty-of-the-msvs-compiler-flag-bigobj
+  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS /bigobj ${DISABLE_GLOBALLY}")
   set(CMAKE_CXX_FLAGS_RELEASE   "${CMAKE_CXX_FLAGS} /MT /O2 ${INTRINSICS} /Zi /MP /GL /DNDEBUG")
   set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
   # ignores warning LNK4049: locally defined symbol free imported - this comes from zlib
-  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049")
+  set(CMAKE_EXE_LINKER_FLAGS         "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049")
   set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT")
   set(CMAKE_EXE_LINKER_FLAGS_DEBUG   "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:MSVCRTD")
-  set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")
+  set(CMAKE_STATIC_LINKER_FLAGS      "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")
 
   find_library(SHLWAPI Shlwapi.lib)
   set(EXT_LIBS ${EXT_LIBS} SHLWAPI)
+
+  if(USE_FBGEMM)
+    if(NOT USE_STATIC_LIBS) # FBGEMM on Windows can be compiled only statically via CMake
+      message(FATAL_ERROR "FATAL ERROR: FBGEMM must be compiled statically on Windows, \
+      add -DUSE_STATIC_LIBS=on to the cmake command")
+    endif()
+    set(EXT_LIBS ${EXT_LIBS} fbgemm)
+    add_definitions(-DUSE_FBGEMM=1 -DFBGEMM_STATIC=1)
+  endif(USE_FBGEMM)
 else(MSVC)
 
   # Check we are using at least g++ 5.0
@@ -167,9 +177,9 @@ else(MSVC)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.0)
     # Clang-10.0.0 complains when CUDA is newer than 10.1
-    set(CLANG_IGNORE_UNKNOWN_CUDA "-Wno-unknown-cuda-version")
+    set(CLANG_IGNORE_UNKNOWN_CUDA "-Wno-unknown-warning-option -Wno-unknown-cuda-version")
   endif()
-  set(DISABLE_GLOBALLY "-Wno-unused-result -Wno-unknown-warning-option ${CLANG_IGNORE_UNKNOWN_CUDA}")
+  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA}")
 
   # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS -Wall; -Werror; -Wextra; -Wno-unused-result; -Wno-deprecated;
@@ -227,6 +237,7 @@ endif()
 if(USE_ONNX)
   message(STATUS "Enabling experimental ONNX support")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_ONNX")
+  # TODO: likely required to find protobuf by itself, we should check/fix this. Before it would take advantage of sentencepiece doing that.
   set(EXT_LIBS ${EXT_LIBS} protobuf)
   include_directories(${Protobuf_INCLUDE_DIRS})
 endif()
@@ -425,28 +436,42 @@ if(USE_MPI)
 endif(USE_MPI)
 
 ###############################################################################
-# Find MKL
+# Find BLAS library
 if(COMPILE_CPU)
-  if(USE_MKL)
-    find_package(MKL)
-  endif(USE_MKL)
-  if(MKL_FOUND)
-    include_directories(${MKL_INCLUDE_DIR})
-    set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})
-    set(BLAS_FOUND TRUE)
-    add_definitions(-DBLAS_FOUND=1 -DMKL_FOUND=1)
-  else(MKL_FOUND)
-    set(BLAS_VENDOR "OpenBLAS")
-    find_package(BLAS)
-    if(BLAS_FOUND)
-      include(FindCBLAS)
-      if(CBLAS_FOUND)
-        include_directories(${BLAS_INCLUDE_DIR} ${CBLAS_INCLUDE_DIR})
-        set(EXT_LIBS ${EXT_LIBS} ${BLAS_LIBRARIES} ${CBLAS_LIBRARIES})
-        add_definitions(-DBLAS_FOUND=1)
-      endif(CBLAS_FOUND)
-    endif(BLAS_FOUND)
-  endif(MKL_FOUND)
+  set(EXT_LIBS ${EXT_LIBS} intgemm) # Enable intgemm when compiling CPU
+  add_definitions(-DCOMPILE_CPU=1)
+  if(USE_APPLE_ACCELERATE)
+    if(NOT APPLE)
+      message(FATAL_ERROR "FATAL ERROR: Apple Accelerate only works on macOS.")
+    endif()
+    set(BLAS_VENDOR "Accelerate")
+    # see https://developer.apple.com/documentation/accelerate for more info
+    # you may need to install Xcode command line tools if you don't have them already (https://developer.apple.com/xcode/features/)
+    include_directories("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/Headers")
+    set(EXT_LIBS ${EXT_LIBS} "-framework Accelerate")
+    add_definitions(-DBLAS_FOUND=1)
+  else(USE_APPLE_ACCELERATE)
+    if(USE_MKL)
+      find_package(MKL)
+    endif(USE_MKL)
+    if(MKL_FOUND)
+      include_directories(${MKL_INCLUDE_DIR})
+      set(EXT_LIBS ${EXT_LIBS} ${MKL_LIBRARIES})
+      set(BLAS_FOUND TRUE)
+      add_definitions(-DBLAS_FOUND=1 -DMKL_FOUND=1)
+    else(MKL_FOUND)
+      set(BLAS_VENDOR "OpenBLAS")
+      find_package(BLAS)
+      if(BLAS_FOUND)
+        include(FindCBLAS)
+        if(CBLAS_FOUND)
+          include_directories(${BLAS_INCLUDE_DIR} ${CBLAS_INCLUDE_DIR})
+          set(EXT_LIBS ${EXT_LIBS} ${BLAS_LIBRARIES} ${CBLAS_LIBRARIES})
+          add_definitions(-DBLAS_FOUND=1)
+        endif(CBLAS_FOUND)
+      endif(BLAS_FOUND)
+    endif(MKL_FOUND)
+  endif(USE_APPLE_ACCELERATE)
 endif(COMPILE_CPU)
 
 ###############################################################################

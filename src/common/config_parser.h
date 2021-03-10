@@ -130,6 +130,7 @@ private:
   void addOptionsTranslation(cli::CLIWrapper&);
   void addOptionsScoring(cli::CLIWrapper&);
   void addOptionsEmbedding(cli::CLIWrapper&);
+  void addOptionsStupid(cli::CLIWrapper&);
 
   void addAliases(cli::CLIWrapper&);
 

@@ -98,6 +98,7 @@ ConfigParser::ConfigParser(cli::mode mode)
       addOptionsTraining(cli_);
       addOptionsTranslation(cli_);
       addOptionsServer(cli_);
+      addOptionsStupid(cli_);
       break;
     default:
       ABORT("wrong CLI mode");
@@ -108,7 +109,16 @@ ConfigParser::ConfigParser(cli::mode mode)
   // clang-format on
 }
 
-void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
+void ConfigParser::addOptionsStupid(cli::CLIWrapper & cli) {
+  auto previous_group = cli.switchGroup("Server options");
+  cli.add<size_t>(
+      "--early-stopping",
+      "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
+      10);
+  cli.switchGroup(previous_group);
+}
+
+void ConfigParser::addOptionsGeneral(cli::CLIWrapper & cli) {
   int defaultWorkspace = (mode_ == cli::mode::translation) ? 512 : 2048;
 
   cli.switchGroup("General options");
@@ -437,7 +447,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
 
   // optimizer options
   auto defaultOptimizer = (mode_ == cli::mode::selfadaptive) ? "sgd" : "adam";
-  cli.add<std::string>("--optimizer,-o",
+  cli.add<std::string>("--optimizer",
      "Optimization algorithm: sgd, adagrad, adam",
      defaultOptimizer);
   cli.add<std::vector<float>>("--optimizer-params",
@@ -646,11 +656,11 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--input,-i",
       "Paths to input file(s), stdin by default",
       {"stdin"});
+  cli.add<std::string>("--output,-o",
+      "Path to output file, stdout by default",
+      "stdout");
   // for self-adaptive mode these are already added via the training options
   if(mode_ != cli::mode::selfadaptive) {
-    cli.add<std::string>("--output,-o",
-        "Path to output file, stdout by default",
-        "stdout");
     cli.add<std::vector<std::string>>("--vocabs,-v",
         "Paths to vocabulary files have to correspond to --input");
   }

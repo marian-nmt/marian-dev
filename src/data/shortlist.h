@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <stack>
 
 namespace marian {
 namespace data {
@@ -289,7 +290,9 @@ private:
   size_t firstNum_{100};
   //size_t bestNum_{100}; not in use for binary shortlist
 
-  // shortlist is stored in a skip list
+  // shortlist is stored in a skip list:
+  // [&short_lists_[word_to_offset_[word]], &short_lists_[word_to_offset_[word + 1]])
+  // is a sorted array of word indices in the shortlist for word
   std::vector<size_t> word_to_offset_;
   std::vector<WordIndex> short_lists_;
 
@@ -346,57 +349,83 @@ public:
         threshold);
 
     load(fname);
-
   }
 
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override {
     auto srcBatch = (*batch)[srcIdx_];
+    std::vector<WordIndex> srcList;
+    std::vector<WordIndex> trgProgress;
+    std::vector<WordIndex> trgBound;
+    std::vector<std::stack<WordIndex>> trace;
+    std::unordered_set<WordIndex> inserted;
+    trace.resize(trgVocab_->size());
 
-    // Since V=trgVocab_->size() is not large, anchor the time and space complexity to O(V).
-    // Attempt to squeeze the truth tables into CPU cache
-    bool *srcTruthTable = new bool[srcVocab_->size()]();    // holds selected source words
-    bool *trgTruthTable = new bool[trgVocab_->size()]();    // holds selected target words
-
-    // add firstNum most frequent words
-    for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
-      trgTruthTable[i] = 1;
-
-    // collect unique words from source
-    // add aligned target words: mark trgTruthTable[word] to 1
-    for(auto word : srcBatch->data()) {
-      WordIndex srcIndex = word.toWordIndex();
-      if(shared_)
-        trgTruthTable[srcIndex] = 1;
-      // If srcIndex has not been encountered, add the corresponding target words
-      if (!srcTruthTable[srcIndex]) {
-        for (size_t j = word_to_offset_[srcIndex]; j < word_to_offset_[srcIndex+1]; j++)
-          trgTruthTable[short_lists_[j]] = 1;
-        srcTruthTable[srcIndex] = 1;
-      }
+    for(auto word : srcBatch->data())
+    {
+      WordIndex srcIndex= word.toWordIndex();
+      srcList.push_back(srcIndex);
+      trgProgress.push_back(word_to_offset_[srcIndex]);
+      trgBound.push_back(word_to_offset_[srcIndex+1]);
     }
 
-    // Due to the 'multiple-of-eight' issue, the following O(N) patch is inserted
-    size_t trgTruthTableOnes = 0;   // counter for no. of selected target words
-    for (size_t i = 0; i < trgVocab_->size(); i++) {
-      if(trgTruthTable[i])
-        trgTruthTableOnes++;
-    }
-
-    // Ensure that the generated vocabulary items from a shortlist are a multiple-of-eight
-    // This is necessary until intgemm supports non-multiple-of-eight matrices.
-    for (size_t i = firstNum_; i < trgVocab_->size() && trgTruthTableOnes%8!=0; i++){
-      if (!trgTruthTable[i]){
-        trgTruthTable[i] = 1;
-        trgTruthTableOnes++;
-      }
-    }
-
-    // turn selected indices into vector and sort (Bucket sort: O(V))
     std::vector<WordIndex> indices;
-    for (WordIndex i = 0; i < trgVocab_->size(); i++) {
-      if(trgTruthTable[i])
-        indices.push_back(i);
+    size_t traceSize = 0;
+    for(size_t i=0; i < trgProgress.size(); i++) {
+      if (trgProgress[i] < trgBound[i]) {
+        trace[short_lists_[trgProgress[i]]].push(i);
+        traceSize++;
+      }
     }
+
+    WordIndex traceProgress = 0;
+    while (traceSize > 0)
+    {
+      while (trace[traceProgress].empty() && traceProgress<trgVocab_->size())
+        traceProgress++;
+      indices.push_back(traceProgress);
+      inserted.insert(traceProgress);
+
+      while (!trace[traceProgress].empty())
+      {
+        WordIndex tracePoint = trace[traceProgress].top();
+        trace[traceProgress].pop();
+        traceSize--;
+
+        if (trgProgress[tracePoint] < trgBound[tracePoint])
+        {
+          trace[short_lists_[trgProgress[tracePoint]]].push(tracePoint);
+          traceSize++;
+          trgProgress[tracePoint]++;
+        }
+      }
+    }
+
+    // Special case A: high-frequency words
+    for (WordIndex f=0; f < firstNum_; f++)
+      if (inserted.find(f)==inserted.end())
+      {
+        indices.push_back(f);
+        inserted.insert(f);
+      }
+
+    // Special case B: shared words
+    if (shared_)
+      for (auto src: srcList)
+        if (inserted.find(src)==inserted.end())
+        {
+          indices.push_back(src);
+          inserted.insert(src);
+        }
+
+    // Special case C: multiple-of-eight
+    for (WordIndex f = 0; f < trgVocab_->size() and indices.size()%8 != 0; f++)
+      if (inserted.find(f)==inserted.end()) {
+        indices.push_back(f);
+        inserted.insert(f);
+      }
+
+    // Can be avoided if special-case lists are sorted
+    std::sort(indices.begin(), indices.end());
 
     return New<Shortlist>(indices);
   }

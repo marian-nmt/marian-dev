@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Local/global sharding with MPI training via `--sharding local`
+- fp16 support for factors.
+- Correct training with fp16 via `--fp16`. 
+- Dynamic cost-scaling with `--cost-scaling`.
+- Dynamic gradient-scaling with `--dynamic-gradient-scaling`.
+- Fix compilation with OMP
+
+### Fixed
+- Find MKL installed under Ubuntu 20.04 via apt-get
+- Support for CUDA 11.
+- General improvements and fixes for MPI handling, was essentially non-functional before (syncing, random seeds, deadlocks during saving, validation etc.)
+- Allow to compile -DUSE_MPI=on with -DUSE_STATIC_LIBS=on although MPI gets still linked dynamically since it has so many dependencies.
+- Fix building server with Boost 1.75
+- Missing implementation for cos/tan expression operator
+
+### Changed
+- Change compile options a la -DCOMPILE_CUDA_SM35 to -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL,
+-DCOMPILE_PASCAL, -DCOMPILE_VOLTA, -DCOMPILE_TURING and -DCOMPILE_AMPERE
+- Disable -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL by default.
+- Dropped support for legacy graph groups.
+- Developer documentation framework based on Sphinx+Doxygen+Breathe+Exhale
+- Expresion graph documentation (#788)
+- Graph operators documentation (#801)
+
+## [1.10.0] - 2021-02-06
+
+### Added
+- Added `intgemm8(ssse3|avx|avx512)?`, `intgemm16(sse2|avx|avx512)?` types to marian-conv with uses intgemm backend. Types intgemm8 and intgemm16 are hardware-agnostic, the other ones hardware-specific.
+- Shortlist is now always multiple-of-eight.
+- Added intgemm 8/16bit integer binary architecture agnostic format.
 - Add --train-embedder-rank for fine-tuning any encoder(-decoder) model for multi-lingual similarity via softmax-margin loss
 - Add --logical-epoch that allows to redefine the displayed epoch counter as a multiple of n data epochs, updates or labels. Also allows to define width of fractional part with second argument.
 - Add --metrics chrf for computing ChrF according to https://www.aclweb.org/anthology/W15-3049/ and SacreBLEU reference implementation
@@ -21,7 +51,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Decoding multi-source models in marian-server with --tsv
 - GitHub workflows on Ubuntu, Windows, and MacOS
 - LSH indexing to replace short list
-- ONNX support for transformer models
+- ONNX support for transformer models (very experimental)
 - Add topk operator like PyTorch's topk
 - Use *cblas_sgemm_batch* instead of a for loop of *cblas_sgemm* on CPU as the batched_gemm implementation
 - Supporting relative paths in shortlist and sqlite options
@@ -56,6 +86,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix the runtime failures for FASTOPT on 32-bit builds (wasm just happens to be 32-bit) because it uses hashing with an inconsistent mix of uint64_t and size_t.
 
 ### Changed
+- Remove `--clip-gemm` which is obsolete and was never used anyway
+- Removed `--optimize` switch, instead we now determine compute type based on binary model.
 - Updated SentencePiece repository to version 8336bbd0c1cfba02a879afe625bf1ddaf7cd93c5 from https://github.com/google/sentencepiece.
 - Enabled compilation of SentencePiece by default since no dependency on protobuf anymore.
 - Changed default value of --sentencepiece-max-lines from 10000000 to 2000000 since apparently the new version doesn't sample automatically anymore (Not quite clear how that affects quality of the vocabulary).

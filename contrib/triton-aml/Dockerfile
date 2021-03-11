@@ -42,10 +42,9 @@ RUN ./b2 install --prefix=/usr --with-system --with-thread --with-date_time --wi
 
 # Marian install
 WORKDIR /
-RUN git clone --no-checkout https://github.com/marian-nmt/marian-dev
+RUN git clone --no-checkout https://github.com/rhenry-nv/marian-dev.git
 WORKDIR marian-dev
-RUN git checkout youki/quantize-embedding
-RUN git checkout dad48865fd3b7f1d7b891de81040f7651e824510
+RUN git checkout async_return
 RUN mkdir src/static
 RUN mkdir build
 COPY src/cmarian.cpp /marian-dev/src/static

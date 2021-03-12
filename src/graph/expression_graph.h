@@ -660,6 +660,11 @@ public:
   }
 
   /**
+   * Get default element type for the graph.
+   */
+  Type getDefaultElementType() { return defaultElementType_; }
+
+  /**
    * Add a expression node to the graph.
    * @param node a pointer to a expression node
    */
@@ -814,9 +819,13 @@ public:
   void save(const std::string& name, const std::string& meta = "", Type saveElementType = Type::float32) {
     std::vector<io::Item> ioItems;
     save(ioItems, saveElementType);
-    if(!meta.empty())
-      io::addMetaToItems(meta, "special:model.yml", ioItems);
-    io::saveItems(name, ioItems);
+    if(ioItems.empty()) {
+      LOG(warn, "Item list is empty, skipping saving");
+    } else {
+      if(!meta.empty())
+        io::addMetaToItems(meta, "special:model.yml", ioItems);
+      io::saveItems(name, ioItems);
+    }
   }
 };
 

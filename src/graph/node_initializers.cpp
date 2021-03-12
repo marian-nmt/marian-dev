@@ -26,7 +26,7 @@ class LambdaInit : public NodeInitializer {
 class LambdaInitConvert : public NodeInitializer {
   private:
     std::function<void(Tensor)> lambda_;
-    Type intermediateType_; // is used for the creation of a temporary intermedia tensor on which the lambda actually operates.
+    Type intermediateType_; // is used for the creation of a temporary intermediate tensor on which the lambda actually operates.
                             // This tensor is then automatically cast and copied to the type of the actual tensor. 
 
   public:
@@ -214,24 +214,7 @@ Ptr<NodeInitializer> fromTensor(Tensor externalTensor) {
 
 // Computes Google's sinusoidal position embeddings
 Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
-  return fromLambda([start](Tensor t) {
-    int dimEmb   = t->shape()[-1];
-    int dimWords = (int)t->size() / dimEmb;
-
-    float numTimescales = (float)dimEmb / 2;
-    float logTimescaleIncrement = std::log(10000.f) / (numTimescales - 1.f);
-
-    std::vector<float> vPos(dimEmb * dimWords, 0);
-    for(int p = start; p < dimWords + start; ++p) {
-      for(int i = 0; i < numTimescales; ++i) {
-        float v = p * std::exp(i * -logTimescaleIncrement);
-        vPos[(p - start) * dimEmb + i                     ] = std::sin(v);
-        vPos[(p - start) * dimEmb + (int)numTimescales + i] = std::cos(v); // @TODO: is int vs. float correct for num_timescales?
-      }
-    }
-
-    t->set(vPos);
-  }, Type::float32);
+  return fromLambda([start](Tensor t) { SinusoidalPositionEmbeddings(t, start); }); 
 }
 
 // computes the equivalent of Python's range()

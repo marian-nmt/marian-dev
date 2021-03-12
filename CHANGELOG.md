@@ -9,13 +9,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Local/global sharding with MPI training via `--sharding local`
+- fp16 support for factors.
+- Correct training with fp16 via `--fp16`. 
+- Dynamic cost-scaling with `--cost-scaling`.
+- Dynamic gradient-scaling with `--dynamic-gradient-scaling`.
+- Fix compilation with OMP
+
+### Fixed
+- Find MKL installed under Ubuntu 20.04 via apt-get
+- Support for CUDA 11.
+- General improvements and fixes for MPI handling, was essentially non-functional before (syncing, random seeds, deadlocks during saving, validation etc.)
+- Allow to compile -DUSE_MPI=on with -DUSE_STATIC_LIBS=on although MPI gets still linked dynamically since it has so many dependencies.
+- Fix building server with Boost 1.75
+- Missing implementation for cos/tan expression operator
+
+### Changed
+- Change compile options a la -DCOMPILE_CUDA_SM35 to -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL,
+-DCOMPILE_PASCAL, -DCOMPILE_VOLTA, -DCOMPILE_TURING and -DCOMPILE_AMPERE
+- Disable -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL by default.
+- Dropped support for legacy graph groups.
 - Developer documentation framework based on Sphinx+Doxygen+Breathe+Exhale
 - Expresion graph documentation (#788)
 - Graph operators documentation (#801)
-
-### Fixed
-- Fix building server with Boost 1.75
-- Missing implementation for cos/tan expression operator
 
 ## [1.10.0] - 2021-02-06
 
@@ -35,7 +51,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Decoding multi-source models in marian-server with --tsv
 - GitHub workflows on Ubuntu, Windows, and MacOS
 - LSH indexing to replace short list
-- ONNX support for transformer models
+- ONNX support for transformer models (very experimental)
 - Add topk operator like PyTorch's topk
 - Use *cblas_sgemm_batch* instead of a for loop of *cblas_sgemm* on CPU as the batched_gemm implementation
 - Supporting relative paths in shortlist and sqlite options

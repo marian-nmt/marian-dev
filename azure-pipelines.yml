@@ -181,19 +181,19 @@ stages:
         ################################################################
         # Ubuntu 20.04 supports CUDA 11+
         #
-        # Disabled because FBGEMM + GCC 9+ do not compile on machines with
+        # CPU is disabled because FBGEMM + GCC 9+ do not compile on machines with
         # avx512_vnni, see https://github.com/marian-nmt/marian-dev/issues/709
         #
-        #"20.04 CUDA 11.0 gcc-9":
-          #image: ubuntu-20.04
-          #boost: false  # ubuntu-20.04 does not have Boost pre-installed yet
-          #cpu: true
-          #gpu: true
-          #cuda: 11.0
-          #gcc: 9
-          #unit_tests: false # disable unit tests to minimize compilation time
-          #examples: false   # disable examples to minimize compilation time
-          #static: false
+        "20.04 CUDA 11.1 gcc-9":
+          image: ubuntu-20.04
+          boost: false      # ubuntu-20.04 does not have Boost pre-installed yet
+          cpu: false        # the used fbgemm does not compile with gcc 9+
+          gpu: true
+          cuda: 11.1
+          gcc: 9
+          unit_tests: false # disable unit tests to minimize compilation time
+          examples: false   # disable examples to minimize compilation time
+          static: false
         ################################################################
         # Ubuntu 18.04 supports CUDA 10.1+
         "18.04 CUDA 10.2 gcc-8":
@@ -257,7 +257,7 @@ stages:
           -DCOMPILE_EXAMPLES=$(examples) \
           -DCOMPILE_SERVER=$(boost) \
           -DCOMPILE_TESTS=$(unit_tests) \
-          -DUSE_FBGEMM=on \
+          -DUSE_FBGEMM=$(cpu) \
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=$(static) \
           -DBOOST_ROOT=$BOOST_ROOT_1_72_0 \
@@ -267,7 +267,10 @@ stages:
           -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-$(cuda)
       displayName: Configure CMake
 
-    - bash: make -j3
+    # Clean build/src/ to safe disk space on Azure-hosted VMs and stay below the 10GB limit
+    - bash: |
+        make -j3
+        rm -rf src/
       displayName: Compile
       workingDirectory: build
 
@@ -379,3 +382,57 @@ stages:
         ./spm_encode --version
       displayName: Print versions
       workingDirectory: build
+
+  ######################################################################
+  - job: BuildInstall
+    displayName: Linux CPU library install
+
+    pool:
+      vmImage: ubuntu-18.04
+
+    steps:
+    - checkout: self
+      submodules: true
+
+      # The following packages are already installed on Azure-hosted runners: build-essential openssl libssl-dev
+      # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
+    - bash: sudo apt-get install -y libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
+      displayName: Install packages
+
+      # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html
+    - bash: |
+        wget -qO- "https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB" | sudo apt-key add -
+        sudo sh -c "echo deb https://apt.repos.intel.com/mkl all main > /etc/apt/sources.list.d/intel-mkl.list"
+        sudo apt-get update -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/intel-mkl.list"
+        sudo apt-get install -y --no-install-recommends intel-mkl-64bit-2020.0-088
+      displayName: Install MKL
+
+    - bash: /usr/bin/gcc-7 --version
+      displayName: Print GCC version
+
+    - bash: |
+        mkdir -p install
+        mkdir -p build
+        cd build
+        CC=/usr/bin/gcc-7 CXX=/usr/bin/g++-7 \
+        cmake .. \
+          -DCMAKE_INSTALL_PREFIX=../install \
+          -DCMAKE_BUILD_TYPE=slim \
+          -DCOMPILE_LIBRARY_ONLY=on \
+          -DCOMPILE_CUDA=off \
+          -DGENERATE_MARIAN_INSTALL_TARGETS=on \
+          -DUSE_FBGEMM=on \
+          -DUSE_SENTENCEPIECE=on
+      displayName: Configure CMake
+
+    - bash: make -j3 install
+      displayName: Compile & install
+      workingDirectory: build
+
+    - bash: |
+        test -e lib/libmarian.a
+        test -e lib/libfbgemm.a
+        test -e lib/libsentencepiece.a
+        ls -lah *
+      displayName: Check targets
+      workingDirectory: install

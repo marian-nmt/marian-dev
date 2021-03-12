@@ -610,6 +610,9 @@ struct CallbackState {
 
     // Requests to Triton
     TRITONBACKEND_Request** requests;
+
+    // Model instance state
+    ModelInstanceState* instance_state;
 };
 
 
@@ -621,10 +624,9 @@ void sendResponse(int bn, const char* result, void* userData)
     // Use at to get bound checking when accessing the vector
     int requestNumber = state->marianBatch_to_tritonRequest_map.at(bn);
     int requestBatchIdx = state->marianBatchIdx_to_requestBatchIdx_map.at(bn);
-    size_t requestBatchSize = state->partially_completed_requests.at(requestNumber).size();
 
     // For uniformity, I always assign the translated sentence to the partially completed requests array.
-    const std::vector<std::string>& requestStaging = state->partially_completed_requests.at(requestNumber);
+    std::vector<std::string>& requestStaging = state->partially_completed_requests.at(requestNumber);
 
     if (!requestStaging.at(requestBatchIdx).empty()) {
         GUARDED_RESPOND_IF_ERROR(
@@ -643,7 +645,9 @@ void sendResponse(int bn, const char* result, void* userData)
         );
         return;
     }
+
     requestStaging.at(requestBatchIdx) = result;
+    const int requestBatchSize = (int)requestStaging.size();
 
     // Now we check if any sentence in the batch of requests still remains to be processed. If so, 
     // return immediately since we have already stored the translated sentence in the staging area above.
@@ -656,16 +660,16 @@ void sendResponse(int bn, const char* result, void* userData)
     // If here, we need to concat all the sentences in the staging area for the given request and immediately
     // send a response to the user.
     std::string concatedSentences;
-    for (int sen = 0; sen < (int)requestStaging.size(); ++sen) {
-        concatedSentences += sentence;
-        if (sen + 1 != (int)requestStaging.size()) {
+    for (int sen = 0; sen < requestBatchSize; ++sen) {
+        concatedSentences += requestStaging[sen];
+        if (sen + 1 != requestBatchSize) {
             concatedSentences += "\n";
         }
     }
 
     std::cout << bn << " " << concatedSentences << std::endl;
 
-    TRITONBACKEND_Input* input = state->request_input[r];
+    TRITONBACKEND_Input* input = state->request_input[requestNumber];
     const char* input_name;
     TRITONSERVER_DataType input_datatype;
     const int64_t* input_shape;
@@ -727,7 +731,7 @@ void sendResponse(int bn, const char* result, void* userData)
         )
     );
 
-    if ((responses[requestNumber] == nullptr) ||
+    if ((state->responses[requestNumber] == nullptr) ||
         (output_memory_type == TRITONSERVER_MEMORY_GPU)) {
         GUARDED_RESPOND_IF_ERROR(
             state->responses, requestNumber,
@@ -752,7 +756,7 @@ void sendResponse(int bn, const char* result, void* userData)
     // Send the response.
     LOG_IF_ERROR(
         TRITONBACKEND_ResponseSend(
-            responses[requestNumber], TRITONSERVER_RESPONSE_COMPLETE_FINAL,
+            state->responses[requestNumber], TRITONSERVER_RESPONSE_COMPLETE_FINAL,
             nullptr /* success */),
         "failed sending response"
     );
@@ -762,7 +766,7 @@ void sendResponse(int bn, const char* result, void* userData)
     SET_TIMESTAMP(request_exec_end_ns);
     LOG_IF_ERROR(
         TRITONBACKEND_ModelInstanceReportStatistics(
-            instance_state->TritonModelInstance(), request, true /* success */,
+            state->instance_state->TritonModelInstance(), request, true /* success */,
             state->exec_start_ns, state->exec_start_ns, request_exec_end_ns, request_exec_end_ns),
         "failed reporting request statistics"
     );
@@ -921,9 +925,8 @@ TRITONSERVER_Error* serveRequestsAsync(
     // Operate on the entire batch of requests for improved performance.
     void* vstate;
     RETURN_IF_ERROR(TRITONBACKEND_ModelInstanceState(instance, &vstate));
-    ModelInstanceState* instance_state =
-        reinterpret_cast<ModelInstanceState*>(vstate);
-    void* marian = instance_state->Marian();
+    state.instance_state = reinterpret_cast<ModelInstanceState*>(vstate);
+    void* marian = state.instance_state->Marian();
 
     translate_async(marian, const_cast<char*>(input_strings.c_str()), sendResponse, (void*)&state);
 
@@ -932,7 +935,7 @@ TRITONSERVER_Error* serveRequestsAsync(
     SET_TIMESTAMP(exec_end_ns);
     LOG_IF_ERROR(
         TRITONBACKEND_ModelInstanceReportBatchStatistics(
-            instance_state->TritonModelInstance(), total_batch_size,
+            state.instance_state->TritonModelInstance(), total_batch_size,
             state.exec_start_ns, state.exec_start_ns, exec_end_ns, exec_end_ns),
         "failed reporting batch request statistics"
     );
@@ -945,7 +948,7 @@ TRITONBACKEND_ModelInstanceExecute(
     TRITONBACKEND_ModelInstance* instance, TRITONBACKEND_Request** requests,
     const uint32_t request_count)
 {
-    return serveRequestsAsync(instance, requests, request_count)
+    return serveRequestsAsync(instance, requests, request_count);
     // return serveRequestsSync(instance, requests, request_count);
 }
 

@@ -10,6 +10,7 @@ if(NOT MSVC)
       prod
       cli
       pooling
+      shortlist
   )
 
   foreach(test ${APP_TESTS})

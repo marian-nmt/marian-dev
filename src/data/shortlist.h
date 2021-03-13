@@ -6,7 +6,7 @@
 #include "data/corpus_base.h"
 #include "data/types.h"
 
-#include <common/timer.h>
+#include <common/binary.h>
 #include <algorithm>
 #include <iostream>
 #include <random>
@@ -198,9 +198,7 @@ public:
         shared_(shared) {
     std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
 
-    ABORT_IF(vals.empty(), "No path to filter path given");
     std::string fname = vals[0];
-
     firstNum_ = vals.size() > 1 ? std::stoi(vals[1]) : 100;
     bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
     float threshold = vals.size() > 3 ? std::stof(vals[3]) : 0;
@@ -287,36 +285,77 @@ private:
   size_t srcIdx_;
   bool shared_{false};
 
-  size_t firstNum_{100};
-  //size_t bestNum_{100}; not in use for binary shortlist
+  size_t firstNum_{100};  // baked into binary header
+  size_t bestNum_{100};   // baked into binary header
 
-  // shortlist is stored in a skip list:
-  // [&short_lists_[word_to_offset_[word]], &short_lists_[word_to_offset_[word + 1]])
+  // shortlist is stored in a skip list
+  // [&shortLists_[wordToOffset_[word]], &shortLists_[wordToOffset_[word + 1]])
   // is a sorted array of word indices in the shortlist for word
-  std::vector<size_t> word_to_offset_;
-  std::vector<WordIndex> short_lists_;
+  std::vector<size_t> wordToOffset_;
+  std::vector<WordIndex> shortLists_;
 
-  void load(const std::string& fname) {
-    size_t word_to_offset_size = 0;
-    size_t short_lists_size = 0;
+public:
+  // load shortlist from buffer
+  void load(const void* ptr){
+    char *bytePtr = (char*)ptr;
 
-    // read the skip list from binary file
-    std::fstream binIn(fname, std::ios::in | std::ios::binary);
+    uint64_t bodySize;
+    uint64_t checksum;
+    uint64_t firstNum64;
+    uint64_t bestNum64;
+    uint64_t wordToOffsetSz64;
+    uint64_t shortListsSz64;
 
-    // read the lengths of the vectors from header
-    binIn.read((char*)(&word_to_offset_size), sizeof(size_t));
-    binIn.read((char*)(&short_lists_size), sizeof(size_t));
+    // Magic preamble
+    uint64_t *preamblePtr = (uint64_t *)bytePtr;
+    preamblePtr++;  // skip magicSignature as it has been checked in isBinaryShortlist()
+    bodySize = *(preamblePtr++);
+    checksum = *(preamblePtr++);
 
-    // create the vectors for reading
-    size_t word_to_offset_buf[word_to_offset_size];
-    WordIndex short_lists_buf[short_lists_size];
+    uint64_t *bodyHeaderPtr = preamblePtr;
+    uint64_t checksumActual
+        = (uint64_t)util::hashMem<uint64_t>(bodyHeaderPtr, bodySize / sizeof(uint64_t));
+    ABORT_IF(checksumActual != checksum, "This file is broken");
 
-    // read the contents of the vectors
-    binIn.read((char*)(&word_to_offset_buf), sizeof(size_t)* word_to_offset_size);
-    binIn.read((char*)(&short_lists_buf), sizeof(WordIndex)* short_lists_size);
-    word_to_offset_.assign(word_to_offset_buf, word_to_offset_buf+ word_to_offset_size);
-    short_lists_.assign(short_lists_buf, short_lists_buf+ short_lists_size);
-    binIn.close();
+    // Read firstNum_ and bestNum_
+    firstNum64 = *(bodyHeaderPtr++);
+    bestNum64 = *(bodyHeaderPtr++);
+    firstNum_ = (size_t) firstNum64;
+    bestNum_ = (size_t) bestNum64;
+    LOG(info, "[data] The first no. is {} and best no. is {}", firstNum_, bestNum_);
+
+    // Read the lengths of vectors
+    wordToOffsetSz64 = *(bodyHeaderPtr++);
+    shortListsSz64 = *(bodyHeaderPtr++);
+
+    // Read the contents of the vectors
+    // Vectors in hardware-independent format
+    std::vector<uint64_t> wordToOffsetA64;
+    std::vector<uint32_t> shortListsA32;
+
+    wordToOffsetA64.resize(wordToOffsetSz64);
+    uint64_t *wordToOffsetImagePtr = (uint64_t *)(bodyHeaderPtr);
+    uint64_t *wordToOffsetImageBound = wordToOffsetImagePtr + wordToOffsetSz64;
+    std::copy(wordToOffsetImagePtr, wordToOffsetImageBound, wordToOffsetA64.begin());
+
+    shortListsA32.resize(shortListsSz64);
+    uint32_t *shortListsImagePtr = (uint32_t *)(wordToOffsetImageBound);
+    uint32_t *short_lists_image_bound = shortListsImagePtr + shortListsSz64;
+    std::copy(shortListsImagePtr, short_lists_image_bound, shortListsA32.begin());
+
+    // Assign the contents of the vectors
+    wordToOffset_.assign(wordToOffsetA64.begin(), wordToOffsetA64.end());
+    shortLists_.assign(shortListsA32.begin(), shortListsA32.end());
+  }
+
+  // load shortlist from file
+  void load(const std::string& filename) {
+    size_t fileSize = filesystem::fileSize(filename);
+    std::vector<char> buf(fileSize);
+    io::InputFileStream binIn(filename);
+    binIn.read(buf.data(), fileSize);
+    // load shortlist from buffer
+    load(buf.data());
   }
 
 public:
@@ -333,102 +372,68 @@ public:
         shared_(shared) {
 
     std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
-
-    ABORT_IF(vals.empty(), "No path to filter path given");
     std::string fname = vals[0];
-    ABORT_IF(!io::isBin(fname),"Not a binary file");
+    std::string dumpPath = vals.size() > 1 ? vals[1] : "";
 
-    firstNum_ = vals.size() > 1 ? std::stoi(vals[1]) : 100;
-    float threshold = vals.size() > 2 ? std::stof(vals[2]) : 0;
-    std::string dumpPath = vals.size() > 3 ? vals[3] : "";
-
-    LOG(info,
-        "[data] Loading binary shortlist as {} {} {}",
-        fname,
-        firstNum_,
-        threshold);
-
+    LOG(info, "[data] Loading binary shortlist as {}", fname);
     load(fname);
+
+    if(!dumpPath.empty())
+      dump(dumpPath);
   }
 
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override {
     auto srcBatch = (*batch)[srcIdx_];
-    std::vector<WordIndex> srcList;
-    std::vector<WordIndex> trgProgress;
-    std::vector<WordIndex> trgBound;
-    std::vector<std::stack<WordIndex>> trace;
-    std::unordered_set<WordIndex> inserted;
-    trace.resize(trgVocab_->size());
 
-    for(auto word : srcBatch->data())
-    {
-      WordIndex srcIndex= word.toWordIndex();
-      srcList.push_back(srcIndex);
-      trgProgress.push_back(word_to_offset_[srcIndex]);
-      trgBound.push_back(word_to_offset_[srcIndex+1]);
+    // Since V=trgVocab_->size() is not large, anchor the time and space complexity to O(V).
+    // Attempt to squeeze the truth tables into CPU cache
+    std::vector<bool> srcTruthTable(srcVocab_->size(), 0);  // holds selected source words
+    std::vector<bool> trgTruthTable(trgVocab_->size(), 0);  // holds selected target words
+
+    // add firstNum most frequent words
+    for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
+      trgTruthTable[i] = 1;
+
+    // collect unique words from source
+    // add aligned target words: mark trgTruthTable[word] to 1
+    for(auto word : srcBatch->data()) {
+      WordIndex srcIndex = word.toWordIndex();
+      if(shared_)
+        trgTruthTable[srcIndex] = 1;
+      // If srcIndex has not been encountered, add the corresponding target words
+      if (!srcTruthTable[srcIndex]) {
+        for (size_t j = wordToOffset_[srcIndex]; j < wordToOffset_[srcIndex+1]; j++)
+          trgTruthTable[shortLists_[j]] = 1;
+        srcTruthTable[srcIndex] = 1;
+      }
     }
 
+    // Due to the 'multiple-of-eight' issue, the following O(N) patch is inserted
+    size_t trgTruthTableOnes = 0;   // counter for no. of selected target words
+    for (size_t i = 0; i < trgVocab_->size(); i++) {
+      if(trgTruthTable[i])
+        trgTruthTableOnes++;
+    }
+
+    // Ensure that the generated vocabulary items from a shortlist are a multiple-of-eight
+    // This is necessary until intgemm supports non-multiple-of-eight matrices.
+    for (size_t i = firstNum_; i < trgVocab_->size() && trgTruthTableOnes%8!=0; i++){
+      if (!trgTruthTable[i]){
+        trgTruthTable[i] = 1;
+        trgTruthTableOnes++;
+      }
+    }
+
+    // turn selected indices into vector and sort (Bucket sort: O(V))
     std::vector<WordIndex> indices;
-    size_t traceSize = 0;
-    for(size_t i=0; i < trgProgress.size(); i++) {
-      if (trgProgress[i] < trgBound[i]) {
-        trace[short_lists_[trgProgress[i]]].push(i);
-        traceSize++;
-      }
+    for (WordIndex i = 0; i < trgVocab_->size(); i++) {
+      if(trgTruthTable[i])
+        indices.push_back(i);
     }
-
-    WordIndex traceProgress = 0;
-    while (traceSize > 0)
-    {
-      while (trace[traceProgress].empty() && traceProgress<trgVocab_->size())
-        traceProgress++;
-      indices.push_back(traceProgress);
-      inserted.insert(traceProgress);
-
-      while (!trace[traceProgress].empty())
-      {
-        WordIndex tracePoint = trace[traceProgress].top();
-        trace[traceProgress].pop();
-        traceSize--;
-
-        if (trgProgress[tracePoint] < trgBound[tracePoint])
-        {
-          trace[short_lists_[trgProgress[tracePoint]]].push(tracePoint);
-          traceSize++;
-          trgProgress[tracePoint]++;
-        }
-      }
-    }
-
-    // Special case A: high-frequency words
-    for (WordIndex f=0; f < firstNum_; f++)
-      if (inserted.find(f)==inserted.end())
-      {
-        indices.push_back(f);
-        inserted.insert(f);
-      }
-
-    // Special case B: shared words
-    if (shared_)
-      for (auto src: srcList)
-        if (inserted.find(src)==inserted.end())
-        {
-          indices.push_back(src);
-          inserted.insert(src);
-        }
-
-    // Special case C: multiple-of-eight
-    for (WordIndex f = 0; f < trgVocab_->size() and indices.size()%8 != 0; f++)
-      if (inserted.find(f)==inserted.end()) {
-        indices.push_back(f);
-        inserted.insert(f);
-      }
-
-    // Can be avoided if special-case lists are sorted
-    std::sort(indices.begin(), indices.end());
 
     return New<Shortlist>(indices);
   }
+
 
   virtual void dump(const std::string& prefix) const override {
       // Dump top most frequent words from target vocabulary
@@ -440,11 +445,12 @@ public:
       // Dump translation pairs from dictionary
       io::OutputFileStream outDic(prefix + ".dic");
       int slowIndex = 0;
-      for(int i =1; i <word_to_offset_.size(); i++){
-        for (slowIndex=word_to_offset_[i-1]; slowIndex<word_to_offset_[i]; slowIndex++) {
+      for(int i =1; i < wordToOffset_.size(); i++){
+        for (slowIndex= wordToOffset_[i-1]; slowIndex< wordToOffset_[i]; slowIndex++) {
           WordIndex srcId = i-1;
-          WordIndex trgId = short_lists_[slowIndex];
-          outDic << (*srcVocab_)[Word::fromWordIndex(srcId)] << "\t" << (*trgVocab_)[Word::fromWordIndex(trgId)] << std::endl;
+          WordIndex trgId = shortLists_[slowIndex];
+          outDic << (*srcVocab_)[Word::fromWordIndex(srcId)]
+                 << "\t" << (*trgVocab_)[Word::fromWordIndex(trgId)] << std::endl;
         }
       }
   }

@@ -59,9 +59,17 @@ public:
     trgVocab_->load(vocabs.back());
     auto srcVocab = corpus_->getVocabs()[0];
 
-    if(options_->hasAndNotEmpty("shortlist"))
-      shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
-          options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
+    if(options_->hasAndNotEmpty("shortlist")) {
+      auto slOptions = options_->get<std::vector<std::string>>("shortlist");
+      ABORT_IF(slOptions.empty(), "No path to shortlist file given");
+      std::string filename = slOptions[0];
+      if(io::binary::isBinaryShortlist(filename))
+        shortlistGenerator_ = New<data::BinaryShortlistGenerator>(
+            options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
+      else
+          shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
+              options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
+    }
 
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();

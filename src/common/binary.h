@@ -22,8 +22,6 @@ io::Item getItem(const std::string& fileName, const std::string& vName);
 
 void saveItems(const std::string& fileName, const std::vector<io::Item>& items);
 
-bool isBinaryShortlist(const std::string& fileName);
-
 }  // namespace binary
 }  // namespace io
 }  // namespace marian

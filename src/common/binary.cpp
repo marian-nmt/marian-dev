@@ -3,7 +3,6 @@
 #include "common/file_stream.h"
 #include "common/io_item.h"
 #include "common/types.h"
-#include "options.h"
 #include "tensors/cpu/integer_common.h"
 
 #include <string>
@@ -177,22 +176,7 @@ void saveItems(const std::string& fileName,
                                                       // No version-bump required. Gets 5-8% of speed back when mmapped.
 }
 
-bool isBinaryShortlist(const std::string& fileName){
-  // Magic signature: ASCII and Unicode text files never start with the following 64 bits
-  const uint64_t magicSignature = 0xF11A48D5013417F5;
-  const size_t bufSize = 8;
-  char buf[bufSize];
-
-  // read the first 64 bits
-  io::InputFileStream in(fileName);
-  in.read(buf, bufSize);
-  uint64_t first64Bits = *((uint64_t*)buf);
-  if (first64Bits == magicSignature)
-    return 1;
-  else
-    return 0;
-}
-
 }  // namespace binary
 }  // namespace io
 }  // namespace marian
+

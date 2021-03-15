@@ -63,7 +63,7 @@ public:
       auto slOptions = options_->get<std::vector<std::string>>("shortlist");
       ABORT_IF(slOptions.empty(), "No path to shortlist file given");
       std::string filename = slOptions[0];
-      if(io::binary::isBinaryShortlist(filename))
+      if(data::isBinaryShortlist(filename))
         shortlistGenerator_ = New<data::BinaryShortlistGenerator>(
             options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
       else
@@ -218,9 +218,17 @@ public:
     trgVocab_->load(vocabPaths.back());
 
     // load lexical shortlist
-    if(options_->hasAndNotEmpty("shortlist"))
-      shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
-          options_, srcVocabs_.front(), trgVocab_, 0, 1, vocabPaths.front() == vocabPaths.back());
+    if(options_->hasAndNotEmpty("shortlist")) {
+      auto slOptions = options_->get<std::vector<std::string>>("shortlist");
+      ABORT_IF(slOptions.empty(), "No path to shortlist file given");
+      std::string filename = slOptions[0];
+      if(data::isBinaryShortlist(filename))
+        shortlistGenerator_ = New<data::BinaryShortlistGenerator>(
+            options_, srcVocabs_.front(), trgVocab_, 0, 1, vocabPaths.front() == vocabPaths.back());
+      else
+        shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
+            options_, srcVocabs_.front(), trgVocab_, 0, 1, vocabPaths.front() == vocabPaths.back());
+    }
 
     // get device IDs
     auto devices = Config::getDevices(options_);

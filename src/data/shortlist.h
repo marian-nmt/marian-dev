@@ -17,6 +17,25 @@
 
 namespace marian {
 namespace data {
+// Magic signature for binary shortlist:
+// ASCII and Unicode text files never start with the following 64 bits
+const uint64_t BINARY_SHORTLIST_MS = 0xF11A48D5013417F5;
+
+static bool isBinaryShortlist(const std::string& fileName){
+  // Magic signature for binary shortlist:
+  // ASCII and Unicode text files never start with the following 64 bits
+  const size_t bufSize = 8;
+  char buf[bufSize];
+
+  // read the first 64 bits
+  io::InputFileStream in(fileName);
+  in.read(buf, bufSize);
+  uint64_t first64Bits = *((uint64_t*)buf);
+  if (first64Bits == BINARY_SHORTLIST_MS)
+    return 1;
+  else
+    return 0;
+}
 
 class Shortlist {
 private:
@@ -305,17 +324,21 @@ public:
     uint64_t bestNum64;
     uint64_t wordToOffsetSz64;
     uint64_t shortListsSz64;
+    uint64_t magicSignature;
 
     // Magic preamble
     uint64_t *preamblePtr = (uint64_t *)bytePtr;
-    preamblePtr++;  // skip magicSignature as it has been checked in isBinaryShortlist()
+
+    magicSignature = *(preamblePtr++);
+    ABORT_IF(magicSignature != BINARY_SHORTLIST_MS, "This binary shortlist format is not supported");
+
     bodySize = *(preamblePtr++);
     checksum = *(preamblePtr++);
 
     uint64_t *bodyHeaderPtr = preamblePtr;
     uint64_t checksumActual
         = (uint64_t)util::hashMem<uint64_t>(bodyHeaderPtr, bodySize / sizeof(uint64_t));
-    ABORT_IF(checksumActual != checksum, "This file is broken");
+    ABORT_IF(checksumActual != checksum, "This binary shortlist is corrupted");
 
     // Read firstNum_ and bestNum_
     firstNum64 = *(bodyHeaderPtr++);
@@ -352,7 +375,7 @@ public:
   void load(const std::string& filename) {
     size_t fileSize = filesystem::fileSize(filename);
     std::vector<char> buf(fileSize);
-    io::InputFileStream binIn(filename);
+    io::InputFileStream binIn(filename);   // IO error check is wrapped in this class
     binIn.read(buf.data(), fileSize);
     // load shortlist from buffer
     load(buf.data());

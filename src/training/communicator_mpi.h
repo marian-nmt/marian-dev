@@ -134,13 +134,14 @@ public:
   }
 
   void scatterReduceAndResetGrads() const override {
+    thread_local std::vector<float> tmpsendbff(graphs_[0]->params()->grads()->size());
     for(int i = 0; i < graphs_.size(); ++i) {
       size_t begin, end; std::tie
       (begin, end) = localShardRange(i);
 
       auto grads = graphs_[i]->params()->grads();
-      //const auto* sendbuf = grads->data();
-      //auto*       recvbuf = grads->subtensor(begin, end-begin)->data();
+      const auto* sendbuf = grads->data();
+      auto*       recvbuf = grads->subtensor(begin, end-begin)->data();
       size_t      bufsize = shardSize();
       ABORT_IF(grads->subtensor(begin, end-begin)->size() != bufsize, "unexpected subtensor size??");
 
@@ -149,7 +150,9 @@ public:
         ABORT("Half precision is datatype is not supported by MPI.");
       mpiBarrier(); // This barrier should be outside of the for loop probably.
       if(shardingMode_ == ShardingMode::global) {
-        mpi_->reduceScatterBlock(grads->data(), grads->data(), grads->size(), mpiFLoatType, MPI_SUM); // apparently this is somehow faster??
+        // MPI prohibits aliasing because of ancient fortran requirement. MPI Is stupid. Allegedly this could be achieved with MPI_IN_PLACe if it is intracommunicator
+        std::memcpy(&tmpsendbff[0], &sendbuf[0], sizeof(float)*grads->size());
+        mpi_->reduceScatterBlock((const void *)&tmpsendbff[0], recvbuf, bufsize, mpiFLoatType, MPI_SUM); // apparently this is somehow faster??
         // NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloatType, ncclSum, globalComms_[i], streams_[i]));
       } else {
         ABORT("Local sharding mode reduceScatter not supported yet for mpi communicator.");
@@ -180,7 +183,7 @@ public:
   // @TODO: For unknown reasons, this takes longer than any other operation incl. scatterReduceAndResetGrads().
   //        But both should have the same number of data transfers of the same size.
   void allGatherParams() const override {
-
+    thread_local std::vector<float> tmpsendbff(shardSize());
     for(int i = 0; i < graphs_.size(); ++i) {
       size_t begin, end; std::tie
       (begin, end) = localShardRange(i);
@@ -196,9 +199,8 @@ public:
       mpiBarrier(); // This barrier should be outside of the for loop probably.
 
       //mpi_->Allgather(sendbuf, bufsize, mpiFLoatType, recvbuf, bufsize, mpiFLoatType);
-      sendbuf;
-      recvbuf;
-      mpi_->Allgather(vals->data(), bufsize, mpiFLoatType, vals->data(), bufsize, mpiFLoatType);
+      std::memcpy(&tmpsendbff[0], sendbuf, sizeof(float)*bufsize);
+      mpi_->Allgather((const void *)&tmpsendbff[0], bufsize, mpiFLoatType, recvbuf, bufsize, mpiFLoatType);
       //the local version did it so:
       //auto& comms = shardingMode_ == ShardingMode::global ? globalComms_ : localComms_;
       //NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, bufsize, ncclFloatType, comms[i], streams_[i]));

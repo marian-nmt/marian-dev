@@ -207,7 +207,9 @@ public:
         shared_(shared) {
     std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
 
+    ABORT_IF(vals.empty(), "No path to filter path given");
     std::string fname = vals[0];
+
     firstNum_ = vals.size() > 1 ? std::stoi(vals[1]) : 100;
     bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
     float threshold = vals.size() > 3 ? std::stof(vals[3]) : 0;
@@ -385,11 +387,13 @@ public:
         shared_(shared) {
 
     std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
+    ABORT_IF(vals.empty(), "No path to shortlist file given");
     std::string fname = vals[0];
-    std::string dumpPath = vals.size() > 1 ? vals[1] : "";
+    bool check = vals.size() > 1 ? std::stoi(vals[1]) : 1;
+    std::string dumpPath = vals.size() > 2 ? vals[2] : "";
 
-    LOG(info, "[data] Loading binary shortlist as {}", fname);
-    load(fname);
+    LOG(info, "[data] Loading binary shortlist as {} {}", fname, check);
+    load(fname, check);
 
     if(!dumpPath.empty())
       dump(dumpPath);

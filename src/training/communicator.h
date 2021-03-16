@@ -84,6 +84,15 @@ struct/*interface*/ IMPIWrapper {
   virtual void sSend(void* buf, size_t count, MPI_Datatype datatype, size_t destRank, int tag, MPI_Comm comm = MPI_COMM_WORLD) const = 0;
   virtual void recv(void* buf, size_t count, MPI_Datatype datatype, size_t sourceRank, int tag, MPI_Comm comm = MPI_COMM_WORLD, MPI_Status* status = MPI_STATUS_IGNORE) const = 0;
   virtual void allReduce(const void* sendbuf, void* recvbuf, size_t count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm = MPI_COMM_WORLD) const = 0;
+  virtual void reduceScatter(const void * sendbuf, void * recvbuf, int * recvcounts, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm = MPI_COMM_WORLD) const {
+    ABORT("ReduceScatter is only implemented when compiled with -DUSE_MPI=ON");
+  }
+  virtual void reduceScatterBlock(const void * sendbuf, void * recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm = MPI_COMM_WORLD) const {
+    ABORT("ReduceScatter is only implemented when compiled with -DUSE_MPI=ON");
+  }
+  virtual void Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm = MPI_COMM_WORLD) const {
+    ABORT("Allgather is only implemented when compiled with -DUSE_MPI=ON");
+  }
   virtual void finalize() = 0;
   static const size_t RECV_ANY_SOURCE = (size_t)MPI_ANY_SOURCE;
 

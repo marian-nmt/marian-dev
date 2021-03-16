@@ -179,4 +179,3 @@ void saveItems(const std::string& fileName,
 }  // namespace binary
 }  // namespace io
 }  // namespace marian
-

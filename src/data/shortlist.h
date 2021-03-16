@@ -5,15 +5,14 @@
 #include "common/file_stream.h"
 #include "data/corpus_base.h"
 #include "data/types.h"
+#include "3rd_party/mio/mio.hpp"
 
-#include <common/binary.h>
-#include <algorithm>
-#include <iostream>
 #include <random>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <stack>
+#include <iostream>
+#include <algorithm>
 
 namespace marian {
 namespace data {
@@ -22,19 +21,10 @@ namespace data {
 const uint64_t BINARY_SHORTLIST_MS = 0xF11A48D5013417F5;
 
 static bool isBinaryShortlist(const std::string& fileName){
-  // Magic signature for binary shortlist:
-  // ASCII and Unicode text files never start with the following 64 bits
-  const size_t bufSize = 8;
-  char buf[bufSize];
-
-  // read the first 64 bits
+  uint64_t magic;
   io::InputFileStream in(fileName);
-  in.read(buf, bufSize);
-  uint64_t first64Bits = *((uint64_t*)buf);
-  if (first64Bits == BINARY_SHORTLIST_MS)
-    return 1;
-  else
-    return 0;
+  in.read((char*)(&magic), sizeof(magic));
+  return in && (magic == BINARY_SHORTLIST_MS);
 }
 
 class Shortlist {
@@ -304,81 +294,81 @@ private:
   size_t srcIdx_;
   bool shared_{false};
 
-  size_t firstNum_{100};  // baked into binary header
-  size_t bestNum_{100};   // baked into binary header
+  uint64_t firstNum_{100};  // baked into binary header
+  uint64_t bestNum_{100};   // baked into binary header
 
   // shortlist is stored in a skip list
   // [&shortLists_[wordToOffset_[word]], &shortLists_[wordToOffset_[word + 1]])
   // is a sorted array of word indices in the shortlist for word
-  std::vector<size_t> wordToOffset_;
-  std::vector<WordIndex> shortLists_;
+  mio::mmap_source mmapMem_;
+  uint64_t wordToOffsetSize_;
+  uint64_t shortListsSize_;
+  const uint64_t *wordToOffset_;
+  const WordIndex *shortLists_;
+
+void contentCheck() {
+  bool failFlag = 0;
+  // The offset table has to be within the size of shortlists.
+  for(int i = 0; i < wordToOffsetSize_; i++)
+    failFlag |= wordToOffset_[i] > shortListsSize_;
+  // The vocabulary indices have to be within the vocabulary size.
+  size_t vSize = trgVocab_->size();
+  for(int j = 0; j < shortListsSize_; j++)
+    failFlag |= shortLists_[j] > vSize;
+  ABORT_IF(failFlag, "Error: shortlists content is wrong");
+}
 
 public:
   // load shortlist from buffer
-  void load(const void* ptr){
+  void load(const void* ptr, size_t blobSize, bool check=true){
     char *bytePtr = (char*)ptr;
 
-    uint64_t bodySize;
-    uint64_t checksum;
-    uint64_t firstNum64;
-    uint64_t bestNum64;
-    uint64_t wordToOffsetSz64;
-    uint64_t shortListsSz64;
-    uint64_t magicSignature;
-
-    // Magic preamble
+    // Read preamble: magicSignature + bodySize + checksum
     uint64_t *preamblePtr = (uint64_t *)bytePtr;
 
-    magicSignature = *(preamblePtr++);
+    // Magic signature check
+    uint64_t magicSignature = *(preamblePtr++);
     ABORT_IF(magicSignature != BINARY_SHORTLIST_MS, "This binary shortlist format is not supported");
 
-    bodySize = *(preamblePtr++);
-    checksum = *(preamblePtr++);
+    uint64_t bodySize = *(preamblePtr++);
+    uint64_t checksum = *(preamblePtr++);
 
+    // Bounds check
+    size_t blobSizeExpected = sizeof(magicSignature) + bodySize + sizeof(checksum);
+    ABORT_IF(blobSize < blobSizeExpected,
+             "Bounds check failed: actual blob size {} < expected {}", blobSize, blobSizeExpected);
+
+    // checksum check
     uint64_t *bodyHeaderPtr = preamblePtr;
     uint64_t checksumActual
         = (uint64_t)util::hashMem<uint64_t>(bodyHeaderPtr, bodySize / sizeof(uint64_t));
-    ABORT_IF(checksumActual != checksum, "This binary shortlist is corrupted");
+    ABORT_IF(checksumActual != checksum, "checksum check failed: this binary shortlist is corrupted");
 
     // Read firstNum_ and bestNum_
-    firstNum64 = *(bodyHeaderPtr++);
-    bestNum64 = *(bodyHeaderPtr++);
-    firstNum_ = (size_t) firstNum64;
-    bestNum_ = (size_t) bestNum64;
+    firstNum_ = *(bodyHeaderPtr++);
+    bestNum_ = *(bodyHeaderPtr++);
     LOG(info, "[data] The first no. is {} and best no. is {}", firstNum_, bestNum_);
 
     // Read the lengths of vectors
-    wordToOffsetSz64 = *(bodyHeaderPtr++);
-    shortListsSz64 = *(bodyHeaderPtr++);
+    wordToOffsetSize_ = *(bodyHeaderPtr++);
+    shortListsSize_ = *(bodyHeaderPtr++);
 
     // Read the contents of the vectors
-    // Vectors in hardware-independent format
-    std::vector<uint64_t> wordToOffsetA64;
-    std::vector<uint32_t> shortListsA32;
+    wordToOffset_ = bodyHeaderPtr;
+    const uint64_t *wordToOffsetImageBound = wordToOffset_ + wordToOffsetSize_;
+    shortLists_ = (uint32_t *)wordToOffsetImageBound;
 
-    wordToOffsetA64.resize(wordToOffsetSz64);
-    uint64_t *wordToOffsetImagePtr = (uint64_t *)(bodyHeaderPtr);
-    uint64_t *wordToOffsetImageBound = wordToOffsetImagePtr + wordToOffsetSz64;
-    std::copy(wordToOffsetImagePtr, wordToOffsetImageBound, wordToOffsetA64.begin());
-
-    shortListsA32.resize(shortListsSz64);
-    uint32_t *shortListsImagePtr = (uint32_t *)(wordToOffsetImageBound);
-    uint32_t *short_lists_image_bound = shortListsImagePtr + shortListsSz64;
-    std::copy(shortListsImagePtr, short_lists_image_bound, shortListsA32.begin());
-
-    // Assign the contents of the vectors
-    wordToOffset_.assign(wordToOffsetA64.begin(), wordToOffsetA64.end());
-    shortLists_.assign(shortListsA32.begin(), shortListsA32.end());
+    // Shortlists content check (x2 speed-down)
+    if(check)
+      contentCheck();
   }
 
   // load shortlist from file
-  void load(const std::string& filename) {
-    size_t fileSize = filesystem::fileSize(filename);
-    std::vector<char> buf(fileSize);
-    io::InputFileStream binIn(filename);   // IO error check is wrapped in this class
-    binIn.read(buf.data(), fileSize);
-    // load shortlist from buffer
-    load(buf.data());
+  void load(const std::string& filename, bool check=true) {
+    std::error_code error;
+    mmapMem_.map(filename, error);
+    ABORT_IF(error, "Error mapping file: {}", error.message());
+    load(mmapMem_.data(), mmapMem_.mapped_length(), check);
   }
 
 public:
@@ -405,16 +395,22 @@ public:
       dump(dumpPath);
   }
 
+  ~BinaryShortlistGenerator(){
+    mmapMem_.unmap();
+  }
+
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override {
     auto srcBatch = (*batch)[srcIdx_];
+    size_t srcVocabSize = srcVocab_->size();
+    size_t trgVocabSize = trgVocab_->size();
 
     // Since V=trgVocab_->size() is not large, anchor the time and space complexity to O(V).
     // Attempt to squeeze the truth tables into CPU cache
-    std::vector<bool> srcTruthTable(srcVocab_->size(), 0);  // holds selected source words
-    std::vector<bool> trgTruthTable(trgVocab_->size(), 0);  // holds selected target words
+    std::vector<bool> srcTruthTable(srcVocabSize, 0);  // holds selected source words
+    std::vector<bool> trgTruthTable(trgVocabSize, 0);  // holds selected target words
 
     // add firstNum most frequent words
-    for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
+    for(WordIndex i = 0; i < firstNum_ && i < trgVocabSize; ++i)
       trgTruthTable[i] = 1;
 
     // collect unique words from source
@@ -425,7 +421,7 @@ public:
         trgTruthTable[srcIndex] = 1;
       // If srcIndex has not been encountered, add the corresponding target words
       if (!srcTruthTable[srcIndex]) {
-        for (size_t j = wordToOffset_[srcIndex]; j < wordToOffset_[srcIndex+1]; j++)
+        for (uint64_t j = wordToOffset_[srcIndex]; j < wordToOffset_[srcIndex+1]; j++)
           trgTruthTable[shortLists_[j]] = 1;
         srcTruthTable[srcIndex] = 1;
       }
@@ -433,14 +429,14 @@ public:
 
     // Due to the 'multiple-of-eight' issue, the following O(N) patch is inserted
     size_t trgTruthTableOnes = 0;   // counter for no. of selected target words
-    for (size_t i = 0; i < trgVocab_->size(); i++) {
+    for (size_t i = 0; i < trgVocabSize; i++) {
       if(trgTruthTable[i])
         trgTruthTableOnes++;
     }
 
     // Ensure that the generated vocabulary items from a shortlist are a multiple-of-eight
     // This is necessary until intgemm supports non-multiple-of-eight matrices.
-    for (size_t i = firstNum_; i < trgVocab_->size() && trgTruthTableOnes%8!=0; i++){
+    for (size_t i = firstNum_; i < trgVocabSize && trgTruthTableOnes%8!=0; i++){
       if (!trgTruthTable[i]){
         trgTruthTable[i] = 1;
         trgTruthTableOnes++;
@@ -457,7 +453,6 @@ public:
     return New<Shortlist>(indices);
   }
 
-
   virtual void dump(const std::string& prefix) const override {
       // Dump top most frequent words from target vocabulary
       LOG(info, "[data] Saving shortlist dump to {}", prefix + ".{top,dic}");
@@ -467,9 +462,8 @@ public:
 
       // Dump translation pairs from dictionary
       io::OutputFileStream outDic(prefix + ".dic");
-      int slowIndex = 0;
-      for(int i =1; i < wordToOffset_.size(); i++){
-        for (slowIndex= wordToOffset_[i-1]; slowIndex< wordToOffset_[i]; slowIndex++) {
+      for(int i =1; i < wordToOffsetSize_; i++){
+        for (int slowIndex= wordToOffset_[i-1]; slowIndex< wordToOffset_[i]; slowIndex++) {
           WordIndex srcId = i-1;
           WordIndex trgId = shortLists_[slowIndex];
           outDic << (*srcVocab_)[Word::fromWordIndex(srcId)]

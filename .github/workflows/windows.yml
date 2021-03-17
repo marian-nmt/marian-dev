@@ -54,7 +54,7 @@ jobs:
 
     # Boost is no longer pre-installed on GitHub-hosted Windows runners
     - name: Download Boost
-    - run: |
+      run: |
         Write-Host "Downloading Boost to ${{ env.BOOST_ROOT }}"
         (New-Object System.Net.WebClient).DownloadFile(${{ env.BOOST_URL }}, "${{ github.workspace }}/boost.exe")
         Start-Process -Wait -FilePath "${{ github.workspace }}/boost.exe" "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=${{ env.BOOST_ROOT }}"

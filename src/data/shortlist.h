@@ -323,8 +323,10 @@ void contentCheck() {
 public:
   // load shortlist from buffer
   void load(const void* ptr, size_t blobSize, bool check=true){
-    char *bytePtr = (char*)ptr;
-
+    const char *bytePtr = (const char*)ptr;
+    // header length check
+    const uint64_t preambleSize = sizeof(uint64_t) * 3;
+    ABORT_IF(blobSize < preambleSize, "Header length check failed");
     // Read preamble: magicSignature + bodySize + checksum
     uint64_t *preamblePtr = (uint64_t *)bytePtr;
 
@@ -449,7 +451,7 @@ public:
 
     // turn selected indices into vector and sort (Bucket sort: O(V))
     std::vector<WordIndex> indices;
-    for (WordIndex i = 0; i < trgVocab_->size(); i++) {
+    for (WordIndex i = 0; i < trgVocabSize; i++) {
       if(trgTruthTable[i])
         indices.push_back(i);
     }

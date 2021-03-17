@@ -308,61 +308,64 @@ private:
   const uint64_t *wordToOffset_;
   const WordIndex *shortLists_;
 
-void contentCheck() {
-  bool failFlag = 0;
-  // The offset table has to be within the size of shortlists.
-  for(int i = 0; i < wordToOffsetSize_; i++)
-    failFlag |= wordToOffset_[i] > shortListsSize_;
-  // The vocabulary indices have to be within the vocabulary size.
-  size_t vSize = trgVocab_->size();
-  for(int j = 0; j < shortListsSize_; j++)
-    failFlag |= shortLists_[j] > vSize;
-  ABORT_IF(failFlag, "Error: shortlists content is wrong");
-}
+  struct Header {
+    uint64_t magic; // BINARY_SHORTLIST_MS
+    uint64_t checksum; // util::hashMem<uint64_t, uint64_t> from &firstNum to end of file.
+    uint64_t firstNum; // Limits used to create the shortlist.
+    uint64_t bestNum;
+    uint64_t wordToOffsetSize; // Length of wordToOffset_ array.
+    uint64_t shortListsSize; // Length of shortLists_ array.
+  };
+
+  void contentCheck() {
+    bool failFlag = 0;
+    // The offset table has to be within the size of shortlists.
+    for(int i = 0; i < wordToOffsetSize_; i++)
+      failFlag |= wordToOffset_[i] >= shortListsSize_;
+    // The vocabulary indices have to be within the vocabulary size.
+    size_t vSize = trgVocab_->size();
+    for(int j = 0; j < shortListsSize_; j++)
+      failFlag |= shortLists_[j] >= vSize;
+    ABORT_IF(failFlag, "Error: shortlist indices are out of bounds");
+  }
 
 public:
   // load shortlist from buffer
-  void load(const void* ptr, size_t blobSize, bool check=true){
-    const char *bytePtr = (const char*)ptr;
-    // header length check
-    const uint64_t preambleSize = sizeof(uint64_t) * 3;
-    ABORT_IF(blobSize < preambleSize, "Header length check failed");
-    // Read preamble: magicSignature + bodySize + checksum
-    uint64_t *preamblePtr = (uint64_t *)bytePtr;
+  void load(const void* ptr_void, size_t blobSize, bool check = true) {
+    /* File layout:
+     * header
+     * wordToOffset array
+     * shortLists array
+     */
+    ABORT_IF(blobSize < sizeof(Header), "Shortlist length {} too short to have a header", blobSize);
 
-    // Magic signature check
-    uint64_t magicSignature = *(preamblePtr++);
-    ABORT_IF(magicSignature != BINARY_SHORTLIST_MS, "This binary shortlist format is not supported");
+    const char *ptr = static_cast<const char*>(ptr_void);
+    const Header &header = *reinterpret_cast<const Header*>(ptr);
+    ptr += sizeof(Header);
+    ABORT_IF(header.magic != BINARY_SHORTLIST_MS, "Incorrect magic in binary shortlist");
 
-    uint64_t bodySize = *(preamblePtr++);
-    uint64_t checksum = *(preamblePtr++);
+    uint64_t expectedSize = sizeof(Header) + header.wordToOffsetSize * sizeof(uint64_t) + header.shortListsSize * sizeof(WordIndex);
+    ABORT_IF(expectedSize != blobSize, "Shortlist header claims file size should be {} but file is {}", expectedSize, blobSize);
 
-    // Bounds check
-    size_t blobSizeExpected = sizeof(magicSignature) + bodySize + sizeof(checksum);
-    ABORT_IF(blobSize < blobSizeExpected,
-             "Bounds check failed: actual blob size {} < expected {}", blobSize, blobSizeExpected);
+    if (check) {
+      uint64_t checksumActual = util::hashMem<uint64_t, uint64_t>(&header.firstNum, (blobSize - sizeof(header.magic) - sizeof(header.checksum)) / sizeof(uint64_t));
+      ABORT_IF(checksumActual != header.checksum, "checksum check failed: this binary shortlist is corrupted");
+    }
+    
+    firstNum_ = header.firstNum;
+    bestNum_ = header.bestNum;
+    LOG(info, "[data] Lexical short list firstNum {} and bestNum {}", firstNum_, bestNum_);
 
-    // checksum check
-    uint64_t *bodyHeaderPtr = preamblePtr;
-    uint64_t checksumActual
-        = (uint64_t)util::hashMem<uint64_t>(bodyHeaderPtr, bodySize / sizeof(uint64_t));
-    ABORT_IF(checksumActual != checksum, "checksum check failed: this binary shortlist is corrupted");
+    wordToOffsetSize_ = header.wordToOffsetSize;
+    shortListsSize_ = header.shortListsSize;
 
-    // Read firstNum_ and bestNum_
-    firstNum_ = *(bodyHeaderPtr++);
-    bestNum_ = *(bodyHeaderPtr++);
-    LOG(info, "[data] The first no. is {} and best no. is {}", firstNum_, bestNum_);
+    // Offsets right after header.
+    wordToOffset_ = reinterpret_cast<const uint64_t*>(ptr);
+    ptr += wordToOffsetSize_ * sizeof(uint64_t);
 
-    // Read the lengths of vectors
-    wordToOffsetSize_ = *(bodyHeaderPtr++);
-    shortListsSize_ = *(bodyHeaderPtr++);
+    shortLists_ = reinterpret_cast<const WordIndex*>(ptr);
 
-    // Read the contents of the vectors
-    wordToOffset_ = bodyHeaderPtr;
-    const uint64_t *wordToOffsetImageBound = wordToOffset_ + wordToOffsetSize_;
-    shortLists_ = (uint32_t *)wordToOffsetImageBound;
-
-    // Shortlists content check (x2 speed-down)
+    // Verify offsets and vocab ids are within bounds if requested by user.
     if(check)
       contentCheck();
   }

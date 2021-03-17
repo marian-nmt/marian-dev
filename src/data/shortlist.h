@@ -18,13 +18,13 @@ namespace marian {
 namespace data {
 // Magic signature for binary shortlist:
 // ASCII and Unicode text files never start with the following 64 bits
-const uint64_t BINARY_SHORTLIST_MS = 0xF11A48D5013417F5;
+const uint64_t BINARY_SHORTLIST_MAGIC = 0xF11A48D5013417F5;
 
 static bool isBinaryShortlist(const std::string& fileName){
   uint64_t magic;
   io::InputFileStream in(fileName);
   in.read((char*)(&magic), sizeof(magic));
-  return in && (magic == BINARY_SHORTLIST_MS);
+  return in && (magic == BINARY_SHORTLIST_MAGIC);
 }
 
 class Shortlist {
@@ -309,7 +309,7 @@ private:
   const WordIndex *shortLists_;
 
   struct Header {
-    uint64_t magic; // BINARY_SHORTLIST_MS
+    uint64_t magic; // BINARY_SHORTLIST_MAGIC
     uint64_t checksum; // util::hashMem<uint64_t, uint64_t> from &firstNum to end of file.
     uint64_t firstNum; // Limits used to create the shortlist.
     uint64_t bestNum;
@@ -342,7 +342,7 @@ public:
     const char *ptr = static_cast<const char*>(ptr_void);
     const Header &header = *reinterpret_cast<const Header*>(ptr);
     ptr += sizeof(Header);
-    ABORT_IF(header.magic != BINARY_SHORTLIST_MS, "Incorrect magic in binary shortlist");
+    ABORT_IF(header.magic != BINARY_SHORTLIST_MAGIC, "Incorrect magic in binary shortlist");
 
     uint64_t expectedSize = sizeof(Header) + header.wordToOffsetSize * sizeof(uint64_t) + header.shortListsSize * sizeof(WordIndex);
     ABORT_IF(expectedSize != blobSize, "Shortlist header claims file size should be {} but file is {}", expectedSize, blobSize);

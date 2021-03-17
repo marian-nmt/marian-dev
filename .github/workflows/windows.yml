@@ -56,7 +56,7 @@ jobs:
     - name: Download Boost
       run: |
         Write-Host "Downloading Boost to ${{ env.BOOST_ROOT }}"
-        (New-Object System.Net.WebClient).DownloadFile(${{ env.BOOST_URL }}, "${{ github.workspace }}/boost.exe")
+        C:\msys64\usr\bin\wget.exe -nv "${{ env.BOOST_URL }}" -O "${{ github.workspace }}/boost.exe"
         Start-Process -Wait -FilePath "${{ github.workspace }}/boost.exe" "/SILENT","/SP-","/SUPPRESSMSGBOXES","/DIR=${{ env.BOOST_ROOT }}"
       shell: powershell
 

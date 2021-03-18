@@ -175,7 +175,7 @@ private:
   uint64_t bestNum_{100};   // baked into binary header
 
   // shortlist is stored in a skip list
-  // [&shortLists_[wordToOffset_[word]], &shortLists_[wordToOffset_[word + 1]])
+  // [&shortLists_[wordToOffset_[word]], &shortLists_[wordToOffset_[word+1]])
   // is a sorted array of word indices in the shortlist for word
   mio::mmap_source mmapMem_;
   uint64_t wordToOffsetSize_;
@@ -193,12 +193,15 @@ private:
   };
 
   void contentCheck();
-
-public:
   // load shortlist from buffer
   void load(const void* ptr_void, size_t blobSize, bool check = true);
   // load shortlist from file
   void load(const std::string& filename, bool check=true);
+  // import text shortlist from file
+  void import(const std::string& filename, double threshold);
+  // generate blob from vectors
+  std::vector<char> generateBlob() const;
+  void saveBlobToFile(std::vector<char> blob, const std::string& filename) const;
 
 public:
   BinaryShortlistGenerator(Ptr<Options> options,
@@ -213,7 +216,7 @@ public:
   }
 
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override;
-  virtual void dump(const std::string& prefix) const override;
+  virtual void dump(const std::string& fileName) const override;
 };
 
 class FakeShortlistGenerator : public ShortlistGenerator {

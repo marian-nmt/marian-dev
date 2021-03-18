@@ -1,4 +1,5 @@
 #include "shortlist.h"
+#include <queue>
 
 namespace marian {
 namespace data {
@@ -218,14 +219,20 @@ BinaryShortlistGenerator::BinaryShortlistGenerator(Ptr<Options> options,
   std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
   ABORT_IF(vals.empty(), "No path to shortlist file given");
   std::string fname = vals[0];
-  bool check = vals.size() > 1 ? std::stoi(vals[1]) : 1;
-  std::string dumpPath = vals.size() > 2 ? vals[2] : "";
 
-  LOG(info, "[data] Loading binary shortlist as {} {}", fname, check);
-  load(fname, check);
-
-  if(!dumpPath.empty())
-    dump(dumpPath);
+  if(isBinaryShortlist(fname)){
+    bool check = vals.size() > 1 ? std::stoi(vals[1]) : 1;
+    LOG(info, "[data] Loading binary shortlist as {} {}", fname, check);
+    load(fname, check);
+  }
+  else{
+    firstNum_ = vals.size() > 1 ? std::stoi(vals[1]) : 100;
+    bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
+    float threshold = vals.size() > 3 ? std::stof(vals[3]) : 0;
+    LOG(info, "[data] Importing text lexical shortlist as {} {} {} {}",
+        fname, firstNum_, bestNum_, threshold);
+    import(fname, threshold);
+  }
 }
 
 Ptr<Shortlist> BinaryShortlistGenerator::generate(Ptr<data::CorpusBatch> batch) const {
@@ -282,23 +289,107 @@ Ptr<Shortlist> BinaryShortlistGenerator::generate(Ptr<data::CorpusBatch> batch) 
   return New<Shortlist>(indices);
 }
 
-void BinaryShortlistGenerator::dump(const std::string& prefix) const {
-  // Dump top most frequent words from target vocabulary
-  LOG(info, "[data] Saving shortlist dump to {}", prefix + ".{top,dic}");
-  io::OutputFileStream outTop(prefix + ".top");
-  for(WordIndex i = 0; i < firstNum_ && i < trgVocab_->size(); ++i)
-    outTop << (*trgVocab_)[Word::fromWordIndex(i)] << std::endl;
+void BinaryShortlistGenerator::dump(const std::string& fileName) const {
+  ABORT_IF(mmapMem_.is_open(),"No need to dump again");
+  LOG(info, "[data] Saving binary shortlist dump to {}", fileName);
+  std::vector<char> blob = generateBlob();
+  saveBlobToFile(blob,fileName);
+}
 
-  // Dump translation pairs from dictionary
-  io::OutputFileStream outDic(prefix + ".dic");
-  for(int i =1; i < wordToOffsetSize_; i++){
-    for (int slowIndex= wordToOffset_[i-1]; slowIndex< wordToOffset_[i]; slowIndex++) {
-      WordIndex srcId = i-1;
-      WordIndex trgId = shortLists_[slowIndex];
-      outDic << (*srcVocab_)[Word::fromWordIndex(srcId)]
-             << "\t" << (*trgVocab_)[Word::fromWordIndex(trgId)] << std::endl;
+void BinaryShortlistGenerator::import(const std::string& filename, double threshold) {
+  io::InputFileStream in(filename);
+  std::string src, trg;
+
+  // Read text file
+  std::vector<std::unordered_map<WordIndex, float>> srcTgtProbTable;
+  float prob;
+
+  while(in >> trg >> src >> prob) {
+    if(src == "NULL" || trg == "NULL")
+      continue;
+
+    auto sId = (*srcVocab_)[src].toWordIndex();
+    auto tId = (*trgVocab_)[trg].toWordIndex();
+    if(srcTgtProbTable.size() <= sId)
+      srcTgtProbTable.resize(sId + 1);
+    if(srcTgtProbTable[sId][tId] < prob)
+      srcTgtProbTable[sId][tId] = prob;
+  }
+
+  // Create priority queue and count
+  std::vector<std::priority_queue<std::pair<double, WordIndex>>> vpq;
+  uint64_t shortListSize = 0;
+
+  vpq.resize(srcTgtProbTable.size());
+  for(WordIndex sId = 0; sId < srcTgtProbTable.size(); sId++) {
+    uint64_t shortListSizeCurrent = 0;
+    for(auto entry : srcTgtProbTable[sId]) {
+      if (entry.first>=threshold) {
+        vpq[sId].push(std::make_pair(entry.second, entry.first));
+        if(shortListSizeCurrent < bestNum_)
+          shortListSizeCurrent++;
+      }
+    }
+    shortListSize += shortListSizeCurrent;
+  }
+
+  uint64_t wordToOffsetSize = vpq.size()+1;
+  uint64_t* wordToOffset = new uint64_t[wordToOffsetSize];
+  WordIndex* shortLists = new WordIndex[shortListSize];
+  WordIndex shortlistIdx = 0;
+  for(size_t i=0; i< wordToOffsetSize -1; i++) {
+    wordToOffset[i] = shortlistIdx;
+    for(int popcnt = 0; popcnt < bestNum_ && !vpq[i].empty(); popcnt++) {
+      shortLists[shortlistIdx] = vpq[i].top().second;
+      shortlistIdx++;
+      vpq[i].pop();
     }
   }
+  wordToOffset[wordToOffsetSize-1] = shortlistIdx;
+
+  // Sort word indices for each shortlist
+  for(int i = 1; i < wordToOffsetSize; i++) {
+    std::sort(&shortLists[wordToOffset[i-1]], &shortLists[wordToOffset[i]]);
+  }
+
+  wordToOffset_ = wordToOffset;
+  shortLists_ = shortLists;
+  wordToOffsetSize_ = wordToOffsetSize;
+  shortListsSize_ = shortListSize;
+}
+
+std::vector<char> BinaryShortlistGenerator::generateBlob() const{
+  // Build the body
+  std::vector<char> body;
+  body.insert(body.end(), (char *)&firstNum_, (char *)&firstNum_ + sizeof(uint64_t));
+  body.insert(body.end(), (char *)&bestNum_, (char *)&bestNum_ + sizeof(uint64_t));
+  body.insert(body.end(), (char *)&wordToOffsetSize_, (char *)&wordToOffsetSize_ + sizeof(uint64_t));
+  body.insert(body.end(), (char *)&shortListsSize_, (char *)&shortListsSize_ + sizeof(uint64_t));
+  body.insert(body.end(),
+              (char *)wordToOffset_,
+              (char *)wordToOffset_ + wordToOffsetSize_ * sizeof(uint64_t));
+  body.insert(body.end(),
+              (char *)shortLists_,
+              (char *)shortLists_ + shortListsSize_ * sizeof(uint32_t));
+
+  // Compute the checksum
+  uint64_t bodySize = body.size();
+  uint64_t checksum
+      = (uint64_t)util::hashMem<uint64_t>((uint64_t *)body.data(), bodySize / sizeof(uint64_t));
+
+  // Produce the blob with the header and the body
+  std::vector<char> blob;
+  blob.insert(blob.end(), (char *)&BINARY_SHORTLIST_MAGIC, (char *)&BINARY_SHORTLIST_MAGIC + sizeof(uint64_t));
+  blob.insert(blob.end(), (char *)&checksum, (char *)&checksum + sizeof(uint64_t));
+  blob.insert(blob.end(), body.begin(), body.end());
+
+  return blob;
+}
+
+void BinaryShortlistGenerator::saveBlobToFile(std::vector<char> blob,
+                                              const std::string& fileName) const {
+  io::OutputFileStream outTop(fileName);
+  outTop.write(blob.data(), blob.size());
 }
 
 }  // namespace data

@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Support for MS-internal binary shortlist
 - Local/global sharding with MPI training via `--sharding local`
 - fp16 support for factors.
-- Correct training with fp16 via `--fp16`. 
+- Correct training with fp16 via `--fp16`.
 - Dynamic cost-scaling with `--cost-scaling`.
 - Dynamic gradient-scaling with `--dynamic-gradient-scaling`.
+- Add unit tests for binary files.
 - Fix compilation with OMP
 
 ### Fixed
@@ -24,6 +26,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix building server with Boost 1.75
 - Missing implementation for cos/tan expression operator
 - Fixed loading binary models on architectures where `size_t` != `uint64_t`.
+- Missing float template specialisation for elem::Plus
+- Broken links to MNIST data sets
 
 ### Changed
 - Change compile options a la -DCOMPILE_CUDA_SM35 to -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL,

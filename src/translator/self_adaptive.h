@@ -89,7 +89,8 @@ public:
     builderTrans_ = models::createModelFromOptions(opts, models::usage::translation);
 
     // Initialize a scorer for translation
-    auto model = options_->get<std::string>("model");
+    // auto model = options_->get<std::string>("model");
+    model = options_->get<std::string>("model");
     Ptr<Scorer> scorer = New<ScorerWrapper>(builderTrans_, "", 1.0f, model);
     scorers_.push_back(scorer);
 
@@ -201,6 +202,7 @@ private:
   Ptr<models::IModel> builderTrans_; // Translation model
   Ptr<ExpressionGraph> graph_;          // A graph with original parameters
   Ptr<ExpressionGraph> graphAdapt_;     // A graph on which training is performed
+  std::string model;
 
   std::vector<Ptr<Vocab>> vocabs_;
   std::vector<Ptr<Scorer>> scorers_;
@@ -229,18 +231,22 @@ private:
         LOG(info, "### NEW BATCH");
         // Copy params from the original model
         if(first) {
-          builder_->build(graph_, batch);
-          // TODO: Why do we need to do a froward pass here?
-          graph_->forward();
+          // builder_->build(graph_, batch);
+          // // TODO: Why do we need to do a froward pass here?
+          // graph_->forward();
 
           graphAdapt_ = New<ExpressionGraph>();
-          graphAdapt_->setDevice(graph_->getDeviceId());
-          graphAdapt_->reuseWorkspace(graph_);
+          // graphAdapt_->setDevice(graph_->getDeviceId());
+          auto deviceId = Config::getDevices(options_)[0];
+          graphAdapt_->setDevice(deviceId);
+          // graphAdapt_->reuseWorkspace(graph_);
+          graphAdapt_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 
           // TODO: why aren't we using a builder before this?
           // it's probably because the order doesn't matter and the
           // builder is used below
-          graphAdapt_->copyParams(graph_);
+          // graphAdapt_->copyParams(graph_);
+          // builder_->load(graphAdapt_, model);
           first = false;
         }
 
@@ -264,27 +270,27 @@ private:
                  Ptr<CollectorBase> collector,
                  Ptr<OutputPrinter> printer,
                  Ptr<ExpressionGraph> graph) {
-    graph->setInference(true);
-    graph->clear();
+    // graph->setInference(true);
+    // graph->clear();
 
-    {
-      auto search = New<BeamSearch>(options_,
-                                    scorers_,
-                                    vocabs_.back());
-      auto histories = search->search(graph, batch);
+    // {
+    //   auto search = New<BeamSearch>(options_,
+    //                                 scorers_,
+    //                                 vocabs_.back());
+    //   auto histories = search->search(graph, batch);
 
-      for(auto history : histories) {
-        std::stringstream best1;
-        std::stringstream bestn;
-        printer->print(history, best1, bestn);
-        collector->Write(history->getLineNum(),
-                         best1.str(),
-                         bestn.str(),
-                         options_->get<bool>("n-best"));
-      }
-    }
+    //   for(auto history : histories) {
+    //     std::stringstream best1;
+    //     std::stringstream bestn;
+    //     printer->print(history, best1, bestn);
+    //     collector->Write(history->getLineNum(),
+    //                      best1.str(),
+    //                      bestn.str(),
+    //                      options_->get<bool>("n-best"));
+    //   }
+    // }
 
-    graph->setInference(false);
+    // graph->setInference(false);
   }
 };
 }

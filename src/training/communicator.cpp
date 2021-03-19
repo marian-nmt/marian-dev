@@ -8,6 +8,7 @@
 #if MPI_FOUND
 #include "mpi.h"
 #endif
+#include "training/communicator_mpi.h"
 
 namespace marian {
 
@@ -25,6 +26,9 @@ Ptr<ICommunicator> createCommunicator(
   const std::vector<Ptr<ExpressionGraph>>& graphs,
   bool noNccl, ShardingMode shardingMode, Ptr<IMPIWrapper> mpi) {
   mpi;
+  if (mpi && mpi->numMPIProcesses() > 1 && graphs[0]->getBackend()->getDeviceId().type == DeviceType::cpu) {
+    return New<MpiCommunicator>(graphs, shardingMode, mpi);
+  }
 #if defined(CUDA_FOUND) && defined(USE_NCCL)
   if(noNccl) {
     LOG(warn, "[comm] NCCL communicator overridden");
@@ -136,6 +140,24 @@ public:
     if (sendbuf == recvbuf)
       sendbuf = MPI_IN_PLACE; // MSMPI requires this
     HANDLE_MPI_ERROR(MPI_Allreduce(sendbuf, recvbuf, (int)count, datatype, op, comm));
+  }
+  virtual void reduceScatter(const void * sendbuf, void * recvbuf, int * recvcounts, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) const override {
+    if (sendbuf == recvbuf) {
+      sendbuf = MPI_IN_PLACE; // OpenMPI hopefully works with this: https://www.open-mpi.org/doc/v3.1/man3/MPI_Reduce_scatter.3.php
+    }
+    HANDLE_MPI_ERROR(MPI_Reduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm));
+  }
+  virtual void reduceScatterBlock(const void * sendbuf, void * recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) const override {
+    if (sendbuf == recvbuf) {
+      sendbuf = MPI_IN_PLACE; // OpenMPI hopefully works with this: https://www.open-mpi.org/doc/v3.0/man3/MPI_Reduce_scatter_block.3.php
+    }
+    HANDLE_MPI_ERROR(MPI_Reduce_scatter_block(sendbuf, recvbuf, count, datatype, op, comm));
+  }
+  virtual void Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm) const override {
+    if (sendbuf == recvbuf) {
+      sendbuf = MPI_IN_PLACE; // OpenMPI hopefully works with this: https://www.open-mpi.org/doc/v3.0/man3/MPI_Allgather.3.php
+    }
+    HANDLE_MPI_ERROR(MPI_Allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm));
   }
   virtual void finalize() override {
     HANDLE_MPI_ERROR(MPI_Finalize());

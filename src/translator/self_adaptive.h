@@ -72,12 +72,12 @@ public:
     optionsTrans_->set<size_t>("max-length", 1000);
     optionsTrans_->set("shuffle", "none");
 
-    // auto deviceId = Config::getDevices(options_)[0];
+    auto deviceId = Config::getDevices(options_)[0];
 
     // Initialize model for training
-    // graph_ = New<ExpressionGraph>();
-    // graph_->setDevice(deviceId);
-    // graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
+    graph_ = New<ExpressionGraph>();
+    graph_->setDevice(deviceId);
+    graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
     builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
 
     optimizer_ = Optimizer(options_);
@@ -86,12 +86,12 @@ public:
     Ptr<Options> opts = New<Options>();
     opts->merge(options_);
     opts->set("inference", true);
-    // builderTrans_ = models::createModelFromOptions(opts, models::usage::translation);
+    builderTrans_ = models::createModelFromOptions(opts, models::usage::translation);
 
     // Initialize a scorer for translation
     auto model = options_->get<std::string>("model");
-    // Ptr<Scorer> scorer = New<ScorerWrapper>(builderTrans_, "", 1.0f, model);
-    // scorers_.push_back(scorer);
+    Ptr<Scorer> scorer = New<ScorerWrapper>(builderTrans_, "", 1.0f, model);
+    scorers_.push_back(scorer);
 
     // Read vocabularies
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
@@ -103,7 +103,7 @@ public:
     }
 
     // Load model
-    // builder_->load(graph_, model);
+    builder_->load(graph_, model);
   }
 
   std::string run(const std::string& json) override {
@@ -139,11 +139,11 @@ public:
     size_t id = 0;
     for(auto testBatch : *testBatches) {
       if(contexts.size() > id && !contexts[id].empty()) {
-        // train(contexts[id]);
+        train(contexts[id]);
         translate(testBatch, collector, printer, graphAdapt_);
       } else {
         LOG(info, "No context provided for sentence {}", id);
-        // translate(testBatch, collector, printer, graph_);
+        translate(testBatch, collector, printer, graph_);
       }
 
       // iterating by 1 is quite safe because the mini-batch size for
@@ -179,21 +179,16 @@ public:
 
     LOG(info, "Running...");
 
-    // auto state = New<TrainingState>(options_->get<float>("learn-rate"));
-    // auto scheduler = New<Scheduler>(options_, state);
-    // scheduler->registerTrainingObserver(scheduler);
-    // scheduler->registerTrainingObserver(optimizer_);
-
     for(auto testBatch : *testBatches) {
       auto trainSet = trainSets->getSamples();
 
       if(!trainSet.empty()) {
-        LOG(info, "### NEW TEST BATCH");
-        train(trainSet, nullptr);
+        LOG(info, "# NEW TEST BATCH");
+        train(trainSet);
         translate(testBatch, collector, printer, graphAdapt_);
       } else {
-        LOG(info, "### EMPTY TEST BATCH");
-        // translate(testBatch, collector, printer, graph_);
+        LOG(info, "# EMPTY TEST BATCH");
+        translate(testBatch, collector, printer, graph_);
       }
     }
   }
@@ -203,15 +198,15 @@ private:
   Ptr<Options> optionsTrans_;  // Options for translator
 
   Ptr<models::ICriterionFunction> builder_;      // Training model
-  // Ptr<models::IModel> builderTrans_; // Translation model
-  // Ptr<ExpressionGraph> graph_;          // A graph with original parameters
+  Ptr<models::IModel> builderTrans_; // Translation model
+  Ptr<ExpressionGraph> graph_;          // A graph with original parameters
   Ptr<ExpressionGraph> graphAdapt_;     // A graph on which training is performed
 
   std::vector<Ptr<Vocab>> vocabs_;
-  // std::vector<Ptr<Scorer>> scorers_;
+  std::vector<Ptr<Scorer>> scorers_;
   Ptr<OptimizerBase> optimizer_;
 
-  void train(std::vector<std::string> trainSents, std::shared_ptr<Scheduler> _scheduler) {
+  void train(std::vector<std::string> trainSents) {
     auto state = New<TrainingState>(options_->get<float>("learn-rate"));
     auto scheduler = New<Scheduler>(options_, state);
     scheduler->registerTrainingObserver(scheduler);
@@ -226,7 +221,7 @@ private:
     while(scheduler->keepGoing()) {
       trainBatches->prepare();
 
-      LOG(info, "### NEW BATCHES");
+      LOG(info, "## NEW BATCHES");
       for(auto batch : *trainBatches) {
         if(!scheduler->keepGoing())
           break;
@@ -234,19 +229,18 @@ private:
         LOG(info, "### NEW BATCH");
         // Copy params from the original model
         if(first) {
-          auto deviceId = Config::getDevices(options_)[0];
+          builder_->build(graph_, batch);
+          // TODO: Why do we need to do a froward pass here?
+          graph_->forward();
+
           graphAdapt_ = New<ExpressionGraph>();
-          graphAdapt_->setDevice(deviceId);
-          graphAdapt_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
+          graphAdapt_->setDevice(graph_->getDeviceId());
+          graphAdapt_->reuseWorkspace(graph_);
 
-          // builder_->build(graph_, batch);
-          // graph_->forward();
-
-          // graphAdapt_ = New<ExpressionGraph>();
-          // graphAdapt_->setDevice(graph_->getDeviceId());
-          // graphAdapt_->reuseWorkspace(graph_);
-
-          // graphAdapt_->copyParams(graph_);
+          // TODO: why aren't we using a builder before this?
+          // it's probably because the order doesn't matter and the
+          // builder is used below
+          graphAdapt_->copyParams(graph_);
           first = false;
         }
 
@@ -270,27 +264,27 @@ private:
                  Ptr<CollectorBase> collector,
                  Ptr<OutputPrinter> printer,
                  Ptr<ExpressionGraph> graph) {
-    // graph->setInference(true);
-    // graph->clear();
+    graph->setInference(true);
+    graph->clear();
 
-    // {
-    //   auto search = New<BeamSearch>(options_,
-    //                                 scorers_,
-    //                                 vocabs_.back());
-    //   auto histories = search->search(graph, batch);
+    {
+      auto search = New<BeamSearch>(options_,
+                                    scorers_,
+                                    vocabs_.back());
+      auto histories = search->search(graph, batch);
 
-    //   for(auto history : histories) {
-    //     std::stringstream best1;
-    //     std::stringstream bestn;
-    //     printer->print(history, best1, bestn);
-    //     collector->Write(history->getLineNum(),
-    //                      best1.str(),
-    //                      bestn.str(),
-    //                      options_->get<bool>("n-best"));
-    //   }
-    // }
+      for(auto history : histories) {
+        std::stringstream best1;
+        std::stringstream bestn;
+        printer->print(history, best1, bestn);
+        collector->Write(history->getLineNum(),
+                         best1.str(),
+                         bestn.str(),
+                         options_->get<bool>("n-best"));
+      }
+    }
 
-    // graph->setInference(false);
+    graph->setInference(false);
   }
 };
 }

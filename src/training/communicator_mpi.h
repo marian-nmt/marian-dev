@@ -147,7 +147,8 @@ public:
       MPI_Datatype mpiFLoatType = MPI_FLOAT;
       if(grads->type() == Type::float16)
         ABORT("Half precision is datatype is not supported by MPI.");
-      mpiBarrier(); // This barrier should be outside of the for loop probably.
+      //mpiBarrier(); // MPI barriers are very rarely necessary around collective operations https://stackoverflow.com/questions/65693021/barrier-before-mpi-bcast
+      // This may however change if we work with shared memory and have potentially more than one worker thread per process.
       if(shardingMode_ == ShardingMode::global) {
         mpi_->reduceScatterBlock(sendbuf, (void *)sendbuf, bufsize, mpiFLoatType, MPI_SUM);
         // NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloatType, ncclSum, globalComms_[i], streams_[i]));
@@ -156,7 +157,7 @@ public:
         //NCCL_CHECK(ncclReduceScatter(sendbuf, recvbuf, bufsize, ncclFloatType, ncclSum,  localComms_[i], streams_[i])); // reduceScatter locally
         //NCCL_CHECK(    ncclAllReduce(recvbuf, recvbuf, bufsize, ncclFloatType, ncclSum, globalComms_[i], streams_[i])); // then do tuple-wise allReduce across processes
       }
-      mpiBarrier();
+      //mpiBarrier();
     }
 
     // reset gradients outside the shards we reduce in
@@ -192,12 +193,13 @@ public:
       MPI_Datatype mpiFLoatType = MPI_FLOAT;
       if(vals->type() == Type::float16)
         ABORT("Half precision is datatype is not supported by MPI.");
-      mpiBarrier(); // This barrier should be outside of the for loop probably.
+      //mpiBarrier(); // MPI barriers are very rarely necessary around collective operations https://stackoverflow.com/questions/65693021/barrier-before-mpi-bcast
+      // This may however change if we work with shared memory and have potentially more than one worker thread per process.
       mpi_->Allgather(recvbuf, bufsize, mpiFLoatType, recvbuf, bufsize, mpiFLoatType);
-      //the local version did it so:
+      //the local version did like this
       //auto& comms = shardingMode_ == ShardingMode::global ? globalComms_ : localComms_;
       //NCCL_CHECK(ncclAllGather(sendbuf, recvbuf, bufsize, ncclFloatType, comms[i], streams_[i]));
-      mpiBarrier();
+      //mpiBarrier();
     }
   }
 
@@ -209,13 +211,14 @@ public:
       MPI_Datatype mpiFLoatType = MPI_FLOAT;
       if(vals->type() == Type::float16)
         ABORT("Half precision is datatype is not supported by MPI.");
-      mpiBarrier(); // This barrier should be outside of the for loop probably.
+      // MPI barriers are very rarely necessary around collective operations https://stackoverflow.com/questions/65693021/barrier-before-mpi-bcast
+      // This may however change if we work with shared memory and have potentially more than one worker thread per process.
 
       if(average)
         mpi_->allReduce(vals->data(), vals->data(), vals->size(), mpiFLoatType, MPI_SUM);
       else
         mpi_->bCast(vals->data(), vals->size(), mpiFLoatType, 0);
-      mpiBarrier();
+      //mpiBarrier();
     }
 
 
@@ -244,7 +247,6 @@ public:
     // if we are here we use local mode and shards are process-wise copies
     // This is not yet supported for MPICommunicator, but it wouldn't hurt to have the code there
     ABORT("Local sharding mode reduceScatter not supported yet for mpi communicator.");
-    mpiBarrier();
     for(int i = 0; i < opts.size(); ++i) {
       for(auto shard : opts[i]->getShards()) {
         if(shard) {

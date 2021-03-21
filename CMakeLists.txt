@@ -219,6 +219,7 @@ else(MSVC)
 
   # '-march=native' makes avx2 assembly generation fail on AVX512 CPUs with gcc 9.3+
   if (USE_FBGEMM AND CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.2)
+    message(WARNING "When built with gcc 9.3+ and USE_FBGEMM=on, '-march=native' is disabled.")
     string(REPLACE "-march=native" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   endif()
 endif(MSVC)

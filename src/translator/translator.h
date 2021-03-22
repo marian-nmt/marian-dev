@@ -149,15 +149,15 @@ public:
     size_t curSourceTokens = 0;
 
     // determine if we want to display timer statistics, by default off
-    auto dispFreq = SchedulingParameter::parse(options_->get<std::string>("disp-freq", "0u"));
-    ABORT_IF(dispFreq.unit != SchedulingUnit::updates, "Units other than 'u' are not supported for --disp-freq value {}", dispFreq);
+    auto statFreq = SchedulingParameter::parse(options_->get<std::string>("stat-freq", "0u"));
+    ABORT_IF(statFreq.unit != SchedulingUnit::updates, "Units other than 'u' are not supported for --stat-freq value {}", statFreq);
 
     // Override display for progress heartbeat for MS-internal Philly compute cluster
     // otherwise this job may be killed prematurely if no log for 4 hrs
     if(getenv("PHILLY_JOB_ID")) { // this environment variable exists when running on the cluster
-      if(dispFreq.n == 0) {
-        dispFreq.n = 10000;
-        dispFreq.unit = SchedulingUnit::updates;
+      if(statFreq.n == 0) {
+        statFreq.n = 10000;
+        statFreq.unit = SchedulingUnit::updates;
       }
     }
 
@@ -190,7 +190,7 @@ public:
         }
 
         // if we asked for speed information display this
-        if(dispFreq.n > 0) { 
+        if(statFreq.n > 0) { 
           std::lock_guard<std::mutex> lock(syncCounts);
           totBatches++; 
           totLines        += batch->size();
@@ -200,7 +200,7 @@ public:
           curLines        += batch->size();
           curSourceTokens += batch->front()->batchWords();
 
-          if(totBatches % dispFreq.n == 0) {
+          if(totBatches % statFreq.n == 0) {
             double totTime = totTimer->elapsed();
             double curTime = curTimer->elapsed();
 
@@ -222,7 +222,7 @@ public:
     threadPool.join_all();
     
     // display final speed numbers over total translation if intermediate displays were requested
-    if(dispFreq.n > 0) {
+    if(statFreq.n > 0) {
       double totTime = totTimer->elapsed();
       LOG(info, 
           "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (total): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s", 

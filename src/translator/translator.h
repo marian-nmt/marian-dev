@@ -150,6 +150,7 @@ public:
 
     // determine if we want to display timer statistics, by default off
     auto statFreq = SchedulingParameter::parse(options_->get<std::string>("stat-freq", "0u"));
+    // abort early to avoid potentially costly batching and translation before error message
     ABORT_IF(statFreq.unit != SchedulingUnit::updates, "Units other than 'u' are not supported for --stat-freq value {}", statFreq);
 
     // Override display for progress heartbeat for MS-internal Philly compute cluster

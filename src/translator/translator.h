@@ -126,7 +126,7 @@ public:
     data::BatchGenerator<data::Corpus> bg(corpus_, options_);
 
     ThreadPool threadPool(numDevices_, numDevices_);
-  
+
     size_t batchId = 0;
     auto collector = New<OutputCollector>(options_->get<std::string>("output"));
     auto printer = New<OutputPrinter>(options_, trgVocab_);

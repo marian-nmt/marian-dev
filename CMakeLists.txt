@@ -216,12 +216,6 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
-
-  # '-march=native' makes avx2 assembly generation fail on AVX512 CPUs with gcc 9.3+
-  if (USE_FBGEMM AND CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.2)
-    message(WARNING "When built with gcc 9.3+ and USE_FBGEMM=on, '-march=native' is disabled.")
-    string(REPLACE "-march=native" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  endif()
 endif(MSVC)
 
 # with gcc 7.0 and above we need to mark fallthrough in switch case statements

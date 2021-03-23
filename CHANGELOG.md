@@ -11,22 +11,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Adds custom bias epilogue kernel.
 - Adds support for fusing relu and bias addition into gemms when using cuda 11.
+- Display decoder time statistics with marian-decoder --stat-freq 10 ...
+- Support for MS-internal binary shortlist
 - Local/global sharding with MPI training via `--sharding local`
 - fp16 support for factors.
-- Correct training with fp16 via `--fp16`. 
+- Correct training with fp16 via `--fp16`.
 - Dynamic cost-scaling with `--cost-scaling`.
 - Dynamic gradient-scaling with `--dynamic-gradient-scaling`.
+- Add unit tests for binary files.
 - Fix compilation with OMP
 
 ### Fixed
+- Fix building marian with gcc 9.3+ and FBGEMM
 - Find MKL installed under Ubuntu 20.04 via apt-get
 - Support for CUDA 11.
 - General improvements and fixes for MPI handling, was essentially non-functional before (syncing, random seeds, deadlocks during saving, validation etc.)
 - Allow to compile -DUSE_MPI=on with -DUSE_STATIC_LIBS=on although MPI gets still linked dynamically since it has so many dependencies.
 - Fix building server with Boost 1.75
 - Missing implementation for cos/tan expression operator
+- Fixed loading binary models on architectures where `size_t` != `uint64_t`.
+- Missing float template specialisation for elem::Plus
+- Broken links to MNIST data sets
 
 ### Changed
+- Moved FBGEMM pointer to commit c258054 for gcc 9.3+ fix
+- Remove TC_MALLOC as an optional build depdendency. Doesn't seem to actually do anything anymore.
 - Change compile options a la -DCOMPILE_CUDA_SM35 to -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL,
 -DCOMPILE_PASCAL, -DCOMPILE_VOLTA, -DCOMPILE_TURING and -DCOMPILE_AMPERE
 - Disable -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL by default.

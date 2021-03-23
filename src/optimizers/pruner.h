@@ -15,14 +15,21 @@ namespace marian {
   static void pruneImpl(Tensor t, int mbSize) {
         
     // TODO: find the actual treshold
-    float treshold = 0.01;
+    float treshold;
 
-    // start prunning after 100-th steps.
-    if (mbSize > 100) {
-      LOG_ONCE(info, "DO PRUNING DUDE");
-      using namespace functional;
-      Element(_1 = if_then_else(abs(_1) < treshold, 0, _1), t);
-    }
+    // currently: 2 step pruning.
+    // prune by 0.0001 after 50th update, and prune by 0.001 after 100th update.
+    if (mbSize == 50) {
+      LOG_ONCE(info, "DO PRUNING first");
+      treshold = 0.0001;
+    } else if(mbSize == 100) {
+      LOG_ONCE(info, "DO PRUNING second");
+      treshold = 0.001;
+    } else
+      return;
+
+    using namespace functional;
+    Element(_1 = if_then_else(abs(_1) < treshold, 0, _1), t);
   }
 
   /* prune the whole graph */

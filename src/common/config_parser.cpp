@@ -689,7 +689,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::vector<int>>("--output-approx-knn",
      "Use approximate knn search in output layer (currently only in transformer)")
      ->implicit_val("100 1024");
-
+  cli.add<std::string>("--swap-model",
+      "Path to model to swap to.");
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
   addSuboptionsULR(cli);

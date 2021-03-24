@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <map>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "common/definitions.h"
@@ -22,7 +23,7 @@ protected:
 
   /** @brief List of all parameter nodes of this expression graph. */
   std::vector<Expr> params_;
-  std::map<std::string, Expr> named_;
+  std::unordered_map<std::string, Expr> named_;
 
   Ptr<TensorAllocator> vals_;
   Ptr<TensorAllocator> grads_;

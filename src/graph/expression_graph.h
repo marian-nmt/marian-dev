@@ -232,6 +232,18 @@ public:
     namespace_ = newNamespace;
   }
 
+  const std::unordered_map<std::string, Expr> & getParamsNamedMap() const {
+    if (paramsByElementType_.size() != 1) {
+      ABORT("Expected exactly one parameter datatype, got", paramsByElementType_.size());
+    }
+    for(auto&& kvParams : paramsByElementType_) {
+      auto cur_param = kvParams.second;
+      return cur_param->getMap();
+    }
+    ABORT("We should never get here"); // Just to satisfy compiler warnings;
+    return paramsByElementType_.find(Type::float32)->second->getMap();
+  }
+
   /**
    * Copy all parameter objects from one graph to current graph.
    * @param graph a pointer to a graph object

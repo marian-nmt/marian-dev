@@ -2,6 +2,7 @@
 
 #include "common/io.h"
 #include "tensors/tensor_operators.h"
+#include "optimizers/pruner.h"
 #include <array>
 
 namespace marian {
@@ -416,6 +417,11 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   // when training with mixed precision. Otherwise we divide by 0.
   // We multiply the minimum by 2 in order to step away from the abyss.
   eps_ = std::max(NumericLimits<float>(params->type()).min * 2.f, eps_);
+
+  // pruning hackk
+  // also prune mt_ to ensure that pruned params remain 0 after update.
+  // vt_ is not necessary, see the function.
+  applyPrune(params, mt_);
 
   // apply Adam normalization
   float etaf = (float)eta, denom1f = (float)denom1_, denom2f = (float)denom2_, decayf = (float)decay; // (get casts out of Element expression for readability)

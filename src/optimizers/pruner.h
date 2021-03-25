@@ -9,34 +9,46 @@
 #include "tensors/tensor_allocator.h"
 #include "tensors/tensor_operators.h"
 
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
 namespace marian {
 
   /* pruning implementation */
-  static void pruneImpl(Tensor t, int mbSize) {
+  static void pruneImpl(Tensor t, int mbSize, std::string name = "") {
+    if (mbSize  == 0 || mbSize % 50 || mbSize > 450)
+      return;
         
     // TODO: find the actual treshold
     float treshold;
-
-    // currently: 2 step pruning.
-    // prune by 0.0001 after 50th update, and prune by 0.001 after 100th update.
-    if (mbSize == 50) {
-      LOG_ONCE(info, "DO PRUNING first");
-      treshold = 0.0001;
-    } else if(mbSize == 100) {
-      LOG_ONCE(info, "DO PRUNING second");
-      treshold = 0.001;
-    } else
-      return;
+    float ratio = 0.1 * (mbSize / 50);
+    
+    std::vector<float> f;
+    t->get(f);
+    // get the abs value
+    std::transform(f.begin(), f.end(), f.begin(), fabs);
+    // sort
+    std::sort(f.begin(), f.end());
+    int idx = ratio * f.size();
+    treshold = f[idx];
 
     using namespace functional;
     Element(_1 = if_then_else(abs(_1) < treshold, 0, _1), t);
+  
+
+    // validation
+    int cnt = 0;
+    t->get(f);
+    for (auto x:f) if (x == 0) cnt++;
+    LOG(info, "[{}] prune by {}: treshold: {} || zero count = {}/{}", name, ratio, treshold, cnt, t->size());
   }
 
   /* prune the whole graph */
   static void pruneGraph(Ptr<ExpressionGraph> graph, int mbSize) {
     // loop layer by layer
     for(auto p : *graph->params()) {
-        pruneImpl(p->val(), mbSize);
+        pruneImpl(p->val(), mbSize, p->name());
     }
   }
 

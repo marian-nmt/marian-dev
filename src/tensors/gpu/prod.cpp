@@ -605,7 +605,12 @@ void Affine(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tensor& A,
 
 #else
 
-void Affine(marian::Tensor C, Ptr<Allocator> /*allocator*/, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
+void Affine(marian::Tensor C, 
+            Ptr<Allocator> /*allocator*/, 
+            const marian::Tensor& A, 
+            const marian::Tensor& B, 
+            const marian::Tensor& bias,
+            const marian::Tensor& /*ones*/,
             bool transA, bool transB, float beta, float scalar, bool do_relu) {
              
   if(C->type() == Type::float32) {

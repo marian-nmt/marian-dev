@@ -519,29 +519,13 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
   return Expression<DotBatchedNodeOp>(a, b, transA, transB, scale);
 }
 
-static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bool do_relu=false) {
+Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
 
-  auto g = a->graph();
-  std::vector<Expr> nodes = { a, b, bias };
-
-  // If we are using CPU, we broadcast the ones vector. On GPU, the bias addition can be fused into the GEMM with CUDA >= 11
-  if (g->getBackend()->getDeviceId().type == DeviceType::cpu || !g->isInference()) {
-    int rows = a->shape().elements() / a->shape()[-1];
-    Expr ones = g->ones({ rows, 1 });
-    nodes.push_back(ones);
-  }
-
-  if (do_relu) {
-    // For GPU inference, we can fuse the RELU into the bias addition.
-    if (g->isInference() && g->getBackend()->getDeviceId().type == DeviceType::gpu) {
-      return Expression<AffineNodeOp>(nodes, transA, transB, scale, do_relu);
-    }
-    Expr affineOp = Expression<AffineNodeOp>(nodes, transA, transB, scale, false);
-    return relu(affineOp);
-  }
-
-  return Expression<AffineNodeOp>(nodes, transA, transB, scale, do_relu);
+  int rows = a->shape().elements() / a->shape()[-1];
+  Expr ones = a->graph()->ones({ rows, 1 });
+  std::vector<Expr> nodes = { a, b, bias, ones };
+  return Expression<AffineNodeOp>(nodes, transA, transB, scale);
 }
 
 // This operation used to implement auto-tuning. We have removed it for now due to complexity, but plan to revisit it in the future. 
@@ -549,7 +533,7 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 // youki/packed-model-pr-backup1031
 // https://machinetranslation.visualstudio.com/Marian/_git/marian-dev?version=GByouki%2Fpacked-model-pr-backup1031
 // SHA: 3456a7ed1d1608cfad74cd2c414e7e8fe141aa52
-Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bool do_relu) {
+Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
   Type aElementType = a->value_type();
@@ -557,12 +541,9 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bo
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      return affineDefault(a, b, bias, transA, transB, scale, do_relu);
+      return affineDefault(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
-      Expr affineTransform = cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
-      if(do_relu) 
-        affineTransform = relu(affineTransform);
-      return affineTransform;
+      return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -572,16 +553,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bo
       // and this cpu lookup is executed only once and the state is kept in FBGEMM.
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        Expr affineTransform = cpu::variant::affine(a,
-                                                    b,
-                                                    b->shape(),
-                                                    bias,
-                                                    transA,
-                                                    transB,
-                                                    scale);
-        if(do_relu) 
-          affineTransform = relu(affineTransform);
-        return affineTransform;
+        return cpu::variant::affine(a,
+                                    b,
+                                    b->shape(),
+                                    bias,
+                                    transA,
+                                    transB,
+                                    scale);
       } else {
         ABORT("AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed GEMM");
       }
@@ -596,8 +574,16 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bo
     ABORT_IF(!isFloat(aElementType) || !isFloat(bElementType), 
              "GPU-based GEMM only supports float types, you have A: {} and B: {}", 
              aElementType, bElementType);
-    return affineDefault(a, b, bias, transA, transB, scale, do_relu);
+    return affineDefault(a, b, bias, transA, transB, scale);
   }
+}
+
+Expr affineWithRelu(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+  auto graph = a->graph();
+  if(graph->isInference())
+    return Expression<AffineWithReluNodeOp>(a, b, bias, transA, transB, scale);
+  else
+    return relu(affine(a, b, bias, transA, transB, scale));
 }
 
 // @TODO: Not a great place to check this

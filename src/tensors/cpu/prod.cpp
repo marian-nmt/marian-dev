@@ -23,19 +23,6 @@ namespace marian {
 
 namespace cpu {
 
-void Affine(marian::Tensor /*C*/,
-            Ptr<Allocator> /*allocator*/,
-            const marian::Tensor& /*A*/,
-            const marian::Tensor& /*B*/,
-            const marian::Tensor& /*bias*/,
-            bool /*transA*/,
-            bool /*transB*/,
-            float /*beta*/,
-            float /*scalar*/,
-            bool /*relu_postprocess*/) {
-  ABORT("Not supported on CPU");
-}
-
 void Prod(marian::Tensor C,
           const marian::Tensor& A,
           const marian::Tensor& B,
@@ -224,6 +211,23 @@ void ProdWithBias(marian::Tensor C,
   cpu::Prod(C, A, B, transA, transB, beta, scalar);
   cpu::integer::AddBias(C, bias);
 }
+
+void Affine(marian::Tensor C,
+            Ptr<Allocator> /*allocator*/,
+            const marian::Tensor& A,
+            const marian::Tensor& B,
+            const marian::Tensor& bias,
+            bool transA,
+            bool transB,
+            float beta,
+            float scalar,
+            bool reluPostprocess) {
+  using namespace functional;
+  ProdWithBias(C, A, B, bias, transA, transB, beta, scalar);
+  if(reluPostprocess)
+    cpu::Element(_1 = ReLU(_1), C); // @TODO: also fuse with AddBias
+}
+
 
 void CSRProd(marian::Tensor C,
              Ptr<Allocator> /*allocator*/,

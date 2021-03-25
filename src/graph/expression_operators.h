@@ -491,8 +491,17 @@ Expr affine(Expr a,
             Expr c,
             bool transA = false,
             bool transB = false,
-            float scalar = 1.f,
-            bool do_relu = false);
+            float scalar = 1.f);
+
+/**
+ * As above, but efficiently applies relu transformation to output. For inference only.
+ */
+Expr affineWithRelu(Expr a,
+                    Expr b,
+                    Expr c,
+                    bool transA = false,
+                    bool transB = false,
+                    float scalar = 1.f);
 
 /**
  * Computes the dot product of CSR-tensor @p A with @p B.

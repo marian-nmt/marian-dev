@@ -12,6 +12,7 @@ include_directories(${CMAKE_BINARY_DIR}/src/3rd_party/intgemm) # running cmake o
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
+  static/cmarian.cpp
   common/aliases.cpp
   common/fastopt.cpp
   common/version.cpp

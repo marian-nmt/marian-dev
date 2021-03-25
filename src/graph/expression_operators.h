@@ -488,7 +488,7 @@ Expr bdot(Expr a,
  */
 Expr affine(Expr a,
             Expr b,
-            Expr c,
+            Expr bias,
             bool transA = false,
             bool transB = false,
             float scalar = 1.f);
@@ -498,7 +498,7 @@ Expr affine(Expr a,
  */
 Expr affineWithRelu(Expr a,
                     Expr b,
-                    Expr c,
+                    Expr bias,
                     bool transA = false,
                     bool transB = false,
                     float scalar = 1.f);

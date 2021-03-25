@@ -24,6 +24,12 @@
 #include <cuda.h> // required to see CUDA_VERSION
 #if (CUDA_VERSION > 9000 && (__CUDA_ARCH__ >= 600 || !defined(__CUDA_ARCH__)))
 #define COMPILE_FP16 1 // we are in GPU code and we know what to do with FP16 code
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4505) // "unreferenced local function has been removed" in cuda_fp16.hpp
+#endif
+#include <cuda_fp16.h>
+#include "functional/defs.h"
 #else
 #define COMPILE_FP16 0 // we are in GPU code, but compute capability is too low to use FP16
 #endif
@@ -31,6 +37,12 @@
 #include <cuda.h> // required to see CUDA_VERSION
 #if (CUDA_VERSION > 9000)
 #define COMPILE_FP16 1
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4505) // "unreferenced local function has been removed" in cuda_fp16.hpp
+#endif
+#include <cuda_fp16.h>
+#include "functional/defs.h"
 #else
 #define COMPILE_FP16 0
 #endif
@@ -131,7 +143,7 @@ do { \
     default: ABORT("Unknown type {}", type); \
   } \
 } while(0)
-
+/// namespace marian
 namespace marian {
 
 // small struct to enable templating based on types use for packing
@@ -219,6 +231,37 @@ struct float32x8 {
 #endif
 #endif
 
+#if COMPILE_FP16
+
+// @TODO: check what intrinsics are actually available.
+struct halfx2 {
+private:
+  __half2 h2_;
+
+public:
+  DEVICE halfx2() {}
+  DEVICE halfx2(const __half2& h2) : h2_(h2) {}
+  DEVICE halfx2(const __half& h) : h2_(h, h) {}
+  DEVICE halfx2(const __half& h1, const __half& h2) : h2_(h1, h2) {}
+
+  DEVICE_INLINE operator const __half2&() const { return h2_; }
+  DEVICE_INLINE operator __half2&() { return h2_; }
+
+  DEVICE_INLINE __half operator[] (size_t i) const {
+    return *(((__half*)&h2_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, halfx2 h2) {
+    __half* a = (__half*)&h2;
+    out << "[" << (float)a[0];
+    for(int i = 1; i < 2; i++)
+      out << " " << (float)a[i];
+    out << "]";
+    return out;
+  }
+};
+#endif
+
 // Internal to types.h, don't use. Use test functions below.
 enum class TypeClass : size_t { // size_type has 8 bytes, so we can have 16 fields here, currently using 5. Extend to the left for back-compat.
   // built-in type classes
@@ -247,36 +290,37 @@ constexpr inline size_t operator+(size_t val, TypeClass typeClass) {
 }
 
 // @TODO: rename to ElementType when things become stable, so it's easier to review
+/// enum class Type: stores all supported data type in Marian
 enum class Type : size_t {
-  int8     = TypeClass::signed_type + 1u,
-  int16    = TypeClass::signed_type + 2u,
-  int32    = TypeClass::signed_type + 4u,
-  int64    = TypeClass::signed_type + 8u,
+  int8     = TypeClass::signed_type + 1u,      ///< int8 type
+  int16    = TypeClass::signed_type + 2u,      ///< int16 type
+  int32    = TypeClass::signed_type + 4u,      ///< int32 type
+  int64    = TypeClass::signed_type + 8u,      ///< int64 type
 
-  uint8    = TypeClass::unsigned_type + 1u,
-  uint16   = TypeClass::unsigned_type + 2u,
-  uint32   = TypeClass::unsigned_type + 4u,
-  uint64   = TypeClass::unsigned_type + 8u,
+  uint8    = TypeClass::unsigned_type + 1u,    ///< uint8 type
+  uint16   = TypeClass::unsigned_type + 2u,    ///< uint16 type
+  uint32   = TypeClass::unsigned_type + 4u,    ///< uint32 type
+  uint64   = TypeClass::unsigned_type + 8u,    ///< uint64 type
 
-  float16  = TypeClass::float_type + 2u,
-  float32  = TypeClass::float_type + 4u,
-  float64  = TypeClass::float_type + 8u,
+  float16  = TypeClass::float_type + 2u,       ///< float16 type
+  float32  = TypeClass::float_type + 4u,       ///< float32 type
+  float64  = TypeClass::float_type + 8u,       ///< float64 type
 
-  packed16            = TypeClass::packed_type + 2u,                                   // special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
-  packed8avx2         = TypeClass::packed_type + 1u + TypeClass::avx2_type,            // special type for FBGEMM with AVX2, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
-  packed8avx512       = TypeClass::packed_type + 1u + TypeClass::avx512_type,          // special type for FBGEMM with AVX512, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
+  packed16            = TypeClass::packed_type + 2u,                                   ///< special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
+  packed8avx2         = TypeClass::packed_type + 1u + TypeClass::avx2_type,            ///< special type for FBGEMM with AVX2, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
+  packed8avx512       = TypeClass::packed_type + 1u + TypeClass::avx512_type,          ///< special type for FBGEMM with AVX512, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
 
-  intgemm8            = TypeClass::intgemm_type + 1u,                                  // Int8 quantized (not packed) matrices for intgemm
-  intgemm16           = TypeClass::intgemm_type + 2u,                                  // Int16 quantized (not packed) matrices for intgemm
+  intgemm8            = TypeClass::intgemm_type + 1u,                                  ///< Int8 quantized (not packed) matrices for intgemm
+  intgemm16           = TypeClass::intgemm_type + 2u,                                  ///< Int16 quantized (not packed) matrices for intgemm
+  
+  intgemm8ssse3       = TypeClass::intgemm_type + 1u + TypeClass::ssse3_type,          ///< Int8 quantized and packed (ssse3) matrices for intgemm
+  intgemm8avx2        = TypeClass::intgemm_type + 1u + TypeClass::avx2_type,           ///< Int8 quantized and packed (avx2) matrices for intgemm
+  intgemm8avx512      = TypeClass::intgemm_type + 1u + TypeClass::avx512_type,         ///< Int8 quantized and packed (avx512) matrices for intgemm
+  intgemm8avx512vnni  = TypeClass::intgemm_type + 1u + TypeClass::avx512_type + 4096u, ///< Int8 quantized and packed (avx512) matrices for intgemm. VNNI algorithm
 
-  intgemm8ssse3       = TypeClass::intgemm_type + 1u + TypeClass::ssse3_type,          // Int8 quantized and packed (ssse3) matrices for intgemm
-  intgemm8avx2        = TypeClass::intgemm_type + 1u + TypeClass::avx2_type,           // Int8 quantized and packed (avx2) matrices for intgemm
-  intgemm8avx512      = TypeClass::intgemm_type + 1u + TypeClass::avx512_type,         // Int8 quantized and packed (avx512) matrices for intgemm
-  intgemm8avx512vnni  = TypeClass::intgemm_type + 1u + TypeClass::avx512_type + 4096u, // Int8 quantized and packed (avx512) matrices for intgemm. VNNI algorithm
-
-  intgemm16sse2       = TypeClass::intgemm_type + 2u + TypeClass::sse2_type,           // Int16 quantized and packed (sse2) matrices for intgemm
-  intgemm16avx2       = TypeClass::intgemm_type + 2u + TypeClass::avx2_type,           // Int16 quantized and packed (avx2) matrices for intgemm
-  intgemm16avx512     = TypeClass::intgemm_type + 2u + TypeClass::avx512_type,         // Int16 quantized and packed (avx512) matrices for intgemm
+  intgemm16sse2       = TypeClass::intgemm_type + 2u + TypeClass::sse2_type,           ///< Int16 quantized and packed (sse2) matrices for intgemm
+  intgemm16avx2       = TypeClass::intgemm_type + 2u + TypeClass::avx2_type,           ///< Int16 quantized and packed (avx2) matrices for intgemm
+  intgemm16avx512     = TypeClass::intgemm_type + 2u + TypeClass::avx512_type,         ///< Int16 quantized and packed (avx512) matrices for intgemm
 };
 
 static inline size_t operator&(TypeClass typeClass, Type type) {
@@ -564,6 +608,7 @@ private:
 
   template <typename MaxType> void setLimitsMax() {
     max    = (ReturnType)std::numeric_limits<MaxType>::max();
+    min    = (ReturnType)std::numeric_limits<MaxType>::min();
     lowest = (ReturnType)std::numeric_limits<MaxType>::lowest();
   }
 
@@ -588,6 +633,7 @@ private:
 
 public:
   ReturnType max;
+  ReturnType min;
   ReturnType lowest;
 
   NumericLimits(Type type) {

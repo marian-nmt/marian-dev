@@ -9,17 +9,42 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Developer documentation framework based on Sphinx+Doxygen+Breathe+Exhale
+- Display decoder time statistics with marian-decoder --stat-freq 10 ...
+- Support for MS-internal binary shortlist
+- Local/global sharding with MPI training via `--sharding local`
+- fp16 support for factors.
+- Correct training with fp16 via `--fp16`.
+- Dynamic cost-scaling with `--cost-scaling`.
+- Dynamic gradient-scaling with `--dynamic-gradient-scaling`.
+- Add unit tests for binary files.
+- Fix compilation with OMP
 
 ### Fixed
+- Fixed an issue when loading intgemm16 models from unaligned memory.
+- Fix building marian with gcc 9.3+ and FBGEMM
+- Find MKL installed under Ubuntu 20.04 via apt-get
+- Support for CUDA 11.
+- General improvements and fixes for MPI handling, was essentially non-functional before (syncing, random seeds, deadlocks during saving, validation etc.)
+- Allow to compile -DUSE_MPI=on with -DUSE_STATIC_LIBS=on although MPI gets still linked dynamically since it has so many dependencies.
 - Fix building server with Boost 1.75
+- Missing implementation for cos/tan expression operator
+- Fixed loading binary models on architectures where `size_t` != `uint64_t`.
+- Missing float template specialisation for elem::Plus
+- Broken links to MNIST data sets
 
 ### Changed
+- Moved FBGEMM pointer to commit c258054 for gcc 9.3+ fix
+- Remove TC_MALLOC as an optional build depdendency. Doesn't seem to actually do anything anymore.
+- Change compile options a la -DCOMPILE_CUDA_SM35 to -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL,
+-DCOMPILE_PASCAL, -DCOMPILE_VOLTA, -DCOMPILE_TURING and -DCOMPILE_AMPERE
+- Disable -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL by default.
+- Dropped support for legacy graph groups.
+- Developer documentation framework based on Sphinx+Doxygen+Breathe+Exhale
+- Expresion graph documentation (#788)
+- Graph operators documentation (#801)
 - Factor groups and concatenation: doc/factors.md
 
 ## [1.10.0] - 2021-02-06
-
-
 
 ### Added
 - Added `intgemm8(ssse3|avx|avx512)?`, `intgemm16(sse2|avx|avx512)?` types to marian-conv with uses intgemm backend. Types intgemm8 and intgemm16 are hardware-agnostic, the other ones hardware-specific.
@@ -37,7 +62,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Decoding multi-source models in marian-server with --tsv
 - GitHub workflows on Ubuntu, Windows, and MacOS
 - LSH indexing to replace short list
-- ONNX support for transformer models
+- ONNX support for transformer models (very experimental)
 - Add topk operator like PyTorch's topk
 - Use *cblas_sgemm_batch* instead of a for loop of *cblas_sgemm* on CPU as the batched_gemm implementation
 - Supporting relative paths in shortlist and sqlite options

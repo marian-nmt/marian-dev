@@ -53,13 +53,13 @@ trump|c1|s0 test|c0|s1 ed|c0|s0 positive|c0|s0 for|c0|s0 c|c2|s1 o|c2|s1 v|c2|s1
 
 ## Create the factored vocabulary
 
-Factored vocabularies should have the extension `.fsv`. How to structure the vocabulary file is described below. If using factors only on the source or target side, the vocabulary of the other side can be a normal `json`, `yaml`, etc. 
+Factored vocabularies should have the extension `.fsv`. How to structure the vocabulary file is described below. If using factors only on the source or target side, the vocabulary of the other side can be a normal `json`, `yaml`, etc.
 
 The `.fsv` vocabulary should have three sections:
 
 1. **Factors**
 
-    The factor groups are defined with an underscore prepended. The colon indicates which factor group each factor inherits from. `_has_c` is used in the definition of the words in the vocabulary (see #2 below) to indicate that that word has that factor group. The `_lemma` factor is used for the words/tokens themselves; this must be present. 
+    The factor groups are defined with an underscore prepended. The colon indicates which factor group each factor inherits from. `_has_c` is used in the definition of the words in the vocabulary (see #2 below) to indicate that that word has that factor group. The `_lemma` factor is used for the words/tokens themselves; this must be present.
 
     ```
     _lemma
@@ -142,14 +142,14 @@ The dimension of the factor embeddings must be specified if using combine option
 --factors-dim-emb INT           Embedding dimension of the factors. Only used if concat is selected as factors combining form
 ```
 
-Note: At the moment `concat` is only implemented for usage in the source side. 
+Note: At the moment `concat` is only implemented for usage in the source side.
 
 ### Prediction
 
 If using factors on the target side, there are multiple options for how factor predictions are generated related to the form of conditioning / dependencies of factors and lemmas. If no option is set with `--lemma-dependency`, the default behavior will be predicting the factors with no lemma dependency.
 
 ```
---lemma-dependency TEXT         Lemma dependency method to use when predicting target factors. 
+--lemma-dependency TEXT         Lemma dependency method to use when predicting target factors.
                                 Options: soft-transformer-layer, hard-transformer-layer, lemma-dependent-bias, re-embedding
 
 --lemma-dim-emb INT=0           Re-embedding dimension of lemma in factors
@@ -196,11 +196,11 @@ If using factors only on the source or target side but using a joint vocabulary,
 Some examples of possible commands to train factored models in marian:
 * Using factors on both source and target. Using `sum` to combine lemma and factor embeddings. No tied embeddings and no lemma dependency when predicting the factors:
 ```
-path_to/build/marian -t corpus.fact.{src,trg} -v vocab.{src,trg}.fsv 
+path_to/build/marian -t corpus.fact.{src,trg} -v vocab.{src,trg}.fsv
 ```
 * Using factors only on the source side. Using `concat` to combine lemma and factor embeddings. Source, target and output embeddings matrices tied:
 ```
-path_to/build/marian -t corpus.fact.src corpus.trg -v vocab.src.fsv vocab.trg.yml --factors-combine concat --factors-dim-emb 8 --tied-embeddings-all 
+path_to/build/marian -t corpus.fact.src corpus.trg -v vocab.src.fsv vocab.trg.yml --factors-combine concat --factors-dim-emb 8 --tied-embeddings-all
 ```
 * Using factors only on the target side. Using `sum` to combine lemma and factor embeddings. Target and output embedding matrices tied. Predicting factors with `soft-transformer-layer` lemma dependency:
 ```

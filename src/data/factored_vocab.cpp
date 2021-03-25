@@ -416,7 +416,7 @@ Word FactoredVocab::string2word(const std::string& w) const {
     WordIndex u;
     bool found = factorVocab_.tryFind(i == 0 ? parts[i] : sep + parts[i], u);
     if (!found) {
-      static int logs = 100;
+      static int logs = 5;
       if (logs > 0) {
         logs--;
         LOG(info, "WARNING: Unknown factor '{}' in '{}'; mapping to '{}'", parts[i], w, word2string(getUnkId()));
@@ -546,7 +546,6 @@ void FactoredVocab::constructNormalizationInfoForVocab() {
 /*virtual*/ void FactoredVocab::transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const {
   for (; num-- > 0; ptr++) {
     auto word = Word::fromWordIndex(*ptr);
-    auto wordString = word2string(word);
     auto lemmaIndex = getFactor(word, 0) + groupRanges_[0].first;
     *ptr = (WordIndex)lemmaIndex;
   }
@@ -673,18 +672,18 @@ void FactoredVocab::lemmaAndFactorsIndexes(const Words& words, std::vector<Index
 
   auto numGroups = getNumGroups();
   std::vector<size_t> lemmaAndFactorIndices;
-    
+
   for (auto &word : words) {
-    if (vocab_.contains(word.toWordIndex())) {  
+    if (vocab_.contains(word.toWordIndex())) {
       word2factors(word, lemmaAndFactorIndices);
       lemmaIndices.push_back((IndexType) lemmaAndFactorIndices[0]);
       for (size_t g = 1; g < numGroups; g++) {
-        auto factorIndex = lemmaAndFactorIndices[g]; 
+        auto factorIndex = lemmaAndFactorIndices[g];
         ABORT_IF(factorIndex == FACTOR_NOT_SPECIFIED, "Attempted to embed a word with a factor not specified");
         for (int i = 0; i < factorShape_[g] - 1; i++) {
           factorIndices.push_back((float) (factorIndex == i));
         }
-      }      
+      }
     }
   }
 }

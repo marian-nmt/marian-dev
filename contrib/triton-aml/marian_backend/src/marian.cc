@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <string>
 #include "marian.h"
 #include "triton/backend/backend_common.h"
 
@@ -47,7 +48,7 @@ public:
     // Get the Marian config path of the model.
     const std::string& MarianConfigPath() const { return marian_config_path_; }
 
-    const unsigned& asyncMode() const { return async_mode_; }
+    const bool& asyncMode() const { return async_mode_; }
 
 private:
     ModelState(
@@ -58,7 +59,7 @@ private:
     const std::string name_;
     common::TritonJson::Value model_config_;
     std::string marian_config_path_;
-    unsigned async_mode_;
+    bool async_mode_;
 };
 
 TRITONSERVER_Error*
@@ -139,23 +140,24 @@ ModelState::SetAsyncMode()
     LOG_MESSAGE(
         TRITONSERVER_LOG_INFO, "Setting Async Mode");
 
-    unsigned return_async = 0;
+    std::string return_async_mode;
     common::TritonJson::Value parameters;
     if (model_config_.Find("parameters", &parameters)) {
-        common::TritonJson::Value config_filepath;
-        if (parameters.Find("async", &config_filepath)) {
-            RETURN_IF_ERROR(config_filepath.MemberAsUInt(
-                "mode", &return_async)
+        common::TritonJson::Value async_value;
+        if (parameters.Find("async", &async_value)) {
+            RETURN_IF_ERROR(async_value.MemberAsString(
+                "string_value", &return_async_mode)
             );
             LOG_MESSAGE(
                 TRITONSERVER_LOG_INFO,
-                (std::string("Async mode set to : ") + return_async != 0)
+                (std::string("Async mode set to : ") + return_async_mode)
                 .c_str()
             );
         }
     }
 
-    async_mode_ = return_async;
+    std::transform(return_async_mode.begin(), return_async_mode.end(), return_async_mode.begin(), ::tolower);
+    async_mode_ = return_async_mode == "true";
     return nullptr;  // success
 }
 
@@ -169,7 +171,7 @@ class ModelInstanceState {
 public:
     static TRITONSERVER_Error* Create(
         TRITONBACKEND_ModelInstance* triton_model_instance,
-        void* marian, unsigned async, ModelInstanceState **state);
+        void* marian, bool async, ModelInstanceState **state);
 
     // Get the handle to the TRITONBACKEND model instance.
     TRITONBACKEND_ModelInstance* TritonModelInstance()
@@ -182,27 +184,27 @@ public:
     TRITONSERVER_InstanceGroupKind Kind() const { return kind_; }
     int32_t DeviceId() const { return device_id_; }
     void* Marian() const { return marian_; }
-    unsigned Async() const { return async_; }
+    bool Async() const { return async_; }
 
 private:
     ModelInstanceState(
         TRITONBACKEND_ModelInstance* triton_model_instance,
         void* marian, const char* name,
         const TRITONSERVER_InstanceGroupKind kind, const int32_t device_id, 
-        const unsigned async);
+        const bool async);
 
     TRITONBACKEND_ModelInstance* triton_model_instance_;
     void* marian_;
     const std::string name_;
     const TRITONSERVER_InstanceGroupKind kind_;
     const int32_t device_id_;
-    const unsigned async_;
+    const bool async_;
 };
 
 TRITONSERVER_Error*
 ModelInstanceState::Create(
     TRITONBACKEND_ModelInstance* triton_model_instance,
-    void* marian, unsigned async, ModelInstanceState** state)
+    void* marian, bool async, ModelInstanceState** state)
 {
     const char* instance_name;
     RETURN_IF_ERROR(
@@ -227,7 +229,7 @@ ModelInstanceState::ModelInstanceState(
     TRITONBACKEND_ModelInstance* triton_model_instance,
     void* marian, const char* name,
     const TRITONSERVER_InstanceGroupKind kind, const int32_t device_id,
-    const unsigned async)
+    const bool async)
     : triton_model_instance_(triton_model_instance), marian_(marian),
       name_(name), kind_(kind), device_id_(device_id), async_(async)
 {
@@ -290,7 +292,7 @@ TRITONBACKEND_ModelInstanceInitialize(TRITONBACKEND_ModelInstance* instance)
     ModelState* model_state = reinterpret_cast<ModelState*>(vmodelstate);
 
     std::string marian_config_path = model_state->MarianConfigPath();
-    unsigned async = model_state->asyncMode();
+    bool async = model_state->asyncMode();
 
     int32_t device;
     RETURN_IF_ERROR(
@@ -993,7 +995,7 @@ TRITONBACKEND_ModelInstanceExecute(
     RETURN_IF_ERROR(TRITONBACKEND_ModelInstanceState(instance, &vstate));
     ModelInstanceState* state =  reinterpret_cast<ModelInstanceState*>(vstate);
 
-    if state->Async() {
+    if (state->Async()) {
         return serveRequestsAsync(instance, requests, request_count);
     } else {
         return serveRequestsSync(instance, requests, request_count);

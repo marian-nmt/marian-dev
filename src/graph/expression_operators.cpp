@@ -580,10 +580,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
 Expr affineWithRelu(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto graph = a->graph();
-  Type aElementType = a->value_type();
-  Type bElementType = b->value_type();
   
-  if(graph->isInference() && isFloat(aElementType) && isFloat(bElementType))
+  if(graph->isInference() && graph->getDeviceId().type == DeviceType::gpu)
     return Expression<AffineWithReluNodeOp>(a, b, bias, transA, transB, scale);
   else
     return relu(affine(a, b, bias, transA, transB, scale));

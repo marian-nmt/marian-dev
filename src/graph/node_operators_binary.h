@@ -428,7 +428,10 @@ public:
       : NaryNodeOp({a, b, bias}, newShape(a, b, transA, transB)),
         transA_(transA),
         transB_(transB),
-        scalar_(scalar) {}
+        scalar_(scalar) {
+    ABORT_IF(!graph()->isInference() || graph()->getDeviceId().type != DeviceType::gpu,
+             "AffineWithReluNodeOp currently only supported for inference on GPU");
+  }
 
   Shape newShape(Expr a, Expr b, bool transA, bool transB) {
     auto shapeA = a->shape();
@@ -451,7 +454,8 @@ public:
   }
 
   NodeOps forwardOps() override {
-    using namespace functional;
+    ABORT_IF(!graph()->isInference() || graph()->getDeviceId().type != DeviceType::gpu,
+             "AffineWithReluNodeOp currently only supported for inference on GPU");
     
     return {
       NodeOp(Affine(val_,

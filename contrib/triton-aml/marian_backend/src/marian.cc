@@ -710,8 +710,6 @@ void sendResponse(int bn, const char* result, void* userData)
         }
     }
 
-    std::cout << bn << " " << concatedSentences << std::endl;
-
     TRITONBACKEND_Input* input = state->request_input[requestNumber];
     const char* input_name;
     TRITONSERVER_DataType input_datatype;

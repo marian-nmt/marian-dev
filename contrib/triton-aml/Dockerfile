@@ -1,5 +1,5 @@
 # It is recommended to use a machine which supports CUDA to build this image.
-FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 AS BUILDER
+FROM nvidia/cuda:11.1-cudnn8-devel-ubuntu18.04 AS BUILDER
 RUN apt-get update --fix-missing
 RUN apt-get install -y curl git autoconf automake libtool curl make g++ unzip cmake build-essential cpio
 RUN apt-get -y clean && \
@@ -42,7 +42,7 @@ RUN ./b2 install --prefix=/usr --with-system --with-thread --with-date_time --wi
 
 # Marian install
 WORKDIR /
-RUN  git clone --no-checkout   https://github.com/rhenry-nv/marian-dev.git
+RUN  git clone --no-checkout https://github.com/rhenry-nv/marian-dev.git
 WORKDIR marian-dev
 RUN git checkout async_return
 RUN mkdir src/static
@@ -55,7 +55,7 @@ COPY src/CMakeLists.txt /marian-dev/src
 WORKDIR /marian-dev/build
 RUN cmake .. -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DUSE_SENTENCEPIECE=on -DUSE_STATIC_LIBS=off -DCOMPILE_SERVER=off -DUSE_FBGEMM=on  \ 
              -DCOMPILE_CUDA_SM35=off -DCOMPILE_CUDA_SM50=off -DCOMPILE_CUDA_SM60=off -DCOMPILE_CUDA_SM70=on -DCOMPILE_CUDA_SM75=off \
-             -DCUDA_cublas_device_LIBRARY=/usr/lib/x86_64-linux-gnu/libcublas.so
+             -DCUDA_cublas_device_LIBRARY=/usr/local/cuda/lib64/libcublas.so
 
 RUN make -j $(grep -c ^processor /proc/cpuinfo)
 

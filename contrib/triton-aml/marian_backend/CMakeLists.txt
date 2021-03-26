@@ -94,6 +94,7 @@ target_link_libraries(
     fbgemm
     asmjit
     protobuf
+    intgemm
 )
 
 

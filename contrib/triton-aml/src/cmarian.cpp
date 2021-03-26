@@ -75,8 +75,7 @@ public:
             taskAsync_ = New<TranslateServiceAsync<BeamSearch>>(options_);
         }
         std::string strSent(sent);
-        taskAsync_->registerCallback(callback, userData);
-        taskAsync_->run(strSent);
+        taskAsync_->run(strSent, callback, userData);
     }
 };
 

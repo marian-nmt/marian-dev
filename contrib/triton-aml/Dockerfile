@@ -53,7 +53,10 @@ RUN rm src/CMakeLists.txt
 COPY src/CMakeLists.txt /marian-dev/src
 
 WORKDIR /marian-dev/build
-RUN cmake .. -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DUSE_SENTENCEPIECE=on -DUSE_STATIC_LIBS=off -DCOMPILE_SERVER=off -DUSE_FBGEMM=on -DCUDA_cublas_device_LIBRARY=/usr/lib/x86_64-linux-gnu/libcublas.so
+RUN cmake .. -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DUSE_SENTENCEPIECE=on -DUSE_STATIC_LIBS=off -DCOMPILE_SERVER=off -DUSE_FBGEMM=on  \ 
+             -DCOMPILE_CUDA_SM35=off -DCOMPILE_CUDA_SM50=off -DCOMPILE_CUDA_SM60=off -DCOMPILE_CUDA_SM70=on -DCOMPILE_CUDA_SM75=off \
+             -DCUDA_cublas_device_LIBRARY=/usr/lib/x86_64-linux-gnu/libcublas.so
+
 RUN make -j $(grep -c ^processor /proc/cpuinfo)
 
 # build cmarian static library
@@ -65,6 +68,7 @@ COPY --from=BUILDER /marian-dev/build/src/3rd_party/fbgemm/libfbgemm.a /usr/lib
 COPY --from=BUILDER /marian-dev/build/src/3rd_party/fbgemm/asmjit/libasmjit.a /usr/lib
 COPY --from=BUILDER /marian-dev/build/src/3rd_party/sentencepiece/src/libsentencepiece_train.a /usr/lib
 COPY --from=BUILDER /marian-dev/build/src/3rd_party/sentencepiece/src/libsentencepiece.a /usr/lib
+COPY --from=BUILDER /marian-dev/build/src/3rd_party/intgemm/libintgemm.a /usr/lib
 COPY --from=BUILDER /marian-dev/build/libmarian.a /usr/lib/libcmarian.a
 COPY --from=BUILDER /marian-dev/build/src/libmarian_cuda.a /usr/lib/libcmarian_cuda.a
 

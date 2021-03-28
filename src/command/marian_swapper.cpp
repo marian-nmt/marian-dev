@@ -13,7 +13,7 @@ void LoadBig(Ptr<Options> options, std::unordered_map<std::string, SwappableMode
       {"/home/ubuntu/consistent-big-models/padded/pten.vocab"},
       "/home/ubuntu/consistent-big-models/padded/pten.vocab"));
 
-  to.emplace("iten", SwappableModel(options,
+  to.emplace("enit", SwappableModel(options,
       "/home/ubuntu/consistent-big-models/padded/enit.npz",
       {"/home/ubuntu/consistent-big-models/padded/enit.vocab"},
       "/home/ubuntu/consistent-big-models/padded/enit.vocab"));

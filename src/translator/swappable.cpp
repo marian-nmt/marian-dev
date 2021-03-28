@@ -65,10 +65,12 @@ SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedMo
   graph_->setDefaultElementType(typeFromString(prec[0]));
   graph_->setDevice(devices[0]);
   graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-  // TODO: multiple scorers.
-  Ptr<Scorer> scorer = createScorers(options_)[0];
-  scorer->init(graph_);
-  scorers_.push_back(scorer);
+
+  scorers_ = createScorers(options_);
+  for (auto scorer : scorers_) {
+    scorer->init(graph_);
+    // TODO lexical shortlists are not supported yet.
+  }
   graph_->forward();
 }
 

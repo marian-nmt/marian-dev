@@ -100,6 +100,7 @@ set(MARIAN_SOURCES
   translator/nth_element.cpp
   translator/helpers.cpp
   translator/scorers.cpp
+  translator/swappable.cpp
 
   training/graph_group_async.cpp
   training/graph_group_sync.cpp

@@ -48,7 +48,7 @@ void SwappableSlot::Load(const std::vector<io::Item> &parameters) {
     auto to = reinterpret_cast<char *>(namedMap[item.name]->val()->memory()->data());
     swapper::copyCpuToGpu(to, &item.bytes[0], item.bytes.size());
   }
-  LOG(info, "Load took: {:.8f}s wall", timer.elapsed());
+  LOG(info, "Swapping model from CPU to GPU took {:.8f}s wall", timer.elapsed());
 }
 
 SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedModel_(nullptr) {
@@ -57,7 +57,6 @@ SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedMo
   // get device IDs
   auto devices = Config::getDevices(options_);
   auto numDevices = devices.size();
-  std::cerr << "Num devices: " << numDevices << std::endl;
 
   // Create graph
   graph_ = New<ExpressionGraph>();

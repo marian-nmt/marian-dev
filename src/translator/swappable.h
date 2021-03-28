@@ -7,11 +7,14 @@
  */
 #include "marian.h"
 #include "common/io.h"
-#include "data/corpus.h"
-#include "data/text_input.h"
-#include "translator/translator.h"
+#include "data/vocab.h"
+#include "translator/history.h"
+
+#include <string>
 #include <vector>
 namespace marian {
+
+class Scorer;
 
 /* A model loaded on the CPU and possibly on a GPU.
  */
@@ -49,7 +52,7 @@ class SwappableSlot {
   public:
     explicit SwappableSlot(Ptr<Options> options);
 
-    void Translate(const SwappableModel &model, const std::vector<std::string> &input);
+    Histories Translate(const SwappableModel &model, const std::vector<std::string> &input);
 };
 
 } // namespace marian

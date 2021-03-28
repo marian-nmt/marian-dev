@@ -56,7 +56,6 @@ SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedMo
   options_->set("shuffle", "none");
   // get device IDs
   auto devices = Config::getDevices(options_);
-  auto numDevices = devices.size();
 
   // Create graph
   graph_ = New<ExpressionGraph>();
@@ -73,7 +72,7 @@ SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedMo
   graph_->forward();
 }
 
-void SwappableSlot::Translate(const SwappableModel &model, const std::vector<std::string> &input) {
+Histories SwappableSlot::Translate(const SwappableModel &model, const std::vector<std::string> &input) {
   if (loadedModel_ != &model) {
     Load(model.Parameters());
     loadedModel_ = &model;
@@ -82,16 +81,13 @@ void SwappableSlot::Translate(const SwappableModel &model, const std::vector<std
   data::BatchGenerator<data::TextInput> batchGenerator(corpus, options_, nullptr, false);
 
   auto search = New<BeamSearch>(options_, scorers_, model.TrgVocab());
-  auto printer = New<OutputPrinter>(options_, model.TrgVocab());
+  Histories ret;
+  ret.reserve(input.size());
   for (auto&& batch : batchGenerator) {
-    auto histories = search->search(graph_, batch);
-    for(auto history : histories) {
-      std::stringstream best1;
-      std::stringstream bestn;
-      printer->print(history, best1, bestn);
-      LOG(info, "Translation {}", best1.str());
-    }
+    auto result = search->search(graph_, batch);
+    ret.insert(ret.end(), result.begin(), result.end());
   }
+  return ret;
 }
 
 } // namespace marian

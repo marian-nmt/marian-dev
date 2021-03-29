@@ -9,10 +9,14 @@
 #include "tensors/tensor_allocator.h"
 #include "tensors/tensor_operators.h"
 
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
 namespace marian {
 
   /* pruning implementation */
-  static void pruneImpl(Tensor t, Tensor g, Ptr<ExpressionGraph> graph, int mbNum) {
+  static void pruneImpl(Tensor t, Tensor g, Ptr<ExpressionGraph> graph, int mbNum, std::string name = "") {
         
     // TODO: Add gradients to the function
     // We're gonna prune based on magnitude * gradients
@@ -21,8 +25,8 @@ namespace marian {
     float threshold = 0.0f; // threshold to calculate
     float targetSparsity = 0.9; // sparsity we want to achieve for each layer
     float startSparsity = 0.0; // starting sparsity, probably going to be 0%
-    int step = 10000; // to prune how frequently (batches)
-    int totalSteps = 400000; // how many batches to prune for
+    int step = 10; // to prune how frequently (batches)
+    int totalSteps = 90; // how many batches to prune for
 
 
     // check whether it is time to prune at all (maybe check before that)
@@ -54,32 +58,32 @@ namespace marian {
     ////////////////////////////////////////////////////////////////////////////
 
     std::vector<float> valVec;
-    std::vector<float> adjVec; // gradients?
+    // std::vector<float> adjVec; // gradients?
 
     
     t->get(valVec);
-    g->get(adjVec);
+    // g->get(adjVec);
 
-    std::cout << "valVec" << std::endl;
+    // std::cout << "valVec" << std::endl;
 
-    for (int i = 1; i <= 15; i++)
-      std::cout << valVec[i] << " ";
-    std::cout << std::endl;
+    // for (int i = 1; i <= 15; i++)
+      // std::cout << valVec[i] << " ";
+    // std::cout << std::endl;
 
-    std::cout << "adjVec" << std::endl;
-    for (int i = 1; i <= 15; i++)
-      std::cout << adjVec[i] << " ";
-    std::cout << std::endl;
+    // std::cout << "adjVec" << std::endl;
+    // for (int i = 1; i <= 15; i++)
+      // std::cout << adjVec[i] << " ";
+    // std::cout << std::endl;
 
 
     std::vector<float> scores;
     for (const auto& i: valVec)
       scores.push_back(std::abs(i));
     
-    std::cout << "scores" << std::endl;
-    for (int i = 1; i <= 15; i++)
-      std::cout << scores[i] << " ";
-    std::cout << std::endl;
+    // std::cout << "scores" << std::endl;
+    // for (int i = 1; i <= 15; i++)
+      // std::cout << scores[i] << " ";
+    // std::cout << std::endl;
     
     // std::transform(valVec.begin(), valVec.end(), adjVec.begin(), 
                    // std::back_inserter(scores), std::multiplies<float>());
@@ -88,32 +92,25 @@ namespace marian {
     
     threshold = scores[k];
 
-    LOG(info, "Pruning {} {} {}", mbNum, sparsity, threshold); 
-    
-
-
-
-
-    // // currently: 2 step pruning.
-    // // prune by 0.0001 after 50th update, and prune by 0.001 after 100th update.
-    // if (mbNum == 50) {
-      // LOG_ONCE(info, "DO PRUNING first");
-      // threshold = 0.0001;
-    // } else if(mbNum == 100) {
-      // LOG_ONCE(info, "DO PRUNING second");
-      // threshold = 0.001;
-    // } else
-      // return;
 
     using namespace functional;
     Element(_1 = if_then_else(abs(_1) < threshold, 0, _1), t);
+    
+    int cnt = 0;
+    t->get(valVec);
+    for (auto x : valVec) {
+      if (x == 0) 
+        cnt++;
+    }
+    
+    LOG(info, "[{}] prune by {}: treshold: {} || zero count = {}/{}", name, sparsity, threshold, cnt, t->size());
   }
 
   /* prune the whole graph */
   static void pruneGraph(Ptr<ExpressionGraph> graph, int mbNum) {
     // loop layer by layer
     for(auto p : *graph->params()) {
-        pruneImpl(p->val(), p->grad(), graph, mbNum);
+        pruneImpl(p->val(), p->grad(), graph, mbNum, p->name());
     }
   }
 

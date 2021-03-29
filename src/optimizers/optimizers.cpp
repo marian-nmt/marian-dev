@@ -421,7 +421,32 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   // pruning hackk
   // also prune mt_ to ensure that pruned params remain 0 after update.
   // vt_ is not necessary, see the function.
-  applyPrune(params, mt_);
+  if (batchesSeen_ > 1) {
+    applyPrune(params, mt_);
+    std::vector<float> paramsVec, gradsVec, mtVec;
+    params->get(paramsVec);
+    grads->get(gradsVec);
+    mt_->get(mtVec);
+
+    std::string paramsStr;
+    for (int i = 1; i <= 15; i++)
+      paramsStr += (paramsStr.empty() ? "" : ",") + std::to_string(paramsVec[i]);
+
+    LOG(info, "params {}", paramsStr);
+
+
+    std::string gradsStr;
+    for (int i = 1; i <= 15; i++)
+      gradsStr += (gradsStr.empty() ? "" : ",") + std::to_string(gradsVec[i]);
+
+    LOG(info, "grads {}", gradsStr);
+    
+    std::string mtStr;
+    for (int i = 1; i <= 15; i++)
+      mtStr += (mtStr.empty() ? "" : ",") + std::to_string(mtVec[i]);
+
+    LOG(info, "mt {}", mtStr);
+  }
 
   // apply Adam normalization
   float etaf = (float)eta, denom1f = (float)denom1_, denom2f = (float)denom2_, decayf = (float)decay; // (get casts out of Element expression for readability)

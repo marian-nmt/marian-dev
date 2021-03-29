@@ -21,8 +21,9 @@ public:
            "/home/rihards/exp/marian-adaptive-crash-repro/models/model.npz.repro.yml",
            "-t", "dummy-value", "-t", "dummy-value",
            "--after-batches", "20",
-           "--after-epochs", "20",
+           "--after-epochs", "4",
            "--learn-rate", "0.1",
+           "--shuffle", "none",
            "--mini-batch", "1"};
     int argc = sizeof(argseasy) / sizeof(char*);
     // this is as close as i could get to initializing a char** in a sane manner
@@ -56,8 +57,8 @@ public:
           "H@@ LL ) 6,@@ 7 , 8 .\n30 –@@ 60 % H@@ LL pacientu ir konstatēta šī reģiona heter@@ "
           "oz@@ ig@@ ota del@@ ē@@ cija , savukārt 10 –@@ 20 % H@@ LL pacientu ir konstatēta šī "
       "reģiona hom@@ oz@@ ig@@ ota del@@ ē@@ c@@ ij@@ a@@ 9 .";
-    auto inputs = New<data::TextInput>(std::vector<std::string>({sources, targets}), vocabs, options);
-    auto batches = New<data::BatchGenerator<data::TextInput>>(inputs, options);
+    // auto inputs = New<data::TextInput>(std::vector<std::string>({sources, targets}), vocabs, options);
+    // auto batches = New<data::BatchGenerator<data::TextInput>>(inputs, options);
 
     for(size_t i = 0; i < 10; i++) {
       auto state = New<TrainingState>(options->get<float>("learn-rate"));
@@ -70,6 +71,11 @@ public:
       bool first = true;
       scheduler->started();
       while(scheduler->keepGoing()) {
+        // if inputs aren't initialized for each epoch, their internal istringstreams get exhausted
+        auto inputs
+            = New<data::TextInput>(std::vector<std::string>({sources, targets}), vocabs, options);
+        auto batches = New<data::BatchGenerator<data::TextInput>>(inputs, options);
+        // auto batches = New<data::BatchGenerator<data::TextInput>>(inputs, options);
         batches->prepare();
 
         for(auto batch : *batches) {

@@ -331,10 +331,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         
         // also apply the same pruning to moving avg and gradient
         // annoyingly deal with shard memory.
-        auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
-        applyPrune(curParam, optimizerShards_[idx]->avg_);
-        return true;
-       
+        if (optimizerShards_[idx]->avg_) {
+          auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
+          applyPrune(curParam, optimizerShards_[idx]->avg_);
+        }
+
+        return true;       
      });
 
   } else {

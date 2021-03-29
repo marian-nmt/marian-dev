@@ -23,15 +23,20 @@ namespace marian {
 
 
     float threshold = 0.0f; // threshold to calculate
-    float targetSparsity = 0.9; // sparsity we want to achieve for each layer
+    float targetSparsity = 0.1; // sparsity we want to achieve for each layer
     float startSparsity = 0.0; // starting sparsity, probably going to be 0%
     int step = 10; // to prune how frequently (batches)
-    int totalSteps = 90; // how many batches to prune for
+    int totalSteps = 100; // how many batches to prune for
 
 
     // check whether it is time to prune at all (maybe check before that)
     if (mbNum == 0 || mbNum % step != 0 || mbNum > totalSteps) {
       // LOG(info, "EXITING PRUNING BECAUSE IT'S NOT TIME {} {}", mbNum, step);
+      return;
+    }
+
+    // don't prune layer normalisation???
+    if (name.find("_ln_") != std::string::npos) {
       return;
     }
 

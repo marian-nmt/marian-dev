@@ -51,6 +51,18 @@ void SwappableSlot::Load(const std::vector<io::Item> &parameters) {
   LOG(info, "Swapping model from CPU to GPU took {:.8f}s wall", timer.elapsed());
 }
 
+std::string SwappableSlot::MultilineInputHack(const std::vector<std::string> &input) {
+  if (input.size() == 1) {
+    return input[0];
+  } else {
+    std::stringstream ss;
+    for (auto&& line : input) {
+      ss << line << '\n';
+    }
+    return ss.str();
+  }
+}
+
 SwappableSlot::SwappableSlot(Ptr<Options> options, size_t deviceIdx /*=0*/) : options_(options), myDeviceId_(Config::getDevices(options)[deviceIdx]), loadedModel_(nullptr) {
   ABORT_IF(myDeviceId_.type == DeviceType::cpu, "Swappable slot only works for GPU devices.");
   options_->set("inference", true);
@@ -81,7 +93,7 @@ Histories SwappableSlot::Translate(const SwappableModel &model, const std::vecto
     Load(model.Parameters());
     loadedModel_ = &model;
   }
-  auto corpus = New<data::TextInput>(input, model.SrcVocabs(), options_);
+  auto corpus = New<data::TextInput>(std::vector<std::string>(1,MultilineInputHack(input)), model.SrcVocabs(), options_); // @TODO dirty hack
   data::BatchGenerator<data::TextInput> batchGenerator(corpus, options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
 
   auto search = New<BeamSearch>(options_, scorers_, model.TrgVocab());

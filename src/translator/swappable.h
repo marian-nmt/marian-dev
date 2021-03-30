@@ -50,6 +50,8 @@ class SwappableSlot {
 
     void Load(const std::vector<io::Item> &parameters);
 
+    std::string MultilineInputHack(const std::vector<std::string> &input);
+
   public:
     /**
      * @param options The marian options object

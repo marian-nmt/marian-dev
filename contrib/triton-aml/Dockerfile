@@ -54,7 +54,7 @@ COPY src/CMakeLists.txt /marian-dev/src
 
 WORKDIR /marian-dev/build
 RUN cmake .. -DCOMPILE_CPU=on -DCOMPILE_CUDA=on -DUSE_SENTENCEPIECE=on -DUSE_STATIC_LIBS=off -DCOMPILE_SERVER=off -DUSE_FBGEMM=on  \ 
-             -DCOMPILE_CUDA_SM35=off -DCOMPILE_CUDA_SM50=off -DCOMPILE_CUDA_SM60=off -DCOMPILE_CUDA_SM70=on -DCOMPILE_CUDA_SM75=off \
+             -DCOMPILE_CUDA_SM35=off -DCOMPILE_CUDA_SM50=off -DCOMPILE_CUDA_SM60=off -DCOMPILE_CUDA_SM70=on -DCOMPILE_CUDA_SM75=on \
              -DCUDA_cublas_device_LIBRARY=/usr/local/cuda/lib64/libcublas.so
 
 RUN make -j $(grep -c ^processor /proc/cpuinfo)

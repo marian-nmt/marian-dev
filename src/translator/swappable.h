@@ -52,6 +52,10 @@ class SwappableSlot {
   public:
     explicit SwappableSlot(Ptr<Options> options);
 
+    // Load this model even if it's already loaded.  Mostly useful for timing.
+    void ForceLoad(const SwappableModel &model);
+
+    // Translate using this model, loading if necessary.
     Histories Translate(const SwappableModel &model, const std::vector<std::string> &input);
 };
 

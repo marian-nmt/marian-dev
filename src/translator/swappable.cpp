@@ -72,6 +72,11 @@ SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedMo
   graph_->forward();
 }
 
+void SwappableSlot::ForceLoad(const SwappableModel &model) {
+  Load(model.Parameters());
+  loadedModel_ = &model;
+}
+
 Histories SwappableSlot::Translate(const SwappableModel &model, const std::vector<std::string> &input) {
   if (loadedModel_ != &model) {
     Load(model.Parameters());

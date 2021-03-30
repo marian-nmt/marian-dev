@@ -55,11 +55,13 @@ std::string SwappableSlot::MultilineInputHack(const std::vector<std::string> &in
   if (input.size() == 1) {
     return input[0];
   } else {
-    std::stringstream ss;
+    std::string ret;
+    ret.reserve(10000);
     for (auto&& line : input) {
-      ss << line << '\n';
+      ret.append(line);
+      ret.append("\n");
     }
-    return ss.str();
+    return ret;
   }
 }
 

@@ -61,6 +61,7 @@ public:
     // auto batches = New<data::BatchGenerator<data::TextInput>>(inputs, options);
 
     for(size_t i = 0; i < 10; i++) {
+      LOG(info, "# NEW OUTER ITER");
       auto state = New<TrainingState>(options->get<float>("learn-rate"));
       auto scheduler = New<Scheduler>(options, state);
       scheduler->registerTrainingObserver(scheduler);
@@ -70,7 +71,12 @@ public:
 
       bool first = true;
       scheduler->started();
+
+      graph = New<ExpressionGraph>();
+      graph->setDevice({0, DeviceType::cpu});
+      graph->reserveWorkspaceMB(128);
       while(scheduler->keepGoing()) {
+        LOG(info, "## NEW INNER ITER");
         // if inputs aren't initialized for each epoch, their internal istringstreams get exhausted
         auto inputs
             = New<data::TextInput>(std::vector<std::string>({sources, targets}), vocabs, options);
@@ -79,18 +85,16 @@ public:
         batches->prepare();
 
         for(auto batch : *batches) {
+          LOG(info, "### NEW BATCH");
           if(!scheduler->keepGoing()) {
             break;
           }
 
-          if(first) {
-            graph = New<ExpressionGraph>();
-            graph->setDevice({0, DeviceType::cpu});
-            graph->reserveWorkspaceMB(128);
+          auto lossNode = builder->build(graph, batch);
+          if (first) {
+            graph->graphviz("graph-" + std::to_string(i) + ".gv");
             first = false;
           }
-
-          auto lossNode = builder->build(graph, batch);
           graph->forward();
           StaticLoss loss = *lossNode;
           graph->backward();

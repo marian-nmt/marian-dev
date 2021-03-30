@@ -549,6 +549,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // add ULR settings
   addSuboptionsULR(cli);
 
+  cli.add<bool>("--model-prune",
+      "prune the model");
+
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
   cli.switchGroup(previous_group);

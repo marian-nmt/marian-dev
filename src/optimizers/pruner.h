@@ -17,17 +17,23 @@ namespace marian {
 
   /* pruning implementation */
   static void pruneImpl(Tensor t, int mbSize, std::string name = "") {
-    if (mbSize  == 0 || mbSize % 50 || mbSize > 450)
+    // don't prune layer normalisation???
+    if (name.find("_ln_") != std::string::npos) {
+      return;
+    }
+    
+    if (mbSize  == 0 || mbSize % 100 || mbSize > 9000)
       return;
         
     // TODO: find the actual treshold
     float treshold;
-    float ratio = 0.1 * (mbSize / 50);
+    float ratio = 0.01 * (mbSize / 100);
     
     std::vector<float> f;
     t->get(f);
     // get the abs value
     std::transform(f.begin(), f.end(), f.begin(), fabs);
+
     // sort
     std::sort(f.begin(), f.end());
     int idx = ratio * f.size();
@@ -45,7 +51,7 @@ namespace marian {
   }
 
   /* prune the whole graph */
-  static void pruneGraph(Ptr<ExpressionGraph> graph, int mbSize) {
+  static void pruneGraph(Ptr<ExpressionGraph> graph, int mbSize, Ptr<Options> options) {
     // loop layer by layer
     for(auto p : *graph->params()) {
         pruneImpl(p->val(), mbSize, p->name());

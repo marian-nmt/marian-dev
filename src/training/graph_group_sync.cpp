@@ -309,6 +309,24 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       return l2norm; // return partial norm
     };
 
+    // apply model pruning
+    // prune before parameter update so we can have the gradient info.
+    if (options_->get<bool>("model-prune")) 
+      comm_->foreach([&](size_t idx, size_t begin, size_t end) {
+        // must prune the whole graph instead of the tensor shard, since we need the layer information which stored in the graph.
+        pruneGraph(graphs_[idx], scheduler_->numberOfBatches(), options_);
+        
+        // also apply the same pruning to moving avg and gradient
+        // annoyingly deal with shard memory.
+        if (optimizerShards_[idx]->avg_) {
+          auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
+          applyPrune(curParam, optimizerShards_[idx]->avg_);
+        }
+        
+        return true;
+     });
+
+
     // Overwrite gradNorm with new value from normalized gradient
     gradNorm = executeAndCollectNorm(update);
     if(!options_->get<bool>("normalize-gradient"))
@@ -323,20 +341,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
         quantizers_[idx]->quantize(graphs_[idx]); return true; 
       });
 
-    // apply model pruning
-    comm_->foreach([&](size_t idx, size_t begin, size_t end) {
-        // must prune the whole graph instead of the tensor shard, since we need the layer information which stored in the graph.
-        pruneGraph(graphs_[idx], scheduler_->numberOfBatches()); 
-        
-        // also apply the same pruning to moving avg and gradient
-        // annoyingly deal with shard memory.
-        if (optimizerShards_[idx]->avg_) {
-          auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
-          applyPrune(curParam, optimizerShards_[idx]->avg_);
-        }
-
-        return true;       
-     });
 
   } else {
     LOG(debug, "Seen NaN in gradient, skipping update, resetting gradient");

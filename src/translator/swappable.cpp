@@ -46,22 +46,21 @@ void SwappableSlot::Load(const std::vector<io::Item> &parameters) {
   auto namedMap = graph_->getParamsNamedMap();
   for (auto&& item : parameters) {
     auto to = reinterpret_cast<char *>(namedMap[item.name]->val()->memory()->data());
-    swapper::copyCpuToGpu(to, &item.bytes[0], item.bytes.size());
+    swapper::copyCpuToGpu(to, &item.bytes[0], item.bytes.size(), myDeviceId_);
   }
   LOG(info, "Swapping model from CPU to GPU took {:.8f}s wall", timer.elapsed());
 }
 
-SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedModel_(nullptr) {
+SwappableSlot::SwappableSlot(Ptr<Options> options, size_t deviceIdx /*=0*/) : options_(options), myDeviceId_(Config::getDevices(options)[deviceIdx]), loadedModel_(nullptr) {
+  ABORT_IF(myDeviceId_.type == DeviceType::cpu, "Swappable slot only works for GPU devices.");
   options_->set("inference", true);
   options_->set("shuffle", "none");
-  // get device IDs
-  auto devices = Config::getDevices(options_);
 
   // Create graph
   graph_ = New<ExpressionGraph>();
   auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
   graph_->setDefaultElementType(typeFromString(prec[0]));
-  graph_->setDevice(devices[0]);
+  graph_->setDevice(myDeviceId_);
   graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 
   scorers_ = createScorers(options_);
@@ -83,7 +82,7 @@ Histories SwappableSlot::Translate(const SwappableModel &model, const std::vecto
     loadedModel_ = &model;
   }
   auto corpus = New<data::TextInput>(input, model.SrcVocabs(), options_);
-  data::BatchGenerator<data::TextInput> batchGenerator(corpus, options_, nullptr, false);
+  data::BatchGenerator<data::TextInput> batchGenerator(corpus, options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
 
   auto search = New<BeamSearch>(options_, scorers_, model.TrgVocab());
   Histories ret;

@@ -78,7 +78,7 @@ public:
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-    builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+    // builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
 
     optimizer_ = Optimizer(options_);
 
@@ -104,7 +104,7 @@ public:
     }
 
     // Load model
-    builder_->load(graph_, model);
+    // builder_->load(graph_, model);
   }
 
   std::string run(const std::string& json) override {
@@ -231,6 +231,9 @@ private:
         LOG(info, "### NEW BATCH");
         // Copy params from the original model
         if(first) {
+          builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+          builder_->load(graph_, model);
+
           // builder_->build(graph_, batch);
           // // TODO: Why do we need to do a froward pass here?
           // graph_->forward();

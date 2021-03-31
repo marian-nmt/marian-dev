@@ -33,7 +33,7 @@ public:
     }
     auto options = parser.parseOptions(argc, args, false);
 
-    auto builder = models::createCriterionFunctionFromOptions(options, models::usage::training);
+    // auto builder = models::createCriterionFunctionFromOptions(options, models::usage::training);
     auto optimizer = Optimizer(New<Options>("optimizer", "adam", "learn-rate", 0.01));
 
     std::vector<std::string> vocabPaths
@@ -62,6 +62,7 @@ public:
 
     for(size_t i = 0; i < 10; i++) {
       LOG(info, "# NEW OUTER ITER");
+      auto builder = models::createCriterionFunctionFromOptions(options, models::usage::training);
       auto state = New<TrainingState>(options->get<float>("learn-rate"));
       auto scheduler = New<Scheduler>(options, state);
       scheduler->registerTrainingObserver(scheduler);

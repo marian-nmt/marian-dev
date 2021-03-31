@@ -68,9 +68,7 @@ public:
     if(options_->get<bool>("model-mmap")) {
       auto models = options->get<std::vector<std::string>>("models");
       for(auto model : models) {
-        marian::filesystem::Path modelPath(model);
-        ABORT_IF(modelPath.extension() != marian::filesystem::Path(".bin"),
-                "Non-binarized models cannot be mmapped");
+        ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
         mmaps_.push_back(std::move(mio::mmap_source(model)));
       }
     }

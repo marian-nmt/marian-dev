@@ -184,6 +184,8 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
     }
   }
 
+  cli.add<bool>("--model-mmap",
+      "Use memory-mapping when loading model (CPU only)");
   cli.add<bool>("--ignore-model-config",
       "Ignore the model configuration saved in npz file");
   cli.add<std::string>("--type",

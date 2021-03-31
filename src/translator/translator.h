@@ -20,12 +20,7 @@
 #include "translator/scorers.h"
 
 // currently for diagnostics only, will try to mmap files ending in *.bin suffix when enabled.
-// @TODO: add this as an actual feature.
-#define MMAP 0
-
-#if MMAP
 #include "3rd_party/mio/mio.hpp"
-#endif
 
 namespace marian {
 
@@ -42,9 +37,7 @@ private:
 
   size_t numDevices_;
 
-#if MMAP
   std::vector<mio::mmap_source> mmaps_;
-#endif
 
 public:
   Translate(Ptr<Options> options)
@@ -72,15 +65,15 @@ public:
     scorers_.resize(numDevices_);
     graphs_.resize(numDevices_);
 
-#if MMAP
-    auto models = options->get<std::vector<std::string>>("models");
-    for(auto model : models) {
-      marian::filesystem::Path modelPath(model);
-      ABORT_IF(modelPath.extension() != marian::filesystem::Path(".bin"),
-              "Non-binarized models cannot be mmapped");
-      mmaps_.push_back(std::move(mio::mmap_source(model)));
+    if(options_->get<bool>("model-mmap")) {
+      auto models = options->get<std::vector<std::string>>("models");
+      for(auto model : models) {
+        marian::filesystem::Path modelPath(model);
+        ABORT_IF(modelPath.extension() != marian::filesystem::Path(".bin"),
+                "Non-binarized models cannot be mmapped");
+        mmaps_.push_back(std::move(mio::mmap_source(model)));
+      }
     }
-#endif
 
     size_t id = 0;
     for(auto device : devices) {
@@ -92,11 +85,14 @@ public:
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
 
-#if MMAP
-        auto scorers = createScorers(options_, mmaps_);
-#else
-        auto scorers = createScorers(options_);
-#endif
+        std::vector<Ptr<Scorer>> scorers;
+        if(options_->get<bool>("model-mmap")) {
+          scorers = createScorers(options_, mmaps_);
+        }
+        else {
+          scorers = createScorers(options_);
+        }
+
         for(auto scorer : scorers) {
           scorer->init(graph);
           if(shortlistGenerator_)

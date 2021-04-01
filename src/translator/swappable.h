@@ -50,6 +50,8 @@ class SwappableSlot {
 
     void Load(const std::vector<io::Item> &parameters);
 
+    void Load(const SwappableSlot &slot);
+
     std::string MultilineInputHack(const std::vector<std::string> &input);
 
   public:
@@ -62,6 +64,8 @@ class SwappableSlot {
 
     // Load this model even if it's already loaded.  Mostly useful for timing.
     void ForceLoad(const SwappableModel &model);
+
+    void ForceLoad(const SwappableModel &model, const SwappableSlot &slot);
 
     // Translate using this model, loading if necessary.
     Histories Translate(const SwappableModel &model, const std::vector<std::string> &input);

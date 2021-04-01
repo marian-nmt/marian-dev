@@ -78,7 +78,7 @@ public:
     graph_ = New<ExpressionGraph>();
     graph_->setDevice(deviceId);
     graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-    // builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+    builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
 
     optimizer_ = Optimizer(options_);
 
@@ -104,7 +104,7 @@ public:
     }
 
     // Load model
-    // builder_->load(graph_, model);
+    builder_->load(graph_, model);
   }
 
   std::string run(const std::string& json) override {
@@ -199,6 +199,7 @@ private:
   Ptr<Options> optionsTrans_;  // Options for translator
 
   Ptr<models::ICriterionFunction> builder_;      // Training model
+  Ptr<models::ICriterionFunction> secondBuilder_; // To not get a segfault when training model else could just use builder_
   Ptr<models::IModel> builderTrans_; // Translation model
   Ptr<ExpressionGraph> graph_;          // A graph with original parameters
   Ptr<ExpressionGraph> graphAdapt_;     // A graph on which training is performed
@@ -231,8 +232,9 @@ private:
         LOG(info, "### NEW BATCH");
         // Copy params from the original model
         if(first) {
-          builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
-          builder_->load(graph_, model);
+          secondBuilder_
+              = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+          // secondBuilder->load(graph_, model);
 
           // builder_->build(graph_, batch);
           // // TODO: Why do we need to do a froward pass here?
@@ -249,12 +251,12 @@ private:
           // it's probably because the order doesn't matter and the
           // builder is used below
           // graphAdapt_->copyParams(graph_);
-          // builder_->load(graphAdapt_, model);
+          secondBuilder_->load(graphAdapt_, model);
           first = false;
         }
 
         // Make an update step on the copy of the model
-        auto lossNode = builder_->build(graphAdapt_, batch);
+        auto lossNode = secondBuilder_->build(graphAdapt_, batch);
         graphAdapt_->forward();
         StaticLoss loss = *lossNode;
         graphAdapt_->backward();
@@ -273,27 +275,27 @@ private:
                  Ptr<CollectorBase> collector,
                  Ptr<OutputPrinter> printer,
                  Ptr<ExpressionGraph> graph) {
-    // graph->setInference(true);
-    // graph->clear();
+    graph->setInference(true);
+    graph->clear();
 
-    // {
-    //   auto search = New<BeamSearch>(options_,
-    //                                 scorers_,
-    //                                 vocabs_.back());
-    //   auto histories = search->search(graph, batch);
+    {
+      auto search = New<BeamSearch>(options_,
+                                    scorers_,
+                                    vocabs_.back());
+      auto histories = search->search(graph, batch);
 
-    //   for(auto history : histories) {
-    //     std::stringstream best1;
-    //     std::stringstream bestn;
-    //     printer->print(history, best1, bestn);
-    //     collector->Write(history->getLineNum(),
-    //                      best1.str(),
-    //                      bestn.str(),
-    //                      options_->get<bool>("n-best"));
-    //   }
-    // }
+      for(auto history : histories) {
+        std::stringstream best1;
+        std::stringstream bestn;
+        printer->print(history, best1, bestn);
+        collector->Write(history->getLineNum(),
+                         best1.str(),
+                         bestn.str(),
+                         options_->get<bool>("n-best"));
+      }
+    }
 
-    // graph->setInference(false);
+    graph->setInference(false);
   }
 };
 }

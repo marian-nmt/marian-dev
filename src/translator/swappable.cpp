@@ -105,6 +105,7 @@ Histories SwappableSlot::Translate(const SwappableModel &model, const std::vecto
     auto result = search->search(graph_, batch);
     ret.insert(ret.end(), result.begin(), result.end());
   }
+  std::sort(ret.begin(), ret.end(),[](marian::Ptr<marian::History> a, marian::Ptr<marian::History> b){return a->getLineNum() < b->getLineNum();});
   return ret;
 }
 

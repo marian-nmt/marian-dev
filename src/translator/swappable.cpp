@@ -51,6 +51,22 @@ void SwappableSlot::Load(const std::vector<io::Item> &parameters) {
   LOG(info, "Swapping model from CPU to GPU took {:.8f}s wall", timer.elapsed());
 }
 
+void SwappableSlot::Load(const SwappableSlot &slot) {
+    timer::Timer timer;
+    auto toMap = graph_->getParamsNamedMap();
+    auto fromMap = slot.graph_->getParamsNamedMap();
+
+    for (auto &it : fromMap) {
+        size_t size = it.second->val()->memory()->size();
+        auto from = reinterpret_cast<const char *>(it.second->val()->memory()->data());
+        auto to = reinterpret_cast<char *>(toMap[it.first]->val()->memory()->data());
+
+        swapper::copyGpuToGpu(to, from, size, myDeviceId_);
+    }
+
+    LOG(info, "Swapping model from GPU to GPU took {:.8f}s wall", timer.elapsed());
+}
+
 std::string SwappableSlot::MultilineInputHack(const std::vector<std::string> &input) {
   if (input.size() == 1) {
     return input[0];
@@ -87,6 +103,11 @@ SwappableSlot::SwappableSlot(Ptr<Options> options, size_t deviceIdx /*=0*/) : op
 
 void SwappableSlot::ForceLoad(const SwappableModel &model) {
   Load(model.Parameters());
+  loadedModel_ = &model;
+}
+
+void SwappableSlot::ForceLoad(const SwappableModel &model, const SwappableSlot &slot) {
+  Load(slot);
   loadedModel_ = &model;
 }
 

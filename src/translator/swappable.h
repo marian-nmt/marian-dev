@@ -26,7 +26,7 @@ class GPUEngine {
     Ptr<Options> options_;
     Ptr<ExpressionGraph> graph_;
     std::vector<Ptr<Scorer> > scorers_;
-    const marian::DeviceId myDeviceId_;
+    const DeviceId myDeviceId_;
     Allocator allocator_;
 
     void SwapPointers(std::vector<MemoryPiece::PtrType> &with);

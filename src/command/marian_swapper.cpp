@@ -7,24 +7,24 @@
 #include <unordered_map>
 
 namespace marian {
-void LoadBig(Ptr<Options> options, std::unordered_map<std::string, SwappableModel> &to) {
-  to.emplace("pten", SwappableModel(options,
+void LoadBig(Ptr<Options> options, std::unordered_map<std::string, CPULoadedModel> &to) {
+  to.emplace("pten", CPULoadedModel(options,
       "/home/ubuntu/consistent-big-models/padded/pten.npz",
       {"/home/ubuntu/consistent-big-models/padded/pten.vocab"},
       "/home/ubuntu/consistent-big-models/padded/pten.vocab"));
 
-  to.emplace("enit", SwappableModel(options,
+  to.emplace("enit", CPULoadedModel(options,
       "/home/ubuntu/consistent-big-models/padded/enit.npz",
       {"/home/ubuntu/consistent-big-models/padded/enit.vocab"},
       "/home/ubuntu/consistent-big-models/padded/enit.vocab"));
 }
 
-void LoadTiny(Ptr<Options> options, std::unordered_map<std::string, SwappableModel> &to) {
+void LoadTiny(Ptr<Options> options, std::unordered_map<std::string, CPULoadedModel> &to) {
   std::vector<std::string> models = {"csen", "encs", "enet", "eten", "esen", "enes"};
   for (const std::string m : models) {
     std::string base = "/home/ubuntu/consistent-bergamot-students/padded/";
     base += m + ".";
-    to.emplace(m, SwappableModel(options, base + "npz", {base + "spm"}, base + "spm"));
+    to.emplace(m, CPULoadedModel(options, base + "npz", {base + "spm"}, base + "spm"));
   }
 }
 
@@ -34,10 +34,11 @@ void LoadTiny(Ptr<Options> options, std::unordered_map<std::string, SwappableMod
 int main(int argc, char** argv) {
   using namespace marian;
   Ptr<Options> options = parseOptions(argc, argv, cli::mode::translation);
-  // You can have multiple slots.  In principle these can even have different sizes, just use separate options.
-  SwappableSlot slot(options);
-  
-  std::unordered_map<std::string, SwappableModel> models;
+
+  Ptr<GPUEngine> engine = New<GPUEngine>(options, 0);
+  GPULoadedModel slot(engine);
+
+  std::unordered_map<std::string, CPULoadedModel> models;
 //  LoadBig(options, models);
   LoadTiny(options, models);
 
@@ -46,7 +47,7 @@ int main(int argc, char** argv) {
 
   bool alignments = !options->get<std::string>("alignment").empty();
 
-  const SwappableModel *model = nullptr;
+  bool loaded = false;
   std::string line;
   while (std::getline(std::cin, line)) {
     // Switch out which model is used.
@@ -57,21 +58,22 @@ int main(int argc, char** argv) {
         std::cerr << "Model for " << key << " not loaded." << std::endl;
         return 1;
       }
-      model = &found->second;
+      slot.OverwriteFrom(found->second);
+      loaded = true;
       continue;
     }
-    if (!model) {
+    if (!loaded) {
       std::cerr << "Select a model first." << std::endl;
       continue;
     }
 
     // Actually translating with a model.
-    marian::Histories histories = slot.Translate(*model, {line});
+    marian::Histories histories = slot.Translate({line});
     // In practice there is one history because we provided one line.
     for(auto history : histories) {
       Result result(history->top());
       Words words = std::get<0>(result);
-      std::cout << model->TrgVocab()->decode(words) << std::endl;
+      std::cout << slot.TrgVocab()->decode(words) << std::endl;
 
       /* Print alignments */
       if (alignments) {

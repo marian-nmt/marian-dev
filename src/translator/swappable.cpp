@@ -93,6 +93,7 @@ std::string MultilineInputHack(const std::vector<std::string> &input) {
 }
 
 Histories GPULoadedModel::Translate(const std::vector<std::string> &input) {
+  ABORT_IF(!trgVocab_, "GPULoadedModel needs to be overwritten by a CPU model first.");
   engine_->SwapPointers(parameters_);
 
   auto corpus = New<data::TextInput>(std::vector<std::string>(1, MultilineInputHack(input)), srcVocabs_, engine_->options_); // @TODO dirty hack

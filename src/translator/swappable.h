@@ -43,15 +43,31 @@ class SwappableSlot {
     Ptr<Options> options_;
     Ptr<ExpressionGraph> graph_;
     std::vector<Ptr<Scorer> > scorers_;
+    const marian::DeviceId myDeviceId_;
 
     // Last model used for translation.  Used to skip loading.
     const SwappableModel *loadedModel_;
 
     void Load(const std::vector<io::Item> &parameters);
 
-  public:
-    explicit SwappableSlot(Ptr<Options> options);
+    void Load(const SwappableSlot &slot);
 
+    std::string MultilineInputHack(const std::vector<std::string> &input);
+
+  public:
+    /**
+     * @param options The marian options object
+     * @param deviceNum The index of the device you want to use for this slot. Note that this is not the deviceID but the index of the device in the
+     *                  array of supplied devices. Eg if you provide -d 0 3 5 and you want the Slot to run on GPU 3, you provide deviceNum=1.
+     */
+    explicit SwappableSlot(Ptr<Options> options, size_t deviceIdx=0);
+
+    // Load this model even if it's already loaded.  Mostly useful for timing.
+    void ForceLoad(const SwappableModel &model);
+
+    void ForceLoad(const SwappableModel &model, const SwappableSlot &slot);
+
+    // Translate using this model, loading if necessary.
     Histories Translate(const SwappableModel &model, const std::vector<std::string> &input);
 };
 

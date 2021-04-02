@@ -46,22 +46,51 @@ void SwappableSlot::Load(const std::vector<io::Item> &parameters) {
   auto namedMap = graph_->getParamsNamedMap();
   for (auto&& item : parameters) {
     auto to = reinterpret_cast<char *>(namedMap[item.name]->val()->memory()->data());
-    swapper::copyCpuToGpu(to, &item.bytes[0], item.bytes.size());
+    swapper::copyCpuToGpu(to, &item.bytes[0], item.bytes.size(), myDeviceId_);
   }
   LOG(info, "Swapping model from CPU to GPU took {:.8f}s wall", timer.elapsed());
 }
 
-SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedModel_(nullptr) {
+void SwappableSlot::Load(const SwappableSlot &slot) {
+    timer::Timer timer;
+    auto toMap = graph_->getParamsNamedMap();
+    auto fromMap = slot.graph_->getParamsNamedMap();
+
+    for (auto &it : fromMap) {
+        size_t size = it.second->val()->memory()->size();
+        auto from = reinterpret_cast<const char *>(it.second->val()->memory()->data());
+        auto to = reinterpret_cast<char *>(toMap[it.first]->val()->memory()->data());
+
+        swapper::copyGpuToGpu(to, from, size, myDeviceId_);
+    }
+
+    LOG(info, "Swapping model from GPU to GPU took {:.8f}s wall", timer.elapsed());
+}
+
+std::string SwappableSlot::MultilineInputHack(const std::vector<std::string> &input) {
+  if (input.size() == 1) {
+    return input[0];
+  } else {
+    std::string ret;
+    ret.reserve(10000);
+    for (auto&& line : input) {
+      ret.append(line);
+      ret.append("\n");
+    }
+    return ret;
+  }
+}
+
+SwappableSlot::SwappableSlot(Ptr<Options> options, size_t deviceIdx /*=0*/) : options_(options), myDeviceId_(Config::getDevices(options)[deviceIdx]), loadedModel_(nullptr) {
+  ABORT_IF(myDeviceId_.type == DeviceType::cpu, "Swappable slot only works for GPU devices.");
   options_->set("inference", true);
   options_->set("shuffle", "none");
-  // get device IDs
-  auto devices = Config::getDevices(options_);
 
   // Create graph
   graph_ = New<ExpressionGraph>();
   auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
   graph_->setDefaultElementType(typeFromString(prec[0]));
-  graph_->setDevice(devices[0]);
+  graph_->setDevice(myDeviceId_);
   graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
 
   scorers_ = createScorers(options_);
@@ -72,13 +101,23 @@ SwappableSlot::SwappableSlot(Ptr<Options> options) : options_(options), loadedMo
   graph_->forward();
 }
 
+void SwappableSlot::ForceLoad(const SwappableModel &model) {
+  Load(model.Parameters());
+  loadedModel_ = &model;
+}
+
+void SwappableSlot::ForceLoad(const SwappableModel &model, const SwappableSlot &slot) {
+  Load(slot);
+  loadedModel_ = &model;
+}
+
 Histories SwappableSlot::Translate(const SwappableModel &model, const std::vector<std::string> &input) {
   if (loadedModel_ != &model) {
     Load(model.Parameters());
     loadedModel_ = &model;
   }
-  auto corpus = New<data::TextInput>(input, model.SrcVocabs(), options_);
-  data::BatchGenerator<data::TextInput> batchGenerator(corpus, options_, nullptr, false);
+  auto corpus = New<data::TextInput>(std::vector<std::string>(1,MultilineInputHack(input)), model.SrcVocabs(), options_); // @TODO dirty hack
+  data::BatchGenerator<data::TextInput> batchGenerator(corpus, options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
 
   auto search = New<BeamSearch>(options_, scorers_, model.TrgVocab());
   Histories ret;
@@ -87,6 +126,7 @@ Histories SwappableSlot::Translate(const SwappableModel &model, const std::vecto
     auto result = search->search(graph_, batch);
     ret.insert(ret.end(), result.begin(), result.end());
   }
+  std::sort(ret.begin(), ret.end(),[](marian::Ptr<marian::History> a, marian::Ptr<marian::History> b){return a->getLineNum() < b->getLineNum();});
   return ret;
 }
 

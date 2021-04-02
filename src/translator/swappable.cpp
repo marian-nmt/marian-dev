@@ -55,7 +55,7 @@ GPULoadedModel::~GPULoadedModel() {
   }
 }
 
-void GPULoadedModel::OverwriteFrom(const GPULoadedModel &from) {
+void GPULoadedModel::Load(const GPULoadedModel &from) {
   srcVocabs_ = from.srcVocabs_;
   trgVocab_ = from.trgVocab_;
 
@@ -66,7 +66,7 @@ void GPULoadedModel::OverwriteFrom(const GPULoadedModel &from) {
   }
 }
 
-void GPULoadedModel::OverwriteFrom(const CPULoadedModel &from) {
+void GPULoadedModel::Load(const CPULoadedModel &from) {
   srcVocabs_ = from.SrcVocabs();
   trgVocab_ = from.TrgVocab();
   for (size_t i = 0; i < parameters_.size(); ++i) {

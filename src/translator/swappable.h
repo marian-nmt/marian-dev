@@ -61,8 +61,8 @@ class GPULoadedModel {
     Ptr<Vocab> TrgVocab() const { return trgVocab_; }
 
     // Overwrite this model with parameters from a different one.
-    void OverwriteFrom(const CPULoadedModel &from);
-    void OverwriteFrom(const GPULoadedModel &from);
+    void Load(const CPULoadedModel &from);
+    void Load(const GPULoadedModel &from);
 
     Histories Translate(const std::vector<std::string> &input);
 };

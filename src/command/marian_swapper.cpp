@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
         std::cerr << "Model for " << key << " not loaded." << std::endl;
         return 1;
       }
-      slot.OverwriteFrom(found->second);
+      slot.Load(found->second);
       loaded = true;
       continue;
     }

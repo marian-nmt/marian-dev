@@ -582,7 +582,11 @@ void affineTyped(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tenso
 
 // This version is needed so that Windows doesn't complain when compiling CUDA < 11. Otherwise, the ifdef could be inside of one
 // definition of Affine.
-void Affine(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
+void Affine(marian::Tensor C, 
+            Ptr<Allocator> allocator, 
+            const marian::Tensor& A, 
+            const marian::Tensor& B, 
+            const marian::Tensor& bias,
             bool transA, bool transB, float beta, float scalar, bool do_relu) {
   // There is a bug in CUDA 11 where the bias pointer needs to be 8 byte aligned. This bug will be fix in a subsequent release. For now,
   // we launch a custom epilogue if the bias does not meet the alignment requirement.           
@@ -605,7 +609,11 @@ void Affine(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tensor& A,
 
 #else
 
-void Affine(marian::Tensor C, Ptr<Allocator> /*allocator*/, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
+void Affine(marian::Tensor C, 
+            Ptr<Allocator> /*allocator*/, 
+            const marian::Tensor& A, 
+            const marian::Tensor& B, 
+            const marian::Tensor& bias,
             bool transA, bool transB, float beta, float scalar, bool do_relu) {
              
   if(C->type() == Type::float32) {

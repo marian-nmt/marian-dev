@@ -15,6 +15,104 @@
 
 namespace marian {
 
+
+class IPruner {
+public:
+  virtual ~IPruner() {}
+
+  virtual void pruneGraph(Ptr<ExpressionGraph> graph, int batchNum) = 0;
+
+  virtual void maskTensor(Tensor a, Tensor b) = 0;
+
+};
+
+class CoefficientPruner : public IPruner {
+protected:
+  Ptr<Options> options_;
+  
+  float threshold_; // threshold to cut parameters off with
+
+  int batchStop_; // for how many batches to prune
+  int batchStep_; // how often to prune
+  float targetSparsity_; // sparsity level to achieve;
+  
+
+public:
+  CoefficientPruner(Ptr<Options> options) : options_(options) {
+    // TODO load those values from flags
+    batchStop_ = 400000;
+    batchStep_ = 10000;
+    targetSparsity_ = 0.9;
+  }
+
+  virtual void calculateThreshold(Tensor t, std::string name, int batchNum) = 0;
+  
+  virtual void pruneTensor(Tensor t, std::string name, int batchNum) = 0;
+  
+  void maskTensor(Tensor t, Tensor b) override {
+    using namespace functional;
+    // if t is 0, then also set b to 0.
+    Element(_1 = if_then_else(_2 == 0, 0, _1), b, t);
+  }
+  
+  void pruneGraph(Ptr<ExpressionGraph> graph, int batchNum) override {
+    if (batchNum == 0 || batchNum % batchStep_ != 0 || batchNum > batchStop_) {
+      LOG_ONCE(info, "Finished pruning at iteration {}...", batchNum);
+      return;
+    }
+    
+    // for every tensor in a graph 
+    for(auto p : *graph->params()) {
+      // do not prune layer normalisation
+      if (p->name().find("_ln_") != std::string::npos) { return; }
+      pruneTensor(p->val(), p->name(), batchNum);
+    }
+
+  }
+
+};
+
+class MagnitudePruner : public CoefficientPruner {
+public:
+
+  MagnitudePruner(Ptr<Options> options) : CoefficientPruner(options) {};
+
+  void calculateThreshold(Tensor t, std::string name, int batchNum) override {
+    float startSparsity = 0.0f; // TODO: if we modify the algorithm, actually calculate the start sparsity of the tensor/model because sparsity may be non-linear
+    float sparsity = targetSparsity_ + std::min(0.0f, (startSparsity - targetSparsity_) * (1 - float(batchNum) / float(batchStop_)));
+    int k = t->size() * sparsity; // calculate k for topk
+    
+    // extract tensor to a vector
+    std::vector<float> tVec;
+    t->get(tVec);
+    // get the abs value
+    std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabs); 
+    std::sort(tVec.begin(), tVec.end());
+    
+    threshold_ = tVec[k];
+
+
+  }
+
+  void pruneTensor(Tensor t, std::string name, int batchNum) override { 
+    calculateThreshold(t, name, batchNum);
+    
+    using namespace functional;
+    Element(_1 = if_then_else(abs(_1) < threshold_, 0, _1), t);
+    
+    int cnt = 0;
+    std::vector<float> tVec;
+    t->get(tVec);
+    for (auto x : tVec) {
+      if (x == 0) 
+        cnt++;
+    } 
+    LOG(info, "[{}] threshold: {} || zero count = {}/{}", name, threshold_, cnt, t->size());
+  } 
+
+};
+
+
   /* pruning implementation */
   static void pruneImpl(Tensor t, Tensor g, Ptr<ExpressionGraph> graph, int mbNum, std::string name = "") {
         
@@ -112,7 +210,7 @@ namespace marian {
   }
 
   /* prune the whole graph */
-  static void pruneGraph(Ptr<ExpressionGraph> graph, int mbNum) {
+  static void pruneGraph(Ptr<ExpressionGraph> graph, int mbNum, Ptr<Options> options) {
     // loop layer by layer
     for(auto p : *graph->params()) {
         pruneImpl(p->val(), p->grad(), graph, mbNum, p->name());

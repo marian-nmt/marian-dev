@@ -304,6 +304,19 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
       float l2norm = optimizerShards_[i]->update(curParam, curGrad, updateTargetWords, gradientNormalizer);
 
+      // apply model pruning
+      // must prune the whole graph instead of the tensor shard, since we need the layer information which stored in the graph.
+      if (options_->get<bool>("model-prune")) {
+          auto pruner = New<MagnitudePruner>(options_);
+          pruner->pruneGraph(graphs_[i], scheduler_->numberOfBatches());
+
+          // also apply the same pruning to moving avg and gradient
+          // annoyingly deal with shard memory.
+          if (optimizerShards_[i]->avg_) {
+            pruner->maskTensor(curParam, optimizerShards_[i]->avg_);
+          }
+      }
+
       // resets remaining gradient to zero
       curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
       return l2norm; // return partial norm
@@ -322,22 +335,6 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       comm_->foreach([&](size_t idx, size_t /*begin*/, size_t /*end*/) { 
         quantizers_[idx]->quantize(graphs_[idx]); return true; 
       });
-
-    // apply model pruning
-    comm_->foreach([&](size_t idx, size_t begin, size_t end) {
-        // must prune the whole graph instead of the tensor shard, since we need the layer information which stored in the graph.
-        // LOG(info, "BEFORE pruneGraph");
-        pruneGraph(graphs_[idx], scheduler_->numberOfBatches()); 
-        
-        // also apply the same pruning to moving avg and gradient
-        // annoyingly deal with shard memory.
-        if (optimizerShards_[idx]->avg_) {
-          auto curParam = graphs_[idx]->params()->vals()->subtensor(begin, end-begin);
-          applyPrune(curParam, optimizerShards_[idx]->avg_);
-        }
-
-        return true;       
-     });
 
   } else {
     LOG(debug, "Seen NaN in gradient, skipping update, resetting gradient");

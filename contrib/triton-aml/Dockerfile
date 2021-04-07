@@ -1,7 +1,7 @@
 # It is recommended to use a machine which supports CUDA to build this image.
 FROM nvidia/cuda:11.1-cudnn8-devel-ubuntu18.04 AS BUILDER
 RUN apt-get update --fix-missing
-RUN apt-get install -y curl git autoconf automake libtool curl make g++ unzip cmake build-essential cpio
+RUN apt-get install -y curl git autoconf automake libtool curl make g++ unzip cmake build-essential cpio libgoogle-perftools-dev
 RUN apt-get -y clean && \
     rm -rf /var/lib/apt/lists/*
 

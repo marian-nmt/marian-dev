@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Better suppression of unwanted output symbols, specifically "\n" from SentencePiece with byte-fallback. Can be deactivated with --allow-special
 - Display decoder time statistics with marian-decoder --stat-freq 10 ...
 - Support for MS-internal binary shortlist
 - Local/global sharding with MPI training via `--sharding local`
@@ -34,7 +35,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 - Moved FBGEMM pointer to commit c258054 for gcc 9.3+ fix
-- Remove TC_MALLOC as an optional build depdendency. Doesn't seem to actually do anything anymore.
 - Change compile options a la -DCOMPILE_CUDA_SM35 to -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL,
 -DCOMPILE_PASCAL, -DCOMPILE_VOLTA, -DCOMPILE_TURING and -DCOMPILE_AMPERE
 - Disable -DCOMPILE_KEPLER, -DCOMPILE_MAXWELL by default.

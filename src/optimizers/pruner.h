@@ -1,5 +1,6 @@
 #pragma once
 
+#include "layers/factory.h"
 #include "common/options.h"
 #include "functional/functional.h"
 #include "graph/expression_graph.h"
@@ -14,6 +15,21 @@
 #include <algorithm>
 
 namespace marian {
+
+// template<typename Function1, typename Function2>
+// Function1 combine(Function1 function1, Function2 function2) {
+  // return [function1, function2](float v1, float v2) { return function1(function2(v1, v2)); };
+// }
+
+
+// template<typename Function1, typename Function2>
+// std::function<
+    // float( // rettype
+    // Function1, // fn1
+    // Function2 // fn2
+    // )> combine2(Function1 g, Function2 f) {
+  // return [&](float x, float y) -> float { return g(f(x, y)); };
+// }
 
 
 class IPruner {
@@ -32,22 +48,24 @@ protected:
   
   float threshold_; // threshold to cut parameters off with
 
-  int batchStop_; // for how many batches to prune
-  int batchStep_; // how often to prune
-  float targetSparsity_; // sparsity level to achieve;
+  int pruningStart_; // when to start pruning
+  int pruningStop_; // when to finish pruning
+  int pruningStep_; // how often to prune
+  float pruningSparsity_; // sparsity level to achieve;
   
 
 public:
   CoefficientPruner(Ptr<Options> options) : options_(options) {
     // TODO load those values from flags
-    batchStop_ = 400000;
-    batchStep_ = 10000;
-    targetSparsity_ = 0.9;
+    pruningStart_ = options_->get<int>("pruning-start");
+    pruningStop_ = options_->get<int>("pruning-stop");
+    pruningStep_ = options_->get<int>("pruning-step");
+    pruningSparsity_ = options_->get<float>("pruning-sparsity");
   }
 
-  virtual void calculateThreshold(Tensor t, std::string name, int batchNum) = 0;
+  virtual void calculateThreshold(Expr p, int batchNum) = 0;
   
-  virtual void pruneTensor(Tensor t, std::string name, int batchNum) = 0;
+  virtual void pruneNode(Expr p, int batchNum) = 0;
   
   void maskTensor(Tensor t, Tensor b) override {
     using namespace functional;
@@ -56,18 +74,18 @@ public:
   }
   
   void pruneGraph(Ptr<ExpressionGraph> graph, int batchNum) override {
-    if (batchNum == 0 || batchNum % batchStep_ != 0 || batchNum > batchStop_) {
-      LOG_ONCE(info, "Finished pruning at iteration {}...", batchNum);
+    if (batchNum == 0 || batchNum % pruningStep_ != 0 || batchNum > pruningStop_ || batchNum < pruningStart_) {
+      // LOG_ONCE(info, "Finished pruning at iteration {}...", batchNum);
       return;
     }
     
-    // for every tensor in a graph 
+    // for every node in a graph 
     for(auto p : *graph->params()) {
       // do not prune layer normalisation
-      if (p->name().find("_ln_") != std::string::npos) { return; }
-      pruneTensor(p->val(), p->name(), batchNum);
+      if (p->name().find("_ln_") != std::string::npos) { continue; }
+      if (p->name().find("_b") != std::string::npos) { continue; }
+      pruneNode(p, batchNum);
     }
-
   }
 
 };
@@ -77,154 +95,124 @@ public:
 
   MagnitudePruner(Ptr<Options> options) : CoefficientPruner(options) {};
 
-  void calculateThreshold(Tensor t, std::string name, int batchNum) override {
+  void calculateThreshold(Expr p, int batchNum) override {
     float startSparsity = 0.0f; // TODO: if we modify the algorithm, actually calculate the start sparsity of the tensor/model because sparsity may be non-linear
-    float sparsity = targetSparsity_ + std::min(0.0f, (startSparsity - targetSparsity_) * (1 - float(batchNum) / float(batchStop_)));
-    int k = t->size() * sparsity; // calculate k for topk
+    float sparsity = pruningSparsity_ + std::min(0.0f, (startSparsity - pruningSparsity_) * (1 - float(batchNum) / float(pruningStop_)));
+    int k = p->val()->size() * sparsity; // calculate k for topk
     
     // extract tensor to a vector
     std::vector<float> tVec;
-    t->get(tVec);
+    p->val()->get(tVec);
     // get the abs value
     std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabs); 
     std::sort(tVec.begin(), tVec.end());
     
     threshold_ = tVec[k];
-
-
   }
 
-  void pruneTensor(Tensor t, std::string name, int batchNum) override { 
-    calculateThreshold(t, name, batchNum);
+  void pruneNode(Expr p, int batchNum) override {
+	
+    calculateThreshold(p, batchNum);
     
     using namespace functional;
-    Element(_1 = if_then_else(abs(_1) < threshold_, 0, _1), t);
+    Element(_1 = if_then_else(abs(_1) < threshold_, 0, _1), p->val());
     
     int cnt = 0;
     std::vector<float> tVec;
-    t->get(tVec);
+    p->val()->get(tVec);
     for (auto x : tVec) {
       if (x == 0) 
         cnt++;
     } 
-    LOG(info, "[{}] threshold: {} || zero count = {}/{}", name, threshold_, cnt, t->size());
+    LOG(info, "[{}] threshold: {} || zero count = {}/{}", p->name(), threshold_, cnt, p->val()->size());
   } 
 
 };
 
 
-  /* pruning implementation */
-  static void pruneImpl(Tensor t, Tensor g, Ptr<ExpressionGraph> graph, int mbNum, std::string name = "") {
-        
-    // TODO: Add gradients to the function
-    // We're gonna prune based on magnitude * gradients
+class MagnitudeGradientPruner : public CoefficientPruner {
+public:
 
+  MagnitudeGradientPruner(Ptr<Options> options) : CoefficientPruner(options) {};
 
-    float threshold = 0.0f; // threshold to calculate
-    float targetSparsity = 0.1; // sparsity we want to achieve for each layer
-    float startSparsity = 0.0; // starting sparsity, probably going to be 0%
-    int step = 10; // to prune how frequently (batches)
-    int totalSteps = 100; // how many batches to prune for
-
-
-    // check whether it is time to prune at all (maybe check before that)
-    if (mbNum == 0 || mbNum % step != 0 || mbNum > totalSteps) {
-      // LOG(info, "EXITING PRUNING BECAUSE IT'S NOT TIME {} {}", mbNum, step);
-      return;
-    }
-
-    // don't prune layer normalisation???
-    if (name.find("_ln_") != std::string::npos) {
-      return;
-    }
-
-    // calculate the sparsity we have to achieve in this pruning step
-    float sparsity = targetSparsity + std::min(0.0f, (startSparsity - targetSparsity) * (1 - float(mbNum) / float(totalSteps)));
-
-    LOG(info, "sparsity {}", sparsity);
-
-    int k = t->size() * sparsity; // calculate k for topk
+  void calculateThreshold(Expr p, int batchNum) override {
+    float startSparsity = 0.0f; // TODO: if we modify the algorithm, actually calculate the start sparsity of the tensor/model because sparsity may be non-linear
+    float sparsity = pruningSparsity_ + std::min(0.0f, (startSparsity - pruningSparsity_) * (1 - float(batchNum) / float(pruningStop_)));
+    int k = p->val()->size() * sparsity; // calculate k for topk
     
-    LOG(info, "tensor size {}", t->size()); 
-    LOG(info, "k {}", k);
+    // extract tensor to a vector
+    std::vector<float> tVec;
+    std::vector<float> gVec;
+    p->val()->get(tVec);
+    p->val()->get(gVec);
+    // get the abs value
 
-    // TODO: Do topK with Tensors 
-    // // reshape t into a vector??? to get topk from all of it, not just per rowShape({1, rows})
-    // auto tVec = TensorBase::New(t->memory(), Shape({1, t->shape()[0] * t->shape()[1]}), t->type(), t->getBackend());
-    // Tensor topKVal, topKInd; // Do I allocate the memory here somehow??? or does topk do it for me
-    // TopK(topKVal, topKInd, graph->allocator(), tVec, k, 1, true); // calculate TopK value?
-    // threshold = topKVal->scalar(); // extract topk scalar as a new threshold
+    // auto multiplyAbs2 = [](float v1, float v2){ return fabsf(std::multiplies<float>(v1, v2)); };
+    // auto multiplyAbs = combine2(fabsf, std::multiplies<float>()); 
+    // std::transform(tVec.begin(), tVec.end(), gVec.begin(), tVec.begin(), multiplyAbs2); //TODO figure out how to do abs and multiplies together with a single std::transform
+    std::transform(tVec.begin(), tVec.end(), gVec.begin(), tVec.begin(), std::multiplies<float>());
+    std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabs); 
+    std::sort(tVec.begin(), tVec.end());
     
+    threshold_ = tVec[k];
+  }
 
-    ////////////////////////////////////////////////////////////////////////////
-    // Pruning with the simplest C++ sorting?
-    ////////////////////////////////////////////////////////////////////////////
-
-    std::vector<float> valVec;
-    // std::vector<float> adjVec; // gradients?
-
+  void pruneNode(Expr p, int batchNum) override {
+	
+    calculateThreshold(p, batchNum);
     
-    t->get(valVec);
-    // g->get(adjVec);
-
-    // std::cout << "valVec" << std::endl;
-
-    // for (int i = 1; i <= 15; i++)
-      // std::cout << valVec[i] << " ";
-    // std::cout << std::endl;
-
-    // std::cout << "adjVec" << std::endl;
-    // for (int i = 1; i <= 15; i++)
-      // std::cout << adjVec[i] << " ";
-    // std::cout << std::endl;
-
-
-    std::vector<float> scores;
-    for (const auto& i: valVec)
-      scores.push_back(std::abs(i));
-    
-    // std::cout << "scores" << std::endl;
-    // for (int i = 1; i <= 15; i++)
-      // std::cout << scores[i] << " ";
-    // std::cout << std::endl;
-    
-    // std::transform(valVec.begin(), valVec.end(), adjVec.begin(), 
-                   // std::back_inserter(scores), std::multiplies<float>());
-
-    std::sort(scores.begin(), scores.end());
-    
-    threshold = scores[k];
-
-
     using namespace functional;
-    Element(_1 = if_then_else(abs(_1) < threshold, 0, _1), t);
+    Element(_1 = if_then_else(abs(_1 * _2) < threshold_, 0, _1), p->val(), p->grad());
     
     int cnt = 0;
-    t->get(valVec);
-    for (auto x : valVec) {
+    std::vector<float> cVec;
+    p->val()->get(cVec);
+    for (auto x : cVec) {
       if (x == 0) 
         cnt++;
-    }
-    
-    LOG(info, "[{}] prune by {}: treshold: {} || zero count = {}/{}", name, sparsity, threshold, cnt, t->size());
-  }
+    } 
+    LOG(info, "[{}] threshold: {} || zero count = {}/{}", p->name(), threshold_, cnt, p->val()->size());
+  } 
 
-  /* prune the whole graph */
-  static void pruneGraph(Ptr<ExpressionGraph> graph, int mbNum, Ptr<Options> options) {
-    // loop layer by layer
-    for(auto p : *graph->params()) {
-        pruneImpl(p->val(), p->grad(), graph, mbNum, p->name());
-    }
-  }
+};
 
-  /* basically given the pruned param Tensor, also apply the same pruing to the other tensor 
+/* basically given the pruned param Tensor, also apply the same pruing to the other tensor 
      this is useful if you want to prune the gradient or moving avg as well..
-  */
-  static void applyPrune(Tensor t, Tensor b) {
-    using namespace functional;
-    // if t is 0, then also set b to 0.
-    Element(_1 = if_then_else(_2 == 0, 0, _1), b, t);
+*/
+
+
+class PrunerFactory : public Factory {
+public:
+  using Factory::Factory;
+  PrunerFactory(Ptr<Options> options) : Factory(options) {};
+
+  Ptr<IPruner> construct() {
+    std::string pruningType = options_->get<std::string>("pruning-type");
+
+    if (pruningType == "magnitude") {
+      LOG_ONCE(info, "Pruning type selected: magnitude");
+      return New<MagnitudePruner>(options_);
+    } 
+    else if (pruningType == "magnitude-gradient") {
+      LOG_ONCE(info, "Pruning type selected: magnitude-gradient");
+      return New<MagnitudeGradientPruner>(options_);
+    }
+    else {
+      LOG_ONCE(info, "Pruning type selected but not on the list? Returning nullptr, will break");
+      return nullptr;
+    }
+  
   }
+
+};
+
+
+
+static void applyPrune(Tensor t, Tensor b) {
+  using namespace functional;
+  // if t is 0, then also set b to 0.
+  Element(_1 = if_then_else(_2 == 0, 0, _1), b, t);
+}
 
 }
 

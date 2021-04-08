@@ -549,8 +549,21 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // add ULR settings
   addSuboptionsULR(cli);
 
-  cli.add<bool>("--model-prune",
-      "prune the model");
+  cli.add<std::string>("--pruning-type",
+     "Pruning parameters: magnitude, magnitude-gradient",
+     "");
+  cli.add<int>("--pruning-start",
+     "Pruning parameters: iteration to start",
+     0);
+  cli.add<int>("--pruning-step",
+     "Pruning parameters: how often to prune",
+     10000);
+  cli.add<int>("--pruning-stop",
+     "Pruning parameters: iteration to end",
+     400000);
+  cli.add<float>("--pruning-sparsity",
+     "Pruning parameters: sparsity to achieve",
+     0.9);
 
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");

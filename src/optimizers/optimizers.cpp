@@ -423,29 +423,29 @@ void Adam::updateImpl(Tensor params, Tensor grads, size_t actualMBSize) {
   // vt_ is not necessary, see the function.
   if (batchesSeen_ > 1) {
     applyPrune(params, mt_);
-    std::vector<float> paramsVec, gradsVec, mtVec;
-    params->get(paramsVec);
-    grads->get(gradsVec);
-    mt_->get(mtVec);
+    // std::vector<float> paramsVec, gradsVec, mtVec;
+    // params->get(paramsVec);
+    // grads->get(gradsVec);
+    // mt_->get(mtVec);
 
-    std::string paramsStr;
-    for (int i = 1; i <= 15; i++)
-      paramsStr += (paramsStr.empty() ? "" : ",") + std::to_string(paramsVec[i]);
+    // std::string paramsStr;
+    // for (int i = 1; i <= 15; i++)
+      // paramsStr += (paramsStr.empty() ? "" : ",") + std::to_string(paramsVec[i]);
 
-    LOG(info, "params {}", paramsStr);
+    // LOG(info, "params {}", paramsStr);
 
 
-    std::string gradsStr;
-    for (int i = 1; i <= 15; i++)
-      gradsStr += (gradsStr.empty() ? "" : ",") + std::to_string(gradsVec[i]);
+    // std::string gradsStr;
+    // for (int i = 1; i <= 15; i++)
+      // gradsStr += (gradsStr.empty() ? "" : ",") + std::to_string(gradsVec[i]);
 
-    LOG(info, "grads {}", gradsStr);
+    // LOG(info, "grads {}", gradsStr);
     
-    std::string mtStr;
-    for (int i = 1; i <= 15; i++)
-      mtStr += (mtStr.empty() ? "" : ",") + std::to_string(mtVec[i]);
+    // std::string mtStr;
+    // for (int i = 1; i <= 15; i++)
+      // mtStr += (mtStr.empty() ? "" : ",") + std::to_string(mtVec[i]);
 
-    LOG(info, "mt {}", mtStr);
+    // LOG(info, "mt {}", mtStr);
   }
 
   // apply Adam normalization

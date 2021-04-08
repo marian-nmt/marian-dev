@@ -306,8 +306,12 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
 
       // apply model pruning
       // must prune the whole graph instead of the tensor shard, since we need the layer information which stored in the graph.
-      if (options_->get<bool>("model-prune")) {
-          auto pruner = New<MagnitudePruner>(options_);
+      if (options_->get<std::string>("pruning-type") != "") {
+          // auto pruner = New<MagnitudePruner>(options_);
+          // auto pruner = New<MagnitudeGradientPruner>(options_);
+
+          auto pruner = New<PrunerFactory>(options_)->construct();
+
           pruner->pruneGraph(graphs_[i], scheduler_->numberOfBatches());
 
           // also apply the same pruning to moving avg and gradient

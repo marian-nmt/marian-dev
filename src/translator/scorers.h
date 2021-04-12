@@ -107,7 +107,7 @@ public:
 
   virtual void init(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());
-    if(items_.size() > 0)
+    if(!items_.empty())
       encdec_->load(graph, items_);
     else if(ptr_)
       encdec_->mmap(graph, ptr_);

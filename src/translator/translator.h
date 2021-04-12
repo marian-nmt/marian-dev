@@ -37,7 +37,8 @@ private:
 
   size_t numDevices_;
 
-  std::vector<mio::mmap_source> mmaps_;
+  std::vector<mio::mmap_source> model_mmaps_; // map
+  std::vector<std::vector<io::Item>> model_items_; // non-mmap
 
 public:
   Translate(Ptr<Options> options)
@@ -65,11 +66,17 @@ public:
     scorers_.resize(numDevices_);
     graphs_.resize(numDevices_);
 
+    auto models = options->get<std::vector<std::string>>("models");
     if(options_->get<bool>("model-mmap")) {
-      auto models = options->get<std::vector<std::string>>("models");
       for(auto model : models) {
         ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
-        mmaps_.push_back(std::move(mio::mmap_source(model)));
+        model_mmaps_.push_back(std::move(mio::mmap_source(model)));
+      }
+    }
+    else {
+      for(auto model : models) {
+        auto items = io::loadItems(model);
+        model_items_.push_back(std::move(items));
       }
     }
 
@@ -85,10 +92,10 @@ public:
 
         std::vector<Ptr<Scorer>> scorers;
         if(options_->get<bool>("model-mmap")) {
-          scorers = createScorers(options_, mmaps_);
+          scorers = createScorers(options_, model_mmaps_);
         }
         else {
-          scorers = createScorers(options_);
+          scorers = createScorers(options_, model_items_);
         }
 
         for(auto scorer : scorers) {
@@ -131,11 +138,11 @@ public:
     std::mutex syncCounts;
 
     // timer and counters for total elapsed time and statistics
-    std::unique_ptr<timer::Timer> totTimer(new timer::Timer()); 
+    std::unique_ptr<timer::Timer> totTimer(new timer::Timer());
     size_t totBatches      = 0;
     size_t totLines        = 0;
     size_t totSourceTokens = 0;
-    
+
     // timer and counters for elapsed time and statistics between updates
     std::unique_ptr<timer::Timer> curTimer(new timer::Timer());
     size_t curBatches      = 0;
@@ -161,7 +168,7 @@ public:
     bg.prepare();
     for(auto batch : bg) {
       auto task = [=, &syncCounts,
-                      &totBatches, &totLines, &totSourceTokens, &totTimer, 
+                      &totBatches, &totLines, &totSourceTokens, &totTimer,
                       &curBatches, &curLines, &curSourceTokens, &curTimer](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
         thread_local std::vector<Ptr<Scorer>> scorers;
@@ -185,12 +192,12 @@ public:
         }
 
         // if we asked for speed information display this
-        if(statFreq.n > 0) { 
+        if(statFreq.n > 0) {
           std::lock_guard<std::mutex> lock(syncCounts);
-          totBatches++; 
+          totBatches++;
           totLines        += batch->size();
           totSourceTokens += batch->front()->batchWords();
-        
+
           curBatches++;
           curLines        += batch->size();
           curSourceTokens += batch->front()->batchWords();

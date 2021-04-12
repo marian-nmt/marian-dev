@@ -166,6 +166,7 @@ Ptr<Scorer> scorerByType(const std::string& fname,
 
 
 std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options);
+std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<std::vector<io::Item>> models);
 
 Ptr<Scorer> scorerByType(const std::string& fname,
                          float weight,

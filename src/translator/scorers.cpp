@@ -72,8 +72,6 @@ Ptr<Scorer> scorerByType(const std::string& fname,
 std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<std::vector<io::Item>> models) {
   std::vector<Ptr<Scorer>> scorers;
 
-  // auto models = options->get<std::vector<std::string>>("models");
-
   std::vector<float> weights(models.size(), 1.f);
   if(options->hasAndNotEmpty("weights"))
     weights = options->get<std::vector<float>>("weights");
@@ -85,21 +83,16 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<s
 
     // load options specific for the scorer
     auto modelOptions = New<Options>(options->clone());
-    try {
-      if(!options->get<bool>("ignore-model-config")) {
-        YAML::Node modelYaml;
-        io::getYamlFromModel(modelYaml, "special:model.yml", items);
-
-        if(!modelYaml.IsNull()) {
-          LOG(info, "Loaded model config");
-          modelOptions->merge(modelYaml, true);
-        }
-        else {
-          LOG(warn, "No model settings found in model file");
-        }
+    if(!options->get<bool>("ignore-model-config")) {
+      YAML::Node modelYaml;
+      io::getYamlFromModel(modelYaml, "special:model.yml", items);
+      if(!modelYaml.IsNull()) {
+        LOG(info, "Loaded model config");
+        modelOptions->merge(modelYaml, true);
       }
-    } catch(std::runtime_error&) {
-      LOG(warn, "No model settings found in model file");
+      else {
+        LOG(warn, "No model settings found in model file");
+      }
     }
 
     // l2r and r2l cannot be used in the same ensemble
@@ -137,14 +130,16 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options) {
 
     // load options specific for the scorer
     auto modelOptions = New<Options>(options->clone());
-    try {
-      if(!options->get<bool>("ignore-model-config")) {
-        YAML::Node modelYaml;
-        io::getYamlFromModel(modelYaml, "special:model.yml", model);
+    if(!options->get<bool>("ignore-model-config")) {
+      YAML::Node modelYaml;
+      io::getYamlFromModel(modelYaml, "special:model.yml", model);
+      if(!modelYaml.IsNull()) {
+        LOG(info, "Loaded model config");
         modelOptions->merge(modelYaml, true);
       }
-    } catch(std::runtime_error&) {
-      LOG(warn, "No model settings found in model file");
+      else {
+        LOG(warn, "No model settings found in model file");
+      }
     }
 
     // l2r and r2l cannot be used in the same ensemble
@@ -179,14 +174,16 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<c
 
     // load options specific for the scorer
     auto modelOptions = New<Options>(options->clone());
-    try {
-      if(!options->get<bool>("ignore-model-config")) {
-        YAML::Node modelYaml;
-        io::getYamlFromModel(modelYaml, "special:model.yml", ptr);
+    if(!options->get<bool>("ignore-model-config")) {
+      YAML::Node modelYaml;
+      io::getYamlFromModel(modelYaml, "special:model.yml", ptr);
+      if(!modelYaml.IsNull()) {
+        LOG(info, "Loaded model config");
         modelOptions->merge(modelYaml, true);
       }
-    } catch(std::runtime_error&) {
-      LOG(warn, "No model settings found in model file");
+      else {
+        LOG(warn, "No model settings found in model file");
+      }
     }
 
     scorers.push_back(scorerByType(fname, weights[i], ptr, modelOptions));

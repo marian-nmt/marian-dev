@@ -144,7 +144,7 @@ public:
     std::vector<float> tVec;
     std::vector<float> gVec;
     p->val()->get(tVec);
-    p->val()->get(gVec);
+    p->grad()->get(gVec);
     // get the abs value
 
     // auto multiplyAbs2 = [](float v1, float v2){ return fabsf(std::multiplies<float>(v1, v2)); };

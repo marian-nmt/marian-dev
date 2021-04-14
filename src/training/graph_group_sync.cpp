@@ -303,35 +303,49 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
       auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
       float l2norm = optimizerShards_[i]->update(curParam, curGrad, updateTargetWords, gradientNormalizer);
+      
+      // synchronize the gradients
+      for (size_t idx = 0; idx < graphs_.size(); idx++)
+        if (idx != i)
+          graphs_[idx]->params()->grads()->subtensor(begin, end-begin)->copyFrom(curGrad);
 
-      // apply model pruning
-      // must prune the whole graph instead of the tensor shard, since we need the layer information which stored in the graph.
-      if (options_->get<std::string>("pruning-type") != "") {
-          // auto pruner = New<MagnitudePruner>(options_);
-          // auto pruner = New<MagnitudeGradientPruner>(options_);
-
-          auto pruner = New<PrunerFactory>(options_)->construct();
-
-          pruner->pruneGraph(graphs_[i], scheduler_->numberOfBatches());
-
-          // also apply the same pruning to moving avg and gradient
-          // annoyingly deal with shard memory.
-          if (optimizerShards_[i]->avg_) {
-            pruner->maskTensor(curParam, optimizerShards_[i]->avg_);
-          }
-      }
-
-      // resets remaining gradient to zero
-      curGrad->set(0.f); // @TODO: all the different places where gradients get reset are confusing
       return l2norm; // return partial norm
     };
 
     // Overwrite gradNorm with new value from normalized gradient
     gradNorm = executeAndCollectNorm(update);
+    
     if(!options_->get<bool>("normalize-gradient"))
       gradNorm /= updateTargetWords; // normalize for logging
 
     comm_->allGatherParams(); // distribute param value shards back
+
+    // apply prune. Only do it on one machine.
+    if (options_->get<std::string>("pruning-type") != "") {
+      auto pruner = New<PrunerFactory>(options_)->construct();
+
+      // only do it on single GPU
+      pruner->pruneGraph(graphs_[0], scheduler_->numberOfBatches());
+
+      // then, redistribute the parameters back
+      comm_->foreach([&](size_t i, size_t begin, size_t end) {
+        auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
+        if (i > 0)
+          graphs_[i]->params()->vals()->copyFrom(graphs_[0]->params()->vals());
+
+        // also mask moving average
+        if (optimizerShards_[i]->avg_) {
+          pruner->maskTensor(curParam, optimizerShards_[i]->avg_);
+        }
+        return true;
+      });
+    }
+
+    // reset all grads
+    comm_->foreach([&](size_t i, size_t /*begin*/, size_t /*end*/) {
+      graphs_[i]->params()->grads()->set(0.0f); return true;
+    }); 
+
 
     // Re-add the error residual from previous quantization,
     // then re-quantize the model back and update the error residual

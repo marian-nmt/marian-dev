@@ -276,6 +276,15 @@ public:
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
 
+    // preload models
+    std::vector<std::vector<io::Item>> model_items_;
+    auto models = options->get<std::vector<std::string>>("models");
+    for(auto model : models) {
+      auto items = io::loadItems(model);
+      model_items_.push_back(std::move(items));
+    }
+
+
     // initialize scorers
     for(auto device : devices) {
       auto graph = New<ExpressionGraph>(true);
@@ -286,7 +295,7 @@ public:
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);
 
-      auto scorers = createScorers(options_);
+      auto scorers = createScorers(options_, model_items_);
       for(auto scorer : scorers) {
         scorer->init(graph);
         if(shortlistGenerator_)

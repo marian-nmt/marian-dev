@@ -328,7 +328,6 @@ public:
   virtual void load(Ptr<ExpressionGraph> graph,
                     const std::vector<io::Item>& items,
                     bool markedReloaded = true) override {
-    LOG(info, "[stepwise] encdec via items");
     encdec_->load(graph, items, markedReloaded);
   }
 

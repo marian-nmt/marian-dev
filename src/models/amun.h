@@ -89,8 +89,6 @@ public:
     if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
       nameMap["Wemb"] = "Wemb";
 
-    LOG(info, "[amun] Loading model from item");
-    // load items from .npz file
     auto ioItems = items;
     // map names and remove a dummy matrices
     for(auto it = ioItems.begin(); it != ioItems.end();) {
@@ -123,8 +121,6 @@ public:
   void load(Ptr<ExpressionGraph> graph,
             const std::string& name,
             bool /*markReloaded*/ = true) override {
-    LOG(info, "[amun] Loading model from file {}", name);
-    // load items from .npz file
     auto ioItems = io::loadItems(name);
     load(graph, ioItems);
   }

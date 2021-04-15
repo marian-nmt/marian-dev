@@ -28,8 +28,6 @@ public:
   void load(Ptr<ExpressionGraph> graph,
             const std::vector<io::Item>& items,
             bool /*markReloaded*/ = true) override {
-    LOG(info, "[nematus] Loading model from item");
-    // load items from .npz file
     auto ioItems = items;
     // map names and remove a dummy matrix 'decoder_c_tt' from items to avoid creating isolated node
     for(auto it = ioItems.begin(); it != ioItems.end();) {
@@ -62,8 +60,6 @@ public:
   void load(Ptr<ExpressionGraph> graph,
             const std::string& name,
             bool /*markReloaded*/ = true) override {
-    LOG(info, "[nematus] Loading model from file {}", name);
-    // load items from .npz file
     auto ioItems = io::loadItems(name);
     load(graph, ioItems);
   }

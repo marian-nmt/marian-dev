@@ -488,10 +488,20 @@ Expr bdot(Expr a,
  */
 Expr affine(Expr a,
             Expr b,
-            Expr c,
+            Expr bias,
             bool transA = false,
             bool transB = false,
             float scalar = 1.f);
+
+/**
+ * As above, but efficiently applies relu transformation to output. For inference only.
+ */
+Expr affineWithRelu(Expr a,
+                    Expr b,
+                    Expr bias,
+                    bool transA = false,
+                    bool transB = false,
+                    float scalar = 1.f);
 
 /**
  * Computes the dot product of CSR-tensor @p A with @p B.
@@ -904,6 +914,18 @@ Expr weighted_average(Expr in, Expr weights, int ax = 0);
  * @see LayerNormalizationOp
  */
 Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
+
+/**
+ * Applies RMS normalization over the last dimension. 
+ * 
+ * See: Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization. 
+ * In Advances in Neural Information Processing Systems 32. Vancouver, Canada.
+ * @f[
+   \frac{x}{\sqrt{\frac{1}{N}\sum x^2 + \mathrm{eps}}} \times \gamma + \beta
+ * @f]
+ * @see RMSNormalizationOp
+ */
+Expr rmsNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
 /**
  * Highway transformation.

@@ -651,6 +651,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Subtract (arg * translation length) from translation score");
   cli.add<bool>("--allow-unk",
       "Allow unknown words to appear in output");
+  cli.add<bool>("--allow-special",
+      "Allow special symbols to appear in output, e.g. for SentencePiece with byte-fallback do not suppress the newline symbol");
   cli.add<bool>("--n-best",
       "Generate n-best list");
   cli.add<std::string>("--alignment",
@@ -658,6 +660,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
     ->implicit_val("1");
   cli.add<bool>("--word-scores",
       "Print word-level scores. One score per subword unit, not normalized even if --normalize");
+  cli.add<std::string/*SchedulerPeriod*/>("--stat-freq",
+    "Display speed information every arg mini-batches. Disabled by default with 0, set to value larger than 0 to activate",
+    "0");
 #ifdef USE_SENTENCEPIECE
   cli.add<bool>("--no-spm-decode",
       "Keep the output segmented into SentencePiece subwords");

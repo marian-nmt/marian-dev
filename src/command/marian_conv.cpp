@@ -2,6 +2,7 @@
 #include "common/cli_wrapper.h"
 #include "tensors/cpu/expression_graph_packable.h"
 #include "onnx/expression_graph_onnx_exporter.h"
+#include "data/shortlist.h"
 
 #include <sstream>
 
@@ -25,10 +26,33 @@ int main(int argc, char** argv) {
     cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512, "
                           "intgemm8, intgemm8ssse3, intgemm8avx2, intgemm8avx512, intgemm16, intgemm16sse2, intgemm16avx2, intgemm16avx512", 
                           "float32");
-    cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export");
+    cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export and shortlist conversion");
+    cli->add<std::vector<std::string>>("--shortlist,-s", "Shortlist conversion: filePath firstNum bestNum threshold");
+    cli->add<std::string>("--dump,-d", "Binary shortlist dump path","lex.bin");
     cli->parse(argc, argv);
     options->merge(config);
   }
+
+  // shortlist conversion:
+  // ./ marian-cov --shortlist lex.esen.s2t 100 100 0
+  //               --dump lex.esen.bin
+  //               --vocabs vocab.esen.spm vocab.esen.spm
+  if(options->hasAndNotEmpty("shortlist")){
+    auto vocabPaths = options->get<std::vector<std::string>>("vocabs");
+    auto dumpPath = options->get<std::string>("dump");
+
+    Ptr<Vocab> srcVocab = New<Vocab>(options, 0);
+    srcVocab->load(vocabPaths[0]);
+    Ptr<Vocab> trgVocab = New<Vocab>(options, 1);
+    trgVocab->load(vocabPaths[1]);
+
+    Ptr<const data::ShortlistGenerator> binaryShortlistGenerator
+        = New<data::BinaryShortlistGenerator>(options, srcVocab, trgVocab, 0, 1, vocabPaths[0] == vocabPaths[1]);
+    binaryShortlistGenerator->dump(dumpPath);
+    LOG(info, "Finished");
+    return 0;
+  }
+
   auto modelFrom = options->get<std::string>("from");
   auto modelTo = options->get<std::string>("to");
 

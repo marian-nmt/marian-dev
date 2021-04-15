@@ -143,7 +143,9 @@ Ptr<ShortlistGenerator> createShortlistGenerator(Ptr<Options> options,
   std::vector<std::string> vals = options->get<std::vector<std::string>>("shortlist");
   ABORT_IF(vals.empty(), "No path to shortlist given");
   std::string fname = vals[0];
-  if(filesystem::Path(fname).extension().string() == ".bin") {
+  if(isBinaryShortlist(fname)){
+      return New<BinaryShortlistGenerator>(options, srcVocab, trgVocab, srcIdx, trgIdx, shared);
+  } else if(filesystem::Path(fname).extension().string() == ".bin") {
     return New<QuicksandShortlistGenerator>(options, srcVocab, trgVocab, srcIdx, trgIdx, shared);
   } else {
     return New<LexicalShortlistGenerator>(options, srcVocab, trgVocab, srcIdx, trgIdx, shared);

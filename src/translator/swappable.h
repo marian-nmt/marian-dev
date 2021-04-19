@@ -5,9 +5,10 @@
  * vocabularies must have the same size.  To make vocabulary the same size, pad
  * using scripts/contrib/pad_model_vocabulary.py offline.
  */
-#include "marian.h"
 #include "common/io.h"
 #include "data/vocab.h"
+#include "marian.h"
+#include "training/scheduler.h"
 #include "translator/history.h"
 
 #include <string>
@@ -27,12 +28,15 @@ class CPULoadedModel;
 class GPUEngineTrain {
 private:
   friend class GPULoadedModelTrain;
+  friend class GPULoadedModel;
   Ptr<Options> options_;
   Ptr<ExpressionGraph> graph_;
-  std::vector<Ptr<Scorer> > scorers_;
+  Ptr<models::ICriterionFunction> builder_;
   const DeviceId myDeviceId_;
   Allocator allocator_;
+  bool initialized_ = false;
 
+  void Initialize(Ptr<data::Batch> batch);
   void SwapPointers(std::vector<MemoryPiece::PtrType> &with);
 
 public:
@@ -49,6 +53,8 @@ public:
 /* A model loaded on the GPU that can be overwritten from CPU or GPU. */
 class GPULoadedModelTrain {
   private:
+    friend class GPULoadedModel;
+
     Ptr<GPUEngineTrain> engine_;
 
     std::vector<MemoryPiece::PtrType> parameters_;
@@ -68,7 +74,7 @@ class GPULoadedModelTrain {
     void Load(const CPULoadedModelTrain &from);
     void Load(const GPULoadedModelTrain &from);
 
-    Histories Translate(const std::vector<std::string> &input);
+    void Train(const std::vector<std::string> &input);
 };
 
 /* A model loaded on the CPU. */
@@ -140,6 +146,7 @@ class GPULoadedModel {
     // Overwrite this model with parameters from a different one.
     void Load(const CPULoadedModel &from);
     void Load(const GPULoadedModel &from);
+    void Load(const GPULoadedModelTrain &from);
 
     Histories Translate(const std::vector<std::string> &input);
 };

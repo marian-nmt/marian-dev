@@ -283,8 +283,7 @@ TRITONBACKEND_ModelInstanceFinalize(TRITONBACKEND_ModelInstance* instance)
     return nullptr;  // success
 }
 
-TRITONSERVER_Error*
-TRITONBACKEND_ModelInstanceExecute(
+TRITONSERVER_Error* serveRequestsSync(
     TRITONBACKEND_ModelInstance* instance, TRITONBACKEND_Request** requests,
     const uint32_t request_count)
 {
@@ -577,6 +576,377 @@ TRITONBACKEND_ModelInstanceExecute(
     free_result(result);
 
     return nullptr;  // success
+}
+
+// Again, this is gross but the exposed API is a C API. These states are needed
+// to correctly process sentences asynchronously. They are updated when the async
+// execute function is called.
+
+struct CallbackState {
+    // A vector of vectors containing requests that are partially completed. This vector
+    // is of length request_count. Each vector within has size request_batch_size. A 
+    // request is complete when all the vectors for that request are not empty.
+    std::vector<std::vector<std::string>> partially_completed_requests;
+
+    // A vector mapping each request to its orig batch. That is marianBatch_to_tritonRequest_map[b] gives
+    // the request that element b in the marian batch originated from. This handles the fact 
+    // that some requests may be split into several sentences to Marian.
+    std::vector<int> marianBatch_to_tritonRequest_map;
+
+    // A vector mapping the marian batch index to the index of the request.
+    std::vector<int> marianBatchIdx_to_requestBatchIdx_map;
+
+    // 'responses' is initialized with the response objects below and
+    // if/when an error response is sent the corresponding entry in
+    // 'responses' is set to nullptr to indicate that that response has
+    // already been sent.
+    std::vector<TRITONBACKEND_Response*> responses;
+
+    // State to collect statistics about the sentence in the given batch.
+    uint64_t exec_start_ns;
+
+    // Request inputs
+    std::vector<TRITONBACKEND_Input*> request_input;
+
+    // Requests to Triton
+    TRITONBACKEND_Request** requests;
+};
+
+
+
+void sendResponse(int bn, const char* result, void* userData) 
+{
+    CallbackState* state = (CallbackState*) userData;
+
+    // Use at to get bound checking when accessing the vector
+    int requestNumber = state->marianBatch_to_tritonRequest_map.at(bn);
+    int requestBatchIdx = state->marianBatchIdx_to_requestBatchIdx_map.at(bn);
+    size_t requestBatchSize = state->partially_completed_requests.at(requestNumber).size();
+
+    // For uniformity, I always assign the translated sentence to the partially completed requests array.
+    const std::vector<std::string>& requestStaging = state->partially_completed_requests.at(requestNumber);
+
+    if (!requestStaging.at(requestBatchIdx).empty()) {
+        GUARDED_RESPOND_IF_ERROR(
+            state->responses, requestNumber,
+            TRITONSERVER_ErrorNew(
+                TRITONSERVER_ERROR_UNSUPPORTED,
+                "Staging this request will overwrite an existing sentence."
+            )
+        );
+
+        LOG_MESSAGE(
+            TRITONSERVER_LOG_ERROR,
+            (std::string("request ") + std::to_string(requestNumber) +
+            ": failed to stage request as a sentence seems to exist in the staging area.")
+            .c_str()
+        );
+        return;
+    }
+    requestStaging.at(requestBatchIdx) = result;
+
+    // Now we check if any sentence in the batch of requests still remains to be processed. If so, 
+    // return immediately since we have already stored the translated sentence in the staging area above.
+    for (const auto& sentence : requestStaging) {
+        if (sentence.empty()) {
+            return;
+        }
+    }
+    
+    // If here, we need to concat all the sentences in the staging area for the given request and immediately
+    // send a response to the user.
+    std::string concatedSentences;
+    for (int sen = 0; sen < (int)requestStaging.size(); ++sen) {
+        concatedSentences += sentence;
+        if (sen + 1 != (int)requestStaging.size()) {
+            concatedSentences += "\n";
+        }
+    }
+
+    std::cout << bn << " " << concatedSentences << std::endl;
+
+    TRITONBACKEND_Input* input = state->request_input[r];
+    const char* input_name;
+    TRITONSERVER_DataType input_datatype;
+    const int64_t* input_shape;
+    uint32_t input_dims_count;
+    uint64_t input_byte_size;
+    uint32_t input_buffer_count;
+
+    GUARDED_RESPOND_IF_ERROR(
+        state->responses, requestNumber,
+        TRITONBACKEND_InputProperties(
+            input, &input_name, &input_datatype, &input_shape,
+            &input_dims_count, &input_byte_size, &input_buffer_count
+        )
+    );
+
+    if (state->responses[requestNumber] == nullptr) {
+        LOG_MESSAGE(
+            TRITONSERVER_LOG_ERROR,
+            (std::string("request ") + std::to_string(requestNumber) +
+                ": failed to read input properties, error response sent")
+                .c_str()
+        );
+        return;
+    }
+
+    TRITONBACKEND_Request* request = state->requests[requestNumber];
+    const char* requested_output_name = nullptr;
+    GUARDED_RESPOND_IF_ERROR(
+        state->responses, requestNumber,
+        TRITONBACKEND_RequestOutputName(
+            request, 0 /* index */, &requested_output_name
+        )
+    );
+
+    // Create an output tensor in the response,
+    // input and output have same datatype and shape...
+    TRITONBACKEND_Response* response = state->responses[requestNumber];
+    TRITONBACKEND_Output* output;
+    GUARDED_RESPOND_IF_ERROR(
+        state->responses, requestNumber,
+        TRITONBACKEND_ResponseOutput(
+            response, &output, requested_output_name, input_datatype,
+            input_shape, input_dims_count
+        )
+    );
+
+    // Get the output buffer. We request a buffer in CPU memory
+    // but we have to handle any returned type. If we get back
+    // a buffer in GPU memory we just fail the request.
+    void* output_buffer;
+    int c_str_size = (int)concatedSentences.size() + 1;
+    TRITONSERVER_MemoryType output_memory_type = TRITONSERVER_MEMORY_CPU;
+    int64_t output_memory_type_id = 0;
+    GUARDED_RESPOND_IF_ERROR(
+        state->responses, requestNumber,
+        TRITONBACKEND_OutputBuffer(
+            output, &output_buffer, c_str_size + 4,
+            &output_memory_type, &output_memory_type_id
+        )
+    );
+
+    if ((responses[requestNumber] == nullptr) ||
+        (output_memory_type == TRITONSERVER_MEMORY_GPU)) {
+        GUARDED_RESPOND_IF_ERROR(
+            state->responses, requestNumber,
+            TRITONSERVER_ErrorNew(
+                TRITONSERVER_ERROR_UNSUPPORTED,
+                "failed to create output buffer in CPU memory"
+            )
+        );
+        LOG_MESSAGE(
+            TRITONSERVER_LOG_ERROR,
+            (std::string("request ") + std::to_string(requestNumber) +
+            ": failed to create output buffer in CPU memory, error request sent")
+            .c_str()
+        );
+        return;
+    }
+
+    // Copy Marian result -> output.
+    memcpy(output_buffer, reinterpret_cast<char*>(&c_str_size), 4);
+    memcpy(reinterpret_cast<char*>(output_buffer) + 4, concatedSentences.c_str(), c_str_size);
+
+    // Send the response.
+    LOG_IF_ERROR(
+        TRITONBACKEND_ResponseSend(
+            responses[requestNumber], TRITONSERVER_RESPONSE_COMPLETE_FINAL,
+            nullptr /* success */),
+        "failed sending response"
+    );
+
+    // Report statistics for the successful request.
+    uint64_t request_exec_end_ns = 0;
+    SET_TIMESTAMP(request_exec_end_ns);
+    LOG_IF_ERROR(
+        TRITONBACKEND_ModelInstanceReportStatistics(
+            instance_state->TritonModelInstance(), request, true /* success */,
+            state->exec_start_ns, state->exec_start_ns, request_exec_end_ns, request_exec_end_ns),
+        "failed reporting request statistics"
+    );
+
+    // Release each request as soon as we sent the corresponding response.
+    LOG_IF_ERROR(
+        TRITONBACKEND_RequestRelease(request, TRITONSERVER_REQUEST_RELEASE_ALL),
+        "failed releasing request"
+    );
+}
+
+TRITONSERVER_Error* serveRequestsAsync(
+    TRITONBACKEND_ModelInstance* instance, TRITONBACKEND_Request** requests,
+    const uint32_t request_count)
+{
+    LOG_MESSAGE(
+        TRITONSERVER_LOG_INFO,
+        ("Marian model instance executing " + std::to_string(request_count) +
+         " requests").c_str()
+    );
+
+    CallbackState state;
+    state.requests = requests;
+    state.responses.reserve(request_count);
+
+    // Create a single response object for each request. If something
+    // goes wrong when attempting to create the response objects just
+    // fail all of the requests by returning an error.
+    for (uint32_t r = 0; r < request_count; ++r) {
+        TRITONBACKEND_Request* request = requests[r];
+
+        TRITONBACKEND_Response* response;
+        RETURN_IF_ERROR(TRITONBACKEND_ResponseNew(&response, request));
+        state.responses.push_back(response);
+    }
+
+    uint64_t total_batch_size = 0;
+
+    // We will execute all the requests at the same time, and so there
+    // will be a single compute-start / compute-end time-range.
+    state.exec_start_ns = 0;
+    SET_TIMESTAMP(state.exec_start_ns);
+
+    // It is assumed that this is always of size request count
+    state.partially_completed_requests.resize(request_count);
+
+    std::string input_strings;
+    // Create a single response object for each request. If something
+    // goes wrong when attempting to create the response objects just
+    // fail all of the requests by returning an error.
+    for (uint32_t r = 0; r < request_count; ++r) {
+        TRITONBACKEND_Request* request = requests[r];
+
+        const char* input_name;
+        GUARDED_RESPOND_IF_ERROR(
+            state.responses, r,
+            TRITONBACKEND_RequestInputName(request, 0 /* index */, &input_name)
+        );
+
+        TRITONBACKEND_Input* input = nullptr;
+        GUARDED_RESPOND_IF_ERROR(
+            state.responses, r,
+            TRITONBACKEND_RequestInput(request, input_name, &input)
+        );
+        state.request_input.push_back(input);
+
+        // If an error response was sent while getting the input name
+        // or input then display an error message and move on
+        // to next request.
+        if (state.responses[r] == nullptr) {
+            LOG_MESSAGE(
+                TRITONSERVER_LOG_ERROR,
+                (std::string("request ") + std::to_string(r) +
+                 ": failed to read input or requested output name, error response sent")
+                 .c_str()
+            );
+            continue;
+        }
+
+        // Get input buffer count.
+        uint32_t input_buffer_count;
+        GUARDED_RESPOND_IF_ERROR(
+            state.responses, r,
+            TRITONBACKEND_InputProperties(
+                input, nullptr /* input_name */, nullptr, nullptr,
+                nullptr, nullptr, &input_buffer_count
+            )
+        );
+        if (state.responses[r] == nullptr) {
+            LOG_MESSAGE(
+                TRITONSERVER_LOG_ERROR,
+                (std::string("request ") + std::to_string(r) +
+                 ": failed to read input properties, error response sent")
+                 .c_str()
+            );
+            continue;
+        }
+
+        // Compose all the requests input to make a batch request,
+        // record the sentences count of each request for further process.
+        std::vector<char> content_buffer;
+        for (uint32_t b = 0; b < input_buffer_count; ++b) {
+            const void* input_buffer = nullptr;
+            uint64_t buffer_byte_size = 0;
+            TRITONSERVER_MemoryType input_memory_type = TRITONSERVER_MEMORY_CPU;
+            int64_t input_memory_type_id = 0;
+            GUARDED_RESPOND_IF_ERROR(
+                state.responses, r,
+                TRITONBACKEND_InputBuffer(
+                    input, b, &input_buffer, &buffer_byte_size,
+                    &input_memory_type, &input_memory_type_id
+                )
+            );
+            if ((state.responses[r] == nullptr) ||
+                (input_memory_type == TRITONSERVER_MEMORY_GPU)) {
+                GUARDED_RESPOND_IF_ERROR(
+                    state.responses, r,
+                    TRITONSERVER_ErrorNew(
+                        TRITONSERVER_ERROR_UNSUPPORTED,
+                        "failed to get input buffer in CPU memory"
+                    )
+                );
+            }
+            content_buffer.insert(
+                content_buffer.end(), reinterpret_cast<const char*>(input_buffer) + 4,
+                reinterpret_cast<const char*>(input_buffer) + buffer_byte_size
+            );
+        }
+
+        std::string s(content_buffer.begin(), content_buffer.end());
+        int count = std::count(s.begin(), s.end(), '\n');
+        content_buffer.clear();
+
+        // Ensure each request vector has enough space for its batch
+        state.partially_completed_requests[r].resize(count + 1);
+        
+        // Since a request may have multiple sentences, update the map with request_batch_size
+        // duplicates of the request number. This gives us a fast way to find the request number
+        // given the batch offset.
+        // Additionally, we map the marian batch offset to the request batch offset.
+        for (int request_batch_size = 0; request_batch_size < (count + 1); ++request_batch_size) {
+            state.marianBatch_to_tritonRequest_map.push_back(r);
+            state.marianBatchIdx_to_requestBatchIdx_map.push_back(request_batch_size);
+        }
+        
+        if (input_strings.empty()) {
+            input_strings = s;
+        } else {
+            input_strings.append("\n");
+            input_strings.append(s);
+        }
+
+        total_batch_size += (count + 1);
+    }
+
+    // Operate on the entire batch of requests for improved performance.
+    void* vstate;
+    RETURN_IF_ERROR(TRITONBACKEND_ModelInstanceState(instance, &vstate));
+    ModelInstanceState* instance_state =
+        reinterpret_cast<ModelInstanceState*>(vstate);
+    void* marian = instance_state->Marian();
+
+    translate_async(marian, const_cast<char*>(input_strings.c_str()), sendResponse, (void*)&state);
+
+    // Report statistics for the entire batch of requests.
+    uint64_t exec_end_ns = 0;
+    SET_TIMESTAMP(exec_end_ns);
+    LOG_IF_ERROR(
+        TRITONBACKEND_ModelInstanceReportBatchStatistics(
+            instance_state->TritonModelInstance(), total_batch_size,
+            state.exec_start_ns, state.exec_start_ns, exec_end_ns, exec_end_ns),
+        "failed reporting batch request statistics"
+    );
+
+    return nullptr;  // success
+}
+
+TRITONSERVER_Error*
+TRITONBACKEND_ModelInstanceExecute(
+    TRITONBACKEND_ModelInstance* instance, TRITONBACKEND_Request** requests,
+    const uint32_t request_count)
+{
+    return serveRequestsAsync(instance, requests, request_count)
+    // return serveRequestsSync(instance, requests, request_count);
 }
 
 }  // extern "C"

@@ -14,6 +14,7 @@ private:
   std::vector<Ptr<Scorer>> scorers_;
   size_t beamSize_;
   Ptr<const Vocab> trgVocab_;
+  Ptr<TensorAllocator> allocator_;
   Ptr<OutputPrinter> printer_; 
 
   const float INVALID_PATH_SCORE;
@@ -55,7 +56,10 @@ public:
   Beams purgeBeams(const Beams& beams, /*in/out=*/std::vector<IndexType>& batchIdxMap);
 
   // main decoding function
-  Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, std::function<void(const int, const std::string&)> callback = nullptr);
+  Histories search(Ptr<ExpressionGraph> graph, 
+                   Ptr<data::CorpusBatch> batch, 
+                   void (*callback)(int, const char*, void*) = nullptr,
+                   void* userData = nullptr);
 };
 
 }  // namespace marian

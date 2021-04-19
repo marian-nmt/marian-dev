@@ -367,4 +367,140 @@ private:
     return outputFields;
   }
 };
+
+template <class Search>
+class TranslateServiceAsync : public ModelCallbackTask {
+private:
+  Ptr<Options> options_;
+  std::vector<Ptr<ExpressionGraph>> graphs_;
+  std::vector<std::vector<Ptr<Scorer>>> scorers_;
+
+  std::vector<Ptr<Vocab>> srcVocabs_;
+  Ptr<Vocab> trgVocab_;
+  Ptr<const data::ShortlistGenerator> shortlistGenerator_;
+
+  size_t numDevices_;
+
+  void (*callback_)(int, const char*, void*) = nullptr;
+  void* userData_ = nullptr;
+
+public:
+  virtual ~TranslateServiceAsync() {}
+
+  TranslateServiceAsync(Ptr<Options> options)
+    : options_(New<Options>(options->clone())) {
+    // initialize vocabs
+    options_->set("inference", true);
+    options_->set("shuffle", "none");
+
+    auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
+    std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
+
+    for(size_t i = 0; i < vocabPaths.size() - 1; ++i) {
+      Ptr<Vocab> vocab = New<Vocab>(options_, i);
+      vocab->load(vocabPaths[i], maxVocabs[i]);
+      srcVocabs_.emplace_back(vocab);
+    }
+
+    trgVocab_ = New<Vocab>(options_, vocabPaths.size() - 1);
+    trgVocab_->load(vocabPaths.back());
+
+    // load lexical shortlist
+    if(options_->hasAndNotEmpty("shortlist"))
+      shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
+          options_, srcVocabs_.front(), trgVocab_, 0, 1, vocabPaths.front() == vocabPaths.back());
+
+    // get device IDs
+    auto devices = Config::getDevices(options_);
+    numDevices_ = devices.size();
+
+    // initialize scorers
+    for(auto device : devices) {
+      auto graph = New<ExpressionGraph>(true);
+
+      auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
+      graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
+      graph->setDevice(device);
+      graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
+      graphs_.push_back(graph);
+
+      auto scorers = createScorers(options_);
+      for(auto scorer : scorers) {
+        scorer->init(graph);
+        if(shortlistGenerator_)
+          scorer->setShortlistGenerator(shortlistGenerator_);
+      }
+      scorers_.push_back(scorers);
+    }
+  }
+
+  void registerCallback(void (*callback)(int, const char*, void*), void* userData) override {
+    callback_ = callback;
+    userData_ = userData;
+  }
+
+  void run(const std::string& input) override {
+    // split tab-separated input into fields if necessary
+    auto inputs = options_->get<bool>("tsv", false)
+                      ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
+                      : std::vector<std::string>({input});
+    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
+    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_);
+
+    auto collector = New<StringCollector>(options_->get<bool>("quiet-translation", false));
+    auto printer = New<OutputPrinter>(options_, trgVocab_);
+    size_t batchId = 0;
+
+    batchGenerator.prepare();
+
+    {
+      ThreadPool threadPool_(numDevices_, numDevices_);
+
+      for(auto batch : batchGenerator) {
+        auto task = [=](size_t id) {
+          thread_local Ptr<ExpressionGraph> graph;
+          thread_local std::vector<Ptr<Scorer>> scorers;
+
+          if(!graph) {
+            graph = graphs_[id % numDevices_];
+            scorers = scorers_[id % numDevices_];
+          }
+
+          auto search = New<Search>(options_, scorers, trgVocab_);
+          search->search(graph, batch, callback_);
+        };
+
+        threadPool_.enqueue(task, batchId);
+        batchId++;
+      }
+      // ThreadPool destructor called at end of scope and the destructor joins all threads.
+    }
+  }
+
+private:
+  // Converts a multi-line input with tab-separated source(s) and target sentences into separate lists
+  // of sentences from source(s) and target sides, e.g.
+  // "src1 \t trg1 \n src2 \t trg2" -> ["src1 \n src2", "trg1 \n trg2"]
+  std::vector<std::string> convertTsvToLists(const std::string& inputText, size_t numFields) {
+    std::vector<std::string> outputFields(numFields);
+
+    std::string line;
+    std::vector<std::string> lineFields(numFields);
+    std::istringstream inputStream(inputText);
+    bool first = true;
+    while(std::getline(inputStream, line)) {
+      utils::splitTsv(line, lineFields, numFields);
+      for(size_t i = 0; i < numFields; ++i) {
+        if(!first)
+          outputFields[i] += "\n";  // join sentences with a new line sign
+        outputFields[i] += lineFields[i];
+      }
+      if(first)
+        first = false;
+    }
+
+    return outputFields;
+  }
+};
+
 }  // namespace marian

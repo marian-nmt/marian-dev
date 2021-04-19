@@ -11,7 +11,8 @@ struct ModelTask {
 
 struct ModelCallbackTask {
   virtual ~ModelCallbackTask() {}
-  virtual void run(std::function<void(const int, const std::string&)>) = 0;
+  virtual void registerCallback(void (*)(int, const char*, void*), void*) = 0;
+  virtual void run(const std::string&) = 0;
 };
 
 struct ModelServiceTask {

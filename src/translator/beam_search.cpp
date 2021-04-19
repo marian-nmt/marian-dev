@@ -1,4 +1,5 @@
 #include "translator/beam_search.h"
+#include "tensors/tensor_allocator.h"
 #include <sstream>
 
 #include "data/factored_vocab.h"
@@ -249,7 +250,10 @@ Beams BeamSearch::purgeBeams(const Beams& beams, /*in/out=*/std::vector<IndexTyp
 
 //**********************************************************************
 // main decoding function
-Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, std::function<void(const int, const std::string&)> callback) {
+Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, 
+                             void (*callback)(int, const char*, void*),
+                             void* userData) {
+
   const bool nbest = options_->get<bool>("n-best");
   auto factoredVocab = trgVocab_->tryAs<FactoredVocab>();
   size_t numFactorGroups = factoredVocab ? factoredVocab->getNumGroups() : 1;
@@ -516,7 +520,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
             std::stringstream bestn;
             printer_->print(histories[batchIdx], best1, bestn);
             std::string result = nbest ? bestn.str() : best1.str();
-            callback(histories[batchIdx]->getLineNum(), result);
+            callback(histories[batchIdx]->getLineNum(), result.c_str(), userData);
         }
 
       } 

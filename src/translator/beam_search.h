@@ -4,7 +4,6 @@
 #include "translator/history.h"
 #include "translator/output_printer.h"
 #include "translator/scorers.h"
-#include <functional>
 
 namespace marian {
 

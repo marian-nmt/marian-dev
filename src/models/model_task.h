@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <functional>
 namespace marian {
 
 struct ModelTask {
@@ -16,6 +15,6 @@ struct ModelCallbackTask {
 
 struct ModelServiceTask {
   virtual ~ModelServiceTask() {}
-  virtual std::string run(const std::string&, std::function<void(const int, const std::string&)>) = 0;
+  virtual std::string run(const std::string&) = 0;
 };
 }  // namespace marian

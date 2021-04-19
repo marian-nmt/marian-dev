@@ -27,9 +27,18 @@ For the AzureML Inference team members, you can put it into the following place 
 
 Where <backend_directory> is by default /opt/tritonserver/backends.
 
+This backend will return sentences as soon as they are done with translation by default. To only return when the 
+entire batch is finished translating, set the async_mode to false by adding the following your config.pbtxt file.
+
+parameters [
+  {
+    key: "async"
+    value: { string_value : "false" }
+  }
+]
 ## Make changes
 
-If you want to compile with another version of Marian, you need to replace `RUN git checkout youki/quantize-embedding` in the Dockerfile, then copy the new CMakeLists.txt replace the old one, add src/cmarian.cpp into CMakeLists.txt and make some changes to make sure it will build a static library of Marian.
+If you want to compile with another version of Marian, you need to replace `RUN git checkout async` in the Dockerfile, then copy the new CMakeLists.txt replace the old one, add src/cmarian.cpp into CMakeLists.txt and make some changes to make sure it will build a static library of Marian.
 
 ## Limitation
 

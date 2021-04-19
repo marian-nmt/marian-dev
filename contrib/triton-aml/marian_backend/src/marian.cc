@@ -148,16 +148,24 @@ ModelState::SetAsyncMode()
             RETURN_IF_ERROR(async_value.MemberAsString(
                 "string_value", &return_async_mode)
             );
-            LOG_MESSAGE(
-                TRITONSERVER_LOG_INFO,
-                (std::string("Async mode set to : ") + return_async_mode)
-                .c_str()
-            );
         }
     }
 
     std::transform(return_async_mode.begin(), return_async_mode.end(), return_async_mode.begin(), ::tolower);
-    async_mode_ = return_async_mode == "true";
+
+    if (!return_async_mode.empty() && return_async_mode != "true" && return_async_mode != "false") 
+    {
+        return TRITONSERVER_ErrorNew(TRITONSERVER_ERROR_UNSUPPORTED, "Async mode must be empty, true or false");
+    }
+
+    async_mode_ = return_async_mode == "true" || return_async_mode.empty();
+
+    LOG_MESSAGE(
+        TRITONSERVER_LOG_INFO,
+        (std::string("Async mode set to : ") + async_mode_)
+        .c_str()
+    );
+
     return nullptr;  // success
 }
 

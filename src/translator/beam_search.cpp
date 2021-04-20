@@ -520,7 +520,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
             std::stringstream bestn;
             printer_->print(histories[batchIdx], best1, bestn);
             std::string result = nbest ? bestn.str() : best1.str();
-            callback(histories[batchIdx]->getLineNum(), result.c_str(), userData);
+            callback((int) histories[batchIdx]->getLineNum(), result.c_str(), userData);
         }
 
       } 

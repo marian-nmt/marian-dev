@@ -37,7 +37,7 @@ release = version + ' ' + str(datetime.date.today())
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.imgmath',
+    'sphinx.ext.mathjax',
     'sphinx.ext.todo',
     'breathe',
     'exhale',
@@ -91,6 +91,7 @@ EXTENSION_MAPPING   += cu=C++ inc=C++
 ENABLE_PREPROCESSING = YES
 JAVADOC_AUTOBRIEF    = YES
 WARN_IF_UNDOCUMENTED = NO
+USE_MATHJAX          = YES
 """
 
 exhale_args = {

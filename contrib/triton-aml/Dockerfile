@@ -42,7 +42,7 @@ RUN ./b2 install --prefix=/usr --with-system --with-thread --with-date_time --wi
 
 # Marian install
 WORKDIR /
-RUN  git clone --no-checkout https://github.com/rhenry-nv/marian-dev.git 
+RUN git clone --no-checkout https://github.com/rhenry-nv/marian-dev.git 
 WORKDIR marian-dev
 RUN git checkout async
 RUN mkdir src/static

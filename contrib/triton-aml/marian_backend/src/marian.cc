@@ -162,7 +162,7 @@ ModelState::SetAsyncMode()
 
     LOG_MESSAGE(
         TRITONSERVER_LOG_INFO,
-        (std::string("Async mode set to : ") + async_mode_)
+        (std::string("Async mode set to : ") + std::to_string(async_mode_))
         .c_str()
     );
 

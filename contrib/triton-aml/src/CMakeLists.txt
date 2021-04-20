@@ -43,6 +43,7 @@ add_library(marian STATIC
   data/corpus_sqlite.cpp
   data/corpus_nbest.cpp
   data/text_input.cpp
+  data/shortlist.cpp
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
@@ -75,6 +76,9 @@ add_library(marian STATIC
   layers/loss.cpp
   layers/weight.cpp
   layers/lsh.cpp
+  layers/embedding.cpp
+  layers/output.cpp
+  layers/logits.cpp
 
   rnn/cells.cpp
   rnn/attention.cpp
@@ -87,6 +91,7 @@ add_library(marian STATIC
   models/model_factory.cpp
   models/encoder_decoder.cpp
   models/transformer_stub.cpp
+  models/costs.cpp
 
   rescorer/score_collector.cpp
   embedder/vector_collector.cpp
@@ -109,6 +114,11 @@ add_library(marian STATIC
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
   microsoft/cosmos.cpp
+
+  # copied from quicksand to be able to read binary shortlist
+  microsoft/shortlist/utils/Converter.cpp
+  microsoft/shortlist/utils/StringUtils.cpp
+  microsoft/shortlist/utils/ParameterTree.cpp
 
   $<TARGET_OBJECTS:libyaml-cpp>
   $<TARGET_OBJECTS:SQLiteCpp>

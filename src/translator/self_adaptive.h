@@ -7,6 +7,7 @@
 #include "models/model_task.h"
 #include "training/scheduler.h"
 #include "training/validator.h"
+#include "translator/swappable.h"
 
 namespace marian {
 
@@ -74,37 +75,14 @@ public:
 
     auto deviceId = Config::getDevices(options_)[0];
 
-    // Initialize model for training
-    graph_ = New<ExpressionGraph>();
-    graph_->setDevice(deviceId);
-    graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-    builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
-
-    optimizer_ = Optimizer(options_);
-
-    // Initialize model for translation
-    Ptr<Options> opts = New<Options>();
-    opts->merge(options_);
-    opts->set("inference", true);
-    builderTrans_ = models::createModelFromOptions(opts, models::usage::translation);
-
-    // Initialize a scorer for translation
-    // auto model = options_->get<std::string>("model");
-    model = options_->get<std::string>("model");
-    Ptr<Scorer> scorer = New<ScorerWrapper>(builderTrans_, "", 1.0f, model);
-    scorers_.push_back(scorer);
-
-    // Read vocabularies
+    auto modelFilename = options_->get<std::string>("model");
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
-    std::vector<int> maxVocabs = options_->get<std::vector<int>>("dim-vocabs");
-    for(size_t i = 0; i < vocabPaths.size(); ++i) {
-      Ptr<Vocab> vocab = New<Vocab>(options_, i);
-      vocab->load(vocabPaths[i], maxVocabs[i]);
-      vocabs_.emplace_back(vocab);
-    }
-
-    // Load model
-    builder_->load(graph_, model);
+    std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
+    cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
+    translateEngine_ = New<GPUEngine>(options_, deviceId.no);
+    translateSlot_ = New<GPULoadedModel>(translateEngine_);
+    trainEngine_ = New<GPUEngineTrain>(options_, deviceId.no);
+    trainSlot_   = New<GPULoadedModelTrain>(trainEngine_);
   }
 
   std::string run(const std::string& json) override {
@@ -119,8 +97,7 @@ public:
 
     // Get input sentences
     auto input = yaml["input"].as<std::string>();
-    std::vector<Ptr<Vocab>> srcVocabs(vocabs_.begin(), vocabs_.end() - 1);
-    auto testSet = New<TextInput>(std::vector<std::string>({input}), srcVocabs, optionsTrans_);
+    auto testSet = New<TextInput>(std::vector<std::string>({input}), cpuModel_->SrcVocabs(), optionsTrans_);
 
     // Prepare batches
     auto testBatches = New<BatchGenerator<TextInput>>(testSet, optionsTrans_);
@@ -128,7 +105,7 @@ public:
 
     // Initialize output printing
     auto collector = New<StringCollector>();
-    auto printer = New<OutputPrinter>(options_, vocabs_.back());
+    auto printer = New<OutputPrinter>(options_, cpuModel_->TrgVocab());
 
     // Get training sentences
     std::vector<std::vector<std::string>> contexts;
@@ -140,11 +117,18 @@ public:
     size_t id = 0;
     for(auto testBatch : *testBatches) {
       if(contexts.size() > id && !contexts[id].empty()) {
-        train(contexts[id]);
-        translate(testBatch, collector, printer, graphAdapt_);
+        trainSlot_->Load(*cpuModel_);
+        trainSlot_->Train(contexts[id]);
+        translateSlot_->Load(*trainSlot_);
+        translate(testBatch, collector, printer);
+        needsSwitching_ = true;
       } else {
         LOG(info, "No context provided for sentence {}", id);
-        translate(testBatch, collector, printer, graph_);
+        if(needsSwitching_) {
+          translateSlot_->Load(*cpuModel_);
+          needsSwitching_ = false;
+        }
+        translate(testBatch, collector, printer);
       }
 
       // iterating by 1 is quite safe because the mini-batch size for
@@ -161,8 +145,7 @@ public:
   void run() override {
     // Initialize input data
     auto srcPaths = options_->get<std::vector<std::string>>("input");
-    std::vector<Ptr<Vocab>> srcVocabs(vocabs_.begin(), vocabs_.end() - 1);
-    auto testSet = New<Corpus>(srcPaths, srcVocabs, optionsTrans_);
+    auto testSet = New<Corpus>(srcPaths, cpuModel_->SrcVocabs(), optionsTrans_);
 
     // Prepare batches
     auto testBatches = New<BatchGenerator<Corpus>>(testSet, optionsTrans_);
@@ -172,7 +155,7 @@ public:
     auto collector = New<OutputCollector>(options_->get<std::string>("output"));
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
-    auto printer = New<OutputPrinter>(options_, vocabs_.back());
+    auto printer = New<OutputPrinter>(options_, cpuModel_->SrcVocabs().back());
 
     // Initialize train data
     auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
@@ -185,11 +168,18 @@ public:
 
       if(!trainSet.empty()) {
         LOG(info, "# NEW TEST BATCH");
-        train(trainSet);
-        translate(testBatch, collector, printer, graphAdapt_);
+        trainSlot_->Load(*cpuModel_);
+        trainSlot_->Train(trainSet);
+        translateSlot_->Load(*trainSlot_);
+        translate(testBatch, collector, printer);
+        needsSwitching_ = true;
       } else {
         LOG(info, "# EMPTY TEST BATCH");
-        translate(testBatch, collector, printer, graph_);
+        if (needsSwitching_) {
+          translateSlot_->Load(*cpuModel_);
+          needsSwitching_ = false;
+        }
+        translate(testBatch, collector, printer);
       }
     }
   }
@@ -197,105 +187,27 @@ public:
 private:
   Ptr<Options> options_;       // Options for training
   Ptr<Options> optionsTrans_;  // Options for translator
-
-  Ptr<models::ICriterionFunction> builder_;      // Training model
-  Ptr<models::ICriterionFunction> secondBuilder_; // To not get a segfault when training model else could just use builder_
-  Ptr<models::IModel> builderTrans_; // Translation model
-  Ptr<ExpressionGraph> graph_;          // A graph with original parameters
-  Ptr<ExpressionGraph> graphAdapt_;     // A graph on which training is performed
-  std::string model;
-
-  std::vector<Ptr<Vocab>> vocabs_;
-  std::vector<Ptr<Scorer>> scorers_;
-  Ptr<OptimizerBase> optimizer_;
-
-  void train(std::vector<std::string> trainSents) {
-    auto state = New<TrainingState>(options_->get<float>("learn-rate"));
-    auto scheduler = New<Scheduler>(options_, state);
-    scheduler->registerTrainingObserver(scheduler);
-    scheduler->registerTrainingObserver(optimizer_);
-
-    auto trainSet = New<TextInput>(trainSents, vocabs_, options_);
-    auto trainBatches = New<BatchGenerator<TextInput>>(trainSet, options_);
-
-    bool first = true;
-
-    scheduler->started();
-    while(scheduler->keepGoing()) {
-      trainBatches->prepare();
-
-      LOG(info, "## NEW BATCHES");
-      for(auto batch : *trainBatches) {
-        if(!scheduler->keepGoing())
-          break;
-
-        LOG(info, "### NEW BATCH");
-        // Copy params from the original model
-        if(first) {
-          secondBuilder_
-              = models::createCriterionFunctionFromOptions(options_, models::usage::training);
-          // secondBuilder->load(graph_, model);
-
-          // builder_->build(graph_, batch);
-          // // TODO: Why do we need to do a froward pass here?
-          // graph_->forward();
-
-          graphAdapt_ = New<ExpressionGraph>();
-          // graphAdapt_->setDevice(graph_->getDeviceId());
-          auto deviceId = Config::getDevices(options_)[0];
-          graphAdapt_->setDevice(deviceId);
-          // graphAdapt_->reuseWorkspace(graph_);
-          graphAdapt_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-
-          // TODO: why aren't we using a builder before this?
-          // it's probably because the order doesn't matter and the
-          // builder is used below
-          // graphAdapt_->copyParams(graph_);
-          secondBuilder_->load(graphAdapt_, model);
-          first = false;
-        }
-
-        // Make an update step on the copy of the model
-        auto lossNode = secondBuilder_->build(graphAdapt_, batch);
-        graphAdapt_->forward();
-        StaticLoss loss = *lossNode;
-        graphAdapt_->backward();
-
-        // Notify optimizer and scheduler
-        optimizer_->update(graphAdapt_, 1);
-        scheduler->update(loss, batch);
-      }
-      if(scheduler->keepGoing())
-        scheduler->increaseEpoch();
-    }
-    scheduler->finished();
-  }
+  Ptr<CPULoadedModel> cpuModel_;
+  Ptr<GPULoadedModelTrain> trainSlot_;
+  Ptr<GPULoadedModel> translateSlot_;
+  Ptr<GPUEngineTrain> trainEngine_;
+  Ptr<GPUEngine> translateEngine_;
+  bool needsSwitching_ = true;
 
   void translate(Ptr<data::CorpusBatch> batch,
                  Ptr<CollectorBase> collector,
-                 Ptr<OutputPrinter> printer,
-                 Ptr<ExpressionGraph> graph) {
-    graph->setInference(true);
-    graph->clear();
+                 Ptr<OutputPrinter> printer) {
+    auto histories = translateSlot_->Translate(batch);
 
-    {
-      auto search = New<BeamSearch>(options_,
-                                    scorers_,
-                                    vocabs_.back());
-      auto histories = search->search(graph, batch);
-
-      for(auto history : histories) {
-        std::stringstream best1;
-        std::stringstream bestn;
-        printer->print(history, best1, bestn);
-        collector->Write(history->getLineNum(),
-                         best1.str(),
-                         bestn.str(),
-                         options_->get<bool>("n-best"));
-      }
+    for(auto history : histories) {
+      std::stringstream best1;
+      std::stringstream bestn;
+      printer->print(history, best1, bestn);
+      collector->Write(history->getLineNum(),
+                        best1.str(),
+                        bestn.str(),
+                        options_->get<bool>("n-best"));
     }
-
-    graph->setInference(false);
   }
 };
 }

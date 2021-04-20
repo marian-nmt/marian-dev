@@ -131,6 +131,7 @@ class GPULoadedModel {
     void Load(const GPULoadedModelTrain &from);
 
     Histories Translate(const std::vector<std::string> &input);
+    Histories Translate(const Ptr<data::CorpusBatch> batch);
 };
 
 /* A model loaded on the CPU. */

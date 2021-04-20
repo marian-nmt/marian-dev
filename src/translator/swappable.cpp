@@ -265,6 +265,22 @@ Histories GPULoadedModel::Translate(const std::vector<std::string> &input) {
   return ret;
 }
 
+Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {
+  ABORT_IF(!trgVocab_, "GPULoadedModel needs to be overwritten by a CPU model first.");
+  engine_->SwapPointers(parameters_);
+
+  BeamSearch search(engine_->options_, engine_->scorers_, trgVocab_);
+  Histories ret;
+  ret.reserve(batch->size()); // TODO: input.size() was here previously, this is likely wrong
+
+  auto result = search.search(engine_->graph_, batch);
+  ret.insert(ret.end(), result.begin(), result.end());
+
+  std::sort(ret.begin(), ret.end(),[](marian::Ptr<marian::History> a, marian::Ptr<marian::History> b){return a->getLineNum() < b->getLineNum();});
+  engine_->SwapPointers(parameters_);
+  return ret;
+}
+
 CPULoadedModel::CPULoadedModel(Ptr<Options> options, const std::string &parameters, const std::vector<std::string> &sourceVocabPaths, const std::string &targetVocabPath)
   : parameters_(io::loadItems(parameters)) {
   // Load parameters.

@@ -16,7 +16,6 @@
 namespace marian {
 
 class GPULoadedModelTrain;
-class CPULoadedModelTrain;
 
 class Scorer;
 
@@ -71,29 +70,12 @@ class GPULoadedModelTrain {
     Ptr<Vocab> TrgVocab() const { return trgVocab_; }
 
     // Overwrite this model with parameters from a different one.
-    void Load(const CPULoadedModelTrain &from);
+    void Load(const CPULoadedModel &from);
     void Load(const GPULoadedModelTrain &from);
 
     void Train(const std::vector<std::string> &input);
 };
 
-/* A model loaded on the CPU. */
-class CPULoadedModelTrain {
-  private:
-    std::vector<io::Item> parameters_;
-    std::vector<Ptr<Vocab>> srcVocabs_;
-    Ptr<Vocab> trgVocab_;
-
-  public:
-    // The parts of Options that relate to model and vocab are ignored.  The files provided will be loaded.
-    CPULoadedModelTrain(Ptr<Options> options, const std::string &parameters, const std::vector<std::string> &sourceVocabPaths, const std::string &targetVocabPath);
-
-    const std::vector<io::Item> &Parameters() const { return parameters_; }
-
-    const std::vector<Ptr<Vocab>> &SrcVocabs() const { return srcVocabs_; }
-
-    Ptr<Vocab> TrgVocab() const { return trgVocab_; }
-};
 
 
 

@@ -100,7 +100,7 @@ void GPULoadedModelTrain::Load(const GPULoadedModelTrain &from) {
   }
 }
 
-void GPULoadedModelTrain::Load(const CPULoadedModelTrain &from) {
+void GPULoadedModelTrain::Load(const CPULoadedModel &from) {
   srcVocabs_ = from.SrcVocabs();
   trgVocab_ = from.TrgVocab();
   for (size_t i = 0; i < parameters_.size(); ++i) {
@@ -161,37 +161,6 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   engine_->SwapPointers(parameters_);
 }
 
-CPULoadedModelTrain::CPULoadedModelTrain(Ptr<Options> options, const std::string &parameters, const std::vector<std::string> &sourceVocabPaths, const std::string &targetVocabPath)
-  : parameters_(io::loadItems(parameters)) {
-  // Load parameters.
-  // Find the special element and remove it:
-  size_t special_idx = 0;
-  for (size_t i = 0; i < parameters_.size(); i++) {
-    if (parameters_[i].name == "special:model.yml") {
-      special_idx = i;
-      break;
-    }
-  }
-  parameters_.erase(parameters_.begin() + special_idx);
-  // Prepare the name so that it matches the named map
-  for (auto&& item : parameters_) {
-    item.name = "F0::" + item.name;
-  }
-  // Sort by name to match params order.
-  std::sort(parameters_.begin(), parameters_.end(), [](const io::Item &a, const io::Item &b){return a.name < b.name;});
-
-  // Load source vocabs.
-  const std::vector<int> &maxVocabs = options->get<std::vector<int>>("dim-vocabs");
-  for(size_t i = 0; i < sourceVocabPaths.size(); ++i) {
-    Ptr<Vocab> vocab = New<Vocab>(options, i);
-    vocab->load(sourceVocabPaths[i], maxVocabs[i]);
-    srcVocabs_.emplace_back(vocab);
-  }
-
-  // Load target vocab.
-  trgVocab_ = New<Vocab>(options, sourceVocabPaths.size());
-  trgVocab_->load(targetVocabPath);
-}
 
 
 

@@ -48,4 +48,51 @@ Directories:
 
 ## Writing documentation
 
-To be documented...
+There is an ongoing and incremental effort with the goal to document essential Marian APIs in a consistent way. 
+For now, existing code may not follow these guidelines, but new code should.
+
+<!-- We could write simple guidelines on how to document the code so that it works best with the framework we use.
+This could include:
+
+A short description of how Doxygen comments work, e.g. the first sentence is a @brief, what to document and what not.
+A list of most common Doxygen keywords in versions that we use.
+Good practices, e.g. how to format the comment to save the vertical space.
+A short description of how Sphinx/Breathe and the RST format work + most common keywords.
+A mention in CONTRIBUTE.md -->
+
+
+### Documentation with Doxygen
+
+[Doxygen](https://www.doxygen.nl/index.html) is a powerful documentation system for C++ and many other popular programming languages, such as C#, PHP, Java and Python. 
+It parses and extracts documentation from annotated C++ source code to generate a comprehensive online documentation browser (in HTML) and/or an off-line reference manual (in LaTeX).
+
+**How to make the comments in your code known to doxygen?**
+Doxygen recognises several special comment blocks with some additional markings. 
+In Marian, we follow the **Javadoc style**, which consist of a C-style comment block starting with two *'s, like this:
+```cpp
+/**
+ * ... text ...
+ */
+```
+For each entity in the code there are basically two types of descriptions, i.e., a _brief_ description and _detailed_ description.
+In Marian, [JAVADOC_AUTOBRIEF](https://www.doxygen.nl/manual/config.html#cfg_javadoc_autobrief) is set to YES in the configuration file, therefore, using Javadoc style comment blocks will automatically start a brief description which ends at the first dot followed by a space or new line. Here is an example:
+```cpp
+/** 
+ *  Brief description which ends at this dot. Details follow
+ *  here.
+ */
+```
+If you want to put documentation after members (e.g., a variable and enum), you have to put an additional < marker in the comment block. 
+```cpp
+int var; ///< Brief description after the member
+```
+To provide more details in the documentation, Doxygen supports a list of special commands (keywords) which start with a backslash (\\) or an at-sign (@). See [Doxygen special commands](https://www.doxygen.nl/manual/commands.html) for all the available commands. In Marian, we recommend to use at-sign (@) to be consistent with Javadoc style. Here, we list the most common Doxygen commands we use to document Marian:
+
+Doxygen Command | Detailed Description | Example 
+--- | --- | --- 
+@param | Add a parameter description for a function parameter | @param device a pointer to the device 
+@return | Add a return value description for a function | @return a pointer to the constant node
+@see | Add a cross-reference to classes, functions, methods, variables, files or URL. | @see reshape()
+
+
+### Documentation with reStructuredText

@@ -76,12 +76,13 @@ public:
     auto deviceId = Config::getDevices(options_)[0];
 
     auto modelFilename = options_->get<std::string>("model");
+    options_->set<std::vector<std::string>>("models", {modelFilename});
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
     cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
-    translateEngine_ = New<GPUEngine>(options_, deviceId.no);
+    translateEngine_ = New<GPUEngine>(options_, 0);
     translateSlot_ = New<GPULoadedModel>(translateEngine_);
-    trainEngine_ = New<GPUEngineTrain>(options_, deviceId.no);
+    trainEngine_ = New<GPUEngineTrain>(options_, 0);
     trainSlot_   = New<GPULoadedModelTrain>(trainEngine_);
   }
 

@@ -19,7 +19,7 @@ Expr checkpoint(Expr a);
 typedef Expr(ActivationFunction)(Expr);  ///< ActivationFunction has signature Expr(Expr)
 
 /**
- * Convience typedef for graph @ref lambda expressions.
+ * Convenience typedef for graph @ref lambda expressions.
  */
 typedef std::function<void(Expr out, const std::vector<Expr>& in)> LambdaNodeFunctor;
 
@@ -107,7 +107,7 @@ Expr tanh(const std::vector<Expr>& nodes);
 
 /**
  * @copybrief tanh
- * Convience function to put parameter pack @p Args into a Expr vector
+ * Convenience function to put parameter pack @p Args into a Expr vector
  */
 template <typename... Args>
 Expr tanh(Args... args) {

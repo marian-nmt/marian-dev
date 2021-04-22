@@ -41,7 +41,7 @@ extensions = [
     'sphinx.ext.todo',
     'breathe',
     'exhale',
-    'recommonmark',
+    'myst_parser',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -57,6 +57,13 @@ exclude_patterns = [
     'README.md',
 ]
 
+# The file extensions of source files. Sphinx considers the files with
+# this suffix as sources. By default, Sphinx only supports 'restructuredtext'
+# file type. You can add a new file type using source parser extensions.
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -101,6 +108,7 @@ exhale_args = {
     'doxygenStripFromPath'  : '..',
     'createTreeView'        : True,
     'exhaleExecutesDoxygen' : True,
+    # 'verboseBuild'          : True, # set True for debugging
     'exhaleDoxygenStdin'    : doxygen_config.strip(),
 }
 

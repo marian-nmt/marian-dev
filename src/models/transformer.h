@@ -10,6 +10,7 @@
 #include "models/encoder.h"
 #include "models/states.h"
 #include "models/transformer_factory.h"
+#include "optimizers/regularizer.h"
 #include "rnn/constructors.h"
 #define _USE_MATH_DEFINES  // enables math constants. We need M_PI_2
 #include <math.h>
@@ -38,6 +39,13 @@ protected:
   // If enabled, it is set once per batch during training, and once per step during translation.
   // It can be accessed by getAlignments(). @TODO: move into a state or return-value object
   std::vector<Expr> alignments_; // [max tgt len or 1][beam depth, max src length, batch size, 1]
+  
+
+  std::vector<Ptr<IRegulariser>> regularisers_;
+
+  // Load information how many heads are there in every layer of the model
+  std::unordered_map<std::string, size_t> numHeads_;
+  bool setHeads_ = false;
 
   // @TODO: make this go away
   template <typename T> 
@@ -53,7 +61,63 @@ protected:
   T opt(const std::string& key, const T& def) const { opt<T>(key.c_str(), def); }
 
 public:
-  Transformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : EncoderOrDecoderBase(graph, options) {}
+
+  std::vector<Ptr<IRegulariser>> getRegularisers() {
+    return regularisers_;
+  }
+
+  virtual void setNumHeads() { };
+ 
+  void loadNumHeads(const std::string& name, std::string type, size_t numLayers) {
+    if (opt<bool>("transformer-head-file")) {
+      std::string pruningYAML = name + "." + type + "_pruning.yml";
+      YAML::Node config = YAML::LoadFile(pruningYAML);
+      // LOG(info, "Loaded YAML file with the number of attention heads!");
+  
+      for (size_t i = 1; i < numLayers + 1; i++) {
+        auto selfLayer = type + "_l" + std::to_string(i) + "_self";
+        numHeads_[selfLayer] = config[selfLayer].as<size_t>();
+        if (type == "decoder") {
+          auto contextLayer = type + "_l" + std::to_string(i) + "_context";
+          numHeads_[contextLayer] = config[contextLayer].as<size_t>();
+        }
+      }
+    }
+
+    else {
+      auto encoderHeads = opt<std::vector<int>>("transformer-encoder-heads");
+      auto decoderHeads = opt<std::vector<int>>("transformer-decoder-heads");
+      auto contextHeads = opt<std::vector<int>>("transformer-context-heads");
+      for (size_t i = 1; i < numLayers + 1; i++) {
+        auto selfLayer = type + "_l" + std::to_string(i) + "_self";
+        auto contextLayer = type + "_l" + std::to_string(i) + "_context";
+        if (type == "encoder")
+          numHeads_[selfLayer] = encoderHeads[i - 1];
+        if (type == "decoder") {
+          numHeads_[selfLayer] = decoderHeads[i - 1];
+          numHeads_[contextLayer] = contextHeads[i - 1];
+        }
+      }
+    }
+
+  }
+
+  Transformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : EncoderOrDecoderBase(graph, options) {
+    auto lambdas = options_->get<std::vector<float>>("regulariser-scalar");
+    auto types = options_->get<std::vector<std::string>>("regulariser-type");
+    ABORT_IF(types.size() != lambdas.size(), "Every regulariser needs its own lambda!");
+    for (int i = 0; i < types.size(); i++) {
+      // LOG(info, "lambdas {} types {}", lambdas[i], types[i]);
+      auto regulariser = New<RegulariserFactory>(options_)->construct(lambdas[i], types[i]);
+      if (regulariser) {
+        regularisers_.push_back(regulariser); 
+        // LOG(info, "Adding regulariser to the vector");
+      }
+      else {
+        // LOG(info, "Regulariser is a nullptr???");
+      }
+    }
+  }
 
   static Expr transposeTimeBatch(Expr input) { return transpose(input, {0, 2, 1, 3}); }
 
@@ -235,7 +299,7 @@ public:
 
   // determine the multiplicative-attention probability and performs the associative lookup as well
   // q, k, and v have already been split into multiple heads, undergone any desired linear transform.
-  Expr Attention(std::string /*prefix*/,
+  Expr Attention(std::string prefix,
                  Expr q,              // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: split vector dim]
                  Expr k,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
                  Expr v,              // [-4: batch size, -3: num heads, -2: max src length, -1: split vector dim]
@@ -272,6 +336,7 @@ public:
   Expr MultiHead(std::string prefix,
                  int dimOut,
                  int dimHeads,
+                 int dimHeadSize,
                  Expr q,             // [-4: beam depth * batch size, -3: num heads, -2: max q length, -1: split vector dim]
                  const Expr &keys,   // [-4: beam depth, -3: batch size, -2: max kv length, -1: vector dim]
                  const Expr &values, // [-4: beam depth, -3: batch size, -2: max kv length, -1: vector dim]
@@ -279,9 +344,23 @@ public:
                  bool cache = false,
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
+
+    auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
+    auto pruneAtt = (pruneFlags.find("h") != std::string::npos); // prune if heads activated
+
     // @TODO: good opportunity to implement auto-batching here or do something manually?
-    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
-    auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
+    auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+    auto bq = graph_->param(prefix + "_bq", {       1, dimHeads * dimHeadSize}, inits::zeros());
+
+    if (!inference_ && !regularisers_.empty() && pruneAtt) {
+      // LOG(info, "Regularising Wq");
+      for (auto r: regularisers_) {
+        auto penalty = r->calculatePenalty(Wq, bq, false);
+        // debug(penalty);
+        bq = bq * (penalty / penalty); // stupid trick to connect to a graph? 
+      }
+    }
+    
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
@@ -295,8 +374,15 @@ public:
       kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
     }
     else {
-      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
-      auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
+      auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+      auto bk = graph_->param(prefix + "_bk", {1,        dimHeads * dimHeadSize}, inits::zeros());
+    
+      if (!inference_ && !regularisers_.empty() && pruneAtt) {
+        for (auto r: regularisers_) {
+          auto penalty = r->calculatePenalty(Wk, bk, false);
+          bk = bk * (penalty / penalty); // stupid trick to connect to a graph? 
+        }
+      }
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -309,8 +395,15 @@ public:
         && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
       vh = cache_[prefix + "_values"];
     } else {
-      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
-      auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
+      auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+      auto bv = graph_->param(prefix + "_bv", {1,        dimHeads * dimHeadSize}, inits::zeros());
+    
+      if (!inference_ && !regularisers_.empty() && pruneAtt) {
+        for (auto r: regularisers_) {
+          auto penalty = r->calculatePenalty(Wv, bv, false);
+          bv = bv * (penalty / penalty); // stupid trick to connect to a graph? 
+        }
+      }
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
@@ -331,6 +424,14 @@ public:
     if(project || dimAtt != dimOut) {
       auto Wo = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
+      
+      if (!inference_ && !regularisers_.empty() && pruneAtt) {
+        for (auto r: regularisers_) {
+          auto penalty = r->calculatePenalty(Wo, bo, true);
+          bo = bo * (penalty / penalty); // stupid trick to connect to a graph? 
+        }
+      }
+      
       output = affine(output, Wo, bo);
     }
 
@@ -364,7 +465,6 @@ public:
                       const Expr& keys,   // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
                       const Expr& values, // ...?
                       const Expr& mask,   // [-4: batch size, -3: num heads broadcast=1, -2: max length broadcast=1, -1: max length]
-                      int dimHeads,
                       bool cache = false,
                       bool saveAttentionWeights = false) {
     int dimModel = input->shape()[-1];
@@ -373,8 +473,14 @@ public:
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_Wo", opsPre, input, dropProb);
 
+    auto heads = numHeads_[prefix];
+    auto headDim = opt<int>("transformer-head-dim");
+
     // multi-head self-attention over previous input
-    output = MultiHead(prefix, dimModel, dimHeads, output, keys, values, mask, cache, saveAttentionWeights);
+    if (heads > 0)
+      output = MultiHead(prefix, dimModel, heads, headDim, output, keys, values, mask, cache, saveAttentionWeights);
+    else
+      output = input;
     
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
@@ -397,18 +503,28 @@ public:
     decoderLayerState.output = values;
 
     return LayerAttention(prefix, input, values, values, selfMask,
-                          opt<int>("transformer-heads"), /*cache=*/false);
+                          /*cache=*/false);
   }
 
-  Expr LayerFFN(std::string prefix, Expr input) const {
+  Expr LayerFFN(std::string prefix, Expr input, int layerNum = 0) const {
     int dimModel = input->shape()[-1];
 
     float dropProb = inference_ ? 0 : opt<float>("transformer-dropout");
     auto opsPre = opt<std::string>("transformer-preprocess");
     auto output = preProcess(prefix + "_ffn", opsPre, input, dropProb);
 
+    int dimFfn;
+    if (prefix.find("encoder") != std::string::npos) {
+      dimFfn = opt<std::vector<int>>("transformer-enc-ffn-dim")[layerNum - 1];
+    }
+    else if (prefix.find("decoder") != std::string::npos) {
+      dimFfn = opt<std::vector<int>>("transformer-dec-ffn-dim")[layerNum - 1];
+    }
+    else {
+      dimFfn = opt<int>("transformer-dim-ffn"); // won't enter it but just in case, change to use it as default later
+    }
+
     auto actName = opt<std::string>("transformer-ffn-activation");
-    int dimFfn = opt<int>("transformer-dim-ffn");
     int depthFfn = opt<int>("transformer-ffn-depth");
     float ffnDropProb
       = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
@@ -417,10 +533,13 @@ public:
 
     auto initFn = inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f);
 
+    auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
+    auto pruneFFN = (pruneFlags.find("f") != std::string::npos) && !inference_; // prune if ffn activated
+    
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)
-      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, initFn, actName, ffnDropProb);
-    output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel, initFn);
+      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, initFn, actName, ffnDropProb, regularisers_, pruneFFN, /*rows=*/false);
+    output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel, initFn, "", 0.0f, regularisers_, pruneFFN, /*rows=*/true);
 
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
@@ -533,6 +652,18 @@ class EncoderTransformer : public Transformer<EncoderBase> {
   typedef Transformer<EncoderBase> Base;
   using Base::Base;
 public:
+
+   void setNumHeads() override {
+    std::string modelPath;
+    if (options_->has("models"))
+      modelPath = opt<std::vector<std::string>>("models")[0];
+    else
+      modelPath = opt<std::string>("model");
+    
+    auto encLayers = opt<int>("enc-depth");
+    loadNumHeads(modelPath, "encoder", encLayers);
+  }
+
   EncoderTransformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Transformer(graph, options) {
     depthScaling_ = options_->get<bool>("transformer-depth-scaling", false);
     depth_ = 1;
@@ -542,6 +673,10 @@ public:
 
   virtual Ptr<EncoderState> build(Ptr<ExpressionGraph> graph,
                                   Ptr<data::CorpusBatch> batch) override {
+    if (!setHeads_) {
+      setNumHeads();
+      setHeads_ = true;
+    }
     graph_ = graph;
     return apply(batch);
   }
@@ -584,9 +719,11 @@ public:
                              layer, // query
                              layer, // keys
                              layer, // values
-                             layerMask, // [batch size, num heads broadcast=1, max length broadcast=1, max length]
-                             opt<int>("transformer-heads"));
-      layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer);
+                             layerMask); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
+
+      layer = LayerFFN(prefix_ + "_l" + std::to_string(i) + "_ffn", layer, i);
+
+
       checkpoint(layer); // sets a manually specified checkpoint if gradient checkpointing is enabled, does nothing otherwise.
     }
 
@@ -669,7 +806,18 @@ private:
     output_ = std::dynamic_pointer_cast<mlp::Output>(outputFactory.construct(graph_)); // (construct() returns only the underlying interface)
   }
 
-public:
+public: 
+  void setNumHeads() override {
+      std::string modelPath;
+      if (options_->has("models"))
+        modelPath = opt<std::vector<std::string>>("models")[0];
+      else
+        modelPath = opt<std::string>("model");
+  
+      auto decLayers = opt<int>("dec-depth");
+      loadNumHeads(modelPath, "decoder", decLayers);
+  }
+
   DecoderTransformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : Transformer(graph, options) {
     depthScaling_ = options_->get<bool>("transformer-depth-scaling", false);
     depth_ = 1;
@@ -681,6 +829,11 @@ public:
       std::vector<Ptr<EncoderState>>& encStates) override {
     graph_ = graph;
 
+    if (!setHeads_) {
+      setNumHeads();
+      setHeads_ = true;
+    }
+    
     std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if (layerType == "rnn") {
       int dimBatch = (int)batch->size();
@@ -813,7 +966,7 @@ public:
 
       checkpoint(query);
 
-      // cross-attention (source-target)
+      // source-target attention
       // Iterate over multiple encoders and simply stack the attention blocks
       if(encoderContexts.size() > 0) {
         for(size_t j = 0; j < encoderContexts.size(); ++j) { // multiple encoders are applied one after another
@@ -839,20 +992,13 @@ public:
             saveAttentionWeights = i == attLayer;
           }
 
-          if(options_->get<bool>("transformer-pool", false)) {
-            query = LayerPooling(prefix,
+          query = LayerAttention(prefix,
                                  query,
-                                 encoderContexts[j]); // values
-          } else {
-            query = LayerAttention(prefix,
-                                   query,
-                                   encoderContexts[j], // keys
-                                   encoderContexts[j], // values
-                                   encoderMasks[j],
-                                   opt<int>("transformer-heads"),
-                                   /*cache=*/true,
-                                   saveAttentionWeights);
-          }
+                                 encoderContexts[j], // keys
+                                 encoderContexts[j], // values
+                                 encoderMasks[j],
+                                 /*cache=*/true,
+                                 saveAttentionWeights);
         }
       }
 
@@ -861,7 +1007,7 @@ public:
       // remember decoder state
       decoderStates.push_back(decoderState);
 
-      query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
+      query = LayerFFN(prefix_ + "_l" + layerNo + "_ffn", query, std::stoi(layerNo)); // [-4: beam depth=1, -3: batch size, -2: max length, -1: vector dim]
 
       checkpoint(query);
     }
@@ -905,6 +1051,10 @@ public:
       output_->clear();
     cache_.clear();
     alignments_.clear();
+    for (int i = 0; i < regularisers_.size(); i++) {
+      // LOG_ONCE(info, "Cleaning regularisers in transformer");
+      regularisers_[i]->clear();
+    }
     perLayerRnn_.clear(); // this needs to be cleared between batches. 
     // @TODO: figure out how to detect stale nodes i.e. nodes that are referenced, 
     // but where underlying memory has been deallocated by dropping all tensors 

@@ -83,7 +83,12 @@ public:
     for(auto p : *graph->params()) {
       // do not prune layer normalisation
       if (p->name().find("_ln_") != std::string::npos) { continue; }
+      // do not prune any biases
       if (p->name().find("_b") != std::string::npos) { continue; }
+      // do not prune embeddings if said so
+      if (options_->get<bool>("pruning-skip-embeddings") && p->name().find("Wemb") != std::string::npos) { continue; }
+
+      // if valid to do so, prune that node
       pruneNode(p, batchNum);
     }
   }

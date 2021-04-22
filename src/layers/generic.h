@@ -6,6 +6,7 @@
 
 #include "data/shortlist.h"
 #include "layers/factory.h"
+#include "optimizers/regularizer.h"
 
 namespace marian {
 namespace mlp {
@@ -189,11 +190,21 @@ static inline Expr denseInline(Expr x,
                                int outDim,
                                Ptr<inits::NodeInitializer> initFn = inits::glorotUniform(),
                                std::string actName = "",
-                               float dropProb = 0.0f) {
+                               float dropProb = 0.0f,
+                               std::vector<Ptr<IRegulariser>> regularisers = {},
+                               bool toPrune = false,
+                               bool rows = false) {
   auto graph = x->graph();
 
-  auto W = graph->param(prefix + "_W" + suffix, {x->shape()[-1], outDim}, inits::glorotUniform());
+  auto W = graph->param(prefix + "_W" + suffix, {x->shape()[-1], outDim}, initFn);
   auto b = graph->param(prefix + "_b" + suffix, {1, outDim}, inits::zeros());
+
+  if (toPrune && !regularisers.empty()) {
+    for (auto r : regularisers) {
+      auto penalty = r->calculatePenalty(W, b, rows);
+      b = b * (penalty / penalty); // stupid trick to connect to a graph? 
+    }
+  }
 
   if(actName == "relu") {
     x = affineWithRelu(x, W, b); // speed optimization for inference, @TODO: handle better in future layer framework

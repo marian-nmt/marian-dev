@@ -73,6 +73,8 @@ public:
   }
 
   virtual const std::vector<Expr> getAlignments(int /*i*/ = 0) { return {}; }; // [tgt index][beam depth, max src length, batch size, 1]
+  
+  virtual std::vector<Ptr<IRegulariser>> getRegularisers(int /*i*/ = 0) { return {}; };
 
   virtual Ptr<data::Shortlist> getShortlist() { return shortlist_; }
   virtual void setShortlist(Ptr<data::Shortlist> shortlist) {

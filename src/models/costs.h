@@ -89,6 +89,40 @@ public:
       multiLoss->push_back(alignmentLoss);
     }
 
+    // regularisation
+    if(!options_->get<std::vector<std::string>>("regulariser-type").empty() && !inference_) {
+      auto pruneFlags = options_->get<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
+
+      // LOG(info, "Adding regularisation");
+      // initialise penalty to sum across enc and dec
+      auto penalty = graph->constant({1, 1}, inits::zeros());
+      penalty->set_name("penalty");
+       
+      // for every encoder
+      for (auto& e : encdec->getEncoders()) {
+        auto regs = e->getRegularisers();
+        // LOG("Encoder regularisers...{}", regs.size());
+        for (auto r : regs) {
+          penalty = penalty + r->getTotalPenalty();
+        }
+        // debug(penalty);
+      }
+      
+      // for every decoder
+      for (auto& d : encdec->getDecoders()) {
+        auto regs = d->getRegularisers();
+        // LOG("Decoder regularisers...{}", regs.size());
+        for (auto r : regs) {
+          penalty = penalty + r->getTotalPenalty();
+        }
+        // debug(penalty);
+      }
+      
+      // loss count is 1, we just scale by batch as usual
+      auto penaltyLoss = RationalLoss(penalty, 1);
+      multiLoss->push_back(penaltyLoss); 
+    }
+
     return multiLoss;
   }
 };

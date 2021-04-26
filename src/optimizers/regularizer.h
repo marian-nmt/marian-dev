@@ -23,16 +23,11 @@ protected:
   float lambda_{0.0f};
   std::string type_{""};
 
-  Expr penalty_; 
   std::vector<Expr> partialPenalties_;
 
 
 public:
-  IRegulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : options_(options), lambda_(lambda), type_(type) {
-    // LOG(info, "Initialising regulariser, penalty set to 0");
-    // penalty_ = graph->constant({1, 1}, inits::zeros());
-    // LOG(info, "Initialised successfully");
-  }
+  IRegulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : options_(options), lambda_(lambda), type_(type) { }
 
   virtual ~IRegulariser() {}
 
@@ -41,8 +36,14 @@ public:
   }
 
   virtual Expr getTotalPenalty() {
-    debug(penalty_, "penalty_ without lambda");
-    return lambda_ * penalty_;
+    Expr totalPenalty;
+    for (int i = 0; i < partialPenalties_.size(); i++) {
+      if (!totalPenalty)
+        totalPenalty = partialPenalties_[i];
+      else 
+        totalPenalty = totalPenalty + lambda_ * partialPenalties_[i];
+    }
+    return lambda_ * totalPenalty;
   }
 
   virtual std::vector<Expr> getPartialPenalties() {
@@ -50,10 +51,7 @@ public:
   }
 
   virtual void clear() {
-    if (penalty_)
-      penalty_ = nullptr;
     partialPenalties_ = {};
-    LOG(info, "Clearing regulariser, setting penalty to 0");
   }
 
   virtual Expr calculatePenalty(Expr W, Expr b, bool rows) = 0;
@@ -75,12 +73,7 @@ public:
     auto p = square(sum(sum(sqrt(abs(W)), -1), -2));
 
     partialPenalties_.push_back(p);
-    if (!penalty_)
-      penalty_ = p;
-    else
-      penalty_ = penalty_ + p;
-    
-    return penalty_;
+    return p;
   }
 };
 
@@ -96,14 +89,8 @@ public:
   // we ignore bias in this case
   Expr calculatePenalty(Expr W, Expr b, bool rows = false) override {
     auto p = sum(sum(abs(W), -1), -2);
+    
     partialPenalties_.push_back(p);
-    // if (!penalty_) {
-      // penalty_ = p;
-    // }
-    // else {
-      // penalty_ = penalty_ + p;
-    // }
-    // debug(penalty_, "total penalty, should be the same as p if it's the first op");
     return p;
   }
 };
@@ -123,12 +110,7 @@ public:
     auto p = sum(sum(W * W, -1), -2);
 
     partialPenalties_.push_back(p);
-    if (!penalty_)
-      penalty_ = p;
-    else
-      penalty_ = penalty_ + p;
-    
-    return penalty_;
+    return p;
   }
 };
 
@@ -149,12 +131,7 @@ public:
     auto p = p1 + p2;
 
     partialPenalties_.push_back(p);
-    if (!penalty_)
-      penalty_ = p;
-    else
-      penalty_ = penalty_ + p;
-    
-    return penalty_;
+    return p;
   }
 };
 
@@ -179,12 +156,7 @@ public:
     }
     
     partialPenalties_.push_back(p);
-    if (!penalty_)
-      penalty_ = p;
-    else
-      penalty_ = penalty_ + p;
-
-    return penalty_;
+    return p;
   }
 
 protected:  

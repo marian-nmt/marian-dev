@@ -741,7 +741,11 @@ public:
     return New<EncoderState>(context, batchMask, batch);
   }
 
-  virtual void clear() override {}
+  virtual void clear() override {
+    for (int i = 0; i < regularisers_.size(); i++) {
+      regularisers_[i]->clear();
+    }
+  }
 };
 
 class TransformerState : public DecoderState {
@@ -1052,7 +1056,6 @@ public:
     cache_.clear();
     alignments_.clear();
     for (int i = 0; i < regularisers_.size(); i++) {
-      // LOG(info, "Cleaning regularisers in transformer");
       regularisers_[i]->clear();
     }
     perLayerRnn_.clear(); // this needs to be cleared between batches. 

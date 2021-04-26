@@ -62,7 +62,7 @@ protected:
 
 public:
 
-  std::vector<Ptr<IRegulariser>> getRegularisers() {
+  std::vector<Ptr<IRegulariser>> getRegularisers(int /*i*/ = 0) override {
     return regularisers_;
   }
 
@@ -107,14 +107,14 @@ public:
     auto types = options_->get<std::vector<std::string>>("regulariser-type");
     ABORT_IF(types.size() != lambdas.size(), "Every regulariser needs its own lambda!");
     for (int i = 0; i < types.size(); i++) {
-      // LOG(info, "lambdas {} types {}", lambdas[i], types[i]);
-      auto regulariser = New<RegulariserFactory>(options_)->construct(lambdas[i], types[i]);
+      LOG(info, "lambdas {} types {}", lambdas[i], types[i]);
+      auto regulariser = New<RegulariserFactory>(options_)->construct(graph_, lambdas[i], types[i]);
       if (regulariser) {
         regularisers_.push_back(regulariser); 
-        // LOG(info, "Adding regulariser to the vector");
+        LOG(info, "Adding regulariser to the vector");
       }
       else {
-        // LOG(info, "Regulariser is a nullptr???");
+        LOG(info, "Regulariser is a nullptr???");
       }
     }
   }
@@ -1052,7 +1052,7 @@ public:
     cache_.clear();
     alignments_.clear();
     for (int i = 0; i < regularisers_.size(); i++) {
-      // LOG_ONCE(info, "Cleaning regularisers in transformer");
+      // LOG(info, "Cleaning regularisers in transformer");
       regularisers_[i]->clear();
     }
     perLayerRnn_.clear(); // this needs to be cleared between batches. 

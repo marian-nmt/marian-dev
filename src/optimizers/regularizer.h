@@ -28,11 +28,20 @@ protected:
 
 
 public:
-  IRegulariser(Ptr<Options> options, float lambda, std::string type) : options_(options), lambda_(lambda), type_(type) {}
+  IRegulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : options_(options), lambda_(lambda), type_(type) {
+    // LOG(info, "Initialising regulariser, penalty set to 0");
+    // penalty_ = graph->constant({1, 1}, inits::zeros());
+    // LOG(info, "Initialised successfully");
+  }
 
   virtual ~IRegulariser() {}
 
+  virtual float getLambda() {
+    return lambda_;
+  }
+
   virtual Expr getTotalPenalty() {
+    debug(penalty_, "penalty_ without lambda");
     return lambda_ * penalty_;
   }
 
@@ -41,9 +50,10 @@ public:
   }
 
   virtual void clear() {
-    // LOG_ONCE(info, "Clearing regulariser...");
-    penalty_ = 0;
+    if (penalty_)
+      penalty_ = nullptr;
     partialPenalties_ = {};
+    LOG(info, "Clearing regulariser, setting penalty to 0");
   }
 
   virtual Expr calculatePenalty(Expr W, Expr b, bool rows) = 0;
@@ -54,7 +64,7 @@ protected:
   Ptr<Options> options_; 
 
 public:
-  LhalfRegulariser(Ptr<Options> options, float lambda, std::string type) : IRegulariser(options, lambda, type) {}
+  LhalfRegulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : IRegulariser(graph, options, lambda, type) {}
   
   // L0.5-regularisation
   // so since it is p = 0.5, parameters are sqrt and then added together with a square 
@@ -79,21 +89,22 @@ protected:
   Ptr<Options> options_; 
 
 public:
-  L1Regulariser(Ptr<Options> options, float lambda, std::string type) : IRegulariser(options, lambda, type) {}
+  L1Regulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : IRegulariser(graph, options, lambda, type) {}
   
   // L1-regularisation
   // just a sum of all absolute values 
   // we ignore bias in this case
   Expr calculatePenalty(Expr W, Expr b, bool rows = false) override {
     auto p = sum(sum(abs(W), -1), -2);
-
     partialPenalties_.push_back(p);
-    if (!penalty_)
-      penalty_ = p;
-    else
-      penalty_ = penalty_ + p;
-    
-    return penalty_;
+    // if (!penalty_) {
+      // penalty_ = p;
+    // }
+    // else {
+      // penalty_ = penalty_ + p;
+    // }
+    // debug(penalty_, "total penalty, should be the same as p if it's the first op");
+    return p;
   }
 };
 
@@ -103,7 +114,7 @@ protected:
   Ptr<Options> options_; 
 
 public:
-  L2Regulariser(Ptr<Options> options, float lambda, std::string type) : IRegulariser(options, lambda, type) {}
+  L2Regulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : IRegulariser(graph, options, lambda, type) {}
   
   // L2-regularisation
   // just a sum of square values 
@@ -127,7 +138,7 @@ protected:
   Ptr<Options> options_; 
 
 public:
-  ElasticRegulariser(Ptr<Options> options, float lambda, std::string type) : IRegulariser(options, lambda, type) {}
+  ElasticRegulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : IRegulariser(graph, options, lambda, type) {}
   
   // Elastic net regularisation
   // which is just L1 + L2
@@ -150,7 +161,7 @@ public:
 
 class GroupLassoRegulariser : public IRegulariser {
 public:
-  GroupLassoRegulariser(Ptr<Options> options, float lambda, std::string type) : IRegulariser(options, lambda, type) {}
+  GroupLassoRegulariser(Ptr<ExpressionGraph> graph, Ptr<Options> options, float lambda, std::string type) : IRegulariser(graph, options, lambda, type) {}
 
   Expr calculatePenalty(Expr W, Expr b, bool rows = false) override {
     Expr p;
@@ -300,39 +311,39 @@ public:
   using Factory::Factory;
   RegulariserFactory(Ptr<Options> options) : Factory(options) {};
 
-  Ptr<IRegulariser> construct(float lambda, std::string type) {
+  Ptr<IRegulariser> construct(Ptr<ExpressionGraph> graph, float lambda, std::string type) {
     LOG_ONCE(info, "Regulariser type {}", type);
     if (type == "l1") {
       LOG_ONCE(info, "Regularisation type selected: l1");
-      return New<L1Regulariser>(options_, lambda, type);
+      return New<L1Regulariser>(graph, options_, lambda, type);
     } 
     else if (type == "l2") {
       LOG_ONCE(info, "Regularisation type selected: l2");
-      return New<L2Regulariser>(options_, lambda, type);
+      return New<L2Regulariser>(graph, options_, lambda, type);
     }
     else if (type == "lhalf") {
       LOG_ONCE(info, "Regularisation type selected: lhalf");
-      return New<LhalfRegulariser>(options_, lambda, type);
+      return New<LhalfRegulariser>(graph, options_, lambda, type);
     }
     else if (type == "elastic") {
       LOG_ONCE(info, "Regularisation type selected: elastic");
-      return New<ElasticRegulariser>(options_, lambda, type);
+      return New<ElasticRegulariser>(graph, options_, lambda, type);
     }
     else if (type == "rowcol") {
       LOG_ONCE(info, "Regularisation type selected: group lasso, shape=rowcol");
-      return New<GroupLassoRegulariser>(options_, lambda, type);
+      return New<GroupLassoRegulariser>(graph, options_, lambda, type);
     }
     else if (type == "rowcol-root") {
       LOG_ONCE(info, "Regularisation type selected: group lasso, shape=rowcol-root");
-      return New<GroupLassoRegulariser>(options_, lambda, type);
+      return New<GroupLassoRegulariser>(graph, options_, lambda, type);
     }
     else if (type == "layer") {
       LOG_ONCE(info, "Regularisation type selected: group lasso, shape=layer");
-      return New<GroupLassoRegulariser>(options_, lambda, type);
+      return New<GroupLassoRegulariser>(graph, options_, lambda, type);
     }
     else if (type == "heads") {
       LOG_ONCE(info, "Regularisation type selected: group lasso, shape=heads");
-      return New<GroupLassoRegulariser>(options_, lambda, type);
+      return New<GroupLassoRegulariser>(graph, options_, lambda, type);
     }
     else {
       LOG_ONCE(info, "Regularisation type selected but not on the list? Returning nullptr, will break? {}", type);

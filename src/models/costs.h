@@ -95,32 +95,52 @@ public:
 
       // LOG(info, "Adding regularisation");
       // initialise penalty to sum across enc and dec
-      auto penalty = graph->constant({1, 1}, inits::zeros());
-      penalty->set_name("penalty");
+      auto encPenalty = graph->constant({1, 1}, inits::zeros());
+      auto decPenalty = graph->constant({1, 1}, inits::zeros());
+      // debug(penalty, "after initialisation");
+      // penalty->set_name("penalty");
        
       // for every encoder
       for (auto& e : encdec->getEncoders()) {
         auto regs = e->getRegularisers();
-        // LOG("Encoder regularisers...{}", regs.size());
+
+        // LOG(info, "Encoder regularisers...{}", regs.size());
         for (auto r : regs) {
-          penalty = penalty + r->getTotalPenalty();
+          auto partialPenalties = r->getPartialPenalties();
+          for (int i = 0; i < partialPenalties.size(); i++) {
+            debug(partialPenalties[i], "partialPenalty encoder");
+            encPenalty = encPenalty + r->getLambda() * partialPenalties[i];
+            debug(encPenalty, "encPenalty after adding next partial");
+          }
+          // penalty = penalty + debug(r->getTotalPenalty(), "encoder penalty");
+          // r->clear();
         }
         // debug(penalty);
       }
+      // debug(encPenalty, "encoder penalty");
       
       // for every decoder
       for (auto& d : encdec->getDecoders()) {
         auto regs = d->getRegularisers();
-        // LOG("Decoder regularisers...{}", regs.size());
+        // LOG(info, "Decoder regularisers...{}", regs.size());
         for (auto r : regs) {
-          penalty = penalty + r->getTotalPenalty();
+          auto partialPenalties = r->getPartialPenalties();
+          for (int i = 0; i < partialPenalties.size(); i++) {
+            debug(partialPenalties[i], "partialPenalty decoder");
+            decPenalty = decPenalty + r->getLambda() * partialPenalties[i];
+            debug(decPenalty, "encPenalty after adding next partial");
+          }
+          // penalty = penalty + debug(r->getTotalPenalty(), "decoder penalty");
+          // r->clear();
         }
-        // debug(penalty);
       }
-      
+      // debug(decPenalty, "decoder penalty");
+      auto totalPenalty = encPenalty + decPenalty;
+      // debug(totalPenalty, "totalPenalty"); 
       // loss count is 1, we just scale by batch as usual
-      auto penaltyLoss = RationalLoss(penalty, 1);
-      multiLoss->push_back(penaltyLoss); 
+      auto penaltyLoss = RationalLoss(totalPenalty, 1);
+      multiLoss->push_back(penaltyLoss);
+        
     }
 
     return multiLoss;

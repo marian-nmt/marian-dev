@@ -95,18 +95,22 @@ public:
 
       Expr encPenalty;
       Expr decPenalty;
+
       
-      // for every encoder
-      for (auto& e : encdec->getEncoders()) {
-        auto regs = e->getRegularisers();
-        for (auto r : regs) {
-          if (!encPenalty)
-            encPenalty = r->getTotalPenalty();
-          else 
-            encPenalty = encPenalty + r->getTotalPenalty();
+      if (pruneFlags.find("e") != std::string::npos) { // prune encoder if activated
+        // for every encoder
+        for (auto& e : encdec->getEncoders()) {
+          auto regs = e->getRegularisers();
+          for (auto r : regs) {
+            if (!encPenalty)
+              encPenalty = r->getTotalPenalty();
+            else 
+              encPenalty = encPenalty + r->getTotalPenalty();
+          }
         }
       }
       
+      if (pruneFlags.find("d") != std::string::npos) { // prune decoder if activated
       // for every decoder
       for (auto& d : encdec->getDecoders()) {
         auto regs = d->getRegularisers();
@@ -117,7 +121,11 @@ public:
             decPenalty = decPenalty + r->getTotalPenalty();
         }
       }
-      auto totalPenalty = encPenalty + decPenalty;
+      
+      Expr totalPenalty;
+      if (!encPenalty && decPenalty) { totalPenalty = encPenalty; } // if we regularise enc only
+      if (encPenalty && !decPenalty) { totalPenalty = decPenalty; }// if we regularise dec only
+      if (!encPenalty && !decPenalty) { totalPenalty = encPenalty + decPenalty; }// if we regularise both
       
       // loss count is 1, we just scale by batch as usual
       auto penaltyLoss = RationalLoss(totalPenalty, 1);

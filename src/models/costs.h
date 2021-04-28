@@ -95,9 +95,9 @@ public:
 
       Expr encPenalty;
       Expr decPenalty;
-
-      
+ 
       if (pruneFlags.find("e") != std::string::npos) { // prune encoder if activated
+        LOG_ONCE(info, "Regularising encoder...");
         // for every encoder
         for (auto& e : encdec->getEncoders()) {
           auto regs = e->getRegularisers();
@@ -111,22 +111,24 @@ public:
       }
       
       if (pruneFlags.find("d") != std::string::npos) { // prune decoder if activated
-      // for every decoder
-      for (auto& d : encdec->getDecoders()) {
-        auto regs = d->getRegularisers();
-        for (auto r : regs) {
-          if (!decPenalty)
-            decPenalty = r->getTotalPenalty();
-          else 
-            decPenalty = decPenalty + r->getTotalPenalty();
+        LOG_ONCE(info, "Regularising decoder...");
+        // for every decoder
+        for (auto& d : encdec->getDecoders()) {
+          auto regs = d->getRegularisers();
+          for (auto r : regs) {
+            if (!decPenalty)
+              decPenalty = r->getTotalPenalty();
+            else 
+              decPenalty = decPenalty + r->getTotalPenalty();
+          }
         }
       }
       
       Expr totalPenalty;
-      if (!encPenalty && decPenalty) { totalPenalty = encPenalty; } // if we regularise enc only
-      if (encPenalty && !decPenalty) { totalPenalty = decPenalty; }// if we regularise dec only
-      if (!encPenalty && !decPenalty) { totalPenalty = encPenalty + decPenalty; }// if we regularise both
-      
+      if (encPenalty && !decPenalty) { totalPenalty = encPenalty; } // if we regularise enc only
+      if (!encPenalty && decPenalty) { totalPenalty = decPenalty; }// if we regularise dec only
+      if (encPenalty && decPenalty) { totalPenalty = encPenalty + decPenalty; }// if we regularise both
+      ABORT_IF(!totalPenalty, "penalty is null???"); 
       // loss count is 1, we just scale by batch as usual
       auto penaltyLoss = RationalLoss(totalPenalty, 1);
       multiLoss->push_back(penaltyLoss);

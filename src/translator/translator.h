@@ -206,10 +206,10 @@ public:
             double totTime = totTimer->elapsed();
             double curTime = curTimer->elapsed();
 
-            LOG(info, 
-                "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (since last): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s", 
+            LOG(info,
+                "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (since last): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s",
                 totBatches, totLines, totSourceTokens, totTime, curBatches / curTime, curLines / curTime, curSourceTokens / curTime);
-            
+
             // reset stats between updates
             curBatches = curLines = curSourceTokens = 0;
             curTimer.reset(new timer::Timer());
@@ -222,12 +222,12 @@ public:
 
     // make sure threads are joined before other local variables get de-allocated
     threadPool.join_all();
-    
+
     // display final speed numbers over total translation if intermediate displays were requested
     if(statFreq.n > 0) {
       double totTime = totTimer->elapsed();
-      LOG(info, 
-          "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (total): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s", 
+      LOG(info,
+          "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (total): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s",
           totBatches, totLines, totSourceTokens, totTime, totBatches / totTime, totLines / totTime, totSourceTokens / totTime);
     }
   }
@@ -283,7 +283,6 @@ public:
       auto items = io::loadItems(model);
       model_items_.push_back(std::move(items));
     }
-
 
     // initialize scorers
     for(auto device : devices) {

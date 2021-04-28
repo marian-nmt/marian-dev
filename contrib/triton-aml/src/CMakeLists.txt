@@ -1,3 +1,5 @@
+add_definitions(-DCUB_IGNORE_DEPRECATED_CPP_DIALECT=1)
+add_definitions(-DTHRUST_IGNORE_DEPRECATED_CPP_DIALECT=1)
 add_subdirectory(3rd_party)
 
 include_directories(.)
@@ -5,6 +7,8 @@ include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
 include_directories(3rd_party/fbgemm/include)
+include_directories(3rd_party/intgemm)
+include_directories(${CMAKE_BINARY_DIR}/src/3rd_party/intgemm) # running cmake on the intgemm submodule triggers config file generation in this directory.
 include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 add_library(marian STATIC
@@ -21,9 +25,12 @@ add_library(marian STATIC
   common/config_validator.cpp
   common/options.cpp
   common/binary.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/common/build_info.cpp
   common/io.cpp
   common/filesystem.cpp
   common/file_stream.cpp
+  common/file_utils.cpp
+  common/signal_handling.cpp
   common/types.cpp
 
   data/alignment.cpp
@@ -36,9 +43,12 @@ add_library(marian STATIC
   data/corpus_sqlite.cpp
   data/corpus_nbest.cpp
   data/text_input.cpp
+  data/shortlist.cpp
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
+
+  3rd_party/onnx/protobuf/onnx-ml.pb-wrapper.cpp
 
   3rd_party/phf/phf.cc
 
@@ -47,11 +57,9 @@ add_library(marian STATIC
   tensors/tensor.cpp
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
+  tensors/cpu/topk.cpp
   tensors/cpu/tensor_operators.cpp
-
-  tensors/cpu/sharp/int_gemm.cpp
-  tensors/cpu/sharp/avx_gemm.cpp
-  tensors/cpu/sharp/sse_gemm.cpp
+  tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
 
   graph/expression_graph.cpp
@@ -60,23 +68,35 @@ add_library(marian STATIC
   graph/node_operators.cpp
   graph/node_initializers.cpp
 
+  onnx/expression_graph_onnx_exporter.cpp
+  onnx/expression_graph_onnx_serialization.cpp
+
   layers/convolution.cpp
   layers/generic.cpp
   layers/loss.cpp
   layers/weight.cpp
+  layers/lsh.cpp
+  layers/embedding.cpp
+  layers/output.cpp
+  layers/logits.cpp
 
   rnn/cells.cpp
   rnn/attention.cpp
 
+  optimizers/quantizer.cpp
   optimizers/clippers.cpp
   optimizers/optimizers.cpp
+  optimizers/exponential_smoothing.cpp
 
   models/model_factory.cpp
   models/encoder_decoder.cpp
   models/transformer_stub.cpp
+  models/costs.cpp
 
   rescorer/score_collector.cpp
+  embedder/vector_collector.cpp
 
+  translator/beam_search.cpp
   translator/history.cpp
   translator/output_collector.cpp
   translator/output_printer.cpp
@@ -85,22 +105,26 @@ add_library(marian STATIC
   translator/scorers.cpp
 
   training/graph_group_async.cpp
-  training/graph_group_async_drop.cpp
   training/graph_group_sync.cpp
+  training/graph_group.cpp
   training/graph_group_singleton.cpp
-  training/graph_group_multinode.cpp
-  training/graph_group_multinode_sync.cpp
   training/validator.cpp
   training/communicator.cpp
-  training/scheduler.cpp
 
   # this is only compiled to catch build errors, but not linked
   microsoft/quicksand.cpp
+  microsoft/cosmos.cpp
+
+  # copied from quicksand to be able to read binary shortlist
+  microsoft/shortlist/utils/Converter.cpp
+  microsoft/shortlist/utils/StringUtils.cpp
+  microsoft/shortlist/utils/ParameterTree.cpp
 
   $<TARGET_OBJECTS:libyaml-cpp>
   $<TARGET_OBJECTS:SQLiteCpp>
   $<TARGET_OBJECTS:pathie-cpp>
   $<TARGET_OBJECTS:zlib>
+  $<TARGET_OBJECTS:faiss>
 )
 target_compile_options(marian PUBLIC ${ALL_WARNINGS})
 
@@ -138,6 +162,9 @@ cuda_add_library(marian_cuda
   tensors/gpu/device.cu
   tensors/gpu/algorithm.cu
   tensors/gpu/prod.cpp
+  tensors/gpu/prod.cu
+  tensors/gpu/prod_sparse.cpp
+  tensors/gpu/topk.cu
   tensors/gpu/element.cu
   tensors/gpu/add.cu
   tensors/gpu/add_all.cu
@@ -145,8 +172,6 @@ cuda_add_library(marian_cuda
   tensors/gpu/cudnn_wrappers.cu
   translator/nth_element.cu
   translator/helpers.cu
-  training/gradient_dropping/gpu/dropper.cu
-  training/gradient_dropping/gpu/sparse_algorithm.cu
   STATIC)
 
   target_compile_options(marian_cuda PUBLIC ${ALL_WARNINGS})

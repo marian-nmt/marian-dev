@@ -332,7 +332,7 @@ if(CUDA_FOUND)
     option(COMPILE_VOLTA       "Compile GPU version with SM70 support" ON)
     option(COMPILE_TURING      "Compile GPU version with SM75 support" ON)
     option(COMPILE_AMPERE      "Compile GPU version with SM80 support" ON)
-    option(COMPILE_AMPERE_RTX  "Compile GPU version with SM80 support" ON)
+    option(COMPILE_AMPERE_RTX  "Compile GPU version with SM86 support" ON)
     LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
   endif()
 

@@ -201,6 +201,10 @@ static inline Expr denseInline(Expr x,
 
   if (toPrune && !regularisers.empty()) {
     for (auto r : regularisers) {
+      if (r->getType() == "heads") { 
+        LOG_ONCE(info, "Skipping heads regularisation for FFN since it doesn't make sense ;D");
+        continue; 
+      }
       auto penalty = r->calculatePenalty(W, b, rows);
       b = b * (penalty / penalty); // stupid trick to connect to a graph? 
     }

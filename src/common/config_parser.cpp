@@ -585,6 +585,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<float>("--pruning-sparsity",
      "Pruning parameters: sparsity to achieve",
      0.9);
+  cli.add<float>("--pruning-threshold",
+     "Pruning threshold if required",
+     1e-6);
   cli.add<bool>("--pruning-skip-embeddings",
      "Don't prune embeddings");
 

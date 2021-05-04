@@ -348,6 +348,12 @@ public:
     auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
     auto pruneAtt = (pruneFlags.find("h") != std::string::npos); // prune if heads activated
 
+    auto regTypes = options_->get<std::vector<std::string>>("regulariser-type");
+    // if rowcol and heads activated at the same time, just don't do rowcol on attention and heads on ffn
+    auto skipRowcol = (std::find(regTypes.begin(), regTypes.end(), "rowcol") != regTypes.end() &&
+                       std::find(regTypes.begin(), regTypes.end(), "heads") != regTypes.end());
+    
+
     // @TODO: good opportunity to implement auto-batching here or do something manually?
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
     auto bq = graph_->param(prefix + "_bq", {       1, dimHeads * dimHeadSize}, inits::zeros());
@@ -355,6 +361,10 @@ public:
     if (!inference_ && !regularisers_.empty() && pruneAtt) {
       // LOG(info, "Regularising Wq");
       for (auto r: regularisers_) {
+        if (r->getType() == "rowcol" && skipRowcol) { 
+          LOG_ONCE(info, "Skipping rowcol regularisation for attention since group lasso over heads is activated");
+          continue; 
+        } // don't do rowcol if group heads
         auto penalty = r->calculatePenalty(Wq, bq, false);
         // debug(penalty);
         bq = bq * (penalty / penalty); // stupid trick to connect to a graph? 

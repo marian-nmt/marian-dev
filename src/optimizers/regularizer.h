@@ -34,6 +34,10 @@ public:
   virtual float getLambda() {
     return lambda_;
   }
+  
+  virtual std::string getType() {
+    return type_;
+  }
 
   virtual Expr getTotalPenalty() {
     Expr totalPenalty;

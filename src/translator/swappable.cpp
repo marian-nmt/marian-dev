@@ -78,8 +78,15 @@ GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)
 GPUEngineTrain::~GPUEngineTrain() {}
 
 GPULoadedModelTrain::GPULoadedModelTrain(Ptr<GPUEngineTrain> gpu) : engine_(gpu) {
-  for (auto &param : *engine_->graph_->params()) {
-    parameters_.push_back(engine_->allocator_.alloc(param->val()->memory()->size()));
+  // NOTE: engine_ must contain an initialized graph already at this point
+  // for (auto &param : *engine_->graph_->params()) {
+  //   parameters_.push_back(engine_->allocator_.alloc(param->val()->memory()->size()));
+  // }
+}
+
+void GPULoadedModelTrain::AllocateParamsLike(const CPULoadedModel &from) {
+  for (auto &param : from.Parameters()) {
+    parameters_.push_back(engine_->allocator_.alloc(param.size()));
   }
 }
 
@@ -118,7 +125,17 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   scheduler->registerTrainingObserver(scheduler);
   scheduler->registerTrainingObserver(optimizer);
 
-  auto corpus = New<data::TextInput>(std::vector<std::string>(1, MultilineInputHack(input)), srcVocabs_, engine_->options_); // @TODO dirty hack
+  // LOG(info, "GAAAH: vocabs is {}", srcVocabs_);
+  for (auto vocab: srcVocabs_) {
+    LOG(info, "GAAAH: single vocab is {}", vocab);
+  }
+
+  std::vector<Ptr<Vocab>> allVocabs;
+  allVocabs.reserve(srcVocabs_.size() + 1);
+  allVocabs.insert(allVocabs.end(), srcVocabs_.begin(), srcVocabs_.end());
+  allVocabs.emplace_back(trgVocab_);
+  auto corpus = New<data::TextInput>(input, allVocabs, engine_->options_);  // @TODO dirty hack
+  // auto corpus = New<data::TextInput>(input, srcVocabs_, engine_->options_); // @TODO dirty hack
   data::BatchGenerator<data::TextInput> batchGenerator(corpus, engine_->options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
 
   bool first = true;

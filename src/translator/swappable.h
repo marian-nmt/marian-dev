@@ -72,6 +72,7 @@ class GPULoadedModelTrain {
     // Overwrite this model with parameters from a different one.
     void Load(const CPULoadedModel &from);
     void Load(const GPULoadedModelTrain &from);
+    void AllocateParamsLike(const CPULoadedModel &from);
 
     void Train(const std::vector<std::string> &input);
 };

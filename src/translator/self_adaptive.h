@@ -76,14 +76,18 @@ public:
     auto deviceId = Config::getDevices(options_)[0];
 
     auto modelFilename = options_->get<std::string>("model");
-    options_->set<std::vector<std::string>>("models", {modelFilename});
+    optionsTrans_->set<std::vector<std::string>>("models", {modelFilename});
+
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
+    // TODO: or use optionsTrans_ here? cpuModel_ is used by both, trainin and translation, code
+    // so i don't yet know what's the correct approach
     cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
-    translateEngine_ = New<GPUEngine>(options_, 0);
+    translateEngine_ = New<GPUEngine>(optionsTrans_, 0);
     translateSlot_ = New<GPULoadedModel>(translateEngine_);
     trainEngine_ = New<GPUEngineTrain>(options_, 0);
     trainSlot_   = New<GPULoadedModelTrain>(trainEngine_);
+    trainSlot_->AllocateParamsLike(*cpuModel_);
   }
 
   std::string run(const std::string& json) override {
@@ -106,7 +110,7 @@ public:
 
     // Initialize output printing
     auto collector = New<StringCollector>();
-    auto printer = New<OutputPrinter>(options_, cpuModel_->TrgVocab());
+    auto printer = New<OutputPrinter>(optionsTrans_, cpuModel_->TrgVocab());
 
     // Get training sentences
     std::vector<std::vector<std::string>> contexts;

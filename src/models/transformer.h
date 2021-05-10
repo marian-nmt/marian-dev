@@ -107,14 +107,14 @@ public:
     auto types = options_->get<std::vector<std::string>>("regulariser-type");
     ABORT_IF(types.size() != lambdas.size(), "Every regulariser needs its own lambda!");
     for (int i = 0; i < types.size(); i++) {
-      LOG(info, "lambdas {} types {}", lambdas[i], types[i]);
+      LOG_ONCE(info, "lambdas {} types {}", lambdas[i], types[i]);
       auto regulariser = New<RegulariserFactory>(options_)->construct(graph_, lambdas[i], types[i]);
       if (regulariser) {
         regularisers_.push_back(regulariser); 
-        LOG(info, "Adding regulariser to the vector");
+        LOG_ONCE(info, "Adding regulariser to the vector");
       }
       else {
-        LOG(info, "Regulariser is a nullptr???");
+        LOG_ONCE(info, "Regulariser is a nullptr???");
       }
     }
   }

@@ -53,19 +53,27 @@ public:
 
   // Current learning rate, representing all adjustment processes and factors
   float eta;
-  void updateEta(float dynamicBaseLR) { // note: no other function may write to 'eta' (besides load())
+  void updateEta(
+      float dynamicBaseLR) {  // note: no other function may write to 'eta' (besides load())
     eta = dynamicBaseLR * factor;
   }
   // State-based multiplication factor for learning rate
   float factor{1.f};
   // @TODO: should also have warmup period here?
-  SchedulingParameter warmupStart; // has same unit as lr-warmup
+  SchedulingParameter warmupStart;  // has same unit as lr-warmup
 
   // Sum of costs since last display
   float costSum{0};
   // Number of labels aggregated in
   // costSum since last display
   float costCount{0};
+
+  ///////////////////////////////////////////////////////////////
+  // TODO: Remove if you don't want to report ce-mean-words and regularisation separately
+  // Sum of cross-entropy costs since last display
+  std::map<std::string, float> partialCostSum;
+
+  ///////////////////////////////////////////////////////////////
 
   // Number of words seen since last display
   size_t wordsDisp{0};
@@ -95,9 +103,7 @@ public:
   // Set flag if the model was validated in the current batch
   bool validated{false};
 
-  TrainingState(float learnRate) {
-    updateEta(learnRate);
-  }
+  TrainingState(float learnRate) { updateEta(learnRate); }
 
   void registerObserver(Ptr<TrainingObserver> observer) {
     observer->init(*this);
@@ -108,8 +114,8 @@ public:
   size_t getProgressIn(SchedulingUnit u) const {
     switch(u) {
       case SchedulingUnit::trgLabels: return labelsTotal;
-      case SchedulingUnit::updates  : return batches;
-      case SchedulingUnit::epochs   : return epochs;
+      case SchedulingUnit::updates: return batches;
+      case SchedulingUnit::epochs: return epochs;
       default: ABORT("corrupt enum value");
     }
   }
@@ -125,8 +131,8 @@ public:
   size_t getPreviousProgressIn(SchedulingUnit u) const {
     switch(u) {
       case SchedulingUnit::trgLabels: return prevLabelsTotal;
-      case SchedulingUnit::updates  : return prevBatches;
-      case SchedulingUnit::epochs   : return prevEpochs;
+      case SchedulingUnit::updates: return prevBatches;
+      case SchedulingUnit::epochs: return prevEpochs;
       default: ABORT("corrupt enum value");
     }
   }
@@ -148,7 +154,7 @@ public:
              "Unit {} is not supported for frequency parameters (the one(s) with value {})",
              schedulingParam);
     auto previousProgress = getPreviousProgressIn(period.unit);
-    auto progress = getProgressIn(period.unit);
+    auto progress         = getProgressIn(period.unit);
     return period && progress / period.n != previousProgress / period.n;
   }
 
@@ -156,7 +162,9 @@ public:
     ++epochs;
     for(auto wObserver : wObservers_) {
       auto observer = wObserver.lock();
-      ABORT_IF(!observer, "Training observer object expired. Make sure all registered observers exist during scheduler life time");
+      ABORT_IF(!observer,
+               "Training observer object expired. Make sure all registered observers exist during "
+               "scheduler life time");
       observer->actAfterEpoch(*this);
     }
     samplesEpoch = 0;
@@ -166,11 +174,13 @@ public:
   void newUpdate(size_t batchesInUpdate) {
     ++batches;
     batchesEpoch += batchesInUpdate;
-    loaded = false;
+    loaded    = false;
     validated = false;
     for(auto wObserver : wObservers_) {
       auto observer = wObserver.lock();
-      ABORT_IF(!observer, "Training observer object expired. Make sure all registered observers exist during scheduler life time");
+      ABORT_IF(!observer,
+               "Training observer object expired. Make sure all registered observers exist during "
+               "scheduler life time");
       observer->actAfterBatches(*this);
     }
   }
@@ -181,7 +191,9 @@ public:
       ++maxStalled;
     for(auto wObserver : wObservers_) {
       auto observer = wObserver.lock();
-      ABORT_IF(!observer, "Training observer object expired. Make sure all registered observers exist during scheduler life time");
+      ABORT_IF(!observer,
+               "Training observer object expired. Make sure all registered observers exist during "
+               "scheduler life time");
       observer->actAfterStalled(*this);
     }
   }
@@ -190,7 +202,9 @@ public:
     loaded = true;
     for(auto wObserver : wObservers_) {
       auto observer = wObserver.lock();
-      ABORT_IF(!observer, "Training observer object expired. Make sure all registered observers exist during scheduler life time");
+      ABORT_IF(!observer,
+               "Training observer object expired. Make sure all registered observers exist during "
+               "scheduler life time");
       observer->actAfterLoaded(*this);
     }
   }
@@ -201,8 +215,8 @@ public:
 
     YAML::Node config = YAML::LoadFile(name);
 
-    epochs = config["epochs"].as<size_t>();
-    batches = config["batches"].as<size_t>();
+    epochs       = config["epochs"].as<size_t>();
+    batches      = config["batches"].as<size_t>();
     batchesEpoch = config["batches-epoch"].as<size_t>();
     // different serialization name for backward compatibility
     samplesEpoch = config["samples"].as<size_t>();
@@ -215,22 +229,22 @@ public:
     prevEpochs      = config["prev-epochs"]       ? config["prev-epochs"].as<size_t>()       : 0;
     // clang-format on
 
-    stalled = config["stalled"].as<size_t>();
+    stalled    = config["stalled"].as<size_t>();
     maxStalled = config["stalled-max"].as<size_t>();
-    validBest = config["valid-best"].as<float>();
-    validator = config["validator"].as<std::string>();
+    validBest  = config["valid-best"].as<float>();
+    validator  = config["validator"].as<std::string>();
     validators = config["validators"];
-    reset = config["reset"].as<bool>();
+    reset      = config["reset"].as<bool>();
 
-    eta = config["eta"].as<float>();
+    eta    = config["eta"].as<float>();
     factor = config["eta-factor"].as<float>();
 
     warmupStart = SchedulingParameter::parse(config["warmup-start"].as<std::string>());
 
-    costSum = config["cost-sum"].as<float>();
+    costSum   = config["cost-sum"].as<float>();
     costCount = config["cost-count"].as<float>();
 
-    wordsDisp = config["disp-words"].as<size_t>();
+    wordsDisp   = config["disp-words"].as<size_t>();
     samplesDisp = config["disp-samples"].as<size_t>();
     updatesDisp = config["disp-updates"].as<size_t>();
 
@@ -240,7 +254,7 @@ public:
     logGradientNormAvg = config["log-gradient-norm-avg"].as<float>();
     logGradientNormVar = config["log-gradient-norm-var"].as<float>();
 
-    seedBatch = config["seed-batch"].as<std::string>();
+    seedBatch  = config["seed-batch"].as<std::string>();
     seedCorpus = config["seed-corpus"].as<std::string>();
   }
 
@@ -248,32 +262,32 @@ public:
     std::ofstream fout(name);
     YAML::Node config;
 
-    config["epochs"] = epochs;
-    config["batches"] = batches;
-    config["batches-epoch"] = batchesEpoch;
-    config["samples"] = samplesEpoch;
-    config["labels-total"] = labelsTotal;
+    config["epochs"]            = epochs;
+    config["batches"]           = batches;
+    config["batches-epoch"]     = batchesEpoch;
+    config["samples"]           = samplesEpoch;
+    config["labels-total"]      = labelsTotal;
     config["prev-labels-total"] = prevLabelsTotal;
-    config["prev-batches"] = prevBatches;
-    config["prev-epochs"] = prevEpochs;
+    config["prev-batches"]      = prevBatches;
+    config["prev-epochs"]       = prevEpochs;
 
-    config["stalled"] = stalled;
+    config["stalled"]     = stalled;
     config["stalled-max"] = maxStalled;
-    config["valid-best"] = validBest;
-    config["validator"] = validator;
-    config["validators"] = validators;
-    config["reset"] = reset;
+    config["valid-best"]  = validBest;
+    config["validator"]   = validator;
+    config["validators"]  = validators;
+    config["reset"]       = reset;
 
-    config["eta"] = eta;
-    config["eta-factor"] = factor;
+    config["eta"]          = eta;
+    config["eta-factor"]   = factor;
     config["warmup-start"] = std::string(warmupStart);
 
-    config["cost-sum"] = costSum;
+    config["cost-sum"]   = costSum;
     config["cost-count"] = costCount;
 
     config["disp-updates"] = updatesDisp;
     config["disp-samples"] = samplesDisp;
-    config["disp-words"] = wordsDisp;
+    config["disp-words"]   = wordsDisp;
 
     config["gradient-norm-avg"] = gradientNormAvg;
     config["gradient-norm-var"] = gradientNormVar;
@@ -281,7 +295,7 @@ public:
     config["log-gradient-norm-avg"] = logGradientNormAvg;
     config["log-gradient-norm-var"] = logGradientNormVar;
 
-    config["seed-batch"] = seedBatch;
+    config["seed-batch"]  = seedBatch;
     config["seed-corpus"] = seedCorpus;
 
     fout << config;
@@ -301,6 +315,5 @@ private:
   // this needs to be a vector of weak pointers, otherwise
   // it is likely to cause circular dependencies.
   std::vector<Weak<TrainingObserver>> wObservers_;
-
 };
 }  // namespace marian

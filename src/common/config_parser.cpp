@@ -1011,6 +1011,25 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
     ConfigValidator(config_).validateOptions(mode_);
   }
 
+  // ensures factors backward compability whilst keeping the more user friendly cli:
+  if(get<std::string>("lemma-dependency").empty()) {
+    YAML::Node config;
+    int lemmaDimEmb = get<int>("lemma-dim-emb");
+    if (lemmaDimEmb) {
+      if (lemmaDimEmb > 0) {
+        config["lemma-dependency"] = "re-embedding";
+      } else if(lemmaDimEmb == -1) {
+        config["lemma-dependency"] = "lemma-dependent-bias";
+      } else if(lemmaDimEmb == -2) {
+        config["lemma-dependency"] = "soft-transformer-layer";
+      } else if(lemmaDimEmb == -3) {
+        config["lemma-dependency"] = "hard-transformer-layer";
+      }
+    }
+    if(!config.IsNull())
+      cli_.updateConfig(config,cli::OptionPriority::CommandLine, "Factor prediction options were in a older format");
+  }
+
   // remove extra config files from the config to avoid redundancy
   config_.remove("config");
 

@@ -48,7 +48,7 @@ namespace mlp {
   ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
   if(lemmaDependency == "re-embedding") {  // embed the (expected) word with a different embedding matrix
     ABORT_IF(
-        lemmaDimEmb == 0,
+        lemmaDimEmb <= 0,
         "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
 #define HARDMAX_HACK
 #ifdef HARDMAX_HACK
@@ -242,7 +242,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
         Plemma = exp(z);                      // [B... x U]
       } else if(lemmaDependency == "re-embedding" && g == 0) {
         ABORT_IF(
-            lemmaDimEmb == 0,
+            lemmaDimEmb <= 0,
             "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
         LOG_ONCE(info, "[embedding] enabled re-embedding of lemma, at dim {}", lemmaDimEmb);
         // compute softmax. We compute logsoftmax() separately because this way, computation will be

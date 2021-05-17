@@ -70,7 +70,7 @@ public:
     if(options_->get<bool>("model-mmap", false)) {
       for(auto model : models) {
         ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
-        model_mmaps_.push_back(std::move(mio::mmap_source(model)));
+        model_mmaps_.push_back(mio::mmap_source(model));
       }
     }
     else {

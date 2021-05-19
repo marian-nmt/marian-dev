@@ -251,7 +251,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Tie all embedding layers and output layer");
   cli.add<bool>("--output-omit-bias",
       "Do not use a bias vector in decoder output layer");
-  
+
   // Transformer options
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
@@ -536,13 +536,13 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
       "After this many updates about 90% of the mass of the exponential average comes from these updates",
       100);
-  cli.add<std::vector<std::string>>("--dynamic-gradient-scaling", 
+  cli.add<std::vector<std::string>>("--dynamic-gradient-scaling",
       "Re-scale gradient to have average gradient norm if (log) gradient norm diverges from average by arg1 sigmas. "
       "If arg2 = \"log\" the statistics are recorded for the log of the gradient norm else use plain norm")
       ->implicit_val("2.f log");
-  cli.add<bool>("--check-gradient-nan", 
+  cli.add<bool>("--check-gradient-nan",
       "Skip parameter update in case of NaNs in gradient");
-  cli.add<bool>("--normalize-gradient", 
+  cli.add<bool>("--normalize-gradient",
       "Normalize gradient by multiplying with no. devices / total labels (not recommended and to be removed in the future)");
 
   cli.add<std::vector<std::string>>("--train-embedder-rank",
@@ -1009,25 +1009,6 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 
   if(doValidate) {
     ConfigValidator(config_).validateOptions(mode_);
-  }
-
-  // ensures factors backward compability whilst keeping the more user friendly cli:
-  if(get<std::string>("lemma-dependency").empty()) {
-    YAML::Node config;
-    int lemmaDimEmb = get<int>("lemma-dim-emb");
-    if (lemmaDimEmb) {
-      if (lemmaDimEmb > 0) {
-        config["lemma-dependency"] = "re-embedding";
-      } else if(lemmaDimEmb == -1) {
-        config["lemma-dependency"] = "lemma-dependent-bias";
-      } else if(lemmaDimEmb == -2) {
-        config["lemma-dependency"] = "soft-transformer-layer";
-      } else if(lemmaDimEmb == -3) {
-        config["lemma-dependency"] = "hard-transformer-layer";
-      }
-    }
-    if(!config.IsNull())
-      cli_.updateConfig(config,cli::OptionPriority::CommandLine, "Factor prediction options were in a older format");
   }
 
   // remove extra config files from the config to avoid redundancy

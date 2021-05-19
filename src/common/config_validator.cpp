@@ -27,6 +27,10 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
       validateOptionsParallelData();
       validateOptionsScoring();
       break;
+    case cli::mode::embedding:
+      validateOptionsParallelData();
+      validateOptionsScoring();
+      break;
     case cli::mode::training:
       validateOptionsParallelData();
       validateOptionsTraining();
@@ -70,9 +74,20 @@ void ConfigValidator::validateOptionsParallelData() const {
   auto trainSets = get<std::vector<std::string>>("train-sets");
   ABORT_IF(trainSets.empty(), "No train sets given in config file or on command line");
 
-  auto vocabs = get<std::vector<std::string>>("vocabs");
-  ABORT_IF(!vocabs.empty() && vocabs.size() != trainSets.size(),
-           "There should be as many vocabularies as training sets");
+  auto numVocabs = get<std::vector<std::string>>("vocabs").size();
+  ABORT_IF(!get<bool>("tsv") && numVocabs > 0 && numVocabs != trainSets.size(),
+           "There should be as many vocabularies as training files");
+
+  // disallow, for example --tsv --train-sets file1.tsv file2.tsv
+  ABORT_IF(get<bool>("tsv") && trainSets.size() != 1,
+      "A single file must be provided with --train-sets (or stdin) for a tab-separated input");
+
+  // disallow, for example --train-sets stdin stdin or --train-sets stdin file.tsv
+  ABORT_IF(trainSets.size() > 1
+               && std::any_of(trainSets.begin(),
+                              trainSets.end(),
+                              [](const std::string& s) { return (s == "stdin") || (s == "-"); }),
+           "Only one 'stdin' or '-' in --train-sets is allowed");
 }
 
 void ConfigValidator::validateOptionsScoring() const {
@@ -94,7 +109,7 @@ void ConfigValidator::validateOptionsTraining() const {
   ABORT_IF(has("embedding-vectors")
                && get<std::vector<std::string>>("embedding-vectors").size() != trainSets.size()
                && !get<std::vector<std::string>>("embedding-vectors").empty(),
-           "There should be as many embedding vector files as training sets");
+           "There should be as many embedding vector files as training files");
 
   filesystem::Path modelPath(get<std::string>("model"));
 
@@ -105,10 +120,14 @@ void ConfigValidator::validateOptionsTraining() const {
   ABORT_IF(!modelDir.empty() && !filesystem::isDirectory(modelDir),
            "Model directory does not exist");
 
+  std::string errorMsg = "There should be as many validation files as training files";
+  if(get<bool>("tsv"))
+    errorMsg += ". If the training set is in the TSV format, validation sets have to also be a single TSV file";
+
   ABORT_IF(has("valid-sets")
                && get<std::vector<std::string>>("valid-sets").size() != trainSets.size()
                && !get<std::vector<std::string>>("valid-sets").empty(),
-           "There should be as many validation sets as training sets");
+           errorMsg);
 
   // validations for learning rate decaying
   ABORT_IF(get<float>("lr-decay") > 1.f, "Learning rate decay factor greater than 1.0 is unusual");
@@ -128,6 +147,12 @@ void ConfigValidator::validateOptionsTraining() const {
                                                || get<std::string>("ulr-keys-vectors") == "")),
            "ULR enablign requires query and keys vectors specified with --ulr-query-vectors and "
            "--ulr-keys-vectors option");
+
+  // validate model quantization
+  size_t bits = get<size_t>("quantize-bits");
+  ABORT_IF(bits > 32, "Invalid quantization bits. Must be from 0 to 32 bits");
+
+  ABORT_IF(bits > 0 && !get<bool>("sync-sgd"), "Model quantization only works with synchronous training (--sync-sgd)");
 }
 
 void ConfigValidator::validateModelExtension(cli::mode mode) const {
@@ -145,22 +170,16 @@ void ConfigValidator::validateModelExtension(cli::mode mode) const {
   }
 }
 
-void ConfigValidator::validateDevices(cli::mode mode) const {
+void ConfigValidator::validateDevices(cli::mode /*mode*/) const {
   std::string devices = utils::join(get<std::vector<std::string>>("devices"));
   utils::trim(devices);
 
   regex::regex pattern;
   std::string help;
-  // @TODO: Is this format still supported? Remove this if not.
-  if(mode == cli::mode::training && get<bool>("multi-node")) {
-    // valid strings: '0: 1 2', '0:1 2 1:2 3'
-    pattern = "( *[0-9]+ *: *[0-9]+( *[0-9]+)*)+";
-    help = "Supported format for multi-node setting: '0:0 1 2 3 1:0 1 2 3'";
-  } else {
-    // valid strings: '0', '0 1 2 3', '3 2 0 1'
-    pattern = "[0-9]+( *[0-9]+)*";
-    help = "Supported formats: '0 1 2 3'";
-  }
+
+  // valid strings: '0', '0 1 2 3', '3 2 0 1'
+  pattern = "[0-9]+( *[0-9]+)*";
+  help = "Supported formats: '0 1 2 3'";
 
   ABORT_IF(!regex::regex_match(devices, pattern),
            "the argument '{}' for option '--devices' is invalid. {}",

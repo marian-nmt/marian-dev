@@ -94,6 +94,13 @@ void fbgemmPacked16Pack(marian::Tensor out,
 // ncol: the number of columns
 // packsize: the size of the packed matrix
 //          (the size of int8 packed B from fbgemm:PackAWithQuantRowOffset + quantization scale, offset and zero point)
+// quantRangeStdDevs: the range to be quantized for the original float data in multiples standard deviation
+//                    the default value is 0.0f which means min/max quantization
+//                    only a half range of normal int8 which is [-64, 63] used to avoid overflow
+//                    during the accumulation in VPMADDUBSW instruction 
+//                    https://intel.github.io/mkl-dnn/dev_guide_int8_computations.html
+//                    (e.g. 3.f means the original tensor is quantized
+//                    from [mean - 3.f * standard deviation, mean + 3.f * standard deviation] to [-64, 63])
 void fbgemmPacked8Pack(marian::Tensor out,
                        const float* inData,
                        const marian::Type packType,
@@ -101,7 +108,7 @@ void fbgemmPacked8Pack(marian::Tensor out,
                        const int nrow,
                        const int ncol,
                        const uint64_t packsize,
-                       const float quantizeRange = 0.f); // @TODO: change to size_t where appropriate
+                       const float quantRangeStdDevs = 0.f); // @TODO: change to size_t where appropriate
 
 // GEMM operation on the packed B matrix
 // C: output matrix

@@ -21,6 +21,12 @@ namespace io {
   struct Item;
 }
 
+/**
+ * Main implementation of a <a href="https://en.wikipedia.org/wiki/Tensor">tensor</a>,
+ * a multi-dimensional matrix containing elements of a single data type.
+ * TensorBase contains the data, data type, pointer to
+ * memory region, shape, backend info and other attributes.
+ */
 class TensorBase {
   MemoryPiece::PtrType memory_;
   Shape shape_;
@@ -36,11 +42,23 @@ class TensorBase {
              Ptr<Backend> backend)
       : memory_(memory), shape_(shape), type_(type), backend_(backend) {}
 
-  TensorBase(MemoryPiece::PtrType memory, Shape shape, Ptr<Backend> backend)
+  TensorBase(MemoryPiece::PtrType memory, 
+             Shape shape, 
+             Ptr<Backend> backend)
       : memory_(memory),
         shape_(shape),
         type_(Type::float32),
         backend_(backend) {}
+
+  // Wraps existing memory
+  template <typename T>
+  TensorBase(T* rawMemory,
+             size_t rawMemoryNum,
+             Shape shape,
+             Type type,
+             Ptr<Backend> backend)
+      : memory_(MemoryPiece::New((uint8_t*)rawMemory, rawMemoryNum * sizeof(T))), 
+        shape_(shape), type_(type), backend_(backend) {}
 
 public:
   // Use this whenever pointing to MemoryPiece
@@ -175,6 +193,33 @@ public:
     set(v.data(), v.data() + v.size());
   }
 
+  // a binary copy with type checking
+  void set(const char* begin, const char* end, Type type) {
+    ABORT_IF(type_ != type,
+             "Tensor type ({}) and data type ({}) do not match",
+             type_,
+             type);
+
+    size_t dataSize = (end - begin) / sizeOf(type);
+    ABORT_IF(size() != dataSize,
+             "Tensor size ({}) and mapped size ({}) do not match",
+             size(),
+             dataSize);
+
+    if(backend_->getDeviceId().type == DeviceType::cpu) {
+      std::copy(begin, end, data<char>());
+    }
+#ifdef CUDA_FOUND
+    else {
+      gpu::copy(backend_, begin, end, data<char>());
+    }
+#endif
+  }
+
+  void set(const std::vector<char>& v, Type type) {
+    set(v.data(), v.data() + v.size(), type);
+  }
+
   void set(const io::Item& item);
 
   // For single values enable conversion to other numeric formats if possible
@@ -280,6 +325,8 @@ public:
   std::string debug(int precision = 8, int dispCols = 5) {
     DISPATCH_BY_TYPE2(type_, debug, precision, dispCols);
   }
+
+  size_t hash();
 
 };
 

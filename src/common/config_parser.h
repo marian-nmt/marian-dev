@@ -14,7 +14,7 @@
 namespace marian {
 
 namespace cli {
-enum struct mode { training, translation, scoring, server };
+enum struct mode { training, translation, scoring, server, embedding };
 }  // namespace cli
 
 /**
@@ -129,13 +129,16 @@ private:
   void addOptionsValidation(cli::CLIWrapper&);
   void addOptionsTranslation(cli::CLIWrapper&);
   void addOptionsScoring(cli::CLIWrapper&);
+  void addOptionsEmbedding(cli::CLIWrapper&);
 
   void addAliases(cli::CLIWrapper&);
 
   void addSuboptionsDevices(cli::CLIWrapper&);
   void addSuboptionsBatching(cli::CLIWrapper&);
   void addSuboptionsInputLength(cli::CLIWrapper&);
+  void addSuboptionsTSV(cli::CLIWrapper&);
   void addSuboptionsULR(cli::CLIWrapper&);
+  void addSuboptionsQuantization(cli::CLIWrapper&);
 
   // Extract paths to all config files found in the config object.
   // Look at --config option and model.npz.yml files.

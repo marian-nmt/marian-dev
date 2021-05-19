@@ -22,7 +22,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
   }
 #endif
 
-  auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.01); };
+  auto floatApprox = [](T x, T y) { return x == Approx(y).epsilon(0.01f).scale(1.f); };
 
   std::vector<IndexType> vWords = {
     43, 2, 83, 78,
@@ -181,7 +181,7 @@ void tests(DeviceType type, Type floatType = Type::float32) {
 
       auto context = concatenate({rnnFw.construct(graph)->transduce(input, mask),
                                   rnnBw.construct(graph)->transduce(input, mask)},
-                                  /*axis =*/ input->shape().size() - 1);
+                                  /*axis =*/ (int)input->shape().size() - 1);
 
       if(second > 0) {
         // add more layers (unidirectional) by transducing the output of the

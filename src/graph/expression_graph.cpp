@@ -30,7 +30,7 @@ Expr ExpressionGraph::add(Expr node) {
   } else {
     node->setId(count_++);
 
-    // record in foward graph
+    // record in forward graph
     nodesForward_.push_back(node);
 
     // record in backward graph if training, and keep track of roots
@@ -143,6 +143,11 @@ void ExpressionGraph::forward(std::list<Expr>& forwardTape, bool finalPass) {
     if(inferenceOnly_)
       v->children().clear();
 
+    // If checkpointing is disabled, keep the memory for forward signals for all nodes.
+    // If checkpointing is enabled:
+    //  (a) In the forward pass before the backward pass, free the memory for the nodes in the subtape to save memory.
+    //  (b) In the forward calls during the backward pass, keep the memory in the current subtape to accelerate
+    //      gradient computation.
     if(checkpointing_ && !finalPass) {
       auto subtape = v->getSubtape();
       if(subtape) {
@@ -158,9 +163,9 @@ void ExpressionGraph::forward(std::list<Expr>& forwardTape, bool finalPass) {
 
 void ExpressionGraph::backward(bool reset, float clipValue) {
   if(topNodes_.size() > 1) {
-    LOG(critical, "There are more ({}) than one top most nodes for backward pass:", topNodes_.size());
+    LOG(info, "There are more ({}) than one top most nodes for backward pass:", topNodes_.size());
     for(auto node : topNodes_) {
-      LOG(critical,
+      LOG(info,
           "\tType: {}, Shape: {}, Name: {}, Id: {}, Hash: {}",
           node->type(),
           node->shape(),
@@ -171,12 +176,14 @@ void ExpressionGraph::backward(bool reset, float clipValue) {
     ABORT("Aborting");
   }
 
+  // allocates memory and initialises gradients for parameters
   for(auto kvParams : paramsByElementType_) {
     kvParams.second->allocateBackward();
     if(reset)
       kvParams.second->set_zero_adjoint();
   }
 
+  // for top nodes: allocates memory and initialise gradients to 1
   for(auto&& v : topNodes_)
     v->init_dependent();
 
@@ -186,20 +193,30 @@ void ExpressionGraph::backward(bool reset, float clipValue) {
 
   bool firstNaN = true;
   while(!nodesBackward_.empty()) {
-    auto v = nodesBackward_.back();
-    nodesBackward_.pop_back();
+    auto v = nodesBackward_.back();  // return the last element
+    nodesBackward_.pop_back();       // remove the last element
 
+    // for non-top nodes: allocates memory and initialises gradients to 0
     for(auto&& child : v->children())
       if(child->trainable() && child->type() != "param")
         child->set_zero_adjoint();
 
+    // if using gradient checkpointing,
+    // recompute the forward pass from checkpoint to the root
     if(checkpointing_ && v->getSubtape()) {
       forward(*v->getSubtape(), /*finalPass=*/true);
     }
 
     if(v->trainable() && v->marked_for_debug()) {
-      LOG(info, "Debug Grad: {} op={}", v->debug_message(), v->type());
-      LOG(info, v->grad()->debug());
+      Logger log = spdlog::get("general");
+      if(log) {
+        LOG(info, "Debug Grad: {} op={}", v->debug_message(), v->type());
+        LOG(info, v->grad()->debug());
+      }
+      else {
+        std::cerr << "Debug Grad: " << v->debug_message() << " op=" << v->type() << std::endl;
+        std::cerr << v->grad()->debug() << std::endl;
+      }
     }
 
     if(v->trainable() && clipValue != 0) {

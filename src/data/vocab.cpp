@@ -1,3 +1,4 @@
+#include "common/utils.h"
 #include "data/vocab.h"
 #include "data/vocab_base.h"
 
@@ -61,7 +62,7 @@ size_t Vocab::loadOrCreate(const std::string& vocabPath,
     // Vocabulary path exists, attempting to load
     size = load(vocabPath, maxSize);
   }
-  LOG(info, "[data] Setting vocabulary size for input {} to {}", batchIndex_, size);
+  LOG(info, "[data] Setting vocabulary size for input {} to {}", batchIndex_, utils::withCommas(size));
   return size;
 }
 
@@ -136,6 +137,27 @@ Word Vocab::getEosId() const { return vImpl_->getEosId(); }
 
 // return UNK symbol id
 Word Vocab::getUnkId() const { return vImpl_->getUnkId(); }
+
+std::vector<Word> Vocab::suppressedIds(bool suppressUnk, bool suppressSpecial) const {
+  std::vector<Word> ids;
+  if(suppressUnk) {
+    auto unkId = getUnkId();
+    if(unkId != Word::NONE)
+      ids.push_back(unkId);
+  }
+  if(suppressSpecial)
+    vImpl_->addSpecialWords(/*in/out=*/ids);
+  return ids;
+}
+
+std::vector<WordIndex> Vocab::suppressedIndices(bool suppressUnk, bool suppressSpecial) const {
+  std::vector<WordIndex> indices;
+  for(Word word : suppressedIds(suppressUnk, suppressSpecial))
+    indices.push_back(word.toWordIndex());
+
+  vImpl_->transcodeToShortlistInPlace(indices.data(), indices.size());
+  return indices;
+}
 
 // for corpus augmentation: convert string to all-caps
 std::string Vocab::toUpper(const std::string& line) const { return vImpl_->toUpper(line); }

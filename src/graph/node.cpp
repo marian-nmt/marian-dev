@@ -5,13 +5,10 @@
 
 namespace marian {
 
-size_t Node::allocate() {
-  size_t elements = 0;
+void Node::allocate() {
   if(!val_) {
     graph()->allocateForward(this);
-    elements = val_->shape().elements();
   }
-  return elements;
 }
 
 void Node::free() {
@@ -30,11 +27,6 @@ void Node::free() {
   }
 }
 
-/**
- * Initialization for backward step of top node
- * in computation graph. Allocates memory and sets gradient
- * to 1 (df/df == 1).
- */
 void Node::init_dependent() {
   if(!adj_) {
     graph()->allocateBackward(this);
@@ -42,12 +34,6 @@ void Node::init_dependent() {
   }
 }
 
-/**
- * Initialization for backward step of any non-top node
- * in computation graph. Allocates memory and sets gradient
- * to 0 for further accumulation of gradients from all
- * parents.
- */
 void Node::set_zero_adjoint() {
   if(!adj_) {
     graph()->allocateBackward(this);

@@ -1,12 +1,14 @@
 #include "graph/expression_operators.h"
+#include "common/definitions.h"
 #include "layers/constructors.h"
 
 #include "graph/node_operators.h"
 #include "graph/node_operators_binary.h"
 #include "graph/node_operators_unary.h"
+#include "graph/node_operators_tuple.h"
 
 #include "graph/auto_tuner.h"
-#include "tensors/cpu/int16.h"
+#include "tensors/cpu/intgemm_interface.h"
 #include "tensors/cpu/fbgemm/expanded_gemm.h"
 
 #if USE_FBGEMM
@@ -23,6 +25,16 @@ Expr debug(Expr a, const std::string& message) {
 Expr checkpoint(Expr a) {
   a->markCheckpoint();
   return a;
+}
+
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, 
+            LambdaNodeFunctor fwd) {
+  return Expression<LambdaNodeOp>(nodes, shape, type, fwd);
+}
+
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, 
+            LambdaNodeFunctor fwd, LambdaNodeFunctor bwd) {
+  return Expression<LambdaNodeOp>(nodes, shape, type, fwd, bwd);
 }
 
 // logistic function. Note: scipy name is expit()
@@ -55,6 +67,18 @@ Expr log(Expr a) {
 
 Expr exp(Expr a) {
   return Expression<ExpNodeOp>(a);
+};
+
+Expr sin(Expr a) {
+  return Expression<SinNodeOp>(a);
+};
+
+Expr cos(Expr a) {
+  return Expression<CosNodeOp>(a);
+};
+
+Expr tan(Expr a) {
+  return Expression<TanNodeOp>(a);
 };
 
 Expr swish(Expr a) {
@@ -118,12 +142,52 @@ Expr logaddexp(Expr a, Expr b) {
   return Expression<LogAddExpNodeOp>(a, b);
 }
 
+Expr2 topk(Expr a, int k, int axis, bool descending) {
+  // only supports topk along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1);                              // non-op if axes are the same
+  auto topkVal = Expression<TopKNodeOp>(a, k, -1, descending); // axis=-1 is OK now as we swapped
+  auto topkIdx = std::dynamic_pointer_cast<TopKNodeOp>(topkVal)->tupleView(); // get a view on the top-k values
+  return std::make_tuple(swapAxes(topkVal, axis, -1), swapAxes(topkIdx, axis, -1)); // non-op if axes are the same
+}
+
+Expr2 argmax(Expr a, int axis) {
+  return topk(a, 1, axis, /*descending=*/true);
+}
+
+Expr2 argmin(Expr a, int axis) {
+  return topk(a, 1, axis, /*descending=*/false);
+}
+
 Expr maximum(Expr a, Expr b) {
   return Expression<MaximumNodeOp>(a, b);
 }
 
+// @TODO: implement version without constant
+Expr maximum(float a, Expr b) {
+  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  return Expression<MaximumNodeOp>(aExpr, b);
+}
+
+Expr maximum(Expr a, float b) {
+  return maximum(b, a);
+}
+
 Expr minimum(Expr a, Expr b) {
   return Expression<MinimumNodeOp>(a, b);
+}
+
+// @TODO: implement version without constant
+Expr minimum(float a, Expr b) {
+  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  return Expression<MinimumNodeOp>(aExpr, b);
+}
+
+Expr minimum(Expr a, float b) {
+  return minimum(b, a);
+}
+
+Expr abs(Expr a) {
+  return Expression<AbsNodeOp>(a);
 }
 
 Expr lt(Expr a, Expr b) { return Expression<CmpNodeOp>(a, b, -1, false); }
@@ -411,7 +475,6 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
 
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
-  float clipValue = a->graph()->getBackend()->getClip();
   // added support for packed GEMM API (fp16, int8)
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
@@ -420,20 +483,14 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   // --optimize --cpu-thread=N with N > 0 are set.
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
-      if(a->graph()->getBackend()->getGemmType() == GemmType::IntrinInt16) {
-        // cpu int16 version
-        return cpu::int16::dot(
-          cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-          cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-          scale);
-      } else if(b->memoize() && (a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed ||
+      if(b->memoize() && (a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed ||
         a->graph()->getBackend()->getGemmType() == GemmType::FbInt8Packed)) {
 #if USE_FBGEMM
         if(a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed) {
           auto packedB = cpu::variant::pack(
-              marian::Type::packed16, b, cpu::variant::PackMatrix::B, transB, clipValue);
+              marian::Type::packed16, b, cpu::variant::PackMatrix::B, transB);
           return cpu::variant::dot(marian::Type::packed16,
-              clip(a, clipValue), packedB, b->shape(), transA, transB, scale);
+              a, packedB, b->shape(), transA, transB, scale);
         } else {
           float quantizeRange = b->graph()->getBackend()->getQuantizeRange();
           if(fbgemm::fbgemmHasAvx512Support()) {
@@ -441,19 +498,17 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
                                               b,
                                               cpu::variant::PackMatrix::B,
                                               transB,
-                                              clipValue,
                                               quantizeRange);
             return cpu::variant::dot(marian::Type::packed8avx512,
-                clip(a, clipValue), packedB, b->shape(), transA, transB, scale);
+                a, packedB, b->shape(), transA, transB, scale);
           } else if(fbgemm::fbgemmHasAvx2Support()) {
             auto packedB = cpu::variant::pack(marian::Type::packed8avx2,
                                               b,
                                               cpu::variant::PackMatrix::B,
                                               transB,
-                                              clipValue,
                                               quantizeRange);
             return cpu::variant::dot(marian::Type::packed8avx2,
-                clip(a, clipValue), packedB, b->shape(), transA, transB, scale);
+                a, packedB, b->shape(), transA, transB, scale);
           } else {
             ABORT(
                 "AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed "
@@ -465,7 +520,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 #endif  // USE_FBGEMM
       } else {
         return Expression<DotNodeOp>(
-          clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+          a, b, transA, transB, scale);
       }
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
@@ -477,7 +532,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of dot product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
         return cpu::variant::dot(b->value_type(),
-                                 clip(a, clipValue),
+                                 a,
                                  b,
                                  b->shape(),
                                  transA,
@@ -493,8 +548,7 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
   } else {
-    return Expression<DotNodeOp>(
-        clip(a, clipValue), clip(b, clipValue), transA, transB, scale);
+    return Expression<DotNodeOp>(a, b, transA, transB, scale);
   }
 }
 
@@ -502,19 +556,12 @@ Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
   return Expression<DotBatchedNodeOp>(a, b, transA, transB, scale);
 }
 
-static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
-
-  // if clipValue > 0, the inputs will be clipped to range [-clipValue,
-  // clipValue] This is meant to keep values at the same range as used during
-  // training when optimizing for 8-bit integer products. Likely to be removed
-  // in the future when we explore better ways to handle this.
-  float clipValue = a->graph()->getBackend()->getClip();
 
   int rows = a->shape().elements() / a->shape()[-1];
   Expr ones = a->graph()->ones({ rows, 1 });
-  std::vector<Expr> nodes
-    = { clip(a, clipValue), clip(b, clipValue), bias, ones };
+  std::vector<Expr> nodes = { a, b, bias, ones };
   return Expression<AffineNodeOp>(nodes, transA, transB, scale);
 }
 
@@ -526,28 +573,20 @@ static Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, f
 Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
 
-  float clipValue = a->graph()->getBackend()->getClip();
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
       if(a->graph()->getBackend()->isOptimized()) {
-        if(a->graph()->getBackend()->getGemmType() == GemmType::IntrinInt16) {
-          // cpu int16 version
-          return cpu::int16::affine(
-            cpu::int16::quantize(transA ? transpose(a) : a, clipValue),
-            cpu::int16::quantize(transB ? b : transpose(b), clipValue),
-            bias,
-            scale);
-        } else if(b->memoize() && (a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed ||
+        if(b->memoize() && (a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed ||
           a->graph()->getBackend()->getGemmType() == GemmType::FbInt8Packed)) {
 #if USE_FBGEMM
           if(a->graph()->getBackend()->getGemmType() == GemmType::FbFp16Packed) {
             auto packedB = cpu::variant::pack(
-                marian::Type::packed16, b, cpu::variant::PackMatrix::B, transB, clipValue);
+                marian::Type::packed16, b, cpu::variant::PackMatrix::B, transB);
             return cpu::variant::affine(marian::Type::packed16,
-                clip(a, clipValue), packedB, b->shape(), bias, transA, transB, scale);
+                a, packedB, b->shape(), bias, transA, transB, scale);
           } else {
             float quantizeRange = b->graph()->getBackend()->getQuantizeRange();
             if(fbgemm::fbgemmHasAvx512Support()) {
@@ -555,19 +594,17 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
                                                 b,
                                                 cpu::variant::PackMatrix::B,
                                                 transB,
-                                                clipValue,
                                                 quantizeRange);
               return cpu::variant::affine(marian::Type::packed8avx512,
-                  clip(a, clipValue), packedB, b->shape(), bias, transA, transB, scale);
+                  a, packedB, b->shape(), bias, transA, transB, scale);
             } else if(fbgemm::fbgemmHasAvx2Support()) {
               auto packedB = cpu::variant::pack(marian::Type::packed8avx2,
                                                 b,
                                                 cpu::variant::PackMatrix::B,
                                                 transB,
-                                                clipValue,
                                                 quantizeRange);
               return cpu::variant::affine(marian::Type::packed8avx2,
-                  clip(a, clipValue), packedB, b->shape(), bias, transA, transB, scale);
+                  a, packedB, b->shape(), bias, transA, transB, scale);
             } else {
               ABORT(
                   "AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed "
@@ -593,7 +630,7 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       if(fbgemm::fbgemmHasAvx2Support()) {
         // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
         return cpu::variant::affine(b->value_type(),
-                                    clip(a, clipValue),
+                                    a,
                                     b,
                                     b->shape(),
                                     bias,
@@ -618,10 +655,39 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   }
 }
 
+Expr affineWithRelu(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+  auto graph = a->graph();
+  
+  if(graph->isInference() && graph->getDeviceId().type == DeviceType::gpu)
+    return Expression<AffineWithReluNodeOp>(a, b, bias, transA, transB, scale);
+  else
+    return relu(affine(a, b, bias, transA, transB, scale));
+}
+
+// @TODO: Not a great place to check this
+#if CUDA_VERSION < 11000
 // multiply a CSR matrix A with a matrix B
 // A[i,j] is at A_values[A_offsets[i]+k], where k is position of j in A_indices[A_offsets[i]:A_offsets[i+1]]
 // @TODO: Define a proper sparse tensor type.
 Expr csr_dot(const Shape& A_shape, Expr A_values, Expr A_indices, Expr A_offsets, Expr B, bool transA /*= false*/) {
+  if(A_values->value_type() == Type::float16)
+    LOG_ONCE(warn, "Using very slow version of sparse matrix operations with explicity cast to {}. Use CUDA 11.0 or higher.", Type::float16);
+  return cast(Expression<CSRDotNodeOp>(A_shape, cast(A_values, Type::float32), A_indices, A_offsets, cast(B, Type::float32), transA, /*swapOperands=*/false), A_values->value_type());
+}
+
+// multiply a matrix A with a CSR matrix B
+// @TODO: Define a proper sparse tensor type.
+Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB /*= false*/) {
+  if(B_values->value_type() == Type::float16)
+    LOG_ONCE(warn, "Using very slow version of sparse matrix operations with explicity cast to {}. Use CUDA 11.0 or higher.", Type::float16);
+  return cast(Expression<CSRDotNodeOp>(B_shape, cast(B_values, Type::float32), B_indices, B_offsets, cast(A, Type::float32), transB, /*swapOperands=*/true), B_values->value_type());
+}
+#else
+// multiply a CSR matrix A with a matrix B
+// A[i,j] is at A_values[A_offsets[i]+k], where k is position of j in A_indices[A_offsets[i]:A_offsets[i+1]]
+// @TODO: Define a proper sparse tensor type.
+Expr csr_dot(const Shape& A_shape, Expr A_values, Expr A_indices, Expr A_offsets, Expr B, bool transA /*= false*/) {
+  // @TODO: implement this without cast
   return Expression<CSRDotNodeOp>(A_shape, A_values, A_indices, A_offsets, B, transA, /*swapOperands=*/false);
 }
 
@@ -630,6 +696,8 @@ Expr csr_dot(const Shape& A_shape, Expr A_values, Expr A_indices, Expr A_offsets
 Expr dot_csr(Expr A, const Shape& B_shape, Expr B_values, Expr B_indices, Expr B_offsets, bool transB /*= false*/) {
   return Expression<CSRDotNodeOp>(B_shape, B_values, B_indices, B_offsets, A, transB, /*swapOperands=*/true);
 }
+#endif
+
 
 // swap the last two axes
 // @TODO: change to swapAxes(a, -1, -2)
@@ -680,14 +748,14 @@ Expr swapAxes(Expr x, int axis1, int axis2)
 
 Expr cast(Expr a, Type type) {
   if(a->value_type() == type) {
-    return a;
+    return a; // it's the correct type already, so nothing to do here
   } else {
     return Expression<CastNodeOp>(a, type);
   }
 }
 
-Expr cross_entropy(Expr logits, Expr indices) {
-  return Expression<CrossEntropyNodeOp>(logits, indices);
+Expr cross_entropy(Expr logits, Expr indices, float labelSmoothingAlpha, Type outputType) {
+  return Expression<CrossEntropyNodeOp>(logits, indices, labelSmoothingAlpha, outputType);
 }
 
 // Unlikelihood loss based on https://arxiv.org/abs/1908.04319
@@ -756,6 +824,18 @@ Expr layerNorm(Expr x,
   if(beta)
     nodes.push_back(beta);
   return Expression<LayerNormalizationOp>(nodes, eps);
+}
+
+Expr rmsNorm(Expr x,
+             Expr gamma,
+             Expr beta /*= nullptr*/,
+             float eps /*= 1e-9*/) {
+
+  // layerNorm accumulates in float, so small eps is fine
+  std::vector<Expr> nodes = {x, gamma};
+  if(beta)
+    nodes.push_back(beta);
+  return Expression<RMSNormalizationOp>(nodes, eps);
 }
 
 Expr highway(Expr y, Expr x, Expr t) {

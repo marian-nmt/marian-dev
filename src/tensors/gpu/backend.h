@@ -29,34 +29,39 @@ private:
 public:
   Backend(DeviceId deviceId, size_t seed) : marian::Backend(deviceId, seed) {
     setDevice();
-    cublasCreate(&cublasHandle_);
-    cusparseCreate(&cusparseHandle_);
     setCudaComputeCapability();
   }
 
   ~Backend() {
     setDevice();
-    cusparseDestroy(cusparseHandle_);
-    cublasDestroy(cublasHandle_);
+    if(cusparseHandle_) {
+      cusparseDestroy(cusparseHandle_);
+      cusparseHandle_ = 0;
+    }
+    if(cublasHandle_) {
+      cublasDestroy(cublasHandle_);
+      cublasHandle_ = 0;
+    }
   }
 
   void setDevice() override { CUDA_CHECK(cudaSetDevice((int)deviceId_.no)); }
 
   void synchronize() override { CUDA_CHECK(cudaStreamSynchronize(0)); }
 
-  cublasHandle_t getCublasHandle() { return cublasHandle_; }
-  cusparseHandle_t getCusparseHandle() { return cusparseHandle_; }
-
-  CudaCompute getCudaComputeCapability() { return compute_; }
-
-  // for CPU, sets to use optimized code for inference.
-  // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
-  void setOptimized(bool optimize) override {
-    LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
+  cublasHandle_t getCublasHandle() {
+    if(!cublasHandle_) { // lazy initialization here to avoid memory usage when unused
+      setDevice();
+      cublasCreate(&cublasHandle_);
+    }
+    return cublasHandle_;
   }
-  
-  bool isOptimized() override {
-    return false;
+
+  cusparseHandle_t getCusparseHandle() {
+    if(!cusparseHandle_) { // lazy initialization here to avoid memory usage when unused
+      setDevice();
+      cusparseCreate(&cusparseHandle_);
+    }
+    return cusparseHandle_;
   }
 
   // for CPU, selects different GEMM types for the inference.
@@ -79,9 +84,11 @@ public:
     return 0.f;
   }
 
+  CudaCompute getCudaComputeCapability() { return compute_; }
+
 private:
-  cublasHandle_t cublasHandle_;
-  cusparseHandle_t cusparseHandle_;
+  cublasHandle_t cublasHandle_{0};     // make sure it's 0, so it can be initalized lazily
+  cusparseHandle_t cusparseHandle_{0}; // as above
   CudaCompute compute_;
 };
 }  // namespace gpu

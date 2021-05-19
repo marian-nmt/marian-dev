@@ -8,7 +8,7 @@
 namespace marian {
 namespace models {
 
-enum struct usage { raw, training, scoring, translation };
+enum struct usage { raw, training, scoring, translation, embedding };
 }
 }  // namespace marian
 
@@ -41,6 +41,8 @@ public:
 // @TODO: Is there a better name?
 class ICriterionFunction {
 public:
+  virtual ~ICriterionFunction() {}
+
   virtual void load(Ptr<ExpressionGraph>,
                     const std::string&,
                     bool markReloaded = true)

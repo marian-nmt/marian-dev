@@ -13,11 +13,13 @@ namespace marian {
 class ScoreCollector {
 public:
   ScoreCollector(const Ptr<Options>& options);
+  virtual ~ScoreCollector() {}
 
   virtual void Write(long id, const std::string& message);
   virtual void Write(long id,
                      float score,
-                     const data::SoftAlignment& align = {});
+                     const data::SoftAlignment& align = {},
+                     const std::vector<float>& wordScores = {});
 
 protected:
   long nextId_{0};
@@ -50,7 +52,8 @@ public:
 
   virtual void Write(long id,
                      float score,
-                     const data::SoftAlignment& align = {}) override;
+                     const data::SoftAlignment& align = {},
+                     const std::vector<float>& wordScores = {}) override;
 
 private:
   std::string nBestList_;
@@ -62,6 +65,7 @@ private:
   std::string addToNBest(const std::string nbest,
                          const std::string feature,
                          float score,
-                         const data::SoftAlignment& align = {});
+                         const data::SoftAlignment& align = {},
+                         const std::vector<float>& wordScores = {});
 };
 }  // namespace marian

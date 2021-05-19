@@ -3,12 +3,17 @@
 #include "common/config.h"
 #include "common/definitions.h"
 #include "common/file_stream.h"
+#include "data/corpus_base.h"
+#include "data/types.h"
+#include "mio/mio.hpp"
 
 #include <random>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <limits>
 
 namespace marian {
 namespace data {
@@ -18,24 +23,28 @@ private:
   std::vector<WordIndex> indices_;    // // [packed shortlist index] -> word index, used to select columns from output embeddings
 
 public:
+  static constexpr WordIndex npos{std::numeric_limits<WordIndex>::max()}; // used to identify invalid shortlist entries similar to std::string::npos
+
   Shortlist(const std::vector<WordIndex>& indices)
     : indices_(indices) {}
 
   const std::vector<WordIndex>& indices() const { return indices_; }
   WordIndex reverseMap(int idx) { return indices_[idx]; }
 
-  int tryForwardMap(WordIndex wIdx) {
+  WordIndex tryForwardMap(WordIndex wIdx) {
     auto first = std::lower_bound(indices_.begin(), indices_.end(), wIdx);
     if(first != indices_.end() && *first == wIdx)         // check if element not less than wIdx has been found and if equal to wIdx
       return (int)std::distance(indices_.begin(), first); // return coordinate if found
     else
-      return -1;                                          // return -1 if not found
+      return npos;                                        // return npos if not found, @TODO: replace with std::optional once we switch to C++17?
   }
 
 };
 
 class ShortlistGenerator {
 public:
+  virtual ~ShortlistGenerator() {}
+
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const = 0;
 
   // Writes text version of (possibly) pruned short list to file
@@ -129,7 +138,6 @@ private:
   Ptr<const Vocab> trgVocab_;
 
   size_t srcIdx_;
-  size_t trgIdx_;
   bool shared_{false};
 
   size_t firstNum_{100};
@@ -183,13 +191,12 @@ public:
                             Ptr<const Vocab> srcVocab,
                             Ptr<const Vocab> trgVocab,
                             size_t srcIdx = 0,
-                            size_t trgIdx = 1,
+                            size_t /*trgIdx*/ = 1,
                             bool shared = false)
       : options_(options),
         srcVocab_(srcVocab),
         trgVocab_(trgVocab),
         srcIdx_(srcIdx),
-        trgIdx_(trgIdx),
         shared_(shared) {
     std::vector<std::string> vals = options_->get<std::vector<std::string>>("shortlist");
 
@@ -235,7 +242,6 @@ public:
 
   virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override {
     auto srcBatch = (*batch)[srcIdx_];
-    // auto trgBatch = (*batch)[trgIdx_];
 
     // add firstNum most frequent words
     std::unordered_set<WordIndex> indexSet;
@@ -257,6 +263,14 @@ public:
         indexSet.insert(i);
       for(auto& it : data_[i])
         indexSet.insert(it.first);
+    }
+    // Ensure that the generated vocabulary items from a shortlist are a multiple-of-eight
+    // This is necessary until intgemm supports non-multiple-of-eight matrices.
+    // TODO better solution here? This could potentially be slow.
+    WordIndex i = static_cast<WordIndex>(firstNum_);
+    while (indexSet.size() % 8 != 0) {
+      indexSet.insert(i);
+      i++;
     }
 
     // turn into vector and sort (selected indices)
@@ -281,6 +295,52 @@ public:
     return New<Shortlist>(indices_);
   }
 };
+
+/*
+Legacy binary shortlist for Microsoft-internal use. 
+*/
+class QuicksandShortlistGenerator : public ShortlistGenerator {
+private:
+  Ptr<Options> options_;
+  Ptr<const Vocab> srcVocab_;
+  Ptr<const Vocab> trgVocab_;
+
+  size_t srcIdx_;
+
+  mio::mmap_source mmap_;
+
+  // all the quicksand bits go here
+  bool use16bit_{false};
+  int32_t numDefaultIds_;
+  int32_t idSize_;
+  const int32_t* defaultIds_{nullptr};
+  int32_t numSourceIds_{0};
+  const int32_t* sourceLengths_{nullptr};
+  const int32_t* sourceOffsets_{nullptr};
+  int32_t numShortlistIds_{0};
+  const uint8_t* sourceToShortlistIds_{nullptr};
+  
+public:
+  QuicksandShortlistGenerator(Ptr<Options> options,
+                              Ptr<const Vocab> srcVocab,
+                              Ptr<const Vocab> trgVocab,
+                              size_t srcIdx = 0,
+                              size_t trgIdx = 1,
+                              bool shared = false);
+
+  virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override;
+};
+
+/*
+Shortlist factory to create correct type of shortlist. Currently assumes everything is a text shortlist 
+unless the extension is *.bin for which the Microsoft legacy binary shortlist is used.
+*/
+Ptr<ShortlistGenerator> createShortlistGenerator(Ptr<Options> options,
+                                                 Ptr<const Vocab> srcVocab,
+                                                 Ptr<const Vocab> trgVocab,
+                                                 size_t srcIdx = 0,
+                                                 size_t trgIdx = 1,
+                                                 bool shared = false);
 
 }  // namespace data
 }  // namespace marian

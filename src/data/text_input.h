@@ -33,10 +33,14 @@ private:
 
   size_t pos_{0};
 
+  size_t maxLength_{0};
+  bool maxLengthCrop_{false};
+
 public:
   typedef SentenceTuple Sample;
 
   TextInput(std::vector<std::string> inputs, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  virtual ~TextInput() {}
 
   Sample next() override;
 

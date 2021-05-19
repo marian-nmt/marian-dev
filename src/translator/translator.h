@@ -1,9 +1,14 @@
 #pragma once
 
+#include <string>
+
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/shortlist.h"
 #include "data/text_input.h"
+
+#include "common/scheduling_parameter.h"
+#include "common/timer.h"
 
 #include "3rd_party/threadpool.h"
 
@@ -58,8 +63,7 @@ public:
     auto srcVocab = corpus_->getVocabs()[0];
 
     if(options_->hasAndNotEmpty("shortlist"))
-      shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
-          options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
+      shortlistGenerator_ = data::createShortlistGenerator(options_, srcVocab, trgVocab_, 0, 1, vocabs.front() == vocabs.back());
 
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
@@ -85,7 +89,6 @@ public:
         auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
         graph->setDefaultElementType(typeFromString(prec[0]));
         graph->setDevice(device);
-        graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
         if (device.type == DeviceType::cpu) {
           graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
           graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
@@ -135,11 +138,42 @@ public:
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
 
-    bg.prepare();
+    // mutex for syncing counter and timer updates
+    std::mutex syncCounts;
+
+    // timer and counters for total elapsed time and statistics
+    std::unique_ptr<timer::Timer> totTimer(new timer::Timer()); 
+    size_t totBatches      = 0;
+    size_t totLines        = 0;
+    size_t totSourceTokens = 0;
+    
+    // timer and counters for elapsed time and statistics between updates
+    std::unique_ptr<timer::Timer> curTimer(new timer::Timer());
+    size_t curBatches      = 0;
+    size_t curLines        = 0;
+    size_t curSourceTokens = 0;
+
+    // determine if we want to display timer statistics, by default off
+    auto statFreq = SchedulingParameter::parse(options_->get<std::string>("stat-freq", "0u"));
+    // abort early to avoid potentially costly batching and translation before error message
+    ABORT_IF(statFreq.unit != SchedulingUnit::updates, "Units other than 'u' are not supported for --stat-freq value {}", statFreq);
+
+    // Override display for progress heartbeat for MS-internal Philly compute cluster
+    // otherwise this job may be killed prematurely if no log for 4 hrs
+    if(getenv("PHILLY_JOB_ID")) { // this environment variable exists when running on the cluster
+      if(statFreq.n == 0) {
+        statFreq.n = 10000;
+        statFreq.unit = SchedulingUnit::updates;
+      }
+    }
 
     bool doNbest = options_->get<bool>("n-best");
+
+    bg.prepare();
     for(auto batch : bg) {
-      auto task = [=](size_t id) {
+      auto task = [=, &syncCounts,
+                      &totBatches, &totLines, &totSourceTokens, &totTimer, 
+                      &curBatches, &curLines, &curSourceTokens, &curTimer](size_t id) {
         thread_local Ptr<ExpressionGraph> graph;
         thread_local std::vector<Ptr<Scorer>> scorers;
 
@@ -161,20 +195,44 @@ public:
                            doNbest);
         }
 
+        // if we asked for speed information display this
+        if(statFreq.n > 0) { 
+          std::lock_guard<std::mutex> lock(syncCounts);
+          totBatches++; 
+          totLines        += batch->size();
+          totSourceTokens += batch->front()->batchWords();
+        
+          curBatches++;
+          curLines        += batch->size();
+          curSourceTokens += batch->front()->batchWords();
 
-        // progress heartbeat for MS-internal Philly compute cluster
-        // otherwise this job may be killed prematurely if no log for 4 hrs
-        if (getenv("PHILLY_JOB_ID")   // this environment variable exists when running on the cluster
-            && id % 1000 == 0)  // hard beat once every 1000 batches
-        {
-          auto progress = 0.f; //fake progress for now
-          fprintf(stderr, "PROGRESS: %.2f%%\n", progress);
-          fflush(stderr);
+          if(totBatches % statFreq.n == 0) {
+            double totTime = totTimer->elapsed();
+            double curTime = curTimer->elapsed();
+
+            LOG(info, 
+                "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (since last): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s", 
+                totBatches, totLines, totSourceTokens, totTime, curBatches / curTime, curLines / curTime, curSourceTokens / curTime);
+            
+            // reset stats between updates
+            curBatches = curLines = curSourceTokens = 0;
+            curTimer.reset(new timer::Timer());
+          }
         }
       };
 
       threadPool.enqueue(task, batchId++);
+    }
 
+    // make sure threads are joined before other local variables get de-allocated
+    threadPool.join_all();
+    
+    // display final speed numbers over total translation if intermediate displays were requested
+    if(statFreq.n > 0) {
+      double totTime = totTimer->elapsed();
+      LOG(info, 
+          "Processed {} batches, {} lines, {} source tokens in {:.2f}s - Speed (total): {:.2f} batches/s - {:.2f} lines/s - {:.2f} tokens/s", 
+          totBatches, totLines, totSourceTokens, totTime, totBatches / totTime, totLines / totTime, totSourceTokens / totTime);
     }
   }
 };
@@ -229,7 +287,6 @@ public:
       auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
       graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
       graph->setDevice(device);
-      graph->getBackend()->setClip(options_->get<float>("clip-gemm"));
       if (device.type == DeviceType::cpu) {
         graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
         graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
@@ -249,10 +306,14 @@ public:
   }
 
   std::string run(const std::string& input) override {
-    auto corpus_ = New<data::TextInput>(std::vector<std::string>({input}), srcVocabs_, options_);
+    // split tab-separated input into fields if necessary
+    auto inputs = options_->get<bool>("tsv", false)
+                      ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
+                      : std::vector<std::string>({input});
+    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
     data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_);
 
-    auto collector = New<StringCollector>();
+    auto collector = New<StringCollector>(options_->get<bool>("quiet-translation", false));
     auto printer = New<OutputPrinter>(options_, trgVocab_);
     size_t batchId = 0;
 
@@ -262,7 +323,6 @@ public:
       ThreadPool threadPool_(numDevices_, numDevices_);
 
       for(auto batch : batchGenerator) {
-
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local std::vector<Ptr<Scorer>> scorers;
@@ -290,6 +350,31 @@ public:
 
     auto translations = collector->collect(options_->get<bool>("n-best"));
     return utils::join(translations, "\n");
+  }
+
+private:
+  // Converts a multi-line input with tab-separated source(s) and target sentences into separate lists
+  // of sentences from source(s) and target sides, e.g.
+  // "src1 \t trg1 \n src2 \t trg2" -> ["src1 \n src2", "trg1 \n trg2"]
+  std::vector<std::string> convertTsvToLists(const std::string& inputText, size_t numFields) {
+    std::vector<std::string> outputFields(numFields);
+
+    std::string line;
+    std::vector<std::string> lineFields(numFields);
+    std::istringstream inputStream(inputText);
+    bool first = true;
+    while(std::getline(inputStream, line)) {
+      utils::splitTsv(line, lineFields, numFields);
+      for(size_t i = 0; i < numFields; ++i) {
+        if(!first)
+          outputFields[i] += "\n";  // join sentences with a new line sign
+        outputFields[i] += lineFields[i];
+      }
+      if(first)
+        first = false;
+    }
+
+    return outputFields;
   }
 };
 }  // namespace marian

@@ -11,16 +11,17 @@
 namespace marian {
 namespace data {
 
-Corpus::Corpus(Ptr<Options> options, bool translate /*= false*/)
-    : CorpusBase(options, translate),
+Corpus::Corpus(Ptr<Options> options, bool translate /*= false*/, size_t seed /*= Config:seed*/)
+    : CorpusBase(options, translate, seed),
         shuffleInRAM_(options_->get<bool>("shuffle-in-ram", false)),
         allCapsEvery_(options_->get<size_t>("all-caps-every", 0)),
         titleCaseEvery_(options_->get<size_t>("english-title-case-every", 0)) {}
 
 Corpus::Corpus(std::vector<std::string> paths,
                std::vector<Ptr<Vocab>> vocabs,
-               Ptr<Options> options)
-    : CorpusBase(paths, vocabs, options),
+               Ptr<Options> options,
+               size_t seed /*= Config:seed*/)
+    : CorpusBase(paths, vocabs, options, seed),
         shuffleInRAM_(options_->get<bool>("shuffle-in-ram", false)),
         allCapsEvery_(options_->get<size_t>("all-caps-every", 0)),
         titleCaseEvery_(options_->get<size_t>("english-title-case-every", 0)) {}
@@ -46,6 +47,15 @@ void Corpus::preprocessLine(std::string& line, size_t streamId) {
 }
 
 SentenceTuple Corpus::next() {
+  // Used for handling TSV inputs
+  // Determine the total number of fields including alignments or weights
+  auto tsvNumAllFields = tsvNumInputFields_;
+  if(alignFileIdx_ > -1)
+    ++tsvNumAllFields;
+  if(weightFileIdx_ > -1)
+    ++tsvNumAllFields;
+  std::vector<std::string> fields(tsvNumAllFields);
+
   for(;;) { // (this is a retry loop for skipping invalid sentences)
     // get index of the current sentence
     size_t curId = pos_; // note: at end, pos_  == total size
@@ -78,13 +88,37 @@ SentenceTuple Corpus::next() {
         }
       }
 
-      if(i > 0 && i == alignFileIdx_) { // @TODO: alignFileIdx == 0 possible?
+      if(i > 0 && i == alignFileIdx_) {
         addAlignmentToSentenceTuple(line, tup);
       } else if(i > 0 && i == weightFileIdx_) {
         addWeightsToSentenceTuple(line, tup);
       } else {
-        preprocessLine(line, i);
-        addWordsToSentenceTuple(line, i, tup);
+        if(tsv_) {  // split TSV input and add each field into the sentence tuple
+          utils::splitTsv(line, fields, tsvNumAllFields);
+          size_t shift = 0;
+          for(size_t j = 0; j < tsvNumAllFields; ++j) {
+            // index j needs to be shifted to get the proper vocab index if guided-alignment or
+            // data-weighting are preceding source or target sequences in TSV input
+            if(j == alignFileIdx_ || j == weightFileIdx_) {
+              ++shift;
+            } else {
+              size_t vocabId = j - shift;
+              preprocessLine(fields[j], vocabId);
+              addWordsToSentenceTuple(fields[j], vocabId, tup);
+            }
+          }
+
+          // weights are added last to the sentence tuple, because this runs a validation that needs
+          // length of the target sequence
+          if(alignFileIdx_ > -1)
+            addAlignmentToSentenceTuple(fields[alignFileIdx_], tup);
+          if(weightFileIdx_ > -1)
+            addWeightsToSentenceTuple(fields[weightFileIdx_], tup);
+
+        } else {
+          preprocessLine(line, i);
+          addWordsToSentenceTuple(line, i, tup);
+        }
       }
     }
 
@@ -112,7 +146,8 @@ void Corpus::shuffle() {
 
 // reset to regular, non-shuffled reading
 // Call either reset() or shuffle().
-// @TODO: make shuffle() private, instad pass a shuffle() flag to reset(), to clarify mutual exclusiveness with shuffle()
+// @TODO: make shuffle() private, instad pass a shuffle() flag to reset(), to clarify mutual
+// exclusiveness with shuffle()
 void Corpus::reset() {
   corpusInRAM_.clear();
   ids_.clear();
@@ -120,7 +155,7 @@ void Corpus::reset() {
     return;
   pos_ = 0;
   for (size_t i = 0; i < paths_.size(); ++i) {
-      if(paths_[i] == "stdin") {
+      if(paths_[i] == "stdin" || paths_[i] == "-") {
         files_[i].reset(new std::istream(std::cin.rdbuf()));
         // Probably not necessary, unless there are some buffers
         // that we want flushed.
@@ -142,6 +177,10 @@ void Corpus::restore(Ptr<TrainingState> ts) {
 
 void Corpus::shuffleData(const std::vector<std::string>& paths) {
   LOG(info, "[data] Shuffling data");
+
+  ABORT_IF(tsv_ && (paths[0] == "stdin" || paths[0] == "-"),
+           "Shuffling training data from STDIN is not supported. Add --no-shuffle or provide "
+           "training sets with --train-sets");
 
   size_t numStreams = paths.size();
 
@@ -176,7 +215,7 @@ void Corpus::shuffleData(const std::vector<std::string>& paths) {
     }
     files_.clear();
     numSentences = corpus[0].size();
-    LOG(info, "[data] Done reading {} sentences", numSentences);
+    LOG(info, "[data] Done reading {} sentences", utils::withCommas(numSentences));
   }
 
   // randomize sequence ids, and remember them
@@ -187,7 +226,7 @@ void Corpus::shuffleData(const std::vector<std::string>& paths) {
   if (shuffleInRAM_) {
     // when shuffling in RAM, we keep no files_, instead but the data itself
     corpusInRAM_ = std::move(corpus);
-    LOG(info, "[data] Done shuffling {} sentences (cached in RAM)", numSentences);
+    LOG(info, "[data] Done shuffling {} sentences (cached in RAM)", utils::withCommas(numSentences));
   }
   else {
     // create temp files that contain the data in randomized order
@@ -208,7 +247,7 @@ void Corpus::shuffleData(const std::vector<std::string>& paths) {
       inputStream->setbufsize(10000000);
       files_[i] = std::move(inputStream);
     }
-    LOG(info, "[data] Done shuffling {} sentences to temp files", numSentences);
+    LOG(info, "[data] Done shuffling {} sentences to temp files", utils::withCommas(numSentences));
   }
   pos_ = 0;
 }
@@ -252,9 +291,10 @@ CorpusBase::batch_ptr Corpus::toBatch(const std::vector<Sample>& batchVector) {
   auto batch = batch_ptr(new batch_type(subBatches));
   batch->setSentenceIds(sentenceIds);
 
-  if(options_->get("guided-alignment", std::string("none")) != "none" && alignFileIdx_)
+  // Add prepared word alignments and weights if they are available
+  if(alignFileIdx_ > -1 && options_->get("guided-alignment", std::string("none")) != "none")
     addAlignmentsToBatch(batch, batchVector);
-  if(options_->hasAndNotEmpty("data-weighting") && weightFileIdx_)
+  if(weightFileIdx_ > -1 && options_->hasAndNotEmpty("data-weighting"))
     addWeightsToBatch(batch, batchVector);
 
   return batch;

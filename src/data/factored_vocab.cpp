@@ -214,7 +214,8 @@ namespace marian {
   // </s> and <unk> must exist in the vocabulary
   eosId_ = Word::fromWordIndex(vocab_[DEFAULT_EOS_STR]);
   unkId_ = Word::fromWordIndex(vocab_[DEFAULT_UNK_STR]);
-  //LOG(info, "eos: {}; unk: {}", word2string(eosId_), word2string(unkId_));
+  
+  // LOG(info, "eos: {}; unk: {}, <s>: {}", word2string(eosId_), word2string(unkId_), vocab_["<s>"]);
 
   return size();
 }
@@ -415,7 +416,7 @@ Word FactoredVocab::string2word(const std::string& w) const {
     WordIndex u;
     bool found = factorVocab_.tryFind(i == 0 ? parts[i] : sep + parts[i], u);
     if (!found) {
-      static int logs = 100;
+      static int logs = 5;
       if (logs > 0) {
         logs--;
         LOG(info, "WARNING: Unknown factor '{}' in '{}'; mapping to '{}'", parts[i], w, word2string(getUnkId()));
@@ -545,7 +546,6 @@ void FactoredVocab::constructNormalizationInfoForVocab() {
 /*virtual*/ void FactoredVocab::transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const {
   for (; num-- > 0; ptr++) {
     auto word = Word::fromWordIndex(*ptr);
-    auto wordString = word2string(word);
     auto lemmaIndex = getFactor(word, 0) + groupRanges_[0].first;
     *ptr = (WordIndex)lemmaIndex;
   }

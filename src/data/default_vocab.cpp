@@ -28,6 +28,9 @@ protected:
 
   std::vector<std::string> suffixes_ = { ".yml", ".yaml", ".json" };
 
+  // Contains control characters added to vocab, possibly due to byte-fallback
+  std::vector<Word> controlChars_;
+
   class VocabFreqOrderer {
   private:
     const std::unordered_map<std::string, size_t>& counter_;
@@ -45,6 +48,7 @@ protected:
 
 public:
   // @TODO: choose between 'virtual' and 'final'. Can we derive from this class?
+  virtual ~DefaultVocab() {};
   virtual const std::string& canonicalExtension() const override { return suffixes_[0]; }
   virtual const std::vector<std::string>& suffixes() const override { return suffixes_; }
 
@@ -67,8 +71,17 @@ public:
   }
 
   std::string surfaceForm(const Words& sentence) const override {
-    sentence;
-    ABORT("surfaceForm() not supported by this vocabulary type");
+    return decode(sentence, /*ignoreEOS=*/true);
+  }
+
+  // SentencePiece with byte-fallback may generate control symbols with output sampling.
+  // Let's mark them as special and suppress them later on output. This is generally safe
+  // for UTF-8 since control chars are not used as partial bytes in multi-byte sequences.
+  // They only appear in single-byte chars as themselves and this is what we suppress.
+  void addSpecialWords(std::vector<Word>& special) const override {
+    special.reserve(special.size() + controlChars_.size());
+    for(auto c : controlChars_)
+      special.push_back(c);
   }
 
   virtual std::string type() const override { return "DefaultVocab"; }
@@ -130,6 +143,8 @@ public:
     }
     ABORT_IF(id2str_.empty(), "Empty vocabulary: ", vocabPath);
 
+    populateControlChars();
+
     addRequiredVocabulary(vocabPath, isJson);
 
     return std::max(id2str_.size(), maxSize);
@@ -171,6 +186,17 @@ public:
   }
 
 private:
+
+  // Creates the first 32 control characters as done in byte-fallback and checks if they exist in the vocab.
+  // This makes sure that we do not waste computational effort on suppression if they don't actually appear.
+  void populateControlChars() {
+    for(int i = 0; i < 32; ++i) {
+      std::string bytePiece = fmt::format("<0x{:02X}>", i); // 0 becomes <0x00>, 10 becomes <0x0A>, note uppercase A and lowercase x
+      auto id = (*this)[bytePiece];
+      if(id != unkId_)
+        controlChars_.push_back(id);
+    }
+  }
 
   virtual void addRequiredVocabulary(const std::string& vocabPath, bool isJson) {
     // look up ids for </s> and <unk>, which are required
@@ -216,7 +242,6 @@ private:
     std::string line;
     while(getline(*trainStrm, line)) {
       auto toks = utils::split(line, " ");
-
       for(const std::string& tok : toks) {
         auto iter = counter.find(tok);
         if(iter == counter.end())
@@ -295,7 +320,7 @@ private:
 class ClassVocab : public DefaultVocab {
 private:
   // Do nothing.
-  virtual void addRequiredVocabulary(const std::string& vocabPath, bool isJson) override { vocabPath; isJson; }
+  virtual void addRequiredVocabulary(const std::string& /*vocabPath*/, bool /*isJson*/) override {}
 
   // Not adding special class labels, only seen classes.
   virtual void create(const std::string& vocabPath,

@@ -36,13 +36,14 @@ protected:
 
 public:
   ValidatorBase(bool lowerIsBetter) : lowerIsBetter_(lowerIsBetter), lastBest_{initScore()} {}
+  virtual ~ValidatorBase() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                          Ptr<const TrainingState> state) = 0;
   virtual std::string type() = 0;
 
-  float lastBest() { return lastBest_; }
-  size_t stalled() { return stalled_; }
+  float& lastBest() { return lastBest_; }
+  size_t& stalled() { return stalled_; }
 
   virtual float initScore();
   virtual void actAfterLoaded(TrainingState& state) override;
@@ -51,6 +52,7 @@ public:
 template <class DataSet, class BuilderType> // @TODO: BuilderType doesn't really serve a purpose here? Review and remove.
 class Validator : public ValidatorBase {
 public:
+  virtual ~Validator() {}
   Validator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool lowerIsBetter = true)
       : ValidatorBase(lowerIsBetter),
         vocabs_(vocabs),
@@ -64,8 +66,13 @@ public:
       options_->set("max-length", options_->get<size_t>("valid-max-length"));
       options_->set("max-length-crop", true); // @TODO: make this configureable
     }
-    if(options_->has("valid-mini-batch"))
+
+    // @TODO: make this work with mini-batch-fit etc.
+    if(options_->has("valid-mini-batch")) {
       options_->set("mini-batch", options_->get<size_t>("valid-mini-batch"));
+      options_->set("mini-batch-words", 0);
+    }
+
     options_->set("mini-batch-sort", "src");
     options_->set("maxi-batch", 10);
   }
@@ -127,7 +134,6 @@ protected:
     auto model = options_->get<std::string>("model");
     std::string suffix = model.substr(model.size() - 4);
     ABORT_IF(suffix != ".npz" && suffix != ".bin", "Unknown model suffix {}", suffix);
-
     builder_->save(graphs[0], model + ".best-" + type() + suffix, true);
   }
 };
@@ -137,6 +143,7 @@ class CrossEntropyValidator : public Validator<data::Corpus, models::ICriterionF
 
 public:
   CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  virtual ~CrossEntropyValidator() {}
 
   std::string type() override { return options_->get<std::string>("cost-type"); }
 
@@ -148,6 +155,7 @@ protected:
 class AccuracyValidator : public Validator<data::Corpus, models::IModel> {
 public:
   AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  virtual ~AccuracyValidator() {}
 
   std::string type() override { return "accuracy"; }
 
@@ -161,6 +169,7 @@ private:
 
 public:
   BertAccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool evalMaskedLM);
+  virtual ~BertAccuracyValidator() {}
 
   std::string type() override {
     if(evalMaskedLM_)
@@ -177,6 +186,7 @@ protected:
 class ScriptValidator : public Validator<data::Corpus, models::IModel> {
 public:
   ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  virtual ~ScriptValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                          Ptr<const TrainingState> /*ignored*/) override;
@@ -193,6 +203,7 @@ protected:
 class TranslationValidator : public Validator<data::Corpus, models::IModel> {
 public:
   TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  virtual ~TranslationValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                          Ptr<const TrainingState> state) override;
@@ -207,17 +218,18 @@ protected:
   }
 };
 
-// validator that translates and computes BLEU internally, with or without decoding
+// validator that translates and computes BLEU/ChrF internally, with or without decoding
+// Aims to follow SacreBLEU as close as possible.
 // @TODO: combine with TranslationValidator (above) to avoid code duplication
-class BleuValidator : public Validator<data::Corpus, models::IModel> {
+class SacreBleuValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  BleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool detok = false);
+  SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric);
+  virtual ~SacreBleuValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                          Ptr<const TrainingState> state) override;
 
-  // @TODO: why do we return this string, but not pass it to the constructor?
-  std::string type() override { return detok_ ? "bleu-detok" : "bleu"; }
+  std::string type() override { return metric_; }
 
 protected:
   // Tokenizer function adapted from multi-bleu-detok.pl, corresponds to sacreBLEU.py
@@ -255,10 +267,10 @@ protected:
     // languages, where Marian would report SacreBLEU scores, and Asian languages, where
     // scores are not standard but internally comparable across tokenization schemes.
     // @TODO: Check what sacrebleu.py is doing, and whether we can replicate that here faithfully.
-    auto in = utils::utf8ToUnicodeString(sUTF8);
-    auto out = in.substr(0, 0); // (out should be same type as in, don't want to bother with exact type)
+    std::u32string in = utils::utf8ToUnicodeString(sUTF8);
+    std::u32string out = in.substr(0, 0); // (out should be same type as in, don't want to bother with exact type)
     for (auto c : in) {
-      auto isCS = utils::isContinuousScript(c);
+      bool isCS = utils::isContinuousScript(c);
       if (isCS) // surround continuous-script chars by spaces on each side
         out.push_back(' '); // (duplicate spaces are ignored when splitting later)
       out.push_back(c);
@@ -266,6 +278,18 @@ protected:
         out.push_back(' ');
     }
     return utils::utf8FromUnicodeString(out);
+  }
+
+  static std::vector<std::string> splitIntoUnicodeChars(const std::string& sUTF8, bool removeWhiteSpace=true) {
+    std::u32string in = utils::utf8ToUnicodeString(sUTF8);
+    std::u32string space = utils::utf8ToUnicodeString(" ");
+    std::vector<std::string> out;
+    for(char32_t c : in) {
+      std::u32string temp(1, c);
+      if(removeWhiteSpace && temp != space)
+        out.push_back(utils::utf8FromUnicodeString(temp));
+    }
+    return out;
   }
 
   std::vector<std::string> decode(const Words& words, bool addEOS = false);
@@ -276,53 +300,62 @@ protected:
                    const std::vector<T>& cand,
                    const std::vector<T>& ref) {
 
-    std::map<std::vector<T>, size_t> rgrams;
-    for(size_t i = 0; i < ref.size(); ++i) {
-      // template deduction for std::min<T> seems to be weird under VS due to
-      // macros in windows.h hence explicit type to avoid macro parsing.
-      for(size_t l = 1; l <= std::min<size_t>(4ul, ref.size() - i); ++l) {
-        std::vector<T> ngram(l);
-        std::copy(ref.begin() + i, ref.begin() + i + l, ngram.begin());
-        rgrams[ngram]++;
+    auto countNgrams = [this](const std::vector<T>& tokens) {
+      std::map<std::vector<T>, size_t> ngramCounts;
+      for(size_t i = 0; i < tokens.size(); ++i) {
+        // template deduction for std::min<T> seems to be weird under VS due to
+        // macros in windows.h hence explicit type to avoid macro parsing.
+        for(size_t len = 1; len <= std::min<size_t>(order_, tokens.size() - i); ++len) {
+          std::vector<T> ngram(len);
+          std::copy(tokens.begin() + i, tokens.begin() + i + len, ngram.begin());
+          ngramCounts[ngram]++;
+        }
+      }
+      return ngramCounts;
+    };
+
+    auto cgrams = countNgrams(cand);
+    auto rgrams = countNgrams(ref);
+
+    for(auto& ngramcount : cgrams) {
+      size_t order = ngramcount.first.size() - 1;
+      size_t tc  = ngramcount.second;
+      size_t rc  = rgrams[ngramcount.first];
+      stats[statsPerOrder * order + 0] += std::min<size_t>(tc, rc); // count common ngrams (for BLEU and ChrF)
+      stats[statsPerOrder * order + 1] += tc;                       // count hypotheses ngrams (for BLEU and ChrF)
+    }
+
+    if(computeChrF_) {
+      for(auto& ngramcount : rgrams) {
+        size_t order = ngramcount.first.size() - 1;
+        size_t rc  = ngramcount.second;
+        stats[statsPerOrder * order + 2] += rc; // count reference ngrams (for ChrF)
       }
     }
 
-    std::map<std::vector<T>, size_t> tgrams;
-    for(size_t i = 0; i < cand.size() - 1; ++i) {
-      for(size_t l = 1; l <= std::min<size_t>(4ul, cand.size() - 1 - i); ++l) {
-        std::vector<T> ngram(l);
-        std::copy(cand.begin() + i, cand.begin() + i + l, ngram.begin());
-        tgrams[ngram]++;
-      }
-    }
-
-    for(auto& ngramcount : tgrams) {
-      size_t l = ngramcount.first.size();
-      size_t tc = ngramcount.second;
-      size_t rc = rgrams[ngramcount.first];
-
-      stats[2 * l - 2] += std::min<size_t>(tc, rc);
-      stats[2 * l - 1] += tc;
-    }
-
-    stats[8] += ref.size();
+    stats[statsPerOrder * order_] += ref.size(); // reference length for BLEU (technically same as stats[2], but let's keep it separate)
   }
 
   // Extract matching target reference from batch and pass on to update BLEU stats
   void updateStats(std::vector<float>& stats,
                    const Words& cand,
                    const Ptr<data::Batch> batch,
-                   size_t no,
-                   Word eos);
+                   size_t no);
 
   float calcBLEU(const std::vector<float>& stats);
+  float calcChrF(const std::vector<float>& stats);
 
   virtual float validateBG(const std::vector<Ptr<ExpressionGraph>>& /*graphs*/) override {
     return 0;
   }
 
 private:
-  bool detok_;
+  const std::string metric_;  // allowed values are: bleu, bleu-detok (same as bleu), bleu-segmented, chrf
+  bool computeChrF_{ false }; // should we compute ChrF instead of BLEU (BLEU by default)?
+  
+  size_t order_{ 4 };                      // 4-grams for BLEU by default
+  static const size_t statsPerOrder = 3;   // 0: common ngrams, 1: candidate ngrams, 2: reference ngrams
+  bool useWordIds_{ false };               // compute BLEU score by matching numeric segment ids
   bool quiet_{ false };
 };
 

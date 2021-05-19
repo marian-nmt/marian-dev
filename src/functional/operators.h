@@ -7,55 +7,63 @@ namespace marian {
 namespace functional {
 
 // General template, will be used for any type without specializations
-// and will fail with an abort message.
+// and will fail at runtime with an abort message. Note that the
+// general template functions don't have named parameters on purpose,
+// because clang will warn about unused parameters during compilation.
+
 template <typename T>
 struct Ops {
-  static HOST_DEVICE_INLINE T tanh(const T& x) { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T sin(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T cos(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T tan(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T log(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T exp(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T abs(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T sqrt(const T& x) { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T neg(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T sgn(const T& x)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T tanh(const T&) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sin(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T cos(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T tan(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T log(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T exp(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T abs(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sqr(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sqrt(const T&) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T neg(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sgn(const T&)  { ABORT("Unknown type"); }
 
-  static HOST_DEVICE_INLINE T add(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T sub(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T mul(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T div(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T round(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T floor(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T ceil(const T&)   { ABORT("Unknown type"); }
 
-  static HOST_DEVICE_INLINE T max(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T min(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T pow(const T& x, const T& y)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T add(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sub(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T mul(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T div(const T&, const T&)  { ABORT("Unknown type"); }
 
-  static HOST_DEVICE_INLINE T negate(const T& x)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T eq(const T& x, const T& y)   { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T neq(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T gt(const T& x, const T& y)   { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T lt(const T& x, const T& y)   { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T geq(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T leq(const T& x, const T& y)  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T _and(const T& x, const T& y) { ABORT("Unknown type"); } // 'and' is used by gcc
-  static HOST_DEVICE_INLINE T _or(const T& x, const T& y)  { ABORT("Unknown type"); } // 'or' is used by gcc
+  static HOST_DEVICE_INLINE T max(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T min(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T pow(const T&, const T&)  { ABORT("Unknown type"); }
+
+  static HOST_DEVICE_INLINE T negate(const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T eq(const T&, const T&)   { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T neq(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T gt(const T&, const T&)   { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T lt(const T&, const T&)   { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T geq(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T leq(const T&, const T&)  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T _and(const T&, const T&) { ABORT("Unknown type"); } // 'and' is used by gcc
+  static HOST_DEVICE_INLINE T _or(const T&, const T&)  { ABORT("Unknown type"); } // 'or' is used by gcc
 
   // Neural Networks specific functions
-  static HOST_DEVICE_INLINE T sigmoid(const T& x)               { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T logaddexp(const T& x, const T& y) { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T clip(const T& x, const T& y)      { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sigmoid(const T&)               { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T logaddexp(const T&, const T&) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T clip(const T&, const T&)      { ABORT("Unknown type"); }
   // derivative of Clip, cut-off function
-  static HOST_DEVICE_INLINE T bump(const T& x, const T& y)      { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T relu(const T& x)                  { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T reluBack(const T& x)              { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T prelu(const T& x, const T& y)     { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T preluBack(const T& x, const T& y) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T bump(const T&, const T&)      { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T relu(const T&)                  { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T reluBack(const T&)              { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T prelu(const T&, const T&)     { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T preluBack(const T&, const T&) { ABORT("Unknown type"); }
 
-  static HOST_DEVICE_INLINE T if_then_else(const T& x, const T& y, const T& z) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T if_then_else(const T&, const T&, const T&) { ABORT("Unknown type"); }
 
-  static HOST_DEVICE_INLINE T sumReduce(const T& x) { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T maxReduce(const T& x) { ABORT("Unknown type"); }
-  static HOST_DEVICE_INLINE T minReduce(const T& x) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T sumReduce(const T&) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T maxReduce(const T&) { ABORT("Unknown type"); }
+  static HOST_DEVICE_INLINE T minReduce(const T&) { ABORT("Unknown type"); }
 };
 
 // Specialization for float
@@ -70,9 +78,14 @@ struct Ops<float> {
   static HOST_DEVICE_INLINE float log(const float& x)  { return logf(x); }
   static HOST_DEVICE_INLINE float exp(const float& x)  { return expf(x); }
   static HOST_DEVICE_INLINE float abs(const float& x)  { return fabs(x); }
+  static HOST_DEVICE_INLINE float sqr(const float& x)  { return x * x; }
   static HOST_DEVICE_INLINE float sqrt(const float& x) { return sqrtf(x); }
   static HOST_DEVICE_INLINE float neg(const float& x)  { return -x; }
   static HOST_DEVICE_INLINE float sgn(const float& x)  { return (float)((0 < x) - (x < 0)); }
+
+  static HOST_DEVICE_INLINE float round(const float& x)  { return roundf(x); }
+  static HOST_DEVICE_INLINE float floor(const float& x)  { return floorf(x); }
+  static HOST_DEVICE_INLINE float ceil(const float& x)   { return ceilf(x); }
 
   static HOST_DEVICE_INLINE float add(const float& x, const float& y)  { return x + y; }
   static HOST_DEVICE_INLINE float sub(const float& x, const float& y)  { return x - y; }
@@ -127,16 +140,21 @@ template <>
 struct Ops<double> {
   typedef double Single;
 
-  static HOST_DEVICE_INLINE double tanh(const double& x) { return tanh(x); }
-  static HOST_DEVICE_INLINE double sin(const double& x)  { return sin(x); }
-  static HOST_DEVICE_INLINE double cos(const double& x)  { return cos(x); }
-  static HOST_DEVICE_INLINE double tan(const double& x)  { return tan(x); }
-  static HOST_DEVICE_INLINE double log(const double& x)  { return log(x); }
-  static HOST_DEVICE_INLINE double exp(const double& x)  { return exp(x); }
-  static HOST_DEVICE_INLINE double abs(const double& x)  { return abs(x); }
-  static HOST_DEVICE_INLINE double sqrt(const double& x) { return sqrt(x); }
+  static HOST_DEVICE_INLINE double tanh(const double& x) { return std::tanh(x); }
+  static HOST_DEVICE_INLINE double sin(const double& x)  { return std::sin(x); }
+  static HOST_DEVICE_INLINE double cos(const double& x)  { return std::cos(x); }
+  static HOST_DEVICE_INLINE double tan(const double& x)  { return std::tan(x); }
+  static HOST_DEVICE_INLINE double log(const double& x)  { return std::log(x); }
+  static HOST_DEVICE_INLINE double exp(const double& x)  { return std::exp(x); }
+  static HOST_DEVICE_INLINE double abs(const double& x)  { return std::abs(x); }
+  static HOST_DEVICE_INLINE double sqr(const double& x)  { return x * x; }
+  static HOST_DEVICE_INLINE double sqrt(const double& x) { return std::sqrt(x); }
   static HOST_DEVICE_INLINE double neg(const double& x)  { return -x; }
   static HOST_DEVICE_INLINE double sgn(const double& x)  { return (0 < x) - (x < 0); }
+
+  static HOST_DEVICE_INLINE double round(const double& x)  { return std::round(x); }
+  static HOST_DEVICE_INLINE double floor(const double& x)  { return std::floor(x); }
+  static HOST_DEVICE_INLINE double ceil(const double& x)   { return std::ceil(x); }
 
   static HOST_DEVICE_INLINE double add(const double& x, const double& y)  { return x + y; }
   static HOST_DEVICE_INLINE double sub(const double& x, const double& y)  { return x - y; }
@@ -145,7 +163,7 @@ struct Ops<double> {
 
   static HOST_DEVICE_INLINE double max(const double& x, const double& y)  { return x < y ? y : x; }
   static HOST_DEVICE_INLINE double min(const double& x, const double& y)  { return x < y ? x : y; }
-  static HOST_DEVICE_INLINE double pow(const double& x, const double& y)  { return pow(x, y); }
+  static HOST_DEVICE_INLINE double pow(const double& x, const double& y)  { return std::pow(x, y); }
 
 
   static HOST_DEVICE_INLINE double negate(const double& x)  { return !(bool)x; }
@@ -241,11 +259,16 @@ struct Ops<float32x4> {
 
   // @TODO: get rid of loop4 with proper intrisics
   static inline float32x4 abs(const float32x4& x)  { return loop4(Ops<float>::abs, x); }
+  static inline float32x4 sqr(const float32x4& x)  { return _mm_mul_ps(x, x); }
   static inline float32x4 sqrt(const float32x4& x) { return _mm_sqrt_ps(x); }
   static inline float32x4 neg(const float32x4& x)  { return sub(0.f, x); }
 
   // @TODO: get rid of loop4 with proper intrisics
   static inline float32x4 sgn(const float32x4& x)  { return loop4(Ops<float>::sgn, x); }
+
+  static inline float32x4 round(const float32x4& x)  { return _mm_round_ps(x, _MM_FROUND_TO_NEAREST_INT); }
+  static inline float32x4 floor(const float32x4& x)  { return _mm_floor_ps(x); }
+  static inline float32x4 ceil(const float32x4& x)   { return _mm_ceil_ps(x); }
 
   static inline float32x4 add(const float32x4& x, const float32x4& y) { return _mm_add_ps(x, y); }
   static inline float32x4 sub(const float32x4& x, const float32x4& y) { return _mm_sub_ps(x, y); }
@@ -331,7 +354,6 @@ template <>
 struct Ops<float32x8> {
   typedef float Single;
 
-
   static inline float32x8 loop8(const std::function<float(const float&)>& f, const float32x8& x) {
     float32x8 out;
     for(int i = 0; i < 8; i++)
@@ -366,11 +388,16 @@ struct Ops<float32x8> {
 
   // @TODO: get rid of loop8 with proper intrisics
   static inline float32x8 abs(const float32x8& x)  { return loop8(Ops<float>::abs, x); }
+  static inline float32x8 sqr(const float32x8& x)  { return _mm256_mul_ps(x, x); }
   static inline float32x8 sqrt(const float32x8& x) { return _mm256_sqrt_ps(x); }
   static inline float32x8 neg(const float32x8& x)  { return sub(0.f, x); }
 
   // @TODO: get rid of loop8 with proper intrisics
   static inline float32x8 sgn(const float32x8& x)  { return loop8(Ops<float>::sgn, x); }
+
+  static inline float32x8 round(const float32x8& x)  { return _mm256_round_ps(x, _MM_FROUND_TO_NEAREST_INT); }
+  static inline float32x8 floor(const float32x8& x)  { return _mm256_floor_ps(x); }
+  static inline float32x8 ceil(const float32x8& x)   { return _mm256_ceil_ps(x); }
 
   static inline float32x8 add(const float32x8& x, const float32x8& y) { return _mm256_add_ps(x, y); }
   static inline float32x8 sub(const float32x8& x, const float32x8& y) { return _mm256_sub_ps(x, y); }
@@ -443,8 +470,6 @@ struct Ops<float32x8> {
 
 #ifdef __CUDACC__
 #if COMPILE_FP16
-// only compile with fp16 support for compute_70, i.e. VOLTA 100 and above.
-#include <cuda_fp16.h>
 
 namespace marian {
 namespace functional {
@@ -458,11 +483,21 @@ struct Ops<half> {
   static DEVICE_INLINE half tan(const half& x)  { return hsin(x) / hcos(x); }
   static DEVICE_INLINE half log(const half& x)  { return hlog(x); }
   static DEVICE_INLINE half exp(const half& x)  { return hexp(x); }
+  static DEVICE_INLINE half sqr(const half& x)  { return x * x; }
   static DEVICE_INLINE half sqrt(const half& x) { return hsqrt(x); }
   static DEVICE_INLINE half neg(const half& x)  { return -x; }
-  
-  static DEVICE_INLINE half abs(const half& x)  { return fabs((float)x); }// @TODO half has this information somewhere in the struct, right?
+
+#if CUDA_VERSION < 11000
+  static DEVICE_INLINE half abs(const half& x)  { return fabs((float)x); }
+#else
+  static DEVICE_INLINE half abs(const half& x)  { return __habs(x); }
+#endif
+
   static DEVICE_INLINE half sgn(const half& x)  { half zero = 0.f; return (zero < x) - (x < zero); } // @TODO half has this information somewhere in the struct, right?
+
+  static DEVICE_INLINE half round(const half& x)  { return hrint(x); }
+  static DEVICE_INLINE half floor(const half& x)  { return hfloor(x); }
+  static DEVICE_INLINE half ceil(const half& x)   { return hceil(x); } 
 
   static DEVICE_INLINE half add(const half& x, const half& y)  { return x + y; }
   static DEVICE_INLINE half sub(const half& x, const half& y)  { return x - y; }
@@ -516,12 +551,11 @@ struct Ops<half> {
   }
   static DEVICE_INLINE half relu(const half& x) {
     const half zero = 0.f;
-    return x > zero ? x : zero;
+    return max(x, zero);
   }
   static DEVICE_INLINE half reluBack(const half& x) {
     const half zero = 0.f;
-    const half one =  1.f;
-    return x > zero ? one : zero;
+    return geq(x, zero);
   }
 
   static DEVICE_INLINE half prelu(const half& x, const half& y)     {
@@ -540,6 +574,118 @@ struct Ops<half> {
   static DEVICE_INLINE half sumReduce(const half& x) { return x; }
   static DEVICE_INLINE half maxReduce(const half& x) { return x; }
   static DEVICE_INLINE half minReduce(const half& x) { return x; }
+
+};
+
+// Specialization for halfx2
+template <>
+struct Ops<halfx2> {
+
+  static DEVICE_INLINE halfx2 sin(const halfx2& x)  { return h2sin(x); }
+  static DEVICE_INLINE halfx2 cos(const halfx2& x)  { return h2cos(x); }
+  static DEVICE_INLINE halfx2 tan(const halfx2& x)  { return h2sin(x) / h2cos(x); }
+  static DEVICE_INLINE halfx2 log(const halfx2& x)  { return h2log(x); }
+  static DEVICE_INLINE halfx2 exp(const halfx2& x)  { return h2exp(x); }
+  static DEVICE_INLINE halfx2 sqr(const halfx2& x)  { return __hmul2(x, x); }
+  static DEVICE_INLINE halfx2 sqrt(const halfx2& x) { return h2sqrt(x); }
+  static DEVICE_INLINE halfx2 neg(const halfx2& x)  { return __hneg2(x); }
+
+#if CUDA_VERSION < 11000
+  static DEVICE_INLINE halfx2 abs(const halfx2& x)  { return {Ops<half>::abs(x[0]), Ops<half>::abs(x[1])}; }
+#else
+  static DEVICE_INLINE halfx2 abs(const halfx2& x)  { return __habs2(x); }
+#endif
+  
+  static DEVICE_INLINE halfx2 sgn(const halfx2& x)  { halfx2 zero(0.f, 0.f); return __hsub2(__hlt2(zero, x), __hlt2(x, zero)); }
+
+  static DEVICE_INLINE halfx2 round(const halfx2& x)  { return h2rint(x); }
+  static DEVICE_INLINE halfx2 floor(const halfx2& x)  { return h2floor(x); }
+  static DEVICE_INLINE halfx2 ceil(const halfx2& x)   { return h2ceil(x); } 
+
+  static DEVICE_INLINE halfx2 add(const halfx2& x, const halfx2& y)  { return __hadd2(x, y); }
+  static DEVICE_INLINE halfx2 sub(const halfx2& x, const halfx2& y)  { return __hsub2(x, y); }
+  static DEVICE_INLINE halfx2 mul(const halfx2& x, const halfx2& y)  { return __hmul2(x, y); }
+  static DEVICE_INLINE halfx2 div(const halfx2& x, const halfx2& y)  { return __h2div(x, y); }
+
+  static DEVICE_INLINE halfx2 pow(const halfx2& x, const halfx2& y)  { return exp(mul(y, log(x))); }
+
+  // Neural Networks specific functions
+  // @TODO: this is unsafe
+  static DEVICE_INLINE halfx2 sigmoid(const halfx2& x) {
+    halfx2 e = exp(x);
+    halfx2 one(1.f, 1.f);
+    return div(e, add(one, e));
+  }
+
+  static DEVICE_INLINE halfx2 tanh(const halfx2& x) {
+    // tanh(x) = 2 * sigmoid(2 * x) - 1
+    const halfx2 one(1.f);
+    const halfx2 two(2.f);
+    return sub(mul(two, sigmoid(mul(two, x))), one); 
+  }
+
+  static DEVICE_INLINE halfx2 max(const halfx2& x, const halfx2& y)  { 
+    return { Ops<half>::max(x[0], y[0]), Ops<half>::max(x[1], y[1]) }; 
+  }
+
+  static DEVICE_INLINE halfx2 min(const halfx2& x, const halfx2& y)  { 
+    return { Ops<half>::min(x[0], y[0]), Ops<half>::min(x[1], y[1]) }; 
+  }
+  
+  static DEVICE_INLINE halfx2 negate(const halfx2& x)  { return { Ops<half>::negate(x[0]), Ops<half>::negate(x[1]) }; }
+  static DEVICE_INLINE halfx2 eq(const halfx2& x, const halfx2& y)   { return __heq2(x, y); }
+  static DEVICE_INLINE halfx2 neq(const halfx2& x, const halfx2& y)  { return __hne2(x, y); }
+  static DEVICE_INLINE halfx2 gt(const halfx2& x, const halfx2& y)   { return __hgt2(x, y); }
+  static DEVICE_INLINE halfx2 lt(const halfx2& x, const halfx2& y)   { return __hlt2(x, y); }
+  static DEVICE_INLINE halfx2 geq(const halfx2& x, const halfx2& y)  { return __hge2(x, y); }
+  static DEVICE_INLINE halfx2 leq(const halfx2& x, const halfx2& y)  { return __hle2(x, y); }
+  static DEVICE_INLINE halfx2 and_(const halfx2& x, const halfx2& y) { return {x[0] && y[0], x[1] && y[1]}; } // 'and' is used by gcc
+  static DEVICE_INLINE halfx2 or_(const halfx2& x, const halfx2& y)  { return {x[0] || y[0], x[1] || y[1]}; } // 'or' is used by gcc
+  
+  static DEVICE_INLINE halfx2 log1p(const halfx2& x) {
+    return log(add(x, halfx2(1.f))); // probably acceptable loss of precision, it's half anyway
+  }
+
+  static DEVICE_INLINE halfx2 if_then_else(const halfx2& x, const halfx2& y, const halfx2& z) { 
+    return {x[0] ? y[0] : z[0], x[1] ? y[1] : z[1]}; 
+  }
+
+  static DEVICE_INLINE halfx2 logaddexp(const halfx2& x, const halfx2& y) {
+    // Note: This may not be ideal for CUDA; cf. CNTK implementation
+    auto a = add(y, log1p(exp(sub(x, y)))); 
+    auto b = add(x, log1p(exp(sub(y, x))));
+    return if_then_else(lt(x, y), a, b);
+  }
+
+  static DEVICE_INLINE halfx2 clip(const halfx2& x, const halfx2& y)  { 
+    return if_then_else(geq(abs(x), y), mul(sgn(x), y), x); 
+  }
+
+  // derivative of Clip, cut-off function
+  static DEVICE_INLINE halfx2 bump(const halfx2& x, const halfx2& y)  {
+    const halfx2 zero(0.f);
+    const halfx2 one(1.f);
+    return if_then_else(geq(abs(x), y), zero, one);
+  }
+  static DEVICE_INLINE halfx2 relu(const halfx2& x) {
+    const halfx2 zero(0.f);
+    return max(x, zero);
+  }
+  static DEVICE_INLINE halfx2 reluBack(const halfx2& x) {
+    const halfx2 zero(0.f);
+    return geq(x, zero);
+  }
+
+  static DEVICE_INLINE halfx2 prelu(const halfx2& x, const halfx2& y)     {
+    const halfx2 zero(0.f);
+    return if_then_else(gt(x, zero), x , mul(x, y));
+  }
+
+  static DEVICE_INLINE halfx2 preluBack(const halfx2& x, const halfx2& y) {
+    const halfx2 zero(0.f);
+    const halfx2 one(1.f);
+    return if_then_else(gt(x, zero), one, y);
+  }
 
 };
 
@@ -564,9 +710,14 @@ UNARY(Tan,     tan,        Ops<ElementType>::tan(x));
 UNARY(Log,     log,        Ops<ElementType>::log(x));
 UNARY(Exp,     exp,        Ops<ElementType>::exp(x));
 UNARY(Abs,     abs,        Ops<ElementType>::abs(x));
+UNARY(Sqr,     sqr,        Ops<ElementType>::sqr(x));
 UNARY(Sqrt,    sqrt,       Ops<ElementType>::sqrt(x));
 UNARY(Neg,     operator-,  Ops<ElementType>::neg(x));
 UNARY(Sgn,     sgn,        Ops<ElementType>::sgn(x));
+
+UNARY(Round,   round,      Ops<ElementType>::round(x));
+UNARY(Floor,   floor,      Ops<ElementType>::floor(x));
+UNARY(Ceil,    ceil,       Ops<ElementType>::ceil(x));
 
 BINARY(Plus,   operator+,  Ops<ElementType>::add(x, y));
 BINARY(Minus,  operator-,  Ops<ElementType>::sub(x, y));

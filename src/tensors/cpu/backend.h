@@ -27,7 +27,6 @@ public:
   void setGemmType(std::string gemmType) override {
     if      (gemmType == "auto")        gemmType_ = GemmType::Auto;
     else if (gemmType == "float32")     gemmType_ = GemmType::Float32;
-    else if (gemmType == "intrinint16") gemmType_ = GemmType::IntrinInt16;
 #if USE_FBGEMM
     else if (gemmType == "packed16")    gemmType_ = GemmType::FbFp16Packed;
     else if (gemmType.find("packed8") == 0)  gemmType_ = GemmType::FbInt8Packed;
@@ -40,5 +39,6 @@ public:
   void setQuantizeRange(float range) override { quantizeRange_ = range; }
   float getQuantizeRange() override { return quantizeRange_; }
 };
+
 }  // namespace cpu
 }  // namespace marian

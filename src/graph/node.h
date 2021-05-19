@@ -28,19 +28,19 @@ protected:
   std::vector<Expr> children_;
 
   Weak<ExpressionGraph> graph_;
-  Shape shape_{1, 1, 1, 1};
-  Type valueType_{Type::float32};
+  Shape shape_{1, 1, 1, 1};         // defines the dimensionality of the node (for tensors)
+  Type valueType_{Type::float32};   // defines the element type of the node (for tensors)
 
   std::string name_{"none"};
 
-  Tensor val_{nullptr};
-  Tensor adj_{nullptr};
+  Tensor val_{nullptr};  // the resulting new tensor in forward pass
+  Tensor adj_{nullptr};  // the accumulated gradients (a tensor) in backward pass
 
   bool markedForDebug_{false};
   std::string debugMessage_;
 
   Ptr<std::list<Expr>> subtape_; // a subtape is used to keep track of nodes that need to be freed and recomputed with gradient-checkpointing.
-  bool isCheckpoint_{false};     // true if this node has been selected to be a checkpoint, currently only done manually. 
+  bool isCheckpoint_{false};     // true if this node has been selected to be a checkpoint, currently only done manually.
 
   Ptr<AutoTunerRecorder> recorder_;
   size_t recorderHash_;
@@ -100,14 +100,24 @@ public:
   virtual bool marked_for_debug() override { return markedForDebug_; }
   virtual const std::string& debug_message() override { return debugMessage_; }
 
-  virtual size_t allocate() override;
+  virtual void allocate() override;
 
   virtual void free() override;
 
   virtual void init() override {};
-
+  /**
+   * Initialization for backward step of top node
+   * in computation graph. Allocates memory and sets gradient
+   * to 1 (df/df == 1).
+   */
   virtual void init_dependent() override;
 
+  /**
+   * Initialization for backward step of any non-top node
+   * in computation graph. Allocates memory and sets gradient
+   * to 0 for further accumulation of gradients from all
+   * parents.
+   */
   virtual void set_zero_adjoint() override;
 
   virtual Tensor& val() override { return val_; };
@@ -138,7 +148,7 @@ public:
 
   virtual std::string graphviz() override {
     std::stringstream ss;
-    ss << "\"" << this << "\" [" 
+    ss << "\"" << this << "\" ["
       << "shape=\"" << form() << "\", "
       << "label="   << label() << ", "
       << "style=\"filled\", "
@@ -147,7 +157,7 @@ public:
 
     for(auto&& child : children())
       ss << "\"" << child << "\" -> \"" << this << "\";" << std::endl;
-    
+
     if(subtape_) {
       for(auto&& dep : *subtape_)
         ss << "\"" << dep << "\" -> \"" << this << "\" [style=dotted];" << std::endl;
@@ -188,9 +198,9 @@ struct NaryNodeOp : public Node {
 
   // Deduce type automatically, but then all types must be the same
   // this is called automatically when no output type is specified.
-  // If the input types are mixed, the output type needs to be specified 
+  // If the input types are mixed, the output type needs to be specified
   // in the constructor.
-  Type commonType(const std::vector<Expr>& nodes) {
+  static Type commonType(const std::vector<Expr>& nodes) {
     ABORT_IF(nodes.size() == 0, "NaryNodeOp has no children");
     Type type = nodes[0]->value_type();
     for(int i = 1; i < nodes.size(); ++i)

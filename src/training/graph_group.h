@@ -11,6 +11,30 @@
 
 namespace marian {
 
+// With -Ofast enabled gcc will fail to identify NaN or Inf. Safeguard here.
+static inline bool isFinite(float x) {
+#ifdef __GNUC__ 
+  ABORT_IF(std::isfinite(0.f / 0.f), "NaN detection unreliable. Disable -Ofast compiler option.");
+#endif
+  return std::isfinite(x);
+}
+
+#ifdef _MSC_VER // MS Visual studio insists that this funtion is not being referenced although is being referenced by name as an argument
+#pragma warning(push)
+#pragma warning(disable: 4505) //Unreferenced local function has been removed
+#endif
+// to accumulate gradients norms, first undo sqrt, sum, re-apply sqrt.
+// if one value is nonfinite propagate Nan into the reduction.
+static inline void accNanOrNorm(float& lhs, float rhs) {
+  if(isFinite(lhs) && isFinite(rhs)) {
+    lhs = sqrtf(lhs * lhs + rhs * rhs); 
+  } else
+    lhs = std::numeric_limits<float>::quiet_NaN();
+}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 /**
  *  Base class for managing the training process across one, multiple gpus,
  *  or even multiple machines with multiple gpus.
@@ -18,32 +42,93 @@ namespace marian {
 class GraphGroup {
 protected:
   Ptr<Options> options_;
-  Ptr<OptimizerBase> opt_;   // the optimizer
+  
+  Ptr<ICommunicator> comm_; // [not null] communicator, e.g. NCCLCommunicator
+  Ptr<IMPIWrapper> mpi_;    // [not null] all MPI-like communication goes through this (this is a dummy implementation if no MPI run)
+
+  std::vector<DeviceId> devices_;                   // [deviceIndex]
+  ShardingMode shardingMode_{ShardingMode::global}; // If local and multi-node training, shard only on local devices and do full sync (faster). If global shard across entire set of GPUs (more RAM). 
+  
+  // common for all graph groups, individual graph groups decide how to fill them
+  std::vector<Ptr<ExpressionGraph>> graphs_;            // [deviceIndex]
+  std::vector<Ptr<models::ICriterionFunction>> models_; // [deviceIndex]
+  std::vector<Ptr<OptimizerBase>> optimizerShards_;     // [deviceIndex]
+
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
+  
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
-  size_t typicalTrgBatchWords_{ 0 }; // for dynamic batch sizing: typical batch size in words
+  double typicalTrgBatchWords_{0}; // for dynamic batch sizing: typical batch size in words
+  bool mbRoundUp_{true}; // round up batches for more efficient training but can make batch size less stable, disable with --mini-batch-round-up=false
+
+  bool costScale_{false};
+  float costScaleFactor_{1.f}; // @TODO, add current costScaleFactor_ to trainingState for serialization
+  size_t costScaleFreq_{2000};
+  float costScaleMultiplier_{2.f};
+  float costScaleNanTolerance_{0.f};
+  size_t costScaleNanRange_{1};
+  float costScaleFactorMinimum_{1.f}; // @TODO make this configureable
+  size_t noNanSeen_{0}; // @TODO, add current noNanSeen_ to trainingState for serialization
+  size_t nanSeen_{0};
+
+  bool dynamicGradientScaling_{false};
+  float dynamicGradientScalingFactor_{2.f};
+  bool dynamicGradientScalingUseLogs_{false};
+
+  bool checkGradientNan_{false};
+
+  // determines the number of input streams (i.e. input files or fields in the TSV input) that need
+  // to be included in the batch, i.e. without alignments and weights
+  size_t numberOfInputFiles();
 
 public:
-  GraphGroup(Ptr<Options> options) : options_(options), opt_(Optimizer(options)) {}
+  GraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi);
+  GraphGroup(Ptr<Options> options);
+
+  void initGraphsAndOpts();
 
   virtual ~GraphGroup() {}
 
   virtual void update(Ptr<data::Batch> batch) = 0;
 
-  virtual void load() = 0;
+  // increase cost-scaling factor if no NaN has been detected for a
+  // given number of iterations. Usually we increase by 2 which adds
+  // one more bit for precision.
+  void increaseCostScaleFactor();
 
-  virtual void save(bool isFinal = false) = 0;
+  // call when a NaN was seen to decrease cost-scaling factor
+  void decreaseCostScaleFactor();
 
-  void validate() {
-    ABORT_IF(finalized_, "Training has already finished.");
-  }
+  virtual void load();
+  virtual void save(bool isFinal = false);
+  
+private:
+  void load(const OptimizerBase::ScatterStateFunc& scatterFn);
+  void save(bool isFinal,
+            const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
-  virtual void finalize() {
-    finalized_ = true;
-  }
+  bool restoreFromCheckpoint(const std::string& modelFileName, 
+                             const OptimizerBase::ScatterStateFunc& scatterFn);
+
+  void saveCheckpoint(const std::string& modelFileName, 
+                      const OptimizerBase::GatherStateFunc& gatherFn);
+
+public:
+  void swapWithSmoothed();
+
+  bool isMainProcess() const { return mpi_->isMainProcess(); } // (we need this test a few times)
+  void barrier() const { mpi_->barrier(); } // (we need this several times)
+
+  void validate();
+
+  virtual void finalize();
 
   virtual void setScheduler(Ptr<Scheduler> scheduler) = 0;
 
+  float checkNanOrNorm(size_t i, size_t begin, size_t end);
+  float executeAndCollectNorm(const std::function<float(size_t, size_t, size_t)>& task);
+
+  float computeNormalizationFactor(float gNorm, size_t updateTrgWords);
+  
   /**
    * Determine maximal batch size that can fit into the given workspace
    * so that reallocation does not happen. Rather adjust the batch size
@@ -57,158 +142,13 @@ public:
   virtual Ptr<data::BatchStats> collectStats(Ptr<ExpressionGraph> graph,
                                              Ptr<models::ICriterionFunction> model,
                                              const std::vector<Ptr<Vocab>>& vocabs,
-                                             double multiplier = 1.) {
-    auto stats = New<data::BatchStats>();
+                                             double multiplier = 1.);
 
-    size_t numFiles = options_->get<std::vector<std::string>>("train-sets").size();
+  virtual Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) = 0;
 
-    // Initialize first batch to step size
-    size_t first = options_->get<size_t>("mini-batch-fit-step");
-
-    // Increase batch size and sentence length by this step size
-    size_t step = options_->get<size_t>("mini-batch-fit-step");
-
-    size_t maxLength = options_->get<size_t>("max-length");
-    maxLength = (size_t)(std::ceil(maxLength / (float)step) * step);
-
-    // this should be only one class label per line on input, hence restricting length to 1
-    std::vector<size_t> localMaxes(numFiles, maxLength);
-    auto inputTypes = options_->get<std::vector<std::string>>("input-types", {});
-    for(int i = 0; i < inputTypes.size(); ++i)
-      if(inputTypes[i] == "class")
-        localMaxes[i] = 1;
-
-    size_t maxBatch = 512;
-    bool fits = true;
-    while(fits) {
-      std::vector<size_t> lengths(numFiles, first);
-      for(int j = 0; j < lengths.size(); ++j) // apply length restrictions
-        lengths[j] = std::min(lengths[j], localMaxes[j]);
-
-      auto batch = data::CorpusBatch::fakeBatch(lengths, vocabs, maxBatch, options_);
-      auto cost = model->build(graph, batch);
-      fits = graph->fits();
-      if(fits)
-        maxBatch *= 2;
-    }
-
-    // Do a binary search for maxmimum batch size that fits into given workspace memory 
-    // for a tested sentence length. 
-    for(size_t i = step; i <= maxLength; i += step) {
-      size_t start = 1;
-      size_t end = maxBatch;
-
-      std::vector<size_t> lengths(numFiles, i);
-      for(int j = 0; j < lengths.size(); ++j)  // apply length restrictions
-        lengths[j] = std::min(lengths[j], localMaxes[j]);
-      fits = true;
-
-      do {
-        size_t current = (start + end) / 2;
-        auto batch = data::CorpusBatch::fakeBatch(lengths, vocabs, current, options_);
-        auto cost = model->build(graph, batch);
-        fits = graph->fits();
-
-        LOG(debug, "[batching] length: {} - size: {} - fits: {}", lengths[0], current, fits);
-
-        if(fits) {
-          stats->add(batch, multiplier);
-          start = current + 1;
-        } else {
-          end = current - 1;
-        }
-      } while(end - start > step);
-
-      maxBatch = start;
-    }
-    return stats;
-  }
-
-  void setTypicalTrgBatchWords(size_t typicalTrgBatchWords) { // needed for dynamic MB scaling
-    typicalTrgBatchWords_ = typicalTrgBatchWords;
-  }
+  void setTypicalTrgBatchWords(size_t typicalTrgBatchWords);
+  double getTypicalTrgBatchWords();
+  void updateAverageTrgBatchWords(size_t trgBatchWords);
 };
 
-/**
- *  Base class for multi-node versions of GraphGroups.
- */
-class MultiNodeGraphGroupBase : public GraphGroup {
-  using Base = GraphGroup;
-
-protected:
-  Ptr<IMPIWrapper> mpi_; // all MPI-like communication goes through this
-
-  /** Devices (GPUs) on this node. */
-  std::vector<size_t> devices_; // [num local GPUs]
-
-  /** Graph builders for clients (which run forward and backward passes). */
-  std::vector<Ptr<models::ICriterionFunction>> clientBuilders_;
-
-  /** Graphs of clients. One entry per GPU on this node. */
-  std::vector<Ptr<ExpressionGraph>> clientGraphs_; // [num local GPUs]
-
-public:
-  MultiNodeGraphGroupBase(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
-    : Base(options), mpi_(mpi) {
-
-    // Set up devices for this node
-    std::vector<size_t> devices; // set of GPU device ids for this MPI process
-    for (auto& d : Config::getDevices(options_))
-      devices.push_back(d.no);
-    loadDeviceConfig(devices); // set up numberClientsOfNodes_[] and devices_[]
-
-    // Create builders and graphs for clients; that is, for each GPU we use on this node.
-    for (size_t i = 0; i < devices_.size(); i++) {
-      clientGraphs_.push_back(New<ExpressionGraph>());
-      clientGraphs_[i]->setDevice({ devices_[i], DeviceType::gpu });
-      clientGraphs_[i]->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-      clientBuilders_.push_back(models::createCriterionFunctionFromOptions(options_, models::usage::training));
-    }
-  }
-
-  /**
-   * Load the GPU configuration of this node (i.e. which GPUs to use) and the
-   * number of GPUs on the other nodes.
-   */
-  // deviceConfig has this format
-  //  - for each node
-  //     - number of GPUs on that node
-  //     - GPU ids for that node
-  // e.g. 0:0 1 1: 2 3 -> (2, (0, 1)) (2, (2,3))
-  void loadDeviceConfig(std::vector<size_t> deviceConfig) {
-    // parse device config array
-    size_t index = 0; // cursor for next()
-    auto next = [&]() { // helper function to get the next item
-      ABORT_IF(index == deviceConfig.size(), "mal-formed device config array??");
-      return deviceConfig[index++];
-    };
-    std::vector<std::vector<size_t>> allDevices(mpi_->numMPIProcesses());
-    for (auto& devices : allDevices) {
-      devices.resize(next());
-      for (auto& device : devices)
-        device = next();
-    }
-    ABORT_IF(index != deviceConfig.size(), "mal-formed device config array??");
-
-    // validate
-    ABORT_IF(allDevices.front().size() == 0, "no devices specified??");
-    for (auto& devices : allDevices) {
-      ABORT_IF(devices.size() != allDevices.front().size(), "all MPI nodes must use the same number of devices");
-    }
-
-    // get our own config
-    devices_ = allDevices[mpi_->myMPIRank()];
-
-    // log
-    LOG(info, "[mpi rank {}] device configuration", mpi_->myMPIRank());
-    for (auto& device : devices_)
-      LOG(info, "[mpi rank {}]  - {}", mpi_->myMPIRank(), device);
-  }
-
-  virtual void finalize() override {
-    if (mpi_)
-      finalizeMPI(std::move(mpi_));
-    Base::finalize();
-  }
-};
 }  // namespace marian

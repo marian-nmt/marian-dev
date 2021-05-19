@@ -124,7 +124,7 @@ static void setErrorHandlers() {
   std::set_terminate(unhandledException);
 #ifdef __unix__
   // catch segfaults
-  struct sigaction sa = { 0 };
+  struct sigaction sa = { {0} };
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_SIGINFO;
   sa.sa_sigaction = [](int /*signal*/, siginfo_t*, void*) { ABORT("Segmentation fault"); };
@@ -139,8 +139,12 @@ static void setErrorHandlers() {
 void switchtoMultinodeLogging(std::string nodeIdStr) {
   Logger log = spdlog::get("general");
   if(log)
-    log->set_pattern("[%Y-%m-%d %T " + nodeIdStr + ":%t] %v");
-}
+    log->set_pattern(fmt::format("[%Y-%m-%d %T mpi:{}] %v", nodeIdStr));
+  
+  Logger valid = spdlog::get("valid");
+  if(valid)
+    valid->set_pattern(fmt::format("[%Y-%m-%d %T mpi:{}] [valid] %v", nodeIdStr));
+  }
 
 
 namespace marian {

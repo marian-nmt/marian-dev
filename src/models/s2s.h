@@ -11,6 +11,7 @@ namespace marian {
 class EncoderS2S : public EncoderBase {
   using EncoderBase::EncoderBase;
 public:
+  virtual ~EncoderS2S() {}
   Expr applyEncoderRNN(Ptr<ExpressionGraph> graph,
                        Expr embeddings,
                        Expr mask,
@@ -254,7 +255,7 @@ public:
     auto embeddings = state->getTargetHistoryEmbeddings();
 
     // The batch dimension of the inputs can change due to batch-pruning, in that case
-    // cached elements need to be rebuilt, in this case the mapped encoder context in the 
+    // cached elements need to be rebuilt, in this case the mapped encoder context in the
     // attention mechanism of the decoder RNN.
     int currDimBatch = embeddings->shape()[-2];
     if(!rnn_ || lastDimBatch_ != currDimBatch)  // if currDimBatch is different, rebuild the cached RNN
@@ -263,7 +264,7 @@ public:
     // Also @TODO: maybe implement a Cached(build, updateIf) that runs a check and rebuild if required
     // at dereferecing :
     // rnn_ = Cached<decltype(constructDecoderRNN(graph, state))>(
-    //          /*build=*/[]{ return constructDecoderRNN(graph, state); }, 
+    //          /*build=*/[]{ return constructDecoderRNN(graph, state); },
     //          /*updateIf=*/[]{ return state->batchDimChanged() });
     // rnn_->transduce(...);
 
@@ -317,6 +318,8 @@ public:
       }
       last("vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_]); // for factored outputs
       last("lemma-dim-emb", opt<int>("lemma-dim-emb", 0)); // for factored outputs
+      
+      last("output-omit-bias", opt<bool>("output-omit-bias", false)); 
 
       // assemble layers into MLP and apply to embeddings, decoder context and
       // aligned source context

@@ -175,7 +175,9 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   }
   scheduler->finished();
 
-  engine_->SwapPointers(parameters_);
+  if(!first) {
+    engine_->SwapPointers(parameters_);
+  }
 }
 
 

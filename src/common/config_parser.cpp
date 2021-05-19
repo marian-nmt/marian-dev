@@ -693,6 +693,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      ->implicit_val("100 1024");
 
   // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
   cli.add<std::string>("--gemm-type,-g",
      "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
   cli.add<float>("--quantize-range",
@@ -751,6 +753,8 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
       {"float32"});
 
   // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
   cli.add<std::string>("--gemm-type,-g",
      "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
   cli.add<float>("--quantize-range",

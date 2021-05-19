@@ -145,7 +145,7 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
                           marian::Type packType,
                           bool transpose,
                           float quantizeRange)
-      : UnaryNodeOp(a, newShape(a, transpose), Type::uint8),
+      : UnaryNodeOp(a, newShape(a, packType, transpose), Type::uint8),
         packMat_(packMat),
         packType_(packType),
         transpose_(transpose),
@@ -181,11 +181,10 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
   const std::string type() override { return "packMatInt8"; }
 
 #if USE_FBGEMM
-  Shape newShape(Expr a, bool transpose) {
+  Shape newShape(Expr a, marian::Type packType, bool transpose) {
     fbgemmPacked8PackInfo(
         a->shape(),
-        packType_,
-        //fbgemmHasAvx512Support() ? marian::Type::packed8avx512 : marian::Type::packed8avx2,
+        packType,
         transpose,
         nrow_,
         ncol_,
@@ -194,7 +193,7 @@ struct FbgemmPacked8PackNodeOp : public UnaryNodeOp {
     return outShape;
   }
 #else
-  Shape newShape(Expr /*a*/, bool /*transpose*/) {
+  Shape newShape(Expr /*a*/, marian::Type /*packType*/, bool /*transpose*/) {
     ABORT("Packed GEMM requires a build with USE_FBGEMM enabled");
     return Shape();
   }

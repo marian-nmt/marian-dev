@@ -241,18 +241,11 @@ void GPULoadedModel::Load(const GPULoadedModel &from) {
   }
 }
 
-void GPULoadedModel::Load(const GPULoadedModelTrain &from) {
+void GPULoadedModel::PointToParams(const GPULoadedModelTrain &from) {
+  ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
   srcVocabs_ = from.srcVocabs_;
   trgVocab_  = from.trgVocab_;
-
-  ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
-
-  for(size_t i = 0; i < parameters_.size(); ++i) {
-    swapper::copyGpuToGpu(reinterpret_cast<char *>(parameters_[i]->data()),
-                          reinterpret_cast<const char *>(from.parameters_[i]->data()),
-                          parameters_[i]->size(),
-                          engine_->myDeviceId_);
-  }
+  parameters_ = from.parameters_;
 }
 
 void GPULoadedModel::Load(const CPULoadedModel &from) {

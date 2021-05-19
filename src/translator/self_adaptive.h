@@ -124,7 +124,7 @@ public:
       if(contexts.size() > id && !contexts[id].empty()) {
         trainSlot_->Load(*cpuModel_);
         trainSlot_->Train(contexts[id]);
-        translateSlot_->Load(*trainSlot_);
+        translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;
       } else {
@@ -175,7 +175,7 @@ public:
         LOG(info, "# NEW TEST BATCH");
         trainSlot_->Load(*cpuModel_);
         trainSlot_->Train(trainSet);
-        translateSlot_->Load(*trainSlot_);
+        translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;
       } else {

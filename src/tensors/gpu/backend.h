@@ -64,6 +64,16 @@ public:
     return cusparseHandle_;
   }
 
+  // for CPU, sets to use optimized code for inference.
+  // for GPU, this is invalid. for gpu, isOptimized() function always returns false.
+  void setOptimized(bool optimize) override {
+    LOG_ONCE(info, "setOptimized() not supported for GPU_{}", optimize);
+  }
+  bool isOptimized() override {
+    LOG_ONCE(info, "isOptimized() not supported for GPU");
+    return false;
+  };
+
   // for CPU, selects different GEMM types for the inference.
   // for GPU, there's no gemm type. so, it does nothing.
   void setGemmType(std::string gemmType) override {

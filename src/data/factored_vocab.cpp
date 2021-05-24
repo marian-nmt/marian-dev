@@ -655,6 +655,7 @@ std::string FactoredVocab::surfaceForm(const Words& sentence) const /*override f
   return res;
 }
 
+// returns the total number of factors present in this vocabulary
 size_t FactoredVocab::getTotalFactorCount() const {
   return factorVocabSize() - groupRanges_[0].second;
 }
@@ -674,14 +675,14 @@ void FactoredVocab::lemmaAndFactorsIndexes(const Words& words, std::vector<Index
   std::vector<size_t> lemmaAndFactorIndices;
 
   for (auto &word : words) {
-    if (vocab_.contains(word.toWordIndex())) {
+    if (vocab_.contains(word.toWordIndex())) { // skip invalid combinations in the space (can only happen during initialization)  --@TODO: add a check?
       word2factors(word, lemmaAndFactorIndices);
-      lemmaIndices.push_back((IndexType) lemmaAndFactorIndices[0]);
-      for (size_t g = 1; g < numGroups; g++) {
-        auto factorIndex = lemmaAndFactorIndices[g];
+      lemmaIndices.push_back((IndexType) lemmaAndFactorIndices[0]); // save the lemma vocabulary index
+      for (size_t g = 1; g < numGroups; g++) { // loop over the different factors group
+        auto factorIndex = lemmaAndFactorIndices[g]; // get the vocabulary index of the factor of group g
         ABORT_IF(factorIndex == FACTOR_NOT_SPECIFIED, "Attempted to embed a word with a factor not specified");
-        for (int i = 0; i < factorShape_[g] - 1; i++) {
-          factorIndices.push_back((float) (factorIndex == i));
+        for (int i = 0; i < factorShape_[g] - 1; i++) { // loop over all factors in group g
+          factorIndices.push_back((float) (factorIndex == i)); // fill the factor indexes array with '0' if the factor is not used in a given word, '1' if it is
         }
       }
     }

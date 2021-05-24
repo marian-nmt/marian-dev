@@ -23,7 +23,7 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
     if(opt<std::string>("factorsCombine") == "concat") {
       ABORT_IF(dimFactorEmb == 0,
                "Embedding: If concatenation is chosen to combine the factor embeddings, a factor "
-               "embedding size should be specified.");
+               "embedding size must be specified.");
       int numberOfFactors = (int)factoredVocab_->getTotalFactorCount();
       dimVoc -= numberOfFactors;
       FactorEmbMatrix_
@@ -44,7 +44,7 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
 }
 
-//Embeds a sequence of words (given as indices), where they have factor information. The matrices are concatenated
+// Embeds a sequence of words (given as indices), where they have factor information. The matrices are concatenated
 /*private*/ Expr Embedding::embedWithConcat(const Words& data) const {
   auto graph = E_->graph();
   std::vector<IndexType> lemmaIndices;
@@ -57,9 +57,7 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
                 {(int)data.size(), dimFactors}, inits::fromVector(factorIndices), Type::float32),
             FactorEmbMatrix_);
 
-  auto out = concatenate({lemmaEmbs, factEmbs}, -1);
-
-  return out;
+  return concatenate({lemmaEmbs, factEmbs}, -1);
 }
 
 // helper to embed a sequence of words (given as indices) via factored embeddings
@@ -128,14 +126,8 @@ std::tuple<Expr /*embeddings*/, Expr /*mask*/> Embedding::apply(Ptr<data::SubBat
   //        more slowly
 
   auto batchEmbeddings = apply(subBatch->data(), {dimWidth, dimBatch, dimEmb});
-#if 0
-    // @TODO: this is dead code now, get rid of it
-    // experimental: hide inline-fix source tokens from cross attention
-    auto batchMask = graph->constant({dimWidth, dimBatch, 1},
-                                     inits::fromVector(subBatch->crossMaskWithInlineFixSourceSuppressed()));
-#else
+
   auto batchMask = graph->constant({dimWidth, dimBatch, 1}, inits::fromVector(subBatch->mask()));
-#endif
   // give the graph inputs readable names for debugging and ONNX
   batchMask->set_name("data_" + std::to_string(/*batchIndex_=*/0) + "_mask");
 

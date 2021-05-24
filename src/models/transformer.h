@@ -295,7 +295,7 @@ public:
       kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
     }
     else {
-      int dimKeys =  keys->shape()[-1];
+      int dimKeys =  keys->shape()[-1]; // different than dimModel when using lemma and factors combined with concatenation
       auto Wk = graph_->param(prefix + "_Wk", {dimKeys, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
@@ -310,7 +310,7 @@ public:
         && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
       vh = cache_[prefix + "_values"];
     } else {
-      int dimValues = values->shape()[-1];
+      int dimValues = values->shape()[-1]; // different than dimModel when using lemma and factors combined with concatenation
       auto Wv = graph_->param(prefix + "_Wv", {dimValues, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bv = graph_->param(prefix + "_bv", {1,        dimModel}, inits::zeros());
 

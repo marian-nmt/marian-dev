@@ -116,7 +116,7 @@ void Config::initialize(ConfigParser const& cp) {
     config_["tsv-fields"] = tsvFields;
   }
 
-  // ensures factors backward compability whilst keeping the more user friendly CLI
+  // ensures factors backward compatibility whilst keeping the more user friendly CLI
   if(get<std::string>("lemma-dependency").empty()) {
     YAML::Node config;
     int lemmaDimEmb = get<int>("lemma-dim-emb");

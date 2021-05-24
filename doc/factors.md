@@ -1,6 +1,6 @@
 # Using marian with factors
 
-Following this README should allow the user to train a model with source- and/or target-side factors. To train with factors, the data must be formatted in a certain way. A special vocabulary file format is also required. See details below.
+Following this README should allow the user to train a model with source and/or target side factors. To train with factors, the data must be formatted in a certain way. A special vocabulary file format is also required, and its extension should be `.fsv` as providing a source and/or target vocabulary file with this extension is what triggers the usage of source and/or target factors. See details below.
 
 ### Requirements:
 
@@ -14,17 +14,17 @@ Factors within a single group should start with the same string.
 
 For example, for a capitalization factor group, the individual factors could be:
 
-`c0`: all lowercase
+* `c0`: all lowercase
 
-`c1`: first character capitalized, rest lowercase
+* `c1`: first character capitalized, rest lowercase
 
-`c2`: all uppercase
+* `c2`: all uppercase
 
 If there were a second factor group for subword divisions, the individual factors could be:
 
-`s0`: end of word, whitespace should follow
+* `s0`: end of word, whitespace should follow
 
-`s1`: join token with next subword
+* `s1`: join token with next subword
 
 There is no limit on the number of factor groups barring some practical limitations having to do with how the vocabulary is stored by `marian`. If the limit is exceeded `marian` will throw this error.
 
@@ -55,7 +55,7 @@ trump|c1|s0 test|c0|s1 ed|c0|s0 positive|c0|s0 for|c0|s0 c|c2|s1 o|c2|s1 v|c2|s1
 
 Factored vocabularies should have the extension `.fsv`. How to structure the vocabulary file is described below. If using factors only on the source or target side, the vocabulary of the other side can be a normal `json`, `yaml`, etc.
 
-The `.fsv` vocabulary should have three sections:
+The `.fsv` vocabulary must have two sections:
 
 1. **Factors**
 
@@ -99,7 +99,7 @@ The tokens in the factor vocabularies (`c0`, `c1`, `s0`, etc.) cannot be present
 
 ### Full `.fsv` file
 
-Putting everything together, the final `.fsv` file should look like this. It can have comments.
+Putting everything together, the final `.fsv` file should look like this. It can have comments (lines started by `#`).
 
  ```
  # factors
@@ -164,10 +164,12 @@ If using factors on the target side, there are multiple options for how factor p
 
 ### Weight tying
 
-If using factors only on the source or target side but using a joint vocabulary, there are two different options to tie source and target embedding weights:
+If you use factors both on the source and target side, and the factors are the same for both sides you can tie the embeddings exactly as you do for non factored models.
+
+If factors are used only on one side (either source or target) with a joint vocabulary, there are two options for tying source and target embedding weights:
 
 1. Use combine option `concat` (If using factors only on the source side).
-2. Use combine option `sum`, and create "dummy" factors for the side initially without factors. This entails creating a factored vocabulary where the same number of factors are present as are on the side with meaningful factors. In the previous example, if we have the capitalization and subword factors on the source side, the target side would have five different dummy factors (they can all be in the same group). In the *lemma* section of the `.fsv` file we would just not put `_has_X` for any lemma.
+2. Use combine option `sum`, and create "dummy" factors on the non-factorized side. This entails creating a factored vocabulary where the same number of factors are present as are on the side with meaningful factors. In the previous example, if we have the capitalization and subword factors on the source side, the target side would have five different dummy factors (they can all be in the same group). In the *lemma* section of the `.fsv` file we would just not put `_has_X` for any lemma.
 
     ```
     # factors
@@ -196,13 +198,21 @@ If using factors only on the source or target side but using a joint vocabulary,
 Some examples of possible commands to train factored models in marian:
 * Using factors on both source and target. Using `sum` to combine lemma and factor embeddings. No tied embeddings and no lemma dependency when predicting the factors:
 ```
-path_to/build/marian -t corpus.fact.{src,trg} -v vocab.{src,trg}.fsv
+path_to/build/marian -t corpus.fact.{src,trg} \
+                     -v vocab.{src,trg}.fsv
 ```
 * Using factors only on the source side. Using `concat` to combine lemma and factor embeddings. Source, target and output embeddings matrices tied:
 ```
-path_to/build/marian -t corpus.fact.src corpus.trg -v vocab.src.fsv vocab.trg.yml --factors-combine concat --factors-dim-emb 8 --tied-embeddings-all
+path_to/build/marian -t corpus.fact.src corpus.trg \
+                     -v vocab.src.fsv vocab.trg.yml \
+                     --factors-combine concat \
+                     --factors-dim-emb 8 \
+                     --tied-embeddings-all
 ```
 * Using factors only on the target side. Using `sum` to combine lemma and factor embeddings. Target and output embedding matrices tied. Predicting factors with `soft-transformer-layer` lemma dependency:
 ```
-path_to/build/marian -t corpus.src corpus.fact.trg -v vocab.src.yml vocab.fsv.trg --tied-embeddings --lemma-dependency soft-transformer-layer
+path_to/build/marian -t corpus.src corpus.fact.trg \
+                     -v vocab.src.yml vocab.fsv.trg \
+                     --tied-embeddings \
+                     --lemma-dependency soft-transformer-layer
 ```

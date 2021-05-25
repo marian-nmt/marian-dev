@@ -522,6 +522,8 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
         return Expression<DotNodeOp>(
           a, b, transA, transB, scale);
       }
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -620,6 +622,8 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }
+    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+      return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2

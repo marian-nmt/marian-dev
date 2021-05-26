@@ -334,7 +334,7 @@ void BinaryShortlistGenerator::import(const std::string& filename, double thresh
   std::string src, trg;
 
   // Read text file
-  std::vector<std::unordered_map<WordIndex, float>> srcTgtProbTable;
+  std::vector<std::unordered_map<WordIndex, float>> srcTgtProbTable(srcVocab_->size());
   float prob;
 
   while(in >> trg >> src >> prob) {
@@ -343,8 +343,7 @@ void BinaryShortlistGenerator::import(const std::string& filename, double thresh
 
     auto sId = (*srcVocab_)[src].toWordIndex();
     auto tId = (*trgVocab_)[trg].toWordIndex();
-    if(srcTgtProbTable.size() <= sId)
-      srcTgtProbTable.resize(sId + 1);
+
     if(srcTgtProbTable[sId][tId] < prob)
       srcTgtProbTable[sId][tId] = prob;
   }

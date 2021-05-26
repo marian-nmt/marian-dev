@@ -175,7 +175,7 @@ public:
         LOG(info, "# NEW TEST BATCH");
         trainSlot_->Load(*cpuModel_);
         trainSlot_->Train(trainSet);
-        translateSlot_->PointToParams(*trainSlot_);
+        translateSlot_->Load(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;
       } else {

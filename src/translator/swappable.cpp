@@ -53,6 +53,11 @@ void GPUEngineTrain::Initialize(Ptr<data::Batch> batch) {
   }
 }
 
+void get(std::vector<uint8_t> &v, MemoryPiece::PtrType mem, Ptr<Backend> backend) {
+  v.resize(mem->size());
+  gpu::copy(backend, mem->data<uint8_t>(), mem->data<uint8_t>() + mem->size(), v.data());
+}
+
 GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx) 
   : options_(options), graph_(New<ExpressionGraph>()), myDeviceId_(LookupGPU(options, deviceIdx)), allocator_(myDeviceId_, 0, 128 * 1048576) {
   ABORT_IF(myDeviceId_.type == DeviceType::cpu, "Swappable slot only works for GPU devices.");
@@ -118,6 +123,8 @@ void GPULoadedModelTrain::Load(const CPULoadedModel &from) {
 void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   ABORT_IF(!trgVocab_, "GPULoadedModelTrain needs to be overwritten by a CPU model first.");
   // engine_->SwapPointers(parameters_);
+  std::vector<uint8_t> outvec;
+  get(outvec, parameters_[0], engine_->graph_->getBackend());
 
   auto state     = New<TrainingState>(engine_->options_->get<float>("learn-rate"));
   auto scheduler = New<Scheduler>(engine_->options_, state);
@@ -156,12 +163,16 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
         // invoke build and, as a result i can call SwapPointers only
         // afterwards. TODO: verify last claim.
         engine_->Initialize(batch);
+        std::vector<uint8_t> outvec;
+        get(outvec, parameters_[0], engine_->graph_->getBackend());
         engine_->SwapPointers(parameters_);
+        get(outvec, parameters_[0], engine_->graph_->getBackend());
         first = false;
       }
 
       // Make an update step on the copy of the model
       auto lossNode = engine_->builder_->build(engine_->graph_, batch);
+      // LOG(info, "Before: {}", engine_->graph_->params()->vals()->debug());
       engine_->graph_->forward();
       StaticLoss loss = *lossNode;
       engine_->graph_->backward();
@@ -169,6 +180,7 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
       // Notify optimizer and scheduler
       optimizer->update(engine_->graph_, 1);
       scheduler->update(loss, batch);
+      // LOG(info, "After: {}", engine_->graph_->params()->vals()->debug());
     }
     if(scheduler->keepGoing())
       scheduler->increaseEpoch();
@@ -176,7 +188,12 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   scheduler->finished();
 
   if(!first) {
+    std::vector<uint8_t> outvec;
+    get(outvec, parameters_[0], engine_->graph_->getBackend());
     engine_->SwapPointers(parameters_);
+    get(outvec, parameters_[0], engine_->graph_->getBackend());
+    // does nothing, need a place for a breakpoint
+    first = false;
   }
 }
 
@@ -243,6 +260,20 @@ void GPULoadedModel::Load(const GPULoadedModel &from) {
   }
 }
 
+void GPULoadedModel::Load(const GPULoadedModelTrain &from) {
+  srcVocabs_ = from.srcVocabs_;
+  trgVocab_  = from.trgVocab_;
+
+  ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
+
+  for(size_t i = 0; i < parameters_.size(); ++i) {
+    swapper::copyGpuToGpu(reinterpret_cast<char *>(parameters_[i]->data()),
+                          reinterpret_cast<const char *>(from.parameters_[i]->data()),
+                          parameters_[i]->size(),
+                          engine_->myDeviceId_);
+  }
+}
+
 void GPULoadedModel::PointToParams(const GPULoadedModelTrain &from) {
   ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
   srcVocabs_ = from.srcVocabs_;
@@ -279,7 +310,10 @@ Histories GPULoadedModel::Translate(const std::vector<std::string> &input) {
 
 Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {
   ABORT_IF(!trgVocab_, "GPULoadedModel needs to be overwritten by a CPU model first.");
+  std::vector<uint8_t> outvec;
+  get(outvec, parameters_[0], engine_->graph_->getBackend());
   engine_->SwapPointers(parameters_);
+  // LOG(info, "Before translation: {}", engine_->graph_->params()->vals()->debug());
 
   BeamSearch search(engine_->options_, engine_->scorers_, trgVocab_);
   Histories ret;
@@ -289,6 +323,8 @@ Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {
   ret.insert(ret.end(), result.begin(), result.end());
 
   std::sort(ret.begin(), ret.end(),[](marian::Ptr<marian::History> a, marian::Ptr<marian::History> b){return a->getLineNum() < b->getLineNum();});
+
+  // LOG(info, "After translation: {}", engine_->graph_->params()->vals()->debug());
   engine_->SwapPointers(parameters_);
   return ret;
 }

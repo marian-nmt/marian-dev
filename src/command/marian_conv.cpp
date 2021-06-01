@@ -16,7 +16,8 @@ int main(int argc, char** argv) {
     YAML::Node config; // @TODO: get rid of YAML::Node here entirely to avoid the pattern. Currently not fixing as it requires more changes to the Options object.
     auto cli = New<cli::CLIWrapper>(
         config,
-        "Convert a model in the .npz format and normal memory layout to a mmap-able binary model which could be in normal memory layout or packed memory layout",
+        "Convert a model in the .npz format and normal memory layout to a mmap-able binary model which could be in normal memory layout or packed memory layout\n"
+        "or convert a text lexical shortlist to a binary shortlist with {--shortlist,-s} option",
         "Allowed options",
         "Examples:\n"
         "  ./marian-conv -f model.npz -t model.bin --gemm-type packed16");
@@ -34,9 +35,7 @@ int main(int argc, char** argv) {
   }
 
   // shortlist conversion:
-  // ./ marian-cov --shortlist lex.esen.s2t 100 100 0
-  //               --dump lex.esen.bin
-  //               --vocabs vocab.esen.spm vocab.esen.spm
+  // ./marian-conv --shortlist lex.esen.s2t 100 100 0 --dump lex.esen.bin --vocabs vocab.esen.spm vocab.esen.spm
   if(options->hasAndNotEmpty("shortlist")){
     auto vocabPaths = options->get<std::vector<std::string>>("vocabs");
     auto dumpPath = options->get<std::string>("dump");

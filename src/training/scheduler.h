@@ -483,16 +483,78 @@ public:
             state_->wordsDisp / timer_.elapsed(),
             state_->gradientNormAvg);
       }
-      for(auto& kv : state_->partialCostSum) {
+
+
+      float layersSum = 0.0f;
+      if (options_->get<std::string>("multi-loss-type") == "sum") { 
+        for(auto& kv : state_->partialCostSum) {
+          LOG(info,
+              "Ep. {} : Up. {} : Name {} : Penalty : {:.4f} : Count {} : Cost {}",
+              formatLogicalEpoch(),
+              state_->batches,
+              kv.first,
+              kv.second,
+              state_->costCount,
+              kv.second / state_->costCount);
+
+          layersSum += kv.second;
+        }
         LOG(info,
-            "Ep. {} : Up. {} : Name {} : Penalty : {:.4f} : Count {} : Cost {}",
+            "Ep. {} : Up. {} : TOTAL : Penalty : {:.4f} : Count {} : Cost {}",
             formatLogicalEpoch(),
             state_->batches,
-            kv.first,
-            kv.second,
+            layersSum,
             state_->costCount,
-            kv.second / state_->costCount);
+            layersSum / state_->costCount);
+
       }
+      
+      else if (options_->get<std::string>("multi-loss-type") == "scaled") { 
+        for(auto& kv : state_->partialCostSum) {
+          LOG(info,
+              "Ep. {} : Up. {} : Name {} : Penalty : {:.4f} : Count {} : Cost {}",
+              formatLogicalEpoch(),
+              state_->batches,
+              kv.first,
+              kv.second,
+              state_->costCount,
+              kv.second * state_->costCount);
+
+          layersSum += kv.second;
+        }
+
+        LOG(info,
+            "Ep. {} : Up. {} : TOTAL : Penalty : {:.4f} : Count {} : Cost {}",
+            formatLogicalEpoch(),
+            state_->batches,
+            layersSum,
+            state_->costCount,
+            layersSum / state_->costCount);
+      }
+      
+      else if (options_->get<std::string>("multi-loss-type") == "mean") { 
+        for(auto& kv : state_->partialCostSum) {
+          LOG(info,
+              "Ep. {} : Up. {} : Name {} : Penalty : {:.4f} : Count {} : Cost {}",
+              formatLogicalEpoch(),
+              state_->batches,
+              kv.first,
+              kv.second,
+              state_->costCount,
+              kv.second);
+          
+          layersSum += kv.second;
+        }
+
+        LOG(info,
+            "Ep. {} : Up. {} : TOTAL : Penalty : {:.4f} : Count {} : Cost {}",
+            formatLogicalEpoch(),
+            state_->batches,
+            layersSum,
+            state_->costCount,
+            layersSum / state_->costCount);
+      }
+
     }
 
     timer_.start();

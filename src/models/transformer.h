@@ -103,18 +103,20 @@ public:
   }
 
   Transformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : EncoderOrDecoderBase(graph, options) {
-    auto lambdas = options_->get<std::vector<float>>("regulariser-scalar");
-    auto types = options_->get<std::vector<std::string>>("regulariser-type");
-    ABORT_IF(types.size() != lambdas.size(), "Every regulariser needs its own lambda!");
-    for (int i = 0; i < types.size(); i++) {
-      LOG_ONCE(info, "lambdas {} types {}", lambdas[i], types[i]);
-      auto regulariser = New<RegulariserFactory>(options_)->construct(graph_, lambdas[i], types[i]);
-      if (regulariser) {
-        regularisers_.push_back(regulariser); 
-        LOG_ONCE(info, "Adding regulariser to the vector");
-      }
-      else {
-        LOG_ONCE(info, "Regulariser is a nullptr???");
+    if (!inference_) {
+      auto lambdas = options_->get<std::vector<float>>("regulariser-scalar");
+      auto types = options_->get<std::vector<std::string>>("regulariser-type");
+      ABORT_IF(types.size() != lambdas.size(), "Every regulariser needs its own lambda!");
+      for (int i = 0; i < types.size(); i++) {
+        LOG_ONCE(info, "lambdas {} types {}", lambdas[i], types[i]);
+        auto regulariser = New<RegulariserFactory>(options_)->construct(graph_, lambdas[i], types[i]);
+        if (regulariser) {
+          regularisers_.push_back(regulariser); 
+          LOG_ONCE(info, "Adding regulariser to the vector");
+        }
+        else {
+          LOG_ONCE(info, "Regulariser is a nullptr???");
+        }
       }
     }
   }
@@ -345,14 +347,18 @@ public:
                  bool saveAttentionWeights = false) {
     int dimModel = q->shape()[-1];
 
-    auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
-    auto pruneAtt = (pruneFlags.find("h") != std::string::npos); // prune if heads activated
+    bool pruneAtt = false;
+    bool skipRowcol = false;
 
-    auto regTypes = options_->get<std::vector<std::string>>("regulariser-type");
-    // if rowcol and heads activated at the same time, just don't do rowcol on attention and heads on ffn
-    auto skipRowcol = (std::find(regTypes.begin(), regTypes.end(), "rowcol") != regTypes.end() &&
-                       std::find(regTypes.begin(), regTypes.end(), "heads") != regTypes.end());
-    
+    if (!inference_) {
+      auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
+      pruneAtt = (pruneFlags.find("h") != std::string::npos); // prune if heads activated
+
+      auto regTypes = options_->get<std::vector<std::string>>("regulariser-type");
+      // if rowcol and heads activated at the same time, just don't do rowcol on attention and heads on ffn
+      skipRowcol = (std::find(regTypes.begin(), regTypes.end(), "rowcol") != regTypes.end() &&
+                        std::find(regTypes.begin(), regTypes.end(), "heads") != regTypes.end());
+    }
 
     // @TODO: good opportunity to implement auto-batching here or do something manually?
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
@@ -543,8 +549,11 @@ public:
 
     auto initFn = inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f);
 
-    auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
-    auto pruneFFN = (pruneFlags.find("f") != std::string::npos) && !inference_; // prune if ffn activated
+    bool pruneFFN = false;
+    if (!inference_) {
+      auto pruneFlags = opt<std::string>("regulariser-flags"); // flags = edfh enc dec ffn heads
+      pruneFFN = (pruneFlags.find("f") != std::string::npos) && !inference_; // prune if ffn activated
+    }
     
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)

@@ -235,10 +235,10 @@ protected:
     auto p = sum(sqrt(WSum), axisL1);
 
     float scale = 1.0f;
-    if(!rows)
-      scale = std::sqrt(W->shape()[0]);
-    else
-      scale = std::sqrt(W->shape()[1]);
+    // if(!rows)
+      // scale = std::sqrt(W->shape()[0]);
+    // else
+      // scale = std::sqrt(W->shape()[1]);
 
     return scale * p;
   }
@@ -268,10 +268,11 @@ protected:
     }
 
     // sum across all heads too
+    float scale = 1.0f;
     auto p = sum(sqrt(WSum), -3);
 
     // I believe it's called orthonormalisation???
-    auto scale = std::sqrt(blockH * blockW);
+    // auto scale = std::sqrt(blockH * blockW);
     return scale * p;
   }
 };

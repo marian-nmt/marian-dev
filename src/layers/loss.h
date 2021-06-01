@@ -25,6 +25,7 @@ protected:
   Expr loss_;         // numerator
   Expr count_;        // denominator
   std::string name_;  // what loss is it, to identify later
+  std::string type_; // type of multiloss if used. 
 
   RationalLoss() = default;  // protected
 
@@ -62,6 +63,8 @@ public:
   Expr count() const { return count_; }
 
   std::string name() const { return name_; }
+  
+  std::string type() const { return type_; }
 
   // @TODO: remove this function, as it does not add too much value over count()->get(...)
   template <typename T>
@@ -151,8 +154,8 @@ private:
   }
 
 public:
-  SumMultiRationalLoss() : MultiRationalLoss() {}
-  SumMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) {}
+  SumMultiRationalLoss() : MultiRationalLoss() { type_ = "sum"; }
+  SumMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) { type_ = "sum"; }
 };
 
 /**
@@ -191,8 +194,8 @@ private:
   }
 
 public:
-  ScaledMultiRationalLoss() : MultiRationalLoss() {}
-  ScaledMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) {}
+  ScaledMultiRationalLoss() : MultiRationalLoss() { type_ = "scaled"; }
+  ScaledMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) { type_ = "scaled"; }
 };
 
 /**
@@ -224,8 +227,8 @@ private:
   }
 
 public:
-  MeanMultiRationalLoss() : MultiRationalLoss() {}
-  MeanMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) {}
+  MeanMultiRationalLoss() : MultiRationalLoss() { type_ = "mean"; }
+  MeanMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) { type_ = "mean"; }
 };
 
 /**
@@ -471,19 +474,33 @@ struct StaticLoss {
 
   StaticLoss(const RationalLoss& dynamic)
       : loss(dynamic.loss<float>()), count(dynamic.count<float>()) {
-    try {
+
+    // TODO make it shorter
+    if (dynamic.type() == "sum") {
       auto casted = dynamic_cast<const SumMultiRationalLoss&>(dynamic);
 
-      // for(int i = 0; i < casted.size(); i++) {
       for(auto it = casted.begin(); it != casted.end(); ++it) {
         std::string name = it->name();
         float loss       = it->loss<float>();
         partialLosses.emplace(name, loss);
       }
-    } catch(const std::bad_cast& ex) {
-      LOG_ONCE(info,
-               "No SumMultiRationalLoss found, failed to cast. No printing of cost and regulariser "
-               "separately.");
+    }
+    else if (dynamic.type() == "scaled") {
+      auto casted = dynamic_cast<const ScaledMultiRationalLoss&>(dynamic);
+
+      for(auto it = casted.begin(); it != casted.end(); ++it) {
+        std::string name = it->name();
+        float loss       = it->loss<float>();
+        partialLosses.emplace(name, loss);
+      }
+    }
+    else if (dynamic.type() == "mean") {
+      auto casted = dynamic_cast<const MeanMultiRationalLoss&>(dynamic);
+      for(auto it = casted.begin(); it != casted.end(); ++it) {
+        std::string name = it->name();
+        float loss       = it->loss<float>();
+        partialLosses.emplace(name, loss);
+      }
     }
   }
 

@@ -4,7 +4,7 @@ Following this README should allow the user to train a model with source and/or 
 
 ### Requirements:
 
-Marian from this repository.
+In order to use factors in Marian, you should use at least Marian 1.9.0 unless you want to use a factors functionality that requires setting one of the following command line options to their non default values: `--factors-combine`, `-—factors-dim-emb` and `--lemma-dependency` as they were only introduced after Marian 1.10.20+.
 
 ## Define factors
 
@@ -26,7 +26,7 @@ If there were a second factor group for subword divisions, the individual factor
 
 * `s1`: join token with next subword
 
-There is no limit on the number of factor groups barring some practical limitations having to do with how the vocabulary is stored by `marian`. If the limit is exceeded `marian` will throw this error.
+There is no limit on the number of factor groups barring some practical limitations having to do with how the vocabulary is stored by `marian`. If the limit is exceeded `marian` will throw an error.
 
 Factor group zero is always the actual words in the text, referred to as *lemmas*.
 

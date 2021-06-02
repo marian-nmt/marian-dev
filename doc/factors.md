@@ -87,11 +87,11 @@ The `.fsv` vocabulary must have two sections:
     , : _lemma _has_c _has_s
     . : _lemma _has_c _has_s
     the : _lemma _has_c _has_s
-    for: _lemma _has_c _has_s
+    for : _lemma _has_c _has_s
     ```
 
 
-#### Other suggestions
+#### Other Requirements
 
 Certain characters are used by the `.fsv` vocabulary that will have to be escaped/replaced in the data: `#:_\|`
 
@@ -124,7 +124,7 @@ _has_s
 , : _lemma _has_c _has_s
 . : _lemma _has_c _has_s
 the : _lemma _has_c _has_s
-for: _lemma _has_c _has_s
+for : _lemma _has_c _has_s
  ```
 
 ## Training options
@@ -191,7 +191,7 @@ If factors are used only on one side (either source or target) with a joint voca
     , : _lemma
     . : _lemma
     le : _lemma
-    pour: _lemma
+    pour : _lemma
     ```
 
 ## Examples

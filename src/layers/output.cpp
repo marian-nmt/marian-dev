@@ -101,6 +101,10 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     Expr input1 = input;                                // [B... x D]
     Expr Plemma = nullptr;                              // used for lemmaDependency = lemma-dependent-bias
     Expr inputLemma = nullptr;                          // used for lemmaDependency = hard-transformer-layer and soft-transformer-layer
+
+    std::string factorsCombine = options_->get<std::string>("factors-combine", "");
+    ABORT_IF(factorsCombine == "concat", "Combining lemma and factors embeddings with concatenation on the target side is currently not supported");
+
     for(size_t g = 0; g < numGroups; g++) {
       auto range = factoredVocab_->getGroupRange(g);
       if(g > 0 && range.first == range.second)  // empty entry

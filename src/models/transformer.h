@@ -664,7 +664,8 @@ private:
         "output-omit-bias", opt<bool>("output-omit-bias", false),
         "output-approx-knn", opt<std::vector<int>>("output-approx-knn", {}),
         "lemma-dim-emb", opt<int>("lemma-dim-emb", 0), // for factored outputs
-        "lemma-dependency", opt<std::string>("lemma-dependency", "")); // for factored outputs
+        "lemma-dependency", opt<std::string>("lemma-dependency", ""), // for factored outputs
+        "factors-combine", opt<std::string>("factors-combine", "")); // for factored outputs
 
     if(opt<bool>("tied-embeddings") || opt<bool>("tied-embeddings-all"))
       outputFactory.tieTransposed(opt<bool>("tied-embeddings-all") || opt<bool>("tied-embeddings-src") ? "Wemb" : prefix_ + "_Wemb");

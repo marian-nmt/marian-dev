@@ -50,10 +50,6 @@ namespace mlp {
     ABORT_IF(
         lemmaDimEmb <= 0,
         "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
-#define HARDMAX_HACK
-#ifdef HARDMAX_HACK
-    lemmaDimEmb = lemmaDimEmb & 0xfffffffe;  // hack to select hard-max: use an odd number
-#endif
     auto range = factoredVocab_->getGroupRange(0);
     auto lemmaVocabDim = (int)(range.second - range.first);
     auto initFunc = inits::glorotUniform(
@@ -253,16 +249,6 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
         // reused later via CSE
         auto factorLogSoftmax = logsoftmax(factorLogits);
         auto factorSoftmax = exp(factorLogSoftmax);
-#ifdef HARDMAX_HACK
-        bool hardmax = (lemmaDimEmb & 1)
-                       != 0;  // odd value triggers hardmax for now (for quick experimentation)
-        if(hardmax) {
-          lemmaDimEmb = lemmaDimEmb & 0xfffffffe;
-          LOG_ONCE(info, "[embedding] HARDMAX_HACK enabled. Actual dim is {}", lemmaDimEmb);
-          auto maxVal = max(factorSoftmax, -1);
-          factorSoftmax = eq(factorSoftmax, maxVal);
-        }
-#endif
         // re-embedding lookup, soft-indexed by softmax
         if(shortlist_ && !cachedShortLemmaEt_)  // short-listed version of re-embedding matrix
           cachedShortLemmaEt_ = index_select(lemmaEt_, -1, shortlist_->indices());

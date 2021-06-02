@@ -44,7 +44,11 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
 }
 
-// Embeds a sequence of words (given as indices), where they have factor information. The matrices are concatenated
+/**
+ * Embeds a sequence of words (given as indices), where they have factor information. The matrices are concatenated
+ * @param words vector of words
+ * @returns  Expression that is the concatenation of the lemma and factor embeddings
+ */
 /*private*/ Expr Embedding::embedWithConcat(const Words& data) const {
   auto graph = E_->graph();
   std::vector<IndexType> lemmaIndices;

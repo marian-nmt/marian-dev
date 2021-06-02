@@ -655,18 +655,22 @@ std::string FactoredVocab::surfaceForm(const Words& sentence) const /*override f
   return res;
 }
 
-// returns the total number of factors present in this vocabulary
+/**
+ * Auxiliary function that return the total number of factors (no lemmas) in a factored vocabulary.
+ * @return number of factors
+ */
 size_t FactoredVocab::getTotalFactorCount() const {
   return factorVocabSize() - groupRanges_[0].second;
 }
 
-
-// decodes the indexes of lemma and factor for each word and outputs that information separately.
-// inputs:
-//  - words = vector of words
-// output:
-//  - lemmaIndices: lemma index for each word
-//  - factorIndices: factor usage information for each word (1 if the factor is used 0 if not)
+/**
+ * Decodes the indexes of lemma and factor for each word and outputs that information separately.
+ * It will return two data structures that contain separate information regarding lemmas and factors indexes
+ * by receiving a list with the word indexes of a batch.
+ * @param[in] words           vector of words
+ * @param[out] lemmaIndices   lemma index for each word
+ * @param[out] factorIndices  factor usage information for each word (1 if the factor is used 0 if not)
+ */
 void FactoredVocab::lemmaAndFactorsIndexes(const Words& words, std::vector<IndexType>& lemmaIndices, std::vector<float>& factorIndices) const {
   lemmaIndices.reserve(words.size());
   factorIndices.reserve(words.size() * getTotalFactorCount());

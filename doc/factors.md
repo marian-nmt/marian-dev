@@ -53,7 +53,7 @@ trump|c1|s0 test|c0|s1 ed|c0|s0 positive|c0|s0 for|c0|s0 c|c2|s1 o|c2|s1 v|c2|s1
 
 ## Create the factored vocabulary
 
-Factored vocabularies should have the extension `.fsv`. How to structure the vocabulary file is described below. If using factors only on the source or target side, the vocabulary of the other side can be a normal `json`, `yaml`, etc.
+Factored vocabularies must have the extension `.fsv`. How to structure the vocabulary file is described below. If using factors only on the source or target side, the vocabulary of the other side can be a normal `json`, `yaml`, etc.
 
 The `.fsv` vocabulary must have two sections:
 

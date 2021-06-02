@@ -80,15 +80,6 @@ public:
   Word string2word(const std::string& w) const;
   bool tryGetFactor(const std::string& factorGroupName, size_t& groupIndex, size_t& factorIndex) const; // note: factorGroupName given without separator
 
-  // some hard-coded constants from FactoredSegmenter
-  // The naming mimics the names in FactoredSegmenter.cs, and therefore intentionally does not follow Marian conventions.
-  // @TODO: We have more hard-coded constants throughout the code. Move them all here.
-  // @TODO: figure out how to do this with static const*/constexpr
-#define FactoredVocab_INLINE_FIX_WHAT_serialized "is"
-#define FactoredVocab_FIX_SRC_ID_TAG             "<IOPEN>"
-#define FactoredVocab_FIX_TGT_ID_TAG             "<IDELIM>"
-#define FactoredVocab_FIX_END_ID_TAG             "<ICLOSE>"
-
 private:
   void constructGroupInfoFromFactorVocab();
   void constructFactorIndexConversion();

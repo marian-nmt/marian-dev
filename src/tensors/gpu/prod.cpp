@@ -1,4 +1,3 @@
-
 #ifdef _MSC_VER
 #pragma warning(disable: 4505) // warning C4505: '__float2half_rz': unreferenced local function has been removed (missing 'static inline')
 #endif
@@ -157,6 +156,39 @@ struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specializati
                                       Barray, ldb, beta,
                                       Carray, ldc, batchCount));
   }
+
+  static void stridedBatchedGemm(cublasHandle_t handle,
+                                 CudaCompute computeCapability,
+                                 cublasOperation_t transa, 
+                                 cublasOperation_t transb,
+                                 int m, int n, int k,
+                                 const float *alpha,
+                                 const float *A, int lda, int strideA,
+                                 const float *B, int ldb, int strideB,
+                                 const float *beta,
+                                 float *C, int ldc, int strideC,
+                                 int batchCount) {
+  // double #if and if unfortunately required to safeguard against compilation error 
+  // with CUDA 8.0 and runtime error with CUDA >9.0 on GPUs with compute capability under 5
+  #if CUDA_VERSION > 9000
+    // query math mode and set algorithm accordingly
+    auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
+    if(computeCapability.major >= 5)
+      CUBLAS_CHECK(cublasGemmStridedBatchedEx(handle, transa, transb, 
+                                              m, n, k, alpha, 
+                                              (void const*)A, CUDA_R_32F, lda, strideA,
+                                              (void const*)B, CUDA_R_32F, ldb, strideB, beta,
+                                              (void*)C, CUDA_R_32F, ldc, strideC, batchCount,
+                                              CUDA_R_32F, algorithm));
+  #endif
+    CUBLAS_CHECK(cublasSgemmStridedBatched(handle, transa, transb, 
+                                           m, n, k, alpha, 
+                                           A, lda, strideA,
+                                           B, ldb, strideB, 
+                                           beta,
+                                           C, ldc, strideC, 
+                                           batchCount));
+  }  
 };
 
 #if COMPILE_FP16
@@ -205,6 +237,29 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/half> { // specialization
                                      (void**)Carray, CUDA_R_16F, ldc, batchCount,
                                      CUDA_R_16F, algorithm));
   }
+
+  static void stridedBatchedGemm(cublasHandle_t handle,
+                                 CudaCompute computeCapability,
+                                 cublasOperation_t transa, 
+                                 cublasOperation_t transb,
+                                 int m, int n, int k,
+                                 const half *alpha,
+                                 const half *A, int lda, int strideA,
+                                 const half *B, int ldb, int strideB,
+                                 const half *beta,
+                                 half *C, int ldc, int strideC,
+                                 int batchCount) {
+    ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
+    // query math mode and set algorithm accordingly
+    auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
+    CUBLAS_CHECK(cublasGemmStridedBatchedEx(handle, transa, transb, 
+                                            m, n, k, alpha, 
+                                            (void const*)A, CUDA_R_16F, lda, strideA,
+                                            (void const*)B, CUDA_R_16F, ldb, strideB, beta,
+                                            (void*)C, CUDA_R_16F, ldc, strideC, batchCount,
+                                            CUDA_R_16F, algorithm));
+  }
+  
 };
 
 template <>
@@ -251,6 +306,28 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/float> { // specializatio
                                      (void* const*)Barray, CUDA_R_16F, ldb, beta,
                                      (void**)Carray, CUDA_R_16F, ldc, batchCount,
                                      CUDA_R_32F, algorithm)); // use 32-bit compute type for accumulation
+  }
+
+  static void stridedBatchedGemm(cublasHandle_t handle,
+                                 CudaCompute computeCapability,
+                                 cublasOperation_t transa, 
+                                 cublasOperation_t transb,
+                                 int m, int n, int k,
+                                 const float *alpha,
+                                 const half *A, int lda, int strideA,
+                                 const half *B, int ldb, int strideB,
+                                 const float *beta,
+                                 half *C, int ldc, int strideC,
+                                 int batchCount) {
+    ABORT_IF(computeCapability.major < 6, "Compute capability {} below 6 should not happen for FP16", computeCapability.major);
+    // query math mode and set algorithm accordingly
+    auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
+    CUBLAS_CHECK(cublasGemmStridedBatchedEx(handle, transa, transb, 
+                                            m, n, k, alpha, 
+                                            (void const*)A, CUDA_R_16F, lda, strideA,
+                                            (void const*)B, CUDA_R_16F, ldb, strideB, beta,
+                                            (void*)C, CUDA_R_16F, ldc, strideC, batchCount,
+                                            CUDA_R_32F, algorithm));  
   }
 };
 #endif
@@ -347,8 +424,8 @@ void ProdBatchedTyped(marian::Tensor C,
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
   ComputeType alpha = scalar;
 
-  int batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
-  int batchB = B->shape().elements() / (B->shape()[-1] * B->shape()[-2]);
+  int batchDimA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
+  int batchDimB = B->shape().elements() / (B->shape()[-1] * B->shape()[-2]);
 
   int m = A->shape()[-2];
   int k = A->shape()[-1];
@@ -374,46 +451,57 @@ void ProdBatchedTyped(marian::Tensor C,
   auto cublasHandle = backend->getCublasHandle();
   auto compute = backend->getCudaComputeCapability();
 
-  auto strideA = batchA == 1 ? 0 : m * k;
-  auto strideB = batchB == 1 ? 0 : n * k;
+  auto strideA = batchDimA == 1 ? 0 : m * k;
+  auto strideB = batchDimB == 1 ? 0 : n * k;
   auto strideC = n * m;
-  auto batchC = std::max(batchA, batchB);
 
-  std::vector<const ElementType*> aptr;
-  std::vector<const ElementType*> bptr;
-  std::vector<ElementType*> cptr;
+  if(batchDimA == batchDimB) {
+    setTensorMode(cublasHandle);
+    TypedGemm<ElementType, ComputeType>::stridedBatchedGemm(cublasHandle, compute, 
+                                                            opB, opA, 
+                                                            n, m, k,
+                                                            &alpha,
+                                                            B->data<const ElementType>(), ldb, strideB, 
+                                                            A->data<const ElementType>(), lda, strideA, 
+                                                            &beta, 
+                                                            C->data<ElementType>(), ldc, strideC, 
+                                                            batchDimA);
+    unsetTensorMode(cublasHandle);
+  } else {
+    auto batchDimC = std::max(batchDimA, batchDimB);
+    size_t size = 3*batchDimC;
+    std::vector<ElementType*> ptrs(size);
+    auto aStart = 0;
+    auto bStart = batchDimC;
+    auto cStart = bStart + batchDimC;
 
-  for(int i = 0; i < batchC; i++) {
-    aptr.push_back(A->data<ElementType>() + (i % batchA) * strideA);
-    bptr.push_back(B->data<ElementType>() + (i % batchB) * strideB);
-    cptr.push_back(C->data<ElementType>() + i * strideC);
+    for(int i = 0; i < batchDimC; i++) {
+      ptrs[aStart + i] = A->data<ElementType>() + (i % batchDimA) * strideA;
+      ptrs[bStart + i] = B->data<ElementType>() + (i % batchDimB) * strideB;
+      ptrs[cStart + i] = C->data<ElementType>() + i * strideC;
+    }
+
+    // auto fails here from weird reason
+    IPtr<MemoryPiece> mp_ptrs = allocator->alloc<ElementType*>(size); 
+    ElementType** dest = mp_ptrs->data<ElementType*>();
+    cudaStream_t cublasStream = 0;
+    CUBLAS_CHECK(cublasGetStream(cublasHandle, &cublasStream));
+    CUDA_CHECK(cudaMemcpyAsync(dest, ptrs.data(), size * sizeof(ElementType*), cudaMemcpyHostToDevice, cublasStream));
+
+    setTensorMode(cublasHandle);
+    TypedGemm<ElementType, ComputeType>::batchedGemm(cublasHandle, compute,
+                                                     opB, opA,
+                                                     n, m, k,
+                                                     &alpha,
+                                                     mp_ptrs->data<const ElementType*>() + bStart, ldb,
+                                                     mp_ptrs->data<const ElementType*>() + aStart, lda,
+                                                     &beta,
+                                                     mp_ptrs->data<ElementType*>() + cStart, ldc,
+                                                     batchDimC);
+    unsetTensorMode(cublasHandle);
+
+    allocator->free(mp_ptrs);
   }
-
-  // auto fails here from weird reason
-  IPtr<MemoryPiece> mp_aptr = allocator->alloc<const ElementType*>(aptr.size());
-  CudaCopy(aptr.data(), aptr.data() + aptr.size(), mp_aptr->data<const ElementType*>());
-
-  IPtr<MemoryPiece> mp_bptr = allocator->alloc<const ElementType*>(bptr.size());
-  CudaCopy(bptr.data(), bptr.data() + bptr.size(), mp_bptr->data<const ElementType*>());
-
-  IPtr<MemoryPiece> mp_cptr = allocator->alloc<ElementType*>(cptr.size());
-  CudaCopy(cptr.data(), cptr.data() + cptr.size(), mp_cptr->data<ElementType*>());
-
-  setTensorMode(cublasHandle);
-  TypedGemm<ElementType, ComputeType>::batchedGemm(cublasHandle, compute,
-                                                   opB, opA,
-                                                   n, m, k,
-                                                   &alpha,
-                                                   mp_bptr->data<const ElementType*>(), ldb,
-                                                   mp_aptr->data<const ElementType*>(), lda,
-                                                   &beta,
-                                                   mp_cptr->data<ElementType*>(), ldc,
-                                                   batchC);
-  unsetTensorMode(cublasHandle);
-
-  allocator->free(mp_aptr);
-  allocator->free(mp_bptr);
-  allocator->free(mp_cptr);
 }
 
 // @TODO: add version with compute type for completeness

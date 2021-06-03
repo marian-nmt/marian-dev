@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Better suppression of unwanted output symbols, specifically "\n" from SentencePiece with byte-fallback. Can be deactivated with --allow-special
 - Display decoder time statistics with marian-decoder --stat-freq 10 ...
 - Support for MS-internal binary shortlist
+- Uses the per thread default stream for cublas
+- Uses the strided batched gemm cublas call when possible for the batchedGemm.
+- In the general batchedGemm case, reduces the number of memcpy calls from 3 to 1.
+- Rounds the width of input batches to a multiple of 8 when the GPU backend is being used. This is to enable better use of tensorcores on Volta architectures and newer.
+- Places NVIDIA notices to some files
 - Local/global sharding with MPI training via `--sharding local`
 - fp16 support for factors.
 - Correct training with fp16 via `--fp16`.

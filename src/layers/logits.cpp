@@ -106,8 +106,10 @@ Expr Logits::getFactoredLogits(size_t groupIndex,
   }
 
   // if selIdx are given, then we must reshuffle accordingly
-  if(!hypIndices.empty())  // use the same function that shuffles decoder state
-    sel = rnn::State::select(sel, hypIndices, (int)beamSize, /*isBatchMajor=*/false);
+  if(!hypIndices.empty()) {  // use the same function that shuffles decoder state
+    auto indices = graph()->indices(hypIndices);
+    sel = rnn::State::select(sel, indices, (int)beamSize, /*isBatchMajor=*/false);
+  }
 
   return sel;
 }

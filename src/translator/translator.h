@@ -272,9 +272,9 @@ public:
     trgVocab_->load(vocabPaths.back());
 
     // load lexical shortlist
-    if(options_->hasAndNotEmpty("shortlist"))
-      shortlistGenerator_ = New<data::LexicalShortlistGenerator>(
-          options_, srcVocabs_.front(), trgVocab_, 0, 1, vocabPaths.front() == vocabPaths.back());
+    if(options_->hasAndNotEmpty("shortlist")) {
+        shortlistGenerator_ = data::createShortlistGenerator(options_, srcVocabs_.front(), trgVocab_, 0, 1, vocabPaths.front() == vocabPaths.back());
+    }
 
     // get device IDs
     auto devices = Config::getDevices(options_);

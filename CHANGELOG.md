@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - In the general batchedGemm case, reduces the number of memcpy calls from 3 to 1.
 - Rounds the width of input batches to a multiple of 8 when the GPU backend is being used. This is to enable better use of tensorcores on Volta architectures and newer.
 - Places NVIDIA notices to some files
+
+- Includes scub as a dependency
+- Replaces the topK implementation in nth_element.cu and topk.cu
 - Local/global sharding with MPI training via `--sharding local`
 - fp16 support for factors.
 - Correct training with fp16 via `--fp16`.

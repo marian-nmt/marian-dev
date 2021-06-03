@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Includes scub as a dependency
 - Replaces the topK implementation in nth_element.cu and topk.cu
+- Batches retrieval of logits from the GPU when the --n-best flag is specified.
 - Local/global sharding with MPI training via `--sharding local`
 - fp16 support for factors.
 - Correct training with fp16 via `--fp16`.

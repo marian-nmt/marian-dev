@@ -1,4 +1,10 @@
+ /* Part of this file was contributed by NVIDIA under license:
+ *   Copyright (C) 2020 NVIDIA Corporation
+ *   SPDX-License-Identifier: MIT
+ */
+
 #include "translator/beam_search.h"
+#include "tensors/tensor_allocator.h"
 
 #include "data/factored_vocab.h"
 #include "translator/helpers.h"
@@ -40,6 +46,12 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
     }
   }
 
+  // Hold the flattened logit indices for each state so we can batch retrieval later. Additionally, store the original batch index to we can update the hypothesis in new beams
+  std::vector<size_t> origBatchIndices;
+  std::vector<size_t> oldBeamHypIndices;
+  std::vector<size_t> newBeamHypIndices;
+  std::vector<std::vector<uint64_t>> flattenedLogitIndices(states.size());
+  
   for(size_t i = 0; i < nBestKeys.size(); ++i) { // [currentDimBatch, beamSize] flattened
     // Keys encode batchIdx, beamHypIdx, and word index in the entire beam.
     // They can be between 0 and (vocabSize * nBestBeamSize * batchSize)-1.
@@ -123,23 +135,22 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
 
     // Set score breakdown for n-best lists
     if(options_->get<bool>("n-best")) {
-      auto breakDown = beam[beamHypIdx]->getScoreBreakdown();
       ABORT_IF(factoredVocab && factorGroup > 0 && !factoredVocab->canExpandFactoredWord(word, factorGroup),
                "A word without this factor snuck through to here??");
-      breakDown.resize(states.size(), 0); // at start, this is empty, so this will set the initial score to 0
-      for(size_t j = 0; j < states.size(); ++j) {
+      for(uint64_t j = 0; j < states.size(); ++j) {
         auto lval = states[j]->getLogProbs().getFactoredLogitsTensor(factorGroup); // [maxBeamSize, 1, currentDimBatch, dimFactorVocab]
         // The flatting happens based on actual (current) batch size and batch index computed with batch-pruning as we are looking into the pruned tensor
-        size_t flattenedLogitIndex = (beamHypIdx * currentDimBatch + currentBatchIdx) * vocabSize + wordIdx;  // (beam idx, batch idx, word idx); note: beam and batch are transposed, compared to 'key'
+        uint64_t flattenedLogitIndex = (beamHypIdx * currentDimBatch + currentBatchIdx) * vocabSize + wordIdx;  // (beam idx, batch idx, word idx); note: beam and batch are transposed, compared to 'key'
 
         // @TODO: use a function on shape() to index, or new method val->at({i1, i2, i3, i4}) with broadcasting
         ABORT_IF(lval->shape() != Shape({(int)nBestBeamSize, 1, (int)currentDimBatch, (int)vocabSize}) &&
                  (beamHypIdx == 0 && lval->shape() != Shape({1, 1, (int)currentDimBatch, (int)vocabSize})),
                  "Unexpected shape of logits?? {} != {}", lval->shape(), Shape({(int)nBestBeamSize, 1, (int)currentDimBatch, (int)vocabSize}));
-
-        breakDown[j] += lval->get(flattenedLogitIndex);
+        flattenedLogitIndices[j].push_back(flattenedLogitIndex);
       }
-      hyp->setScoreBreakdown(breakDown);
+      newBeamHypIndices.push_back(newBeam.size());
+      origBatchIndices.push_back(origBatchIdx);
+      oldBeamHypIndices.push_back(beamHypIdx);
     }
 
     // Set alignments
@@ -149,6 +160,36 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
       hyp->setAlignment(beam[beamHypIdx]->getAlignment());
 
     newBeam.push_back(hyp);
+  }
+
+  // We need to set the score breakdown outside of the main loop to batch requests. This avoids issuing several 4 byte memcpys when using the GPU backend.
+  if(options_->get<bool>("n-best")) {
+    Tensor indices;
+    Tensor logitsTensor;
+    allocator_->allocate(indices, {(int)flattenedLogitIndices[0].size()}, Type::uint64);
+    allocator_->allocate(logitsTensor, indices->shape(), Type::float32);
+    std::vector<float> logits(flattenedLogitIndices[0].size());
+
+    for(size_t state = 0; state < states.size(); ++state) {
+      auto lval = states[state]->getLogProbs().getFactoredLogitsTensor(factorGroup); // [maxBeamSize, 1, currentDimBatch, dimFactorVocab]
+      indices->set(flattenedLogitIndices[state]); 
+      lval->gatherFromIndices(logitsTensor, indices);
+      logitsTensor->get(logits);
+
+      for(int i = 0; i < flattenedLogitIndices[state].size(); ++i) {
+        const auto originalBatchIdx = origBatchIndices[i];
+        const auto beamHypIdx = oldBeamHypIndices[i];
+        const auto& beam = beams[originalBatchIdx];
+        auto& newBeam = newBeams[originalBatchIdx];
+
+        auto breakDown = beam[beamHypIdx]->getScoreBreakdown(); 
+        breakDown.resize(states.size(), 0); // at start, this is empty, so this will set the initial score to 0
+        breakDown[state] += logits[i];
+        newBeam[newBeamHypIndices[i]]->setScoreBreakdown(breakDown);
+      }
+    }
+    allocator_->free(indices);
+    allocator_->free(logitsTensor);
   }
 
   // if factored vocab and this is not the first factor, we need to
@@ -260,6 +301,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
   const auto trgEosId = trgVocab_->getEosId();
 
   auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId());
+  allocator_ = graph->getTensorAllocator();
 
   for(auto scorer : scorers_) {
     scorer->clear(graph);

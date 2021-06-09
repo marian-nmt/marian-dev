@@ -18,6 +18,9 @@ protected:
   DeviceId deviceId_;
   size_t seed_;
   Ptr<RandomGenerator> randomGenerator_;
+  bool shifted_;
+  bool precomputedAlpha_;
+  bool dumpQuantMult_;
   
 public:
   Backend(DeviceId deviceId, size_t seed)
@@ -42,6 +45,31 @@ public:
   // for GPU, there's no quantization. so, it does nothing.
   virtual void setQuantizeRange(float range) = 0;
   virtual float getQuantizeRange() = 0;
+
+  bool isShifted() {
+    return shifted_;
+  }
+  void setShifted(bool shifted) {
+    shifted_ = shifted;
+    if (deviceId_.type == DeviceType::gpu) {
+      LOG(warn, "Shifted has no effect for the GPU backend");
+    }
+  }
+  bool isPrecomputedAlpha() {
+    return precomputedAlpha_;
+  }
+  void setPrecomputedAlpha(bool precomputed) {
+    precomputedAlpha_ = precomputed;
+  }
+
+  void setDumpQuantMult(bool dump) {
+    dumpQuantMult_ = dump;
+  }
+
+  bool DumpQuantMult() {
+    return dumpQuantMult_;
+  }
+
 };
 
 Ptr<Backend> BackendByDeviceId(DeviceId deviceId, size_t seed);

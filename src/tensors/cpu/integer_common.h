@@ -165,14 +165,24 @@ static inline bool passOrAbort(Type vtype) {
 }
 
 template <Type vtype>
-static inline float computeQuantMult(marian::Tensor val) {
+static inline float computeQuantMult(marian::Tensor val, std::string name="") {
 #if COMPILE_CPU
+  float qMult;
   if(sizeOf(vtype) == 1)
-    return 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
+    qMult = 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
   else if(sizeOf(vtype) == 2)
-    return 1024.0f;
+    qMult = 1024.0f;
   else
     ABORT("Unhandled type size {}", sizeOf(vtype));
+
+  if (val->getBackend()->DumpQuantMult()) {
+    intgemm::MeanStd meanstd = intgemm::GetVectorMeanStd(val->data(), val->data() + val->shape().elements(), true);
+    intgemm::MeanStd meanstd2 = intgemm::GetVectorMeanStd(val->data(), val->data() + val->shape().elements());
+    std::cerr << "Name: " << name << " MeanAbs: " << meanstd.mean << " stddevAbs: " << meanstd.stddev << " Mean: " << meanstd2.mean << " stddev: "
+    << meanstd2.stddev << " MaxAbs: " << intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements()) << std::endl;
+  }
+
+  return qMult;
 #else
   val; 
   ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");

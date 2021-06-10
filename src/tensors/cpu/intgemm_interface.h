@@ -67,15 +67,20 @@ static inline Expr prepareB(Expr b) {
 
 template<Type vtype>
 struct PrepareBNodeOp : public UnaryNodeOp {
+  bool transpose_;
 
-  PrepareBNodeOp(Expr input)
-      : UnaryNodeOp(input, input->shape(), intgemm_<vtype>::intgemmType){
+  PrepareBNodeOp(Expr input, bool transpose)
+      : UnaryNodeOp(input, input->shape(), vtype), transpose_(transpose) {
 
     set_name(input->name());
     // Check if arguments are not null
     ABORT_IF(child(0) == nullptr, "A cannot be null");
     ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
-    ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
+    if (!transpose_) {
+      ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
+    } else {
+      ABORT_IF((input->shape().elements()/input->shape()[-1]) %8 != 0, "Rows of matrix: " + input->type() + " must be multiple of 8.");
+    }
   }
 
   NodeOps forwardOps() override {
@@ -83,13 +88,21 @@ struct PrepareBNodeOp : public UnaryNodeOp {
       typedef typename intgemm_<vtype>::type Integer;
       if (isIntgemm(child(0)->value_type())) {
         val_ = child(0)->val();
-      } else {
+      } else if (!transpose_) {
         auto quantMult = computeQuantMult<vtype>(child(0)->val(), name());
         intgemm_<vtype>::width::PrepareB(child(0)->val()->data(), /*input*/
                                       val_->data<Integer>(), /*output*/
                                       quantMult, /*Quant Mult*/
                                       rows(child(0)->val()),
                                       cols(child(0)->val()));
+        getQuantMult<vtype>(val_) = quantMult;
+      } else {
+        auto quantMult = computeQuantMult<vtype>(child(0)->val(), name());
+        intgemm_<vtype>::width::PrepareBTransposed(child(0)->val()->data(), /*input*/
+                                      val_->data<Integer>(), /*output*/
+                                      quantMult,
+                                      cols(child(0)->val()), /*Cols and rows need to be swapped*/
+                                      rows(child(0)->val())); /*Cols and rows need to be swapped*/
         getQuantMult<vtype>(val_) = quantMult;
       }
     )};
@@ -107,7 +120,7 @@ template<Type vtype>
 struct SelectColumnsBNodeOp : public UnaryNodeOp {
 public:
   SelectColumnsBNodeOp(Expr input, const std::vector<uint_least32_t>  &indices)
-      : UnaryNodeOp(input, newShape(input, indices), intgemm_<vtype>::intgemmType), indices_(indices) {
+      : UnaryNodeOp(input, newShape(input, indices), vtype), indices_(indices) {
 
     set_name(input->name());
     setMemoize(false); // Enabling memoization leads to a massive memory leak. Instead use special "midterm" memory.
@@ -168,42 +181,76 @@ private:
   std::vector<uint_least32_t> indices_;
 };
 
+// Temporary placeholder for QuantMultA for when not using precomputed alphas
+template<Type vtype>
+struct QuantMultANodeOp : public UnaryNodeOp {
+  QuantMultANodeOp(Expr input, std::string& bname) : UnaryNodeOp(input, Shape({1}), Type::float32){
+      set_name(input->name() + "_QuantMultB");
+  }
+
+  NodeOps forwardOps() override {
+    return {NodeOp(
+        *val_->data() = getQuantMult<vtype>(child(0));
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Only used for inference");
+    return {NodeOp(0)};
+  }
+
+  const std::string type() override {
+      return "intgemmQuantMultA";
+  }
+
+};
+
 template<Type vtype> // Without the template marian thinks this is an instrusive ptr, I'm not sure why.
 class PrepareBiasForBNodeOp : public NaryNodeOp {
-  bool alreadyPrepared_ = false;
+//private:
+//  ENABLE_INTRUSIVE_PTR(PrepareBiasForBNodeOp)
 public:
-  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr inputA_preppd)
-      : NaryNodeOp({bias, inputB_preppd, inputA_preppd}, bias->shape(), Type::float32) {
+  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr aQuantMult)
+      : NaryNodeOp({bias, inputB_preppd, aQuantMult}, bias->shape(), Type::float32) {
 
     set_name(bias->name() + "_Prepared");
     if (bias->type() == "cols" && bias->graph()->getBackend()->isPrecomputedAlpha()) {
-      ABORT("We shouldn't ever be here");
-      alreadyPrepared_ = true;
+      ABORT("We shouldn't ever be here. The bias would have been prepared by prior running select columns b");
     } else if (!bias->graph()->getBackend()->isPrecomputedAlpha()){
       setMemoize(false);
     }
   }
 
+  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd)
+      : NaryNodeOp({bias, inputB_preppd}, bias->shape(), Type::float32) {
+
+    set_name(bias->name() + "_Prepared");
+    if (bias->type() == "cols" && bias->graph()->getBackend()->isPrecomputedAlpha()) {
+      ABORT("We shouldn't ever be here. The bias would have been prepared by prior running select columns b");
+    } else if (!bias->graph()->getBackend()->isPrecomputedAlpha()){
+      ABORT("We can only use this codepath with precomputed alphas, as they are attached to the B node.");
+    }
+  }
+
   NodeOps forwardOps() override {
-    //std::cerr << "TrueBias: " << child(0)->name() << " type: " << child(0)->type() << " bQuantMult: " << this->child(3)->val()->data()[0] <<  " aQuantMult: " << this->child(2)->val()->data()[0] << std::endl;
-    //std::cerr << "Bias name and val: " << child(0)->name() << " " << child(0)->val()->data()[0] << std::endl;
     return {NodeOp(
-      if (alreadyPrepared_) {
-        //God Knows why trying to assign the bias tensor to this node causes a crash, the second time it's referenced
-        //even though it's supposed to work fine. We use a memory copy instead.
-        ABORT("We shouldn't ever be here.");
-        std::memcpy(val_->data(), child(0)->val()->data(), child(0)->shape()[-1]*sizeof(float));
-        //val_ = child(0)->val();
+      auto bias = this->child(0)->val();
+      auto b = this->child(1)->val();
+      float quant_mult_b = getQuantMult<vtype>(child(1));
+      float quant_mult_a;
+      if (children().size() == 3) { // Not precomputed alphas
+        quant_mult_a = child(2)->val()->data()[0];
       } else {
-        auto bias = this->child(0)->val();
-        auto b = this->child(1)->val();
-        float quant_mult_b = getQuantMult<vtype>(child(1));
-        float quant_mult_a = getQuantMult<vtype>(child(2));
-        
-        float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
-        intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
+        quant_mult_a = getQuantMultA<vtype>(child(1));
       }
-      )};
+      float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
+      intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
+    )};
+  }
+
+  NodeOps backwardOps() override {
+    ABORT("Only used for inference");
+    return {NodeOp(0)};
   }
 
   const std::string type() override { return "prepareBias"; }
@@ -212,8 +259,8 @@ public:
 template<Type vtype> // Without the template marian thinks this is an instrusive ptr, I'm not sure why.
 class PrepareFakeBiasForBNodeOp : public NaryNodeOp {
 public:
-  PrepareFakeBiasForBNodeOp(Expr inputB_preppd, Expr inputA_preppd)
-      : NaryNodeOp({inputB_preppd, inputA_preppd}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
+  PrepareFakeBiasForBNodeOp(Expr inputB_preppd, Expr aQuantMult)
+      : NaryNodeOp({inputB_preppd, aQuantMult}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
 
     set_name(inputB_preppd->name() + "_FakeBias");
     if (!inputB_preppd->graph()->getBackend()->isPrecomputedAlpha()) {
@@ -221,11 +268,25 @@ public:
     }
   }
 
+  PrepareFakeBiasForBNodeOp(Expr inputB_preppd)
+      : NaryNodeOp({inputB_preppd}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
+
+    set_name(inputB_preppd->name() + "_FakeBias");
+    if (!inputB_preppd->graph()->getBackend()->isPrecomputedAlpha()) {
+      ABORT("We can only use this codepath with precomputed alphas, as they are attached to the B node.");
+    }
+  }
+
   NodeOps forwardOps() override {
     return {NodeOp(
     auto b = this->child(0)->val();
-    float quant_mult_b = getQuantMult<vtype>(child(1));
-    float quant_mult_a = getQuantMult<vtype>(child(2));
+    float quant_mult_b = getQuantMult<vtype>(child(0));
+    float quant_mult_a;
+    if (children().size() == 2) { // Not precomputed alphas
+      quant_mult_a = child(1)->val()->data()[0];
+    } else {
+      quant_mult_a = getQuantMultA<vtype>(child(0));
+    }
 
     float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
     intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
@@ -234,6 +295,101 @@ public:
 
   const std::string type() override { return "prepareFakeBias"; }
 };
+
+static Expr SelectColumnsBTyped(Expr input, const std::vector<uint_least32_t>  &indices) {
+  Type bQuantElementType = input->value_type();
+  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
+  pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
+  switch(bQuantElementType) {
+    case Type::intgemm8ssse3 :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm8ssse3> >(input, indices);
+    case Type::intgemm8avx2 :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm8avx2> > (input, indices);
+    case Type::intgemm8avx512 :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm8avx512> >(input, indices);
+    case Type::intgemm8avx512vnni :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm8avx512vnni> > (input, indices);
+    case Type::intgemm16sse2 :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm16sse2> >(input, indices);
+    case Type::intgemm16avx2 :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm16avx2> > (input, indices);
+    case Type::intgemm16avx512 :
+      return Expression<SelectColumnsBNodeOp<Type::intgemm16avx512> > (input, indices);
+    default:
+      ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+  }
+}
+
+static Expr prepareBTyped(Expr input, bool transpose) {
+  Type bQuantElementType = input->value_type();
+  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
+  pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
+  switch(bQuantElementType) {
+    case Type::intgemm8ssse3 :
+      return Expression<PrepareBNodeOp<Type::intgemm8ssse3> >(input, transpose);
+    case Type::intgemm8avx2 :
+      return Expression<PrepareBNodeOp<Type::intgemm8avx2> > (input, transpose);
+    case Type::intgemm8avx512 :
+      return Expression<PrepareBNodeOp<Type::intgemm8avx512> >(input, transpose);
+    case Type::intgemm8avx512vnni :
+      return Expression<PrepareBNodeOp<Type::intgemm8avx512vnni> > (input, transpose);
+    case Type::intgemm16sse2 :
+      return Expression<PrepareBNodeOp<Type::intgemm16sse2> >(input, transpose);
+    case Type::intgemm16avx2 :
+      return Expression<PrepareBNodeOp<Type::intgemm16avx2> > (input, transpose);
+    case Type::intgemm16avx512 :
+      return Expression<PrepareBNodeOp<Type::intgemm16avx512> > (input, transpose);
+    default:
+      ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+  }
+}
+
+
+static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr aQuantMult=nullptr) {
+  Type bQuantElementType = bias->value_type();
+  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
+  pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
+  if (aQuantMult) {
+    switch(bQuantElementType) {
+      case Type::intgemm8ssse3 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8ssse3> >(bias, inputB_preppd, aQuantMult);
+      case Type::intgemm8avx2 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx2> > (bias, inputB_preppd, aQuantMult);
+      case Type::intgemm8avx512 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512> >(bias, inputB_preppd, aQuantMult);
+      case Type::intgemm8avx512vnni :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512vnni> > (bias, inputB_preppd, aQuantMult);
+      case Type::intgemm16sse2 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16sse2> >(bias, inputB_preppd, aQuantMult);
+      case Type::intgemm16avx2 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx2> > (bias, inputB_preppd, aQuantMult);
+      case Type::intgemm16avx512 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx512> > (bias, inputB_preppd, aQuantMult);
+      default:
+        ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+    }
+  } else {
+    switch(bQuantElementType) {
+      case Type::intgemm8ssse3 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8ssse3> >(bias, inputB_preppd);
+      case Type::intgemm8avx2 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx2> > (bias, inputB_preppd);
+      case Type::intgemm8avx512 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512> >(bias, inputB_preppd);
+      case Type::intgemm8avx512vnni :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512vnni> > (bias, inputB_preppd);
+      case Type::intgemm16sse2 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16sse2> >(bias, inputB_preppd);
+      case Type::intgemm16avx2 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx2> > (bias, inputB_preppd);
+      case Type::intgemm16avx512 :
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx512> > (bias, inputB_preppd);
+      default:
+        ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+    }
+  }
+}
+
 
 /*	
  * This computes A*B (+ bias if available) in intgemm.	

@@ -21,6 +21,7 @@ protected:
   bool shifted_;
   bool precomputedAlpha_;
   bool dumpQuantMult_;
+  bool int8_;
   
 public:
   Backend(DeviceId deviceId, size_t seed)
@@ -68,6 +69,14 @@ public:
 
   bool DumpQuantMult() {
     return dumpQuantMult_;
+  }
+
+  void setInt8(bool int8) {
+    int8_ = int8;
+  }
+
+  bool isInt8() {
+    return int8_;
   }
 
 };

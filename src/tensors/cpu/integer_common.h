@@ -108,6 +108,19 @@ static inline float& getQuantMult(marian::Tensor val) {
 #endif
 }
 
+// Same as the above function, except it gets the next element (float), which would be the quantMultA associated with that B
+template <Type vtype>
+static inline float& getQuantMultA(marian::Tensor val) {
+#if COMPILE_CPU
+  ABORT_IF(!isIntgemm(val->type()), "getQuantMult does not work for type {}", val->type());
+  typedef typename intgemm_<vtype>::type Integer;
+  return *(reinterpret_cast<float*>(val->data<Integer>() + val->shape().elements() + sizeof(float)));
+#else
+  val;
+  ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");
+#endif
+}
+
 static inline Type getIntgemmType(Type vtype) {
 #if COMPILE_CPU
   if (vtype == Type::intgemm8) {

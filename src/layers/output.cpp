@@ -81,37 +81,37 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     }
   };
 
-      if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
-        // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
-        // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
-        Expr preparedBias = nullptr; //This is only necessary for the CPU codebase
-        if (graph_->getDeviceId().type == DeviceType::cpu) {
-          bool transposed = !isLegacyUntransposedW;
-          if (graph_->getBackend()->isInt8() || matchType<intgemm8>(Wt_->value_type())) {
-            if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
-              if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted() && hasBias_) {
-                preparedBias = cpu::integer::PrepareBiasForBTyped(b_, Wt_); //@TODO HACK we need to do proper type selection
-              }
-              cachedShortWt_ = cpu::integer::SelectColumnsBTyped(Wt_, shortlist_->indices());
-            } else { // Else, convert the Wt_ matrix to intgemm format and then select vocabulary items from it.
-              cachedShortWt_ = cpu::integer::prepareBTyped(Wt_, transposed /*Use different routine as Wt is transposed*/);
-              if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted() && hasBias_) {
-                preparedBias = cpu::integer::PrepareBiasForBTyped(b_, cachedShortWt_);
-              }
-              cachedShortWt_ = cpu::integer::SelectColumnsBTyped(cachedShortWt_, shortlist_->indices());
-            }
-          } else { //intgemm16 codepath is not implemented
-            cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
+  if (shortlist_ && !cachedShortWt_) { // shortlisted versions of parameters are cached within one batch, then clear()ed
+    // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
+    // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
+    Expr preparedBias = nullptr; //This is only necessary for the CPU codebase
+    if (graph_->getDeviceId().type == DeviceType::cpu) {
+      bool transposed = !isLegacyUntransposedW;
+      if (graph_->getBackend()->getGemmType() == GemmType::intgemm8packed || graph_->getBackend()->getGemmType() == GemmType::intgemm16packed || isIntgemm(Wt_->value_type())) {
+        if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
+          if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted() && hasBias_) {
+            preparedBias = cpu::integer::PrepareBiasForBTyped(b_, Wt_); //@TODO HACK we need to do proper type selection
           }
-        } else {
-          cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices()); // GPU codepath, no
+          cachedShortWt_ = cpu::integer::SelectColumnsBTyped(Wt_, shortlist_->indices());
+        } else { // Else, convert the Wt_ matrix to intgemm format and then select vocabulary items from it.
+          cachedShortWt_ = cpu::integer::prepareBTyped(Wt_, transposed /*Use different routine as Wt is transposed*/);
+          if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted() && hasBias_) {
+            preparedBias = cpu::integer::PrepareBiasForBTyped(b_, cachedShortWt_);
+          }
+          cachedShortWt_ = cpu::integer::SelectColumnsBTyped(cachedShortWt_, shortlist_->indices());
         }
-        if (preparedBias) {
-            cachedShortb_  = index_select(preparedBias ,                   -1, shortlist_->indices());
-        } else if (hasBias_) {
-            cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
-        }
+      } else {
+        cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
       }
+    } else {
+      cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices()); // GPU codepath, no
+    }
+    if (preparedBias) {
+        cachedShortb_  = index_select(preparedBias ,                   -1, shortlist_->indices());
+    } else if (hasBias_) {
+        cachedShortb_  = index_select(b_ ,                             -1, shortlist_->indices());
+    }
+  }
 
   if(factoredVocab_) {
     auto graph = input->graph();

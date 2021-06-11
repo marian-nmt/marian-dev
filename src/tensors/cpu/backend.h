@@ -31,6 +31,8 @@ public:
     else if (gemmType == "packed16")    gemmType_ = GemmType::FbFp16Packed;
     else if (gemmType.find("packed8") == 0)  gemmType_ = GemmType::FbInt8Packed;
 #endif // USE_FBGEMM
+    else if (gemmType.find("intgemm8") == 0) gemmType_ = GemmType::intgemm8packed;
+    else if (gemmType.find("intgemm16") == 0) gemmType_ = GemmType::intgemm16packed;
     else ABORT("Unknown GEMM type - '{}'", gemmType);
   }
   GemmType getGemmType() override { return gemmType_; }

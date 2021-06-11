@@ -138,7 +138,7 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
       //We get the quantization multiplier from a PrepareB or directly from the input
-      float quantMult = getQuantMult<vtype>(child(0));
+      float quantMult = getQuantMult<vtype>(child(0)->val());
       auto input = child(0)->val();
       typedef typename intgemm_<vtype>::type Integer;
       intgemm_<vtype>::width::SelectColumnsB(
@@ -206,7 +206,7 @@ struct QuantMultANodeOp : public UnaryNodeOp {
 };
 
 template<Type vtype> // Without the template marian thinks this is an instrusive ptr, I'm not sure why.
-class PrepareBiasForBNodeOp : public NaryNodeOp {
+struct PrepareBiasForBNodeOp : public NaryNodeOp {
 //private:
 //  ENABLE_INTRUSIVE_PTR(PrepareBiasForBNodeOp)
 public:
@@ -236,12 +236,12 @@ public:
     return {NodeOp(
       auto bias = this->child(0)->val();
       auto b = this->child(1)->val();
-      float quant_mult_b = getQuantMult<vtype>(child(1));
+      float quant_mult_b = getQuantMult<vtype>(child(1)->val());
       float quant_mult_a;
       if (children().size() == 3) { // Not precomputed alphas
         quant_mult_a = child(2)->val()->data()[0];
       } else {
-        quant_mult_a = getQuantMultA<vtype>(child(1));
+        quant_mult_a = getQuantMultA<vtype>(child(1)->val());
       }
       float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
       intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
@@ -280,12 +280,12 @@ public:
   NodeOps forwardOps() override {
     return {NodeOp(
     auto b = this->child(0)->val();
-    float quant_mult_b = getQuantMult<vtype>(child(0));
+    float quant_mult_b = getQuantMult<vtype>(child(0)->val());
     float quant_mult_a;
     if (children().size() == 2) { // Not precomputed alphas
       quant_mult_a = child(1)->val()->data()[0];
     } else {
-      quant_mult_a = getQuantMultA<vtype>(child(0));
+      quant_mult_a = getQuantMultA<vtype>(child(0)->val());
     }
 
     float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
@@ -297,10 +297,10 @@ public:
 };
 
 static Expr SelectColumnsBTyped(Expr input, const std::vector<uint_least32_t>  &indices) {
-  Type bQuantElementType = input->value_type();
-  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
+  static const Type intgemmType = cpu::integer::getIntgemmType(input->graph()->getBackend()->getGemmType());
+  static const bool pass = cpu::integer::passOrAbort(intgemmType);
   pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
-  switch(bQuantElementType) {
+  switch(intgemmType) {
     case Type::intgemm8ssse3 :
       return Expression<SelectColumnsBNodeOp<Type::intgemm8ssse3> >(input, indices);
     case Type::intgemm8avx2 :
@@ -316,15 +316,16 @@ static Expr SelectColumnsBTyped(Expr input, const std::vector<uint_least32_t>  &
     case Type::intgemm16avx512 :
       return Expression<SelectColumnsBNodeOp<Type::intgemm16avx512> > (input, indices);
     default:
-      ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+      ABORT("Unsupported type {} for Intgemm type??", intgemmType);
   }
 }
 
-static Expr prepareBTyped(Expr input, bool transpose) {
-  Type bQuantElementType = input->value_type();
-  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
+static Expr prepareBTyped(Expr input, bool transpose=false) {
+  static const Type intgemmType = cpu::integer::getIntgemmType(input->graph()->getBackend()->getGemmType());
+  static const bool pass = cpu::integer::passOrAbort(intgemmType);
   pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
-  switch(bQuantElementType) {
+  // Get the intgemm type the first time we run into a function, as in the future we will have the same type invocation.
+  switch(intgemmType) {
     case Type::intgemm8ssse3 :
       return Expression<PrepareBNodeOp<Type::intgemm8ssse3> >(input, transpose);
     case Type::intgemm8avx2 :
@@ -340,17 +341,15 @@ static Expr prepareBTyped(Expr input, bool transpose) {
     case Type::intgemm16avx512 :
       return Expression<PrepareBNodeOp<Type::intgemm16avx512> > (input, transpose);
     default:
-      ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+      ABORT("Unsupported type {} for Intgemm type??", intgemmType);
   }
 }
 
 
 static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr aQuantMult=nullptr) {
-  Type bQuantElementType = bias->value_type();
-  static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
-  pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
+  static const Type intgemmType = inputB_preppd->value_type();
   if (aQuantMult) {
-    switch(bQuantElementType) {
+    switch(intgemmType) {
       case Type::intgemm8ssse3 :
         return Expression<PrepareBiasForBNodeOp<Type::intgemm8ssse3> >(bias, inputB_preppd, aQuantMult);
       case Type::intgemm8avx2 :
@@ -366,10 +365,10 @@ static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr aQuantMult=
       case Type::intgemm16avx512 :
         return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx512> > (bias, inputB_preppd, aQuantMult);
       default:
-        ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+        ABORT("Unsupported type {} for Intgemm type??", intgemmType);
     }
   } else {
-    switch(bQuantElementType) {
+    switch(intgemmType) {
       case Type::intgemm8ssse3 :
         return Expression<PrepareBiasForBNodeOp<Type::intgemm8ssse3> >(bias, inputB_preppd);
       case Type::intgemm8avx2 :
@@ -385,7 +384,7 @@ static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr aQuantMult=
       case Type::intgemm16avx512 :
         return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx512> > (bias, inputB_preppd);
       default:
-        ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
+        ABORT("Unsupported type {} for Intgemm type??", intgemmType);
     }
   }
 }

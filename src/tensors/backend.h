@@ -10,7 +10,10 @@ typedef enum {
   Auto = 0,            // auto tuning between available GEMMs
   Float32 = 1,         // MKL based GEMM, fp32
   FbFp16Packed = 10,   // FBGEMM based fp16 GEMM with packing
-  FbInt8Packed = 11    // FBGEMM based int8 GEMM with packing
+  FbInt8Packed = 11,   // FBGEMM based int8 GEMM with packing
+  intgemm16packed = 40,      // intgemm8 based packing
+  intgemm8packed = 41,       // intgemm16 based packing
+  int8tensorcore = 81  // 8bit integer decoding for use with tensor cores
 } GemmType;
 
 class Backend {
@@ -21,7 +24,6 @@ protected:
   bool shifted_;
   bool precomputedAlpha_;
   bool dumpQuantMult_;
-  bool int8_;
   
 public:
   Backend(DeviceId deviceId, size_t seed)
@@ -69,14 +71,6 @@ public:
 
   bool DumpQuantMult() {
     return dumpQuantMult_;
-  }
-
-  void setInt8(bool int8) {
-    int8_ = int8;
-  }
-
-  bool isInt8() {
-    return int8_;
   }
 
 };

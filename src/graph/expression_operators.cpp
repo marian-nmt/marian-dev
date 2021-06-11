@@ -622,7 +622,14 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }
-    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
+    } else if((isFloat(aElementType) && isIntgemm(bElementType)) || (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+          a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed)) {
+      if (!isIntgemm(bElementType)) {
+        if (!b->memoize()) { // FBGEMM only does this for memoiseable types, not sure if we care about that.
+          LOG(warn, "We're preparing a non-memoizeable tensor {}.", b->name());
+        }
+        b = cpu::integer::prepareBTyped(b, transB);
+      }
       return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM

@@ -154,6 +154,14 @@ static inline Type getIntgemmType(Type vtype) {
 #endif
 }
 
+static inline Type getIntgemmType(GemmType type) {
+  switch (type) {
+    case GemmType::intgemm8packed : return getIntgemmType(Type::intgemm8);
+    case GemmType::intgemm16packed: return getIntgemmType(Type::intgemm16);
+    default: ABORT("Not an intgemm type.");
+  }
+}
+
 static inline bool passOrAbort(Type vtype) {
 #if COMPILE_CPU
   if (vtype == Type::intgemm8 || vtype == Type::intgemm16) {

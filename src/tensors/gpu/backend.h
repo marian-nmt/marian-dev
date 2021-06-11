@@ -76,15 +76,13 @@ public:
     return false;
   };
 
-  // for CPU, selects different GEMM types for the inference.
-  // for GPU, there's no gemm type. so, it does nothing.
+  // for CPU and GPU selects different typesf
   void setGemmType(std::string gemmType) override {
-    LOG_ONCE(info, "setGemmType() not supported for GPU_{}", gemmType);
+      if (gemmType == "float32")     gemmType_ = GemmType::Float32;
+      else if (gemmType.find("int8tensorcore") == 0) gemmType_ = GemmType::int8tensorcore;
+      else ABORT("Unknown GEMM type - '{}'", gemmType);
   }
-  GemmType getGemmType() override {
-    LOG_ONCE(info, "getGemmType() not supported for GPU");
-    return GemmType::Float32;
-  }
+  GemmType getGemmType() override { return gemmType_; }
 
   // for CPU, sets quantization range of weight matrices for the inference.
   // for GPU, there's no quantization. so, it does nothing.

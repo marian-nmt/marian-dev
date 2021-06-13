@@ -2,6 +2,7 @@
 
 #include "common/definitions.h"
 #include "tensors/rand.h"
+#include <set>
 
 namespace marian {
 
@@ -27,7 +28,7 @@ protected:
   
 public:
   Backend(DeviceId deviceId, size_t seed)
-      : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)) {}
+      : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)), shifted_(false), precomputedAlpha_(false), dumpQuantMult_(false) {}
   virtual ~Backend() {};
   virtual DeviceId getDeviceId() { return deviceId_; };
   virtual Ptr<RandomGenerator> getRandomGenerator() { return randomGenerator_; }
@@ -48,6 +49,28 @@ public:
   // for GPU, there's no quantization. so, it does nothing.
   virtual void setQuantizeRange(float range) = 0;
   virtual float getQuantizeRange() = 0;
+
+  void configureIntgemm(std::vector<std::string> intgemmOpts) {
+    std::set<std::string> intgemmOptsSet(intgemmOpts.begin(), intgemmOpts.end());
+    if (intgemmOptsSet.find("shifted") != intgemmOptsSet.end()) {
+      setShifted(true);
+    }
+    if (intgemmOptsSet.find("all-shifted") != intgemmOptsSet.end()) {
+      setShifted(true);
+      ABORT("Shifted all is not yet implemented");
+    }
+    if (intgemmOptsSet.find("precomputed-alpha") != intgemmOptsSet.end()) {
+      setPrecomputedAlpha(true);
+    }
+    if (intgemmOptsSet.find("precomputed-alpha") != intgemmOptsSet.end()) {
+      setPrecomputedAlpha(true);
+    }
+    if (intgemmOptsSet.find("dump-quantmult") != intgemmOptsSet.end()) {
+      setPrecomputedAlpha(true);
+      setShifted(true);
+      ABORT("Dump quantmults requires shifted-all to be implemented first");
+    }
+  }
 
   bool isShifted() {
     return shifted_;

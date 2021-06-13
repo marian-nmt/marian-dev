@@ -91,7 +91,7 @@ public:
           graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
           graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
           graph->getBackend()->setQuantizeRange(options_->get<float>("quantize-range"));
-          graph->getBackend()->configureIntgemm(options_->get<std::vector<std::string> >("intgemm-options"));
+          graph->getBackend()->configureIntgemm(options_->get<std::vector<std::string> >("intgemm-options", {""}));
         }
         graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
         graphs_[id] = graph;
@@ -301,7 +301,7 @@ public:
         graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
         graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
         graph->getBackend()->setQuantizeRange(options_->get<float>("quantize-range"));
-        graph->getBackend()->configureIntgemm(options_->get<std::vector<std::string> >("intgemm-options"));
+        graph->getBackend()->configureIntgemm(options_->get<std::vector<std::string> >("intgemm-options", {""}));
       }
       graph->reserveWorkspaceMB(options_->get<size_t>("workspace"));
       graphs_.push_back(graph);

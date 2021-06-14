@@ -705,10 +705,14 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--optimize",
       "Optimize the graph on-the-fly", false);
   cli.add<std::string>("--gemm-type,-g",
-     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8, intgemm8, intgemm16", "float32");
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8, intgemm16, intgemm8", "float32");
   cli.add<float>("--quantize-range",
      "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
      0.f);
+  cli.add<std::vector<std::string> >("--intgemm-options",
+     "Intgemm specific options. Possible values: dump-quantmult; shifted; precomputed-alpha; all-shifted",
+     {""});
+
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings

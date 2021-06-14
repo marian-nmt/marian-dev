@@ -218,8 +218,8 @@ struct PrepareBiasForBNodeOp : public NaryNodeOp {
 //private:
 //  ENABLE_INTRUSIVE_PTR(PrepareBiasForBNodeOp)
 public:
-  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr aQuantMult)
-      : NaryNodeOp({bias, inputB_preppd, aQuantMult}, bias->shape(), Type::float32) {
+  PrepareBiasForBNodeOp(Expr bias, Expr inputB_preppd, Expr inputA_preppd)
+      : NaryNodeOp({bias, inputB_preppd, inputA_preppd}, bias->shape(), Type::float32) {
 
     set_name(bias->name() + "_Prepared");
     if (bias->type() == "cols" && bias->graph()->getBackend()->isPrecomputedAlpha()) {
@@ -246,8 +246,8 @@ public:
       auto b = this->child(1)->val();
       float quant_mult_b = getQuantMult<vtype>(child(1)->val());
       float quant_mult_a;
-      if (children().size() == 3) { // Not precomputed alphas
-        quant_mult_a = child(2)->val()->data()[0];
+      if (children().size() == 3) { // Not precomputed alphas, we get the quantMult from the nodeA prepared
+        quant_mult_a = getQuantMult<vtype>(child(2)->val());
       } else {
         quant_mult_a = getQuantMultA<vtype>(child(1)->val());
       }
@@ -267,8 +267,8 @@ public:
 template<Type vtype> // Without the template marian thinks this is an instrusive ptr, I'm not sure why.
 class PrepareFakeBiasForBNodeOp : public NaryNodeOp {
 public:
-  PrepareFakeBiasForBNodeOp(Expr inputB_preppd, Expr aQuantMult)
-      : NaryNodeOp({inputB_preppd, aQuantMult}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
+  PrepareFakeBiasForBNodeOp(Expr inputB_preppd, Expr inputA_preppd)
+      : NaryNodeOp({inputB_preppd, inputA_preppd}, {1, inputB_preppd->shape()[-1]}, Type::float32) {
 
     set_name(inputB_preppd->name() + "_FakeBias");
     if (!inputB_preppd->graph()->getBackend()->isPrecomputedAlpha()) {
@@ -291,7 +291,7 @@ public:
     float quant_mult_b = getQuantMult<vtype>(child(0)->val());
     float quant_mult_a;
     if (children().size() == 2) { // Not precomputed alphas
-      quant_mult_a = child(1)->val()->data()[0];
+      quant_mult_a = getQuantMult<vtype>(child(1)->val());
     } else {
       quant_mult_a = getQuantMultA<vtype>(child(0)->val());
     }
@@ -354,24 +354,24 @@ static Expr prepareBTyped(Expr input, bool transpose=false) {
 }
 
 
-static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr aQuantMult=nullptr) {
+static Expr PrepareTrueBiasForBTyped(Expr bias, Expr inputB_preppd, Expr inputA_preppd=nullptr) {
   static const Type intgemmType = inputB_preppd->value_type();
-  if (aQuantMult) {
+  if (inputA_preppd) {
     switch(intgemmType) {
       case Type::intgemm8ssse3 :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm8ssse3> >(bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8ssse3> >(bias, inputB_preppd, inputA_preppd);
       case Type::intgemm8avx2 :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx2> > (bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx2> > (bias, inputB_preppd, inputA_preppd);
       case Type::intgemm8avx512 :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512> >(bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512> >(bias, inputB_preppd, inputA_preppd);
       case Type::intgemm8avx512vnni :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512vnni> > (bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm8avx512vnni> > (bias, inputB_preppd, inputA_preppd);
       case Type::intgemm16sse2 :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm16sse2> >(bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16sse2> >(bias, inputB_preppd, inputA_preppd);
       case Type::intgemm16avx2 :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx2> > (bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx2> > (bias, inputB_preppd, inputA_preppd);
       case Type::intgemm16avx512 :
-        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx512> > (bias, inputB_preppd, aQuantMult);
+        return Expression<PrepareBiasForBNodeOp<Type::intgemm16avx512> > (bias, inputB_preppd, inputA_preppd);
       default:
         ABORT("Unsupported type {} for Intgemm type??", intgemmType);
     }
@@ -397,6 +397,57 @@ static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr aQuantMult=
   }
 }
 
+static Expr PrepareFakeBiasForBTyped(Expr inputB_preppd, Expr inputA_preppd=nullptr) {
+  static const Type intgemmType = inputB_preppd->value_type();
+  if (inputA_preppd) {
+    switch(intgemmType) {
+      case Type::intgemm8ssse3 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8ssse3> >(inputB_preppd, inputA_preppd);
+      case Type::intgemm8avx2 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8avx2> > (inputB_preppd, inputA_preppd);
+      case Type::intgemm8avx512 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8avx512> >(inputB_preppd, inputA_preppd);
+      case Type::intgemm8avx512vnni :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8avx512vnni> > (inputB_preppd, inputA_preppd);
+      case Type::intgemm16sse2 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm16sse2> >(inputB_preppd, inputA_preppd);
+      case Type::intgemm16avx2 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm16avx2> > (inputB_preppd, inputA_preppd);
+      case Type::intgemm16avx512 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm16avx512> > (inputB_preppd, inputA_preppd);
+      default:
+        ABORT("Unsupported type {} for Intgemm type??", intgemmType);
+    }
+  } else {
+    switch(intgemmType) {
+      case Type::intgemm8ssse3 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8ssse3> >(inputB_preppd);
+      case Type::intgemm8avx2 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8avx2> > (inputB_preppd);
+      case Type::intgemm8avx512 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8avx512> >(inputB_preppd);
+      case Type::intgemm8avx512vnni :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm8avx512vnni> > (inputB_preppd);
+      case Type::intgemm16sse2 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm16sse2> >(inputB_preppd);
+      case Type::intgemm16avx2 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm16avx2> > (inputB_preppd);
+      case Type::intgemm16avx512 :
+        return Expression<PrepareFakeBiasForBNodeOp<Type::intgemm16avx512> > (inputB_preppd);
+      default:
+        ABORT("Unsupported type {} for Intgemm type??", intgemmType);
+    }
+  }
+}
+
+static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr inputA_preppd=nullptr) {
+  if (bias) {
+    return PrepareTrueBiasForBTyped(bias, inputB_preppd, inputA_preppd);
+  } else {
+    return PrepareFakeBiasForBTyped(inputB_preppd, inputA_preppd);
+  }
+}
+
 
 /*	
  * This computes A*B (+ bias if available) in intgemm.	
@@ -415,12 +466,18 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   ABORT_IF(!isFloat(a->value_type()), "Intgemm expects type of A to be float32 not {}", a->value_type());
   ABORT_IF(!isIntgemm(bQuant->value_type()), "Intgemm expects type of B to be a variant of intgemm not {}", bQuant->value_type());
 
-  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a); // A should not be quantized yet as seen above, hence quantize here
+  bool shifted = (a->graph()->getBackend()->isShifted() && bias) || a->graph()->getBackend()->isShiftedAll(); // We use the shifted codepath when we have a bias or shifted-all is enabled
+  //static bool precomputedAlpha = a->graph()->getBackend()->isPrecomputedAlpha(); // Detect if we have precomputed alphas or not
+  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, shifted, bQuant->name()); // A should not be quantized yet as seen above, hence quantize here
   
   // determine the output shape m x n for A: m x k and B: k x n
   // since we transpose A beforehand we don't need to take care of transposed shapes here 
   Shape outShape = aQuant->shape();
   outShape.set(-1, bQuant->shape()[-1]);
+
+  if (shifted) {
+    bias = PrepareBiasForBTyped(bias, bQuant, aQuant);
+  }
 
   // wrap the multiply finctions to be executed in the forward step of a Lambda node
   auto dotOrAffineNodeOp = [=](Expr out, const std::vector<Expr>& children) {
@@ -437,12 +494,21 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
     typedef typename intgemm_<vtype>::type Integer;
     if(bias) { // dispatch a multiply with integrated bias addition i.e affine(...)
-      intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
-                                       /*B=*/bQuant->val()->data<Integer>(),
-                                       rows(aQuant->val()),
-                                       cols(aQuant->val()),
-                                       cols(bQuant->val()),
-                                       intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+      if (shifted) { // @TODO only architecture agnostic format supported for shift
+        intgemm::Int8Shift::Multiply(/*A=*/aQuant->val()->data<int8_t>(),
+                                     /*B=*/bQuant->val()->data<int8_t>(),
+                                     rows(aQuant->val()),
+                                     cols(aQuant->val()),
+                                     cols(bQuant->val()),
+                                     intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+      } else {
+        intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
+                                         /*B=*/bQuant->val()->data<Integer>(),
+                                         rows(aQuant->val()),
+                                         cols(aQuant->val()),
+                                         cols(bQuant->val()),
+                                         intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+      }
     } else { // dispatch a multiply without bias addition i.e dot(...)
       intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
                                        /*B=*/bQuant->val()->data<Integer>(),

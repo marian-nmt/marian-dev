@@ -473,6 +473,16 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
   return p / s;
 }
 
+Expr intgemm_dispatch_dot_or_affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+  if (!isIntgemm(b->value_type())) {
+    if (!b->memoize()) { // FBGEMM only does this for memoiseable types, not sure if we care about that.
+      LOG(warn, "We're preparing a non-memoizeable tensor {}.", b->name());
+    }
+    b = cpu::integer::prepareBTyped(b, transB);
+  }
+  return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
+}
+
 Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
   auto device = a->graph()->getDeviceId().type;
   // added support for packed GEMM API (fp16, int8)
@@ -518,12 +528,16 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 #else
         ABORT("Packed GEMM is not available in this build");
 #endif  // USE_FBGEMM
+      } else if (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+                 a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
+        return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale);
       } else {
         return Expression<DotNodeOp>(
           a, b, transA, transB, scale);
       }
-    } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
-      return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
+    } else if((isFloat(aElementType) && isIntgemm(bElementType)) || (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+                                                                     a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed)) {
+      return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -616,21 +630,21 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 #else
           ABORT("Packed GEMM is not available in this build");
 #endif  // USE_FBGEMM
+        } else if (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+                   a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
+          return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale);
         } else {
           return affineDefault(a, b, bias, transA, transB, scale);
         }
+      } else if (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+                 a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
+          return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale);
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }
     } else if((isFloat(aElementType) && isIntgemm(bElementType)) || (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
-          a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed)) {
-      if (!isIntgemm(bElementType)) {
-        if (!b->memoize()) { // FBGEMM only does this for memoiseable types, not sure if we care about that.
-          LOG(warn, "We're preparing a non-memoizeable tensor {}.", b->name());
-        }
-        b = cpu::integer::prepareBTyped(b, transB);
-      }
-      return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
+                                                                     a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed)) {
+      return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2

@@ -23,12 +23,13 @@ protected:
   size_t seed_;
   Ptr<RandomGenerator> randomGenerator_;
   bool shifted_;
+  bool shiftedAll_;
   bool precomputedAlpha_;
   bool dumpQuantMult_;
   
 public:
   Backend(DeviceId deviceId, size_t seed)
-      : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)), shifted_(false), precomputedAlpha_(false), dumpQuantMult_(false) {}
+      : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)), shifted_(false), shiftedAll_(false), precomputedAlpha_(false), dumpQuantMult_(false) {}
   virtual ~Backend() {};
   virtual DeviceId getDeviceId() { return deviceId_; };
   virtual Ptr<RandomGenerator> getRandomGenerator() { return randomGenerator_; }
@@ -57,7 +58,7 @@ public:
     }
     if (intgemmOptsSet.find("all-shifted") != intgemmOptsSet.end()) {
       setShifted(true);
-      ABORT("Shifted all is not yet implemented");
+      setShiftedAll(true);
     }
     if (intgemmOptsSet.find("precomputed-alpha") != intgemmOptsSet.end()) {
       setPrecomputedAlpha(true);
@@ -79,6 +80,15 @@ public:
     shifted_ = shifted;
     if (deviceId_.type == DeviceType::gpu) {
       LOG(warn, "Shifted has no effect for the GPU backend");
+    }
+  }
+  bool isShiftedAll() {
+    return shiftedAll_;
+  }
+  void setShiftedAll(bool shiftedAll) {
+    shiftedAll_ = shiftedAll;
+    if (deviceId_.type == DeviceType::gpu) {
+      LOG(warn, "Shifted all has no effect for the GPU backend");
     }
   }
   bool isPrecomputedAlpha() {

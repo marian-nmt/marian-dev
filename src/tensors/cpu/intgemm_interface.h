@@ -70,12 +70,9 @@ struct PrepareBNodeOp : public UnaryNodeOp {
   bool transpose_;
 
   PrepareBNodeOp(Expr input, bool transpose)
-      : UnaryNodeOp(input, input->shape(), vtype), transpose_(transpose) {
+      : UnaryNodeOp(input, newShape(input, transpose), vtype), transpose_(transpose) {
 
     set_name(input->name());
-    // Check if arguments are not null
-    ABORT_IF(child(0) == nullptr, "A cannot be null");
-    ABORT_IF(child(1) == nullptr, "Quant mult of B cannot be null");
     if (!transpose_) {
       ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
     } else {
@@ -111,6 +108,17 @@ struct PrepareBNodeOp : public UnaryNodeOp {
   NodeOps backwardOps() override {
     ABORT("Only used for inference");
     return {NodeOp(0)};
+  }
+
+  static Shape newShape(Expr input, bool transposed) {
+    Shape ret = input->shape();
+    if (transposed) {
+      ret.set(0, input->shape()[-1]);
+      ret.set(1, input->shape()[0]);
+    } else {
+      ret = input->shape();
+    }
+    return ret;
   }
 
   const std::string type() override { return "intgemmPrepareB"; }

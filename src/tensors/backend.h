@@ -63,13 +63,10 @@ public:
     if (intgemmOptsSet.find("precomputed-alpha") != intgemmOptsSet.end()) {
       setPrecomputedAlpha(true);
     }
-    if (intgemmOptsSet.find("precomputed-alpha") != intgemmOptsSet.end()) {
-      setPrecomputedAlpha(true);
-    }
     if (intgemmOptsSet.find("dump-quantmult") != intgemmOptsSet.end()) {
-      setPrecomputedAlpha(true);
       setShifted(true);
-      ABORT("Dump quantmults requires shifted-all to be implemented first");
+      setShiftedAll(true);
+      setDumpQuantMult(true);
     }
   }
 

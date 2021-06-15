@@ -19,7 +19,7 @@ template<Type vtype>
 static inline Expr prepareA(Expr a, bool shifted=false, std::string bname="") { // @TODO check if bname is necessary
   auto nodeOp = [shifted, bname](Expr out, const std::vector<Expr>& children) {
     Expr in = children[0];
-    auto quantMult = computeQuantMult<vtype>(in->val(), bname + "_quantMultA");
+    auto quantMult = computeQuantMult<vtype>(in->val(), bname + "_QuantMultA");
     typedef typename intgemm_<vtype>::type Integer;
     if (shifted)  {
       intgemm::Int8Shift::PrepareA(in->val()->data(), /*input*/

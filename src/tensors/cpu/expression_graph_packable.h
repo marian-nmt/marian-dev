@@ -4,9 +4,23 @@
 #include "fbgemm/packed_gemm.h"
 #include "tensors/cpu/integer_common.h"
 
+#include <unordered_map>
+
 namespace marian {
   namespace cpu {
     void Transpose10(marian::Tensor out, const marian::Tensor in);
+  }
+}
+
+namespace {
+
+  std::string getSubstringName(std::string& in) {
+    std::string::size_type pos = in.find("_QuantMultA");
+    if (pos != std::string::npos) {
+      return in.substr(0, pos);
+    } else {
+      return "";
+    }
   }
 }
 
@@ -25,6 +39,24 @@ public:
     : ExpressionGraph( /* inference =  */ true) {} // Packable expression graph only supports inference
 
   virtual ~ExpressionGraphPackable() {}
+
+  // Find QuanMults packed together with the model.
+  // Strip the quantMult bit of the name so we can easily match them with the tensor name
+  std::unordered_map<std::string, marian::Tensor> getQMults(std::map<std::string, marian::Expr>& inmap) {
+    std::unordered_map<std::string, marian::Tensor> ret;
+    for (auto&& p : inmap) {
+      std::string pName = p.first;
+      if (!namespace_.empty()) {
+        if (pName.substr(0, namespace_.size() + 2) == namespace_ + "::")
+          pName = pName.substr(namespace_.size() + 2);
+      }
+      std::string substring_only = getSubstringName(pName);
+      if (substring_only != "") {
+        ret.insert({substring_only, p.second->val()});
+      }
+    }
+    return ret;
+  }
 
   // Convert model weights into packed format and save to IO items.
   // @TODO: review this

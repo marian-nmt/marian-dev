@@ -31,7 +31,7 @@ size_t requiredBytes(const Shape& shape, Type type) {
 
   if (isIntgemm(type)) {
     /* Intgemm tensors have an extra float at the back that stores the quantization multiplier 
-     * The first quantisation multiplier is the one for this tensor, the second one will eventually server
+     * The first quantisation multiplier is the one for this tensor, the second one will eventually serve
      * as the activation quantisation multiplier.
      */
     return shape.elements() * sizeOf(type) + sizeOf(Type::float32) + sizeOf(Type::float32);

@@ -179,9 +179,10 @@ public:
 #else
         ABORT("Packed type {} only supported when compiled with -DUSE_FBGEMM=on", gemmElementType);
 #endif
-      } else if (isIntgemm(gemmElementType) &&
-      (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 /* || pName.find("Wemb") != std::string::npos*/)) {
-#if COMPILE_CPU
+      } else if (isIntgemm(gemmElementType) && pName.find("QuantMultA") == std::string::npos &&
+      (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 ||
+      (pName.find("Wemb") != std::string::npos && (gemmElementType == Type::intgemm8 || gemmElementType == Type::intgemm16)))) {
+#if COMPILE_CPU  // When compressing Wemb we only work with intgemm8 or intgemm16 agnostic types as we don't have unprepareB
         using cpu::integer::cols;
         using cpu::integer::rows;
         auto allocator = New<TensorAllocator>(getBackend());
@@ -193,7 +194,11 @@ public:
         // We need to tranpose first, because of our architecture independet format requiring a transposed matrix
         Tensor tmp;
         allocator->allocate(tmp, val->shape(), val->type());
-        cpu::Transpose10(tmp, val);
+        if (pName.find("Wemb") == std::string::npos) {
+          cpu::Transpose10(tmp, val);
+        } else {
+          tmp = val; // The Wemb matrix is always transposed
+        }
   
         if(sizeOf(gemmElementType) == 1) { // is 8-bit Intgemm type
           float quantMult = cpu::integer::computeQuantMult<Type::intgemm8>(val);

@@ -16,10 +16,17 @@ namespace integer {
  * bool shifted: whether we use the shifted codepath to deal with unsigned \times signed 
  */
 template<Type vtype>
-static inline Expr prepareA(Expr a, bool shifted=false, std::string bname="") { // @TODO check if bname is necessary
-  auto nodeOp = [shifted, bname](Expr out, const std::vector<Expr>& children) {
+static inline Expr prepareA(Expr a, Expr bPreppd, bool shifted=false) { // @TODO check if bname is necessary
+  auto nodeOp = [shifted](Expr out, const std::vector<Expr>& children) {
     Expr in = children[0];
-    auto quantMult = computeQuantMult<vtype>(in->val(), bname + "_QuantMultA");
+    Expr bPreppd = children[1];
+    static bool precomputedAlpha = in->graph()->getBackend()->isPrecomputedAlpha();
+    float quantMult;
+    if (precomputedAlpha) { // If we have precomputed alphas, the quantisation multiplier is saved onto the B node. Else, we don't use it at all
+      quantMult = getQuantMultA<vtype>(bPreppd->val());
+    } else {
+      quantMult = computeQuantMult<vtype>(in->val(), bPreppd->name() + "_QuantMultA");
+    }
     typedef typename intgemm_<vtype>::type Integer;
     if (shifted)  {
       intgemm::Int8Shift::PrepareA(in->val()->data(), /*input*/
@@ -37,7 +44,7 @@ static inline Expr prepareA(Expr a, bool shifted=false, std::string bname="") { 
     getQuantMult<vtype>(out->val()) = quantMult;
   };
 
-  return lambda({a}, a->shape(), vtype, nodeOp);
+  return lambda({a, bPreppd}, a->shape(), vtype, nodeOp);
 }
 #endif
 
@@ -82,6 +89,7 @@ struct PrepareBNodeOp : public UnaryNodeOp {
 
   NodeOps forwardOps() override {
    return {NodeOp(
+      static bool precomputedAlpha = child(0)->graph()->getBackend()->isPrecomputedAlpha();
       typedef typename intgemm_<vtype>::type Integer;
       if (isIntgemm(child(0)->value_type())) {
         val_ = child(0)->val();
@@ -101,6 +109,20 @@ struct PrepareBNodeOp : public UnaryNodeOp {
                                       cols(child(0)->val()), /*Cols and rows need to be swapped*/
                                       rows(child(0)->val())); /*Cols and rows need to be swapped*/
         getQuantMult<vtype>(val_) = quantMult;
+      }
+      if (precomputedAlpha) { // If we have precomputed alpha we can get them onto B when preparing the model
+        std::string aQuantKey = name() + "_QuantMultA";
+        //Very Hacky Bit. Unnamed matrix is notpart of the F0 parameter namespace
+        if (aQuantKey.at(0) != 'F') {
+          aQuantKey = "F0::" + aQuantKey;
+        }
+        auto map = child(0)->graph()->params()->getMap();
+        const auto mapiter = map.find(aQuantKey);
+        if (mapiter != map.end()) {
+          getQuantMultA<vtype>(val_) = *mapiter->second->val()->data();
+        } else {
+          ABORT("We did not find an alpha in the model named: {}.", name());
+      }
       }
     )};
   }
@@ -155,9 +177,9 @@ public:
                     rows(input),
                     &*indices_.begin(),
                     &*indices_.end());
-      // Store quant mult on the node
+      // Store quant mult on the node. It will only be used if precomputedAlphas are turned on
       getQuantMult<vtype>(val_) = quantMult;
-      // @TODO Store AQuantMult here as well, if precomputed alphas
+      getQuantMultA<vtype>(val_) = getQuantMultA<vtype>(child(0)->val());
     )};
   }
 
@@ -441,7 +463,13 @@ static Expr PrepareFakeBiasForBTyped(Expr inputB_preppd, Expr inputA_preppd=null
 }
 
 static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr inputA_preppd=nullptr) {
-  if (bias) {
+  static bool precomputedAlpha = inputB_preppd->graph()->getBackend()->isPrecomputedAlpha(); // Detect if we have precomputed alphas or not
+  if (precomputedAlpha) {
+    inputA_preppd = nullptr; // When we have precomputed alphas we fetch the aQuantMult from B
+  }
+  if (precomputedAlpha && bias && bias->type() == "cols") {
+    return bias; // When we have precomputed alphas the shortlisted bias has already been prepared
+  } else if (bias) {
     return PrepareTrueBiasForBTyped(bias, inputB_preppd, inputA_preppd);
   } else {
     return PrepareFakeBiasForBTyped(inputB_preppd, inputA_preppd);
@@ -467,8 +495,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   ABORT_IF(!isIntgemm(bQuant->value_type()), "Intgemm expects type of B to be a variant of intgemm not {}", bQuant->value_type());
 
   bool shifted = (a->graph()->getBackend()->isShifted() && bias) || a->graph()->getBackend()->isShiftedAll(); // We use the shifted codepath when we have a bias or shifted-all is enabled
-  //static bool precomputedAlpha = a->graph()->getBackend()->isPrecomputedAlpha(); // Detect if we have precomputed alphas or not
-  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, shifted, bQuant->name()); // A should not be quantized yet as seen above, hence quantize here
+  auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, bQuant, shifted); // A should not be quantized yet as seen above, hence quantize here
   
   // determine the output shape m x n for A: m x k and B: k x n
   // since we transpose A beforehand we don't need to take care of transposed shapes here 

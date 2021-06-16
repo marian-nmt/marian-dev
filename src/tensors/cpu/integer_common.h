@@ -243,6 +243,9 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
     //Copy the quantMult
     float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements()));
     *(reinterpret_cast<float *>(&(*(output_tensor + item.shape.elements())))) = quantMult;
+    //Copy AQuantMult (if present, if not we just copy some random memory, but it's still valid)
+    float aQuantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements() + sizeof(float)));
+    *(reinterpret_cast<float *>(&(*(output_tensor + item.shape.elements() + sizeof(float))))) = aQuantMult;
 #else
     item, input;
     ABORT("Using intgemm binary models is only supported when compiling marian with -DCOMPILE_CPU=ON.");

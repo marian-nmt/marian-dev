@@ -63,6 +63,7 @@ public:
   void packAndSave(const std::string& name, const std::string& meta, Type gemmElementType = Type::float32, Type saveElementType = Type::float32) {
     std::vector<io::Item> ioItems;
 
+    auto qMultMap = getQMults(params()->getMap());
     // sorted by name in std::map
     for (auto p : params()->getMap()) {
       std::string pName = p.first;
@@ -233,6 +234,12 @@ public:
           }
           //Put the quantMult at the back of the tensor
           cpu::integer::getQuantMult<Type::intgemm8>(paramMat) = quantMult;
+          // Try to find QuanMultA if it exists
+          auto qMultAPair = qMultMap.find(pName);
+          if (qMultAPair != qMultMap.end()) {
+            float aQuantMult = *qMultAPair->second->data();
+            cpu::integer::getQuantMultA<Type::intgemm8>(paramMat) = aQuantMult;
+          }
 
         } else if(sizeOf(gemmElementType) == 2) { // is 16-bit Intgemm type
           float quantMult = cpu::integer::computeQuantMult<Type::intgemm16>(val);
@@ -267,6 +274,12 @@ public:
           }
           //Put the quantMult at the back of the tensor
           cpu::integer::getQuantMult<Type::intgemm16>(paramMat) = quantMult;
+          // Try to find QuanMultA if it exists
+          auto qMultAPair = qMultMap.find(pName);
+          if (qMultAPair != qMultMap.end()) {
+            float aQuantMult = *qMultAPair->second->data();
+            cpu::integer::getQuantMultA<Type::intgemm16>(paramMat) = aQuantMult;
+          }
           
         } else {
           ABORT("Incorrect Intgemm type size: {}", sizeOf(gemmElementType));

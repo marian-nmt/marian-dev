@@ -90,7 +90,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
       if (graph_->getBackend()->getGemmType() == GemmType::intgemm8packed || graph_->getBackend()->getGemmType() == GemmType::intgemm16packed || isIntgemm(Wt_->value_type())) {
         if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
           if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted() && hasBias_) {
-            preparedBias = cpu::integer::PrepareBiasForBTyped(b_, Wt_); //@TODO HACK we need to do proper type selection
+            preparedBias = cpu::integer::PrepareBiasForBTyped(b_, Wt_);
           }
           cachedShortWt_ = cpu::integer::SelectColumnsBTyped(Wt_, shortlist_->indices());
         } else { // Else, convert the Wt_ matrix to intgemm format and then select vocabulary items from it.

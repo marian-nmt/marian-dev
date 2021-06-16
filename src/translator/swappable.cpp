@@ -37,12 +37,33 @@ namespace {
   }
 } // namespace
 
-void GPUEngineTrain::SwapPointers(std::vector<MemoryPiece::PtrType> &with) {
+void get(std::vector<uint8_t> &v, MemoryPiece::PtrType mem, Ptr<Backend> backend) {
+  v.resize(mem->size());
+  gpu::copy(backend, mem->data<uint8_t>(), mem->data<uint8_t>() + mem->size(), v.data());
+}
+
+void GPUEngineTrain::SwapPointers(
+    std::vector<MemoryPiece::PtrType> &with /*, std::vector<std::string> &with_names*/) {
   auto write_it = graph_->params()->begin();
   auto read_it = with.begin();
-  for (; read_it != with.end(); ++write_it, ++read_it) {
+  // auto read_it_names  = with_names.begin();
+  bool first = true;
+  std::vector<uint8_t> outvec;
+  for(; read_it != with.end(); ++write_it, ++read_it /*, ++read_it_names*/ ) {
+    if (first){
+      get(outvec, (*write_it)->val()->memory(), graph_->getBackend());
+      get(outvec, *read_it, graph_->getBackend());
+    }
     std::swap(*(*write_it)->val()->memory(), **read_it);
+    // *graph_->params()->get(*read_it_names)->val()->memory() = std::move(**read_it);
+    // assign(*graph_->params()->get(*read_it_names)->val()->memory(), **read_it);
+    if(first) {
+      get(outvec, (*write_it)->val()->memory(), graph_->getBackend());
+      get(outvec, *read_it, graph_->getBackend());
+      first = false;
+    }
   }
+  // graph_->params()->init(graph_->getBackend(), graph_->getDeviceId());
 }
 
 void GPUEngineTrain::Initialize(Ptr<data::Batch> batch) {
@@ -51,11 +72,6 @@ void GPUEngineTrain::Initialize(Ptr<data::Batch> batch) {
     graph_->forward();
     initialized_ = true;
   }
-}
-
-void get(std::vector<uint8_t> &v, MemoryPiece::PtrType mem, Ptr<Backend> backend) {
-  v.resize(mem->size());
-  gpu::copy(backend, mem->data<uint8_t>(), mem->data<uint8_t>() + mem->size(), v.data());
 }
 
 GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx) 

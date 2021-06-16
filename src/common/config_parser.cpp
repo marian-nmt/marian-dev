@@ -581,6 +581,10 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<size_t>("--early-stopping",
      "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
      10);
+  cli.add<std::string>("--early-stopping-on",
+      "Decide if early stopping should take into account first, all, or any validation metrics"
+      "Possible values: first, all, any",
+      "first");
 
   // decoding options
   cli.add<size_t>("--beam-size,-b",
@@ -593,7 +597,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Maximum target length as source length times factor",
       3);
   cli.add<float>("--word-penalty",
-      "Subtract (arg * translation length) from translation score ");
+      "Subtract (arg * translation length) from translation score");
   cli.add<bool>("--allow-unk",
       "Allow unknown words to appear in output");
   cli.add<bool>("--n-best",
@@ -699,6 +703,15 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      "Use approximate knn search in output layer (currently only in transformer)")
      ->implicit_val("100 1024");
 
+  // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
+
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
   addSuboptionsULR(cli);
@@ -749,6 +762,15 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
+
+  // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
 
   cli.switchGroup(previous_group);
   // clang-format on

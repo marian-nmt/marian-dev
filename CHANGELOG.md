@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix bug causing certain reductions into scalars to be 0 on the GPU backend. Removed unnecessary warp shuffle instructions.
 - Do not apply dropout in embeddings layers during inference with dropout-src/trg
 - Print "server is listening on port" message after it is accepting connections
+- Fast implementation of Select for most cases on CPU
 - Fix compilation without BLAS installed
 - Providing a single value to vector-like options using the equals sign, e.g. --models=model.npz
 - Fix quiet-translation in marian-server

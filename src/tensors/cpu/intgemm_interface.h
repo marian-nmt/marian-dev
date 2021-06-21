@@ -489,7 +489,7 @@ static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr inputA_prep
  * It can be Type::intgemm8 or Type::intgemm16 and all hardware-specific variants	
  */
 template<Type vtype>
-static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool /*transB*/, float scale) {
+static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool /*transB*/, float scale, bool relu) {
 #if COMPILE_CPU
   ABORT_IF(!isFloat(a->value_type()), "Intgemm expects type of A to be float32 not {}", a->value_type());
   ABORT_IF(!isIntgemm(bQuant->value_type()), "Intgemm expects type of B to be a variant of intgemm not {}", bQuant->value_type());
@@ -522,27 +522,54 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     typedef typename intgemm_<vtype>::type Integer;
     if(bias) { // dispatch a multiply with integrated bias addition i.e affine(...)
       if (shifted) { // @TODO only architecture agnostic format supported for shift
-        intgemm::Int8Shift::Multiply(/*A=*/aQuant->val()->data<int8_t>(),
-                                     /*B=*/bQuant->val()->data<int8_t>(),
-                                     rows(aQuant->val()),
-                                     cols(aQuant->val()),
-                                     cols(bQuant->val()),
-                                     intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+        if (relu) {
+          intgemm::Int8Shift::Multiply(/*A=*/aQuant->val()->data<int8_t>(),
+                            /*B=*/bQuant->val()->data<int8_t>(),
+                            rows(aQuant->val()),
+                            cols(aQuant->val()),
+                            cols(bQuant->val()),
+                            intgemm::callbacks::UnquantizeAndAddBiasAndWriteRelu(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+        } else {
+          intgemm::Int8Shift::Multiply(/*A=*/aQuant->val()->data<int8_t>(),
+                                      /*B=*/bQuant->val()->data<int8_t>(),
+                                      rows(aQuant->val()),
+                                      cols(aQuant->val()),
+                                      cols(bQuant->val()),
+                                      intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+        }
+      } else {
+        if (relu) {
+          intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
+                                          /*B=*/bQuant->val()->data<Integer>(),
+                                          rows(aQuant->val()),
+                                          cols(aQuant->val()),
+                                          cols(bQuant->val()),
+                                          intgemm::callbacks::UnquantizeAndAddBiasAndWriteRelu(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+        } else {
+          intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
+                                          /*B=*/bQuant->val()->data<Integer>(),
+                                          rows(aQuant->val()),
+                                          cols(aQuant->val()),
+                                          cols(bQuant->val()),
+                                          intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+        }
+      }
+    } else { // dispatch a multiply without bias addition i.e dot(...)
+      if (relu) {
+        intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
+                                         /*B=*/bQuant->val()->data<Integer>(),
+                                         rows(aQuant->val()),
+                                         cols(aQuant->val()),
+                                         cols(bQuant->val()),
+                                         intgemm::callbacks::UnquantizeAndWriteRelu(unquant_mult, /*output=*/out->val()->data()));
       } else {
         intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
                                          /*B=*/bQuant->val()->data<Integer>(),
                                          rows(aQuant->val()),
                                          cols(aQuant->val()),
                                          cols(bQuant->val()),
-                                         intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, /*bias=*/bias->val()->data(), /*output=*/out->val()->data()));
+                                         intgemm::callbacks::UnquantizeAndWrite(unquant_mult, /*output=*/out->val()->data()));
       }
-    } else { // dispatch a multiply without bias addition i.e dot(...)
-      intgemm_<vtype>::width::Multiply(/*A=*/aQuant->val()->data<Integer>(),
-                                       /*B=*/bQuant->val()->data<Integer>(),
-                                       rows(aQuant->val()),
-                                       cols(aQuant->val()),
-                                       cols(bQuant->val()),
-                                       intgemm::callbacks::UnquantizeAndWrite(unquant_mult, /*output=*/out->val()->data()));
     }
   };
 
@@ -558,7 +585,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 }
 
 // Dispatch correct hardware-agnostic or hardware-specific matrix multiplies
-static inline Expr affineOrDot(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale) {
+static inline Expr affineOrDot(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale, bool relu) {
   Type bQuantElementType = bQuant->value_type();
   static const bool pass = cpu::integer::passOrAbort(bQuantElementType);
   pass; // We declare this variable as static so that passOrAbort is only ever run once during the initialization.
@@ -566,21 +593,21 @@ static inline Expr affineOrDot(Expr a, Expr bQuant, Expr bias, bool transA, bool
     //case Type::intgemm8 :  // The generic case selects CPU automatically, but we set all the types manually anyways.
     //  return cpu::integer::affineOrDotTyped<Type::intgemm8>(a, bQuant, bias, transA, transB, scale);    
     case Type::intgemm8ssse3 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm8ssse3>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm8ssse3>(a, bQuant, bias, transA, transB, scale, relu);
     case Type::intgemm8avx2 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm8avx2>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm8avx2>(a, bQuant, bias, transA, transB, scale, relu);
     case Type::intgemm8avx512 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm8avx512>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm8avx512>(a, bQuant, bias, transA, transB, scale, relu);
     case Type::intgemm8avx512vnni :
-      return cpu::integer::affineOrDotTyped<Type::intgemm8avx512vnni>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm8avx512vnni>(a, bQuant, bias, transA, transB, scale, relu);
     //case Type::intgemm16 :  // The generic case selects CPU automatically, but we set all the types manually anyways.
     //  return cpu::integer::affineOrDotTyped<Type::intgemm16>(a, bQuant, bias, transA, transB, scale);
     case Type::intgemm16sse2 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm16sse2>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm16sse2>(a, bQuant, bias, transA, transB, scale, relu);
     case Type::intgemm16avx2 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm16avx2>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm16avx2>(a, bQuant, bias, transA, transB, scale, relu);
     case Type::intgemm16avx512 :
-      return cpu::integer::affineOrDotTyped<Type::intgemm16avx512>(a, bQuant, bias, transA, transB, scale);
+      return cpu::integer::affineOrDotTyped<Type::intgemm16avx512>(a, bQuant, bias, transA, transB, scale, relu);
     default:
       ABORT("Unsupported type {} for Intgemm type??", bQuantElementType);
   }

@@ -460,13 +460,14 @@ Expr le(Expr a, float b);  ///< @f$ a \leq b @f$
  * Computes @f$ C = \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) @f$,
  * where @f$ \operatorname{op}(A) = A @f$ if @p transA is @c false, and
  * @f$ \operatorname{op}(A) = A^\top @f$ if @c true. The @f$\alpha@f$ parameter
- * is set by @p scalar.
+ * is set by @p scalar. Optionally apply a relu activation at the end if running intgemm
  */
 Expr dot(Expr a,
          Expr b,
          bool transA = false,
          bool transB = false,
-         float scalar = 1.f);
+         float scalar = 1.f,
+         bool relu = false);
 
 /**
  * Computes the batch dot product of @p a and @p b.
@@ -484,14 +485,15 @@ Expr bdot(Expr a,
  * @f$ C \leftarrow \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) + C@f$,
  * where @f$ \operatorname{op}(A) = A @f$ if @p transA is @c false, and
  * @f$ \operatorname{op}(A) = A^\top @f$ if @c true. The @f$\alpha@f$ parameter
- * is set by @p scalar.
+ * is set by @p scalar. Optionally apply a relu activation at the end if running intgemm
  */
 Expr affine(Expr a,
             Expr b,
             Expr bias,
             bool transA = false,
             bool transB = false,
-            float scalar = 1.f);
+            float scalar = 1.f,
+            bool relu = false);
 
 /**
  * As above, but efficiently applies relu transformation to output. For inference only.

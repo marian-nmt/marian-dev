@@ -473,21 +473,39 @@ Expr weighted_average(Expr in, Expr weights, int ax) {
   return p / s;
 }
 
-Expr intgemm_dispatch_dot_or_affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+Expr intgemm_dispatch_dot_or_affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bool relu=false) {
   if (!isIntgemm(b->value_type())) {
     if (!b->memoize()) { // FBGEMM only does this for memoiseable types, not sure if we care about that.
       LOG(warn, "We're preparing a non-memoizeable tensor {}.", b->name());
     }
     b = cpu::integer::prepareBTyped(b, transB);
   }
-  return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
+  return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale, relu);
 }
 
-Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
+/* The preconditions of whether to do intgemm or not are a bit convoluted. Offload them in one function*/
+inline bool shouldWeDoIntgemm(Expr b) {
+  static auto device = b->graph()->getDeviceId().type;
+  Type bElementType = b->value_type();
+  if(device == DeviceType::cpu && b->graph()->isInference()) {
+    if (isIntgemm(bElementType) || b->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed || b->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Expr dot(Expr a, Expr b, bool transA, bool transB, float scale, bool relu/*=false*/) {
   auto device = a->graph()->getDeviceId().type;
   // added support for packed GEMM API (fp16, int8)
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
+
+  static bool doIntgemm = shouldWeDoIntgemm(b);
+  // bypass the spaghetti below. We should refactor it at some point
+  if (doIntgemm) {
+    return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale, relu);
+  }
 
   // Currently only true when command line options
   // --optimize --cpu-thread=N with N > 0 are set.
@@ -528,16 +546,16 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 #else
         ABORT("Packed GEMM is not available in this build");
 #endif  // USE_FBGEMM
-      } else if (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
-                 a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
-        return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale);
+      } else if (b->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+                 b->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
+        return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale, relu);
       } else {
         return Expression<DotNodeOp>(
           a, b, transA, transB, scale);
       }
-    } else if((isFloat(aElementType) && isIntgemm(bElementType)) || (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
-                                                                     a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed)) {
-      return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale);
+    } else if((isFloat(aElementType) && isIntgemm(bElementType)) || (b->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
+                                                                     b->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed)) {
+      return intgemm_dispatch_dot_or_affine(a, b, nullptr, transA, transB, scale, relu);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
 #if USE_FBGEMM
       // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
@@ -586,11 +604,17 @@ Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float sc
 // youki/packed-model-pr-backup1031
 // https://machinetranslation.visualstudio.com/Marian/_git/marian-dev?version=GByouki%2Fpacked-model-pr-backup1031
 // SHA: 3456a7ed1d1608cfad74cd2c414e7e8fe141aa52
-Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
+Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale, bool relu /*=false*/) {
   auto device = a->graph()->getDeviceId().type;
 
   Type aElementType = a->value_type();
   Type bElementType = b->value_type();
+
+  static bool doIntgemm = shouldWeDoIntgemm(b);
+  // bypass the spaghetti below. We should refactor it at some point
+  if (doIntgemm) {
+    return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale, relu);
+  }
 
   if(device == DeviceType::cpu) {
     if(isFloat(aElementType) && isFloat(bElementType)) {
@@ -632,13 +656,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 #endif  // USE_FBGEMM
         } else if (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
                    a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
-          return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale);
+          return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale, relu);
         } else {
           return affineDefault(a, b, bias, transA, transB, scale);
         }
       } else if (a->graph()->getBackend()->getGemmType() == GemmType::intgemm8packed ||
                  a->graph()->getBackend()->getGemmType() == GemmType::intgemm16packed) {
-          return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale);
+          return intgemm_dispatch_dot_or_affine(a, b, bias, transA, transB, scale, relu);
       } else {
         return affineDefault(a, b, bias, transA, transB, scale);
       }
@@ -682,10 +706,13 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
 
 Expr affineWithRelu(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   auto graph = a->graph();
+  static bool doIntgemm = shouldWeDoIntgemm(b);
   
-  if(graph->isInference() && graph->getDeviceId().type == DeviceType::gpu)
+  if(graph->isInference() && graph->getDeviceId().type == DeviceType::gpu) {
     return Expression<AffineWithReluNodeOp>(a, b, bias, transA, transB, scale);
-  else
+  } else if (doIntgemm) {
+    return affine(a, b, bias, transA, transB, scale, /*relu=*/true);
+  }
     return relu(affine(a, b, bias, transA, transB, scale));
 }
 

@@ -192,6 +192,7 @@ static inline Expr denseInline(Expr x,
                                std::string actName = "",
                                float dropProb = 0.0f,
                                std::vector<Ptr<IRegulariser>> regularisers = {},
+                               bool inference = false,
                                bool toPrune = false,
                                bool rows = false) {
   auto graph = x->graph();
@@ -199,16 +200,25 @@ static inline Expr denseInline(Expr x,
   auto W = graph->param(prefix + "_W" + suffix, {x->shape()[-1], outDim}, initFn);
   auto b = graph->param(prefix + "_b" + suffix, {1, outDim}, inits::zeros());
 
-  if (toPrune && !regularisers.empty()) {
-    for (auto r : regularisers) {
+  if (!regularisers.empty() && toPrune) {
+    for (auto r: regularisers) {
       if (r->getType() == "heads") { 
-        LOG_ONCE(info, "Skipping heads regularisation for FFN since it doesn't make sense ;D");
+        LOG_ONCE(info, "Skipping rowcol regularisation for attention since group lasso over heads is activated");
         continue; 
+      } // don't do rowcol if group heads
+
+      if (r->getType() == "l0" || r->getType() == "l0-group") {
+        auto hardMask = r->calculatePenalty(W, b, rows, inference);
+        W = W * hardMask;
       }
-      auto penalty = r->calculatePenalty(W, b, rows);
-      b = b * (penalty / penalty); // stupid trick to connect to a graph? 
+      else if (!inference) {
+        auto penalty = r->calculatePenalty(W, b, rows);
+        // debug(penalty);
+        W = W * (penalty / penalty); // stupid trick to connect to a graph?
+      } 
     }
   }
+
 
   if(actName == "relu") {
     x = affineWithRelu(x, W, b); // speed optimization for inference, @TODO: handle better in future layer framework

@@ -103,13 +103,16 @@ public:
   }
 
   Transformer(Ptr<ExpressionGraph> graph, Ptr<Options> options) : EncoderOrDecoderBase(graph, options) {
+    if (!graph) {
+      LOG_ONCE(info, "WHY IS GRAPH EMPTY IN A TRANSFORMER CONSTRUCTOR???");
+    }
     if (!inference_) {
       auto lambdas = options_->get<std::vector<float>>("regulariser-scalar");
       auto types = options_->get<std::vector<std::string>>("regulariser-type");
       ABORT_IF(types.size() != lambdas.size(), "Every regulariser needs its own lambda!");
       for (int i = 0; i < types.size(); i++) {
         LOG_ONCE(info, "lambdas {} types {}", lambdas[i], types[i]);
-        auto regulariser = New<RegulariserFactory>(options_)->construct(graph_, lambdas[i], types[i]);
+        auto regulariser = New<RegulariserFactory>(options_)->construct(graph, lambdas[i], types[i]);
         if (regulariser) {
           regularisers_.push_back(regulariser); 
           LOG_ONCE(info, "Adding regulariser to the vector");
@@ -335,6 +338,53 @@ public:
     return output;
   }
 
+  std::tuple<Expr, Expr> regulariseAtt(Expr W, Expr b, int dimModel, int dimHeads, int dimHeadSize, bool pruneAtt, bool skipRowcol, bool rows = false) {
+    if (!regularisers_.empty() && pruneAtt) {
+      for (auto r: regularisers_) {
+        if (r->getType() == "rowcol" && skipRowcol) { 
+          LOG_ONCE(info, "Skipping rowcol regularisation for attention since group lasso over heads is activated");
+          continue; 
+        } // don't do rowcol if group heads
+
+        if (r->getType() == "l0") {
+          LOG_ONCE(info, "Inside regulariseAtt l0");
+          auto hardMask = r->calculatePenalty(W, b, rows, inference_);
+          // debug(hardMask);
+          return std::make_tuple(W * hardMask, b);
+        }
+        else if (r->getType() == "l0-group") {
+          LOG_ONCE(info, "Inside regulariseAtt l0");
+          auto hardMask = r->calculatePenalty(W, b, rows, inference_);
+          // debug(hardMask, "gate = " + W->name());
+          
+          if (!rows) {
+            auto WHeads = reshape(W, {dimModel, dimHeads, dimHeadSize});
+            auto bHeads = reshape(b, {1, dimHeads, dimHeadSize});
+            
+            auto WMasked = reshape(WHeads * reshape(hardMask, {1, dimHeads, 1}), W->shape());
+            auto bMasked = reshape(bHeads * reshape(hardMask, {1, dimHeads, 1}), b->shape());
+            return std::make_tuple(WMasked, bMasked);
+          }
+          else {
+            auto WHeads = reshape(W, {dimHeads, dimModel, dimHeadSize});
+            auto bHeads = reshape(b, {dimHeads, 1, dimHeadSize});
+            
+            auto WMasked = reshape(WHeads * hardMask, W->shape());
+            auto bMasked = reshape(bHeads * hardMask, b->shape());
+            return std::make_tuple(WMasked, bMasked);
+          }
+        }
+        else if (!inference_) {
+          auto penalty = r->calculatePenalty(W, b, rows);
+          // debug(penalty);
+          W = W * (penalty / penalty); // stupid trick to connect to a graph?
+          return std::make_tuple(W, b);
+        } 
+      }
+    }
+    return std::make_tuple(W, b);
+  }
+
   Expr MultiHead(std::string prefix,
                  int dimOut,
                  int dimHeads,
@@ -364,19 +414,10 @@ public:
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
     auto bq = graph_->param(prefix + "_bq", {       1, dimHeads * dimHeadSize}, inits::zeros());
 
-    if (!inference_ && !regularisers_.empty() && pruneAtt) {
-      // LOG(info, "Regularising Wq");
-      for (auto r: regularisers_) {
-        if (r->getType() == "rowcol" && skipRowcol) { 
-          LOG_ONCE(info, "Skipping rowcol regularisation for attention since group lasso over heads is activated");
-          continue; 
-        } // don't do rowcol if group heads
-        auto penalty = r->calculatePenalty(Wq, bq, false);
-        // debug(penalty);
-        bq = bq * (penalty / penalty); // stupid trick to connect to a graph? 
-      }
-    }
-    
+    // debug(Wq, "Wq before gate");
+    std::tie(Wq, bq) = regulariseAtt(Wq, bq, dimModel, dimHeads, dimHeadSize, pruneAtt, skipRowcol, /*rows=*/false);
+    // debug(Wq, "Wq after gate");
+
     auto qh = affine(q, Wq, bq);
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
@@ -393,12 +434,7 @@ public:
       auto Wk = graph_->param(prefix + "_Wk", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bk = graph_->param(prefix + "_bk", {1,        dimHeads * dimHeadSize}, inits::zeros());
     
-      if (!inference_ && !regularisers_.empty() && pruneAtt) {
-        for (auto r: regularisers_) {
-          auto penalty = r->calculatePenalty(Wk, bk, false);
-          bk = bk * (penalty / penalty); // stupid trick to connect to a graph? 
-        }
-      }
+      std::tie(Wk, bk) = regulariseAtt(Wk, bk, dimModel, dimHeads, dimHeadSize, pruneAtt, skipRowcol, /*rows=*/false);
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
@@ -414,12 +450,7 @@ public:
       auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bv = graph_->param(prefix + "_bv", {1,        dimHeads * dimHeadSize}, inits::zeros());
     
-      if (!inference_ && !regularisers_.empty() && pruneAtt) {
-        for (auto r: regularisers_) {
-          auto penalty = r->calculatePenalty(Wv, bv, false);
-          bv = bv * (penalty / penalty); // stupid trick to connect to a graph? 
-        }
-      }
+      std::tie(Wv, bv) = regulariseAtt(Wv, bv, dimModel, dimHeads, dimHeadSize, pruneAtt, skipRowcol, /*rows=*/false);
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
@@ -441,12 +472,7 @@ public:
       auto Wo = graph_->param(prefix + "_Wo", {dimAtt, dimOut}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bo = graph_->param(prefix + "_bo", {1, dimOut}, inits::zeros());
       
-      if (!inference_ && !regularisers_.empty() && pruneAtt) {
-        for (auto r: regularisers_) {
-          auto penalty = r->calculatePenalty(Wo, bo, true);
-          bo = bo * (penalty / penalty); // stupid trick to connect to a graph? 
-        }
-      }
+      std::tie(Wo, bo) = regulariseAtt(Wo, bo, dimModel, dimHeads, dimHeadSize, pruneAtt, skipRowcol, /*rows=*/false);
       
       output = affine(output, Wo, bo);
     }
@@ -557,8 +583,8 @@ public:
     
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)
-      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, initFn, actName, ffnDropProb, regularisers_, pruneFFN, /*rows=*/false);
-    output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel, initFn, "", 0.0f, regularisers_, pruneFFN, /*rows=*/true);
+      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, initFn, actName, ffnDropProb, regularisers_, inference_, pruneFFN, /*rows=*/false);
+    output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel, initFn, "", 0.0f, regularisers_, inference_, pruneFFN, /*rows=*/true);
 
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);

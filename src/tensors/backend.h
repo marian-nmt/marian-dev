@@ -26,7 +26,8 @@ protected:
   bool shiftedAll_;
   bool precomputedAlpha_;
   bool dumpQuantMult_;
-  
+  GemmType gemmType_{GemmType::Float32};
+
 public:
   Backend(DeviceId deviceId, size_t seed)
       : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)), shifted_(false), shiftedAll_(false), precomputedAlpha_(false), dumpQuantMult_(false) {}

@@ -301,6 +301,14 @@ if(CUDA_FOUND)
     option(COMPILE_CUDA_SM75 "Compile GPU version with SM75 support" ON)
     option(COMPILE_CUDA_SM80 "Compile GPU version with SM80 support" ON)
   endif()
+  if(CUDA_VERSION VERSION_EQUAL "11.1" OR CUDA_VERSION VERSION_GREATER "11.1")
+    option(COMPILE_CUDA_SM60 "Compile GPU version with SM60 support" ON)
+    option(COMPILE_CUDA_SM70 "Compile GPU version with SM70 support" ON)
+    option(COMPILE_CUDA_SM75 "Compile GPU version with SM75 support" ON)
+    option(COMPILE_CUDA_SM80 "Compile GPU version with SM80 support" ON)
+    option(COMPILE_CUDA_SM86 "Compile GPU version with SM86 support" ON)
+  endif()
+
 
   if(COMPILE_CUDA_SM35)
     LIST(APPEND COMPUTE -arch=sm_35; -gencode=arch=compute_35,code=sm_35;)                             # Tesla K40 and above
@@ -323,6 +331,11 @@ if(CUDA_FOUND)
     if(COMPILE_CUDA_SM80)
         LIST(APPEND COMPUTE -gencode=arch=compute_80,code=sm_80; -gencode=arch=compute_80,code=compute_80) # Ampere GPUs
     endif(COMPILE_CUDA_SM80)
+  endif()
+  if(CUDA_VERSION VERSION_EQUAL "11.1" OR CUDA_VERSION VERSION_GREATER "11.1")
+    if(COMPILE_CUDA_SM86)
+        LIST(APPEND COMPUTE -gencode=arch=compute_86,code=sm_86; -gencode=arch=compute_86,code=compute_86) # Ampere RTX GPUs
+    endif(COMPILE_CUDA_SM86)
   endif()
 
   if(USE_STATIC_LIBS)

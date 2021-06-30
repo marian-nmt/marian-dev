@@ -105,42 +105,48 @@ GPULoadedModelTrain::GPULoadedModelTrain(Ptr<GPUEngineTrain> gpu) : engine_(gpu)
   // }
 }
 
-void GPULoadedModelTrain::AllocateParamsLike(const CPULoadedModel &from) {
-  for (auto &param : from.Parameters()) {
-    parameters_.push_back(engine_->allocator_.alloc(param.size()));
-  }
-}
+// void GPULoadedModelTrain::AllocateParamsLike(const CPULoadedModel &from) {
+//   for (auto &param : from.Parameters()) {
+//     parameters_.push_back(engine_->allocator_.alloc(param.size()));
+//   }
+// }
 
 GPULoadedModelTrain::~GPULoadedModelTrain() {
-  for (MemoryPiece::PtrType &p : parameters_) {
-    engine_->allocator_.free(p);
-  }
+  // for (MemoryPiece::PtrType &p : parameters_) {
+  //   engine_->allocator_.free(p);
+  // }
 }
 
-void GPULoadedModelTrain::Load(const GPULoadedModelTrain &from) {
-  srcVocabs_ = from.srcVocabs_;
-  trgVocab_ = from.trgVocab_;
+// void GPULoadedModelTrain::Load(const GPULoadedModelTrain &from) {
+//   srcVocabs_ = from.srcVocabs_;
+//   trgVocab_ = from.trgVocab_;
 
-  ABORT_IF(engine_ != from.engine_, "TODO: copy across GPUs.");
+//   ABORT_IF(engine_ != from.engine_, "TODO: copy across GPUs.");
 
-  for (size_t i = 0; i < parameters_.size(); ++i) {
-    swapper::copyGpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), reinterpret_cast<const char*>(from.parameters_[i]->data()), parameters_[i]->size(), engine_->myDeviceId_);
-  }
+//   for (size_t i = 0; i < parameters_.size(); ++i) {
+//     swapper::copyGpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), reinterpret_cast<const char*>(from.parameters_[i]->data()), parameters_[i]->size(), engine_->myDeviceId_);
+//   }
+// }
+
+void GPULoadedModelTrain::Load(Ptr<CPULoadedModel> from) {
+  srcVocabs_ = from->SrcVocabs();
+  trgVocab_  = from->TrgVocab();
+  cpuModel_ = from;
 }
 
-void GPULoadedModelTrain::Load(const CPULoadedModel &from) {
-  srcVocabs_ = from.SrcVocabs();
-  trgVocab_ = from.TrgVocab();
-  for (size_t i = 0; i < parameters_.size(); ++i) {
-    swapper::copyCpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), from.Parameters()[i].data(), from.Parameters()[i].size(), engine_->myDeviceId_);
-  }
-}
+// void GPULoadedModelTrain::Load(const CPULoadedModel &from) {
+//   srcVocabs_ = from.SrcVocabs();
+//   trgVocab_ = from.TrgVocab();
+//   for (size_t i = 0; i < parameters_.size(); ++i) {
+//     swapper::copyCpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), from.Parameters()[i].data(), from.Parameters()[i].size(), engine_->myDeviceId_);
+//   }
+// }
 
 void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   ABORT_IF(!trgVocab_, "GPULoadedModelTrain needs to be overwritten by a CPU model first.");
   // engine_->SwapPointers(parameters_);
   std::vector<uint8_t> outvec;
-  get(outvec, parameters_[0], engine_->graph_->getBackend());
+  // get(outvec, parameters_[0], engine_->graph_->getBackend());
 
   auto state     = New<TrainingState>(engine_->options_->get<float>("learn-rate"));
   auto scheduler = New<Scheduler>(engine_->options_, state);
@@ -180,9 +186,10 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
         // afterwards. TODO: verify last claim.
         engine_->Initialize(batch);
         std::vector<uint8_t> outvec;
-        get(outvec, parameters_[0], engine_->graph_->getBackend());
-        engine_->SwapPointers(parameters_);
-        get(outvec, parameters_[0], engine_->graph_->getBackend());
+        // get(outvec, parameters_[0], engine_->graph_->getBackend());
+        // engine_->SwapPointers(parameters_);
+        engine_->graph_->load(cpuModel_->Parameters(), false);
+        // get(outvec, parameters_[0], engine_->graph_->getBackend());
         first = false;
       }
 
@@ -192,6 +199,8 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
       engine_->graph_->forward();
       StaticLoss loss = *lossNode;
       engine_->graph_->backward();
+
+      // auto out = engine_->graph_->params()->toMemoryPieces();
 
       // Notify optimizer and scheduler
       optimizer->update(engine_->graph_, 1);
@@ -205,9 +214,9 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
 
   if(!first) {
     std::vector<uint8_t> outvec;
-    get(outvec, parameters_[0], engine_->graph_->getBackend());
-    engine_->SwapPointers(parameters_);
-    get(outvec, parameters_[0], engine_->graph_->getBackend());
+    // get(outvec, parameters_[0], engine_->graph_->getBackend());
+    // engine_->SwapPointers(parameters_);
+    // get(outvec, parameters_[0], engine_->graph_->getBackend());
     // does nothing, need a place for a breakpoint
     first = false;
   }
@@ -276,25 +285,26 @@ void GPULoadedModel::Load(const GPULoadedModel &from) {
   }
 }
 
-void GPULoadedModel::Load(const GPULoadedModelTrain &from) {
-  srcVocabs_ = from.srcVocabs_;
-  trgVocab_  = from.trgVocab_;
+// void GPULoadedModel::Load(const GPULoadedModelTrain &from) {
+//   srcVocabs_ = from.srcVocabs_;
+//   trgVocab_  = from.trgVocab_;
 
-  ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
+//   ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
 
-  for(size_t i = 0; i < parameters_.size(); ++i) {
-    swapper::copyGpuToGpu(reinterpret_cast<char *>(parameters_[i]->data()),
-                          reinterpret_cast<const char *>(from.parameters_[i]->data()),
-                          parameters_[i]->size(),
-                          engine_->myDeviceId_);
-  }
-}
+//   for(size_t i = 0; i < parameters_.size(); ++i) {
+//     swapper::copyGpuToGpu(reinterpret_cast<char *>(parameters_[i]->data()),
+//                           reinterpret_cast<const char *>(from.parameters_[i]->data()),
+//                           parameters_[i]->size(),
+//                           engine_->myDeviceId_);
+//   }
+// }
 
 void GPULoadedModel::PointToParams(const GPULoadedModelTrain &from) {
   ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
   srcVocabs_ = from.srcVocabs_;
   trgVocab_  = from.trgVocab_;
-  parameters_ = from.parameters_;
+  // TODO: this might be wrong and could be droped in favor of using SwapPointers
+  parameters_ = from.engine_->graph_->params()->toMemoryPieces();
 }
 
 void GPULoadedModel::Load(const CPULoadedModel &from) {

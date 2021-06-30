@@ -87,7 +87,7 @@ public:
     translateSlot_ = New<GPULoadedModel>(translateEngine_);
     trainEngine_ = New<GPUEngineTrain>(options_, 0);
     trainSlot_   = New<GPULoadedModelTrain>(trainEngine_);
-    trainSlot_->AllocateParamsLike(*cpuModel_);
+    // trainSlot_->AllocateParamsLike(*cpuModel_);
   }
 
   std::string run(const std::string& json) override {
@@ -122,7 +122,7 @@ public:
     size_t id = 0;
     for(auto testBatch : *testBatches) {
       if(contexts.size() > id && !contexts[id].empty()) {
-        trainSlot_->Load(*cpuModel_);
+        trainSlot_->Load(cpuModel_);
         trainSlot_->Train(contexts[id]);
         translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
@@ -173,9 +173,10 @@ public:
 
       if(!trainSet.empty()) {
         LOG(info, "# NEW TEST BATCH");
-        trainSlot_->Load(*cpuModel_);
+        trainSlot_->Load(cpuModel_);
         trainSlot_->Train(trainSet);
-        translateSlot_->Load(*trainSlot_);
+        // translateSlot_->Load(*trainSlot_);
+        translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;
       } else {

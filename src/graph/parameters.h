@@ -45,6 +45,17 @@ public:
     LOG(debug, "Destroyed parameter object of type {}", acceptedElementType_);
   }
 
+  std::vector<MemoryPiece::PtrType> toMemoryPieces() {
+    std::vector<MemoryPiece::PtrType> res(params_.size());
+    auto read_it = begin();
+    int i = 0;
+    for(; read_it != end(); ++read_it) {
+      i++;
+      res.push_back((*read_it)->val()->memory());
+    }
+    return res;
+  }
+
   auto begin() -> decltype(params_.begin()) { return params_.begin(); }
 
   auto end() -> decltype(params_.begin()) { return params_.end(); }

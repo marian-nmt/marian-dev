@@ -44,11 +44,34 @@ namespace integer {
     using ElementAccumulator = int32_t;
     using ElementCompute = float;
     /*TensorOp matrices*/
+
+#ifdef CUTLASS_SM75
+    // Compute arch
+    using SmArch = cutlass::arch::Sm75;
+    // This code section describes the tile size a thread block will compute
     using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<128, 256, 64>;  // <- threadblock tile M = 128, N = 256, K = 64
     // This code section describes tile size a warp will compute
     using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 64>;  // <- warp tile M = 64, N = 64, K = 64 
     // This code section describes the size of MMA op
     using ShapeMMAOp = cutlass::gemm::GemmShape<8, 8, 16>;  // <- MMA Op tile M = 8, N = 8, K = 16
+    // This code section describes how threadblocks are scheduled on GPU
+    using SwizzleThreadBlock = cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;  // <- ??
+    // Number of pipelines you want to use
+    constexpr int NumStages = 2;
+#else
+    // Compute arch
+    using SmArch = cutlass::arch::Sm80;
+    // This code section describes the tile size a thread block will compute
+    using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<256, 128, 128>;  // <- threadblock tile M = 128, N = 128, K = 16
+    // This code section describes tile size a warp will compute
+    using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 128>;  // <- warp tile M = 64, N = 64, K = 16
+    // This code section describes the size of MMA op
+    using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 32>;  // <- MMA Op tile M = 16, N = 8, K = 8
+    // This code section describes how threadblocks are scheduled on GPU
+    using SwizzleThreadBlock = cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;  // <- ??
+    // Number of pipelines you want to use
+    constexpr int NumStages = 4;
+#endif
 
 
     // This code section describes the epilogue part of the kernel
@@ -78,12 +101,14 @@ namespace integer {
                                                             cutlass::layout::ColumnMajor,      // LayoutOutput
                                                             int32_t,                           // ElementAccumulator
                                                             cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
-                                                            cutlass::arch::Sm75,               // tag indicating target GPU compute architecture //@TODO this should change, probably
+                                                            SmArch,                            // tag indicating target GPU compute architecture //@TODO this should change, probably
                                                             ShapeMMAThreadBlock,
                                                             ShapeMMAWarp,
                                                             ShapeMMAOp,
-                                                            EpilogueOp>;
-    using CutlassGemmTensorOpRelu = cutlass::gemm::device::Gemm<int8_t,                            // ElementA
+                                                            EpilogueOp,
+                                                            SwizzleThreadBlock,
+                                                            NumStages>;
+    using CutlassGemmTensorOpRelu = cutlass::gemm::device::Gemm<int8_t,                           // ElementA
                                                                cutlass::layout::RowMajor,         // LayoutA
                                                                int8_t,                            // ElementB
                                                                cutlass::layout::ColumnMajor,      // LayoutB
@@ -91,11 +116,13 @@ namespace integer {
                                                                cutlass::layout::ColumnMajor,      // LayoutOutput
                                                                int32_t,                           // ElementAccumulator
                                                                cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
-                                                               cutlass::arch::Sm75,               // tag indicating target GPU compute architecture //@TODO this should change, probably
+                                                               SmArch,                            // tag indicating target GPU compute architecture //@TODO this should change, probably
                                                                ShapeMMAThreadBlock,
                                                                ShapeMMAWarp,
                                                                ShapeMMAOp,
-                                                               EpilogueOpRelu>;
+                                                               EpilogueOpRelu,
+                                                               SwizzleThreadBlock,
+                                                               NumStages>;
     /*Non TensorOp matrices*/
     using InstructionShape = cutlass::gemm::GemmShape<1, 1, 4>;
     using ThreadBlockShape = cutlass::gemm::GemmShape<64, 64, 16>;
@@ -290,6 +317,7 @@ namespace integer {
                         bool fused,
                         float * bias,
                         bool doRelu) {
+        //printf("Success M:%d N:%d K%d, Relu:%d, bias:%d\n", M, N, K, (int)doRelu, (int)(bias!=nullptr));
         float * Csrc;
         int ldcSRC;
         if (bias) { /* This is only available for the fused option. Beta needs to be 1? */

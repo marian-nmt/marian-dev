@@ -62,6 +62,21 @@ namespace integer {
     // Compute arch
     using SmArch = cutlass::arch::Sm80;
     // This code section describes the tile size a thread block will compute
+    using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<128, 128, 64>;  // <- threadblock tile M = 128, N = 128, K = 16
+    // This code section describes tile size a warp will compute
+    using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 64>;  // <- warp tile M = 64, N = 64, K = 16
+    // This code section describes the size of MMA op
+    using ShapeMMAOp = cutlass::gemm::GemmShape<16, 8, 32>;  // <- MMA Op tile M = 16, N = 8, K = 8
+    // This code section describes how threadblocks are scheduled on GPU
+    using SwizzleThreadBlock = cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;  // <- ??
+    // Number of pipelines you want to use
+    constexpr int NumStages = 3;
+#endif
+
+#if 0 // These settings are for A100 which have bigger shared memory. Otherwise they crash with the 3090tis that we have
+    // Compute arch
+    using SmArch = cutlass::arch::Sm80;
+    // This code section describes the tile size a thread block will compute
     using ShapeMMAThreadBlock = cutlass::gemm::GemmShape<256, 128, 128>;  // <- threadblock tile M = 128, N = 128, K = 16
     // This code section describes tile size a warp will compute
     using ShapeMMAWarp = cutlass::gemm::GemmShape<64, 64, 128>;  // <- warp tile M = 64, N = 64, K = 16
@@ -313,8 +328,8 @@ namespace integer {
                         float * beta,
                         float *C,
                         int ldc,
-                        bool tensorCore,
-                        bool fused,
+                        bool tensorCore, /*We want this to be true for best performance*/
+                        bool fused,     /* fused unquantisation (and bias addition (and activation function) if those are present). Should be true for best performance */
                         float * bias,
                         bool doRelu) {
         //printf("Success M:%d N:%d K%d, Relu:%d, bias:%d\n", M, N, K, (int)doRelu, (int)(bias!=nullptr));

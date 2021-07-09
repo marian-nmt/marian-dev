@@ -1291,9 +1291,9 @@ size_t numLemmas_;
 bool hasShortlist_;
 public:
   AddFactorMaxesOp(const std::vector<Expr>& nodes, bool hasShortlist, size_t groupStart, size_t numLemmas)
-      : NaryNodeOp(nodes, getShape(nodes, hasShortlist), commonType(std::vector<Expr>(nodes.begin() + 1, nodes.end())) ) {
+      : NaryNodeOp(nodes, getShape(nodes, hasShortlist), commonType(std::vector<Expr>(nodes.begin() + 1 + (int)hasShortlist, nodes.end())) ) {
     groupStart_ = groupStart;
-    numLemmas_ = hasShortlist? nodes[1]->shape().size(): numLemmas;
+    numLemmas_ = numLemmas;
     hasShortlist_ = hasShortlist;
   }
 

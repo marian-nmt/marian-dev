@@ -89,7 +89,7 @@ namespace marian {
     } else {
       auto numGroups = getNumFactorGroups();
       if(numGroups > 1 && graph()->isInference() && graph()->getBackend()->getDeviceId().type == DeviceType::gpu) {
-        Expr shortlistIndices = shortlist? constant(shortlist->indices()) : nullptr;
+        Expr shortlistIndices = shortlist? indices(shortlist->indices()) : nullptr;
         Expr lemmaHasFactorGroupTensor = getLemmaHasFactorGroupTensor();
         std::vector<Expr> groupLosses(logits_.size());
         std::transform(logits_.begin(), logits_.end(), groupLosses.begin(), [](const Ptr<RationalLoss>& loss) -> Expr {return loss->loss();});

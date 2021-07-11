@@ -32,16 +32,16 @@ int main(int argc, char** argv) {
                                        "arg1: number of bits in LSH encoding, arg2: name of output weights matrix")->implicit_val("1024 Wemb");
     cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export");
     cli->add<std::vector<std::string>>("--shortlist,-s", "Shortlist conversion: filePath firstNum bestNum threshold");
-    cli->add<std::string>("--dump,-d", "Binary shortlist dump path","lex.bin");
+    cli->add<std::string>("--dump-shortlist,-d", "Binary shortlist dump path","lex.bin");
     cli->parse(argc, argv);
     options->merge(config);
   }
 
   // shortlist conversion:
-  // ./marian-conv --shortlist lex.esen.s2t 100 100 0 --dump lex.esen.bin --vocabs vocab.esen.spm vocab.esen.spm
+  // ./marian-conv --shortlist lex.esen.s2t 100 100 0 --dump-shortlist lex.esen.bin --vocabs vocab.esen.spm vocab.esen.spm
   if(options->hasAndNotEmpty("shortlist")){
     auto vocabPaths = options->get<std::vector<std::string>>("vocabs");
-    auto dumpPath = options->get<std::string>("dump");
+    auto dumpPath = options->get<std::string>("dump-shortlist");
 
     Ptr<Vocab> srcVocab = New<Vocab>(options, 0);
     srcVocab->load(vocabPaths[0]);
@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
     Ptr<const data::ShortlistGenerator> binaryShortlistGenerator
         = New<data::BinaryShortlistGenerator>(options, srcVocab, trgVocab, 0, 1, vocabPaths[0] == vocabPaths[1]);
     binaryShortlistGenerator->dump(dumpPath);
-    LOG(info, "Finished");
+    LOG(info, "Dumping of the shortlist is finished");
     return 0;
   }
 

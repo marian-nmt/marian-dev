@@ -2,6 +2,7 @@
 #include "microsoft/shortlist/utils/ParameterTree.h"
 #include "marian.h"
 #include "layers/lsh.h"
+
 #include <queue>
 
 namespace marian {

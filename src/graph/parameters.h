@@ -46,7 +46,8 @@ public:
   }
 
   std::vector<MemoryPiece::PtrType> toMemoryPieces() {
-    std::vector<MemoryPiece::PtrType> res(params_.size());
+    std::vector<MemoryPiece::PtrType> res;
+    res.reserve(params_.size());
     auto read_it = begin();
     int i = 0;
     for(; read_it != end(); ++read_it) {

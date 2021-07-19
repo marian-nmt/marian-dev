@@ -186,6 +186,11 @@ public:
       kvParams.second->clear();
   }
 
+  void clearParams() {
+    for(auto kvParams : paramsByElementType_)
+      kvParams.second->clear();
+  }
+
   /**
    * Set device options used to run the graph.
    * @param deviceId a struct type which stores device no. (size_t)
@@ -743,10 +748,13 @@ public:
 
 public:
   /** Load model (mainly parameter objects) from array of io::Items */
-  void load(const std::vector<io::Item>& ioItems, bool markReloaded = true) {
+  void load(const std::vector<io::Item>& ioItems, bool markReloaded = true, bool dropF0prefix = false) {
     setReloaded(false);
     for(auto& item : ioItems) {
       std::string pName = item.name;
+      if (dropF0prefix && pName.substr(0, 4) == "F0::") {
+        pName = pName.substr(4);
+      }
       // skip over special parameters starting with "special:"
       if(pName.substr(0, 8) == "special:")
         continue;

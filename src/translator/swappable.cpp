@@ -184,11 +184,12 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
         // expects a batch. So, afaik, this is the first time where i can
         // invoke build and, as a result i can call SwapPointers only
         // afterwards. TODO: verify last claim.
+        engine_->graph_->clearParams();
+        engine_->graph_->load(cpuModel_->Parameters(), true, true);
         engine_->Initialize(batch);
         std::vector<uint8_t> outvec;
         // get(outvec, parameters_[0], engine_->graph_->getBackend());
         // engine_->SwapPointers(parameters_);
-        engine_->graph_->load(cpuModel_->Parameters(), false);
         // get(outvec, parameters_[0], engine_->graph_->getBackend());
         first = false;
       }

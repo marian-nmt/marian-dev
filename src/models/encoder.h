@@ -14,6 +14,8 @@ public:
 
   // @TODO: turn into an interface. Also see if we can get rid of the graph parameter.
   virtual Ptr<EncoderState> build(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>) = 0;
+  
+  virtual std::vector<Ptr<IRegulariser>> getRegularisers(int /*i*/ = 0) { return {}; };
 
   virtual void clear() = 0;
 };

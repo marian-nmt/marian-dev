@@ -22,18 +22,26 @@ namespace marian {
  */
 class RationalLoss {
 protected:
-  Expr loss_;   // numerator
-  Expr count_;  // denominator
+  Expr loss_;         // numerator
+  Expr count_;        // denominator
+  std::string name_;  // what loss is it, to identify later
+  std::string type_; // type of multiloss if used. 
 
   RationalLoss() = default;  // protected
 
 public:
   RationalLoss(Expr loss, Expr count) : loss_(loss), count_(count) {}
 
+  RationalLoss(Expr loss, Expr count, std::string name) : loss_(loss), count_(count), name_(name) {}
+
   RationalLoss(Expr loss, float count)
       : loss_(loss), count_(constant_like(loss, inits::fromValue(count))) {}
 
-  RationalLoss(const RationalLoss& other) : loss_(other.loss_), count_(other.count_) {}
+  RationalLoss(Expr loss, float count, std::string name)
+      : loss_(loss), count_(constant_like(loss, inits::fromValue(count))), name_(name) {}
+
+  RationalLoss(const RationalLoss& other)
+      : loss_(other.loss_), count_(other.count_), name_(other.name_) {}
 
   virtual ~RationalLoss() = default;
 
@@ -54,6 +62,10 @@ public:
 
   Expr count() const { return count_; }
 
+  std::string name() const { return name_; }
+  
+  std::string type() const { return type_; }
+
   // @TODO: remove this function, as it does not add too much value over count()->get(...)
   template <typename T>
   void count(std::vector<T>& labels) const {
@@ -72,39 +84,6 @@ public:
   size_t size() const {
     ABORT_IF(!count_, "Labels have not been defined");
     return count_->shape().elements();
-  }
-};
-
-/**
- * POD for accumulating loss values after forward/backward used in
- * Scheduler for updating statistics. This can only be used after a
- * successful forward step in a computation graph that owns the assigned
- * RationalLoss object.
- */
-struct StaticLoss {
-  float loss;   // numerator
-  float count;  // denominator
-
-  StaticLoss() : loss(0.f), count(0.f) {}
-
-  StaticLoss(const RationalLoss& dynamic)
-      : loss(dynamic.loss<float>()), count(dynamic.count<float>()) {}
-
-  StaticLoss operator+(const StaticLoss& other) const {
-    StaticLoss res(*this);
-    res += other;
-    return res;
-  }
-
-  StaticLoss& operator+=(const StaticLoss& other) {
-    loss = loss + other.loss;
-    count = count + other.count;
-    return *this;
-  }
-
-  void reset() {
-    loss = 0.f;
-    count = 0.f;
   }
 };
 
@@ -139,7 +118,7 @@ public:
   MultiRationalLoss(const RationalLoss& rl) : RationalLoss() { push_back(rl); }
 
   virtual void push_back(const RationalLoss& current) {
-    loss_ = accumulateLoss(current);
+    loss_  = accumulateLoss(current);
     count_ = accumulateCount(current);
     partialLosses_.push_back(current);
   }
@@ -175,8 +154,8 @@ private:
   }
 
 public:
-  SumMultiRationalLoss() : MultiRationalLoss() {}
-  SumMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) {}
+  SumMultiRationalLoss() : MultiRationalLoss() { type_ = "sum"; }
+  SumMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) { type_ = "sum"; }
 };
 
 /**
@@ -215,8 +194,8 @@ private:
   }
 
 public:
-  ScaledMultiRationalLoss() : MultiRationalLoss() {}
-  ScaledMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) {}
+  ScaledMultiRationalLoss() : MultiRationalLoss() { type_ = "scaled"; }
+  ScaledMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) { type_ = "scaled"; }
 };
 
 /**
@@ -248,8 +227,8 @@ private:
   }
 
 public:
-  MeanMultiRationalLoss() : MultiRationalLoss() {}
-  MeanMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) {}
+  MeanMultiRationalLoss() : MultiRationalLoss() { type_ = "mean"; }
+  MeanMultiRationalLoss(const RationalLoss& rl) : MultiRationalLoss(rl) { type_ = "mean"; }
 };
 
 /**
@@ -270,7 +249,7 @@ protected:
 
   virtual Expr compute(Logits logits,
                        const Words& labels,
-                       Expr mask = nullptr,
+                       Expr mask         = nullptr,
                        Expr labelWeights = nullptr)
       = 0;
 
@@ -279,10 +258,10 @@ protected:
     ABORT_IF(!loss, "Loss has not been computed");
     ABORT_IF(!labels, "Labels have not been computed");
 
-    Expr lossSum = cast(loss, Type::float32);      // accumulate in float32
+    Expr lossSum   = cast(loss, Type::float32);    // accumulate in float32
     Expr labelsSum = cast(labels, Type::float32);  // accumulate in float32
     for(int i = 0; i < axes_.size(); ++i) {
-      lossSum = sum(lossSum, axes_[i]);
+      lossSum   = sum(lossSum, axes_[i]);
       labelsSum = sum(labelsSum, axes_[i]);
     }
 
@@ -307,7 +286,7 @@ public:
 
   virtual RationalLoss apply(Logits logits,
                              const Words& labels,
-                             Expr mask = nullptr,
+                             Expr mask         = nullptr,
                              Expr labelWeights = nullptr) {
     Expr loss = compute(logits, labels, mask, labelWeights);
 
@@ -340,12 +319,12 @@ protected:
 
   virtual Expr compute(Logits logits,
                        const Words& labels,
-                       Expr mask = nullptr,
+                       Expr mask         = nullptr,
                        Expr labelWeights = nullptr) override {
     // logits may be factored; in that case, the getLoss() function computes one loss for each, and
     // sums them up
     int inFactor = false;
-    auto ce = logits.applyLossFunction(labels, [&](Expr logits, Expr indices) {
+    auto ce      = logits.applyLossFunction(labels, [&](Expr logits, Expr indices) {
       logits = atleast_3d(logits);  // we always assume a time and batch dimension exists.
       // for bert training or classification the time dimension is lost.
       // Here safeguard against 2d classifier output, adds 1 on the left, non-op.
@@ -399,7 +378,7 @@ public:
 protected:
   virtual Expr compute(Logits logits,
                        const Words& labels,
-                       Expr mask = nullptr,
+                       Expr mask         = nullptr,
                        Expr labelWeights = nullptr) override {
     auto ce = CrossEntropyLoss::compute(
         logits, labels, mask, /*labelWeights=*/nullptr);  // don't pass label-weights to CE
@@ -456,7 +435,7 @@ public:
 
   virtual RationalLoss apply(Logits logits,
                              const Words& labels,
-                             Expr mask = nullptr,
+                             Expr mask         = nullptr,
                              Expr labelWeights = nullptr) override {
     auto loss = CrossEntropyLoss::compute(logits, labels, mask, labelWeights);
 
@@ -467,7 +446,7 @@ public:
       ABORT_IF(!mask, "Word-level CE from rescorer must have mask");
 
       Expr labelsSum = cast(mask, Type::float32);  // accumulate in float32
-      labelsSum = sum(labelsSum, -3);              // reduce over time axis to get sentence lengths
+      labelsSum      = sum(labelsSum, -3);         // reduce over time axis to get sentence lengths
       return RationalLoss(loss, labelsSum);
     }
   }
@@ -477,5 +456,76 @@ public:
  * @brief Factory for label-wise loss functions
  */
 Ptr<LabelwiseLoss> newLoss(Ptr<Options> options, bool inference);
+
+/**
+ * POD for accumulating loss values after forward/backward used in
+ * Scheduler for updating statistics. This can only be used after a
+ * successful forward step in a computation graph that owns the assigned
+ * RationalLoss object.
+ */
+
+struct StaticLoss {
+  float loss;   // numerator
+  float count;  // denominator
+
+  std::map<std::string, float> partialLosses;
+
+  StaticLoss() : loss(0.f), count(0.f) {}
+
+  StaticLoss(const RationalLoss& dynamic)
+      : loss(dynamic.loss<float>()), count(dynamic.count<float>()) {
+
+    // TODO make it shorter
+    if (dynamic.type() == "sum") {
+      auto casted = dynamic_cast<const SumMultiRationalLoss&>(dynamic);
+
+      for(auto it = casted.begin(); it != casted.end(); ++it) {
+        std::string name = it->name();
+        float loss       = it->loss<float>();
+        partialLosses.emplace(name, loss);
+      }
+    }
+    else if (dynamic.type() == "scaled") {
+      auto casted = dynamic_cast<const ScaledMultiRationalLoss&>(dynamic);
+
+      for(auto it = casted.begin(); it != casted.end(); ++it) {
+        std::string name = it->name();
+        float loss       = it->loss<float>();
+        partialLosses.emplace(name, loss);
+      }
+    }
+    else if (dynamic.type() == "mean") {
+      auto casted = dynamic_cast<const MeanMultiRationalLoss&>(dynamic);
+      for(auto it = casted.begin(); it != casted.end(); ++it) {
+        std::string name = it->name();
+        float loss       = it->loss<float>();
+        partialLosses.emplace(name, loss);
+      }
+    }
+  }
+
+  StaticLoss operator+(const StaticLoss& other) const {
+    StaticLoss res(*this);
+    res += other;
+    return res;
+  }
+
+  StaticLoss& operator+=(const StaticLoss& other) {
+    loss  = loss + other.loss;
+    count = count + other.count;
+
+    for(const auto& kv : other.partialLosses) {
+      partialLosses[kv.first] = partialLosses[kv.first] + kv.second;
+    }
+
+    return *this;
+  }
+
+  void reset() {
+    loss  = 0.f;
+    count = 0.f;
+    partialLosses.clear();
+  }
+};
 
 }  // namespace marian

@@ -254,6 +254,20 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
       8);
+  cli.add<int>("--transformer-head-dim",
+		      "Dimension heads in multi-head attention (transformer)",
+		      32);
+  cli.add<bool>("--transformer-head-file",
+		 "Load number of heads from model.npz.{decoder,encoder}_pruning.yml");
+  cli.add<std::vector<int>>("--transformer-encoder-heads",
+		      "Number of heads in encoder self-attention (transformer)",
+		      {8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8});
+  cli.add<std::vector<int>>("--transformer-decoder-heads",
+		      "Number of heads in decoder self-attention (transformer)",
+		      {8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8});
+  cli.add<std::vector<int>>("--transformer-context-heads",
+		      "Number of heads in encoder-decoder context attention (transformer)",
+		      {8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8});
   cli.add<bool>("--transformer-no-projection",
       "Omit linear projection after multi-head attention (transformer)");
   cli.add<bool>("--transformer-pool",
@@ -261,6 +275,12 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--transformer-dim-ffn",
       "Size of position-wise feed-forward network (transformer)",
       2048);
+  cli.add<std::vector<int>>("--transformer-enc-ffn-dim",
+      "Sizes of feed-forward layers in encoder (transformer)",
+      {1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536});
+  cli.add<std::vector<int>>("--transformer-dec-ffn-dim",
+      "Sizes of feed-forward layers in decoder (transformer)",
+      {1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536});
   cli.add<int>("--transformer-ffn-depth",
       "Depth of filters (transformer)",
       2);
@@ -554,6 +574,41 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // add ULR settings
   addSuboptionsULR(cli);
 
+  // pruning settings
+  cli.add<std::string>("--pruning-type",
+     "Pruning parameters: magnitude, magnitude-gradient",
+     "");
+  cli.add<int>("--pruning-start",
+     "Pruning parameters: iteration to start",
+     0);
+  cli.add<int>("--pruning-step",
+     "Pruning parameters: how often to prune",
+     10000);
+  cli.add<int>("--pruning-stop",
+     "Pruning parameters: iteration to end",
+     400000);
+  cli.add<float>("--pruning-sparsity",
+     "Pruning parameters: sparsity to achieve",
+     0.9);
+  cli.add<float>("--pruning-threshold",
+     "Pruning threshold if required",
+     1e-6);
+  cli.add<bool>("--pruning-skip-embeddings",
+     "Don't prune embeddings");
+
+  // regularisation settings
+  cli.add<std::vector<float>>("--regulariser-scalar",
+     "Lambda parameter in regularisers to scale penalty with",
+     {});
+  cli.add<std::vector<std::string>>("--regulariser-type",
+     "Regulariser type: l1, l2, elastic, rowcol, heads",
+     {});
+  cli.add<std::string>("--regulariser-flags",
+     "Regulariser flags (where to prune): edfh = encoder, decoder ffn heads",
+     "");
+
+  
+  
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
   cli.switchGroup(previous_group);

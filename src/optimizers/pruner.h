@@ -147,7 +147,7 @@ public:
     std::vector<float> tVec;
     p->val()->get(tVec);
     // get the abs value
-    std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabs); 
+    std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabsf);
     std::sort(tVec.begin(), tVec.end());
     
     threshold_ = tVec[k];
@@ -194,7 +194,7 @@ public:
     // auto multiplyAbs = combine2(fabsf, std::multiplies<float>()); 
     // std::transform(tVec.begin(), tVec.end(), gVec.begin(), tVec.begin(), multiplyAbs2); //TODO figure out how to do abs and multiplies together with a single std::transform
     std::transform(tVec.begin(), tVec.end(), gVec.begin(), tVec.begin(), std::multiplies<float>());
-    std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabs); 
+    std::transform(tVec.begin(), tVec.end(), tVec.begin(), fabsf);
     std::sort(tVec.begin(), tVec.end());
     
     threshold_ = tVec[k];

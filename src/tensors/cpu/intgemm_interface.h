@@ -81,7 +81,7 @@ struct PrepareBNodeOp : public UnaryNodeOp {
 
     set_name(input->name());
     if (!transpose_) {
-      ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
+      //ABORT_IF(input->shape()[-1] %8 != 0, "Columns of matrix: " + input->type() + " must be multiple of 8.");
     } else {
       ABORT_IF((input->shape().elements()/input->shape()[-1]) %8 != 0, "Rows of matrix: " + input->type() + " must be multiple of 8.");
     }

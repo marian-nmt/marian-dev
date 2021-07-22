@@ -26,11 +26,13 @@ protected:
   bool shiftedAll_;
   bool precomputedAlpha_;
   bool dumpQuantMult_;
+  bool useOneDNNOnly_;
   GemmType gemmType_{GemmType::Float32};
 
 public:
   Backend(DeviceId deviceId, size_t seed)
-      : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)), shifted_(false), shiftedAll_(false), precomputedAlpha_(false), dumpQuantMult_(false) {}
+      : deviceId_(deviceId), seed_(seed), randomGenerator_(createRandomGenerator(seed, deviceId)), shifted_(false), shiftedAll_(false), 
+        precomputedAlpha_(false), dumpQuantMult_(false), useOneDNNOnly_(false) {}
   virtual ~Backend() {};
   virtual DeviceId getDeviceId() { return deviceId_; };
   virtual Ptr<RandomGenerator> getRandomGenerator() { return randomGenerator_; }
@@ -69,6 +71,9 @@ public:
       setShiftedAll(true);
       setDumpQuantMult(true);
     }
+    if (intgemmOptsSet.find("onednn-only") != intgemmOptsSet.end()) {
+      setUseOneDNNOnly(true);
+    }
   }
 
   bool isShifted() {
@@ -102,6 +107,17 @@ public:
 
   bool DumpQuantMult() {
     return dumpQuantMult_;
+  }
+
+  void setUseOneDNNOnly(bool oneDNNOnly) {
+    useOneDNNOnly_ = oneDNNOnly;
+    if (deviceId_.type == DeviceType::gpu) {
+      LOG(warn, "onednn-only has no effect for the GPU backend");
+    }
+  }
+
+  bool useOneDNNOnly() {
+    return useOneDNNOnly_;
   }
 
 };

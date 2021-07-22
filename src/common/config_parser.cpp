@@ -829,7 +829,7 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
      "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
      0.f);
   cli.add<std::vector<std::string> >("--intgemm-options",
-     "Intgemm specific options. Possible values: dump-quantmult; shifted; precomputed-alpha; all-shifted",
+     "Intgemm specific options. Possible values: dump-quantmult; shifted; precomputed-alpha; all-shifted; onednn-only",
      {""});
 
   cli.switchGroup(previous_group);

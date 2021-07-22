@@ -110,10 +110,15 @@ struct PrepareBNodeOp : public UnaryNodeOp {
   NodeOps forwardOps() override {
    return {NodeOp(
       static bool precomputedAlpha = child(0)->graph()->getBackend()->isPrecomputedAlpha();
+      static bool shifted = child(0)->graph()->getBackend()->isShiftedAll();
       typedef typename intgemm_<vtype>::type Integer;
+      bool use_oneDNN = rows(child(0)->val()) % 64 !=0 || cols(child(0)->val()) % 8 !=0;
+      if (shifted) {
+        use_oneDNN = rows(child(0)->val()) % 64 !=0;
+      }
       if (isIntgemm(child(0)->value_type())) {
         val_ = child(0)->val();
-      } else if (rows(child(0)->val()) % 64 !=0 || cols(child(0)->val()) %8 !=0) { //@TODO proper codepaths, make sure only the ones that can't do intgemm, go through DNNL
+      } else if (use_oneDNN) { //@TODO proper codepaths, make sure only the ones that can't do intgemm, go through DNNL
         // Use DNNL in this case, meaning we need prepareA. @TODO maybe try shifted version and also code one that doesn't care about register size
         ABORT_IF(transpose_, "We haven't implemented DNNL transposed matrices for now.");
         auto quantMult = computeQuantMult<vtype>(child(0)->val(), name());
@@ -304,7 +309,45 @@ public:
         quant_mult_a = getQuantMultA<vtype>(child(1)->val());
       }
       float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
-      intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
+      if (rows(b) % 64 ==0) {
+        intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
+      } else {
+        static const std::vector<uint8_t> ones(64000, 1); // Large enough static array of ones that we can use
+        // DNNL parameters
+        const dnnl_dim_t M = 1;
+        dnnl_dim_t K = rows(b);
+        dnnl_dim_t N = cols(b);
+
+        const int8_t ao = 0;
+        const int8_t bo = 0;
+        static const std::vector<int32_t> co(1,0);
+        ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
+        auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
+                                        /*transB*/  'N',
+                                        /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
+                                        M,
+                                        N,
+                                        K,
+                                        /*alpha*/ 1.0f,
+                                        ones.data(),
+                                        /*lda*/ K,
+                                        ao,
+                                        b->template data<int8_t>(),
+                                        /*ldb*/ N,
+                                        bo,
+                                        /*beta*/ 0.0f,
+                                        val_->data<int32_t>(),
+                                        /*ldc*/ N,
+                                        co.data());
+
+        if (status != dnnl::status::success) {
+          printDNNLStatus(status);
+          ABORT("PrepareBias gemm didn't run");
+        }
+
+        //Unquantise and add bias if necessary
+        UnquantiseAndAddBias(val_, bias, unquant_mult);
+      }
     )};
   }
 
@@ -557,7 +600,28 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     int8_t bo = 0;
     std::array<int32_t, 1> co = {0};
 
-    auto status = dnnl::gemm_s8s8s32(/*transA*/  'N',
+    dnnl::status status;
+
+    if (shifted) {
+      status = dnnl::gemm_u8s8s32(/*transA*/  'N',
+                                   /*transB*/  'N',
+                                   /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
+                                    M,
+                                    N,
+                                    K,
+                                    /*alpha*/ 1.0f,
+                                    aQuant->val()->data<uint8_t>(),
+                                    /*lda*/ K,
+                                    ao,
+                                    bQuant->val()->data<int8_t>(),
+                                    /*ldb*/ N,
+                                    bo,
+                                    /*beta*/ 0.0f,
+                                    out->val()->data<int32_t>(),
+                                    /*ldc*/ N,
+                                    co.data());
+    } else {
+      status = dnnl::gemm_s8s8s32(/*transA*/  'N',
                                    /*transB*/  'N',
                                    /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
                                     M,
@@ -574,6 +638,8 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
                                     out->val()->data<int32_t>(),
                                     /*ldc*/ N,
                                     co.data());
+    }
+
     if (status != dnnl::status::success) {
       printDNNLStatus(status);
       ABORT("GEMM failed to run.");
@@ -662,7 +728,12 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   if(bias)
     children.push_back(bias);
 
-  if (rows(bQuant->shape()) % 64 != 0 || cols(bQuant->shape()) %8 != 0) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
+  bool use_oneDNN = rows(bQuant->shape()) % 64 !=0 || cols(bQuant->shape()) % 8 !=0;
+  if (shifted) {
+    use_oneDNN = rows(bQuant->shape()) % 64 !=0;
+  }
+
+  if (use_oneDNN) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
     return lambda(children, outShape, Type::float32, dnnlDotOrAffineNodeOp); // inference-only Lambda node
   } else {
     return lambda(children, outShape, Type::float32, dotOrAffineNodeOp); // inference-only Lambda node

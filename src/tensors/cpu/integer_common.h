@@ -49,6 +49,9 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
 inline int cols(Shape& shape) { return shape[-1]; }
 inline int rows(Shape& shape) { return shape.elements() / cols(shape); }
 
+inline int cols(const Shape& shape) { return shape[-1]; }
+inline int rows(const Shape& shape) { return shape.elements() / cols(shape); }
+
 template <Type type> struct intgemm_;
 
 template <> struct intgemm_<Type::intgemm8> {
@@ -212,6 +215,10 @@ static inline float computeQuantMult(marian::Tensor val, std::string name="") {
 
 // This operates on floats after processing so doesn't care about int8_t vs int16_t.
 void AddBias(marian::Tensor C, const marian::Tensor Bias);
+void JustUnquantise(marian::Tensor C, const float unquant_mult);
+void JustUnquantiseRelu(marian::Tensor C, const float unquant_mult);
+void UnquantiseAndAddBias(marian::Tensor C, const marian::Tensor Bias, const float unquant_mult);
+void UnquantiseAndAddBiasAndRelu(marian::Tensor C, const marian::Tensor Bias, const float unquant_mult);
 
 // For loading architecture agnostic models. We do PrepareAndTranpose, because we already transposed
 // in our binary format. Then we copy the quantizationMultiplier information at the end

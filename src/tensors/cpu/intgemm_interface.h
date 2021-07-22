@@ -4,6 +4,26 @@
 #include "graph/node_operators_unary.h"
 #include "integer_common.h"
 
+#include "oneapi/dnnl/dnnl.hpp"
+
+static inline void printDNNLStatus(dnnl::status& status) {
+  if (status == dnnl::status::success) {
+      std::cout << "DNNL success." << std::endl;
+  } else if (status == dnnl::status::out_of_memory ) {
+      std::cout << "The operation failed due to an out-of-memory condition." << std::endl;
+  } else if (status == dnnl::status::invalid_arguments ) {
+      std::cout << "The operation failed because of incorrect function arguments." << std::endl;
+  } else if (status == dnnl::status::unimplemented) {
+      std::cout << "The operation failed because requested functionality is not implemented." << std::endl;
+  } else if (status == dnnl::status::iterator_ends) {
+      std::cout << "Primitive iterator passed over last primitive descriptor." << std::endl;
+  } else if (status == dnnl::status::runtime_error) {
+      std::cout << "Primitive or engine failed on execution." << std::endl;
+  } else if (status == dnnl::status::not_required) {
+      std::cout << "Queried element is not required for given primitive." << std::endl;
+  }
+}
+
 namespace marian {
 
 namespace cpu {
@@ -93,6 +113,16 @@ struct PrepareBNodeOp : public UnaryNodeOp {
       typedef typename intgemm_<vtype>::type Integer;
       if (isIntgemm(child(0)->value_type())) {
         val_ = child(0)->val();
+      } else if (rows(child(0)->val()) % 64 !=0 || cols(child(0)->val()) %8 !=0) { //@TODO proper codepaths, make sure only the ones that can't do intgemm, go through DNNL
+        // Use DNNL in this case, meaning we need prepareA. @TODO maybe try shifted version and also code one that doesn't care about register size
+        ABORT_IF(transpose_, "We haven't implemented DNNL transposed matrices for now.");
+        auto quantMult = computeQuantMult<vtype>(child(0)->val(), name());
+        intgemm_<vtype>::width::PrepareA(child(0)->val()->data(), /*input*/
+                                      val_->data<Integer>(), /*output*/
+                                      quantMult, /*Quant Mult*/
+                                      rows(child(0)->val()),
+                                      cols(child(0)->val()));
+        getQuantMult<vtype>(val_) = quantMult;
       } else if (!transpose_) {
         auto quantMult = computeQuantMult<vtype>(child(0)->val(), name());
         intgemm_<vtype>::width::PrepareB(child(0)->val()->data(), /*input*/
@@ -506,6 +536,61 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     bias = PrepareBiasForBTyped(bias, bQuant, aQuant);
   }
 
+  auto dnnlDotOrAffineNodeOp = [=](Expr out, const std::vector<Expr>& children) {
+    Expr aQuant = children[0];
+    Expr bQuant = children[1];
+    Expr bias   = children.size() > 2 ? children[2] : nullptr;
+
+    // when we arrive here, A and B are already quantized, so just get the multipliers
+    float aQuantMult = getQuantMult<vtype>(aQuant->val());
+    float bQuantMult = getQuantMult<vtype>(bQuant->val());
+
+    float unquant_mult = 1.0f / (aQuantMult * bQuantMult);
+    unquant_mult = unquant_mult * scale;
+
+    // DNNL parameters
+    dnnl_dim_t M = rows(aQuant->val());
+    dnnl_dim_t K = cols(aQuant->val());
+    dnnl_dim_t N = cols(bQuant->val());
+
+    int8_t ao = 0;
+    int8_t bo = 0;
+    std::array<int32_t, 1> co = {0};
+
+    auto status = dnnl::gemm_s8s8s32(/*transA*/  'N',
+                                   /*transB*/  'N',
+                                   /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
+                                    M,
+                                    N,
+                                    K,
+                                    /*alpha*/ 1.0f,
+                                    aQuant->val()->data<int8_t>(),
+                                    /*lda*/ K,
+                                    ao,
+                                    bQuant->val()->data<int8_t>(),
+                                    /*ldb*/ N,
+                                    bo,
+                                    /*beta*/ 0.0f,
+                                    out->val()->data<int32_t>(),
+                                    /*ldc*/ N,
+                                    co.data());
+    if (status != dnnl::status::success) {
+      printDNNLStatus(status);
+      ABORT("GEMM failed to run.");
+    }
+
+    //Unquantise and add bias if necessary
+    if (bias && relu) {
+      UnquantiseAndAddBiasAndRelu(out->val(), bias->val(), unquant_mult);
+    } else if (bias) {
+      UnquantiseAndAddBias(out->val(), bias->val(), unquant_mult);
+    } else if (relu) {
+      JustUnquantiseRelu(out->val(), unquant_mult);
+    } else {
+      JustUnquantise(out->val(), unquant_mult);
+    }
+  };
+
   // wrap the multiply finctions to be executed in the forward step of a Lambda node
   auto dotOrAffineNodeOp = [=](Expr out, const std::vector<Expr>& children) {
     Expr aQuant = children[0];
@@ -577,7 +662,11 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   if(bias)
     children.push_back(bias);
 
-  return lambda(children, outShape, Type::float32, dotOrAffineNodeOp); // inference-only Lambda node
+  if (rows(bQuant->shape()) % 64 != 0 || cols(bQuant->shape()) %8 != 0) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
+    return lambda(children, outShape, Type::float32, dnnlDotOrAffineNodeOp); // inference-only Lambda node
+  } else {
+    return lambda(children, outShape, Type::float32, dotOrAffineNodeOp); // inference-only Lambda node
+  }
 #else
   a, bQuant, bias, transA, scale;
   ABORT("You need to enable CPU compilation to use this feature. Use cmake .. -DCOMPILE_CPU=ON");

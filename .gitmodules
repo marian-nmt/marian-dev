@@ -23,3 +23,6 @@
 [submodule "src/3rd_party/cub"]
 	path = src/3rd_party/cub
 	url = https://github.com/NVIDIA/cub
+[submodule "src/3rd_party/oneDNN"]
+	path = src/3rd_party/oneDNN
+	url = https://github.com/oneapi-src/oneDNN.git

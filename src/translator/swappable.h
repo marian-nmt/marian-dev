@@ -37,6 +37,7 @@ private:
 
   void Initialize(Ptr<data::Batch> batch);
   void SwapPointers(std::vector<MemoryPiece::PtrType> &with);
+  void recreateGraphAndBuilder();
 
 public:
   /**

@@ -96,6 +96,17 @@ GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)
   // // TODO: reach into graph_->params() private members and free the parameter memory.
 }
 
+void GPUEngineTrain::recreateGraphAndBuilder() {
+  // Create graph
+  graph_ = New<ExpressionGraph>();
+  auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
+  graph_->setDefaultElementType(typeFromString(prec[0]));
+  graph_->setDevice(myDeviceId_);
+  graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
+
+  builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+}
+
 GPUEngineTrain::~GPUEngineTrain() {}
 
 GPULoadedModelTrain::GPULoadedModelTrain(Ptr<GPUEngineTrain> gpu) : engine_(gpu) {
@@ -184,8 +195,9 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
         // expects a batch. So, afaik, this is the first time where i can
         // invoke build and, as a result i can call SwapPointers only
         // afterwards. TODO: verify last claim.
-        engine_->graph_->clear();
-        engine_->graph_->clearParams();
+
+        // Create graph
+        engine_->recreateGraphAndBuilder();
         engine_->graph_->load(cpuModel_->Parameters(), true, true);
         engine_->Initialize(batch);
         std::vector<uint8_t> outvec;

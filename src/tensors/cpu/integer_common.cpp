@@ -47,6 +47,13 @@ static inline __m128i _mm_loadu_epi32(const void * in) {
   return *reinterpret_cast<__m128i *>(&reg);
 }
 #endif
+#if (__GNUC__ < 10) && !defined(__clang__)
+static inline __m128i _mm_loadu_epi32(const void * in) {
+  __m128 reg = _mm_loadu_ps((const float *)in);
+  return *reinterpret_cast<__m128i *>(&reg);
+}
+#endif
+
 
 // This is done so we can use dnnl
 void JustUnquantise(marian::Tensor C, const float unquant_mult) {

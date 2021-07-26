@@ -42,6 +42,10 @@ static inline __m512i _mm512_loadu_epi32(const void * in) {
   __m512 reg = _mm512_loadu_ps(in);
   return *reinterpret_cast<__m512i *>(&reg);
 }
+static inline __m128i _mm_loadu_epi32(const void * in) {
+  __m128 reg = _mm_loadu_ps((const float *)in);
+  return *reinterpret_cast<__m128i *>(&reg);
+}
 #endif
 
 // This is done so we can use dnnl

@@ -43,6 +43,8 @@ namespace integer {
     using ElementOutput = float;
     using ElementAccumulator = int32_t;
     using ElementCompute = float;
+    using ElementOutputHalf = half;
+    using ElementComputeHalf = half;
     /*TensorOp matrices*/
 
 #ifdef CUTLASS_SM75
@@ -138,6 +140,56 @@ namespace integer {
                                                                EpilogueOpRelu,
                                                                SwizzleThreadBlock,
                                                                NumStages>;
+    /*Half TensorOp Matrices*/
+    using EpilogueOpHalf = cutlass::epilogue::thread::LinearCombination<
+        ElementOutputHalf, // <- data type of output matrix
+        128 / cutlass::sizeof_bits<ElementOutput>::value,  // <- the number of elements per vectorized
+            // memory access. For a byte, it's 16
+            // elements. This becomes the vector width of
+            // math instructions in the epilogue too
+        ElementAccumulator, // <- data type of accumulator
+        ElementCompute>;  // <- data type for alpha/beta in linear combination function
+
+    using EpilogueOpReluHalf = cutlass::epilogue::thread::LinearCombinationRelu<
+        ElementOutputHalf, // <- data type of output matrix
+        128 / cutlass::sizeof_bits<ElementOutput>::value,  // <- the number of elements per vectorized
+                  // memory access. For a byte, it's 16
+                  // elements. This becomes the vector width of
+                  // math instructions in the epilogue too
+        ElementAccumulator, // <- data type of accumulator
+        ElementCompute>;  // <- data type for alpha/beta in linear combination function
+
+        using CutlassGemmTensorOpHalf = cutlass::gemm::device::Gemm<int8_t,                            // ElementA
+            cutlass::layout::RowMajor,         // LayoutA
+            int8_t,                            // ElementB
+            cutlass::layout::ColumnMajor,      // LayoutB
+            ElementOutputHalf,                             // ElementOutput
+            cutlass::layout::ColumnMajor,      // LayoutOutput
+            int32_t,                           // ElementAccumulator
+            cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
+            SmArch,                            // tag indicating target GPU compute architecture //@TODO this should change, probably
+            ShapeMMAThreadBlock,
+            ShapeMMAWarp,
+            ShapeMMAOp,
+            EpilogueOpHalf,
+            SwizzleThreadBlock,
+            NumStages>;
+    using CutlassGemmTensorOpHalfRelu = cutlass::gemm::device::Gemm<int8_t,                           // ElementA
+            cutlass::layout::RowMajor,         // LayoutA
+            int8_t,                            // ElementB
+            cutlass::layout::ColumnMajor,      // LayoutB
+            ElementOutputHalf,                             // ElementOutput
+            cutlass::layout::ColumnMajor,      // LayoutOutput
+            int32_t,                           // ElementAccumulator
+            cutlass::arch::OpClassTensorOp,    // tag indicating Tensor Cores
+            SmArch,                            // tag indicating target GPU compute architecture //@TODO this should change, probably
+            ShapeMMAThreadBlock,
+            ShapeMMAWarp,
+            ShapeMMAOp,
+            EpilogueOpReluHalf,
+            SwizzleThreadBlock,
+            NumStages>;
+
     /*Non TensorOp matrices*/
     using InstructionShape = cutlass::gemm::GemmShape<1, 1, 4>;
     using ThreadBlockShape = cutlass::gemm::GemmShape<64, 64, 16>;
@@ -529,6 +581,94 @@ namespace integer {
                 doRelu));
         CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
     }
+
+    cutlass::Status cutlass_igemm_nn_half(bool transA, bool transB,
+        int M,
+        int N,
+        int K,
+        float * alpha,
+        int8_t const *A,
+        int lda,
+        int8_t const *B,
+        int ldb,
+        float * beta,
+        half *C,
+        int ldc,
+        bool tensorCore, /*We want this to be true for best performance*/
+        bool fused,     /* fused unquantisation (and bias addition (and activation function) if those are present). Should be true for best performance */
+        half * bias,
+        bool doRelu) {
+            half * Csrc;
+            int ldcSRC;
+            if (bias) { /* This is only available for the fused option. Beta needs to be 1? */
+                Csrc = bias;
+                ldcSRC = 0; /*Having a stride of 0 enables bias broadcast*/
+            } else {
+                Csrc = C;
+                ldcSRC = ldc;
+            }
+            if (doRelu) {
+                CutlassGemmTensorOpHalfRelu gemm_operator;
+                CutlassGemmTensorOpHalfRelu::Arguments args({M, N, K},  // Gemm Problem dimensions
+                    {A, lda},       // Tensor-ref for source matrix A
+                    {B, ldb},       // Tensor-ref for source matrix B
+                    {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                    {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            } else {
+                CutlassGemmTensorOpHalf gemm_operator;
+                CutlassGemmTensorOpHalf::Arguments args({M, N, K},  // Gemm Problem dimensions
+                    {A, lda},       // Tensor-ref for source matrix A
+                    {B, ldb},       // Tensor-ref for source matrix B
+                    {Csrc, ldcSRC}, // Tensor-ref for source matrix C
+                    {C, ldc},       // Tensor-ref for destination matrix D (may be different memory than source C matrix)
+                    {alpha, beta}); // Scalars used in the Epilogue
+                return gemm_operator(args);
+            }
+        }
+
+    void cutlass_igemm_dispatcher_half(bool transA, bool transB,
+        int M,
+        int N,
+        int K,
+        float * alpha, /*@TODO THIS SHOULD BE HALF*/
+        int8_t const *A,
+        int lda,
+        int8_t const *B,
+        int ldb,
+        float * beta, /*@TODO THIS SHOULD BE HALF*/
+        half *C,
+        int ldc,
+        bool tensorCore,
+        bool fused,
+        half * bias,
+        bool doRelu) {
+            if (!fused) {
+                printf("ERROR UNFUSED half gemm is not supported!");
+            }
+            if (!tensorCore) {
+                printf("ERROR half gemm is only supported with tensocores");
+            }
+            CUTLASS_CHECK(cutlass_igemm_nn_half(transA, transB,
+                M,
+                N,
+                K,
+                alpha,
+                A,
+                lda,
+                B,
+                ldb,
+                beta,
+                C,
+                ldc,
+                tensorCore,
+                fused,
+                bias,
+                doRelu));
+        CUDA_CHECK(cudaGetLastError()); // Sometimes CUTLASS errors manifest as CUDA errors.
+    }
+
     /**************************CUTLASS code ends here***********************/
     __global__ void getMaxAbsKernel(const float * input_gpu, int idxMax, int idxMin, float * output) {
         float absMax = abs(input_gpu[idxMax]);
@@ -568,7 +708,7 @@ namespace integer {
             output[0] = 127.0f/absMin;
         }
     }
-    
+
     //@TODO rewrite with a nice singlePass GPU version that uses shared memory
     void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu) {
         //Get Max Absolute:
@@ -578,6 +718,61 @@ namespace integer {
         CUBLAS_CHECK(cublasIsamin(handle, items, input_gpu, 1, &resMinIdx));
 
         findMaxMinAndQuantMult<<<1,1>>>(input_gpu, resMaxIdx - 1, resMinIdx - 1, output_gpu); //FUCK YOU FORTRAN INDEXING
+    }
+
+    // @TODO some bug in this method
+    __global__ void maxAbsQuantMultKernel(const half *input_gpu, float *output_gpu, size_t size) {
+      int idx = blockDim.x * blockIdx.x + threadIdx.x;
+      __shared__ float sdata[256];
+
+      if(idx < size) {
+        sdata[threadIdx.x] = abs(__half2float(input_gpu[idx]));
+        __syncthreads();
+
+        // reduction to compute the maxAbs value
+        for(int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+          if(threadIdx.x < stride) {
+            float lhs = sdata[threadIdx.x];
+            float rhs = sdata[threadIdx.x + stride];
+            sdata[threadIdx.x] = lhs < rhs ? rhs : lhs;
+          }
+          __syncthreads();
+        }
+      }
+
+      if(idx == 0) {
+        output_gpu[0] = 127.0f / sdata[0];
+      }
+    }
+
+    void maxAbsQuantMultFP16(const half *input_gpu,
+                             size_t items,
+                             float *output_gpu) {
+      int threads = 256;
+      int blocks = (int)ceil(items/256);
+      maxAbsQuantMultKernel<<<blocks, threads>>>(input_gpu, output_gpu, items);
+    }
+
+    __global__ void halfVec2floatVec(const half *input_gpu, float *output_gpu, size_t size) {
+      int idx = blockDim.x * blockIdx.x + threadIdx.x;
+      if(idx < size) {
+        output_gpu[idx] = __half2float(input_gpu[idx]);
+      }
+    }
+
+    void maxAbsQuantMultFP16Ref(cublasHandle_t& handle, const half *input_gpu, size_t items, float *output_gpu) {
+      int threads = 256;
+      int blocks = (int)ceil(items/256);
+      float * input_gpu32;
+      CUDA_CHECK(cudaMallocManaged(&input_gpu32, sizeof(float)*items));
+      halfVec2floatVec<<<blocks, threads>>>(input_gpu,input_gpu32,items);
+      //Get Max Absolute:
+      int resMaxIdx;
+      CUBLAS_CHECK(cublasIsamax(handle, items, input_gpu32, 1, &resMaxIdx));
+      int resMinIdx;
+      CUBLAS_CHECK(cublasIsamin(handle, items, input_gpu32, 1, &resMinIdx));
+
+      findMaxMinAndQuantMult<<<1,1>>>(input_gpu32, resMaxIdx - 1, resMinIdx - 1, output_gpu); //FUCK YOU FORTRAN INDEXING
     }
 
     __global__ void quantize(const float * input, int8_t * output, size_t items, const float * quantMultAddr) {
@@ -600,6 +795,35 @@ namespace integer {
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 
+    __global__ void quantizeFP16(const half *input,
+                             int8_t *output,
+                             size_t items,
+                             const float *quantMultAddr) {
+      const float quantMult
+          = *quantMultAddr;  //@TODO ask nvidia if this is the most efficient way to do this here
+      size_t x = blockIdx.x * blockDim.x + threadIdx.x;
+      int i = threadIdx.x;
+      __shared__ float share[256];  // Not sure if shared memory is necessary here to take advnatage
+                                    // of globale memory burst
+      if(x < items) {
+        share[i] = __half2float(input[x]);
+        output[x] = (int8_t)max(-128, min(127, (int)rintf(share[i] * quantMult)));
+      }
+    }
+
+    void quantizeFP16(const half *input,
+                  int8_t *output,
+                  size_t rows,
+                  size_t cols,
+                  const float *quantMultAddr) {
+      // Make sure we're not running out of threads here.
+      int threads = 256;
+      int blocks = (int)ceil(rows * cols / 256);
+
+      quantizeFP16<<<blocks, threads>>>(input, output, rows * cols, quantMultAddr);
+      CUDA_CHECK(cudaGetLastError());  // Get errors from kernel launches
+    }
+
     __global__ void quantizeToRowMajor(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr) {
         const float quantMult = *quantMultAddr; // @TODO ask nvidia if this is the most efficient way to do this here
         int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -620,6 +844,38 @@ namespace integer {
 
         quantizeToRowMajor<<<dimGrid, dimBlock>>>(input, output, rows, cols, quantMultAddr);
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
+    }
+
+    __global__ void quantizeToRowMajorFP16(const half *input,
+                                       int8_t *output,
+                                       size_t rows,
+                                       size_t cols,
+                                       const float *quantMultAddr) {
+      const float quantMult
+          = *quantMultAddr;  // @TODO ask nvidia if this is the most efficient way to do this here
+      int row = blockIdx.y * blockDim.y + threadIdx.y;
+      int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+      // input is col major, output is row major
+      if(row * col < rows * cols) {
+        output[cols * row + col]
+            = (int8_t)llrintf((__half2float(input[rows * col + row]) * quantMult));
+      }
+    }
+
+    void quantizeToRowMajorWrapperFP16(const half *input,
+                                   int8_t *output,
+                                   size_t rows,
+                                   size_t cols,
+                                   const float *quantMultAddr) {
+      // Make sure we're not running out of threads here.
+
+      dim3 dimBlock(32, 32);
+      dim3 dimGrid(std::max(cols / dimBlock.x, 1ul), std::max(rows / dimBlock.y, 1ul));
+      // dim3 dimGrid(std::max(cols / dimBlock.x, 2ul), std::max(rows / dimBlock.y, 2ul));
+
+      quantizeToRowMajorFP16<<<dimGrid, dimBlock>>>((__half*)input, output, rows, cols, quantMultAddr);
+      CUDA_CHECK(cudaGetLastError());  // Get errors from kernel launches
     }
 
     __global__ void getDequantMult(float * output, float * quantMultAaddr, float * quantMultBaddr) {
@@ -654,6 +910,41 @@ namespace integer {
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
     }
 
+    __global__ void dequantizeFP16(const int32_t *input,
+                               half *output,
+                               size_t items,
+                               const float *quantMultAaddr,
+                               const float *quantMultBaddr) {
+      const float aQuantMult = *quantMultAaddr;
+      const float bQuantMult = *quantMultBaddr;
+      const float dequantMult
+          = 1.0f
+            / (aQuantMult
+               * bQuantMult);  //@TODO ask nvidia if this is the most efficient way to do this here
+      size_t x = blockIdx.x * blockDim.x + threadIdx.x;
+      int i = threadIdx.x;
+      __shared__ int32_t share[256];  // Not sure if shared memory is necessary here to take
+                                      // advnatage of globale memory burst
+      if(x < items) {
+        share[i] = input[x];
+        output[x] = __float2half(((float)share[i]) * dequantMult);
+      }
+    }
+
+    void dequantizeFP16(const int32_t *input,
+                    half *output,
+                    size_t rows,
+                    size_t cols,
+                    const float *quantMultAaddr,
+                    const float *quantMultBaddr) {
+      // Make sure we're not running out of threads here.
+      int threads = 256;
+      int blocks = (int)ceil(rows * cols / 256);
+
+      dequantizeFP16<<<blocks, threads>>>(input, output, rows * cols, quantMultAaddr, quantMultBaddr);
+      CUDA_CHECK(cudaGetLastError());  // Get errors from kernel launches
+    }
+
     __global__ void dequantize(const int32_t * input, float * output, size_t items, const float * dequantMultAddr) {
         const float dequantMult = *dequantMultAddr; //@TODO ask nvidia if this is the most efficient way to do this here
         size_t x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -672,6 +963,35 @@ namespace integer {
 
         dequantize<<<blocks, threads>>>(input, output, rows*cols, dequantMultAddr);
         CUDA_CHECK(cudaGetLastError()); // Get errors from kernel launches
+    }
+
+    __global__ void dequantizeFP16(const int32_t *input,
+                               half *output,
+                               size_t items,
+                               const float *dequantMultAddr) {
+      const float dequantMult
+          = *dequantMultAddr;  //@TODO ask nvidia if this is the most efficient way to do this here
+      size_t x = blockIdx.x * blockDim.x + threadIdx.x;
+      int i = threadIdx.x;
+      __shared__ int32_t share[256];  // Not sure if shared memory is necessary here to take
+                                      // advnatage of global memory burst
+      if(x < items) {
+        share[i] = input[x];
+        output[x] = __float2half(((float)share[i]) * dequantMult);
+      }
+    }
+
+    void dequantizeFP16(const int32_t *input,
+                    half *output,
+                    size_t rows,
+                    size_t cols,
+                    const float *dequantMultAddr) {
+      // Make sure we're not running out of threads here.
+      int threads = 256;
+      int blocks = (int)ceil(rows * cols / 256);
+
+      dequantizeFP16<<<blocks, threads>>>(input, output, rows * cols, dequantMultAddr);
+      CUDA_CHECK(cudaGetLastError());  // Get errors from kernel launches
     }
 
     __global__ void meanStdkern(float * input, size_t elems, float * mean, float * stddev, float * absMean, float * absStddev, float * normal_sum, float * squares_sum, float * abs_normal_sum) {
@@ -807,6 +1127,18 @@ namespace integer {
 
     void memCpyDevice(float * dest, float * source, size_t elems) {
         CUDA_CHECK(cudaMemcpy(dest, source, elems*sizeof(float), cudaMemcpyDeviceToDevice));
+    }
+
+    __global__ void memCast(half *in, float *out){
+      out[0] = __half2float(in[0]);
+    }
+
+    // @TODO can be improved here
+    void memCpyDeviceFP16(float *dest, half *source) {
+      float *source32;
+      CUDA_CHECK(cudaMalloc(&source32, sizeof(float)));
+      memCast<<<1,1>>>(source, source32);
+      CUDA_CHECK(cudaMemcpy(dest, source32, sizeof(float), cudaMemcpyDeviceToDevice));
     }
 
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems) {

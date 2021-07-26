@@ -27,10 +27,16 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
 
 #ifdef CUDA_FOUND
     float getMaxAbs(cublasHandle_t& handle, const float * input_gpu, size_t items);
+    void maxAbsQuantMultFP16(const half * input_gpu, size_t items, float * output_gpu);
+    void maxAbsQuantMultFP16Ref(cublasHandle_t& handle, const half * input_gpu, size_t items, float * output_gpu);
     void maxAbsQuantMult(cublasHandle_t& handle, const float * input_gpu, size_t items, float * output_gpu);
+    void quantizeFP16(const half* input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
     void quantize(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
+    void quantizeToRowMajorWrapperFP16(const half * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
     void quantizeToRowMajorWrapper(const float * input, int8_t * output, size_t rows, size_t cols, const float * quantMultAddr);
+    void dequantizeFP16(const int32_t * input, half * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr);
     void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * quantMultAaddr, const float * quantMultBaddr);
+    void dequantizeFP16(const int32_t * input, half * output, size_t rows, size_t cols, const float * dequantMultAddr);
     void dequantize(const int32_t * input, float * output, size_t rows, size_t cols, const float * dequantMultAddr);
     void cutlass_igemm_dispatcher(bool transA, bool transB,
         int M,
@@ -48,11 +54,29 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         bool fused,
         float * bias,
         bool doRelu);
+    void cutlass_igemm_dispatcher_half(bool transA, bool transB,
+        int M,
+        int N,
+        int K,
+        float * alpha, /*@TODO THIS SHOULD BE HALF*/
+        int8_t const *A,
+        int lda,
+        int8_t const *B,
+        int ldb,
+        float * beta, /*@TODO THIS SHOULD BE HALF*/
+        half *C,
+        int ldc,
+        bool tensorCore,
+        bool fused,
+        half * bias,
+        bool doRelu);
     void gpuPrinterDispatch(float * mem, size_t idx);
     void gpuPrinterDispatch(int32_t * mem, size_t idx);
     void gpuPrinterDispatch(int8_t * mem, size_t idx);
+    void memCpyDeviceFP16(float * dest, half * source);
     void memCpyDevice(float * dest, float * source, size_t elems);
     void memCpyDevice(int8_t * dest, int8_t * source, size_t elems);
+    void getDequantMultWrapperFP16(half * output, float * quantMultAaddr, float * quantMultBaddr);
     void getDequantMultWrapper(float * output, float * quantMultAaddr, float * quantMultBaddr);
     MeanStd getMeanStd(float * input, size_t elems);
     void fieldSetGPU(float * gpuMem, float value);
@@ -84,6 +108,22 @@ inline int rows(Tensor& tensor) { return tensor->shape().elements() / cols(tenso
         bool /*tensorCore*/,
         bool /*fused*/,
         float * /*bias*/,
+        bool /*doRelu*/) {}
+    void cutlass_igemm_dispatcher_half(bool /*transA*/, bool /*transB*/,
+        int /*M*/,
+        int /*N*/,
+        int /*K*/,
+        float */* alpha*/,
+        int8_t const */*A*/,
+        int /*lda*/,
+        int8_t const */*B*/,
+        int /*ldb*/,
+        float * /*beta*/,
+        half */*C*/,
+        int /*ldc*/,
+        bool /*tensorCore*/,
+        bool /*fused*/,
+        half * /*bias*/,
         bool /*doRelu*/) {}
     inline void memCpyDevice(float * /*dest*/, float * /*source*/, size_t /*elems*/) {}
     inline void memCpyDevice(int8_t * /*dest*/, int8_t * /*source*/, size_t /*elems*/) {}

@@ -199,7 +199,7 @@ void UnquantiseAndAddBiasAndRelu(marian::Tensor C, const marian::Tensor Bias, co
     for(; i < n4; i += 4) {
       __m128 ai = _mm_mul_ps(_mm_cvtepi32_ps(_mm_loadu_epi32(x + j * n + i)), unquant_mult_reg);
       __m128 bi = _mm_loadu_ps(bias + i);
-      __m128 yi = _mm_max_ps(_mm_add_ps(ai, bi), vonst_zero);
+      __m128 yi = _mm_max_ps(_mm_add_ps(ai, bi), vconst_zero);
       _mm_storeu_ps(y + j * n + i, yi);
     }
 #endif

@@ -193,9 +193,11 @@ public:
 
         // Compute QuantMultiplier, compress matrix and store quantMult at the end.
         // We need to tranpose first, because of our architecture independet format requiring a transposed matrix
+        // Assuming shifted version here for Maxi's models when deciding whether to use intgemm or oneDNN:
+        bool useOneDNN = rows(val) % 64 !=0;
         Tensor tmp;
         allocator->allocate(tmp, val->shape(), val->type());
-        if (pName.find("Wemb") == std::string::npos) {
+        if (pName.find("Wemb") == std::string::npos && !useOneDNN) {
           cpu::Transpose10(tmp, val);
         } else {
           tmp = val; // The Wemb matrix is always transposed
@@ -206,24 +208,30 @@ public:
 
           // Hardware-specific conversions which allow to implement memory-mapping and avoid conversion at runtime
           cpu::integer::passOrAbort(gemmElementType); // Check if the hardware supports the GEMM type
-          if(isSsse3(gemmElementType)) {
+          if(isSsse3(gemmElementType) && !useOneDNN) {
             intgemm::SSSE3::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                     paramMat->data<int8_t>(), /*output*/
                                                     quantMult, /*Quant Mult*/
                                                     rows(val),
                                                     cols(val));
-          } else if(isAvx2(gemmElementType)) {
+          } else if(isAvx2(gemmElementType) && !useOneDNN) {
             intgemm::AVX2::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                    paramMat->data<int8_t>(), /*output*/
                                                    quantMult, /*Quant Mult*/
                                                    rows(val),
                                                    cols(val));
-          } else if(isAvx512(gemmElementType)) {
+          } else if(isAvx512(gemmElementType) && !useOneDNN) {
             intgemm::AVX512BW::Kernels8::PrepareBTransposed(tmp->data(), /*input*/
                                                      paramMat->data<int8_t>(), /*output*/
                                                      quantMult, /*Quant Mult*/
                                                      rows(val),
                                                      cols(val));
+          } else if (cols(val) % 8 != 0) {
+            intgemm::Int8::PrepareA(val->data(), /*input*/
+                                    paramMat->data<int8_t>(), /*output*/
+                                    quantMult, /*Quant Mult*/
+                                    rows(val),
+                                    cols(val));
           } else {
             ABORT_IF(gemmElementType != Type::intgemm8, "Type {} is not supported", gemmElementType); // shouldn't really happen, but let's make sure
             intgemm::Int8::PrepareA(tmp->data(), /*input*/

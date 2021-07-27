@@ -227,25 +227,43 @@ void prepareAndTransposeB(io::Item& item, const char * input) {
 #if COMPILE_CPU
     typedef typename intgemm_<vtype>::type Integer;
     Integer * output_tensor = reinterpret_cast<Integer *>(&(*item.bytes.begin()));
-    // Sometimes we will end up with misaligned intput (and output) so we can't use them directly.
-    // If this is the case, we will need to temporary allocate aligned memory, copy the results, and then free it
-    if (reinterpret_cast<uintptr_t>(input) % 64 == 0 && reinterpret_cast<uintptr_t>(output_tensor) % 64 == 0) {
-        intgemm_<vtype>::width::PrepareBQuantizedTransposed(reinterpret_cast<const Integer *>(input),
-                                                   output_tensor,
-                                                   rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 
-                                                   cols(item.shape)); //rows here returns the columns of the transposed input matrix, and cols -> the rows
+    // PrepareB supports more shapes than prepareBQuantizedTransposed. For some matrices, this means we should
+    // Therefore. Unquantise. Transpose and then prepareB. FML
+    if (cols(item.shape) %8 != 0) {
+      float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements()));
+      float * unquant_mat = (float *)genericMalloc(512, rows(item.shape)*cols(item.shape)*sizeof(float));
+      for (size_t i = 0; i < item.shape.elements(); i++) {
+        unquant_mat[i] = reinterpret_cast<const Integer *>(input)[i]*(1/quantMult);
+      }
+      // Prepare B now
+      intgemm_<vtype>::width::PrepareB(unquant_mat,
+                                       output_tensor,
+                                       quantMult,
+                                       rows(item.shape),
+                                       cols(item.shape));
+      //genericFree(unquant_mat_untrans);
+      genericFree(unquant_mat);
     } else {
-        Integer * aligned_input = reinterpret_cast<Integer *>(genericMalloc(512, rows(item.shape)*cols(item.shape)*sizeof(Integer)));
-        std::copy(reinterpret_cast<const Integer *>(input), reinterpret_cast<const Integer *>(input) + rows(item.shape)*cols(item.shape), aligned_input);
-        Integer * aligned_output = reinterpret_cast<Integer *>(genericMalloc(512, rows(item.shape)*cols(item.shape)*sizeof(Integer)));
-        intgemm_<vtype>::width::PrepareBQuantizedTransposed(reinterpret_cast<const Integer *>(aligned_input),
-                                                   reinterpret_cast<Integer *>(aligned_output),
-                                                   rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 
-                                                   cols(item.shape)); //rows here returns the columns of the transposed input matrix, and cols -> the rows
-        // Copy to output tensor
-        std::copy(aligned_output, aligned_output + rows(item.shape)*cols(item.shape), output_tensor);
-        genericFree(aligned_input);
-        genericFree(aligned_output);
+      // Sometimes we will end up with misaligned intput (and output) so we can't use them directly.
+      // If this is the case, we will need to temporary allocate aligned memory, copy the results, and then free it
+      if (reinterpret_cast<uintptr_t>(input) % 64 == 0 && reinterpret_cast<uintptr_t>(output_tensor) % 64 == 0) {
+          intgemm_<vtype>::width::PrepareBQuantizedTransposed(reinterpret_cast<const Integer *>(input),
+                                                    output_tensor,
+                                                    rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 
+                                                    cols(item.shape)); //rows here returns the columns of the transposed input matrix, and cols -> the rows
+      } else {
+          Integer * aligned_input = reinterpret_cast<Integer *>(genericMalloc(512, rows(item.shape)*cols(item.shape)*sizeof(Integer)));
+          std::copy(reinterpret_cast<const Integer *>(input), reinterpret_cast<const Integer *>(input) + rows(item.shape)*cols(item.shape), aligned_input);
+          Integer * aligned_output = reinterpret_cast<Integer *>(genericMalloc(512, rows(item.shape)*cols(item.shape)*sizeof(Integer)));
+          intgemm_<vtype>::width::PrepareBQuantizedTransposed(reinterpret_cast<const Integer *>(aligned_input),
+                                                    reinterpret_cast<Integer *>(aligned_output),
+                                                    rows(item.shape),  //Since we only transposed, but didn't update the shape when constructing the binary, 
+                                                    cols(item.shape)); //rows here returns the columns of the transposed input matrix, and cols -> the rows
+          // Copy to output tensor
+          std::copy(aligned_output, aligned_output + rows(item.shape)*cols(item.shape), output_tensor);
+          genericFree(aligned_input);
+          genericFree(aligned_output);
+      }
     }
     //Copy the quantMult
     float quantMult = *(reinterpret_cast<const float *>(reinterpret_cast<const Integer *>(input) + item.shape.elements()));

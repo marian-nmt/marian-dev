@@ -79,9 +79,12 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
           items[i].type = Type::float32;
           items[i].bytes.resize(items[i].shape.elements()*sizeof(float)); // We should have an extra float at the back but that requires a different format,
           cpu::integer::unquantizeWemb<Type::intgemm8>(items[i], ptr);        // but due to the way the allocator works, we can't
-        } else {
+        } else if (items[i].shape.elements()/items[i].shape.back() % 64 == 0) { // The non-maxi ones don't require on demand preparation.
           items[i].type = cpu::integer::getIntgemmType(Type::intgemm8);
           cpu::integer::prepareAndTransposeB<Type::intgemm8>(items[i], ptr);
+        } else {
+          items[i].type = cpu::integer::getIntgemmType(Type::intgemm8);
+          std::copy(ptr, ptr + len, items[i].bytes.begin());
         }
       } else if (matchType<intgemm16>(items[i].type)) {
         if (items[i].name.find("Wemb") != std::string::npos) { // Same comments as the above case

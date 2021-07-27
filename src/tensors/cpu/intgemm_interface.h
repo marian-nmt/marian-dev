@@ -596,9 +596,9 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     dnnl_dim_t K = cols(aQuant->val());
     dnnl_dim_t N = cols(bQuant->val());
 
-    int8_t ao = 0;
-    int8_t bo = 0;
-    std::array<int32_t, 1> co = {0};
+    static const constexpr int8_t ao = 0;
+    static const constexpr int8_t bo = 0;
+    static const constexpr std::array<int32_t, 1> co = {0};
 
     dnnl::status status;
 

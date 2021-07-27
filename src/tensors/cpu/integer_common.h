@@ -11,7 +11,7 @@
 namespace intgemm {
   struct Int8;
   struct Int16;
-  namespace SSE3 {
+  namespace SSSE3 {
     struct Kernels8;
   }
   namespace SSE2 {

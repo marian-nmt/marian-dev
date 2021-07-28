@@ -46,7 +46,13 @@ for name in matrices_maxabs:
 
 
 model_file = np.load(argv[2])
-model_file_dict = dict(model_file)
+model_file_dict = dict()
+for key in model_file.keys():
+    try:
+        model_file_dict[key] = model_file[key]
+    except:
+        print(key, "BROKEN MATRIX")
+
 for name in matrices_maxabs:
     if "QuantMultA" in name:
         res = np.array((1,), dtype = np.float32)

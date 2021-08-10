@@ -160,7 +160,7 @@ public:
     auto collector = New<OutputCollector>(options_->get<std::string>("output"));
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
-    auto printer = New<OutputPrinter>(options_, cpuModel_->SrcVocabs().back());
+    auto printer = New<OutputPrinter>(options_, cpuModel_->TrgVocab());
 
     // Initialize train data
     auto trainPaths = options_->get<std::vector<std::string>>("train-sets");

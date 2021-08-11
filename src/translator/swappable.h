@@ -70,8 +70,8 @@ class GPULoadedModelTrain {
 
     Ptr<Vocab> TrgVocab() const { return trgVocab_; }
 
-    // Overwrite this model with parameters from a different one.
-    void Load(Ptr<CPULoadedModel> from);
+    // Change the internal pointers to vocabularies and CPULoadedModel to different ones
+    void SetModel(Ptr<CPULoadedModel> from);
 
     std::vector<MemoryPiece::PtrType> Parameters() const;
 

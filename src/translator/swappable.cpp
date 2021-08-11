@@ -145,6 +145,10 @@ void GPULoadedModelTrain::Load(Ptr<CPULoadedModel> from) {
   cpuModel_ = from;
 }
 
+std::vector<MemoryPiece::PtrType> GPULoadedModelTrain::Parameters() const {
+  return engine_->graph_->params()->toMemoryPieces();
+}
+
 // void GPULoadedModelTrain::Load(const CPULoadedModel &from) {
 //   srcVocabs_ = from.SrcVocabs();
 //   trgVocab_ = from.TrgVocab();
@@ -165,17 +169,11 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   scheduler->registerTrainingObserver(scheduler);
   scheduler->registerTrainingObserver(optimizer);
 
-  // LOG(info, "GAAAH: vocabs is {}", srcVocabs_);
-  for (auto vocab: srcVocabs_) {
-    LOG(info, "GAAAH: single vocab is {}", vocab);
-  }
-
   std::vector<Ptr<Vocab>> allVocabs;
   allVocabs.reserve(srcVocabs_.size() + 1);
   allVocabs.insert(allVocabs.end(), srcVocabs_.begin(), srcVocabs_.end());
   allVocabs.emplace_back(trgVocab_);
   auto corpus = New<data::TextInput>(input, allVocabs, engine_->options_);  // @TODO dirty hack
-  // auto corpus = New<data::TextInput>(input, srcVocabs_, engine_->options_); // @TODO dirty hack
   data::BatchGenerator<data::TextInput> batchGenerator(corpus, engine_->options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
 
   bool first = true;
@@ -317,8 +315,7 @@ void GPULoadedModel::PointToParams(const GPULoadedModelTrain &from) {
   ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
   srcVocabs_ = from.srcVocabs_;
   trgVocab_  = from.trgVocab_;
-  // TODO: this might be wrong and could be droped in favor of using SwapPointers
-  parameters_ = from.engine_->graph_->params()->toMemoryPieces();
+  parameters_ = from.Parameters();
 }
 
 void GPULoadedModel::Load(const CPULoadedModel &from) {

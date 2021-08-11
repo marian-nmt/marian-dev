@@ -57,7 +57,6 @@ class GPULoadedModelTrain {
 
     Ptr<GPUEngineTrain> engine_;
 
-    // std::vector<MemoryPiece::PtrType> parameters_;
     Ptr<CPULoadedModel> cpuModel_;
     std::vector<Ptr<Vocab>> srcVocabs_;
     Ptr<Vocab> trgVocab_;
@@ -72,10 +71,9 @@ class GPULoadedModelTrain {
     Ptr<Vocab> TrgVocab() const { return trgVocab_; }
 
     // Overwrite this model with parameters from a different one.
-    // void Load(const CPULoadedModel &from);
     void Load(Ptr<CPULoadedModel> from);
-    // void Load(const GPULoadedModelTrain &from);
-    // void AllocateParamsLike(const CPULoadedModel &from);
+
+    std::vector<MemoryPiece::PtrType> Parameters() const;
 
     void Train(const std::vector<std::string> &input);
 };

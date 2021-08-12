@@ -54,27 +54,14 @@ void GPUEngineTrain::SwapPointers(
   }
 }
 
-void GPUEngineTrain::Initialize(Ptr<data::Batch> batch) {
-  if (!initialized_) {
-    builder_->build(graph_, batch);
-    graph_->forward();
-    initialized_ = true;
-  }
-}
-
-GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx) 
-  : options_(options), graph_(New<ExpressionGraph>()), myDeviceId_(LookupGPU(options, deviceIdx)), allocator_(myDeviceId_, 0, 128 * 1048576) {
+GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)
+  : options_(options), myDeviceId_(LookupGPU(options, deviceIdx)) {
   ABORT_IF(myDeviceId_.type == DeviceType::cpu, "Swappable slot only works for GPU devices.");
   options_->set("inference", false);
   options_->set("shuffle", "none");
 
-  // Create graph
-  auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
-  graph_->setDefaultElementType(typeFromString(prec[0]));
-  graph_->setDevice(myDeviceId_);
-  graph_->reserveWorkspaceMB(options_->get<size_t>("workspace"));
-
-  builder_ = models::createCriterionFunctionFromOptions(options_, models::usage::training);
+  // There is no need to initialize the graph or builder here because that's done before
+  // each Train() invokation
 }
 
 void GPUEngineTrain::recreateGraphAndBuilder() {
@@ -134,17 +121,9 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
 
       LOG(info, "### NEW BATCH");
       if(first) {
-        // This is a bit awkward but for some reason
-        // ICriterionFunction::build, which Initialize invokes underneath,
-        // expects a batch. So, afaik, this is the first time where i can
-        // invoke build and, as a result i can call SwapPointers only
-        // afterwards. TODO: verify last claim.
-
         // Create graph
         engine_->recreateGraphAndBuilder();
         engine_->graph_->load(cpuModel_->Parameters(), true, true);
-        engine_->Initialize(batch);
-        std::vector<uint8_t> outvec;
         first = false;
       }
 
@@ -263,8 +242,8 @@ Histories GPULoadedModel::Translate(const std::vector<std::string> &input) {
 
 Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {
   ABORT_IF(!trgVocab_, "GPULoadedModel needs to be overwritten by a CPU model first.");
-  std::vector<uint8_t> outvec;
-  get(outvec, parameters_[0], engine_->graph_->getBackend());
+  // std::vector<uint8_t> outvec;
+  // get(outvec, parameters_[0], engine_->graph_->getBackend());
   engine_->SwapPointers(parameters_);
 
   BeamSearch search(engine_->options_, engine_->scorers_, trgVocab_);

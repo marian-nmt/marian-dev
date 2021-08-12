@@ -32,10 +32,7 @@ private:
   Ptr<ExpressionGraph> graph_;
   Ptr<models::ICriterionFunction> builder_;
   const DeviceId myDeviceId_;
-  Allocator allocator_;
-  bool initialized_ = false;
 
-  void Initialize(Ptr<data::Batch> batch);
   void SwapPointers(std::vector<MemoryPiece::PtrType> &with);
   void recreateGraphAndBuilder();
 

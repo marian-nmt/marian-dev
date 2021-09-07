@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Adds option --add-lsh to marian-conv which allows the LSH to be memory-mapped.
 - Early stopping based on first, all, or any validation metrics via `--early-stopping-on`
 - Compute 8.6 support if using CUDA>=11.1
 - Support for RMSNorm as drop-in replace for LayerNorm from `Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization`. Enabled in Transformer model via `--transformer-postprocess dar` instead of `dan`.
@@ -27,8 +28,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Add unit tests for binary files.
 - Fix compilation with OMP
 - Compute aligned memory sizes using exact sizing
+- Support for loading lexical shortlist from a binary blob 
+- Integrate a shortlist converter (which can convert a text lexical shortlist to a binary shortlist) into marian-conv with --shortlist option
 
 ### Fixed
+- Do not set guided alignments for case augmented data if vocab is not factored
+- Various fixes to enable LSH in Quicksand
+- Added support to MPIWrappest::bcast (and similar) for count of type size_t
+- Adding new validation metrics when training is restarted and --reset-valid-stalled is used
 - Missing depth-scaling in transformer FFN
 - Fixed an issue when loading intgemm16 models from unaligned memory.
 - Fix building marian with gcc 9.3+ and FBGEMM
@@ -43,6 +50,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Broken links to MNIST data sets
 
 ### Changed
+- Optimize LSH for speed by treating is as a shortlist generator. No option changes in decoder
 - Set REQUIRED_BIAS_ALIGNMENT = 16 in tensors/gpu/prod.cpp to avoid memory-misalignment on certain Ampere GPUs.
 - For BUILD_ARCH != native enable all intrinsics types by default, can be disabled like this: -DCOMPILE_AVX512=off
 - Moved FBGEMM pointer to commit c258054 for gcc 9.3+ fix

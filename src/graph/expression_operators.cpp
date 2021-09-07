@@ -28,13 +28,17 @@ Expr checkpoint(Expr a) {
 }
 
 Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, 
-            LambdaNodeFunctor fwd) {
-  return Expression<LambdaNodeOp>(nodes, shape, type, fwd);
+            LambdaNodeFunctor fwd, size_t hash) {
+  return Expression<LambdaNodeOp>(nodes, shape, type, fwd, hash);
 }
 
 Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, 
-            LambdaNodeFunctor fwd, LambdaNodeFunctor bwd) {
-  return Expression<LambdaNodeOp>(nodes, shape, type, fwd, bwd);
+            LambdaNodeFunctor fwd, LambdaNodeFunctor bwd, size_t hash) {
+  return Expression<LambdaNodeOp>(nodes, shape, type, fwd, bwd, hash);
+}
+
+Expr callback(Expr node, LambdaNodeCallback call) {
+  return Expression<CallbackNodeOp>(node, call);
 }
 
 // logistic function. Note: scipy name is expit()
@@ -556,6 +560,10 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
 
 Expr bdot(Expr a, Expr b, bool transA, bool transB, float scale) {
   return Expression<DotBatchedNodeOp>(a, b, transA, transB, scale);
+}
+
+Expr bdot_legacy(Expr a, Expr b, bool transA, bool transB, float scale) {
+  return Expression<DotBatchedLegacyNodeOp>(a, b, transA, transB, scale);
 }
 
 Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {

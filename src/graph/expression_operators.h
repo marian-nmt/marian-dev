@@ -26,12 +26,19 @@ typedef std::function<void(Expr out, const std::vector<Expr>& in)> LambdaNodeFun
 /**
  * Arbitrary node with forward operation only.
  */
-Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd);
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, size_t hash = 0);
 
 /**
  * Arbitrary node with forward and backward operation.
  */
-Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, LambdaNodeFunctor bwd);
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, LambdaNodeFunctor bwd, size_t hash = 0);
+
+
+/**
+ * Convience typedef for graph @ref lambda expressions.
+ */
+typedef std::function<void(Expr)> LambdaNodeCallback;
+Expr callback(Expr node, LambdaNodeCallback call);
 
 /**
  * @addtogroup graph_ops_activation Activation Functions
@@ -477,6 +484,16 @@ Expr bdot(Expr a,
           bool transA = false,
           bool transB = false,
           float scalar = 1.f);
+
+/**
+ * bdot_legacy is an old implemetation of bdot without correct broadcasting on the batch dimensions, 
+ * to be removed once the behavior can be correctly replicated with normal bdot on 5 dimensions.
+ */
+Expr bdot_legacy(Expr a,
+                 Expr b,
+                 bool transA = false,
+                 bool transB = false,
+                 float scalar = 1.f);
 
 /**
  * Performs an affine transformation.

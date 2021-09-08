@@ -65,7 +65,6 @@ GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)
 }
 
 void GPUEngineTrain::RecreateGraphAndBuilder() {
-  // Create graph
   graph_ = New<ExpressionGraph>();
   auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
   graph_->setDefaultElementType(typeFromString(prec[0]));

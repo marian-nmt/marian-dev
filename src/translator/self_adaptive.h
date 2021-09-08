@@ -68,26 +68,27 @@ public:
     options_->set("shuffle", "none");
     // Set up translator options
     optionsTrans_ = New<Options>(options_->clone());
+    // We will only ever translate a single sentence at a time because dynamic
+    // adaptation happens per sentence
     optionsTrans_->set<size_t>("mini-batch", 1);
     optionsTrans_->set<size_t>("maxi-batch", 1);
+    // TODO: should probably un-hardcode this? The issue is, though, that the users
+    // might want separate options for training and translation
     optionsTrans_->set<size_t>("max-length", 1000);
     optionsTrans_->set("shuffle", "none");
 
-    auto deviceId = Config::getDevices(options_)[0];
-
     auto modelFilename = options_->get<std::string>("model");
+    // Training has a single "model", translation can have multiple "models" in the general case.
+    // Adaptive options also take a single "model" so we have to adapt translation options manually.
     optionsTrans_->set<std::vector<std::string>>("models", {modelFilename});
 
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
-    // TODO: or use optionsTrans_ here? cpuModel_ is used by both, trainin and translation, code
-    // so i don't yet know what's the correct approach
     cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
     translateEngine_ = New<GPUEngine>(optionsTrans_, 0);
     translateSlot_ = New<GPULoadedModel>(translateEngine_);
     trainEngine_ = New<GPUEngineTrain>(options_, 0);
     trainSlot_   = New<GPULoadedModelTrain>(trainEngine_);
-    // trainSlot_->AllocateParamsLike(*cpuModel_);
   }
 
   std::string run(const std::string& json) override {
@@ -175,7 +176,6 @@ public:
         LOG(info, "# NEW TEST BATCH");
         trainSlot_->SetModel(cpuModel_);
         trainSlot_->Train(trainSet);
-        // translateSlot_->Load(*trainSlot_);
         translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;

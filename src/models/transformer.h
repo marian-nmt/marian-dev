@@ -427,7 +427,7 @@ public:
     // memoization propagation (short-term)
     if (cache                                                                          // if caching
         && cache_.count(prefix + "_keys") > 0                                          // and the keys expression has been seen
-        && cache_[prefix + "_keys"]->shape().elements() == keys->shape().elements()) { // and the underlying element size did not change
+        && cache_[prefix + "_keys"]->shape() == keys->shape()) { // and the underlying element size did not change
       kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
     }
     else {
@@ -444,7 +444,7 @@ public:
     Expr vh;
     if (cache 
         && cache_.count(prefix + "_values") > 0 
-        && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
+        && cache_[prefix + "_values"]->shape() == values->shape()) {
       vh = cache_[prefix + "_values"];
     } else {
       auto Wv = graph_->param(prefix + "_Wv", {dimModel, dimHeads * dimHeadSize}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));

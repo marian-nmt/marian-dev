@@ -34,7 +34,7 @@ private:
   const DeviceId myDeviceId_;
 
   void SwapPointers(std::vector<MemoryPiece::PtrType> &with);
-  void recreateGraphAndBuilder();
+  void RecreateGraphAndBuilder();
 
 public:
   /**

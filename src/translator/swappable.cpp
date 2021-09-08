@@ -64,7 +64,7 @@ GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)
   // each Train() invokation
 }
 
-void GPUEngineTrain::recreateGraphAndBuilder() {
+void GPUEngineTrain::RecreateGraphAndBuilder() {
   // Create graph
   graph_ = New<ExpressionGraph>();
   auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
@@ -122,7 +122,7 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
       LOG(info, "### NEW BATCH");
       if(first) {
         // Create graph
-        engine_->recreateGraphAndBuilder();
+        engine_->RecreateGraphAndBuilder();
         engine_->graph_->load(cpuModel_->Parameters(), true, true);
         first = false;
       }

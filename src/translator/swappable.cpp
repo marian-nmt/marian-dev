@@ -92,6 +92,7 @@ std::vector<MemoryPiece::PtrType> GPULoadedModelTrain::Parameters() const {
   return engine_->graph_->params()->toMemoryPieces();
 }
 
+// Load the initial model (dropping any previous changes) and train it on the provided input
 void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   ABORT_IF(!trgVocab_, "GPULoadedModelTrain needs to be overwritten by a CPU model first.");
 
@@ -108,7 +109,11 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   auto corpus = New<data::TextInput>(input, allVocabs, engine_->options_);  // @TODO dirty hack
   data::BatchGenerator<data::TextInput> batchGenerator(corpus, engine_->options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
 
-  bool first = true;
+  // We reset the training graph to the original model parameters to prepare
+  // for adapting it to the new inputs
+  engine_->RecreateGraphAndBuilder();
+  engine_->graph_->load(cpuModel_->Parameters(), true, true);
+
   scheduler->started();
   while(scheduler->keepGoing()) {
     batchGenerator.prepare();
@@ -119,13 +124,6 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
         break;
 
       LOG(info, "### NEW BATCH");
-      if(first) {
-        // Create graph
-        engine_->RecreateGraphAndBuilder();
-        engine_->graph_->load(cpuModel_->Parameters(), true, true);
-        first = false;
-      }
-
       // Make an update step on the copy of the model
       auto lossNode = engine_->builder_->build(engine_->graph_, batch);
       engine_->graph_->forward();

@@ -54,9 +54,13 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
   }
 
   for(auto path : paths_) {
-    UPtr<io::InputFileStream> strm(new io::InputFileStream(path));
-    ABORT_IF(strm->empty(), "File '{}' is empty", path);
-    files_.emplace_back(std::move(strm));
+    if(path == "stdin" || path == "-")
+      files_.emplace_back(new std::istream(std::cin.rdbuf()));
+    else {
+      UPtr<io::InputFileStream> strm(new io::InputFileStream(path));
+      ABORT_IF(strm->empty(), "File '{}' is empty", path);
+      files_.emplace_back(std::move(strm));
+    }
   }
 
   initEOS(/*training=*/true);

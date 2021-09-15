@@ -14,6 +14,19 @@
 #define _USE_MATH_DEFINES  // enables math constants. We need M_PI_2
 #include <math.h>
 
+// std::hash specialization for custom cache key (prefix, shape)
+namespace std {
+  template <>
+  struct hash<pair<string, marian::Shape>> {
+    size_t operator()(pair<string, marian::Shape> const& k) const {
+      size_t seed = hash<string>{}(k.first);
+      marian::util::hash_combine(seed, k.second.hash());
+
+      return seed;
+    }
+  };
+}  // namespace std
+
 namespace marian {
 
 // clang-format off
@@ -28,7 +41,7 @@ class Transformer : public EncoderOrDecoderBase {
 
 protected:
   using Base::options_; using Base::inference_; using Base::batchIndex_; using Base::graph_;
-  std::unordered_map<std::string, Expr> cache_;    // caching transformation of the encoder that should not be created again
+  std::unordered_map<std::pair<std::string, Shape>, Expr> cache_;  // caching transformation of the encoder that should not be created again
   mutable/*lazy*/ std::vector<float> sinusoidalEmbeddingsFreq_, sinusoidalEmbeddingsOffs_;  // cached contributions to sinusoidal embeddings
 
   bool depthScaling_{false}; // As recommended in the GPT-2 paper, down-scale layer weights by a factor of 1 / sqrt(depth);
@@ -289,26 +302,26 @@ public:
     // Caching transformation of the encoder that should not be created again.
     // @TODO: set this automatically by memoizing encoder context and
     // memoization propagation (short-term)
-    if (cache                                                                          // if caching
-        && cache_.count(prefix + "_keys") > 0                                          // and the keys expression has been seen
-        && cache_[prefix + "_keys"]->shape().elements() == keys->shape().elements()) { // and the underlying element size did not change
-      kh = cache_[prefix + "_keys"];                                                   // then return cached tensor
-    }
-    else {
+    std::pair<std::unordered_map<std::pair<std::string, Shape>, Expr>::iterator, bool> cache_result;
+    if (cache
+        && !((cache_result = cache_.insert(std::pair<std::pair<std::string, Shape>, Expr>({prefix + "_keys", keys->shape()}, kh))).second)
+       ) {
+      kh = cache_result.first->second;
+    } else {
       int dimKeys =  keys->shape()[-1]; // different than dimModel when using lemma and factors combined with concatenation
       auto Wk = graph_->param(prefix + "_Wk", {dimKeys, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
       auto bk = graph_->param(prefix + "_bk", {1,        dimModel}, inits::zeros());
 
       kh = affine(keys, Wk, bk);     // [-4: beam depth, -3: batch size, -2: max length, -1: vector dim]
       kh = SplitHeads(kh, dimHeads); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
-      cache_[prefix + "_keys"] = kh;
+      if (cache) cache_result.first->second = kh;
     }
 
     Expr vh;
-    if (cache 
-        && cache_.count(prefix + "_values") > 0 
-        && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
-      vh = cache_[prefix + "_values"];
+    if (cache
+        && !((cache_result = cache_.insert(std::pair<std::pair<std::string, Shape>, Expr>({prefix + "_values", values->shape()}, vh))).second)
+       ) {
+      vh = cache_result.first->second;
     } else {
       int dimValues = values->shape()[-1]; // different than dimModel when using lemma and factors combined with concatenation
       auto Wv = graph_->param(prefix + "_Wv", {dimValues, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
@@ -316,7 +329,7 @@ public:
 
       vh = affine(values, Wv, bv); // [-4: batch size, -3: num heads, -2: max length, -1: split vector dim]
       vh = SplitHeads(vh, dimHeads);
-      cache_[prefix + "_values"] = vh;
+      if (cache) cache_result.first->second = vh;
     }
 
     int dimBeam = q->shape()[-4];

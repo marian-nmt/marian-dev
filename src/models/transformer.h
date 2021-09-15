@@ -53,16 +53,16 @@ protected:
   std::vector<Expr> alignments_; // [max tgt len or 1][beam depth, max src length, batch size, 1]
 
   // @TODO: make this go away
-  template <typename T> 
-  T opt(const char* const key) const { Ptr<Options> options = options_; return options->get<T>(key); }  
+  template <typename T>
+  T opt(const char* const key) const { Ptr<Options> options = options_; return options->get<T>(key); }
 
-  template <typename T> 
-  T opt(const std::string& key) const { return opt<T>(key.c_str()); }  
+  template <typename T>
+  T opt(const std::string& key) const { return opt<T>(key.c_str()); }
 
-  template <typename T> 
+  template <typename T>
   T opt(const char* const key, const T& def) const { Ptr<Options> options = options_; return options->get<T>(key, def);  }
 
-  template <typename T> 
+  template <typename T>
   T opt(const std::string& key, const T& def) const { opt<T>(key.c_str(), def); }
 
 public:
@@ -269,7 +269,7 @@ public:
 
     // take softmax along src sequence axis (-1)
     auto weights = softmax(z); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
-    
+
     if(saveAttentionWeights)
       collectOneHead(weights, dimBeam);
 
@@ -390,7 +390,7 @@ public:
 
     // multi-head self-attention over previous input
     output = MultiHead(prefix, dimModel, dimHeads, output, keys, values, mask, cache, saveAttentionWeights);
-    
+
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
 
@@ -571,7 +571,7 @@ public:
     auto embeddingLayer = getEmbeddingLayer(opt<bool>("ulr", false));
     std::tie(batchEmbeddings, batchMask) = embeddingLayer->apply((*batch)[batchIndex_]);
     batchEmbeddings = addSpecialEmbeddings(batchEmbeddings, /*start=*/0, batch);
-    
+
     // reorganize batch and timestep
     batchEmbeddings = atleast_nd(batchEmbeddings, 4); // [beam depth=1, max length, batch size, vector dim]
     batchMask       = atleast_nd(batchMask, 4);       // [beam depth=1, max length, batch size, vector dim=1]
@@ -606,7 +606,7 @@ public:
     }
 
     // this allows to run a final layernorm operation after going through the transformer layer stack.
-    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da)
     // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
     auto opsTop = opt<std::string>("transformer-postprocess-top", "");
     layer = postProcess(prefix_ + "_top", opsTop, layer, prevLayer, dropProb);
@@ -635,14 +635,14 @@ public:
                                    int beamSize) const override {
 
     // @TODO: code duplication with DecoderState only because of isBatchMajor=true, should rather be a contructor argument of DecoderState?
-    
+
     std::vector<Ptr<EncoderState>> newEncStates;
-    for(auto& es : encStates_) 
-      // If the size of the batch dimension of the encoder state context changed, subselect the correct batch entries    
+    for(auto& es : encStates_)
+      // If the size of the batch dimension of the encoder state context changed, subselect the correct batch entries
       newEncStates.push_back(es->getContext()->shape()[-2] == batchIndices.size() ? es : es->select(batchIndices));
 
     // Create hypothesis-selected state based on current state and hyp indices
-    auto selectedState = New<TransformerState>(states_.select(hypIndices, beamSize, /*isBatchMajor=*/true), logProbs_, newEncStates, batch_); 
+    auto selectedState = New<TransformerState>(states_.select(hypIndices, beamSize, /*isBatchMajor=*/true), logProbs_, newEncStates, batch_);
 
     // Set the same target token position as the current state
     // @TODO: This is the same as in base function.
@@ -776,8 +776,8 @@ public:
 
       // This would happen if something goes wrong during batch pruning.
       ABORT_IF(encoderContext->shape()[-3] != dimBatch,
-               "Context and query batch dimension do not match {} != {}", 
-               encoderContext->shape()[-3], 
+               "Context and query batch dimension do not match {} != {}",
+               encoderContext->shape()[-3],
                dimBatch);
 
       // LayerAttention expects mask in a different layout
@@ -884,7 +884,7 @@ public:
     }
 
     // This allows to run a final layernorm operation after going through the transformer layer stack.
-    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da)
     // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
     auto opsTop = opt<std::string>("transformer-postprocess-top", "");
     query = postProcess(prefix_ + "_top", opsTop, query, prevQuery, dropProb);
@@ -897,7 +897,7 @@ public:
     if(shortlist_)
       output_->setShortlist(shortlist_);
     auto logits = output_->applyAsLogits(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab or shortlist dim]
-    
+
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
     if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {
@@ -922,9 +922,9 @@ public:
       output_->clear();
     cache_.clear();
     alignments_.clear();
-    perLayerRnn_.clear(); // this needs to be cleared between batches. 
-    // @TODO: figure out how to detect stale nodes i.e. nodes that are referenced, 
-    // but where underlying memory has been deallocated by dropping all tensors 
+    perLayerRnn_.clear(); // this needs to be cleared between batches.
+    // @TODO: figure out how to detect stale nodes i.e. nodes that are referenced,
+    // but where underlying memory has been deallocated by dropping all tensors
     // from a TensorAllocator object. This can happen during ExpressionGraph::clear()
   }
 };

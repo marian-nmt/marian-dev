@@ -3,6 +3,7 @@
 #include "common/config.h"
 #include "common/file_stream.h"
 #include "data/batch_generator.h"
+#include "data/iterator_facade.h"
 #include "data/text_input.h"
 #include "models/model_task.h"
 #include "training/scheduler.h"
@@ -13,13 +14,46 @@ namespace marian {
 
 using namespace data;
 
+class TrainSetReader;
+
+class TrainSetIterator : public IteratorFacade<TrainSetIterator, std::vector<std::string>> {
+private:
+  TrainSetReader* trainSetReader_;
+  std::vector<std::string> currentSamples_;
+public:
+  // TODO: should we use a smart pointer here instead? The TrainSetReader::begin() method
+  // would make it difficult
+  TrainSetIterator(TrainSetReader* trainSetReader);
+
+  bool equal(const TrainSetIterator& other) const override {
+    return other.trainSetReader_ == trainSetReader_;
+  }
+
+  const std::vector<std::string>& dereference() const override { return currentSamples_; }
+
+  void increment() override;
+};
+
 class TrainSetReader {
   std::vector<UPtr<io::InputFileStream>> files_;
+  bool eof_ = false;
 
 public:
   TrainSetReader(std::vector<std::string> paths) {
     for(auto& path : paths)
       files_.emplace_back(new io::InputFileStream(path));
+  }
+
+  TrainSetIterator begin() {
+    return TrainSetIterator(this);
+  }
+
+  TrainSetIterator end() {
+    return TrainSetIterator(nullptr);
+  }
+
+  bool eof() {
+    return eof_;
   }
 
   std::vector<std::string> getSamples() {
@@ -28,19 +62,26 @@ public:
     // counters of number of lines extracted for source and target
     std::vector<size_t> counts;
 
+    // Early exit if files are exhausted
+    if (eof_) return samples;
+
     for(auto const& file : files_) {
       size_t currCount = 0;
       std::string lines;
       std::string line;
+      bool fileEnded = true;
       while(io::getline(*file, line)) {
-        if(line.empty())
+        if(line.empty()) {
+          fileEnded = false;
           break;
+        }
 
         if(currCount)
           lines += "\n";
         lines += line;
         currCount += 1;
       }
+      eof_ = fileEnded;
 
       if(!lines.empty())
         samples.emplace_back(lines);
@@ -58,6 +99,26 @@ public:
     return samples;
   }
 };
+
+TrainSetIterator::TrainSetIterator(TrainSetReader* trainSetReader) : trainSetReader_(trainSetReader) {
+  if(trainSetReader) {
+    currentSamples_ = trainSetReader_->getSamples();
+  }
+}
+
+void TrainSetIterator::increment() {
+  // If the previous increment has exhausted the file, we must indicate that the we've reached
+  // the iterator's end
+  if(trainSetReader_->eof() && trainSetReader_ != nullptr) {
+    trainSetReader_ = nullptr;
+    return;
+  }
+  // If we're at the end of the iterator and increment has been called yet another time, there's
+  // a bug in the calling code
+  ABORT_IF(trainSetReader_ == nullptr, "Incrementing the end of the iterator isn't allowed");
+
+  currentSamples_ = trainSetReader_->getSamples();
+}
 
 class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
@@ -111,7 +172,6 @@ public:
 
     // Initialize output printing
     auto collector = New<StringCollector>();
-    auto printer = New<OutputPrinter>(optionsTrans_, cpuModel_->TrgVocab());
 
     // Get training sentences
     std::vector<std::vector<std::string>> contexts;
@@ -120,32 +180,45 @@ public:
 
     LOG(info, "Running...");
 
-    size_t id = 0;
+    translate(testBatches, contexts.begin(), contexts.end(), collector);
+
+    auto translations = collector->collect(options_->get<bool>("n-best"));
+    YAML::Emitter output;
+    output << YAML::DoubleQuoted << YAML::Flow << utils::join(translations, "\\n");
+    return "{\"output\":" + std::string(output.c_str()) + "}";
+  }
+
+  template <class Iterator, class DataSet>
+  void translate(
+      Ptr<marian::data::BatchGenerator<DataSet>>
+          testBatches,
+      Iterator trainBegin,
+      Iterator trainEnd,
+      Ptr<marian::CollectorBase> collector) {
+    auto printer = New<OutputPrinter>(options_, cpuModel_->TrgVocab());
+
     for(auto testBatch : *testBatches) {
-      if(contexts.size() > id && !contexts[id].empty()) {
+      ABORT_IF(trainBegin == trainEnd, "Context batches ran out before test batches");
+
+      auto trainSet = *trainBegin;
+      ++trainBegin;
+
+      if(!trainSet.empty()) {
+        LOG(info, "# NEW TEST BATCH");
         trainSlot_->SetModel(cpuModel_);
-        trainSlot_->Train(contexts[id]);
+        trainSlot_->Train(trainSet);
         translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;
       } else {
-        LOG(info, "No context provided for sentence {}", id);
+        LOG(info, "# EMPTY TEST BATCH");
         if(needsSwitching_) {
           translateSlot_->Load(*cpuModel_);
           needsSwitching_ = false;
         }
         translate(testBatch, collector, printer);
       }
-
-      // iterating by 1 is quite safe because the mini-batch size for
-      // translation is always 1
-      ++id;
     }
-
-    auto translations = collector->collect(options_->get<bool>("n-best"));
-    YAML::Emitter output;
-    output << YAML::DoubleQuoted << YAML::Flow << utils::join(translations, "\\n");
-    return "{\"output\":" + std::string(output.c_str()) + "}";
   }
 
   void run() override {
@@ -161,7 +234,6 @@ public:
     auto collector = New<OutputCollector>(options_->get<std::string>("output"));
     if(options_->get<bool>("quiet-translation"))
       collector->setPrintingStrategy(New<QuietPrinting>());
-    auto printer = New<OutputPrinter>(options_, cpuModel_->TrgVocab());
 
     // Initialize train data
     auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
@@ -169,25 +241,7 @@ public:
 
     LOG(info, "Running...");
 
-    for(auto testBatch : *testBatches) {
-      auto trainSet = trainSets->getSamples();
-
-      if(!trainSet.empty()) {
-        LOG(info, "# NEW TEST BATCH");
-        trainSlot_->SetModel(cpuModel_);
-        trainSlot_->Train(trainSet);
-        translateSlot_->PointToParams(*trainSlot_);
-        translate(testBatch, collector, printer);
-        needsSwitching_ = true;
-      } else {
-        LOG(info, "# EMPTY TEST BATCH");
-        if (needsSwitching_) {
-          translateSlot_->Load(*cpuModel_);
-          needsSwitching_ = false;
-        }
-        translate(testBatch, collector, printer);
-      }
-    }
+    translate(testBatches, trainSets->begin(), trainSets->end(), collector);
   }
 
 private:

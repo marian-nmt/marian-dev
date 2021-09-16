@@ -14,18 +14,18 @@ namespace marian {
 
 using namespace data;
 
-class TrainSetReader;
+class AdaptiveContextReader;
 
-class TrainSetIterator : public IteratorFacade<TrainSetIterator, std::vector<std::string>> {
+class AdaptiveContextIterator : public IteratorFacade<AdaptiveContextIterator, std::vector<std::string>> {
 private:
-  TrainSetReader* trainSetReader_;
+  AdaptiveContextReader* trainSetReader_;
   std::vector<std::string> currentSamples_;
 public:
   // TODO: should we use a smart pointer here instead? The TrainSetReader::begin() method
   // would make it difficult
-  TrainSetIterator(TrainSetReader* trainSetReader);
+  AdaptiveContextIterator(AdaptiveContextReader* trainSetReader);
 
-  bool equal(const TrainSetIterator& other) const override {
+  bool equal(const AdaptiveContextIterator& other) const override {
     return other.trainSetReader_ == trainSetReader_;
   }
 
@@ -34,22 +34,22 @@ public:
   void increment() override;
 };
 
-class TrainSetReader {
+class AdaptiveContextReader {
   std::vector<UPtr<io::InputFileStream>> files_;
   bool eof_ = false;
 
 public:
-  TrainSetReader(std::vector<std::string> paths) {
+  AdaptiveContextReader(std::vector<std::string> paths) {
     for(auto& path : paths)
       files_.emplace_back(new io::InputFileStream(path));
   }
 
-  TrainSetIterator begin() {
-    return TrainSetIterator(this);
+  AdaptiveContextIterator begin() {
+    return AdaptiveContextIterator(this);
   }
 
-  TrainSetIterator end() {
-    return TrainSetIterator(nullptr);
+  AdaptiveContextIterator end() {
+    return AdaptiveContextIterator(nullptr);
   }
 
   bool eof() {
@@ -100,13 +100,13 @@ public:
   }
 };
 
-TrainSetIterator::TrainSetIterator(TrainSetReader* trainSetReader) : trainSetReader_(trainSetReader) {
+AdaptiveContextIterator::AdaptiveContextIterator(AdaptiveContextReader* trainSetReader) : trainSetReader_(trainSetReader) {
   if(trainSetReader) {
     currentSamples_ = trainSetReader_->getSamples();
   }
 }
 
-void TrainSetIterator::increment() {
+void AdaptiveContextIterator::increment() {
   // If the previous increment has exhausted the file, we must indicate that the we've reached
   // the iterator's end
   if(trainSetReader_->eof() && trainSetReader_ != nullptr) {
@@ -237,7 +237,7 @@ public:
 
     // Initialize train data
     auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
-    auto trainSets = New<TrainSetReader>(trainPaths);
+    auto trainSets = New<AdaptiveContextReader>(trainPaths);
 
     LOG(info, "Running...");
 

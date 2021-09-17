@@ -41,6 +41,7 @@ set(MARIAN_SOURCES
   data/corpus_nbest.cpp
   data/text_input.cpp
   data/shortlist.cpp
+  data/adaptive_context.cpp
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp

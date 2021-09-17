@@ -4,6 +4,7 @@
 #include "data/iterator_facade.h"
 
 namespace marian {
+namespace data {
 
 class AdaptiveContextReader;
 
@@ -21,11 +22,9 @@ public:
   // would make it difficult
   AdaptiveContextIterator(AdaptiveContextReader* trainSetReader);
 
-  bool equal(const AdaptiveContextIterator& other) const override {
-    return other.trainSetReader_ == trainSetReader_;
-  }
+  bool equal(const AdaptiveContextIterator& other) const override;
 
-  const std::vector<std::string>& dereference() const override { return currentSamples_; }
+  const std::vector<std::string>& dereference() const override;
 
   void increment() override;
 };
@@ -51,10 +50,7 @@ public:
    * can be empty (no context is provided for the respective translatable
    * sentence) in which case it is also represented by a single empty line.
    */
-  AdaptiveContextReader(std::vector<std::string> paths) {
-    for(auto& path : paths)
-      files_.emplace_back(new io::InputFileStream(path));
-  }
+  AdaptiveContextReader(std::vector<std::string> paths);
 
   /**
    * @brief Returns an iterator over the sets of context sentences produced by
@@ -62,17 +58,11 @@ public:
    *
    * @return the beginning of the iterator.
    */
-  AdaptiveContextIterator begin() {
-    return AdaptiveContextIterator(this);
-  }
+  AdaptiveContextIterator begin();
 
-  AdaptiveContextIterator end() {
-    return AdaptiveContextIterator(nullptr);
-  }
+  AdaptiveContextIterator end();
 
-  bool eof() {
-    return eof_;
-  }
+  bool eof();
 
   /**
    * @brief Reads the next set of samples -- the contaxt sentences -- for
@@ -90,67 +80,8 @@ public:
    * single file, e.g., [0] could contain 3 newline separated sentences in
    * English and [1] would contain their 3 respective translations in Latvian.
    */
-  std::vector<std::string> getSamples() {
-    // extracted lines for source and target corpora
-    std::vector<std::string> samples;
-    // counters of number of lines extracted for source and target
-    std::vector<size_t> counts;
-
-    // Early exit if input files are exhausted
-    if (eof_) return samples;
-
-    for(auto const& file : files_) {
-      size_t currCount = 0;
-      std::string lines;
-      std::string line;
-      bool fileEnded = true;
-      while(io::getline(*file, line)) {
-        if(line.empty()) {
-          fileEnded = false;
-          break;
-        }
-
-        if(currCount)
-          lines += "\n";
-        lines += line;
-        currCount += 1;
-      }
-      eof_ = fileEnded;
-
-      if(!lines.empty())
-        samples.emplace_back(lines);
-      counts.push_back(currCount);
-
-      // check if the same number of lines is extracted for source and target
-      size_t prevCount = counts[0];
-      for(size_t i = 1; i < counts.size(); ++i) {
-        ABORT_IF(prevCount != counts[i],
-                 "An empty source or target sentence has been encountered!");
-        prevCount = counts[i];
-      }
-    }
-
-    return samples;
-  }
+  std::vector<std::string> getSamples();
 };
 
-AdaptiveContextIterator::AdaptiveContextIterator(AdaptiveContextReader* trainSetReader) : trainSetReader_(trainSetReader) {
-  if(trainSetReader) {
-    currentSamples_ = trainSetReader_->getSamples();
-  }
-}
-
-void AdaptiveContextIterator::increment() {
-  // If the previous increment has exhausted the file, we must indicate that the we've reached
-  // the iterator's end
-  if(trainSetReader_->eof() && trainSetReader_ != nullptr) {
-    trainSetReader_ = nullptr;
-    return;
-  }
-  // If we're at the end of the iterator and increment has been called yet another time, there's
-  // a bug in the calling code
-  ABORT_IF(trainSetReader_ == nullptr, "Incrementing past the end of the iterator isn't allowed");
-
-  currentSamples_ = trainSetReader_->getSamples();
-}
+}  // namespace data
 }  // namespace marian

@@ -3,6 +3,7 @@
 namespace marian {
 namespace data {
 
+
 AdaptiveContextIterator::AdaptiveContextIterator(AdaptiveContextReader* trainSetReader)
     : trainSetReader_(trainSetReader) {
   if(trainSetReader) {
@@ -10,13 +11,16 @@ AdaptiveContextIterator::AdaptiveContextIterator(AdaptiveContextReader* trainSet
   }
 }
 
+
 bool AdaptiveContextIterator::equal(const AdaptiveContextIterator& other) const {
   return other.trainSetReader_ == trainSetReader_;
 }
 
+
 const std::vector<std::string>& AdaptiveContextIterator::dereference() const {
   return currentSamples_;
 }
+
 
 void AdaptiveContextIterator::increment() {
   // If the previous increment has exhausted the file, we must indicate that the we've reached
@@ -33,22 +37,28 @@ void AdaptiveContextIterator::increment() {
 }
 
 
+
+
 AdaptiveContextReader::AdaptiveContextReader(std::vector<std::string> paths) {
   for(auto& path : paths)
     files_.emplace_back(new io::InputFileStream(path));
 }
 
+
 AdaptiveContextIterator AdaptiveContextReader::begin() {
   return AdaptiveContextIterator(this);
 }
+
 
 AdaptiveContextIterator AdaptiveContextReader::end() {
   return AdaptiveContextIterator(nullptr);
 }
 
+
 bool AdaptiveContextReader::eof() {
   return eof_;
 }
+
 
 std::vector<std::string> AdaptiveContextReader::getSamples() {
   // extracted lines for source and target corpora
@@ -92,6 +102,7 @@ std::vector<std::string> AdaptiveContextReader::getSamples() {
 
   return samples;
 }
+
 
 }  // namespace data
 }  // namespace marian

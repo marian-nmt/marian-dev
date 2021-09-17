@@ -6,7 +6,9 @@
 namespace marian {
 namespace data {
 
+
 class AdaptiveContextReader;
+
 
 /**
  * @brief An iterator for easier access of the context sentences produced by
@@ -14,9 +16,10 @@ class AdaptiveContextReader;
  */
 class AdaptiveContextIterator
   : public IteratorFacade<AdaptiveContextIterator, std::vector<std::string>> {
-private:
+
   AdaptiveContextReader* trainSetReader_;
   std::vector<std::string> currentSamples_;
+
 public:
   // TODO: should we use a smart pointer here instead? The TrainSetReader::begin() method
   // would make it difficult
@@ -29,11 +32,13 @@ public:
   void increment() override;
 };
 
+
 /**
  * @brief Reads the context sentences, that are used for on-the-fly training in
  * the self-adaptive translation mode, from files.
  */
 class AdaptiveContextReader {
+
   std::vector<UPtr<io::InputFileStream>> files_;
   /// Indicates whether the input files have been exhausted.
   bool eof_ = false;
@@ -82,6 +87,7 @@ public:
    */
   std::vector<std::string> getSamples();
 };
+
 
 }  // namespace data
 }  // namespace marian

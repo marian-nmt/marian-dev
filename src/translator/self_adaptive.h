@@ -74,7 +74,7 @@ public:
 
     LOG(info, "Running...");
 
-    translate(testBatches, contexts.begin(), contexts.end(), collector);
+    adaptAndTranslate(testBatches, contexts.begin(), contexts.end(), collector);
 
     auto translations = collector->collect(options_->get<bool>("n-best"));
     YAML::Emitter output;
@@ -82,8 +82,41 @@ public:
     return "{\"output\":" + std::string(output.c_str()) + "}";
   }
 
+  void run() override {
+    // Initialize input data
+    auto srcPaths = options_->get<std::vector<std::string>>("input");
+    auto testSet = New<Corpus>(srcPaths, cpuModel_->SrcVocabs(), optionsTrans_);
+
+    // Prepare batches
+    auto testBatches = New<BatchGenerator<Corpus>>(testSet, optionsTrans_);
+    testBatches->prepare();
+
+    // Initialize output printing
+    auto collector = New<OutputCollector>(options_->get<std::string>("output"));
+    if(options_->get<bool>("quiet-translation"))
+      collector->setPrintingStrategy(New<QuietPrinting>());
+
+    // Initialize train data
+    auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
+    auto trainSets = New<AdaptiveContextReader>(trainPaths);
+
+    LOG(info, "Running...");
+
+    adaptAndTranslate(testBatches, trainSets->begin(), trainSets->end(), collector);
+  }
+
+private:
+  Ptr<Options> options_;       // Options for training
+  Ptr<Options> optionsTrans_;  // Options for translator
+  Ptr<CPULoadedModel> cpuModel_;
+  Ptr<GPULoadedModelTrain> trainSlot_;
+  Ptr<GPULoadedModel> translateSlot_;
+  Ptr<GPUEngineTrain> trainEngine_;
+  Ptr<GPUEngine> translateEngine_;
+  bool needsSwitching_ = true;
+
   template <class Iterator, class DataSet>
-  void translate(
+  void adaptAndTranslate(
       Ptr<marian::data::BatchGenerator<DataSet>>
           testBatches,
       Iterator trainBegin,
@@ -114,39 +147,6 @@ public:
       }
     }
   }
-
-  void run() override {
-    // Initialize input data
-    auto srcPaths = options_->get<std::vector<std::string>>("input");
-    auto testSet = New<Corpus>(srcPaths, cpuModel_->SrcVocabs(), optionsTrans_);
-
-    // Prepare batches
-    auto testBatches = New<BatchGenerator<Corpus>>(testSet, optionsTrans_);
-    testBatches->prepare();
-
-    // Initialize output printing
-    auto collector = New<OutputCollector>(options_->get<std::string>("output"));
-    if(options_->get<bool>("quiet-translation"))
-      collector->setPrintingStrategy(New<QuietPrinting>());
-
-    // Initialize train data
-    auto trainPaths = options_->get<std::vector<std::string>>("train-sets");
-    auto trainSets = New<AdaptiveContextReader>(trainPaths);
-
-    LOG(info, "Running...");
-
-    translate(testBatches, trainSets->begin(), trainSets->end(), collector);
-  }
-
-private:
-  Ptr<Options> options_;       // Options for training
-  Ptr<Options> optionsTrans_;  // Options for translator
-  Ptr<CPULoadedModel> cpuModel_;
-  Ptr<GPULoadedModelTrain> trainSlot_;
-  Ptr<GPULoadedModel> translateSlot_;
-  Ptr<GPUEngineTrain> trainEngine_;
-  Ptr<GPUEngine> translateEngine_;
-  bool needsSwitching_ = true;
 
   void translate(Ptr<data::CorpusBatch> batch,
                  Ptr<CollectorBase> collector,

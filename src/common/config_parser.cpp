@@ -700,6 +700,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
     addSuboptionsTSV(cli);
     addSuboptionsDevices(cli);
     addSuboptionsBatching(cli);
+  } else {
+    cli.add<size_t>("--max-length-translate",
+        "Maximum input sentence length for translation",
+        1000);
   }
 
   // for self-adaptive mode vocabs are already added via the training options

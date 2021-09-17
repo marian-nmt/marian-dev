@@ -27,9 +27,8 @@ public:
     // adaptation happens per sentence
     optionsTrans_->set<size_t>("mini-batch", 1);
     optionsTrans_->set<size_t>("maxi-batch", 1);
-    // TODO: should probably un-hardcode this? The issue is, though, that the users
-    // might want separate options for training and translation
-    optionsTrans_->set<size_t>("max-length", 1000);
+    auto maxTranslationInput = options_->get<size_t>("max-length-translate");
+    optionsTrans_->set<size_t>("max-length", maxTranslationInput);
     optionsTrans_->set("shuffle", "none");
 
     auto modelFilename = options_->get<std::string>("model");

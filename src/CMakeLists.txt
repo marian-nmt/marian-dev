@@ -41,7 +41,6 @@ set(MARIAN_SOURCES
   data/corpus_nbest.cpp
   data/text_input.cpp
   data/shortlist.cpp
-  data/adaptive_context.cpp
 
   3rd_party/cnpy/cnpy.cpp
   3rd_party/ExceptionWithCallStack.cpp
@@ -125,6 +124,12 @@ set(MARIAN_SOURCES
   $<TARGET_OBJECTS:zlib>
   $<TARGET_OBJECTS:faiss>
 )
+
+if(COMPILE_ADAPTIVE)
+  set(MARIAN_SOURCES ${MARIAN_SOURCES}
+    data/adaptive_context.cpp
+  )
+endif(COMPILE_ADAPTIVE)
 
 add_library(marian STATIC ${MARIAN_SOURCES})
 

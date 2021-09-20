@@ -9,9 +9,5 @@ namespace marian {
             CUDA_CHECK(cudaSetDevice(deviceId.no));
             CUDA_CHECK(cudaMemcpy(gpuOut, in, count, cudaMemcpyHostToDevice));
         }
-        void copyGpuToGpu(char * gpuOut, const char * in, size_t count, const marian::DeviceId& deviceId) {
-            CUDA_CHECK(cudaSetDevice(deviceId.no));
-            CUDA_CHECK(cudaMemcpy(gpuOut, in, count, cudaMemcpyDeviceToDevice));
-        }
     }
 }

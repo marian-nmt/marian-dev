@@ -11,23 +11,6 @@
 #include "tensors/gpu/swap.h"
 
 namespace marian {
-std::string MultilineInputHack(const std::vector<std::string> &input) {
-  if (input.size() == 1) {
-    return input[0];
-  } else {
-    std::string ret;
-    std::size_t size = 0;
-    for (auto&& line : input) {
-      size += line.size() + 1;
-    }
-    ret.reserve(size);
-    for (auto&& line : input) {
-      ret.append(line);
-      ret.append("\n");
-    }
-    return ret;
-  }
-}
 
 namespace {
   DeviceId LookupGPU(const Ptr<Options> options, size_t deviceIdx) {
@@ -41,17 +24,6 @@ namespace {
 void get(std::vector<uint8_t> &out, MemoryPiece::PtrType mem, Ptr<Backend> backend) {
   out.resize(mem->size());
   gpu::copy(backend, mem->data<uint8_t>(), mem->data<uint8_t>() + mem->size(), out.data());
-}
-
-void GPUEngineTrain::SwapPointers(
-    std::vector<MemoryPiece::PtrType> &with) {
-  auto write_it = graph_->params()->begin();
-  auto read_it = with.begin();
-
-  std::vector<uint8_t> outvec;
-  for(; read_it != with.end(); ++write_it, ++read_it) {
-    std::swap(*(*write_it)->val()->memory(), **read_it);
-  }
 }
 
 GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)
@@ -192,17 +164,6 @@ GPULoadedModel::~GPULoadedModel() {
   }
 }
 
-void GPULoadedModel::Load(const GPULoadedModel &from) {
-  srcVocabs_ = from.srcVocabs_;
-  trgVocab_ = from.trgVocab_;
-
-  ABORT_IF(engine_ != from.engine_, "TODO: copy across GPUs.");
-
-  for (size_t i = 0; i < parameters_.size(); ++i) {
-    swapper::copyGpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), reinterpret_cast<const char*>(from.parameters_[i]->data()), parameters_[i]->size(), engine_->myDeviceId_);
-  }
-}
-
 void GPULoadedModel::PointToParams(const GPULoadedModelTrain &from) {
   ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
   srcVocabs_ = from.srcVocabs_;
@@ -216,25 +177,6 @@ void GPULoadedModel::Load(const CPULoadedModel &from) {
   for (size_t i = 0; i < parameters_.size(); ++i) {
     swapper::copyCpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), from.Parameters()[i].data(), from.Parameters()[i].size(), engine_->myDeviceId_);
   }
-}
-
-Histories GPULoadedModel::Translate(const std::vector<std::string> &input) {
-  ABORT_IF(!trgVocab_, "GPULoadedModel needs to be overwritten by a CPU model first.");
-  engine_->SwapPointers(parameters_);
-
-  auto corpus = New<data::TextInput>(std::vector<std::string>(1, MultilineInputHack(input)), srcVocabs_, engine_->options_); // @TODO dirty hack
-  data::BatchGenerator<data::TextInput> batchGenerator(corpus, engine_->options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
-
-  BeamSearch search(engine_->options_, engine_->scorers_, trgVocab_);
-  Histories ret;
-  ret.reserve(input.size());
-  for (auto&& batch : batchGenerator) {
-    auto result = search.search(engine_->graph_, batch);
-    ret.insert(ret.end(), result.begin(), result.end());
-  }
-  std::sort(ret.begin(), ret.end(),[](marian::Ptr<marian::History> a, marian::Ptr<marian::History> b){return a->getLineNum() < b->getLineNum();});
-  engine_->SwapPointers(parameters_);
-  return ret;
 }
 
 Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {

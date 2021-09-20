@@ -33,7 +33,6 @@ private:
   Ptr<models::ICriterionFunction> builder_;
   const DeviceId myDeviceId_;
 
-  void SwapPointers(std::vector<MemoryPiece::PtrType> &with);
   void RecreateGraphAndBuilder();
 
 public:
@@ -74,13 +73,6 @@ class GPULoadedModelTrain {
 
     void Train(const std::vector<std::string> &input);
 };
-
-
-
-
-// ##### ^ above is stuff for runtime domain adaptation
-
-
 
 
 /* Execute on a particular device */
@@ -126,11 +118,8 @@ class GPULoadedModel {
 
     // Overwrite this model with parameters from a different one.
     void Load(const CPULoadedModel &from);
-    void Load(const GPULoadedModel &from);
-    void Load(const GPULoadedModelTrain &from);
     void PointToParams(const GPULoadedModelTrain &from);
 
-    Histories Translate(const std::vector<std::string> &input);
     Histories Translate(const Ptr<data::CorpusBatch> batch);
 };
 

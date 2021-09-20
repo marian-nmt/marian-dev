@@ -221,10 +221,6 @@ if (NOT COMPILE_LIBRARY_ONLY)
   set_target_properties(marian_decoder PROPERTIES OUTPUT_NAME marian-decoder)
   target_compile_options(marian_decoder PRIVATE ${ALL_WARNINGS})
 
-  add_executable(marian_swapper command/marian_swapper.cpp)
-  set_target_properties(marian_swapper PROPERTIES OUTPUT_NAME marian_swapper)
-  target_compile_options(marian_swapper PRIVATE ${ALL_WARNINGS})
-
   add_executable(marian_scorer command/marian_scorer.cpp)
   set_target_properties(marian_scorer PROPERTIES OUTPUT_NAME marian-scorer)
   target_compile_options(marian_scorer PRIVATE ${ALL_WARNINGS})
@@ -237,7 +233,7 @@ if (NOT COMPILE_LIBRARY_ONLY)
   set_target_properties(marian_conv PROPERTIES OUTPUT_NAME marian-conv)
   target_compile_options(marian_conv PRIVATE ${ALL_WARNINGS})
 
-  set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_swapper marian_scorer marian_vocab marian_conv)
+  set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab marian_conv)
 
   # marian.zip and marian.tgz
   # This combines marian, marian_decoder in a single ZIP or TAR file for

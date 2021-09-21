@@ -1,9 +1,18 @@
 #pragma once
-/* Support for swapping models in and out of a GPU, when you have more models
- * than fit in the GPU's RAM.  The models must have identical graphs, including
- * size. They can have different parameters and different vocabularies but the
- * vocabularies must have the same size.  To make vocabulary the same size, pad
- * using scripts/contrib/pad_model_vocabulary.py offline.
+/* Support for swapping and resetting models for the self-adaptive translation
+ * mode. The intended use case is to store a read-only copy of the model in
+ * `CPULoadedModel`, optionally train on a copy of the parameters using
+ * `SwappableModelTrainer` and then transfer either the trained or original
+ * model parameters into `GPULoadedModel` for translation. `GPUEngineTrain` and
+ * `GPUEngineTranslate` are used for storing the expression graphs for training
+ * and translation, respectively, and other related things. Translation on the
+ * CPU currently isn't supported.
+ *
+ * Originally this code was intended to allow multiple models to share a single
+ * GPU for translation and be swapped into GPU memory only when needed. However,
+ * parts of it, that weren't needed for self-adaptive translation, have been
+ * trimmed down since then. Look into the commit history if you want to revive
+ * this functionality.
  */
 #include "common/io.h"
 #include "data/vocab.h"

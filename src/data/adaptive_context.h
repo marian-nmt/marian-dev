@@ -81,7 +81,7 @@ public:
    * represented by a single empty line.
    *
    * @return a vector representing a single group of context sentences. Each
-   * element in the vector contains newline seperated input lines comming from a
+   * element in the vector contains newline separated input lines comming from a
    * single file, e.g., [0] could contain 3 newline separated sentences in
    * English and [1] would contain their 3 respective translations in Latvian.
    */

@@ -48,24 +48,23 @@ void GPUEngineTrain::RecreateGraphAndBuilder() {
 
 GPUEngineTrain::~GPUEngineTrain() {}
 
-GPULoadedModelTrain::GPULoadedModelTrain(Ptr<GPUEngineTrain> gpu) : engine_(gpu) {
+SwappableModelTrainer::SwappableModelTrainer(Ptr<GPUEngineTrain> gpu) : engine_(gpu) {
 }
 
-GPULoadedModelTrain::~GPULoadedModelTrain() {
+SwappableModelTrainer::~SwappableModelTrainer() {
 }
 
-void GPULoadedModelTrain::SetModel(Ptr<CPULoadedModel> from) {
+void SwappableModelTrainer::SetModel(Ptr<CPULoadedModel> from) {
   srcVocabs_ = from->SrcVocabs();
   trgVocab_  = from->TrgVocab();
   cpuModel_ = from;
 }
 
-std::vector<MemoryPiece::PtrType> GPULoadedModelTrain::Parameters() const {
+std::vector<MemoryPiece::PtrType> SwappableModelTrainer::Parameters() const {
   return engine_->graph_->params()->toMemoryPieces();
 }
 
-// Load the initial model (dropping any previous changes) and train it on the provided input
-void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
+void SwappableModelTrainer::Train(const std::vector<std::string> &input) {
   ABORT_IF(!trgVocab_, "GPULoadedModelTrain needs to be overwritten by a CPU model first.");
 
   auto state     = New<TrainingState>(engine_->options_->get<float>("learn-rate"));
@@ -78,8 +77,8 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
   allVocabs.reserve(srcVocabs_.size() + 1);
   allVocabs.insert(allVocabs.end(), srcVocabs_.begin(), srcVocabs_.end());
   allVocabs.emplace_back(trgVocab_);
-  auto corpus = New<data::TextInput>(input, allVocabs, engine_->options_);  // @TODO dirty hack
-  data::BatchGenerator<data::TextInput> batchGenerator(corpus, engine_->options_, nullptr, false); // @TODO if the asynchronous batch preparation = true, but we supply less text than the mini-batch size we crash
+  auto corpus = New<data::TextInput>(input, allVocabs, engine_->options_);
+  data::BatchGenerator<data::TextInput> batchGenerator(corpus, engine_->options_, nullptr, false);
 
   // We reset the training graph to the original model parameters to prepare
   // for adapting it to the new inputs
@@ -121,7 +120,7 @@ void GPULoadedModelTrain::Train(const std::vector<std::string> &input) {
 
 
 
-void GPUEngine::SwapPointers(std::vector<MemoryPiece::PtrType> &with) {
+void GPUEngineTranslate::SwapPointers(std::vector<MemoryPiece::PtrType> &with) {
   auto write_it = graph_->params()->begin();
   auto read_it = with.begin();
   for (; read_it != with.end(); ++write_it, ++read_it) {
@@ -129,7 +128,7 @@ void GPUEngine::SwapPointers(std::vector<MemoryPiece::PtrType> &with) {
   }
 }
 
-GPUEngine::GPUEngine(Ptr<Options> options, size_t deviceIdx) 
+GPUEngineTranslate::GPUEngineTranslate(Ptr<Options> options, size_t deviceIdx) 
   : options_(options), graph_(New<ExpressionGraph>(true)), myDeviceId_(LookupGPU(options, deviceIdx)), allocator_(myDeviceId_, 0, 128 * 1048576) {
   ABORT_IF(myDeviceId_.type == DeviceType::cpu, "Swappable slot only works for GPU devices.");
   options_->set("inference", true);
@@ -150,9 +149,9 @@ GPUEngine::GPUEngine(Ptr<Options> options, size_t deviceIdx)
   // TODO: reach into graph_->params() private members and free the parameter memory.
 }
 
-GPUEngine::~GPUEngine() {}
+GPUEngineTranslate::~GPUEngineTranslate() {}
 
-GPULoadedModel::GPULoadedModel(Ptr<GPUEngine> gpu) : engine_(gpu) {
+GPULoadedModel::GPULoadedModel(Ptr<GPUEngineTranslate> gpu) : engine_(gpu) {
   for (auto &param : *engine_->graph_->params()) {
     parameters_.push_back(engine_->allocator_.alloc(param->val()->memory()->size()));
   }
@@ -164,7 +163,7 @@ GPULoadedModel::~GPULoadedModel() {
   }
 }
 
-void GPULoadedModel::PointToParams(const GPULoadedModelTrain &from) {
+void GPULoadedModel::PointToParams(const SwappableModelTrainer &from) {
   ABORT_IF(engine_->myDeviceId_ != from.engine_->myDeviceId_, "TODO: copy across GPUs.");
   srcVocabs_ = from.srcVocabs_;
   trgVocab_  = from.trgVocab_;

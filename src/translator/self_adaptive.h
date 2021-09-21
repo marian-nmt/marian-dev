@@ -39,10 +39,10 @@ public:
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
     cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
-    translateEngine_ = New<GPUEngine>(optionsTrans_, 0);
+    translateEngine_ = New<GPUEngineTranslate>(optionsTrans_, 0);
     translateSlot_ = New<GPULoadedModel>(translateEngine_);
     trainEngine_ = New<GPUEngineTrain>(options_, 0);
-    trainSlot_   = New<GPULoadedModelTrain>(trainEngine_);
+    trainSlot_   = New<SwappableModelTrainer>(trainEngine_);
   }
 
   std::string run(const std::string& json) override {
@@ -108,10 +108,10 @@ private:
   Ptr<Options> options_;       // Options for training
   Ptr<Options> optionsTrans_;  // Options for translator
   Ptr<CPULoadedModel> cpuModel_;
-  Ptr<GPULoadedModelTrain> trainSlot_;
+  Ptr<SwappableModelTrainer> trainSlot_;
   Ptr<GPULoadedModel> translateSlot_;
   Ptr<GPUEngineTrain> trainEngine_;
-  Ptr<GPUEngine> translateEngine_;
+  Ptr<GPUEngineTranslate> translateEngine_;
   bool needsSwitching_ = true;
 
   template <class Iterator, class DataSet>

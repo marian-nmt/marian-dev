@@ -25,9 +25,6 @@ using namespace data;
 class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
   TrainSelfAdaptive(Ptr<Options> options) : options_(options) {
-
-    // @TODO: should probably better re-enable the shuffling related options
-    // in config for marian-adaptive
     options_->set("shuffle", "none");
     // Set up translator options
     optionsTrans_ = New<Options>(options_->clone());
@@ -40,8 +37,9 @@ public:
     optionsTrans_->set("shuffle", "none");
 
     auto modelFilename = options_->get<std::string>("model");
-    // Training has a single "model", translation can have multiple "models" in the general case.
-    // Adaptive options also take a single "model" so we have to adapt translation options manually.
+    // Training has a single "model", translation can have multiple "models" in
+    // the general case. Adaptive options also take only a single "model" so we
+    // have to adapt translation options manually.
     optionsTrans_->set<std::vector<std::string>>("models", {modelFilename});
 
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
@@ -53,6 +51,16 @@ public:
     trainSlot_   = New<SwappableModelTrainer>(trainEngine_);
   }
 
+  /**
+   * @brief Implementation for self-adaptive translation where data come from a
+   * web request.
+   *
+   * @param json Input data in JSON. An "input" array of strings is expected to
+   * contain translatable sentences, each of which has a corresponding set of
+   * context sentences as a sub-array in the "context" array.
+   *
+   * @return JSON-encoded translations
+   */
   std::string run(const std::string& json) override {
     //LOG(warn, "REMOVEME Received Json:\n{}", json);
 
@@ -89,6 +97,10 @@ public:
     return "{\"output\":" + std::string(output.c_str()) + "}";
   }
 
+  /**
+   * @brief Implementation for self-adaptive translation where inputs and
+   * outputs are specified in CLI options.
+   */
   void run() override {
     // Initialize input data
     auto srcPaths = options_->get<std::vector<std::string>>("input");

@@ -1,5 +1,6 @@
 #pragma once
-/* Support for swapping and resetting models for the self-adaptive translation
+/**
+ * Support for swapping and resetting models for the self-adaptive translation
  * mode. The intended use case is to store a read-only copy of the model in
  * `CPULoadedModel`, optionally train on a copy of the parameters using
  * `SwappableModelTrainer` and then transfer either the trained or original

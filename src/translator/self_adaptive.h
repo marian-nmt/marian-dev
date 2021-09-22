@@ -14,6 +14,14 @@ namespace marian {
 
 using namespace data;
 
+/**
+ * @breif Implementation of the self-adaptive translation mode.
+ *
+ * Self-adaptive translation means optionally using a set of context sentences
+ * (e.g., provided by a translation memory), that are similar to the
+ * translatable sentence, to train the model for a few iterations to fine-tune
+ * it before translating the given sentence.
+ */
 class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
   TrainSelfAdaptive(Ptr<Options> options) : options_(options) {

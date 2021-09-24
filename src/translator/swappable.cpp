@@ -9,6 +9,7 @@
 #include "common/timer.h"
 #include <vector>
 #include "tensors/gpu/swap.h"
+#include "models/amun.h"
 
 namespace marian {
 
@@ -228,15 +229,19 @@ Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {
 CPULoadedModel::CPULoadedModel(Ptr<Options> options, const std::string &parameters, const std::vector<std::string> &sourceVocabPaths, const std::string &targetVocabPath)
   : parameters_(io::loadItems(parameters)) {
   // Load parameters.
-  // Find the special element and remove it:
-  size_t special_idx = 0;
-  for (size_t i = 0; i < parameters_.size(); i++) {
-    if (parameters_[i].name == "special:model.yml") {
-      special_idx = i;
-      break;
-    }
+  //Remap the parameter names if the model uses an older naming convention
+  if (options->get<std::string>("type") == "amun") {
+    bool tied = options->get<bool>("tied-embeddings-src") || options->get<bool>("tied-embeddings-all");
+    Amun::remapIoItems(parameters_, tied);
   }
-  parameters_.erase(parameters_.begin() + special_idx);
+
+  // Find the special element and remove it:
+  auto pred = [](const io::Item &item) { return item.name == "special:model.yml"; };
+  auto special_it = std::find_if(parameters_.begin(), parameters_.end(), pred);
+  if (special_it != parameters_.end()) {
+    parameters_.erase(special_it);
+  }
+
   // Prepare the name so that it matches the named map
   for (auto&& item : parameters_) {
     item.name = "F0::" + item.name;

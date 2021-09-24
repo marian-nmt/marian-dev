@@ -35,9 +35,7 @@ public:
              "use --type s2s");
   }
 
-  void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
-            bool /*markedReloaded*/ = true) override {
+  static void remapIoItems(std::vector<io::Item> &ioItems, bool tiedEmbeddinsSrcOrAll) {
     std::map<std::string, std::string> nameMap
         = {{"decoder_U", "decoder_cell1_U"},
            {"decoder_Ux", "decoder_cell1_Ux"},
@@ -86,12 +84,9 @@ public:
            {"encoder_r_gamma1", "encoder_bi_r_gamma1"},
            {"encoder_r_gamma2", "encoder_bi_r_gamma2"}};
 
-    if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
+    if (tiedEmbeddinsSrcOrAll)
       nameMap["Wemb"] = "Wemb";
 
-    LOG(info, "Loading model from {}", name);
-    // load items from .npz file
-    auto ioItems = io::loadItems(name);
     // map names and remove a dummy matrices
     for(auto it = ioItems.begin(); it != ioItems.end();) {
       // for backwards compatibility, turn one-dimensional vector into two dimensional matrix with first dimension being 1 and second dimension of the original size
@@ -116,6 +111,16 @@ public:
         it++;
       }
     }
+  }
+
+  void load(Ptr<ExpressionGraph> graph,
+            const std::string& name,
+            bool /*markedReloaded*/ = true) override {
+    LOG(info, "Loading model from {}", name);
+    // load items from .npz file
+    auto ioItems = io::loadItems(name);
+    // remap item names and remove dummy matrices
+    remapIoItems(ioItems, opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"));
     // load items into the graph
     graph->load(ioItems);
   }

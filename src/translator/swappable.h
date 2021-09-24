@@ -139,6 +139,7 @@ class GPULoadedModel {
   private:
     Ptr<GPUEngineTranslate> engine_;
 
+    std::vector<std::string> names_;
     std::vector<MemoryPiece::PtrType> parameters_;
     std::vector<Ptr<Vocab>> srcVocabs_;
     Ptr<Vocab> trgVocab_;

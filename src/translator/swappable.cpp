@@ -153,6 +153,7 @@ GPUEngineTranslate::~GPUEngineTranslate() {}
 
 GPULoadedModel::GPULoadedModel(Ptr<GPUEngineTranslate> gpu) : engine_(gpu) {
   for (auto &param : *engine_->graph_->params()) {
+    names_.push_back(param->name());
     parameters_.push_back(engine_->allocator_.alloc(param->val()->memory()->size()));
   }
 }
@@ -173,8 +174,35 @@ void GPULoadedModel::PointToParams(const SwappableModelTrainer &from) {
 void GPULoadedModel::Load(const CPULoadedModel &from) {
   srcVocabs_ = from.SrcVocabs();
   trgVocab_ = from.TrgVocab();
-  for (size_t i = 0; i < parameters_.size(); ++i) {
-    swapper::copyCpuToGpu(reinterpret_cast<char*>(parameters_[i]->data()), from.Parameters()[i].data(), from.Parameters()[i].size(), engine_->myDeviceId_);
+  auto fromParams = from.Parameters();
+
+  auto printParamsAndExit = [&]() {
+    std::ostringstream paramNames;
+    for(size_t i = 0; i < parameters_.size(); ++i) {
+      paramNames << "  TO (" << names_[i] << ") size: " << parameters_[i]->size() << "\n";
+    }
+    for(size_t i = 0; i < fromParams.size(); ++i) {
+      paramNames << "  FROM (" << fromParams[i].name << ") size: " << fromParams[i].size() << "\n";
+    }
+    LOG(error,
+        "Attempting to load parameters with mismatched names or sizes:\n{}",
+        paramNames.str());
+    ABORT("Attempting to load parameters with mismatched names or sizes.");
+  };
+
+  // Sanity check
+  if (parameters_.size() != fromParams.size())
+    printParamsAndExit();
+
+  for(size_t i = 0; i < parameters_.size(); ++i) {
+    // Sanity check
+    if (names_[i] != fromParams[i].name || parameters_[i]->size() != fromParams[i].size())
+      printParamsAndExit();
+
+    swapper::copyCpuToGpu(reinterpret_cast<char *>(parameters_[i]->data()),
+                          fromParams[i].data(),
+                          fromParams[i].size(),
+                          engine_->myDeviceId_);
   }
 }
 

@@ -198,7 +198,9 @@ void GPULoadedModel::Load(const CPULoadedModel &from) {
 
   for(size_t i = 0; i < parameters_.size(); ++i) {
     // Sanity check
-    if (names_[i] != fromParams[i].name || parameters_[i]->size() != fromParams[i].size())
+    // Not sure if that's ok, but we don't check for size equality because for
+    // some reason the target memory location sometimes can be bigger
+    if (names_[i] != fromParams[i].name || parameters_[i]->size() < fromParams[i].size())
       printParamsAndExit();
 
     swapper::copyCpuToGpu(reinterpret_cast<char *>(parameters_[i]->data()),

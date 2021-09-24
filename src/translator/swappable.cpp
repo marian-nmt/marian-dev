@@ -1,15 +1,16 @@
-#include "marian.h"
 #include "translator/swappable.h"
+#include <vector>
+#include "common/io.h"
 #include "common/logging.h"
+#include "common/timer.h"
 #include "data/corpus.h"
 #include "data/text_input.h"
+#include "marian.h"
+#include "models/amun.h"
+#include "models/nematus.h"
+#include "tensors/gpu/swap.h"
 #include "translator/beam_search.h"
 #include "translator/translator.h"
-#include "common/io.h"
-#include "common/timer.h"
-#include <vector>
-#include "tensors/gpu/swap.h"
-#include "models/amun.h"
 
 namespace marian {
 
@@ -228,11 +229,12 @@ Histories GPULoadedModel::Translate(const Ptr<data::CorpusBatch> batch) {
 
 CPULoadedModel::CPULoadedModel(Ptr<Options> options, const std::string &parameters, const std::vector<std::string> &sourceVocabPaths, const std::string &targetVocabPath)
   : parameters_(io::loadItems(parameters)) {
-  // Load parameters.
   //Remap the parameter names if the model uses an older naming convention
   if (options->get<std::string>("type") == "amun") {
     bool tied = options->get<bool>("tied-embeddings-src") || options->get<bool>("tied-embeddings-all");
     Amun::remapIoItems(parameters_, tied);
+  } else if (options->get<std::string>("type") == "nematus") {
+    Nematus::remapIoItems(parameters_, options);
   }
 
   // Find the special element and remove it:

@@ -48,8 +48,21 @@ Directories:
 
 ## Writing documentation
 
+Marian's documentation is generated using
+[Sphinx](https://www.sphinx-doc.org/en/master/usage/quickstart.html) +
+[Breathe](https://breathe.readthedocs.io/en/latest/directives.html) +
+[Doxygen](http://www.doxygen.nl/manual/docblocks.html) +
+[Exhale](https://exhale.readthedocs.io/en/latest/usage.html).
+To put it simply, Marian uses [Doxygen](http://www.doxygen.nl/manual/docblocks.html)
+to comment the source code and [Sphinx](https://www.sphinx-doc.org/en/master/usage/quickstart.html)
+(together with the extensions of [Breathe](https://breathe.readthedocs.io/en/latest/directives.html) and [Exhale](https://exhale.readthedocs.io/en/latest/usage.html))
+to manage handwritten documentation and library API reference.
+
+If you are submitting new features, we would be very appreciative if you could add some simple Doxygen comments (see the [Doxygen guidelines](#documentation-with-doxygen) below) along with your changes.
+Your doxygen comments will be integrated in the documentation automatically.
+
 There is an ongoing and incremental effort with the goal to document essential Marian APIs in a consistent way. 
-For now, existing code may not follow these guidelines, but new code should.
+The existing code might not follow these guidelines, but new code should.
 
 <!-- We could write simple guidelines on how to document the code so that it works best with the framework we use.
 This could include:
@@ -64,17 +77,17 @@ A mention in CONTRIBUTE.md -->
 ### Documentation with Doxygen
 
 [Doxygen](https://www.doxygen.nl/index.html) is a powerful documentation system for C++ and many other popular programming languages, such as C#, PHP, Java and Python. 
-It parses and extracts documentation from annotated C++ source code to generate a comprehensive online documentation browser (in HTML) and/or an off-line reference manual (in LaTeX).
+It parses and extracts documentation from annotated C++ source code to generate a comprehensive online documentation browser (in HTML) and/or an offline reference manual (in LaTeX).
 
-**How to make the comments in your code known to doxygen?**
+**How to make the comments in your code known to doxygen?**  
 Doxygen recognises several special comment blocks with some additional markings. 
-In Marian, we follow the **Javadoc style**, which consist of a C-style comment block starting with two *'s, like this:
+In Marian, we follow the **Javadoc style**, which consist of a C-style comment block starting with two `*`'s, like this:
 ```cpp
 /**
  * ... text ...
  */
 ```
-For each entity in the code there are basically two types of descriptions, i.e., a _brief_ description and _detailed_ description.
+For each entity in the code, there are basically two types of descriptions, i.e., a _brief_ description and _detailed_ description.
 In Marian, [JAVADOC_AUTOBRIEF](https://www.doxygen.nl/manual/config.html#cfg_javadoc_autobrief) is set to YES in the configuration file, therefore, using Javadoc style comment blocks will automatically start a brief description which ends at the first dot followed by a space or new line. Here is an example:
 ```cpp
 /** 
@@ -82,17 +95,85 @@ In Marian, [JAVADOC_AUTOBRIEF](https://www.doxygen.nl/manual/config.html#cfg_jav
  *  here.
  */
 ```
-If you want to put documentation after members (e.g., a variable and enum), you have to put an additional < marker in the comment block. 
+If you want to put documentation after members (e.g., a variable and enum), you have to put an additional `<` marker in the comment block. 
 ```cpp
 int var; ///< Brief description after the member
 ```
-To provide more details in the documentation, Doxygen supports a list of special commands (keywords) which start with a backslash (\\) or an at-sign (@). See [Doxygen special commands](https://www.doxygen.nl/manual/commands.html) for all the available commands. In Marian, we recommend to use at-sign (@) to be consistent with Javadoc style. Here, we list the most common Doxygen commands we use to document Marian:
+To provide more details in the documentation, Doxygen supports a list of special commands (keywords) which start with a backslash (\\) or an at-sign (@).
+In Marian, we recommend to use at-sign (@) to be consistent with Javadoc style.
+See [Doxygen special commands](https://www.doxygen.nl/manual/commands.html) for all the available commands.
+Here, we list the most common Doxygen commands we use to document Marian:
 
 Doxygen Command | Detailed Description | Example 
 --- | --- | --- 
-@param | Add a parameter description for a function parameter | @param device a pointer to the device 
-@return | Add a return value description for a function | @return a pointer to the constant node
-@see | Add a cross-reference to classes, functions, methods, variables, files or URL. | @see reshape()
+@param | Add a parameter description for a function parameter | `@param device a pointer to the device` | 
+@return | Add a return value description for a function | `@return a pointer to the constant node` |
+@see | Add a cross-reference to classes, functions, methods, variables, files or URL. | `@see reshape()` |
+@ref | Create a reference to another item being documented. | `@ref IndexType` |
+@copybrief | Copy the brief description from the object specified | `@copybrief slice` |
+@copydetails | Copy the detailed documentation from the object specified | `@copydetails dot` |
+@note | Add a note message where the text will be highlighted | `@note this is named after an equivalent function in PyTorch` |
+@warning | Add a warning message where the text will be highlighted | `@warning not implemented` |
+@b | Display a single word using a bold font. | `@b bold` | 
+@c | Display a single word using a typewriter font. | `@c void` |
+@p | Display a single word using a typewriter font. Equivalent to `@c` | `@p transA` |
+@em | Display a single word in italics.| `@em x` |
 
+```{note}
+Not all Doxygen special commands are supported in Exhale, e.g., [grouping](https://www.doxygen.nl/manual/grouping.html). Some commands like [@name](https://www.doxygen.nl/manual/commands.html#cmdname) could lead to errors when parsing overloaded functions. To free yourself from debugging the Doxygen comments for hours, we recommend you only using the above commands.
+```
 
-### Documentation with reStructuredText
+**How to including math formulas in Doxygen?**  
+Doxygen supports LaTeX math formulas (as images) in the documation.
+To include an inline formula that appears in the running text, we need wrap it by a pair of `@f$` commands. Here is an example:
+```none
+Default is no smoothing, @f$\alpha = 0 @f$.  
+```
+This will result in:
+Default is no smoothing, ![formula1](images/formula1.png "Example of formula 1").
+
+For the longer formulas which are in seperate lines, we can put `\f[` and `\f]` commands between the formulas. For instance:
+```none
+@f[
+   \operatorname{gelu}(x) = x \cdot \Phi(x)
+     = x \cdot \frac{1}{2}\left[
+        1 + \operatorname{erf}\left(\frac{x}{\sqrt{2}}\right)
+     \right]
+     \sim \operatorname{swish}(x, 1.702)
+@f]
+```
+This will result in:
+
+![formula2](images/gelu_formula.png "Example of formula 2")
+```{note}
+Make sure the formula contains *valid* commands in [LaTeX's math-mode](https://en.wikibooks.org/wiki/LaTeX/Mathematics).
+```
+
+**What is a good pratice of Doxygen comments?**  
+First of all, add Doxygen comments in the header files. You can find the
+examples of Doxygen comments in `src/graph/expression_graph.h`_. The
+basic rule of a good pratice is to keep Doxygen comments as tuitive and
+short as possible. Try not to introduce unnecessary vertical space
+(e.g., an empty line). A basic template of Doxygen comments is shown as
+follows:
+
+```cpp
+/**
+ * Brief summary.
+ * Detailed description. More detail.
+ * @see Some reference
+ * @param <name> Parameter description.
+ * @return Return value description.
+ */
+```
+
+### Documentation with Sphinx
+Sphinx supports [Markdown](https://www.sphinx-doc.org/en/master/usage/markdown.html)
+and [reStructuredText](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) documents.
+Our handwritten documentation are located in [doc](https://github.com/marian-nmt/marian-dev/tree/master/doc).
+
+Most of the framework's power comes from the richness of its default [reStructuredText](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) markup format.
+
+#### Markdown
+
+#### reStructuredText

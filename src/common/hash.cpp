@@ -1,3 +1,5 @@
+#include <string>
+
 #include "hash.h"
 #include "common/shape.h"
 

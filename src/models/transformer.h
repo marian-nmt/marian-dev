@@ -5,6 +5,7 @@
 
 #include "marian.h"
 
+#include "common/hash.h"
 #include "layers/constructors.h"
 #include "models/decoder.h"
 #include "models/encoder.h"
@@ -13,19 +14,6 @@
 #include "rnn/constructors.h"
 #define _USE_MATH_DEFINES  // enables math constants. We need M_PI_2
 #include <math.h>
-
-// std::hash specialization for custom cache key (prefix, shape)
-namespace std {
-  template <>
-  struct hash<pair<string, marian::Shape>> {
-    size_t operator()(pair<string, marian::Shape> const& k) const {
-      size_t seed = hash<string>{}(k.first);
-      marian::util::hash_combine(seed, k.second.hash());
-
-      return seed;
-    }
-  };
-}  // namespace std
 
 namespace marian {
 

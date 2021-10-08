@@ -25,5 +25,17 @@ inline HashType hashMem(const T* beg, size_t len) {
   return seed;
 }
 
-}
+}  // namespace util
+
+struct Shape;  // Forward declaration
+}  // namespace marian
+
+namespace std {
+/**
+ * std::hash specialization for the string-shape pair used as a cache key in transformer.h.
+ */
+template <>
+struct hash<pair<string, marian::Shape>> {
+  size_t operator()(pair<string, marian::Shape> const& k) const;
+};
 }

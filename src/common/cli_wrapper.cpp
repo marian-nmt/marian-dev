@@ -162,9 +162,10 @@ void CLIWrapper::parseAliases() {
   }
 
   // Remove aliases from the global config to avoid redundancy when writing/reading config files
-  for(const auto &alias : aliases_) {
-    config_.remove(alias.key);
-  }
+  // This code is commented out so we can validate the actual options of tasks
+  // for(const auto &alias : aliases_) {
+  //   config_.remove(alias.key);
+  // }
 }
 
 void CLIWrapper::updateConfig(const YAML::Node &config, cli::OptionPriority priority, const std::string &errorMsg) {

@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
   for (auto&& alias : aliases) {
     alltasks = alltasks + "\"" + alias + "\" ";
   }
-  ABORT_IF(aliases.find(mytask) == aliases.end(), "Unrecognised task option: {}. Permited {}", mytask, alltasks);
+  ABORT_IF(aliases.find(mytask) == aliases.end(), "Unrecognised task option: \"{}\". Permited {}", mytask, alltasks);
 
 
   // --sync-sgd always selects SyncGraphGroup

@@ -478,6 +478,11 @@ Expr intgemm_dispatch_dot_or_affine(Expr a, Expr b, Expr bias, bool transA, bool
     if (!b->memoize()) { // FBGEMM only does this for memoiseable types, not sure if we care about that.
       LOG(warn, "We're preparing a non-memoizeable tensor {}.", b->name());
     }
+    static bool use_oneDNN = a->graph()->getBackend()->useOneDNNOnly();
+    if (use_oneDNN && transB) {
+      b = transpose(b);
+      transB = !transB;
+    }
     b = cpu::integer::prepareBTyped(b, transB);
   }
   return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale, relu);

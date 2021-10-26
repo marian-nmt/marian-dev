@@ -115,9 +115,9 @@ struct PrepareBNodeOp : public UnaryNodeOp {
 
       if (isIntgemm(child(0)->value_type())) {
         val_ = child(0)->val();
-      } else if (use_oneDNN) { //@TODO proper codepaths, make sure only the ones that can't do intgemm, go through DNNL
+      } else if (use_oneDNN /*&& !transpose_*/) { //@TODO proper codepaths, make sure only the ones that can't do intgemm, go through DNNL
         // Use DNNL in this case, meaning we need prepareA. @TODO maybe try shifted version and also code one that doesn't care about register size
-        ABORT_IF(transpose_, "We haven't implemented DNNL transposed matrices for now.");
+        //ABORT_IF(transpose_, "We haven't implemented DNNL transposed matrices for now.");
         auto quantMult = computeQuantMult<vtype>(child(0)->val(), name());
         intgemm_<vtype>::width::PrepareA(child(0)->val()->data(), /*input*/
                                       val_->data<Integer>(), /*output*/
@@ -166,7 +166,8 @@ struct PrepareBNodeOp : public UnaryNodeOp {
 
   static Shape newShape(Expr input, bool transposed) {
     Shape ret = input->shape();
-    if (transposed) {
+    static bool use_oneDNN = input->graph()->getBackend()->useOneDNNOnly();
+    if (transposed && !use_oneDNN) {
       ret.set(0, input->shape()[-1]);
       ret.set(1, input->shape()[0]);
     } else {
@@ -306,7 +307,8 @@ public:
         quant_mult_a = getQuantMultA<vtype>(child(1)->val());
       }
       float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
-      if (rows(b) % 64 ==0) {
+      static bool use_oneDNN = child(0)->graph()->getBackend()->useOneDNNOnly();
+      if (!use_oneDNN) {
         intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
       } else {
         static const std::vector<uint8_t> ones(64000, 1); // Large enough static array of ones that we can use
@@ -559,7 +561,7 @@ static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr inputA_prep
  * It can be Type::intgemm8 or Type::intgemm16 and all hardware-specific variants	
  */
 template<Type vtype>
-static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool /*transB*/, float scale, bool relu) {
+static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale, bool relu) {
 #if COMPILE_CPU
   ABORT_IF(!isFloat(a->value_type()), "Intgemm expects type of A to be float32 not {}", a->value_type());
   ABORT_IF(!isIntgemm(bQuant->value_type()), "Intgemm expects type of B to be a variant of intgemm not {}", bQuant->value_type());
@@ -593,47 +595,68 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     dnnl_dim_t K = cols(aQuant->val());
     dnnl_dim_t N = cols(bQuant->val());
 
+    dnnl_dim_t lda = K;
+    dnnl_dim_t ldb = N;
+    dnnl_dim_t ldc = N;
+    if (transB) {
+      N = rows(bQuant->val());
+      ldc = N;
+      ldb = N;
+    }
+
     static const constexpr int8_t ao = 0;
     static const constexpr int8_t bo = 0;
     static const constexpr std::array<int32_t, 1> co = {0};
 
     dnnl::status status;
-
+    char transposeB = transB ? 'T' : 'N';
+    /* The transpose codepath is not working at the moment, so we have a workaround. Avoid
+    if (transB) {
+      std::cerr << "Transposed: " << "A: " << rows(aQuant->val()) << "x" << cols(aQuant->val()) << " "
+                                  << "B: " << rows(bQuant->val()) << "x" << cols(bQuant->val()) << " "
+                                  << "B: " << rows(out->val()) << "x" << cols(out->val()) << " "
+                                  << "Bname: " << bQuant->name() << std::endl;
+    } else {
+      std::cerr << "Untransposed: " << "A: " << rows(aQuant->val()) << "x" << cols(aQuant->val()) << " "
+                                  << "B: " << rows(bQuant->val()) << "x" << cols(bQuant->val()) << " "
+                                  << "B: " << rows(out->val()) << "x" << cols(out->val()) << " "
+                                  << "Bname: " << bQuant->name() << std::endl;
+    } */
     if (shifted) {
       status = dnnl::gemm_u8s8s32(/*transA*/  'N',
-                                   /*transB*/  'N',
+                                   transposeB,
                                    /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
                                     M,
                                     N,
                                     K,
                                     /*alpha*/ 1.0f,
                                     aQuant->val()->data<uint8_t>(),
-                                    /*lda*/ K,
+                                    lda,
                                     ao,
                                     bQuant->val()->data<int8_t>(),
-                                    /*ldb*/ N,
+                                    ldb,
                                     bo,
                                     /*beta*/ 0.0f,
                                     out->val()->data<int32_t>(),
-                                    /*ldc*/ N,
+                                    ldc,
                                     co.data());
     } else {
       status = dnnl::gemm_s8s8s32(/*transA*/  'N',
-                                   /*transB*/  'N',
+                                   transposeB,
                                    /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
                                     M,
                                     N,
                                     K,
                                     /*alpha*/ 1.0f,
                                     aQuant->val()->data<int8_t>(),
-                                    /*lda*/ K,
+                                    lda,
                                     ao,
                                     bQuant->val()->data<int8_t>(),
-                                    /*ldb*/ N,
+                                    ldb,
                                     bo,
                                     /*beta*/ 0.0f,
                                     out->val()->data<int32_t>(),
-                                    /*ldc*/ N,
+                                    ldc,
                                     co.data());
     }
 
@@ -727,7 +750,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
   static bool use_oneDNN = aQuant->graph()->getBackend()->useOneDNNOnly();
 
-  if (use_oneDNN) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
+  if (use_oneDNN /*&& !transB*/) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
     return lambda(children, outShape, Type::float32, dnnlDotOrAffineNodeOp); // inference-only Lambda node
   } else {
     return lambda(children, outShape, Type::float32, dotOrAffineNodeOp); // inference-only Lambda node

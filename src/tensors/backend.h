@@ -73,9 +73,6 @@ public:
     }
     if (intgemmOptsSet.find("onednn-only") != intgemmOptsSet.end()) {
       setUseOneDNNOnly(true);
-      setShifted(false);
-      setShiftedAll(false);
-      setDumpQuantMult(false);
     }
   }
 

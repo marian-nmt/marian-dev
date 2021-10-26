@@ -85,9 +85,10 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     // Shortlisting with intgemm. We either get float32 Wt_ or intgemm formatted Wt_ (in future implementation potentially)
     // The two cases do exactly the same, with the difference that the first case is for 8bit integers and the second is for 16bit integers
     Expr preparedBias = nullptr; //This is only necessary for the CPU codebase
+    static bool useOneDNN = graph_->getBackend()->useOneDNNOnly();
     if (graph_->getDeviceId().type == DeviceType::cpu) {
       bool transposed = !isLegacyUntransposedW;
-      if (graph_->getBackend()->getGemmType() == GemmType::intgemm8packed || graph_->getBackend()->getGemmType() == GemmType::intgemm16packed || isIntgemm(Wt_->value_type())) {
+      if ((graph_->getBackend()->getGemmType() == GemmType::intgemm8packed || graph_->getBackend()->getGemmType() == GemmType::intgemm16packed || isIntgemm(Wt_->value_type())) && !useOneDNN) {
         if (isIntgemm(Wt_->value_type())) { // If we already have intgemm formatted matrix, just select columns from it. Intgemm equivalent of index_select
           if (graph_->getBackend()->isPrecomputedAlpha() && graph_->getBackend()->isShifted() && hasBias_) {
             preparedBias = cpu::integer::PrepareBiasForBTyped(b_, Wt_);
@@ -100,7 +101,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
           }
           cachedShortWt_ = cpu::integer::SelectColumnsBTyped(cachedShortWt_, shortlist_->indices());
         }
-      } else {
+      } else { // oneDNN should also take this codepath
         cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
       }
     } else {

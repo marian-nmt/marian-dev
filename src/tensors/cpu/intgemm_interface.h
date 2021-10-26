@@ -110,12 +110,9 @@ struct PrepareBNodeOp : public UnaryNodeOp {
   NodeOps forwardOps() override {
    return {NodeOp(
       static bool precomputedAlpha = child(0)->graph()->getBackend()->isPrecomputedAlpha();
-      static bool shifted = child(0)->graph()->getBackend()->isShiftedAll();
       typedef typename intgemm_<vtype>::type Integer;
-      bool use_oneDNN = rows(child(0)->val()) % 64 !=0 || cols(child(0)->val()) % 8 !=0;
-      if (shifted) {
-        use_oneDNN = rows(child(0)->val()) % 64 !=0;
-      }
+      static bool use_oneDNN = child(0)->graph()->getBackend()->useOneDNNOnly();
+
       if (isIntgemm(child(0)->value_type())) {
         val_ = child(0)->val();
       } else if (use_oneDNN) { //@TODO proper codepaths, make sure only the ones that can't do intgemm, go through DNNL
@@ -728,10 +725,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   if(bias)
     children.push_back(bias);
 
-  bool use_oneDNN = rows(bQuant->shape()) % 64 !=0 || cols(bQuant->shape()) % 8 !=0;
-  if (shifted) {
-    use_oneDNN = rows(bQuant->shape()) % 64 !=0;
-  }
+  static bool use_oneDNN = aQuant->graph()->getBackend()->useOneDNNOnly();
 
   if (use_oneDNN) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
     return lambda(children, outShape, Type::float32, dnnlDotOrAffineNodeOp); // inference-only Lambda node

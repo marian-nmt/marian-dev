@@ -150,14 +150,14 @@ private:
       ++trainBegin;
 
       if(!trainSet.empty()) {
-        LOG(info, "# NEW TEST BATCH");
+        LOG(info, "Got {} context sentences", trainSet.size());
         trainSlot_->SetModel(cpuModel_);
         trainSlot_->Train(trainSet);
         translateSlot_->PointToParams(*trainSlot_);
         translate(testBatch, collector, printer);
         needsSwitching_ = true;
       } else {
-        LOG(info, "# EMPTY TEST BATCH");
+        LOG(info, "No context");
         if(needsSwitching_) {
           translateSlot_->Load(*cpuModel_);
           needsSwitching_ = false;

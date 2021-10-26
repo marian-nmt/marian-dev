@@ -91,12 +91,12 @@ void SwappableModelTrainer::Train(const std::vector<std::string> &input) {
   while(scheduler->keepGoing()) {
     batchGenerator.prepare();
 
-    LOG(info, "## NEW BATCHES");
+    // LOG(info, "## NEW BATCHES");
     for(auto&& batch : batchGenerator) {
       if(!scheduler->keepGoing())
         break;
 
-      LOG(info, "### NEW BATCH");
+      // LOG(info, "### NEW BATCH");
       // Make an update step on the copy of the model
       auto lossNode = engine_->builder_->build(engine_->graph_, batch);
       engine_->graph_->forward();

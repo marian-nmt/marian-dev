@@ -2,7 +2,6 @@
 #include "common/timer.h"
 #include "data/factored_vocab.h"
 #include "layers/loss.h"
-#include "layers/lsh.h"
 
 namespace marian {
 namespace mlp {
@@ -11,13 +10,6 @@ namespace mlp {
   // We must construct lazily since we won't know tying nor input dim in constructor.
   if(Wt_)
     return;
-
-  // this option is only set in the decoder
-  if(!lsh_ && options_->hasAndNotEmpty("output-approx-knn")) {
-    auto k = opt<std::vector<int>>("output-approx-knn")[0];
-    auto nbits = opt<std::vector<int>>("output-approx-knn")[1];
-    lsh_ = New<LSH>(k, nbits);
-  }
 
   auto name = options_->get<std::string>("prefix");
   auto numOutputClasses = options_->get<int>("dim");
@@ -44,12 +36,12 @@ namespace mlp {
     b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
   /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
+  std::string lemmaDependency = options_->get<std::string>("lemma-dependency", "");
   ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
-  if(lemmaDimEmb > 0) {  // > 0 means to embed the (expected) word with a different embedding matrix
-#define HARDMAX_HACK
-#ifdef HARDMAX_HACK
-    lemmaDimEmb = lemmaDimEmb & 0xfffffffe;  // hack to select hard-max: use an odd number
-#endif
+  if(lemmaDependency == "re-embedding") {  // embed the (expected) word with a different embedding matrix
+    ABORT_IF(
+        lemmaDimEmb <= 0,
+        "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
     auto range = factoredVocab_->getGroupRange(0);
     auto lemmaVocabDim = (int)(range.second - range.first);
     auto initFunc = inits::glorotUniform(
@@ -64,27 +56,49 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
   lazyConstruct(input->shape()[-1]);
 
   auto affineOrDot = [](Expr x, Expr W, Expr b, bool transA, bool transB) {
+    /*
+    std::cerr << "affineOrDot.x=" << x->shape() << std::endl;
+    std::cerr << "affineOrDot.W=" << W->shape() << std::endl;
+    if (b) std::cerr << "affineShortlist.b=" << b->shape() << std::endl;
+    std::cerr << "affineOrDot.transA=" << transA << " transB=" << transB << std::endl;
+    */
     if(b)
       return affine(x, W, b, transA, transB);
     else
       return dot(x, W, transA, transB);
   };
 
-  auto affineOrLSH = [this, affineOrDot](Expr x, Expr W, Expr b, bool transA, bool transB) {
-    if(lsh_) {
-      ABORT_IF(transA, "Transposed query not supported for LSH");
-      ABORT_IF(!transB, "Untransposed indexed matrix not supported for LSH");
-      return lsh_->apply(x, W, b);  // knows how to deal with undefined bias
-    } else {
-      return affineOrDot(x, W, b, transA, transB);
+  auto affineShortlist = [this](Expr x, Expr W, Expr b, bool transA, bool transB) {
+    /*    
+    std::cerr << "affineShortlist.x=" << x->shape() << std::endl;
+    std::cerr << "affineShortlist.W=" << W->shape() << std::endl;
+    if (b) std::cerr << "affineShortlist.b=" << b->shape() << std::endl;
+    std::cerr << "affineShortlist.transA=" << transA << " transB=" << transB << std::endl;
+    */
+
+    Expr ret;
+
+    if (b) {
+      // original shortlist. W always has 1 for beam & batch
+      ABORT_UNLESS(!shortlist_->isDynamic(), "affineShortlist. Bias not supported with LSH/dynamic shortlist"); // todo rename ABORT_UNLESS to ASSERT
+      ret = affine(x, W, b, transA, transB);
     }
+    else if (shortlist_->isDynamic()) {
+      // LSH produces W entry for each beam and batch => need bdot()
+      ABORT_IF(!(!transA && transB), "affineShortlist. Only tested with transA==0 and transB==1");
+      ret = bdot(x, W, transA, transB);
+    }
+    else {
+      // original shortlist. W always has 1 for beam & batch
+      ret = dot(x, W, transA, transB);
+    } 
+
+    //std::cerr << "ret.x=" << ret->shape() << std::endl;
+    return ret;
   };
 
-  if(shortlist_ && !cachedShortWt_) {  // shortlisted versions of parameters are cached within one
-                                       // batch, then clear()ed
-    cachedShortWt_ = index_select(Wt_, isLegacyUntransposedW ? -1 : 0, shortlist_->indices());
-    if(hasBias_)
-      cachedShortb_ = index_select(b_, -1, shortlist_->indices());
+  if(shortlist_) {
+    shortlist_->filter(input, Wt_, isLegacyUntransposedW, b_, lemmaEt_);
   }
 
   if(factoredVocab_) {
@@ -95,8 +109,12 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     std::vector<Ptr<RationalLoss>> allLogits(numGroups,
                                              nullptr);  // (note: null entries for absent factors)
     Expr input1 = input;                                // [B... x D]
-    Expr Plemma = nullptr;                              // used for lemmaDimEmb=-1
-    Expr inputLemma = nullptr;                          // used for lemmaDimEmb=-2, -3
+    Expr Plemma = nullptr;                              // used for lemmaDependency = lemma-dependent-bias
+    Expr inputLemma = nullptr;                          // used for lemmaDependency = hard-transformer-layer and soft-transformer-layer
+
+    std::string factorsCombine = options_->get<std::string>("factors-combine", "");
+    ABORT_IF(factorsCombine == "concat", "Combining lemma and factors embeddings with concatenation on the target side is currently not supported");
+
     for(size_t g = 0; g < numGroups; g++) {
       auto range = factoredVocab_->getGroupRange(g);
       if(g > 0 && range.first == range.second)  // empty entry
@@ -107,8 +125,8 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
       // slice this group's section out of W_
       Expr factorWt, factorB;
       if(g == 0 && shortlist_) {
-        factorWt = cachedShortWt_;
-        factorB = cachedShortb_;
+        factorWt = shortlist_->getCachedShortWt();
+        factorB = shortlist_->getCachedShortb();
       } else {
         factorWt = slice(
             Wt_, isLegacyUntransposedW ? -1 : 0, Slice((int)range.first, (int)range.second));
@@ -116,9 +134,8 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
           factorB = slice(b_, -1, Slice((int)range.first, (int)range.second));
       }
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-      if((lemmaDimEmb == -2 || lemmaDimEmb == -3)
-         && g > 0) {  // -2/-3 means a gated transformer-like structure (-3 = hard-max)
-        LOG_ONCE(info, "[embedding] using lemma conditioning with gate");
+      std::string lemmaDependency = options_->get<std::string>("lemma-dependency", "");
+      if((lemmaDependency == "soft-transformer-layer" || lemmaDependency == "hard-transformer-layer") && g > 0) {
         // this mimics one transformer layer
         //  - attention over two inputs:
         //     - e = current lemma. We use the original embedding vector; specifically, expectation
@@ -170,7 +187,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
                              /*suffix=*/"1",
                              ffnDim,
                              inits::glorotUniform(),
-                             (ActivationFunction*)relu,
+                             "relu",
                              ffnDropProb);
         f = denseInline(f, name + "_ffn", /*suffix=*/"2", inputDim);
         // add & norm
@@ -180,20 +197,24 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
       // @TODO: b_ should be a vector, not a matrix; but shotlists use cols() in, which requires a
       // matrix
       Expr factorLogits;
-      if(g == 0)
-        factorLogits = affineOrLSH(
-            input1,
+      if(g == 0 && shortlist_) {
+        Expr tmp = transpose(input1, {0, 2, 1, 3});
+        factorLogits = affineShortlist(
+            tmp,
             factorWt,
             factorB,
             false,
             /*transB=*/isLegacyUntransposedW ? false : true);  // [B... x U] factor logits
-      else
+        factorLogits = transpose(factorLogits, {0, 2, 1, 3});
+      }
+      else {
         factorLogits = affineOrDot(
             input1,
             factorWt,
             factorB,
             false,
             /*transB=*/isLegacyUntransposedW ? false : true);  // [B... x U] factor logits
+      }
 
       // optionally add lemma-dependent bias
       if(Plemma) {  // [B... x U0]
@@ -207,10 +228,11 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
         auto b = dot(Plemma, lemmaBt, false, true);  // [B... x U]
         factorLogits = factorLogits + b;
       }
+      //std::cerr << "factorLogits=" << factorLogits->shape() << std::endl;
       allLogits[g] = New<RationalLoss>(factorLogits, nullptr);
       // optionally add a soft embedding of lemma back to create some lemma dependency
       // @TODO: if this works, move it into lazyConstruct
-      if(lemmaDimEmb == -2 && g == 0) {  // -2 means a gated transformer-like structure
+      if(lemmaDependency == "soft-transformer-layer" && g == 0) {
         LOG_ONCE(info, "[embedding] using lemma conditioning with gate, soft-max version");
         // get expected lemma embedding vector
         auto factorLogSoftmax = logsoftmax(
@@ -220,7 +242,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
                          factorWt,
                          false,
                          /*transB=*/isLegacyUntransposedW ? true : false);  // [B... x D]
-      } else if(lemmaDimEmb == -3 && g == 0) {  // same as -2 except with hard max
+      } else if(lemmaDependency == "hard-transformer-layer" && g == 0) {
         LOG_ONCE(info, "[embedding] using lemma conditioning with gate, hard-max version");
         // get max-lemma embedding vector
         auto maxVal = max(factorLogits,
@@ -230,36 +252,45 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
                          factorWt,
                          false,
                          /*transB=*/isLegacyUntransposedW ? true : false);  // [B... x D]
-      } else if(lemmaDimEmb == -1 && g == 0) {  // -1 means learn a lemma-dependent bias
+      } else if(lemmaDependency == "lemma-dependent-bias" && g == 0) {
         ABORT_IF(shortlist_, "Lemma-dependent bias with short list is not yet implemented");
         LOG_ONCE(info, "[embedding] using lemma-dependent bias");
         auto factorLogSoftmax
             = logsoftmax(factorLogits);  // (we do that again later, CSE will kick in)
         auto z = /*stopGradient*/ (factorLogSoftmax);
         Plemma = exp(z);                      // [B... x U]
-      } else if(lemmaDimEmb > 0 && g == 0) {  // > 0 means learn a re-embedding matrix
+      } else if(lemmaDependency == "re-embedding" && g == 0) {
+        ABORT_IF(
+            lemmaDimEmb <= 0,
+            "In order to predict factors by re-embedding them, a lemma-dim-emb must be specified.");
         LOG_ONCE(info, "[embedding] enabled re-embedding of lemma, at dim {}", lemmaDimEmb);
         // compute softmax. We compute logsoftmax() separately because this way, computation will be
         // reused later via CSE
         auto factorLogSoftmax = logsoftmax(factorLogits);
         auto factorSoftmax = exp(factorLogSoftmax);
-#ifdef HARDMAX_HACK
-        bool hardmax = (lemmaDimEmb & 1)
-                       != 0;  // odd value triggers hardmax for now (for quick experimentation)
-        if(hardmax) {
-          lemmaDimEmb = lemmaDimEmb & 0xfffffffe;
-          LOG_ONCE(info, "[embedding] HARDMAX_HACK enabled. Actual dim is {}", lemmaDimEmb);
-          auto maxVal = max(factorSoftmax, -1);
-          factorSoftmax = eq(factorSoftmax, maxVal);
-        }
-#endif
         // re-embedding lookup, soft-indexed by softmax
-        if(shortlist_ && !cachedShortLemmaEt_)  // short-listed version of re-embedding matrix
-          cachedShortLemmaEt_ = index_select(lemmaEt_, -1, shortlist_->indices());
-        auto e = dot(factorSoftmax,
-                     cachedShortLemmaEt_ ? cachedShortLemmaEt_ : lemmaEt_,
-                     false,
-                     true);  // [B... x L]
+        Expr e;
+        if(shortlist_) {  // short-listed version of re-embedding matrix
+          Expr cachedShortLemmaEt = shortlist_->getCachedShortLemmaEt();
+          // std::cerr << "factorSoftmax=" << factorSoftmax->shape() << std::endl;
+          // std::cerr << "cachedShortLemmaEt=" << cachedShortLemmaEt->shape() << std::endl;
+          const Shape &fShape = factorSoftmax->shape();
+          ABORT_IF(fShape[1] != 1, "We are decoding with a shortlist but time step size {} != 1??", fShape[1]);
+          factorSoftmax = reshape(factorSoftmax, {fShape[0], fShape[2], 1, fShape[3]}); // we can switch dims because time step is of size 1
+          // std::cerr << "factorSoftmax=" << factorSoftmax->shape() << std::endl;
+          e = bdot(factorSoftmax, cachedShortLemmaEt, false, true);
+          // std::cerr << "e.1=" << e->shape() << std::endl;
+          const Shape &eShape = e->shape();
+          e = reshape(e, {eShape[0], 1, eShape[1], eShape[3]}); // switch dims back, again possible because time step is of size 1
+          // std::cerr << "e.2=" << e->shape() << std::endl;
+          // std::cerr << std::endl;
+        } else { // for scoring, training and decoding without a shortlist we use a simple dot operation
+          e = dot(factorSoftmax,
+                  lemmaEt_,
+                  false,
+                  true);  // [B... x L]
+        }
+
         // project it back to regular hidden dim
         int inputDim = input1->shape()[-1];
         auto name = options_->get<std::string>("prefix");
@@ -278,14 +309,14 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     }
     return Logits(std::move(allLogits), factoredVocab_);
   } else if(shortlist_) {
-    return Logits(affineOrLSH(input,
-                              cachedShortWt_,
-                              cachedShortb_,
+    return Logits(affineOrDot(input,
+                              shortlist_->getCachedShortWt(),
+                              shortlist_->getCachedShortb(),
                               false,
                               /*transB=*/isLegacyUntransposedW ? false : true));
   } else {
     return Logits(
-        affineOrLSH(input, Wt_, b_, false, /*transB=*/isLegacyUntransposedW ? false : true));
+        affineOrDot(input, Wt_, b_, false, /*transB=*/isLegacyUntransposedW ? false : true));
   }
 }
 

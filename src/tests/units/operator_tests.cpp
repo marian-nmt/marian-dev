@@ -32,6 +32,8 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
   Config::seed = 1234;
   auto graph = New<ExpressionGraph>();
+  
+  graph->setInference(true);
   graph->setDefaultElementType(floatType);
   graph->setDevice({0, device});
   graph->reserveWorkspaceMB(16);
@@ -298,6 +300,49 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
   }
 
+  SECTION("RMS normalization") {
+    graph->clear();
+    values.clear();
+
+    std::vector<T> init = {
+      2.88794374, 4.67853451, 3.96257305, 3.28433037,
+      0.37778997, 0.67662024, 4.24959183, 1.23910618,
+      0.68929380, 2.00369596, 4.38251686, 1.75624943,
+      4.96126175, 3.01947117, 4.72057724, 2.23017120
+    };
+
+    auto a1 = graph->param("test1", {2, 2, 4}, inits::fromVector(init));
+    auto a2 = graph->param("test2", {2, 2, 4}, inits::fromVector(init));
+    auto gamma = graph->param("gamma", {1, 4}, inits::ones());
+    
+    auto rms = rmsNorm(a1, gamma, nullptr, 1e-5f);
+    auto rms2 = gamma * (a2 / sqrt(mean(a2 * a2, /*axis=*/-1) + 1e-5f));
+
+    auto top = sum(flatten(rms + rms2));
+
+    graph->forward();
+    graph->backward();
+
+    CHECK(rms->shape() == Shape({2, 2, 4}));
+
+    std::vector<T> values2;
+
+    // compare values of rms and rms2 to make sure forward computation is correct
+    rms->val()->get(values);
+    rms2->val()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox) );
+
+    // compare adjoints of a1 and a2 (parameters) to makes sure gradient computation is correct
+    a1->grad()->get(values);
+    a2->grad()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox) );
+  
+  }
+
   SECTION("reductions") {
     graph->clear();
     values.clear();
@@ -539,15 +584,19 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     values.clear();
 
     std::vector<T> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-    std::vector<T> vB({1, 2, 3, 4, 5, 6});
-    std::vector<T> vAff({24, 30, 51, 66, 78, 102, 105, 138});
+    std::vector<T> vB({1, -2, 3, 4, -5, 6});
+    std::vector<T> vAff({-6, 26, -9, 50, -12, 74, -15, 98});
+    std::vector<T> vAffRelu({0, 26, 0, 50, 0, 74, 0, 98});
 
     auto A = graph->param("A", {4, 3}, inits::fromVector(vA));
     auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
-    auto C = graph->param("C", {4, 2}, inits::fromValue(2));
+    auto bias = graph->param("C", {1, 2}, inits::fromValue(2));
 
-    auto aff1 = affine(A, B, C);
-    auto aff2 = dot(A, B) + C;
+    auto aff1 = affine(A, B, bias);
+    auto aff2 = dot(A, B) + bias;
+
+    auto affRelu1 = affineWithRelu(A, B, bias);
+    auto affRelu2 = relu(dot(A, B) + bias);
 
     graph->forward();
 
@@ -559,6 +608,71 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(aff2->shape() == aff1->shape());
     aff2->val()->get(values2);
     CHECK(values2 == values);
+
+    affRelu1->val()->get(values);
+    affRelu2->val()->get(values2);
+    CHECK(values2 == vAffRelu);
+    CHECK(values2 == values);
+  }
+
+  SECTION("bdot") {
+    graph->clear();
+    values.clear();
+
+    std::vector<T> vA({ 1, 2, 
+                        3, 4,
+                        5, 6,
+                        7, 8});
+
+    std::vector<T> vB({ 1,  2, 
+                        3,  4,
+                        5,  6,
+                        7,  8,
+                        9, 10,
+                       11, 12});
+
+    std::vector<T> vC({  7,  10, 
+                        15,  22, 
+                        19,  22, 
+                        43,  50, 
+                        31,  34, 
+                        71,  78, 
+                        23,  34, 
+                        31,  46, 
+                        67,  78, 
+                        91, 106, 
+                       111, 122, 
+                       151, 166});
+
+    std::vector<T> vCt({   5,  11, 
+                          11,  25, 
+                          17,  23, 
+                          39,  53, 
+                          29,  35, 
+                          67,  81, 
+                          17,  39, 
+                          23,  53, 
+                          61,  83, 
+                          83, 113, 
+                         105, 127, 
+                         143, 173});
+
+    auto A = graph->param("A", {2, 1, 2, 2}, inits::fromVector(vA));
+    auto B = graph->param("B", {1, 3, 2, 2}, inits::fromVector(vB));
+    
+    auto C  = bdot(A, B, /*transA=*/false, /*transB=*/false);
+    auto Ct = bdot(A, B, /*transA=*/false, /*transB=*/true);
+
+    graph->forward();
+
+    CHECK(C->shape()  == Shape({2, 3, 2, 2}));
+    CHECK(Ct->shape() == Shape({2, 3, 2, 2}));
+
+    C->val()->get(values);
+    CHECK(vC == values);
+
+    Ct->val()->get(values);
+    CHECK(vCt == values);
   }
 
   SECTION("repeat") {

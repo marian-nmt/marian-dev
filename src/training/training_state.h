@@ -43,8 +43,6 @@ public:
   size_t stalled{0};
   // The largest number of stalled validations so far
   size_t maxStalled{0};
-  // Last best validation score
-  float validBest{0.f};
   std::string validator;
   // List of validators
   YAML::Node validators;
@@ -144,8 +142,9 @@ public:
   // for periods.
   bool enteredNewPeriodOf(std::string schedulingParam) const {
     auto period = SchedulingParameter::parse(schedulingParam);
+    // @TODO: adapt to logical epochs
     ABORT_IF(period.unit == SchedulingUnit::epochs,
-             "Unit {} is not supported for frequency parameters (the one(s) with value {})",
+             "Unit {} is not supported for frequency parameters",
              schedulingParam);
     auto previousProgress = getPreviousProgressIn(period.unit);
     auto progress = getProgressIn(period.unit);
@@ -217,7 +216,6 @@ public:
 
     stalled = config["stalled"].as<size_t>();
     maxStalled = config["stalled-max"].as<size_t>();
-    validBest = config["valid-best"].as<float>();
     validator = config["validator"].as<std::string>();
     validators = config["validators"];
     reset = config["reset"].as<bool>();
@@ -259,7 +257,6 @@ public:
 
     config["stalled"] = stalled;
     config["stalled-max"] = maxStalled;
-    config["valid-best"] = validBest;
     config["validator"] = validator;
     config["validators"] = validators;
     config["reset"] = reset;

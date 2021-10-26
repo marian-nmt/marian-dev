@@ -104,7 +104,10 @@ DISPATCH7(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bo
 DISPATCH8(Prod, marian::Tensor, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float, Type) // overloading since we want the default to for computeType be C->type() which difficult otherwise.
 
 DISPATCH8(ProdBatched, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
+DISPATCH8(ProdBatchedLegacy, marian::Tensor, Ptr<Allocator>, const marian::Tensor, const marian::Tensor, bool, bool, float, float)
 DISPATCH9(CSRProd, marian::Tensor, Ptr<Allocator>, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, bool, bool, float)
+
+DISPATCH10(Affine, marian::Tensor, Ptr<Allocator>, const marian::Tensor&, const marian::Tensor&, const marian::Tensor&, bool, bool, float, float, bool)
 
 DISPATCH2(Softmax, marian::Tensor, marian::Tensor)
 DISPATCH3(SoftmaxGrad, marian::Tensor, marian::Tensor, marian::Tensor)
@@ -214,6 +217,55 @@ static inline void LayerNormalizationGrad(
   else
 #endif
     cpu::LayerNormalizationGrad(gradX, gradGamma, gradBeta, adj, y, x, gamma, beta, eps);
+}
+
+// clang-format off
+DISPATCH5(RMSNormalization, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, float)
+
+#ifdef CUDA_FOUND
+namespace gpu {
+void RMSNormalizationGrad(Ptr<Allocator> allocator,
+                          Tensor gradX,
+                          Tensor gradGamma,
+                          Tensor gradBeta,
+                          Tensor adj,
+                          Tensor y,
+                          Tensor x,
+                          Tensor gamma,
+                          Tensor beta,
+                          float eps);
+}
+#endif
+
+namespace cpu {
+void RMSNormalizationGrad(Tensor gradX,
+                          Tensor gradGamma,
+                          Tensor gradBeta,
+                          Tensor adj,
+                          Tensor y,
+                          Tensor x,
+                          Tensor gamma,
+                          Tensor beta,
+                          float eps);
+}
+
+static inline void RMSNormalizationGrad(
+                            Ptr<Allocator> allocator,
+                            Tensor gradX,
+                            Tensor gradGamma,
+                            Tensor gradBeta,
+                            Tensor adj,
+                            Tensor y,
+                            Tensor x,
+                            Tensor gamma,
+                            Tensor beta,
+                            float eps) {
+#ifdef CUDA_FOUND
+  if(gradX->getBackend()->getDeviceId().type == DeviceType::gpu)
+    gpu::RMSNormalizationGrad(allocator, gradX, gradGamma, gradBeta, adj, y, x, gamma, beta, eps);
+  else
+#endif
+    cpu::RMSNormalizationGrad(gradX, gradGamma, gradBeta, adj, y, x, gamma, beta, eps);
 }
 
 DISPATCH4(HighwayForward, marian::Tensor, const marian::Tensor, const marian::Tensor, const marian::Tensor)

@@ -270,11 +270,6 @@ if (NOT COMPILE_LIBRARY_ONLY)
   add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
   add_custom_target(philly DEPENDS marian_tgz marian_zip)
 
-  add_executable(bug_repro command/bug_repro.cpp)
-  set_target_properties(bug_repro PROPERTIES OUTPUT_NAME bug_repro)
-  target_compile_options(bug_repro PRIVATE ${ALL_WARNINGS} -Wno-suggest-override)
-  set(EXECUTABLES ${EXECUTABLES} bug_repro)
-
   if(COMPILE_SERVER)
     add_executable(marian_server command/marian_server.cpp)
     set_target_properties(marian_server PROPERTIES OUTPUT_NAME marian-server)

@@ -166,6 +166,7 @@ struct PrepareBNodeOp : public UnaryNodeOp {
 
   static Shape newShape(Expr input, bool transposed) {
     Shape ret = input->shape();
+    // In the oneDNN case, handle transposition down the line
     static bool use_oneDNN = input->graph()->getBackend()->useOneDNNOnly();
     if (transposed && !use_oneDNN) {
       ret.set(0, input->shape()[-1]);
@@ -391,7 +392,45 @@ public:
     }
 
     float unquant_mult = (-1)*((127.0f / quant_mult_a)*(127.0f / quant_mult_b))/(127.0f); //Minus one to invert add_ps later on
-    intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
+    static bool use_oneDNN = child(0)->graph()->getBackend()->useOneDNNOnly();
+    if (!use_oneDNN) {
+      intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
+    } else {
+      static const std::vector<uint8_t> ones(64000, 1); // Large enough static array of ones that we can use
+        // DNNL parameters
+        const dnnl_dim_t M = 1;
+        dnnl_dim_t K = rows(b);
+        dnnl_dim_t N = cols(b);
+
+        const int8_t ao = 0;
+        const int8_t bo = 0;
+        static const std::vector<int32_t> co(1,0);
+        ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
+        auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
+                                        /*transB*/  'N',
+                                        /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
+                                        M,
+                                        N,
+                                        K,
+                                        /*alpha*/ 1.0f,
+                                        ones.data(),
+                                        /*lda*/ K,
+                                        ao,
+                                        b->template data<int8_t>(),
+                                        /*ldb*/ N,
+                                        bo,
+                                        /*beta*/ 0.0f,
+                                        val_->data<int32_t>(),
+                                        /*ldc*/ N,
+                                        co.data());
+
+        if (status != dnnl::status::success) {
+          printDNNLStatus(status);
+          ABORT("PrepareBias gemm didn't run");
+        }
+
+        JustUnquantise(val_, unquant_mult);
+    }
     )};
   }
 

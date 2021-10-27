@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Adds a `marian-adaptive` executable to enable self-adaptive translation (a.k.a, runtime domain adaptation).
 - Adds option --add-lsh to marian-conv which allows the LSH to be memory-mapped.
 - Early stopping based on first, all, or any validation metrics via `--early-stopping-on`
 - Compute 8.6 support if using CUDA>=11.1

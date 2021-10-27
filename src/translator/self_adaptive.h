@@ -26,6 +26,9 @@ class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
   TrainSelfAdaptive(Ptr<Options> options) : options_(options) {
     options_->set("shuffle", "none");
+    // Disable early stopping because typically training would happen for only a few iterations and
+    // and also it doesn't make much sense to run the validation metrics on the validation dataset here
+    options_->set<size_t>("early-stopping", 0);
     // Set up translator options
     optionsTrans_ = New<Options>(options_->clone());
     // We will only ever translate a single sentence at a time because dynamic

@@ -98,7 +98,6 @@ ConfigParser::ConfigParser(cli::mode mode)
       addOptionsTraining(cli_);
       addOptionsTranslation(cli_);
       addOptionsServer(cli_);
-      addOptionsStupid(cli_);
       break;
     default:
       ABORT("wrong CLI mode");
@@ -107,15 +106,6 @@ ConfigParser::ConfigParser(cli::mode mode)
 
   addAliases(cli_);
   // clang-format on
-}
-
-void ConfigParser::addOptionsStupid(cli::CLIWrapper & cli) {
-  auto previous_group = cli.switchGroup("Server options");
-  cli.add<size_t>(
-      "--early-stopping",
-      "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
-      10);
-  cli.switchGroup(previous_group);
 }
 
 void ConfigParser::addOptionsGeneral(cli::CLIWrapper & cli) {

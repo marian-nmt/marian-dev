@@ -25,7 +25,9 @@ namespace {
 // For debugging memory
 void get(std::vector<uint8_t> &out, MemoryPiece::PtrType mem, Ptr<Backend> backend) {
   out.resize(mem->size());
+#ifdef CUDA_FOUND
   gpu::copy(backend, mem->data<uint8_t>(), mem->data<uint8_t>() + mem->size(), out.data());
+#endif
 }
 
 GPUEngineTrain::GPUEngineTrain(Ptr<Options> options, size_t deviceIdx)

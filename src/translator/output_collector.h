@@ -45,6 +45,7 @@ private:
 };
 
 struct CollectorBase {
+  virtual ~CollectorBase() = 0;
   virtual void Write(long sourceId, const std::string& best1, const std::string& bestn, bool nbest)
       = 0;
 };

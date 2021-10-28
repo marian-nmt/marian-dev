@@ -6,6 +6,8 @@
 
 namespace marian {
 
+CollectorBase::~CollectorBase(){};
+
 OutputCollector::OutputCollector()
   : nextId_(0),
     printing_(new DefaultPrinting()) {}

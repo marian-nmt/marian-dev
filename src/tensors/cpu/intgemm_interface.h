@@ -608,10 +608,15 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   bool shifted = (a->graph()->getBackend()->isShifted() && bias) || a->graph()->getBackend()->isShiftedAll(); // We use the shifted codepath when we have a bias or shifted-all is enabled
   auto aQuant = prepareA<vtype>(transA ? transpose(a) : a, bQuant, shifted); // A should not be quantized yet as seen above, hence quantize here
   
+  static bool use_oneDNN = aQuant->graph()->getBackend()->useOneDNNOnly();
   // determine the output shape m x n for A: m x k and B: k x n
-  // since we transpose A beforehand we don't need to take care of transposed shapes here 
+  // since we transpose A beforehand we don't need to take care of transposed shapes here if using intgemm
+  // if using DNNL we very much do!
   Shape outShape = aQuant->shape();
   outShape.set(-1, bQuant->shape()[-1]);
+  if (transB && use_oneDNN) {
+    outShape.set(-1, rows(bQuant->shape()));
+  }
 
   if (shifted) {
     bias = PrepareBiasForBTyped(bias, bQuant, aQuant);
@@ -640,7 +645,6 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     if (transB) {
       N = rows(bQuant->val());
       ldc = N;
-      ldb = N;
     }
 
     static const constexpr int8_t ao = 0;
@@ -649,18 +653,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
     dnnl::status status;
     char transposeB = transB ? 'T' : 'N';
-    /* The transpose codepath is not working at the moment, so we have a workaround. Avoid
-    if (transB) {
-      std::cerr << "Transposed: " << "A: " << rows(aQuant->val()) << "x" << cols(aQuant->val()) << " "
-                                  << "B: " << rows(bQuant->val()) << "x" << cols(bQuant->val()) << " "
-                                  << "B: " << rows(out->val()) << "x" << cols(out->val()) << " "
-                                  << "Bname: " << bQuant->name() << std::endl;
-    } else {
-      std::cerr << "Untransposed: " << "A: " << rows(aQuant->val()) << "x" << cols(aQuant->val()) << " "
-                                  << "B: " << rows(bQuant->val()) << "x" << cols(bQuant->val()) << " "
-                                  << "B: " << rows(out->val()) << "x" << cols(out->val()) << " "
-                                  << "Bname: " << bQuant->name() << std::endl;
-    } */
+
     if (shifted) {
       status = dnnl::gemm_u8s8s32(/*transA*/  'N',
                                    transposeB,
@@ -786,8 +779,6 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
   std::vector<Expr> children = {aQuant, bQuant};
   if(bias)
     children.push_back(bias);
-
-  static bool use_oneDNN = aQuant->graph()->getBackend()->useOneDNNOnly();
 
   if (use_oneDNN /*&& !transB*/) { //Use DNNL if the inner dimension is not a multiple of 64. @TODO take care of the other case by using shifted-all
     return lambda(children, outShape, Type::float32, dnnlDotOrAffineNodeOp); // inference-only Lambda node

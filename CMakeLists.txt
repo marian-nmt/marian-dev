@@ -135,6 +135,7 @@ else(MSVC)
   option(COMPILE_AVX    "Compile CPU code with AVX support"    ON)
   option(COMPILE_AVX2   "Compile CPU code with AVX2 support"   ON)
   option(COMPILE_AVX512 "Compile CPU code with AVX512 support" ON)
+  option(COMPILE_AMX    "Compile experimental AMX support with GCC 11.2" OFF)
 
   if(BUILD_ARCH STREQUAL "native")
     message(STATUS "Building with -march=native and intrinsics will be chosen automatically by the compiler to match the current machine.")
@@ -199,6 +200,10 @@ else(MSVC)
       set(INTRINSICS "${INTRINSICS} -mavx512f")
       list(APPEND INTRINSICS_NVCC -Xcompiler\ -mavx512f)
     endif(COMPILE_AVX512)
+    if(COMPILE_AMX) # We should use BUILD_ARCH=sapphirerapids, those just enable the AMX instructions
+      message(STATUS "Adding AMX intrinsics to the compilation. Will only work with gcc 11.2+ or LLVM12+")
+      set(INTRINSICS "${INTRINSICS} -mamx-tile -mamx-int8 -mamx-bf16")
+    endif(COMPILE_AMX)
   endif()
 
   if(USE_FBGEMM)

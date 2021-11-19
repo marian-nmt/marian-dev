@@ -13,19 +13,6 @@ int main(int argc, char** argv) {
   using namespace marian;
   auto options = parseOptions(argc, argv, cli::mode::training);
 
-  // Validate that we are using a valid training aliases for the task option.
-  // They should be the same as the ones listed in src/common/aliases.cpp + a blank one ("")
-  static const std::unordered_set<std::string> aliases = {"", "transformer-base", "transformer-big",
-                                    "transformer-base-prenorm", "transformer-big-prenorm"};
-
-  std::string mytask = options->get<std::vector<std::string> >("task")[0];
-  std::string alltasks = "";
-  for (auto&& alias : aliases) {
-    alltasks = alltasks + "\"" + alias + "\" ";
-  }
-  ABORT_IF(aliases.find(mytask) == aliases.end(), "Unrecognised task option: \"{}\". Permited {}", mytask, alltasks);
-
-
   // --sync-sgd always selects SyncGraphGroup
   //
   // If given, then this implementation is used for all combinations of (single, multiple) MPI

@@ -132,6 +132,12 @@ void CLIWrapper::parseAliases() {
   if(aliases_.empty())
     return;
 
+  // Find the set of values allowed for each alias option.
+  // Later we will check and abort if an alias option has an unknown value.
+  std::unordered_map<std::string, std::unordered_set<std::string>> allowedAliasValues;
+  for(const auto &alias : aliases_)
+    allowedAliasValues[alias.key].insert(alias.value);
+
   // Iterate all known aliases, each alias has a key, value, and config
   for(const auto &alias : aliases_) {
     // Check if the alias option exists in the config (it may come from command line or a config
@@ -145,6 +151,12 @@ void CLIWrapper::parseAliases() {
       bool expand = false;
       if(config_[alias.key].IsSequence()) {
         auto aliasOpts = config_[alias.key].as<std::vector<std::string>>();
+        // Abort if an alias option has an unknown value, i.e. value that has not been defined
+        // in common/aliases.cpp
+        for(const auto &aliasOpt : aliasOpts)
+          if(allowedAliasValues[alias.key].count(aliasOpt) == 0)
+            ABORT("Unknown value '" + aliasOpt + "' for alias option --" + alias.key + ". "
+                  "Run with --help to see allowed values.");
         expand = std::find(aliasOpts.begin(), aliasOpts.end(), alias.value) != aliasOpts.end();
       } else {
         expand = config_[alias.key].as<std::string>() == alias.value;
@@ -162,10 +174,9 @@ void CLIWrapper::parseAliases() {
   }
 
   // Remove aliases from the global config to avoid redundancy when writing/reading config files
-  // This code is commented out so we can validate the actual options of tasks
-  // for(const auto &alias : aliases_) {
-  //   config_.remove(alias.key);
-  // }
+  for(const auto &alias : aliases_) {
+    config_.remove(alias.key);
+  }
 }
 
 void CLIWrapper::updateConfig(const YAML::Node &config, cli::OptionPriority priority, const std::string &errorMsg) {

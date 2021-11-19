@@ -557,8 +557,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   addSuboptionsULR(cli);
 
   cli.add<std::vector<std::string>>("--task",
-     "Use predefined set of options. Possible values: transformer-base, transformer-big, transformer-base-prenorm, transformer-big-prenorm",
-     {"", "transformer-base", "transformer-big", "transformer-base-prenorm", "transformer-big-prenorm"});
+     "Use predefined set of options. Possible values: transformer-base, transformer-big, "
+     "transformer-base-prenorm, transformer-big-prenorm");
   cli.switchGroup(previous_group);
   // clang-format on
 }

@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - Add GCC11 support into FBGEMM
+- Added pragma to ignore unused-private-field error on elementType_ on macOS
 - Do not set guided alignments for case augmented data if vocab is not factored
 - Various fixes to enable LSH in Quicksand
 - Added support to MPIWrappest::bcast (and similar) for count of type size_t

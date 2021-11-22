@@ -177,6 +177,8 @@ static inline std::function<Expr(Expr)> activationByName(const std::string& actN
     return (ActivationFunction*)swish;
   else if (actName == "gelu")
     return (ActivationFunction*)gelu;
+  else if (actName == "sigmoid")
+    return (ActivationFunction*)sigmoid;
   else if (actName == "") // return identity function if activation name is empty
     return [](Expr x) { return x; };
   ABORT("Invalid activation name '{}'", actName);
@@ -192,7 +194,7 @@ static inline Expr denseInline(Expr x,
                                float dropProb = 0.0f) {
   auto graph = x->graph();
 
-  auto W = graph->param(prefix + "_W" + suffix, {x->shape()[-1], outDim}, inits::glorotUniform());
+  auto W = graph->param(prefix + "_W" + suffix, {x->shape()[-1], outDim}, initFn);
   auto b = graph->param(prefix + "_b" + suffix, {1, outDim}, inits::zeros());
 
   if(actName == "relu") {

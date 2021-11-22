@@ -15,30 +15,43 @@
 #include <algorithm>
 #include <limits>
 
+namespace faiss {
+  struct IndexLSH;
+}
+
 namespace marian {
 namespace data {
 
 class Shortlist {
-private:
+protected:
   std::vector<WordIndex> indices_;    // // [packed shortlist index] -> word index, used to select columns from output embeddings
+  Expr indicesExpr_;    // cache an expression that contains the short list indices
 
+  Expr cachedShortWt_;  // short-listed version, cached (cleared by clear())
+  Expr cachedShortb_;   // these match the current value of shortlist_
+  Expr cachedShortLemmaEt_;
+  bool initialized_; // used by batch-level shortlist. Only initialize with 1st call then skip all subsequent calls for same batch
+  
+  void createCachedTensors(Expr weights,
+                           bool isLegacyUntransposedW,
+                           Expr b,
+                           Expr lemmaEt,
+                           int k);
 public:
   static constexpr WordIndex npos{std::numeric_limits<WordIndex>::max()}; // used to identify invalid shortlist entries similar to std::string::npos
 
-  Shortlist(const std::vector<WordIndex>& indices)
-    : indices_(indices) {}
+  Shortlist(const std::vector<WordIndex>& indices);
+  virtual ~Shortlist();
+  
+  virtual bool isDynamic() const { return false; }
+  virtual WordIndex reverseMap(int beamIdx, int batchIdx, int idx) const;
+  virtual WordIndex tryForwardMap(WordIndex wIdx) const;
 
-  const std::vector<WordIndex>& indices() const { return indices_; }
-  WordIndex reverseMap(int idx) { return indices_[idx]; }
-
-  WordIndex tryForwardMap(WordIndex wIdx) {
-    auto first = std::lower_bound(indices_.begin(), indices_.end(), wIdx);
-    if(first != indices_.end() && *first == wIdx)         // check if element not less than wIdx has been found and if equal to wIdx
-      return (int)std::distance(indices_.begin(), first); // return coordinate if found
-    else
-      return npos;                                        // return npos if not found, @TODO: replace with std::optional once we switch to C++17?
-  }
-
+  virtual void filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt);
+  virtual Expr getIndicesExpr() const;
+  virtual Expr getCachedShortWt() const { return cachedShortWt_; }
+  virtual Expr getCachedShortb() const { return cachedShortb_; }
+  virtual Expr getCachedShortLemmaEt() const { return cachedShortLemmaEt_; }
 };
 
 class ShortlistGenerator {
@@ -54,6 +67,49 @@ public:
   }
 };
 
+///////////////////////////////////////////////////////////////////////////////////
+// faster inference inspired by these 2 papers
+// https://arxiv.org/pdf/1903.03129.pdf      https://arxiv.org/pdf/1806.00588.pdf
+class LSHShortlist: public Shortlist {
+private:
+  int k_; // number of candidates returned from each input 
+  int nbits_; // length of hash
+  size_t lemmaSize_; // vocab size
+  bool abortIfDynamic_; // if true disallow dynamic allocation for encoded weights and rotation matrix (only allow use of pre-allocated parameters)
+
+  static Ptr<faiss::IndexLSH> index_; // LSH index to store all possible candidates
+  static std::mutex mutex_;
+
+  void createCachedTensors(Expr weights,
+                           bool isLegacyUntransposedW,
+                           Expr b,
+                           Expr lemmaEt,
+                           int k);
+
+public:
+  LSHShortlist(int k, int nbits, size_t lemmaSize, bool abortIfDynamic = false);
+
+  virtual bool isDynamic() const override { return true; }
+  virtual WordIndex reverseMap(int beamIdx, int batchIdx, int idx) const override;
+
+  virtual void filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) override;
+  virtual Expr getIndicesExpr() const override;
+
+};
+
+class LSHShortlistGenerator : public ShortlistGenerator {
+private:
+  int k_;
+  int nbits_;
+  size_t lemmaSize_;
+  bool abortIfDynamic_;
+
+public:
+  LSHShortlistGenerator(int k, int nbits, size_t lemmaSize, bool abortIfDynamic = false);
+  Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override;
+};
+
+///////////////////////////////////////////////////////////////////////////////////
 
 // Intended for use during training in the future, currently disabled
 #if 0
@@ -207,7 +263,6 @@ public:
     bestNum_ = vals.size() > 2 ? std::stoi(vals[2]) : 100;
     float threshold = vals.size() > 3 ? std::stof(vals[3]) : 0;
     std::string dumpPath = vals.size() > 4 ? vals[4] : "";
-
     LOG(info,
         "[data] Loading lexical shortlist as {} {} {} {}",
         fname,
@@ -338,9 +393,83 @@ unless the extension is *.bin for which the Microsoft legacy binary shortlist is
 Ptr<ShortlistGenerator> createShortlistGenerator(Ptr<Options> options,
                                                  Ptr<const Vocab> srcVocab,
                                                  Ptr<const Vocab> trgVocab,
+                                                 const std::vector<int> &lshOpts,
                                                  size_t srcIdx = 0,
                                                  size_t trgIdx = 1,
                                                  bool shared = false);
+
+// Magic signature for binary shortlist:
+// ASCII and Unicode text files never start with the following 64 bits
+const uint64_t BINARY_SHORTLIST_MAGIC = 0xF11A48D5013417F5;
+
+bool isBinaryShortlist(const std::string& fileName);
+
+class BinaryShortlistGenerator : public ShortlistGenerator {
+private:
+  Ptr<Options> options_;
+  Ptr<const Vocab> srcVocab_;
+  Ptr<const Vocab> trgVocab_;
+
+  size_t srcIdx_;
+  bool shared_{false};
+
+  uint64_t firstNum_{100};  // baked into binary header
+  uint64_t bestNum_{100};   // baked into binary header
+
+  // shortlist is stored in a skip list
+  // [&shortLists_[wordToOffset_[word]], &shortLists_[wordToOffset_[word+1]])
+  // is a sorted array of word indices in the shortlist for word
+  mio::mmap_source mmapMem_;
+  uint64_t wordToOffsetSize_;
+  uint64_t shortListsSize_;
+  const uint64_t *wordToOffset_;
+  const WordIndex *shortLists_;
+  std::vector<char> blob_;  // binary blob
+
+  struct Header {
+    uint64_t magic; // BINARY_SHORTLIST_MAGIC
+    uint64_t checksum; // util::hashMem<uint64_t, uint64_t> from &firstNum to end of file.
+    uint64_t firstNum; // Limits used to create the shortlist.
+    uint64_t bestNum;
+    uint64_t wordToOffsetSize; // Length of wordToOffset_ array.
+    uint64_t shortListsSize; // Length of shortLists_ array.
+  };
+
+  void contentCheck();
+  // load shortlist from buffer
+  void load(const void* ptr_void, size_t blobSize, bool check = true);
+  // load shortlist from file
+  void load(const std::string& filename, bool check=true);
+  // import text shortlist from file
+  void import(const std::string& filename, double threshold);
+  // save blob to file (called by dump)
+  void saveBlobToFile(const std::string& filename) const;
+
+public:
+  BinaryShortlistGenerator(Ptr<Options> options,
+                           Ptr<const Vocab> srcVocab,
+                           Ptr<const Vocab> trgVocab,
+                           size_t srcIdx = 0,
+                           size_t /*trgIdx*/ = 1,
+                           bool shared = false);
+
+  // construct directly from buffer
+  BinaryShortlistGenerator(const void* ptr_void,
+                           const size_t blobSize,
+                           Ptr<const Vocab> srcVocab,
+                           Ptr<const Vocab> trgVocab,
+                           size_t srcIdx = 0,
+                           size_t /*trgIdx*/ = 1,
+                           bool shared = false,
+                           bool check = true);
+
+  ~BinaryShortlistGenerator(){
+    mmapMem_.unmap();
+  }
+
+  virtual Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override;
+  virtual void dump(const std::string& fileName) const override;
+};
 
 }  // namespace data
 }  // namespace marian

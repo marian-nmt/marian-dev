@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - Added pragma to ignore unused-private-field error on elementType_ on macOS
+- Do not set guided alignments for case augmented data if vocab is not factored
+- Various fixes to enable LSH in Quicksand
 - Added support to MPIWrappest::bcast (and similar) for count of type size_t
 - Adding new validation metrics when training is restarted and --reset-valid-stalled is used
 - Missing depth-scaling in transformer FFN
@@ -61,6 +63,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Expresion graph documentation (#788)
 - Graph operators documentation (#801)
 - Remove unused variable from expression graph
+- Factor groups and concatenation: doc/factors.md
 
 ## [1.10.0] - 2021-02-06
 

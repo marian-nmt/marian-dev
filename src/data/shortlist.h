@@ -43,6 +43,7 @@ public:
   Shortlist(const std::vector<WordIndex>& indices);
   virtual ~Shortlist();
   
+  virtual bool isDynamic() const { return false; }
   virtual WordIndex reverseMap(int beamIdx, int batchIdx, int idx) const;
   virtual WordIndex tryForwardMap(WordIndex wIdx) const;
 
@@ -74,6 +75,8 @@ private:
   int k_; // number of candidates returned from each input 
   int nbits_; // length of hash
   size_t lemmaSize_; // vocab size
+  bool abortIfDynamic_; // if true disallow dynamic allocation for encoded weights and rotation matrix (only allow use of pre-allocated parameters)
+
   static Ptr<faiss::IndexLSH> index_; // LSH index to store all possible candidates
   static std::mutex mutex_;
 
@@ -84,7 +87,9 @@ private:
                            int k);
 
 public:
-  LSHShortlist(int k, int nbits, size_t lemmaSize);
+  LSHShortlist(int k, int nbits, size_t lemmaSize, bool abortIfDynamic = false);
+
+  virtual bool isDynamic() const override { return true; }
   virtual WordIndex reverseMap(int beamIdx, int batchIdx, int idx) const override;
 
   virtual void filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) override;
@@ -97,8 +102,10 @@ private:
   int k_;
   int nbits_;
   size_t lemmaSize_;
+  bool abortIfDynamic_;
+
 public:
-  LSHShortlistGenerator(int k, int nbits, size_t lemmaSize);
+  LSHShortlistGenerator(int k, int nbits, size_t lemmaSize, bool abortIfDynamic = false);
   Ptr<Shortlist> generate(Ptr<data::CorpusBatch> batch) const override;
 };
 

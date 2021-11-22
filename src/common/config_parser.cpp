@@ -195,6 +195,13 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--dim-emb",
       "Size of embedding vector",
       512);
+  cli.add<int>("--factors-dim-emb",
+      "Embedding dimension of the factors. Only used if concat is selected as factors combining form");
+  cli.add<std::string>("--factors-combine",
+    "How to combine the factors and lemma embeddings. Options available: sum, concat",
+    "sum");
+  cli.add<std::string>("--lemma-dependency",
+      "Lemma dependency method to use when predicting target factors. Options: soft-transformer-layer, hard-transformer-layer, lemma-dependent-bias, re-embedding");
   cli.add<int>("--lemma-dim-emb",
       "Re-embedding dimension of lemma in factors",
       0);
@@ -983,15 +990,15 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 
   auto buildInfo = get<std::string>("build-info");
   if(!buildInfo.empty() && buildInfo != "false") {
-#ifndef _MSC_VER // cmake build options are not available on MSVC based build.
+#ifdef BUILD_INFO_AVAILABLE // cmake build options are not available on MSVC based build.
     if(buildInfo == "all")
       std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
     else
       std::cerr << cmakeBuildOptions() << std::endl;
     exit(0);
-#else // _MSC_VER
-    ABORT("build-info is not available on MSVC based build.");
-#endif // _MSC_VER
+#else // BUILD_INFO_AVAILABLE
+    ABORT("build-info is not available on MSVC based build unless compiled via CMake.");
+#endif // BUILD_INFO_AVAILABLE
   }
 
   // get paths to extra config files

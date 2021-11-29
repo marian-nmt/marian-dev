@@ -25,8 +25,12 @@ class TrainSelfAdaptive : public ModelTask, public ModelServiceTask {
 public:
   TrainSelfAdaptive(Ptr<Options> options) : options_(options) {
     options_->set("shuffle", "none");
-    // Disable early stopping because typically training would happen for only a few iterations and
-    // and also it doesn't make much sense to run the validation metrics on the validation dataset here
+    // Validation options are disabled for self-adaptive marian because
+    // typically training would happen for only a few iterations and it seems to
+    // not make much sense to run validation metrics on the validation dataset
+    // then (especially if you care about translation performance). However, we
+    // have to manually set the early-stopping option as disabled because the
+    // scheduler crashes if it's not present.
     options_->set<size_t>("early-stopping", 0);
     // Set up translator options
     optionsTrans_ = New<Options>(options_->clone());

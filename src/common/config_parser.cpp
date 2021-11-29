@@ -382,7 +382,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
 
   // In self-adaptive mode users would typically want less updates to happen than in regular training
   size_t defaultAfterEpochs = (mode_ == cli::mode::selfadaptive) ? 2 : 0;
-  std::string defaultDispFreq = (mode_ == cli::mode::selfadaptive) ? "1" : "1000u";
+  std::string defaultDispFreq = (mode_ == cli::mode::selfadaptive) ? "1u" : "1000u";
 
   // @TODO: these should be re-defined as aliases for `--after` but the current frame work matches on value, so not doable.
   cli.add<size_t>("--after-epochs,-e",

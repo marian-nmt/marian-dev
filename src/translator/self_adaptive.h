@@ -176,9 +176,9 @@ private:
       std::stringstream bestn;
       printer->print(history, best1, bestn);
       collector->Write(history->getLineNum(),
-                        best1.str(),
-                        bestn.str(),
-                        options_->get<bool>("n-best"));
+                       best1.str(),
+                       bestn.str(),
+                       options_->get<bool>("n-best"));
     }
   }
 };

@@ -70,12 +70,13 @@ std::string const& ConfigParser::cmdLine() const {
 }
 
 ConfigParser::ConfigParser(cli::mode mode)
-  : cli_(config_,"Marian: Fast Neural Machine Translation in C++",
-         "General options", "", 40),
-    mode_(mode == cli::mode::server ? cli::mode::translation : mode) {
+    : cli_(config_, "Marian: Fast Neural Machine Translation in C++", "General options", "", 40),
+      mode_(mode == cli::mode::server
+                ? cli::mode::translation
+                : (mode == cli::mode::selfadaptiveServer ? cli::mode::selfadaptive : mode)) {
 
   addOptionsGeneral(cli_);
-  if (mode == cli::mode::server)
+  if (mode == cli::mode::server || mode == cli::mode::selfadaptiveServer)
     addOptionsServer(cli_);
   addOptionsModel(cli_);
 
@@ -97,7 +98,6 @@ ConfigParser::ConfigParser(cli::mode mode)
     case cli::mode::selfadaptive:
       addOptionsTraining(cli_);
       addOptionsTranslation(cli_);
-      addOptionsServer(cli_);
       break;
     default:
       ABORT("wrong CLI mode");
@@ -165,10 +165,7 @@ void ConfigParser::addOptionsServer(cli::CLIWrapper& cli) {
   // clang-format off
   auto previous_group = cli.switchGroup("Server options");
   // TODO why is this needed?
-  size_t defaultPort = mode_ == cli::mode::selfadaptive ? 0 : 8080;
-  cli.add<size_t>("--port,-p",
-      "Port number for web socket server",
-      defaultPort);
+  cli.add<size_t>("--port,-p", "Port number for web socket server", 8080);
   cli.switchGroup(previous_group);
   // clang-format on
 }

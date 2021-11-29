@@ -287,6 +287,12 @@ if (NOT COMPILE_LIBRARY_ONLY)
     add_executable(marian_adaptive command/marian_adaptive.cpp)
     set_target_properties(marian_adaptive PROPERTIES OUTPUT_NAME marian-adaptive)
     set(EXECUTABLES ${EXECUTABLES} marian_adaptive)
+
+    if(COMPILE_SERVER)
+      add_executable(marian_adaptive_server command/marian_adaptive_server.cpp)
+      set_target_properties(marian_adaptive_server PROPERTIES OUTPUT_NAME marian-adaptive-server)
+      set(EXECUTABLES ${EXECUTABLES} marian_adaptive_server)
+    endif(COMPILE_SERVER)
   endif(COMPILE_ADAPTIVE)
 
   foreach(exec ${EXECUTABLES})

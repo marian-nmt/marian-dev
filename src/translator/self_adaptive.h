@@ -64,8 +64,6 @@ public:
    * @return JSON-encoded translations
    */
   std::string run(const std::string& json) override {
-    //LOG(warn, "REMOVEME Received Json:\n{}", json);
-
     // Check if input is in JSON
     YAML::Node yaml = YAML::Load(json);
     if(!yaml["input"]) {

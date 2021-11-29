@@ -742,7 +742,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 
   cli.switchGroup(previous_group);
   // clang-format on
-  }
+}
 
 void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   auto previous_group = cli.switchGroup("Scorer options");

@@ -136,8 +136,7 @@ private:
 
   template <class Iterator, class DataSet>
   void adaptAndTranslate(
-      Ptr<marian::data::BatchGenerator<DataSet>>
-          testBatches,
+      Ptr<marian::data::BatchGenerator<DataSet>> testBatches,
       Iterator trainBegin,
       Iterator trainEnd,
       Ptr<marian::CollectorBase> collector) {

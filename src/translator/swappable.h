@@ -51,8 +51,10 @@ private:
 public:
   /**
     * @param options The marian options object
-    * @param deviceNum The index of the device you want to use for this slot. Note that this is not the deviceID but the index of the device in the
-    *                  array of supplied devices. Eg if you provide -d 0 3 5 and you want the Slot to run on GPU 3, you provide deviceNum=1.
+    * @param deviceNum The index of the device you want to use for this slot.
+    * Note that this is not the deviceID but the index of the device in the
+    * array of supplied devices. Eg if you provide -d 0 3 5 and you want the
+    * Slot to run on GPU 3, you provide deviceNum=1.
     */
   explicit GPUEngineTrain(Ptr<Options> options, size_t deviceNum);
 
@@ -124,8 +126,10 @@ private:
 public:
   /**
     * @param options The marian options object
-    * @param deviceNum The index of the device you want to use for this slot. Note that this is not the deviceID but the index of the device in the
-    *                  array of supplied devices. Eg if you provide -d 0 3 5 and you want the Slot to run on GPU 3, you provide deviceNum=1.
+    * @param deviceNum The index of the device you want to use for this slot.
+    * Note that this is not the deviceID but the index of the device in the
+    * array of supplied devices. Eg if you provide -d 0 3 5 and you want the
+    * Slot to run on GPU 3, you provide deviceNum=1.
     */
   explicit GPUEngineTranslate(Ptr<Options> options, size_t deviceNum);
 
@@ -181,7 +185,10 @@ class CPULoadedModel {
   public:
     // The parts of Options that relate to model and vocab are ignored. The
     // files provided will be loaded.
-    CPULoadedModel(Ptr<Options> options, const std::string &parameters, const std::vector<std::string> &sourceVocabPaths, const std::string &targetVocabPath);
+    CPULoadedModel(Ptr<Options> options,
+                   const std::string &parameters,
+                   const std::vector<std::string> &sourceVocabPaths,
+                   const std::string &targetVocabPath);
 
     const std::vector<io::Item> &Parameters() const { return parameters_; }
 

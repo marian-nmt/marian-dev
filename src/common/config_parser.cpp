@@ -415,6 +415,13 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   addSuboptionsTSV(cli);
 
   // data management options
+  //
+  // These options are disabled for self-adaptive translation because they seem
+  // to not make much sense in that context, except for --shuffle, because they
+  // deal with the storage of training data but in self-adaptive translation
+  // training data sets are small and they typically change for each input
+  // sentence. --shuffle isn't currently supported because we use `TextInput`
+  // for training data and shuffle is a no-op in that class.
   if (mode_ != cli::mode::selfadaptive) {
     cli.add<std::string>("--shuffle",
         "How to shuffle input data (data: shuffles data and sorted batches; batches: "

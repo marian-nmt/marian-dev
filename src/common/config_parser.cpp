@@ -708,7 +708,6 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
     addSuboptionsBatching(cli);
   }
 
-  // for self-adaptive mode vocabs are already added via the training options
   if(mode_ != cli::mode::selfadaptive) {
     cli.add<bool>("--fp16",
         "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");

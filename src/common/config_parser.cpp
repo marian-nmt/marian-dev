@@ -699,15 +699,13 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Keep the output segmented into SentencePiece subwords");
 #endif
 
+  // For self-adaptive translation these options are already added in
+  // `addOptionsTraining`
   if(mode_ != cli::mode::selfadaptive) {
     addSuboptionsInputLength(cli);
     addSuboptionsTSV(cli);
     addSuboptionsDevices(cli);
     addSuboptionsBatching(cli);
-  } else {
-    cli.add<size_t>("--max-length-translate",
-        "Maximum input sentence length for translation",
-        1000);
   }
 
   // for self-adaptive mode vocabs are already added via the training options
@@ -937,13 +935,25 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
 }
 
 void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
-  size_t defaultMaxLength = (mode_ == cli::mode::training) ? 50 : 1000;
+  size_t defaultMaxLength =
+    (mode_ == cli::mode::training || mode_ == cli::mode::selfadaptive)
+    ? 50
+    : 1000;
   // clang-format off
   cli.add<size_t>("--max-length",
       "Maximum length of a sentence in a training sentence pair",
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
       "Crop a sentence to max-length instead of omitting it if longer than max-length");
+  // In self-adaptive translation, the user might want to be able to set
+  // different max lengths for training and translation. In that case,
+  // --max-length is assumed to be meant for training (as per the help message)
+  // and we add a --max-lenght-translate parameter for translation.
+  if (mode_ == cli::mode::selfadaptive) {
+    cli.add<size_t>("--max-length-translate",
+        "Maximum input sentence length for translation",
+        1000);
+  }
   // clang-format on
 }
 

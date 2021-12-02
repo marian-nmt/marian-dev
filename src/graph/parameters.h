@@ -45,6 +45,11 @@ public:
     LOG(debug, "Destroyed parameter object of type {}", acceptedElementType_);
   }
 
+  /**
+   * @brief Retrieves the memory corresponding to the parameter values
+   *
+   * @return A vector of memorypieces each corresponding to a single parameter
+   */
   std::vector<MemoryPiece::PtrType> toMemoryPieces() {
     std::vector<MemoryPiece::PtrType> res;
     res.reserve(params_.size());

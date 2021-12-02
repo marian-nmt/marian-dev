@@ -58,7 +58,7 @@ public:
   }
 
   /**
-   * @brief Implementation for self-adaptive translation where data come from a
+   * Implementation for self-adaptive translation where data come from a
    * web request.
    *
    * @param json Input data in JSON. An "input" array of strings is expected to
@@ -102,7 +102,7 @@ public:
   }
 
   /**
-   * @brief Implementation for self-adaptive translation where inputs and
+   * Implementation for self-adaptive translation where inputs and
    * outputs are specified in CLI options.
    */
   void run() override {

@@ -62,7 +62,7 @@ public:
 };
 
 /**
- * @brief Wraps a `GPUEngineTrain` and a `CPULoadedModel` and performs model
+ * Wraps a `GPUEngineTrain` and a `CPULoadedModel` and performs model
  * training.
  *
  * This class is created with self-adaptive translation in mind. Each invocation
@@ -94,7 +94,7 @@ class SwappableModelTrainer {
     std::vector<MemoryPiece::PtrType> Parameters() const;
 
     /**
-     * @brief resets the training graph, reloads the model parameters and trains
+     * Resets the training graph, reloads the model parameters and trains
      * the model on the provided inputs.
      *
      * Intended to be used in the self-adaptive translation mode -- training is
@@ -160,7 +160,7 @@ class GPULoadedModel {
     /// Overwrite this model with parameters from a different one.
     void Load(const CPULoadedModel &from);
     /**
-     * @brief Set the internal shared pointers to model parameters and
+     * Set the internal shared pointers to model parameters and
      * vocabularies to different ones
      *
      * The effect is similar to `Load()` but nothing is copied in the process.

@@ -11,7 +11,7 @@ class AdaptiveContextReader;
 
 
 /**
- * @brief An iterator for easier access of the context sentences produced by
+ * An iterator for easier access of the context sentences produced by
  * `AdaptiveContextReader::getSamples()`
  */
 class AdaptiveContextIterator
@@ -34,7 +34,7 @@ public:
 
 
 /**
- * @brief Reads the context sentences, that are used for on-the-fly training in
+ * Reads the context sentences, that are used for on-the-fly training in
  * the self-adaptive translation mode, from files.
  */
 class AdaptiveContextReader {
@@ -45,7 +45,7 @@ class AdaptiveContextReader {
 
 public:
   /**
-   * @brief Initializes a new reader by supplying paths to the files with
+   * Initializes a new reader by supplying paths to the files with
    * context sentences
    *
    * @param paths paths to the input files. The input files contain
@@ -58,7 +58,7 @@ public:
   AdaptiveContextReader(std::vector<std::string> paths);
 
   /**
-   * @brief Returns an iterator over the sets of context sentences produced by
+   * Returns an iterator over the sets of context sentences produced by
    * `getSamples()`
    *
    * @return the beginning of the iterator.
@@ -70,7 +70,7 @@ public:
   bool eof();
 
   /**
-   * @brief Reads the next set of samples -- the contaxt sentences -- for
+   * Reads the next set of samples -- the contaxt sentences -- for
    * on-the-fly training in the self-adaptive translation mode.
    *
    * @details The input files contain newline-separated parallel sentence pairs

@@ -21,7 +21,7 @@ class Parameters {
 protected:
   Type acceptedElementType_; // this parameter object only takes paramters of this type
 
-  /** @brief List of all parameter nodes of this expression graph. */
+  /** List of all parameter nodes of this expression graph. */
   std::vector<Expr> params_;
   std::unordered_map<std::string, Expr> named_;
 
@@ -46,7 +46,7 @@ public:
   }
 
   /**
-   * @brief Retrieves the memory corresponding to the parameter values
+   *01234 Retrieves the memory corresponding to the parameter values
    *
    * @return A vector of memorypieces each corresponding to a single parameter
    */

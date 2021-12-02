@@ -51,10 +51,10 @@ public:
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
     cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
-    translateEngine_ = New<GPUEngineTranslate>(optionsTrans_, 0);
-    translateSlot_ = New<GPULoadedModel>(translateEngine_);
-    trainEngine_ = New<GPUEngineTrain>(options_, 0);
-    trainSlot_   = New<SwappableModelTrainer>(trainEngine_);
+    auto translateEngine = New<GPUEngineTranslate>(optionsTrans_, 0);
+    translateSlot_ = New<GPULoadedModel>(translateEngine);
+    auto trainEngine = New<GPUEngineTrain>(options_, 0);
+    trainSlot_   = New<SwappableModelTrainer>(trainEngine);
   }
 
   /**
@@ -129,14 +129,12 @@ public:
   }
 
 private:
-  Ptr<Options> options_;       // Options for training
-  Ptr<Options> optionsTrans_;  // Options for translator
-  Ptr<CPULoadedModel> cpuModel_;
-  Ptr<SwappableModelTrainer> trainSlot_;
-  Ptr<GPULoadedModel> translateSlot_;
-  Ptr<GPUEngineTrain> trainEngine_;
-  Ptr<GPUEngineTranslate> translateEngine_;
-  bool needsSwitching_ = true;
+  Ptr<Options> options_;                  // Options for training
+  Ptr<Options> optionsTrans_;             // Options for translator
+  Ptr<CPULoadedModel> cpuModel_;          // Holds model parameters and vocabularies
+  Ptr<SwappableModelTrainer> trainSlot_;  // Performs model training
+  Ptr<GPULoadedModel> translateSlot_;     // Performs translation with the model
+  bool needsSwitching_ = true;            // Tracks whether translate slot's model needs to be reset
 
   template <class Iterator, class DataSet>
   void adaptAndTranslate(

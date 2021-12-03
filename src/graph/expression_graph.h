@@ -184,6 +184,10 @@ public:
       kvParams.second->clear();
   }
 
+
+  /**
+   * Call `clear()` on each of the parameters in the graph
+   */
   void clearParams() {
     for(auto kvParams : paramsByElementType_)
       kvParams.second->clear();
@@ -235,6 +239,10 @@ public:
     namespace_ = newNamespace;
   }
 
+  /**
+   * Extract graph parameters into a named map.
+   * @return A map with parameter names are keys and corresponding graph elements as values
+   */
   const std::unordered_map<std::string, Expr> & getParamsNamedMap() const {
     if (paramsByElementType_.size() != 1) {
       ABORT("Expected exactly one parameter datatype, got", paramsByElementType_.size());

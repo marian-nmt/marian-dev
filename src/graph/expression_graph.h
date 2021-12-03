@@ -241,7 +241,7 @@ public:
 
   /**
    * Extract graph parameters into a named map.
-   * @return A map with parameter names are keys and corresponding graph elements as values
+   * @return A map with parameter names as keys and the corresponding graph elements as values
    */
   const std::unordered_map<std::string, Expr> & getParamsNamedMap() const {
     if (paramsByElementType_.size() != 1) {

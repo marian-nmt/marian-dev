@@ -763,7 +763,15 @@ public:
   bool getThrowNaN() { return throwNaN_; }
 
 public:
-  /** Load model (mainly parameter objects) from array of io::Items */
+  /**
+   * Load model (mainly parameter objects) from array of io::Items
+   *
+   * @param dropF0prefix modify the `io::Item` names upon loading by removing
+   * "F0::" prefixes. "F*::" prefixes are used to distinguish parameters from
+   * different scorers in the translation graph. This option is used by
+   * self-adaptive translation to support loading these `io::Item`s for
+   * training.
+   */
   void load(const std::vector<io::Item>& ioItems, bool markReloaded = true, bool dropF0prefix = false) {
     setReloaded(false);
     for(auto& item : ioItems) {

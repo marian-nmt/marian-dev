@@ -2,6 +2,6 @@ sphinx==2.4.4
 breathe==4.13.0
 exhale
 sphinx_rtd_theme
-myst-parser==0.15.2
+myst-parser==0.14.0a3
 m2r
 sphinx-mathjax-offline

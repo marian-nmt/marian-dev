@@ -19,6 +19,8 @@ This is developer documentation. User documentation is available at https://mari
 
    contributing
 
+   doc_guide
+
 
 Indices and tables
 ------------------

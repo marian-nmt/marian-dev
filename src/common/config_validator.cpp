@@ -38,9 +38,9 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
       validateOptionsTraining();
       break;
     case cli::mode::selfadaptive:
-      // validateOptionsTranslation();
-      // validateOptionsParallelData();
-      // validateOptionsTraining();
+      validateOptionsTranslation();
+      validateOptionsParallelData();
+      validateOptionsTraining();
       break;
     default:
       ABORT("wrong CLI mode");

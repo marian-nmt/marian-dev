@@ -195,6 +195,13 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--dim-emb",
       "Size of embedding vector",
       512);
+  cli.add<int>("--factors-dim-emb",
+      "Embedding dimension of the factors. Only used if concat is selected as factors combining form");
+  cli.add<std::string>("--factors-combine",
+    "How to combine the factors and lemma embeddings. Options available: sum, concat",
+    "sum");
+  cli.add<std::string>("--lemma-dependency",
+      "Lemma dependency method to use when predicting target factors. Options: soft-transformer-layer, hard-transformer-layer, lemma-dependent-bias, re-embedding");
   cli.add<int>("--lemma-dim-emb",
       "Re-embedding dimension of lemma in factors",
       0);
@@ -244,7 +251,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Tie all embedding layers and output layer");
   cli.add<bool>("--output-omit-bias",
       "Do not use a bias vector in decoder output layer");
-  
+
   // Transformer options
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
@@ -529,13 +536,13 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
       "After this many updates about 90% of the mass of the exponential average comes from these updates",
       100);
-  cli.add<std::vector<std::string>>("--dynamic-gradient-scaling", 
+  cli.add<std::vector<std::string>>("--dynamic-gradient-scaling",
       "Re-scale gradient to have average gradient norm if (log) gradient norm diverges from average by arg1 sigmas. "
       "If arg2 = \"log\" the statistics are recorded for the log of the gradient norm else use plain norm")
       ->implicit_val("2.f log");
-  cli.add<bool>("--check-gradient-nan", 
+  cli.add<bool>("--check-gradient-nan",
       "Skip parameter update in case of NaNs in gradient");
-  cli.add<bool>("--normalize-gradient", 
+  cli.add<bool>("--normalize-gradient",
       "Normalize gradient by multiplying with no. devices / total labels (not recommended and to be removed in the future)");
 
   cli.add<std::vector<std::string>>("--train-embedder-rank",
@@ -550,7 +557,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   addSuboptionsULR(cli);
 
   cli.add<std::vector<std::string>>("--task",
-     "Use predefined set of options. Possible values: transformer, transformer-big");
+     "Use predefined set of options. Possible values: transformer-base, transformer-big, "
+     "transformer-base-prenorm, transformer-big-prenorm");
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -574,6 +582,10 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<size_t>("--early-stopping",
      "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
      10);
+  cli.add<std::string>("--early-stopping-on",
+      "Decide if early stopping should take into account first, all, or any validation metrics"
+      "Possible values: first, all, any",
+      "first");
 
   // decoding options
   cli.add<size_t>("--beam-size,-b",
@@ -586,7 +598,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Maximum target length as source length times factor",
       3);
   cli.add<float>("--word-penalty",
-      "Subtract (arg * translation length) from translation score ");
+      "Subtract (arg * translation length) from translation score");
   cli.add<bool>("--allow-unk",
       "Allow unknown words to appear in output");
   cli.add<bool>("--n-best",
@@ -692,6 +704,15 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      "Use approximate knn search in output layer (currently only in transformer)")
      ->implicit_val("100 1024");
 
+  // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
+
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
   addSuboptionsULR(cli);
@@ -742,6 +763,15 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
+
+  // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
 
   cli.switchGroup(previous_group);
   // clang-format on
@@ -961,15 +991,15 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 
   auto buildInfo = get<std::string>("build-info");
   if(!buildInfo.empty() && buildInfo != "false") {
-#ifndef _MSC_VER // cmake build options are not available on MSVC based build.
+#ifdef BUILD_INFO_AVAILABLE // cmake build options are not available on MSVC based build.
     if(buildInfo == "all")
       std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
     else
       std::cerr << cmakeBuildOptions() << std::endl;
     exit(0);
-#else // _MSC_VER
-    ABORT("build-info is not available on MSVC based build.");
-#endif // _MSC_VER
+#else // BUILD_INFO_AVAILABLE
+    ABORT("build-info is not available on MSVC based build unless compiled via CMake.");
+#endif // BUILD_INFO_AVAILABLE
   }
 
   // get paths to extra config files

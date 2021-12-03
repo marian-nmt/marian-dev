@@ -81,11 +81,16 @@ if(MSVC)
 # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS /WX; /W4;)
 
-  # Disabled bogus warnings for CPU intrinsics:
+  # Disabled bogus warnings for CPU intrinsics and Protobuf:
+  # C4100: 'identifier' : unreferenced formal parameter
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
   # C4702: unreachable code; note it is also disabled globally in the VS project file
-  set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\"")
+  if(USE_SENTENCEPIECE)
+    set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\" /wd\"4100\"")
+  else()
+    set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\"")
+  endif()
 
   # set(INTRINSICS "/arch:AVX")
   add_definitions(-DUSE_SSE2=1)
@@ -325,6 +330,16 @@ if(CUDA_FOUND)
     option(COMPILE_AMPERE  "Compile GPU version with SM80 support" ON)
     LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
   endif()
+  if(CUDA_VERSION VERSION_EQUAL "11.1" OR CUDA_VERSION VERSION_GREATER "11.1")
+    option(COMPILE_KEPLER      "Compile GPU version with SM35 support" OFF) # deprecated for CUDA 11
+    option(COMPILE_MAXWELL     "Compile GPU version with SM50 support" OFF) # deprecated for CUDA 11
+    option(COMPILE_PASCAL      "Compile GPU version with SM60 support" ON)
+    option(COMPILE_VOLTA       "Compile GPU version with SM70 support" ON)
+    option(COMPILE_TURING      "Compile GPU version with SM75 support" ON)
+    option(COMPILE_AMPERE      "Compile GPU version with SM80 support" ON)
+    option(COMPILE_AMPERE_RTX  "Compile GPU version with SM86 support" ON)
+    LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
+  endif()
 
   if(COMPILE_KEPLER)
     message(STATUS "Compiling code for Kepler GPUs")
@@ -353,6 +368,12 @@ if(CUDA_FOUND)
         message(STATUS "Compiling code for Ampere GPUs")
         LIST(APPEND COMPUTE -gencode=arch=compute_80,code=sm_80; -gencode=arch=compute_80,code=compute_80) # Ampere GPUs
     endif(COMPILE_AMPERE)
+  endif()
+  if(CUDA_VERSION VERSION_EQUAL "11.1" OR CUDA_VERSION VERSION_GREATER "11.1")
+    if(COMPILE_AMPERE_RTX)
+        message(STATUS "Compiling code for Ampere RTX GPUs")
+        LIST(APPEND COMPUTE -gencode=arch=compute_86,code=sm_86; -gencode=arch=compute_86,code=compute_86) # Ampere RTX GPUs
+    endif(COMPILE_AMPERE_RTX)
   endif()
 
   if(USE_STATIC_LIBS)
@@ -603,6 +624,9 @@ execute_process(COMMAND rm ${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp
                 OUTPUT_QUIET ERROR_QUIET)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/common/build_info.cpp.in
                ${CMAKE_CURRENT_BINARY_DIR}/src/common/build_info.cpp @ONLY)
+# to be able to check if this is a CMake-based compilation, which always adds
+# build-info option, even on Windows.
+add_definitions(-DBUILD_INFO_AVAILABLE=1)
 
 # Compile source files
 include_directories(${marian_SOURCE_DIR}/src)

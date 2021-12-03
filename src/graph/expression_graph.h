@@ -145,8 +145,6 @@ protected:  // (these are protected, not private, for ONNX exporting)
   Ptr<Tensors> tensors_;
 private:
 
-  std::unordered_map<size_t, std::vector<Expr>> memoized_;
-
   Type defaultElementType_{Type::float32};  // Type used for storing parameters, currently all parameters have to have the same type
 
   bool inferenceOnly_{false};               // a flag holds whether the graph is used for inference only
@@ -645,6 +643,16 @@ public:
     auto it = paramsByElementType_.find(defaultElementType_);
     ABORT_IF(it == paramsByElementType_.end(), "Parameter object for type {} does not exist", defaultElementType_);
 
+    return it->second;
+  }
+
+  /**
+   * Return the Parameters object related to the graph by elementType.
+   * The Parameters object holds the whole set of the parameter nodes of the given type.
+   */
+  Ptr<Parameters>& params(Type elementType) {     
+    auto it = paramsByElementType_.find(elementType);
+    ABORT_IF(it == paramsByElementType_.end(), "Parameter object for type {} does not exist", defaultElementType_);
     return it->second;
   }
 

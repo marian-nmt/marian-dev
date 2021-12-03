@@ -28,6 +28,7 @@ private:
   std::vector<Words> tuple_;    // [stream index][step index]
   std::vector<float> weights_;  // [stream index]
   WordAlignment alignment_;
+  bool altered_ = false;
 
 public:
   typedef Words value_type;
@@ -43,6 +44,17 @@ public:
    * @brief Returns the sentence's ID.
    */
   size_t getId() const { return id_; }
+
+  /**
+   * @brief Returns whether this Tuple was altered or augmented from what
+   * was provided to Marian in input.
+   */
+  bool isAltered() const { return altered_; }
+
+  /**
+   * @brief Mark that this Tuple was internally altered or augmented by Marian
+   */
+  void markAltered() { altered_ = true; }
 
   /**
    * @brief Adds a new sentence at the end of the tuple.
@@ -224,9 +236,6 @@ public:
   }
 
   void setWords(size_t words) { words_ = words; }
-
-  // experimental: hide inline-fix source tokens from cross attention
-  std::vector<float> crossMaskWithInlineFixSourceSuppressed() const;
 };
 
 /**

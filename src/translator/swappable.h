@@ -12,8 +12,9 @@
  * Originally this code was intended to allow multiple models to share a single
  * GPU for translation and be swapped into GPU memory only when needed. However,
  * parts of it, that weren't needed for self-adaptive translation, have been
- * trimmed down since then. Look into the commit history if you want to revive
- * this functionality.
+ * trimmed down since then. Look here
+ * https://github.com/kpu/marian-dev/blob/90e161fa9fcb3e3ba1467c76a10b1fc7f9390b6d/src/translator/swappable.h
+ * if you want to revive this functionality.
  */
 #include "common/io.h"
 #include "data/vocab.h"

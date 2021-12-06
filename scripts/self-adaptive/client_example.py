@@ -1,5 +1,16 @@
 #!/usr/bin/env python
 
+# This is an example for using self-adaptive translation in server mode.
+#
+# To run:
+# 1. Start self-adaptive Marian in server mode, e.g.:
+#     ./build/marian-adaptive-server -p 8080 -m model.npz -v vocap.yaml vocab.yaml \
+#         --after-batches 10 --after-epochs 10 --learn-rate 0.1 --mini-batch 15 # other options
+# 2. In a new shell, run this script:
+#     python3 ./scripts/self-adaptive/client_exmaple.py -p 8080
+#
+# For a more extensive example, see https://github.com/marian-cef/marian-examples/tree/master/adaptive
+
 from __future__ import print_function, unicode_literals, division
 
 import sys

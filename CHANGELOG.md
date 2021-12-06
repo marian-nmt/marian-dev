@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
+- Fix AVX2 and AVX512 detection on MacOS
 
 ### Added
 - Adds option --add-lsh to marian-conv which allows the LSH to be memory-mapped.

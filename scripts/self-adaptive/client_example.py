@@ -10,6 +10,7 @@
 #     python3 ./scripts/self-adaptive/client_exmaple.py -p 8080
 #
 # For a more extensive example, see https://github.com/marian-cef/marian-examples/tree/master/adaptive
+# or https://github.com/tilde-nlp/runtime-domain-adaptation-tutorial
 
 from __future__ import print_function, unicode_literals, division
 

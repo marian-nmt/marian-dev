@@ -2,7 +2,7 @@
 
 Typically, nodes are organised in layers in a deep neural network. 
 Layers can be regarded as the highest-level building blocks in neural networks, which perform different kinds of transformations on their inputs. 
-In Marian, a layer wraps a group of nodes, which performs a specific mathmatical manipulation. 
+In Marian, a layer wraps a group of nodes, which performs a specific mathematical manipulation. 
 Layers can offer a shortcut for creating a complex model. 
 Take `mlp::dense` layer for example. 
 The `mlp::dense` layer represents a fully connected layer, 
@@ -32,7 +32,7 @@ auto h = tanh(affine(x, W1, b1));
 ```
 There are four categories of layers implemented in Marian.
 
-## convolution layer
+## Convolution layer
 
 To use `convlolution` layer, you first need to install [NVIDIA cuDNN](https://developer.nvidia.com/cudnn). The convolution layer supported by Marian is a 2D [convolution layer](https://en.wikipedia.org/wiki/Convolutional_neural_network#Convolutional_layers). This layer  creates a convolution kernel which is used to convolved with the input. The options of `convolution` layer are listed beblow:
 
@@ -54,7 +54,7 @@ auto conv_1 = convolution(graph)              // pass graph pointer to the layer
       .apply(x);                              // link node x as the input
 ```
 
-## mlp layers
+## MLP layers
 
 Marian offers `mlp::mlp` to create a [multilayer perceptron (MLP)](https://en.wikipedia.org/wiki/Multilayer_perceptron) network. 
 The `mlp::mlp` is a container which can stack multiple layers using `push_back()` function. 
@@ -83,8 +83,8 @@ The options of `mlp::output` layer are listed beblow:
 | lemma-dim-emb | Re-embedding dimension of lemma in factors, must be used with `vocab` option | `int` | `0` |
 | output-approx-knn | Parameters for LSH-based output approximation, i.e., `k` (the first element) and `nbit` (the second element) | `std::vector<int>` | None |
 
-## rnn layers
+## RNN layers
 It is under development.
 
-## encoder & decoder layers
+## Encoder & Decoder layers
 It is under development.

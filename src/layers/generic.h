@@ -10,7 +10,7 @@
 namespace marian {
 namespace mlp {
 /**
- * @brief Activation functions
+ * Activation functions.
  */
 enum struct act : int { linear, tanh, sigmoid, ReLU, LeakyReLU, PReLU, swish };
 }  // namespace mlp
@@ -43,25 +43,25 @@ public:
   }
 };
 
-/** Simplest layer interface: Unary function */
+/** Simplest layer interface: Unary function. */
 struct IUnaryLayer {
   virtual ~IUnaryLayer() {}
-  /** Link a node as the input for this layer */
+  /** Link a node as the input for this layer. */
   virtual Expr apply(Expr) = 0;
-  /** Link a list of nodes as the inputs for this layer*/
+  /** Link a list of nodes as the inputs for this layer. */
   virtual Expr apply(const std::vector<Expr>& es) {
     ABORT_IF(es.size() > 1, "Not implemented");  // simple stub
     return apply(es.front());
   }
 };
 
-/** Shortlist interface for layers */
+/** Shortlist interface for layers. */
 struct IHasShortList {
   virtual void setShortlist(Ptr<data::Shortlist> shortlist) = 0;
   virtual void clear() = 0;
 };
 
-// Embedding from corpus sub-batch to (emb, mask)
+/** Embedding from corpus sub-batch to (emb, mask). */
 struct IEmbeddingLayer {
   virtual std::tuple<Expr /*embeddings*/, Expr /*mask*/> apply(
       Ptr<data::SubBatch> subBatch) const = 0;
@@ -73,8 +73,10 @@ struct IEmbeddingLayer {
   virtual ~IEmbeddingLayer() {}
 };
 
-// base class for Encoder and Decoder classes, which have embeddings and a batch index (=stream
-// index)
+/**
+ * Base class for Encoder and Decoder classes, which have embeddings and a batch index (=stream
+ * index).
+ */
 class EncoderDecoderLayerBase : public LayerBase {
 protected:
   const std::string prefix_;
@@ -107,7 +109,12 @@ public:
   // get embedding layer; lazily create on first call
   Ptr<IEmbeddingLayer> getEmbeddingLayer(bool ulr = false) const;
 };
-
+/**
+ *  The namespace mlp.
+ *  Declare class Dense and all the available functions for creating
+ *  <a href=https://en.wikipedia.org/wiki/Multilayer_perceptron>multilayer perceptron (MLP)</a>
+ *  network.
+ */
 namespace mlp {
 
 class Dense : public LayerBase, public IUnaryLayer {

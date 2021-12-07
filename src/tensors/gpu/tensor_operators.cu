@@ -96,33 +96,36 @@ void IsNaN(const Tensor in, Ptr<Allocator> allocator, bool& isNaN, bool& isInf) 
   cudaStreamSynchronize(0);
 }
 
-template <typename To, typename From>
+template <bool add, typename To, typename From>
 __global__ void gCopyCastTo(To* out, const From* in, int length) {
   for(int bid = 0; bid < length; bid += blockDim.x * gridDim.x) {
     int index = bid + blockDim.x * blockIdx.x + threadIdx.x;
     if(index < length) {
-      out[index] = in[index];
+      if(add)
+        out[index] += (To)in[index];
+      else 
+        out[index]  = (To)in[index];
     }
   }
 }
 
-template <typename To, typename From>
+template <bool add, typename To, typename From>
 void CopyCastTo(To* out, const From* in, int length) {
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
-  gCopyCastTo<<<blocks, threads>>>(out, in, length);
+  gCopyCastTo<add><<<blocks, threads>>>(out, in, length);
 }
 
-template <typename T>
+template <bool add, typename T>
 void CopyCastFrom(Tensor out, const T* in, int length) {
   if(out->type() == Type::float32) {
-    CopyCastTo(out->data<float>(), in, length);
+    CopyCastTo<add>(out->data<float>(), in, length);
 #if COMPILE_FP16
   } else if(out->type() == Type::float16) {
-    CopyCastTo(out->data<half>(), in, length);
+    CopyCastTo<add>(out->data<half>(), in, length);
 #endif
   } else if(out->type() == Type::float64) {
-    CopyCastTo(out->data<double>(), in, length);
+    CopyCastTo<add>(out->data<double>(), in, length);
   } else {
     ABORT("CopyCastTo to type {} not implemented", out->type());
   }
@@ -132,15 +135,33 @@ void CopyCast(Tensor out, const Tensor in) {
   cudaSetDevice(out->getDeviceId().no);
 
   if(in->type() == Type::float32) {
-    CopyCastFrom(out, in->data<float>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<float>(), (int)in->size());
 #if COMPILE_FP16
   } else if(in->type() == Type::float16) {
-    CopyCastFrom(out, in->data<half>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<half>(), (int)in->size());
 #endif
   } else if(in->type() == Type::float64) {
-    CopyCastFrom(out, in->data<double>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<double>(), (int)in->size());
   } else if(in->type() == Type::uint32) {
-    CopyCastFrom(out, in->data<uint32_t>(), (int)in->size());
+    CopyCastFrom</*add=*/false>(out, in->data<uint32_t>(), (int)in->size());
+  } else {
+    ABORT("CopyCastFrom from type {} not implemented", in->type());
+  }
+}
+
+void AddCast(Tensor out, const Tensor in) {
+  cudaSetDevice(out->getDeviceId().no);
+
+  if(in->type() == Type::float32) {
+    CopyCastFrom</*add=*/true>(out, in->data<float>(), (int)in->size());
+#if COMPILE_FP16
+  } else if(in->type() == Type::float16) {
+    CopyCastFrom</*add=*/true>(out, in->data<half>(), (int)in->size());
+#endif
+  } else if(in->type() == Type::float64) {
+    CopyCastFrom</*add=*/true>(out, in->data<double>(), (int)in->size());
+  } else if(in->type() == Type::uint32) {
+    CopyCastFrom</*add=*/true>(out, in->data<uint32_t>(), (int)in->size());
   } else {
     ABORT("CopyCastFrom from type {} not implemented", in->type());
   }
@@ -678,6 +699,54 @@ void Softmax(Tensor out, Tensor in) {
     ABORT("Softmax not implemented for type {}", in->type());
   }
 }
+
+template <typename T>
+__global__ void gSinusoidalPositionEmbeddings(T* out,
+                                              functional::Shape outShape,
+                                              int start) {
+  using namespace functional;
+
+  int rows = outShape.elements() / outShape.back();
+  int cols = outShape.back();
+
+  float numTimescales = (float)cols / 2.f;
+  float logTimescaleIncrement = Ops<float>::log(10000.f) / (numTimescales - 1.f);
+
+  for(int bid = 0; bid < rows; bid += gridDim.x) { // loop over blocks of rows
+    int j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
+    if(j < rows) { // compute softmax over one row, row elements distributed over threads
+      T* outRow = out + j * cols; // pointer to row data
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int i = tid + threadIdx.x;
+        if(i < cols) {
+          float v = (float)(j + start) * Ops<float>::exp((float)(i % (int)numTimescales) * -logTimescaleIncrement);
+          outRow[i] = (T)(i < (int)numTimescales ? Ops<float>::sin(v) : Ops<float>::cos(v));
+        }
+      }
+    }
+  }
+}
+
+void SinusoidalPositionEmbeddings(Tensor out, int start) {
+  cudaSetDevice(out->getDeviceId().no);
+
+  size_t rows = out->shape().elements() / out->shape().back();
+  size_t cols = out->shape().back();
+
+  int blocks = std::min(MAX_BLOCKS, (int)rows);
+  int threads = std::min(MAX_THREADS, (int)cols);
+
+  if(out->type() == Type::float32) {
+    gSinusoidalPositionEmbeddings<float><<<blocks, threads>>>(out->data<float>(), out->shape(), start);
+#if COMPILE_FP16
+  } else if (out->type() == Type::float16) {
+    gSinusoidalPositionEmbeddings<half><<<blocks, threads>>>(out->data<half>(), out->shape(), start);
+#endif
+  } else {
+    ABORT("SinusoidalPositionEmbeddings not implemented for type {}", out->type());
+  }
+}
+
 
 // @TODO: refactor to reuse code from softmax, add comments
 template <typename T, typename AccType = float>
@@ -1377,11 +1446,12 @@ __global__ void gGRUFastBackward(T* outState,
       T* rowOutState = outState + j * cols;
       T* rowOutXW = outXW + j * cols * 3;
       T* rowOutSU = outSU + j * cols * 3;
+      T* rowOutB  = outB ? outB + j * cols * 3 : nullptr;
 
       const T* rowState = state + j * cols;
-      const T* rowXW = xW + j * cols * 3;
-      const T* rowSU = sU + j * cols * 3;
-      const T* rowAdj = adj + j * cols;
+      const T* rowXW    = xW + j * cols * 3;
+      const T* rowSU    = sU + j * cols * 3;
+      const T* rowAdj   = adj + j * cols;
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int i = tid + threadIdx.x;
@@ -1417,7 +1487,7 @@ __global__ void gGRUFastBackward(T* outState,
           if(outSU)
             rowOutSU[i] += dfdxW_r;
           if(outB)
-            atomics::atomicAdd(outB + i, dfdxW_r); // @TODO: get rid of atomicAdd everywhere
+            rowOutB[i] += dfdxW_r;
 
           // df/d(xW_z) ...
           T dfdxW_z = m * ((T)1.f - z) * z * (rowState[i] - h) * adj;
@@ -1426,7 +1496,7 @@ __global__ void gGRUFastBackward(T* outState,
           if(outSU)
             rowOutSU[k] += dfdxW_z;
           if(outB)
-            atomics::atomicAdd(outB + k, dfdxW_z);
+            rowOutB[k] += dfdxW_z;
 
           // df/d(xW_x) ...
           T dfdxW_x = m * t * adj;
@@ -1436,16 +1506,17 @@ __global__ void gGRUFastBackward(T* outState,
             rowOutSU[l] += dfdxW_x * r;
           if(outB)
             if(final)
-              atomics::atomicAdd(outB + l, dfdxW_x * r);
+              rowOutB[l] += dfdxW_x * r;
             else
-              atomics::atomicAdd(outB + l, dfdxW_x);
+              rowOutB[l] += dfdxW_x;
         }
       }
     }
   }
 }
 
-void GRUFastBackward(std::vector<Tensor> outputs,
+void GRUFastBackward(Ptr<Allocator> allocator,
+                     std::vector<Tensor> outputs,
                      std::vector<Tensor> inputs,
                      Tensor adj,
                      bool final) {
@@ -1457,12 +1528,26 @@ void GRUFastBackward(std::vector<Tensor> outputs,
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
+  Tensor tempGradBias, tempOnes; 
+  MemoryPiece::PtrType tempGradBiasMemory, tempOnesMemory;
+  if(outputs[3]) {
+    Shape memShape = {rows, outputs[3]->shape()[-1]};
+
+    tempGradBiasMemory = allocator->alloc(memShape.elements() * sizeOf(outputs[3]->type()));
+    tempGradBias = TensorBase::New(tempGradBiasMemory, memShape, outputs[3]->type(), outputs[3]->getBackend());
+    tempGradBias->set(0.f);
+
+    tempOnesMemory = allocator->alloc(rows * sizeOf(outputs[3]->type()));
+    tempOnes = TensorBase::New(tempOnesMemory, Shape({1, rows}), outputs[3]->type(), outputs[3]->getBackend());
+    tempOnes->set(1.f);
+  }
+
   if(adj->type() == Type::float32) {
     gGRUFastBackward<<<blocks, threads>>>(
         outputs[0] ? outputs[0]->data<float>() : 0,        // state - adj
         outputs[1] ? outputs[1]->data<float>() : 0,        // xW - adj
         outputs[2] ? outputs[2]->data<float>() : 0,        // sU - adj
-        outputs[3] ? outputs[3]->data<float>() : 0,        // b - adj
+        outputs[3] ? tempGradBias->data<float>() : 0,      // b - adj
         inputs[0]->data<float>(),                          // state
         inputs[1]->data<float>(),                          // xW
         inputs[2]->data<float>(),                          // sU
@@ -1478,7 +1563,7 @@ void GRUFastBackward(std::vector<Tensor> outputs,
         outputs[0] ? outputs[0]->data<half>() : 0,        // state - adj
         outputs[1] ? outputs[1]->data<half>() : 0,        // xW - adj
         outputs[2] ? outputs[2]->data<half>() : 0,        // sU - adj
-        outputs[3] ? outputs[3]->data<half>() : 0,        // b - adj
+        outputs[3] ? tempGradBias->data<half>() : 0,        // b - adj
         inputs[0]->data<half>(),                          // state
         inputs[1]->data<half>(),                          // xW
         inputs[2]->data<half>(),                          // sU
@@ -1491,6 +1576,17 @@ void GRUFastBackward(std::vector<Tensor> outputs,
 #endif
   } else {
     ABORT("gGRUFastBackward not implemented for type {}", adj->type());
+  }
+
+  // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
+  // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // This preserves precision with larger batches where all batch entries reduce into a single vector.
+  // See also AffineNodeOp where we do the same for biases
+  if(outputs[3]) {
+    gpu::Prod(outputs[3], tempOnes, tempGradBias, false, false, 1, 1, Type::float32); // beta set to one to add
+    allocator->free(tempGradBiasMemory);
+    allocator->free(tempOnesMemory);
   }
 }
 
@@ -1559,17 +1655,17 @@ __global__ void gCrossEntropyPick(AccType* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
-      auto sumexp = _acc[0];
+      AccType sumexp = _acc[0];
 
       // H(u, p) = 1/N * logsoftmax(h) = mean(h - max) - log(sum(exp(h - max)))
-      auto mean = _acc[1] / (AccType)cols; // mean(h - max)
+      AccType mean = _acc[1] / (AccType)cols; // mean(h - max)
 
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id == (int)pick[j]) {
-          auto logsumexp = functional::Ops<AccType>::log(sumexp);
-          auto ce = logsumexp - (AccType)sp[id] + (AccType)max; // cross-entropy    H(y^, p)
-          auto ls = logsumexp - mean;                           // label smoothing  H(u, p)
+          AccType logsumexp = functional::Ops<AccType>::log(sumexp);
+          AccType ce = logsumexp - (AccType)sp[id] + (AccType)max; // cross-entropy    H(y^, p)
+          AccType ls = logsumexp - mean;                           // label smoothing  H(u, p)
           out[j] = (1.f - labelSmoothingAlpha) * ce + labelSmoothingAlpha * ls;  // (1 - alpha) * H(y^, p) + alpha * H(u, p)
         }
       }
@@ -2112,11 +2208,14 @@ __global__ void gLayerNormalizationGrad(T* gradX,
 
           AccType gradXv = gammav * gradLv;
 
-          // Keep LN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. @TODO: to be fixed and removed.
+          // Keep LN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf. 
+          // @TODO: to be fixed and removed.
           AccType sign = functional::Ops<AccType>::sgn(gradXv);
-          AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option?
-                                            // or better: make obsolete.
-          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv;
+          AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option? or better: make obsolete.
+          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv; // if gradXv is NaN the value return is NaN too because NaN > value is false.
+
+          // @TODO: frankly, this is embarrasing and should rather be removed or optional? It does help for low precision computation though. Maybe turn into option?
+          gradXv = isnan(gradXv) ? 0.f : gradXv; // turn NaN into 0.
 
           T* gradXRow      = gradX     + j * cols;
           gradXRow[id]    += (T)(gradXv);
@@ -2191,15 +2290,285 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   }
 
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
-  // This is much faster for fp16 which seems to have a broken atomicAdd implementation
-  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1); // beta set to one to add
+  // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // This preserves precision with larger batches where all batch entries reduce into a single vector.
+  // See also AffineNodeOp where we do the same for biases
+  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
 
   if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
-    gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1); // beta set to one to add
+    gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1, Type::float32); // beta set to one to add
 
   allocator->free(tempGradGammaMemory);
   allocator->free(tempOnesMemory);
 }
+
+template <typename T, typename AccType = float>
+__global__ void gRMSNormalization(T* out,
+                                  const T* in,
+                                  const T* gamma,
+                                  const T* beta,
+                                  int rows,
+                                  int cols,
+                                  AccType eps = 1e-9) {
+  extern __shared__ uint8_t _sharedBytes[];
+  AccType* _shareAccType = (AccType*)_sharedBytes;
+
+  AccType N = cols;
+  for(int bid = 0; bid < rows; bid += gridDim.x) {
+    int j = bid + blockIdx.x;
+    if(j < rows) {
+      T* yRow       = out + j * cols;
+      const T* xRow =  in + j * cols;
+
+      AccType* _sqSum = _shareAccType;
+
+      _sqSum[threadIdx.x] = (AccType)0.0f;
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          AccType xv = (AccType)xRow[id];
+          _sqSum[threadIdx.x] += xv * xv;
+        }
+      }
+      __syncthreads();
+      int len = blockDim.x;
+      while(len != 1) {
+        __syncthreads();
+        int skip = (len + 1) >> 1;
+        if(threadIdx.x < (len >> 1))
+          _sqSum[threadIdx.x] += _sqSum[threadIdx.x + skip];
+        len = (len + 1) >> 1;
+      }
+      __syncthreads();
+      AccType rms = functional::Ops<AccType>::sqrt(_sqSum[0] / N + eps); // all AccType
+      __syncthreads();
+
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          AccType gammav  = (AccType)gamma[id];
+          AccType xv      = (AccType)xRow[id];
+          AccType betav   = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType rmsNorm = xv / rms;
+          AccType y       = gammav * rmsNorm + betav;
+          yRow[id]        = (T)y;
+        }
+      }
+    }
+    __syncthreads();
+  }
+}
+
+void RMSNormalization(Tensor out,
+                      Tensor in,
+                      Tensor gamma,
+                      Tensor beta,
+                      float eps) {
+  cudaSetDevice(out->getDeviceId().no);
+
+  int rows = in->shape().elements() / in->shape().back();
+  int cols = in->shape().back();
+
+  int blocks = std::min(MAX_BLOCKS, (int)rows);
+  int threads = std::min(MAX_THREADS, (int)cols);
+  int shared = threads * sizeof(float);
+
+  if(out->type() == Type::float32) {
+    gRMSNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
+                                                                 in->data<float>(),
+                                                                 gamma->data<float>(),
+                                                                 beta ? beta->data<float>() : nullptr,
+                                                                 rows,
+                                                                 cols,
+                                                                 eps);
+#if COMPILE_FP16
+  } else if (out->type() == Type::float16) {
+    gRMSNormalization<half, float><<<blocks, threads, shared>>>(out->data<half>(),
+                                                                in->data<half>(),
+                                                                gamma->data<half>(),
+                                                                beta ? beta->data<half>() : nullptr,
+                                                                rows,
+                                                                cols,
+                                                                eps);
+#endif
+  } else {
+    ABORT("RMSNormalization not implemented for type {}", out->type());
+  }
+}
+
+template <typename T, typename AccType = float>
+__global__ void gRMSNormalizationGrad(T* gradX,
+                                      T* gradGamma,
+                                      T* adj,
+                                      T* y,
+                                      T* x,
+                                      T* gamma,
+                                      T* beta,
+                                      int rows,
+                                      int cols,
+                                      AccType eps = 1e-9) {
+  extern __shared__ uint8_t sharedBytes[];
+  AccType* shared = (AccType*)sharedBytes;
+
+  AccType N = cols;
+
+  for(int bid = 0; bid < rows; bid += gridDim.x) {
+    int j = bid + blockIdx.x;
+    if(j < rows) {
+      AccType* sum_adj_r = shared;  // sum of gradient coming in times layerNorm from value
+      AccType* sum_sqr   = shared + blockDim.x;  // sum of x^2
+
+      const T* xRow   =   x + j * cols;
+      const T* yRow   =   y + j * cols;
+      const T* adjRow = adj + j * cols;
+
+      sum_adj_r[threadIdx.x] = (AccType)0.0f;
+      sum_sqr[threadIdx.x]   = (AccType)0.0f;
+
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+          AccType xv     = xRow[id];
+          AccType yv     = yRow[id];
+          AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
+          AccType gammav = (AccType)gamma[id];
+          AccType adjv   = adjRow[id];
+          AccType rv     = (yv - betav) / gammav; // go back to RMSNorm(x) from scaled and shifted version for accumulation
+
+          sum_adj_r[threadIdx.x] += adjv * rv;
+          sum_sqr[threadIdx.x]   += xv * xv;
+        }
+      }
+      __syncthreads();
+      int len = blockDim.x;
+      while(len != 1) {
+        __syncthreads();
+        int skip = (len + 1) >> 1;
+        if(threadIdx.x < (len >> 1)) {
+          sum_adj_r[threadIdx.x] += sum_adj_r[threadIdx.x + skip]; // Accumulates in AccType
+          sum_sqr[threadIdx.x]   += sum_sqr[threadIdx.x   + skip]; // Accumulates in AccType
+        }
+        len = (len + 1) >> 1;
+      }
+
+      __syncthreads();
+      AccType rms = functional::Ops<AccType>::sqrt(sum_sqr[0] / N + eps);
+      __syncthreads();
+
+      // Jacobian of RMS norm
+      // J = [ \frac{1}{N * rms} (N\delta_{ij} - RN_i RN_j) ]_{ij}
+      // J * a = dC/dx_i = ( N a_i - RN_i \sum_j RN_j a_j ) / (N * rms)
+
+      for(int tid = 0; tid < cols; tid += blockDim.x) {
+        int id = tid + threadIdx.x;
+        if(id < cols) {
+
+          AccType xv      = xRow[id];
+          AccType gammav  = (AccType)gamma[id];
+          AccType adjv    = adjRow[id];
+          AccType rmsNorm = xv / rms;
+
+          AccType gradNorm = N * adjv - rmsNorm * sum_adj_r[0];
+          gradNorm        /= N * rms; 
+
+          AccType gradXv = gammav * gradNorm;
+
+          // Keep RMSN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf. 
+          // @TODO: to be fixed and removed.
+          AccType sign = functional::Ops<AccType>::sgn(gradXv);
+          AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option? or better: make obsolete.
+          gradXv = functional::Ops<AccType>::abs(gradXv) > cutoff ? sign * cutoff : gradXv; // if gradXv is NaN the value return is NaN too because NaN > value is false.
+
+          // @TODO: frankly, this is embarrasing and should rather be removed or optional? It does help for low precision computation though. Maybe turn into option?
+          gradXv = isnan(gradXv) ? 0.f : gradXv; // turn NaN into 0.
+
+          T* gradXRow      = gradX     + j * cols;
+          gradXRow[id]    += (T)(gradXv);
+
+          T* gradGammaRow  = gradGamma + j * cols;
+          // assignment is correct here as this gets summed up
+          // in the next kernel via matrix product
+          gradGammaRow[id] = (T)(adjv * rmsNorm);
+        }
+      }
+    }
+    __syncthreads();
+  }
+}
+
+void RMSNormalizationGrad(Ptr<Allocator> allocator,
+                          Tensor gradX,
+                          Tensor gradGamma,
+                          Tensor gradBeta,
+                          Tensor adj,
+                          Tensor y,
+                          Tensor x,
+                          Tensor gamma,
+                          Tensor beta,
+                          float eps) {
+  cudaSetDevice(adj->getDeviceId().no);
+  int rows = y->shape().elements() / y->shape()[-1];
+  int cols = y->shape()[-1];
+
+  int threads = std::min(MAX_THREADS, cols);
+  int blocks = std::min(MAX_BLOCKS, rows);
+
+  auto tempGradGammaMemory = allocator->alloc(adj->memory()->size());
+  Tensor tempGradGamma = TensorBase::New(tempGradGammaMemory, adj->shape(), adj->type(), adj->getBackend());
+  tempGradGamma->set(0.f);
+
+  auto tempOnesMemory = allocator->alloc(rows * sizeOf(adj->type()));
+  Tensor tempOnes = TensorBase::New(tempOnesMemory, Shape({1, rows}), adj->type(), adj->getBackend());
+  tempOnes->set(1.f);
+
+  if(gradX->type() == Type::float32) {
+    int shared = sizeof(float) * threads * 2;
+    gRMSNormalizationGrad<float, float><<<blocks, threads, shared>>>(
+      gradX->data<float>(),
+      tempGradGamma->data<float>(),
+      adj->data<float>(),
+      y->data<float>(),
+      x->data<float>(),
+      gamma->data<float>(),
+      (beta) ? beta->data<float>() : nullptr,
+      rows,
+      cols,
+      eps);
+#if COMPILE_FP16
+  } else if (gradX->type() == Type::float16) {
+    // accumulate in float
+    int shared = sizeof(float) * threads * 2;
+    gRMSNormalizationGrad<half, float><<<blocks, threads, shared>>>(
+      gradX->data<half>(),
+      tempGradGamma->data<half>(),
+      adj->data<half>(),
+      y->data<half>(),
+      x->data<half>(),
+      gamma->data<half>(),
+      (beta) ? beta->data<half>() : nullptr,
+      rows,
+      cols,
+      eps);
+#endif
+  } else {
+    ABORT("RMSNormalizationGrad not implemented for type {}", gradX->type());
+  }
+
+  // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
+  // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // This preserves precision with larger batches where all batch entries reduce into a single vector.
+  // See also AffineNodeOp where we do the same for biases
+  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
+
+  if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
+    gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1, Type::float32); // beta set to one to add
+
+  allocator->free(tempGradGammaMemory);
+  allocator->free(tempOnesMemory);
+}
+
 
 template <bool add, typename T>
 __global__ void gShift(T* out,

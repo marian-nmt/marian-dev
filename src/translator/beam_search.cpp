@@ -4,6 +4,7 @@
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
 #include "data/shortlist.h"
+#include "common/utils.h"
 
 namespace marian {
 
@@ -50,7 +51,6 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
     const auto beamHypIdx      = (key / vocabSize) % nBestBeamSize;
     const auto currentBatchIdx = (key / vocabSize) / nBestBeamSize;
     const auto origBatchIdx    = reverseBatchIdxMap.empty() ? currentBatchIdx : reverseBatchIdxMap[currentBatchIdx]; // map currentBatchIdx back into original position within starting maximal batch size, required to find correct beam
-
     bool dropHyp = !dropBatchEntries.empty() && dropBatchEntries[origBatchIdx] && factorGroup == 0;
     
     WordIndex wordIdx;
@@ -94,7 +94,7 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
       // For factored decoding, the word is built over multiple decoding steps,
       // starting with the lemma, then adding factors one by one.
       if (factorGroup == 0) {
-        word = factoredVocab->lemma2Word(shortlist ? shortlist->reverseMap(wordIdx) : wordIdx); // @BUGBUG: reverseMap is only correct if factoredVocab_->getGroupRange(0).first == 0
+        word = factoredVocab->lemma2Word(shortlist ? shortlist->reverseMap((int) prevBeamHypIdx, (int) currentBatchIdx, wordIdx) : wordIdx); // @BUGBUG: reverseMap is only correct if factoredVocab_->getGroupRange(0).first == 0
         std::vector<size_t> factorIndices; factoredVocab->word2factors(word, factorIndices);
         //LOG(info, "{} + {} ({}) -> {} -> {}",
         //    factoredVocab->decode(prevHyp->tracebackWords()),
@@ -115,7 +115,7 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
       }
     }
     else if (shortlist)
-      word = Word::fromWordIndex(shortlist->reverseMap(wordIdx));
+      word = Word::fromWordIndex(shortlist->reverseMap((int) prevBeamHypIdx, (int) origBatchIdx, wordIdx));
     else
       word = Word::fromWordIndex(wordIdx);
 
@@ -258,7 +258,6 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
   // We will use the prefix "currentBatch.." whenever we refer to batch dimension that can change due to batch-pruning.
   const int origDimBatch = (int)batch->size();
   const auto trgEosId = trgVocab_->getEosId();
-  const auto trgUnkId = trgVocab_->getUnkId();
 
   auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId());
 
@@ -298,13 +297,23 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
     const_cast<std::vector<bool>&>(emptyBatchEntries).push_back(batch->front()->data()[origBatchIdx] == srcEosId); // const_cast during construction
   }
 
-  // determine index of UNK in the log prob vectors if we want to suppress it in the decoding process
-  int unkColId = -1;
-  if (trgUnkId != Word::NONE && !options_->get<bool>("allow-unk", false)) { // do we need to suppress unk?
-    unkColId = factoredVocab ? factoredVocab->getUnkIndex() : trgUnkId.toWordIndex(); // what's the raw index of unk in the log prob vector?
-    auto shortlist = scorers_[0]->getShortlist();      // first shortlist is generally ok, @TODO: make sure they are the same across scorers?
-    if (shortlist)
-      unkColId = shortlist->tryForwardMap(unkColId); // use shifted postion of unk in case of using a shortlist, shortlist may have removed unk which results in -1
+  Expr suppressedWordIndices;
+  bool suppressUnk     = !options_->get<bool>("allow-unk", false);
+  bool suppressSpecial = !options_->get<bool>("allow-special", false);
+  if (suppressUnk || suppressSpecial) { // do we need to suppress unk or special?
+    std::vector<WordIndex> suppressed = trgVocab_->suppressedIndices(suppressUnk, suppressSpecial);
+
+    auto shortlist = scorers_[0]->getShortlist(); // first shortlist is generally ok, @TODO: make sure they are the same across scorers?
+    if(shortlist) // check if suppressed words are allowed by the shortlist, if not, remove
+      suppressed.erase(std::remove_if(suppressed.begin(), 
+                                      suppressed.end(), 
+                                      [&](WordIndex i) { 
+                                        return shortlist->tryForwardMap(i) == data::Shortlist::npos;
+                                      }),
+                       suppressed.end());
+    
+    if(!suppressed.empty())
+      suppressedWordIndices = graph->indices(suppressed);
   }
 
   // the decoding process updates the following state information in each output time step:
@@ -419,10 +428,9 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           //      factoredVocab ? factoredVocab->word2string(prevWords[kk]) : (*batch->back()->vocab())[prevWords[kk]],
           //      prevScores[kk]);
           states[i] = scorers_[i]->step(graph, states[i], hypIndices, prevWords, batchIndices, (int)maxBeamSize);
-          if (numFactorGroups == 1) // @TODO: this branch can go away
+          if (numFactorGroups == 1) { // @TODO: this branch can go away
             logProbs = states[i]->getLogProbs().getLogits(); // [maxBeamSize, 1, currentDimBatch, dimVocab]
-          else
-          {
+          } else {
             auto shortlist = scorers_[i]->getShortlist();
             logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, shortlist); // [maxBeamSize, 1, currentDimBatch, dimVocab]
           }
@@ -454,10 +462,8 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
 
       //**********************************************************************
       // suppress specific symbols if not at right positions
-      if(unkColId != -1 && factorGroup == 0)
-        suppressWord(expandedPathScores, unkColId);
-      for(auto state : states)
-        state->blacklist(expandedPathScores, batch);
+      if(suppressedWordIndices && factorGroup == 0)
+        suppressWords(expandedPathScores, suppressedWordIndices);
 
       //**********************************************************************
       // perform beam search

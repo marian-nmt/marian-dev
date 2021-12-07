@@ -27,10 +27,13 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 #endif
 
   auto floatApprox = [](T x, T y) -> bool { return x == Approx(y).margin(0.001f); };
+  auto floatApprox2 = [](T x, T y) -> bool { return x == Approx(y).margin(0.01f); };
   auto floatEqual  = [](T x, T y) -> bool { return x == y; };
 
   Config::seed = 1234;
   auto graph = New<ExpressionGraph>();
+  
+  graph->setInference(true);
   graph->setDefaultElementType(floatType);
   graph->setDevice({0, device});
   graph->reserveWorkspaceMB(16);
@@ -42,10 +45,10 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     values.clear();
 
     std::vector<T> vA({1, -2, 3, -4});
-    auto a = graph->constant({2, 2, 1}, inits::fromVector(vA));
+    auto a = graph->constant({2, 2}, inits::fromVector(vA));
 
     auto compare = [&](Expr res, std::function<float(float)> f) -> bool {
-      if (res->shape() != Shape({ 2, 2, 1 }))
+      if (res->shape() != Shape({ 2, 2 }))
           return false;
       res->val()->get(values);
       std::vector<float> ref{f(vA[0]), f(vA[1]), f(vA[2]), f(vA[3])};
@@ -128,14 +131,14 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     std::vector<T> vA({1, -2, 3, -4});
     std::vector<T> vB({0.5, 1.5});
 
-    auto a = graph->constant({2, 2, 1}, inits::fromVector(vA));
-    auto b = graph->constant({2, 1}, inits::fromVector(vB));
+    auto a = graph->constant({2, 2}, inits::fromVector(vA));
+    auto b = graph->constant({2}, inits::fromVector(vB));
 
     // Two lambdas below differ in the use of floatEqual or floatApprox and
     // are not merged because MSVC compiler returns C2446: no conversion from
     // lambda_x to lambda_y
     auto compare = [&](Expr res, std::function<float(float,float)> f) -> bool {
-      if (res->shape() != Shape({ 2, 2, 1 }))
+      if (res->shape() != Shape({ 2, 2 }))
           return false;
       res->val()->get(values);
       std::vector<float> ref{f(vA[0], vB[0]), f(vA[1], vB[1]), f(vA[2], vB[0]), f(vA[3], vB[1])};
@@ -143,7 +146,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     };
 
     auto compareApprox = [&](Expr res, std::function<float(float, float)> f) -> bool {
-      if(res->shape() != Shape({2, 2, 1}))
+      if(res->shape() != Shape({2, 2}))
         return false;
       res->val()->get(values);
       std::vector<float> ref{f(vA[0], vB[0]), f(vA[1], vB[1]), f(vA[2], vB[0]), f(vA[3], vB[1])};
@@ -297,6 +300,49 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
   }
 
+  SECTION("RMS normalization") {
+    graph->clear();
+    values.clear();
+
+    std::vector<T> init = {
+      2.88794374, 4.67853451, 3.96257305, 3.28433037,
+      0.37778997, 0.67662024, 4.24959183, 1.23910618,
+      0.68929380, 2.00369596, 4.38251686, 1.75624943,
+      4.96126175, 3.01947117, 4.72057724, 2.23017120
+    };
+
+    auto a1 = graph->param("test1", {2, 2, 4}, inits::fromVector(init));
+    auto a2 = graph->param("test2", {2, 2, 4}, inits::fromVector(init));
+    auto gamma = graph->param("gamma", {1, 4}, inits::ones());
+    
+    auto rms = rmsNorm(a1, gamma, nullptr, 1e-5f);
+    auto rms2 = gamma * (a2 / sqrt(mean(a2 * a2, /*axis=*/-1) + 1e-5f));
+
+    auto top = sum(flatten(rms + rms2));
+
+    graph->forward();
+    graph->backward();
+
+    CHECK(rms->shape() == Shape({2, 2, 4}));
+
+    std::vector<T> values2;
+
+    // compare values of rms and rms2 to make sure forward computation is correct
+    rms->val()->get(values);
+    rms2->val()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox) );
+
+    // compare adjoints of a1 and a2 (parameters) to makes sure gradient computation is correct
+    a1->grad()->get(values);
+    a2->grad()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox) );
+  
+  }
+
   SECTION("reductions") {
     graph->clear();
     values.clear();
@@ -437,7 +483,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     std::vector<T> vC({22, 28,
                        49, 64,
                        76, 100,
-                        103, 136});
+                       103, 136});
 
     auto A = graph->param("A", {2, 2, 3}, inits::fromVector(vA));
     auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
@@ -451,28 +497,29 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(values == vC);
   }
 
-  // Currently no support for fp16 or CPU - TODO use MKL for CPU, convert to float32 on the fly for fp16 via cast(x, Type::float16) or internally
-  if(device == DeviceType::gpu && floatType == Type::float32) {
+  // Currently no support for CPU
+  // @TODO: support for fp16 is done internally via cast to fp16, not efficient.
+  if(device == DeviceType::gpu) {
     SECTION("csr-dot product") {
       graph->clear();
       values.clear();
       // CSR dot product, tested against dense product on the same values
-      std::vector<float> vS({1, 0, 0, 1,          // sparse
-                            0, 0, 1, 1.5});
-      std::vector<float> vD({1, 2, 3, 1.2, 5.6,   // dense
-                            4, 5, 6, 2.3, 6.7,
-                            7, 8, 9, 3.4, 7.8,
-                            1, 1, 2, 4.5, 8.9});
+      std::vector<T> vS({1, 0, 0, 1,          // sparse
+                         0, 0, 1, 1.5});
+      std::vector<T> vD({1, 2, 3, 1.2, 5.6,   // dense
+                         4, 5, 6, 2.3, 6.7,
+                         7, 8, 9, 3.4, 7.8,
+                         1, 1, 2, 4.5, 8.9});
       auto S  = graph->param("S",  { 2, 4 }, inits::fromVector(vS));
       auto D  = graph->param("D",  { 4, 5 }, inits::fromVector(vD));
       auto DT = graph->param("DT", { 5, 4 }, inits::fromVector(vD)); // example matrix with transposed dimensions
-      std::vector<float> SV;    // create CSR version of S
+      std::vector<T> SV;    // create CSR version of S
       std::vector<IndexType> SI, SO;
       SO.push_back((IndexType)SI.size());
       for (IndexType i = 0; i < (IndexType)S->shape()[0]; i++) {
         for (IndexType j = 0; j < (IndexType)S->shape()[1]; j++) {
           auto k = 4 * i + j;
-          if (vS[k] != 0) {
+          if (vS[k] != (T)0.f) {
             SV.push_back(vS[k]);
             SI.push_back(j);
           }
@@ -484,45 +531,51 @@ void tests(DeviceType device, Type floatType = Type::float32) {
       auto STxSxDd = dot(S, SxDd, /*transA=*/true);
       auto SxDs = csr_dot( // sparse x dense
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV)),
             graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
             graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             D);
       auto STxSxDs = csr_dot(   // transpose(sparse) x dense; we use result of previous since dimensions match
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV)),
             graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
             graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             SxDd, /*transS=*/true);
 
+#if 0 // currently not used anywhere
       auto DTxSTd   = dot(DT,     S, /*transA=*/false, /*transB=*/true);
       auto DTxSTxSd = dot(DTxSTd, S);
       auto DTxSTs = dot_csr( // dense x sparse
             DT,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV)),
             graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
             graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32),
             /*transS=*/true);
       auto DTxSTxSs = dot_csr( // dense x transpose(sparse)
             DTxSTd,
             S->shape(),
-            graph->constant({(int)SV.size()}, inits::fromVector(SV), floatType),
+            graph->constant({(int)SV.size()}, inits::fromVector(SV)),
             graph->constant({(int)SI.size()}, inits::fromVector(SI), Type::uint32),
             graph->constant({(int)SO.size()}, inits::fromVector(SO), Type::uint32));
+#endif
 
       CHECK(SxDs->shape() == SxDd->shape());
       CHECK(STxSxDs->shape() == STxSxDd->shape());
+#if 0
       CHECK(DTxSTs->shape() == DTxSTd->shape());
       CHECK(DTxSTxSs->shape() == DTxSTxSd->shape());
+#endif
 
       graph->forward();
 
       // dense and sparse operation results must be the same
       SxDd    ->val()->get(values2); SxDs    ->val()->get(values); CHECK(values == values2);
       STxSxDd ->val()->get(values2); STxSxDs ->val()->get(values); CHECK(values == values2);
+#if 0
       DTxSTd  ->val()->get(values2); DTxSTs  ->val()->get(values); CHECK(values == values2);
       DTxSTxSd->val()->get(values2); DTxSTxSs->val()->get(values); CHECK(values == values2);
+#endif
     }
   }
 
@@ -531,15 +584,19 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     values.clear();
 
     std::vector<T> vA({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-    std::vector<T> vB({1, 2, 3, 4, 5, 6});
-    std::vector<T> vAff({24, 30, 51, 66, 78, 102, 105, 138});
+    std::vector<T> vB({1, -2, 3, 4, -5, 6});
+    std::vector<T> vAff({-6, 26, -9, 50, -12, 74, -15, 98});
+    std::vector<T> vAffRelu({0, 26, 0, 50, 0, 74, 0, 98});
 
     auto A = graph->param("A", {4, 3}, inits::fromVector(vA));
     auto B = graph->param("B", {3, 2}, inits::fromVector(vB));
-    auto C = graph->param("C", {4, 2}, inits::fromValue(2));
+    auto bias = graph->param("C", {1, 2}, inits::fromValue(2));
 
-    auto aff1 = affine(A, B, C);
-    auto aff2 = dot(A, B) + C;
+    auto aff1 = affine(A, B, bias);
+    auto aff2 = dot(A, B) + bias;
+
+    auto affRelu1 = affineWithRelu(A, B, bias);
+    auto affRelu2 = relu(dot(A, B) + bias);
 
     graph->forward();
 
@@ -551,6 +608,71 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK(aff2->shape() == aff1->shape());
     aff2->val()->get(values2);
     CHECK(values2 == values);
+
+    affRelu1->val()->get(values);
+    affRelu2->val()->get(values2);
+    CHECK(values2 == vAffRelu);
+    CHECK(values2 == values);
+  }
+
+  SECTION("bdot") {
+    graph->clear();
+    values.clear();
+
+    std::vector<T> vA({ 1, 2, 
+                        3, 4,
+                        5, 6,
+                        7, 8});
+
+    std::vector<T> vB({ 1,  2, 
+                        3,  4,
+                        5,  6,
+                        7,  8,
+                        9, 10,
+                       11, 12});
+
+    std::vector<T> vC({  7,  10, 
+                        15,  22, 
+                        19,  22, 
+                        43,  50, 
+                        31,  34, 
+                        71,  78, 
+                        23,  34, 
+                        31,  46, 
+                        67,  78, 
+                        91, 106, 
+                       111, 122, 
+                       151, 166});
+
+    std::vector<T> vCt({   5,  11, 
+                          11,  25, 
+                          17,  23, 
+                          39,  53, 
+                          29,  35, 
+                          67,  81, 
+                          17,  39, 
+                          23,  53, 
+                          61,  83, 
+                          83, 113, 
+                         105, 127, 
+                         143, 173});
+
+    auto A = graph->param("A", {2, 1, 2, 2}, inits::fromVector(vA));
+    auto B = graph->param("B", {1, 3, 2, 2}, inits::fromVector(vB));
+    
+    auto C  = bdot(A, B, /*transA=*/false, /*transB=*/false);
+    auto Ct = bdot(A, B, /*transA=*/false, /*transB=*/true);
+
+    graph->forward();
+
+    CHECK(C->shape()  == Shape({2, 3, 2, 2}));
+    CHECK(Ct->shape() == Shape({2, 3, 2, 2}));
+
+    C->val()->get(values);
+    CHECK(vC == values);
+
+    Ct->val()->get(values);
+    CHECK(vCt == values);
   }
 
   SECTION("repeat") {
@@ -950,12 +1072,12 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     auto yhatGa   = reshape(yhat, {3, 1});   // [3, 1]
 
     float lsAlpha = 0.1;
-    auto ceOp = cross_entropy(logits, yhat, /*labelSmoothing=*/lsAlpha);
+    auto ceOp = cast(cross_entropy(logits, yhat, /*labelSmoothing=*/lsAlpha), floatType);
 
     auto ceGa = -gather(logsoftmax(logitsGa), -1, yhatGa);
          ceGa = (1.f - lsAlpha) * ceGa - lsAlpha * mean(logsoftmax(logitsGa), /*axis=*/-1);
 
-    auto top = sum(ceOp) + sum(ceGa);
+    auto top = sum(ceOp) + sum(ceGa); // cast to float16 if required as cross_entropy casts to float32 internally
 
     graph->forward();
     graph->backward();
@@ -965,14 +1087,16 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     // compare forward values
     ceOp->val()->get(values);
     ceGa->val()->get(values2);
+
     CHECK( std::equal(values.begin(), values.end(),
-                      values2.begin(), floatApprox) );
+                      values2.begin(), floatApprox2) );
+
 
     // compare parameter gradients
     logits->grad()->get(values);
     logitsGa->grad()->get(values2);
     CHECK( std::equal(values.begin(), values.end(),
-                      values2.begin(), floatApprox) );
+                      values2.begin(), floatApprox2) );
   }
 }
 

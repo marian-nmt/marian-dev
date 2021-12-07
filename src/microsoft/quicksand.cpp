@@ -11,6 +11,7 @@
 #include "data/alignment.h"
 #include "data/vocab_base.h"
 #include "tensors/cpu/expression_graph_packable.h"
+#include "layers/lsh.h"
 
 #if USE_FBGEMM
 #include "fbgemm/Utils.h"
@@ -77,7 +78,7 @@ public:
     graph_->setDevice(deviceId, device_);
 
 #if MKL_FOUND
-    mkl_set_num_threads(options->get<int>("mkl-threads", 1));
+    mkl_set_num_threads(options_->get<int>("mkl-threads", 1));
 #endif
 
     std::vector<std::string> models
@@ -113,6 +114,9 @@ public:
     for(auto scorer : scorers_) {
       scorer->init(graph_);
     }
+
+    // run parameter init once, this is required for graph_->get("parameter name") to work correctly
+    graph_->forward();
   }
 
   void setWorkspace(uint8_t* data, size_t size) override { device_->set(data, size); }
@@ -120,8 +124,21 @@ public:
   QSNBestBatch decode(const QSBatch& qsBatch,
                       size_t maxLength,
                       const std::unordered_set<WordIndex>& shortlist) override {
-    if(shortlist.size() > 0) {
-      auto shortListGen = New<data::FakeShortlistGenerator>(shortlist);
+    
+    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
+    ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
+    ABORT_IF(lshOpts.size() == 2 && shortlist.size() > 0, "LSH and shortlist cannot be used at the same time");
+
+    if(lshOpts.size() == 2 || shortlist.size() > 0) {
+      Ptr<data::ShortlistGenerator> shortListGen;
+      // both ShortListGenerators are thin wrappers, hence no problem with calling this per query
+      if(lshOpts.size() == 2) {
+        // Setting abortIfDynamic to true disallows memory allocation for LSH parameters, this is specifically for use in Quicksand.
+        // If we want to use the LSH in Quicksand we need to create a binary model that contains the LSH parameters via conversion.
+        shortListGen = New<data::LSHShortlistGenerator>(lshOpts[0], lshOpts[1], vocabs_[1]->lemmaSize(), /*abortIfDynamic=*/true);
+      } else {
+        shortListGen = New<data::FakeShortlistGenerator>(shortlist);
+      } 
       for(auto scorer : scorers_)
         scorer->setShortlistGenerator(shortListGen);
     }
@@ -245,8 +262,10 @@ DecoderCpuAvxVersion parseCpuAvxVersion(std::string name) {
   }
 }
 
-// @TODO: clean-up this code and unify with marian-conv. The targetPrec parameter is not clear enought etc.
-bool convertModel(std::string inputFile, std::string outputFile, int32_t targetPrec) {
+// This function converts an fp32 model into an FBGEMM based packed model.
+// marian defined types are used for external project as well.
+// The targetPrec is passed as int32_t for the exported function definition.
+bool convertModel(std::string inputFile, std::string outputFile, int32_t targetPrec, int32_t lshNBits) {
   std::cerr << "Converting from: " << inputFile << ", to: " << outputFile << ", precision: " << targetPrec << std::endl;
 
   YAML::Node config;
@@ -258,17 +277,39 @@ bool convertModel(std::string inputFile, std::string outputFile, int32_t targetP
   graph->setDevice(CPU0);
 
   graph->load(inputFile);
-  graph->forward();
-  auto saveGemmType = Type::float32;
-  if (targetPrec == 16)
-    saveGemmType = Type::packed16;
-  else if (targetPrec == 8)
-    saveGemmType = Type::packed8avx2; // We currently use avx2 by default.
 
-  // added a flag if the weights needs to be packed or not
-  graph->packAndSave(outputFile, configStr.str(), saveGemmType);
+  // MJD: Note, this is a default settings which we might want to change or expose. Use this only with Polonium students.
+  // The LSH will not be used by default even if it exists in the model. That has to be enabled in the decoder config.
+  std::string lshOutputWeights = "Wemb";
+  bool addLsh = lshNBits > 0;
+  if(addLsh) {
+    std::cerr << "Adding LSH to model with hash size " << lshNBits << std::endl;
+    // Add dummy parameters for the LSH before the model gets actually initialized.
+    // This create the parameters with useless values in the tensors, but it gives us the memory we need.
+    graph->setReloaded(false);
+    lsh::addDummyParameters(graph, /*weights=*/lshOutputWeights, /*nBits=*/lshNBits);
+    graph->setReloaded(true);
+  }
 
-  std::cerr << "Conversion Finished." << std::endl;
+  graph->forward();  // run the initializers
+
+  if(addLsh) {
+    // After initialization, hijack the paramters for the LSH and force-overwrite with correct values.
+    // Once this is done we can just pack and save as normal.
+    lsh::overwriteDummyParameters(graph, /*weights=*/lshOutputWeights);
+  }
+
+  Type targetPrecType = (Type) targetPrec;
+  if (targetPrecType == Type::packed16 
+      || targetPrecType == Type::packed8avx2 
+      || targetPrecType == Type::packed8avx512
+      || (targetPrecType == Type::float32 && addLsh)) { // only allow non-conversion to float32 if we also use the LSH
+    graph->packAndSave(outputFile, configStr.str(), targetPrecType);
+    std::cerr << "Conversion Finished." << std::endl;
+  } else {
+    ABORT("Target type is not supported in this funcion: {}", targetPrec);
+    return false;
+  }
 
   return true;
 }

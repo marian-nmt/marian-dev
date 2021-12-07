@@ -116,6 +116,21 @@ void Config::initialize(ConfigParser const& cp) {
     config_["tsv-fields"] = tsvFields;
   }
 
+  // ensures factors backward compatibility whilst keeping the more user friendly CLI
+  if(get<std::string>("lemma-dependency").empty()) {
+    YAML::Node config;
+    int lemmaDimEmb = get<int>("lemma-dim-emb");
+    if(lemmaDimEmb > 0) {
+      config_["lemma-dependency"] = "re-embedding";
+    } else if(lemmaDimEmb == -1) {
+      config_["lemma-dependency"] = "lemma-dependent-bias";
+    } else if(lemmaDimEmb == -2) {
+      config_["lemma-dependency"] = "soft-transformer-layer";
+    } else if(lemmaDimEmb == -3) {
+      config_["lemma-dependency"] = "hard-transformer-layer";
+    }
+  }
+
   // echo full configuration
   log();
 
@@ -280,8 +295,7 @@ std::vector<DeviceId> Config::getDevices(Ptr<Options> options,
     size_t numPerMPIProcessDeviceNos = deviceNos.size() / numDevices;
     // @TODO: improve logging message as devices[] and numDevices are not informative for the user
     ABORT_IF(numDevices * numPerMPIProcessDeviceNos != deviceNos.size(),
-             "devices[] size must be equal to or a multiple of numDevices");  // (check that it is a
-                                                                              // multiple)
+             "devices[] size must be equal to or a multiple of numDevices");  // (check that it is a multiple)
 
     // if multiple concatenated lists are given, slice out the one for myMPIRank
     if(numPerMPIProcessDeviceNos != 1) {

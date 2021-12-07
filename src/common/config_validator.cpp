@@ -4,6 +4,8 @@
 #include "common/utils.h"
 #include "common/filesystem.h"
 
+#include <set>
+
 namespace marian {
 
 bool ConfigValidator::has(const std::string& key) const {
@@ -129,6 +131,11 @@ void ConfigValidator::validateOptionsTraining() const {
                && !get<std::vector<std::string>>("valid-sets").empty(),
            errorMsg);
 
+  // check if --early-stopping-on has proper value
+  std::set<std::string> supportedStops = {"first", "all", "any"};
+  ABORT_IF(supportedStops.find(get<std::string>("early-stopping-on")) == supportedStops.end(),
+           "Supported options for --early-stopping-on are: first, all, any");
+
   // validations for learning rate decaying
   ABORT_IF(get<float>("lr-decay") > 1.f, "Learning rate decay factor greater than 1.0 is unusual");
 
@@ -145,7 +152,7 @@ void ConfigValidator::validateOptionsTraining() const {
   // validate ULR options
   ABORT_IF((has("ulr") && get<bool>("ulr") && (get<std::string>("ulr-query-vectors") == ""
                                                || get<std::string>("ulr-keys-vectors") == "")),
-           "ULR enablign requires query and keys vectors specified with --ulr-query-vectors and "
+           "ULR requires query and keys vectors specified with --ulr-query-vectors and "
            "--ulr-keys-vectors option");
 
   // validate model quantization
@@ -170,22 +177,16 @@ void ConfigValidator::validateModelExtension(cli::mode mode) const {
   }
 }
 
-void ConfigValidator::validateDevices(cli::mode mode) const {
+void ConfigValidator::validateDevices(cli::mode /*mode*/) const {
   std::string devices = utils::join(get<std::vector<std::string>>("devices"));
   utils::trim(devices);
 
   regex::regex pattern;
   std::string help;
-  // @TODO: Is this format still supported? Remove this if not.
-  if(mode == cli::mode::training && get<bool>("multi-node")) {
-    // valid strings: '0: 1 2', '0:1 2 1:2 3'
-    pattern = "( *[0-9]+ *: *[0-9]+( *[0-9]+)*)+";
-    help = "Supported format for multi-node setting: '0:0 1 2 3 1:0 1 2 3'";
-  } else {
-    // valid strings: '0', '0 1 2 3', '3 2 0 1'
-    pattern = "[0-9]+( *[0-9]+)*";
-    help = "Supported formats: '0 1 2 3'";
-  }
+
+  // valid strings: '0', '0 1 2 3', '3 2 0 1'
+  pattern = "[0-9]+( *[0-9]+)*";
+  help = "Supported formats: '0 1 2 3'";
 
   ABORT_IF(!regex::regex_match(devices, pattern),
            "the argument '{}' for option '--devices' is invalid. {}",

@@ -145,8 +145,6 @@ protected:  // (these are protected, not private, for ONNX exporting)
   Ptr<Tensors> tensors_;
 private:
 
-  std::unordered_map<size_t, std::vector<Expr>> memoized_;
-
   Type defaultElementType_{Type::float32};  // Type used for storing parameters, currently all parameters have to have the same type
 
   bool inferenceOnly_{false};               // a flag holds whether the graph is used for inference only
@@ -649,6 +647,16 @@ public:
   }
 
   /**
+   * Return the Parameters object related to the graph by elementType.
+   * The Parameters object holds the whole set of the parameter nodes of the given type.
+   */
+  Ptr<Parameters>& params(Type elementType) {     
+    auto it = paramsByElementType_.find(elementType);
+    ABORT_IF(it == paramsByElementType_.end(), "Parameter object for type {} does not exist", defaultElementType_);
+    return it->second;
+  }
+
+  /**
    * Set default element type for the graph.
    * The default value is used if some node type is not specified.
    */
@@ -658,6 +666,11 @@ public:
              defaultElementType_, defaultElementType);
     defaultElementType_ = defaultElementType;
   }
+
+  /**
+   * Get default element type for the graph.
+   */
+  Type getDefaultElementType() { return defaultElementType_; }
 
   /**
    * Add a expression node to the graph.
@@ -814,9 +827,13 @@ public:
   void save(const std::string& name, const std::string& meta = "", Type saveElementType = Type::float32) {
     std::vector<io::Item> ioItems;
     save(ioItems, saveElementType);
-    if(!meta.empty())
-      io::addMetaToItems(meta, "special:model.yml", ioItems);
-    io::saveItems(name, ioItems);
+    if(ioItems.empty()) {
+      LOG(warn, "Item list is empty, skipping saving");
+    } else {
+      if(!meta.empty())
+        io::addMetaToItems(meta, "special:model.yml", ioItems);
+      io::saveItems(name, ioItems);
+    }
   }
 };
 

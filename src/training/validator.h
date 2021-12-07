@@ -42,8 +42,8 @@ public:
                          Ptr<const TrainingState> state) = 0;
   virtual std::string type() = 0;
 
-  float lastBest() { return lastBest_; }
-  size_t stalled() { return stalled_; }
+  float& lastBest() { return lastBest_; }
+  size_t& stalled() { return stalled_; }
 
   virtual float initScore();
   virtual void actAfterLoaded(TrainingState& state) override;
@@ -134,7 +134,6 @@ protected:
     auto model = options_->get<std::string>("model");
     std::string suffix = model.substr(model.size() - 4);
     ABORT_IF(suffix != ".npz" && suffix != ".bin", "Unknown model suffix {}", suffix);
-
     builder_->save(graphs[0], model + ".best-" + type() + suffix, true);
   }
 };
@@ -353,7 +352,7 @@ protected:
 private:
   const std::string metric_;  // allowed values are: bleu, bleu-detok (same as bleu), bleu-segmented, chrf
   bool computeChrF_{ false }; // should we compute ChrF instead of BLEU (BLEU by default)?
-  
+
   size_t order_{ 4 };                      // 4-grams for BLEU by default
   static const size_t statsPerOrder = 3;   // 0: common ngrams, 1: candidate ngrams, 2: reference ngrams
   bool useWordIds_{ false };               // compute BLEU score by matching numeric segment ids

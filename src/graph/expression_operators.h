@@ -26,12 +26,19 @@ typedef std::function<void(Expr out, const std::vector<Expr>& in)> LambdaNodeFun
 /**
  * Arbitrary node with forward operation only.
  */
-Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd);
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, size_t hash = 0);
 
 /**
  * Arbitrary node with forward and backward operation.
  */
-Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, LambdaNodeFunctor bwd);
+Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type, LambdaNodeFunctor fwd, LambdaNodeFunctor bwd, size_t hash = 0);
+
+
+/**
+ * Convience typedef for graph @ref lambda expressions.
+ */
+typedef std::function<void(Expr)> LambdaNodeCallback;
+Expr callback(Expr node, LambdaNodeCallback call);
 
 /**
  * @addtogroup graph_ops_activation Activation Functions
@@ -479,6 +486,16 @@ Expr bdot(Expr a,
           float scalar = 1.f);
 
 /**
+ * bdot_legacy is an old implemetation of bdot without correct broadcasting on the batch dimensions, 
+ * to be removed once the behavior can be correctly replicated with normal bdot on 5 dimensions.
+ */
+Expr bdot_legacy(Expr a,
+                 Expr b,
+                 bool transA = false,
+                 bool transB = false,
+                 float scalar = 1.f);
+
+/**
  * Performs an affine transformation.
  * Computes
  * @f$ C \leftarrow \alpha \operatorname{op}(A) \cdot \operatorname{op}(B) + C@f$,
@@ -488,10 +505,20 @@ Expr bdot(Expr a,
  */
 Expr affine(Expr a,
             Expr b,
-            Expr c,
+            Expr bias,
             bool transA = false,
             bool transB = false,
             float scalar = 1.f);
+
+/**
+ * As above, but efficiently applies relu transformation to output. For inference only.
+ */
+Expr affineWithRelu(Expr a,
+                    Expr b,
+                    Expr bias,
+                    bool transA = false,
+                    bool transB = false,
+                    float scalar = 1.f);
 
 /**
  * Computes the dot product of CSR-tensor @p A with @p B.
@@ -904,6 +931,18 @@ Expr weighted_average(Expr in, Expr weights, int ax = 0);
  * @see LayerNormalizationOp
  */
 Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
+
+/**
+ * Applies RMS normalization over the last dimension. 
+ * 
+ * See: Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization. 
+ * In Advances in Neural Information Processing Systems 32. Vancouver, Canada.
+ * @f[
+   \frac{x}{\sqrt{\frac{1}{N}\sum x^2 + \mathrm{eps}}} \times \gamma + \beta
+ * @f]
+ * @see RMSNormalizationOp
+ */
+Expr rmsNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
 
 /**
  * Highway transformation.

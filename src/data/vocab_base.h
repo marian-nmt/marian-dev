@@ -39,6 +39,7 @@ public:
   virtual const std::string& operator[](Word id) const = 0;
 
   virtual size_t size() const = 0;
+  virtual size_t lemmaSize() const { return size(); }
   virtual std::string type() const = 0;
 
   virtual Word getEosId() const = 0;
@@ -49,8 +50,11 @@ public:
   virtual std::string toUpper(const std::string& line) const { return line; }
   virtual std::string toEnglishTitleCase(const std::string& line) const { return line; }
 
-  // this function is an identity mapping for default vocabularies, hence do nothing
+  // Identity mapping for default vocabularies, hence do nothing
   virtual void transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const { ptr; num; }
+
+  // Populates vector `special` with special words like "\n" etc.
+  virtual void addSpecialWords(std::vector<Word>& special) const { special; }
 
   virtual void createFake() = 0;
 

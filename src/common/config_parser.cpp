@@ -134,6 +134,9 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
     "Suppress logging for translation");
   cli.add<size_t>("--seed",
     "Seed for all random number generators. 0 means initialize randomly");
+  cli.add<bool>("--check-nan",
+    "Check for NaNs or Infs in forward and backward pass. Will abort when found. "
+    "This is a diagnostic option that will slow down computation significantly");
   cli.add<bool>("--interpolate-env-vars",
     "allow the use of environment variables in paths, of the form ${VAR_NAME}");
   cli.add<bool>("--relative-paths",
@@ -192,6 +195,13 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<int>("--dim-emb",
       "Size of embedding vector",
       512);
+  cli.add<int>("--factors-dim-emb",
+      "Embedding dimension of the factors. Only used if concat is selected as factors combining form");
+  cli.add<std::string>("--factors-combine",
+    "How to combine the factors and lemma embeddings. Options available: sum, concat",
+    "sum");
+  cli.add<std::string>("--lemma-dependency",
+      "Lemma dependency method to use when predicting target factors. Options: soft-transformer-layer, hard-transformer-layer, lemma-dependent-bias, re-embedding");
   cli.add<int>("--lemma-dim-emb",
       "Re-embedding dimension of lemma in factors",
       0);
@@ -241,7 +251,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Tie all embedding layers and output layer");
   cli.add<bool>("--output-omit-bias",
       "Do not use a bias vector in decoder output layer");
-  
+
   // Transformer options
   cli.add<int>("--transformer-heads",
       "Number of heads in multi-head attention (transformer)",
@@ -323,13 +333,6 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
         "Dropout source words (0 = no dropout)");
     cli.add<float>("--dropout-trg",
         "Dropout target words (0 = no dropout)");
-    cli.add<float>("--grad-dropping-rate",
-        "Gradient Dropping rate (0 = no gradient Dropping)");
-    cli.add<float>("--grad-dropping-momentum",
-        "Gradient Dropping momentum decay rate (0.0 to 1.0)");
-    cli.add<size_t>("--grad-dropping-warmup",
-        "Do not apply gradient dropping for the first arg steps",
-        100);
     cli.add<float>("--transformer-dropout",
         "Dropout between transformer layers (0 = no dropout)");
     cli.add<float>("--transformer-dropout-attention",
@@ -520,29 +523,32 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // mixed precision training
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision training with float16 and cost-scaling, "
-      "corresponds to: --precision float16 float32 float32 --cost-scaling 7 2000 2 0.05 10 1");
+      "corresponds to: --precision float16 float32 --cost-scaling 0 1000 2 0.05 10 1e-5f");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision training for forward/backward pass and optimizaton. "
-      "Defines types for: forward/backward, optimization, saving.",
-      {"float32", "float32", "float32"});
+      "Defines types for: forward/backward pass, optimization.",
+      {"float32", "float32"});
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
       "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
-    ->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+      ->implicit_val("0.f 1000 2.f 0.05f 10 1e-5f");
+  cli.add<size_t>("--gradient-norm-average-window",
+      "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
+      "After this many updates about 90% of the mass of the exponential average comes from these updates",
+      100);
+  cli.add<std::vector<std::string>>("--dynamic-gradient-scaling",
+      "Re-scale gradient to have average gradient norm if (log) gradient norm diverges from average by arg1 sigmas. "
+      "If arg2 = \"log\" the statistics are recorded for the log of the gradient norm else use plain norm")
+      ->implicit_val("2.f log");
+  cli.add<bool>("--check-gradient-nan",
+      "Skip parameter update in case of NaNs in gradient");
   cli.add<bool>("--normalize-gradient",
-      "Normalize gradient by multiplying with no. devices / total labels");
+      "Normalize gradient by multiplying with no. devices / total labels (not recommended and to be removed in the future)");
 
   cli.add<std::vector<std::string>>("--train-embedder-rank",
       "Override model configuration and train a embedding similarity ranker with the model encoder, "
       "parameters encode margin and an optional normalization factor")
     ->implicit_val("0.3f 0.0f");
-
-  // multi-node training
-  cli.add<bool>("--multi-node",
-     "Enable asynchronous multi-node training through MPI (and legacy sync if combined with --sync-sgd)");
-  cli.add<bool>("--multi-node-overlap",
-     "Overlap model computations with MPI communication",
-     true);
 
   // model quantization training
   addSuboptionsQuantization(cli);
@@ -551,7 +557,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   addSuboptionsULR(cli);
 
   cli.add<std::vector<std::string>>("--task",
-     "Use predefined set of options. Possible values: transformer, transformer-big");
+     "Use predefined set of options. Possible values: transformer-base, transformer-big, "
+     "transformer-base-prenorm, transformer-big-prenorm");
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -575,6 +582,10 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<size_t>("--early-stopping",
      "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
      10);
+  cli.add<std::string>("--early-stopping-on",
+      "Decide if early stopping should take into account first, all, or any validation metrics"
+      "Possible values: first, all, any",
+      "first");
 
   // decoding options
   cli.add<size_t>("--beam-size,-b",
@@ -587,7 +598,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Maximum target length as source length times factor",
       3);
   cli.add<float>("--word-penalty",
-      "Subtract (arg * translation length) from translation score ");
+      "Subtract (arg * translation length) from translation score");
   cli.add<bool>("--allow-unk",
       "Allow unknown words to appear in output");
   cli.add<bool>("--n-best",
@@ -652,6 +663,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Subtract (arg * translation length) from translation score");
   cli.add<bool>("--allow-unk",
       "Allow unknown words to appear in output");
+  cli.add<bool>("--allow-special",
+      "Allow special symbols to appear in output, e.g. for SentencePiece with byte-fallback do not suppress the newline symbol");
   cli.add<bool>("--n-best",
       "Generate n-best list");
   cli.add<std::string>("--alignment",
@@ -659,6 +672,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
     ->implicit_val("1");
   cli.add<bool>("--word-scores",
       "Print word-level scores. One score per subword unit, not normalized even if --normalize");
+  cli.add<std::string/*SchedulerPeriod*/>("--stat-freq",
+    "Display speed information every arg mini-batches. Disabled by default with 0, set to value larger than 0 to activate",
+    "0");
 #ifdef USE_SENTENCEPIECE
   cli.add<bool>("--no-spm-decode",
       "Keep the output segmented into SentencePiece subwords");
@@ -687,6 +703,15 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::vector<int>>("--output-approx-knn",
      "Use approximate knn search in output layer (currently only in transformer)")
      ->implicit_val("100 1024");
+
+  // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
@@ -739,6 +764,15 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
       "Mixed precision for inference, set parameter type in expression graph",
       {"float32"});
 
+  // parameters for on-line quantization
+  cli.add<bool>("--optimize",
+      "Optimize the graph on-the-fly", false);
+  cli.add<std::string>("--gemm-type,-g",
+     "GEMM Type to be used for on-line quantization/packing: float32, packed16, packed8", "float32");
+  cli.add<float>("--quantize-range",
+     "Range for the on-line quantiziation of weight matrix in multiple of this range and standard deviation, 0.0 means min/max quantization",
+     0.f);
+
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -788,9 +822,17 @@ void ConfigParser::addSuboptionsDevices(cli::CLIWrapper& cli) {
   cli.add<size_t>("--num-devices",
       "Number of GPUs to use for this process. Defaults to length(devices) or 1");
 #ifdef USE_NCCL
-  if(mode_ == cli::mode::training)
+  if(mode_ == cli::mode::training) {
     cli.add<bool>("--no-nccl",
       "Disable inter-GPU communication via NCCL");
+    cli.add<std::string>("--sharding",
+      "When using NCCL and MPI for multi-process training use 'global' (default, less memory usage) "
+      "or 'local' (more memory usage but faster) sharding",
+      {"global"});
+    cli.add<std::string/*SchedulerPeriod*/>("--sync-freq",
+      "When sharding is local sync all shards across processes once every n steps (possible units u=updates, t=target labels, e=epochs)",
+      "200u");
+  }
 #endif
 #ifdef CUDA_FOUND
   cli.add<size_t>("--cpu-threads",
@@ -848,7 +890,7 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
     cli.add<size_t>("--english-title-case-every",
         "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
 
-    cli.add<int>("--mini-batch-words-ref",
+    cli.add<size_t>("--mini-batch-words-ref",
         "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "
         "--learn-rate, --optimizer-params, --exponential-smoothing, --mini-batch-warmup");
     cli.add<std::string/*SchedulerPeriod*/>("--mini-batch-warmup",
@@ -857,6 +899,9 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
         {"0"});
     cli.add<bool>("--mini-batch-track-lr",
         "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
+    cli.add<bool>("--mini-batch-round-up",
+        "Round up batch size to next power of 2 for more efficient training, but this can make batch size less stable. Disable with --mini-batch-round-up=false",
+        true);
   }
   // clang-format on
 }
@@ -946,15 +991,15 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 
   auto buildInfo = get<std::string>("build-info");
   if(!buildInfo.empty() && buildInfo != "false") {
-#ifndef _MSC_VER // cmake build options are not available on MSVC based build.
+#ifdef BUILD_INFO_AVAILABLE // cmake build options are not available on MSVC based build.
     if(buildInfo == "all")
       std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
     else
       std::cerr << cmakeBuildOptions() << std::endl;
     exit(0);
-#else // _MSC_VER
-    ABORT("build-info is not available on MSVC based build.");
-#endif // _MSC_VER
+#else // BUILD_INFO_AVAILABLE
+    ABORT("build-info is not available on MSVC based build unless compiled via CMake.");
+#endif // BUILD_INFO_AVAILABLE
   }
 
   // get paths to extra config files
@@ -1042,6 +1087,40 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
                           "Extracting 'alignment' and 'weight' types from input-types failed.");
     }
   }
+
+#if 0 // @TODO: remove once fully deprecated
+  // Convert --after-batches N to --after Nu and --after-epochs N to --after Ne, different values get concatenated with ","
+  if(mode_ == cli::mode::training && get<size_t>("after-epochs") > 0) {
+    auto afterValue = get<size_t>("after-epochs");
+    LOG(info, "\"--after-epochs {}\" is deprecated, please use \"--after {}e\" instead (\"e\" stands for epoch)", afterValue, afterValue);
+    YAML::Node config;
+    std::string prevAfter = get<std::string>("after");
+    std::string converted = std::to_string(afterValue) + "e";
+    if(prevAfter != "0e")
+      config["after"] = prevAfter + "," + converted;
+    else
+      config["after"] = converted;
+    if(!config.IsNull())
+      cli_.updateConfig(config,
+                        cli::OptionPriority::CommandLine,
+                        "Could not update --after with value from --after-epochs");
+  }
+  if(mode_ == cli::mode::training && get<size_t>("after-batches") > 0) {
+    auto afterValue = get<size_t>("after-batches");
+    LOG(info, "\"--after-batches {}\" is deprecated, please use \"--after {}u\" instead (\"u\" stands for updates)", afterValue, afterValue);
+    YAML::Node config;
+    std::string prevAfter = get<std::string>("after");
+    std::string converted = std::to_string(afterValue) + "u";
+    if(prevAfter != "0e")
+      config["after"] = prevAfter + "," + converted;
+    else
+      config["after"] = converted;
+    if(!config.IsNull())
+      cli_.updateConfig(config,
+                        cli::OptionPriority::CommandLine,
+                        "Could not update --after with value from --after-updates");
+  }
+#endif
 
   cli_.parseAliases();
   auto opts = New<Options>();

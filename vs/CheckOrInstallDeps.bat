@@ -1,8 +1,8 @@
 ::
-:: Usage: CheckDeps.bat
+:: Usage: CheckOrInstallDeps.bat
 ::
 :: This script is used to verify that all the dependencies required to build Marian are available.
-:: The Cuda SDK and the Intel MKL must be installed beforehand by the user.
+:: The CUDA SDK and the Intel MKL must be installed beforehand by the user.
 :: The rest of libraries (see README.md), if not found, will be installed by this script using
 :: vcpkg.
 ::
@@ -29,7 +29,6 @@ set ROOT=%~dp0
 ::set BOOST_INCLUDEDIR=
 ::set BOOST_LIBRARYDIR=
 ::set OPENSSL_ROOT_DIR=
-::set Protobuf_SRC_ROOT_FOLDER=
 
 
 :: If all the variables are empty and vcpkg is found in a known path, the script will download and
@@ -45,7 +44,6 @@ set ROOT=%~dp0
 
 if "%BOOST_INCLUDEDIR%" == "" goto :needVcPkg
 if "%OPENSSL_ROOT_DIR%" == "" goto :needVcPkg
-if "%Protobuf_SRC_ROOT_FOLDER%"=="" goto :needVcPkg
 
 goto :checkDeps
 
@@ -62,36 +60,19 @@ if "%VCPKG_ROOT%" == "" for /f "delims=" %%p in ('where vcpkg 2^>nul') do set VC
 if "%VCPKG_ROOT%" == "" set VCPKG_ROOT=%ROOT%deps\vcpkg
 
 if not exist %VCPKG_ROOT% (
-
     echo --- Cloning vcpkg...
     git clone https://github.com/Microsoft/vcpkg.git %VCPKG_ROOT%
-
-    set USE_BOOST_172=1
     set BOOTSTRAP_VCPKG=1
-
 ) else (
-
     pushd %VCPKG_ROOT%
 
     echo --- Updating vcpkg...
     for /f "delims=" %%p in ('git pull') do (
         if not "%%p" == "Already up to date." (
-            set USE_BOOST_172=1
             set BOOTSTRAP_VCPKG=1
         )
     )
 
-    popd
-)
-
-:: Checkout to the last version of Boost that is supported by the 3rd party library
-:: SimpleWebSocketServer. Vcpkg does not allow installing a specific version of library yet, but
-:: the feature has a PR and should be available soon.
-:: For more details, see https://github.com/microsoft/vcpkg/issues/1681
-if "%USE_BOOST_172%"=="1" (
-    pushd %VCPKG_ROOT%
-    echo --- Checkout to Boost version 1.72...
-    git checkout 597038559647776ee39d02dcf159da05d9342f1d --pathspec-from-file=../../pathspec-boost-1.72.txt
     popd
 )
 
@@ -115,6 +96,9 @@ echo.
 echo --- Checking dependencies...
 
 set CMAKE_OPT=
+set FOUND_CUDA=
+set FOUND_MKL=
+set FOUND_BOOST=
 
 
 :: -------------------------
@@ -124,9 +108,9 @@ echo.
 echo ... CUDA
 if "%CUDA_PATH%"=="" (
     echo The CUDA_PATH environment variable is not defined: this will compile only the CPU version.
-)
-else (
-    echo Found Cuda SDK in %CUDA_PATH%
+    set "FOUND_CUDA=false"
+) else (
+    echo Found Cuda SDK in "%CUDA_PATH%"
 )
 
 :: -------------------------
@@ -139,26 +123,30 @@ echo ... Intel MKL
 if "%MKLROOT%" == "" (
     set "MKLROOT=C:\Program Files (x86)\IntelSWTools\compilers_and_libraries\windows\mkl"
 )
+
 if not exist "%MKLROOT%" (
     echo MKLROOT is set to a non existing path:
-    echo "%MKLROOT%"
+    echo     "%MKLROOT%"
     echo Please make sure the Intel MKL libraries are installed and set MKLROOT to the installation path.
-    exit /b 1
-)
-if not exist "%MKLROOT%\include\mkl_version.h" (
+    set "FOUND_MKL=false"
+) else if not exist "%MKLROOT%\include\mkl_version.h" (
     echo MKL header files were not found in this folder:
-    echo    "%MKLROOT%"
+    echo    "%MKLROOT%\include"
     echo Please make sure Intel MKL is properly installed.
-    exit /b 1
-)
-if not exist "%MKLROOT%\lib\intel64\mkl_core.lib" (
+    set "FOUND_MKL=false"
+) else if not exist "%MKLROOT%\lib\intel64\mkl_core.lib" (
     echo MKL library files were not found in this folder:
-    echo    "%MKLROOT%"
+    echo    "%MKLROOT%\lib\intel64"
     echo Please make sure Intel MKL is properly installed.
-    exit /b 1
+    set "FOUND_MKL=false"
+) else (
+    echo Found Intel MKL library in "%MKLROOT%"
 )
 
-echo Found Intel MKL library in %MKLROOT%
+if "%FOUND_MKL%" == "false" if "%FOUND_CUDA%" == "false" (
+	echo.
+	echo Error: neither CUDA SDK nor Intel MKL were found, but at least one of them must be installed.
+)
 
 :: -------------------------
 :: BOOST_INCLUDEDIR and BOOST_LIBRARYDIR can be both set to an existing Boost installation.
@@ -176,29 +164,31 @@ if not exist "%BOOST_INCLUDEDIR%" (
     echo BOOST_INCLUDEDIR is set to a non existing path:
     echo    "%BOOST_INCLUDEDIR%"
     echo Please set BOOST_INCLUDEDIR and BOOST_LIBRARYDIR to the installation path of the Boost library.
-    exit /b 1
-)
-if not exist "%BOOST_INCLUDEDIR%\boost\version.hpp" (
+    set "FOUND_BOOST=false"
+) else if not exist "%BOOST_INCLUDEDIR%\boost\version.hpp" (
     echo Boost header files were not found in this folder:
-    echo    "%BOOST_INCLUDEDIR%"
+    echo    "%BOOST_INCLUDEDIR%\boost"
     echo Please make sure Boost is correctly installed.
-    exit /b 1
-)
-
-if not exist "%BOOST_LIBRARYDIR%" (
+    set "FOUND_BOOST=false"
+) else if not exist "%BOOST_LIBRARYDIR%" (
     echo BOOST_LIBRARYDIR is set to a non existing path:
     echo    "%BOOST_LIBRARYDIR%"
     echo Please set BOOST_INCLUDEDIR and BOOST_LIBRARYDIR to the installation path of the Boost library.
-    exit /b 1
-)
-if not exist "%BOOST_LIBRARYDIR%\boost_*.lib" (
+    set "FOUND_BOOST=false"
+) else if not exist "%BOOST_LIBRARYDIR%\boost_*.lib" (
     echo Boost library files were not found in this folder:
     echo    "%BOOST_LIBRARYDIR%"
     echo Please make sure Boost is correctly installed.
-    exit /b 1
+    set "FOUND_BOOST=false"
+) else (
+    echo Found Boost headers in "%BOOST_INCLUDEDIR%" and libs in "%BOOST_LIBRARYDIR%"
 )
 
-echo Found Boost headers in "%BOOST_INCLUDEDIR%" and libs in "%BOOST_LIBRARYDIR%"
+if "%FOUND_BOOST%" == "false" (
+    echo.
+    echo Warning: Boost was not found. marian-server will not be compiled.
+)
+
 
 :: -------------------------
 :: OPENSSL_ROOT_DIR can be set to an existing OpenSSL installation.
@@ -209,17 +199,6 @@ echo ... OpenSSL
 if "%OPENSSL_ROOT_DIR%"=="" (
     %VCPKG% install openssl
     set OPENSSL_ROOT_DIR=%VCPKG_INSTALL%
-)
-
-:: -------------------------
-:: Protobuf_SRC_ROOT_FOLDER can be set to an existing Protobuf installation.
-:: If not, we use vcpkg to install the library
-::
-echo.
-echo ... Protobuf
-if "%Protobuf_SRC_ROOT_FOLDER%"=="" (
-    %VCPKG% install protobuf
-    set Protobuf_SRC_ROOT_FOLDER=%VCPKG_INSTALL%
 )
 
 set CMAKE_PREFIX_PATH=%VCPKG_INSTALL%
@@ -233,7 +212,6 @@ echo        CMAKE_PREFIX_PATH ^| %CMAKE_PREFIX_PATH%
 echo                CUDA_PATH ^| %CUDA_PATH%
 echo                  MKLROOT ^| %MKLROOT%
 echo         OPENSSL_ROOT_DIR ^| %OPENSSL_ROOT_DIR%
-echo Protobuf_SRC_ROOT_FOLDER ^| %Protobuf_SRC_ROOT_FOLDER%
 echo               VCPKG_ROOT ^| %VCPKG_ROOT%
 echo --------------------------------------------------
 echo.

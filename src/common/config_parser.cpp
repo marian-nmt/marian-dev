@@ -427,7 +427,11 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       {"1e", "0"});
 
   addSuboptionsInputLength(cli);
-  addSuboptionsTSV(cli);
+  // TSV inputs aren't currently supported for self-adaptive translation because
+  // self-adaptive translation uses a custom training data reader
+  // (`AdaptiveContextReader`) which doesn't yet support TSV.
+  if (mode_ != cli::mode::selfadaptive)
+    addSuboptionsTSV(cli);
 
   // data management options
   //

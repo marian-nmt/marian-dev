@@ -422,7 +422,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // training data sets are small and they typically change for each input
   // sentence. --shuffle isn't currently supported because we use `TextInput`
   // for training data and shuffle is a no-op in that class. This might get
-  // implement the future.
+  // implemented in the future.
   if (mode_ != cli::mode::selfadaptive) {
     cli.add<std::string>("--shuffle",
         "How to shuffle input data (data: shuffles data and sorted batches; batches: "

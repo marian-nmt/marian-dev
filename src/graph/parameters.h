@@ -46,8 +46,7 @@ public:
   }
 
   /**
-   *01234 Retrieves the memory corresponding to the parameter values
-   *
+   * Retrieves the memory corresponding to the parameter values.
    * @return A vector of memorypieces each corresponding to a single parameter
    */
   std::vector<MemoryPiece::PtrType> toMemoryPieces() {

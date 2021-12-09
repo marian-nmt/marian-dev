@@ -108,7 +108,7 @@ ConfigParser::ConfigParser(cli::mode mode)
   // clang-format on
 }
 
-void ConfigParser::addOptionsGeneral(cli::CLIWrapper & cli) {
+void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   int defaultWorkspace = (mode_ == cli::mode::translation) ? 512 : 2048;
 
   cli.switchGroup("General options");

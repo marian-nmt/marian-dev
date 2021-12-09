@@ -69,12 +69,27 @@ std::string const& ConfigParser::cmdLine() const {
   return cmdLine_;
 }
 
+/**
+ * Convert some special modes (currently, server-like modes) to their non-special counterparts.
+ */
+cli::mode convertSpecialModes(cli::mode mode) {
+  switch(mode) {
+    case cli::mode::server:
+      return cli::mode::translation;
+    case cli::mode::selfadaptiveServer:
+      return cli::mode::selfadaptive;
+    default:
+      return mode;
+  }
+}
+
 ConfigParser::ConfigParser(cli::mode mode)
     : cli_(config_, "Marian: Fast Neural Machine Translation in C++", "General options", "", 40),
-      mode_(mode == cli::mode::server
-                ? cli::mode::translation
-                : (mode == cli::mode::selfadaptiveServer ? cli::mode::selfadaptive : mode)) {
-
+      // Server-like modes should mostly act like their non-server counterparts
+      // when parsing options. We keep all special handling in the constructor
+      // but in the rest of the parsing code we just pretend that we have a
+      // non-server mode.
+      mode_(convertSpecialModes(mode)) {
   addOptionsGeneral(cli_);
   if (mode == cli::mode::server || mode == cli::mode::selfadaptiveServer)
     addOptionsServer(cli_);

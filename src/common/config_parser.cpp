@@ -948,7 +948,7 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
   // In self-adaptive translation, the user might want to be able to set
   // different max lengths for training and translation. In that case,
   // --max-length is assumed to be meant for training (as per the help message)
-  // and we add a --max-lenght-translate parameter for translation.
+  // and we add a --max-length-translate parameter for translation.
   if (mode_ == cli::mode::selfadaptive) {
     cli.add<size_t>("--max-length-translate",
         "Maximum input sentence length for translation",

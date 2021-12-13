@@ -267,6 +267,7 @@ Ptr<MultiRationalLoss> newMultiLoss(Ptr<Options> options);
 class LabelwiseLoss {
 protected:
   std::vector<int> axes_;
+  Expr subset_;  //< enables loss to apply operations over a subset of values
 
   virtual Expr compute(Logits logits,
                        const Words& labels,
@@ -303,7 +304,12 @@ protected:
   }
 
 public:
-  LabelwiseLoss(const std::vector<int>& axes) : axes_(axes) {}
+  LabelwiseLoss(const std::vector<int>& axes) : axes_(axes), subset_(nullptr) {}
+
+  /**
+   * Define a subset to consider while computing loss
+   */
+  virtual void setSubset(Expr s) { subset_ = s; }
 
   virtual RationalLoss apply(Logits logits,
                              const Words& labels,
@@ -349,8 +355,14 @@ protected:
       logits = atleast_3d(logits);  // we always assume a time and batch dimension exists.
       // for bert training or classification the time dimension is lost.
       // Here safeguard against 2d classifier output, adds 1 on the left, non-op.
-
-      Expr ce = cross_entropy(logits, indices, inFactor ? 0.f : labelSmoothing_, Type::float32);
+      Expr ce;
+      if(subset_){
+        ce = cross_entropy_shortlist(
+            logits, indices, subset_, inFactor ? 0.f : labelSmoothing_, Type::float32);
+      }
+      else {
+        ce = cross_entropy(logits, indices, inFactor ? 0.f : labelSmoothing_, Type::float32);
+      }
       if(inFactor && factorWeight_ != 1.0f) {
         LOG_ONCE(info, "scaling factor losses with weight {}", factorWeight_);
         ce = ce * factorWeight_;

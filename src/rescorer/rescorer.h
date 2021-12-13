@@ -37,6 +37,16 @@ public:
     auto model = std::static_pointer_cast<models::Trainer>(builder_)->getModel();
     return std::static_pointer_cast<IEncoderDecoder>(model)->getAlignment();
   }
+
+  void setShortlistGenerator(Ptr<const data::ShortlistGenerator> shortlistGenerator) {
+    auto model = std::static_pointer_cast<models::Trainer>(builder_)->getModel();
+    return std::static_pointer_cast<IEncoderDecoder>(model)->setShortlistGenerator(shortlistGenerator);
+  }
+
+  Ptr<data::Shortlist> getShortlist() {
+    auto model = std::static_pointer_cast<models::Trainer>(builder_)->getModel();
+    return std::static_pointer_cast<IEncoderDecoder>(model)->getShortlist();
+  }
 };
 
 template <class Model>
@@ -46,6 +56,7 @@ private:
   Ptr<CorpusBase> corpus_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
+  Ptr<const data::ShortlistGenerator> shortlistGenerator_;
 
 public:
   Rescore(Ptr<Options> options) : options_(options) {
@@ -65,6 +76,14 @@ public:
       corpus_ = New<Corpus>(options_);
     corpus_->prepare();
 
+    auto srcVocab = corpus_->getVocabs().front();
+    auto trgVocab_ = corpus_->getVocabs().back();
+
+    std::vector<int> lshOpts{};
+    if(lshOpts.size() == 2 || options_->hasAndNotEmpty("shortlist")) {
+      shortlistGenerator_ = data::createShortlistGenerator(
+          options_, srcVocab, trgVocab_, lshOpts, 0, 1, srcVocab == trgVocab_);
+    }
     auto devices = Config::getDevices(options_);
 
     for(auto device : devices) {
@@ -85,6 +104,7 @@ public:
       pool.enqueue(
           [=](size_t j) {
             models_[j] = New<Model>(options_);
+            models_[j] -> setShortlistGenerator(shortlistGenerator_);
             models_[j]->load(graphs_[j], modelFile);
           },
           i);

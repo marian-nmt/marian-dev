@@ -12,7 +12,21 @@ enum struct usage { raw, training, scoring, translation, embedding };
 }
 }  // namespace marian
 
-YAML_REGISTER_TYPE(marian::models::usage, int)
+
+// 'FASTOPT_REGISTER_TYPE'
+#if FASTOPT
+namespace marian {
+namespace fastopt_helpers {
+
+template <>
+struct As<marian::models::usage> {
+  static marian::models::usage apply(const FastOpt& node) {
+    return static_cast<marian::models::usage>(As<int>::apply(node));
+  }
+};
+}  // namespace fastopt_helpers
+}  // namespace marian
+#endif
 
 namespace marian {
 namespace models {

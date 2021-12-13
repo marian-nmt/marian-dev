@@ -8,9 +8,10 @@ int main(int argc, char** argv) {
   using namespace marian;
 
   auto options = parseOptions(argc, argv, cli::mode::scoring);
+  auto task = New<Rescore<Rescorer>>(options);
 
   timer::Timer timer;
-  New<Rescore<Rescorer>>(options)->run();
+  task->run();
   LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
 
   return 0;

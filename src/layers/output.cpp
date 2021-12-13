@@ -2,6 +2,7 @@
 #include "common/timer.h"
 #include "data/factored_vocab.h"
 #include "layers/loss.h"
+#include "models/model_base.h"
 
 namespace marian {
 namespace mlp {

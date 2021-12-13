@@ -658,6 +658,7 @@ private:
     int dimTrgVoc = opt<std::vector<int>>("dim-vocabs")[batchIndex_];
 
     auto outputFactory = mlp::OutputFactory(
+        "usage", opt<models::usage>("usage", models::usage::translation),
         "prefix", prefix_ + "_ff_logit_out",
         "dim", dimTrgVoc,
         "vocab", opt<std::vector<std::string>>("vocabs")[batchIndex_], // for factored outputs

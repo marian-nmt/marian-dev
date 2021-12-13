@@ -98,6 +98,8 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
   };
 
   if(shortlist_) {
+    models::usage use = options_->get<models::usage>("usage", models::usage::translation);
+    shortlist_->isScoring(use == models::usage::scoring);
     shortlist_->filter(input, Wt_, isLegacyUntransposedW, b_, lemmaEt_);
   }
 

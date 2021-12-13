@@ -770,6 +770,21 @@ Expr cross_entropy(Expr logits, Expr indices, float labelSmoothingAlpha, Type ou
   return Expression<CrossEntropyNodeOp>(logits, indices, labelSmoothingAlpha, outputType);
 }
 
+Expr cross_entropy_shortlist(Expr logits,
+                             Expr indices,
+                             Expr shortlist_indices,
+                             float labelSmoothingAlpha,
+                             Type outputType){
+
+    int dimBatch = logits->shape()[-2];
+    int dimTime  = logits->shape()[-3];
+
+    auto indicesWithLayout = reshape(indices, {1, dimTime, dimBatch, 1});
+    auto shortlist_lse = logsumexp(index_select(logits, -1, shortlist_indices), -1);
+
+    return gather(shortlist_lse - logits, -1, indicesWithLayout);
+}
+
 // Unlikelihood loss based on https://arxiv.org/abs/1908.04319
 Expr unlikelihood(Expr logits, Expr indices) {
   int dimBatch = logits->shape()[-2];

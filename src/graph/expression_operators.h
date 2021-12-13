@@ -881,6 +881,7 @@ Expr logsoftmax(Expr a);
  * @see CrossEntropyNodeOp
  */
 Expr cross_entropy(Expr a, Expr b, float labelSmoothingAlpha = 0.f, Type outputType = Type::float32);
+Expr cross_entropy_shortlist(Expr logits, Expr indices, Expr shortlist_indices, float labelSmoothingAlpha = 0.f, Type outputType = Type::float32);
 
 /**
  * Computes the unlikelihood loss.

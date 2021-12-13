@@ -12,6 +12,7 @@ enum struct usage { raw, training, scoring, translation, embedding };
 }
 }  // namespace marian
 
+YAML_REGISTER_TYPE(marian::models::usage, int)
 
 // 'FASTOPT_REGISTER_TYPE'
 #if FASTOPT

@@ -18,8 +18,7 @@ const T* get(const void*& current, size_t num = 1) {
 
 //////////////////////////////////////////////////////////////////////////////////////
 Shortlist::Shortlist(const std::vector<WordIndex>& indices)
-  : indices_(indices), 
-    initialized_(false) {}
+    : indices_(indices), initialized_(false), scoring_(false) {}
 
 Shortlist::~Shortlist() {}
 
@@ -62,16 +61,36 @@ void Shortlist::createCachedTensors(Expr weights,
                           Expr lemmaEt,
                           int k) {
   ABORT_IF(isLegacyUntransposedW, "Legacy untranspose W not yet tested");
-  cachedShortWt_ = index_select(weights, isLegacyUntransposedW ? -1 : 0, indicesExpr_);
-  cachedShortWt_ = reshape(cachedShortWt_, {1, 1, cachedShortWt_->shape()[0], cachedShortWt_->shape()[1]});
 
-  if (b) {
-    cachedShortb_ = index_select(b, -1, indicesExpr_);
-  }
+  if(scoring_) {
+    // SCORING RETAINS THE FULL EMBEDDING
+    cachedShortWt_ = weights;
+    cachedShortWt_
+        = reshape(cachedShortWt_, {1, 1, cachedShortWt_->shape()[0], cachedShortWt_->shape()[1]});
 
-  if (lemmaEt) {
-    cachedShortLemmaEt_ = index_select(lemmaEt, -1, indicesExpr_);
-    cachedShortLemmaEt_ = reshape(cachedShortLemmaEt_, {1, 1, cachedShortLemmaEt_->shape()[0], k});
+    if(b) {
+      cachedShortb_ = b;
+    }
+
+    if(lemmaEt) {
+      cachedShortLemmaEt_ = lemmaEt;
+      cachedShortLemmaEt_
+          = reshape(cachedShortLemmaEt_, {1, 1, cachedShortLemmaEt_->shape()[0], k});
+    }
+  } else {
+    cachedShortWt_ = index_select(weights, isLegacyUntransposedW ? -1 : 0, indicesExpr_);
+    cachedShortWt_
+        = reshape(cachedShortWt_, {1, 1, cachedShortWt_->shape()[0], cachedShortWt_->shape()[1]});
+
+    if(b) {
+      cachedShortb_ = index_select(b, -1, indicesExpr_);
+    }
+
+    if(lemmaEt) {
+      cachedShortLemmaEt_ = index_select(lemmaEt, -1, indicesExpr_);
+      cachedShortLemmaEt_
+          = reshape(cachedShortLemmaEt_, {1, 1, cachedShortLemmaEt_->shape()[0], k});
+    }
   }
 }
 

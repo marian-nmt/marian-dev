@@ -31,6 +31,7 @@ protected:
   Expr cachedShortb_;   // these match the current value of shortlist_
   Expr cachedShortLemmaEt_;
   bool initialized_; // used by batch-level shortlist. Only initialize with 1st call then skip all subsequent calls for same batch
+  bool scoring_; ///< whether this shortlist is used in (re)scoring
   
   void createCachedTensors(Expr weights,
                            bool isLegacyUntransposedW,
@@ -43,6 +44,18 @@ public:
   Shortlist(const std::vector<WordIndex>& indices);
   virtual ~Shortlist();
   
+  /**
+   * Set the operating mode of shortlist.
+   * When set to scoring mode, the shortlist retains the full-vocabulary, in the
+   * usual decoding mode, the vocabulary is restricted to shortlist indices.
+   * @param is_scoring whether or not the shortlist is used for scoring.
+   */
+  void isScoring(bool is_scoring) {
+    scoring_ = is_scoring;
+    initialized_ = false;  // ensure that shortlist is reinitialized.
+  }
+  bool isScoring() const { return scoring_; }
+
   virtual bool isDynamic() const { return false; }
   virtual WordIndex reverseMap(int beamIdx, int batchIdx, int idx) const;
   virtual WordIndex tryForwardMap(WordIndex wIdx) const;

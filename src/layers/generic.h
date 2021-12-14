@@ -10,7 +10,7 @@
 namespace marian {
 namespace mlp {
 /**
- * Activation functions.
+ * Activation functions for MLP layers.
  */
 enum struct act : int { linear, tanh, sigmoid, ReLU, LeakyReLU, PReLU, swish };
 }  // namespace mlp
@@ -74,8 +74,8 @@ struct IEmbeddingLayer {
 };
 
 /**
- * Base class for Encoder and Decoder classes, which have embeddings and a batch index (=stream
- * index).
+ * Base class for Encoder and Decoder classes.
+ * Have embeddings and a batch index (=stream index).
  */
 class EncoderDecoderLayerBase : public LayerBase {
 protected:
@@ -109,6 +109,7 @@ public:
   // get embedding layer; lazily create on first call
   Ptr<IEmbeddingLayer> getEmbeddingLayer(bool ulr = false) const;
 };
+
 /**
  *  The namespace mlp.
  *  Declare class Dense and all the available functions for creating
@@ -117,6 +118,10 @@ public:
  */
 namespace mlp {
 
+/**
+ * Base class for a fully connected layer.
+ * Implement the operations `output = activation(input * weight + bias)`.
+ */
 class Dense : public LayerBase, public IUnaryLayer {
 public:
   Dense(Ptr<ExpressionGraph> graph, Ptr<Options> options) : LayerBase(graph, options) {}

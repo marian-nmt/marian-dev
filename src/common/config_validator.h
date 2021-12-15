@@ -20,6 +20,7 @@ private:
   bool dumpConfigOnly_{false};
 
   void validateOptionsTranslation() const;
+  void validateOptionsVocabularies() const;
   void validateOptionsParallelData() const;
   void validateOptionsScoring() const;
   void validateOptionsTraining() const;

@@ -38,7 +38,7 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
       validateOptionsTraining();
       break;
     case cli::mode::selfadaptive:
-      validateOptionsTranslation();
+      validateOptionsVocabularies();
       validateOptionsParallelData();
       validateOptionsTraining();
       break;
@@ -64,6 +64,12 @@ void ConfigValidator::validateOptionsTranslation() const {
     ABORT_IF(!filesystem::exists(modelPath), "Model file does not exist: " + modelFile);
   }
 
+  validateOptionsVocabularies();
+}
+
+// Other validation methods already do vocabulary validation but we need this
+// functionality separately for self-adaptive translation option validation
+void ConfigValidator::validateOptionsVocabularies() const {
   auto vocabs = get<std::vector<std::string>>("vocabs");
   ABORT_IF(vocabs.empty(), "Translating, but vocabularies are not given");
 

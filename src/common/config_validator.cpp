@@ -88,11 +88,14 @@ void ConfigValidator::validateOptionsParallelData() const {
   ABORT_IF(trainSets.empty(), "No train sets given in config file or on command line");
 
   auto numVocabs = get<std::vector<std::string>>("vocabs").size();
-  ABORT_IF(!get<bool>("tsv") && numVocabs > 0 && numVocabs != trainSets.size(),
+  // The "tsv" option isn't present in self-adaptive translation options so we
+  // have to explicitly default to false for the option
+  auto tsv = get<bool>("tsv", false);
+  ABORT_IF(!tsv && numVocabs > 0 && numVocabs != trainSets.size(),
            "There should be as many vocabularies as training files");
 
   // disallow, for example --tsv --train-sets file1.tsv file2.tsv
-  ABORT_IF(get<bool>("tsv") && trainSets.size() != 1,
+  ABORT_IF(tsv && trainSets.size() != 1,
       "A single file must be provided with --train-sets (or stdin) for a tab-separated input");
 
   // disallow, for example --train-sets stdin stdin or --train-sets stdin file.tsv
@@ -134,7 +137,9 @@ void ConfigValidator::validateOptionsTraining() const {
            "Model directory does not exist");
 
   std::string errorMsg = "There should be as many validation files as training files";
-  if(get<bool>("tsv"))
+  // The "tsv" option isn't present in self-adaptive translation options so we
+  // have to explicitly default to false for the option
+  if(get<bool>("tsv", false))
     errorMsg += ". If the training set is in the TSV format, validation sets have to also be a single TSV file";
 
   ABORT_IF(has("valid-sets")
@@ -142,10 +147,13 @@ void ConfigValidator::validateOptionsTraining() const {
                && !get<std::vector<std::string>>("valid-sets").empty(),
            errorMsg);
 
-  // check if --early-stopping-on has proper value
-  std::set<std::string> supportedStops = {"first", "all", "any"};
-  ABORT_IF(supportedStops.find(get<std::string>("early-stopping-on")) == supportedStops.end(),
-           "Supported options for --early-stopping-on are: first, all, any");
+  // "early-stopping" also isn't present for self-adaptive translation
+  if (has("early-stopping")) {
+    // check if --early-stopping-on has proper value
+    std::set<std::string> supportedStops = {"first", "all", "any"};
+    ABORT_IF(supportedStops.find(get<std::string>("early-stopping-on")) == supportedStops.end(),
+            "Supported options for --early-stopping-on are: first, all, any");
+  }
 
   // validations for learning rate decaying
   ABORT_IF(get<float>("lr-decay") > 1.f, "Learning rate decay factor greater than 1.0 is unusual");

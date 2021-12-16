@@ -73,7 +73,7 @@ void Config::initialize(ConfigParser const& cp) {
   }
 
   // guess --tsv-fields, i.e. the number of fields in a TSV input, if not set
-  if(get<bool>("tsv") && get<size_t>("tsv-fields") == 0) {
+  if(get<bool>("tsv", false) && get<size_t>("tsv-fields") == 0) {
     size_t tsvFields = 0;
 
     // use the length of --input-types if given

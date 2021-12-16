@@ -14,6 +14,15 @@ private:
   T get(const std::string& key) const {
     return config_[key].as<T>();
   }
+  // Return value for given option key cast to given type. Return the supplied
+  // default value if option is not set.
+  template <typename T>
+  T get(const std::string& key, T defaultValue) const {
+    if(has(key))
+      return config_[key].as<T>();
+    else
+      return defaultValue;
+  }
 
   // The option --dump-config is used, so alleviate some constraints, e.g. we don't want to require
   // --train-sets or --vocabs

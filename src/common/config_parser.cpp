@@ -1118,7 +1118,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
   // (or --data-weighting and 'weight').
   //
   // Note: this may modify the config, so it is safer to do it after --dump-config.
-  if(mode_ == cli::mode::training || get<bool>("tsv")) {
+  if(mode_ == cli::mode::training || get<bool>("tsv", false)) {
     auto inputTypes = get<std::vector<std::string>>("input-types");
     if(!inputTypes.empty()) {
       bool seenAligns = false;

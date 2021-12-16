@@ -122,6 +122,16 @@ private:
     return config_[key].as<T>();
   }
 
+  // Return value for given option key cast to given type. Return the supplied
+  // default value if option is not set.
+  template <typename T>
+  T get(const std::string& key, T defaultValue) const {
+    if(has(key))
+      return config_[key].as<T>();
+    else
+      return defaultValue;
+  }
+
   void addOptionsGeneral(cli::CLIWrapper&);
   void addOptionsServer(cli::CLIWrapper&);
   void addOptionsModel(cli::CLIWrapper&);

@@ -39,7 +39,10 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
       break;
     case cli::mode::selfadaptive:
       validateOptionsVocabularies();
-      validateOptionsParallelData();
+      // Check that we're not running in server mode. In server mode, training
+      // data are passed in via the request not CLI options
+      if (!has("port"))
+        validateOptionsParallelData();
       validateOptionsTraining();
       break;
     default:

@@ -90,8 +90,9 @@ auto dense_layer = mlp::dense()
 ```
 
 The `mlp::ouput` layer is used to construct an output layer. 
-In the context of neural machine translation, you can tie embedding layers to `mlp::ouput` layer using `tieTransposed()`, or set shortlisted words using `setShortlist()`.
-The options of `mlp::output` layer are listed below:
+You can tie embedding layers to `mlp::ouput` layer using `tieTransposed()`, 
+or set shortlisted words using `setShortlist()`.
+The general options of `mlp::output` layer are listed below:
  
 | Option Name   | Definition     | Value Type    | Default Value  |
 | ------------- |----------------|---------------|---------------|
@@ -120,7 +121,7 @@ auto mlp_networks = mlp::mlp()                                       // construc
                      .push_back(mlp::output()                        // construct a output layer
                                  ("dim", 5))                         // dimension is 5
                      ("prefix", "mlp_network")                       // prefix name is mlp_network
-                     .construct(graph);                              // construct this mlp contains in graph
+                     .construct(graph);                              // construct this mlp layers in graph
 ```
 
 ## RNN layers
@@ -159,7 +160,7 @@ Example to construct a `rnn::cell`:
 ```cpp
 // construct a rnn cell
 auto rnn_cell = rnn::cell()
-         ("type", "gru")              // Type of rnn cell is gru
+         ("type", "gru")              // type of rnn cell is gru
          ("prefix", "gru_cell")       // prefix name is gru_cell
          ("final", false);            // this cell is the final layer
 ```
@@ -189,8 +190,50 @@ For `rnn::rnn` layers, the available options are listed as below:
 | skip | Whether to use skip connections | `bool` | `false` |
 | skipFirst | Whether to use skip connections for the layer(s) with `index > 0` | `bool` | `false` |
 
+Examples to construct a `rnn::rnn()` component:
+```cpp
+// construct a `rnn::rnn()` container
+auto rnn_container = rnn::rnn(
+               "type", "gru",                  // type of rnn cell is gru
+               "prefix", "rnn_layers",         // prefix name is rnn_layers
+               "dimInput", 10,                 // input dimension is 10
+               "dimState", 5,                  // dimension of hidden state is 5
+               "dropout", 0,                   // dropout probability is 0
+               "layer-normalization", false)   // do not normalise the layer output
+               .push_back(rnn::cell())         // add a rnn::cell in this rnn container
+               .construct(graph);              // construct this rnn container in graph
+```
 Marian provides four RNN directions in `rnn::dir` enumerator: `rnn::dir::forward`, `rnn::dir::backward`, 
 `rnn::dir::alternating_forward` and `rnn::dir::alternating_backward`.
+For rnn::rnn(), you can use `transduce()` to map the input state to the output state.
+Example to use `transduce()`:
+```cpp
+auto output = rnn.construct(graph)->transduce(input);
+```
+## Embedding layer
+Marian provides a shortcut to construct a regular embedding layer `embedding` for words embedding.
+For `embedding` layers, the available options are listed as below:
 
-## Encoder & Decoder layers
-It is under development.
+| Option Name   | Definition     | Value Type    | Default Value  |
+| ------------- |----------------|---------------|---------------|
+| dimVocab | Size of vocabulary| `int` | `None` |
+| dimEmb | Size of embedding vector | `int` | `None` |
+| dropout | Dropout probability | `float` | `0` |
+| inference | Whether it is used for inference | `bool` | `false` |
+| prefix | Prefix name (used to form the parameter names) | `std::string` | `None` |
+| fixed | whether this layer is fixed (not trainable) | `bool` | `false` |
+| dimFactorEmb | Size of factored embedding vector | `int` | `None` |
+| factorsCombine | Which strategy is chosen to combine the factor embeddings; it can be `"concat"` | `std::string` | `None` |
+| vocab         | File path to the factored vocabulary | `std::string` | `None` |
+| embFile | Paths to the factored embedding vectors | `std::string>` | `None` |
+| normalization | Whether to normalise the layer output or not | `bool` | `false` |
+
+Example to construct an embedding layer:
+```cpp
+// construct an embedding layer
+auto embedding_layer = embedding()
+        ("prefix", "embedding")       // prefix name is embedding
+        ("dimVocab", 1024)            // vocabulary size is 1024
+        ("dimEmb", 512)               // size of embedding vector is 512
+        .construct(graph);            // construct this embedding layer in graph
+```

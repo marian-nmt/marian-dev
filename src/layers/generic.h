@@ -106,7 +106,14 @@ private:
   Ptr<IEmbeddingLayer> createULREmbeddingLayer() const;
 
 public:
-  // get embedding layer; lazily create on first call
+  /**
+   * Get all embedding layer(s).
+   * It lazily creates the embedding layer on first call.
+   * This is lazy mostly because the constructors of the consuming objects are not
+   * guaranteed presently to have access to their graph.
+   * @param ulr whether to use ULREmbedding layer. false by default.
+   * @return a shared pointer to the embedding layer
+   */
   Ptr<IEmbeddingLayer> getEmbeddingLayer(bool ulr = false) const;
 };
 
@@ -124,8 +131,17 @@ namespace mlp {
  */
 class Dense : public LayerBase, public IUnaryLayer {
 public:
+  /**
+   * Construct a dense layer in the graph.
+   * @param graph The expression graph.
+   * @param options The options used for this dense layer.
+   */
   Dense(Ptr<ExpressionGraph> graph, Ptr<Options> options) : LayerBase(graph, options) {}
-
+  /**
+   * Apply/Link a vector of dense layers (with the given inputs) to the expression graph.
+   * @param inputs The vector of the input expressions
+   * @return The expression holding the dense layers
+   */
   Expr apply(const std::vector<Expr>& inputs) override {
     ABORT_IF(inputs.empty(), "No inputs");
 
@@ -179,7 +195,11 @@ public:
     }
     // clang-format on
   };
-
+  /**
+   * Apply/Link this dense layer (with the given input) to the expression graph.
+   * @param input The input expression
+   * @return The expression holding the dense layer
+   */
   Expr apply(Expr input) override { return apply(std::vector<Expr>({input})); }
 };
 

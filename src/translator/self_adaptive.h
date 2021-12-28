@@ -40,6 +40,8 @@ public:
     optionsTrans_->set<size_t>("maxi-batch", 1);
     auto maxTranslationInput = options_->get<size_t>("max-length-translate");
     optionsTrans_->set<size_t>("max-length", maxTranslationInput);
+    auto translationWorkspace = options_->get<size_t>("workspace-translate");
+    optionsTrans_->set<size_t>("workspace", translationWorkspace);
     optionsTrans_->set("shuffle", "none");
 
     auto modelFilename = options_->get<std::string>("model");

@@ -141,6 +141,15 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<size_t>("--workspace,-w",
     "Preallocate  arg  MB of work space",
     defaultWorkspace);
+  // Self-adaptive translation uses a training graph and a translation graph. We
+  // want to be able to prealocate different amounts of memory for both (because
+  // translation usually needs less) so we add a dedicated opiton for
+  // translation if self-adaptive translation is used.
+  if (mode_ == cli::mode::selfadaptive) {
+    cli.add<size_t>("--workspace-translate",
+      "Preallocate  arg  MB of work space for translation",
+      512);
+  }
   cli.add<std::string>("--log",
     "Log training process information to file given by  arg");
   cli.add<std::string>("--log-level",

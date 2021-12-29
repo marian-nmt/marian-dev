@@ -50,6 +50,19 @@ public:
     // have to adapt translation options manually.
     optionsTrans_->set<std::vector<std::string>>("models", {modelFilename});
 
+    // We mask the alignment option for training so that the alignment loss
+    // nodes (self-attention heads) don't get added to the graph (for
+    // transformers). Adding the alignment loss nodes and not supplying guided
+    // alignments during training results in a crash with "There are more (n)
+    // than one top most nodes for the backward pass". In self-adaptive
+    // translation we don't support training the alignments because they are
+    // likely to remain good enough after the few self-adaptive updates.
+    //
+    // TODO: regarding the above, make the alignment heads non-trainable; afaik,
+    // they are treated like regular attantion heads currently which might
+    // decrease alignment precision.
+    options_->set("alignment", "");
+
     auto vocabPaths = options_->get<std::vector<std::string>>("vocabs");
     std::vector<std::string> srcVocabPaths(vocabPaths.begin(), vocabPaths.end() - 1);
     cpuModel_ = New<CPULoadedModel>(options_, modelFilename, srcVocabPaths, vocabPaths.back());
@@ -144,7 +157,7 @@ private:
       Iterator trainBegin,
       Iterator trainEnd,
       Ptr<marian::CollectorBase> collector) {
-    auto printer = New<OutputPrinter>(options_, cpuModel_->TrgVocab());
+    auto printer = New<OutputPrinter>(optionsTrans_, cpuModel_->TrgVocab());
 
     for(auto testBatch : *testBatches) {
       ABORT_IF(trainBegin == trainEnd, "Context batches ran out before test batches");

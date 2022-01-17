@@ -74,11 +74,13 @@ public:
     if(options_->get<bool>("model-mmap", false)) {
       for(auto model : models) {
         ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
+        LOG(info, "Loading model from {}", model);
         model_mmaps_.push_back(mio::mmap_source(model));
       }
     }
     else {
       for(auto model : models) {
+        LOG(info, "Loading model from {}", model);
         auto items = io::loadItems(model);
         model_items_.push_back(std::move(items));
       }

@@ -121,6 +121,7 @@ public:
   void load(Ptr<ExpressionGraph> graph,
             const std::string& name,
             bool /*markReloaded*/ = true) override {
+    LOG(info, "Loading model from {}", name);
     auto ioItems = io::loadItems(name);
     load(graph, ioItems);
   }

@@ -9,9 +9,7 @@
 
 namespace marian {
 namespace mlp {
-/**
- * Activation functions for MLP layers.
- */
+/** Activation functions for MLP layers. */
 enum struct act : int { linear, tanh, sigmoid, ReLU, LeakyReLU, PReLU, swish };
 }  // namespace mlp
 }  // namespace marian

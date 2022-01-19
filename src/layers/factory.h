@@ -71,9 +71,7 @@ public:
   template <class Cast>
   inline bool is() { return std::dynamic_pointer_cast<Cast>(shared_from_this()) != nullptr; }
 };
-/**
- * Simplest form of Factory that just passes on options to the constructor of a layer.
- */
+/** Simplest form of Factory that just passes on options to the constructor of a layer. */
 template<class Class>
 struct ConstructingFactory : public Factory {
   using Factory::Factory;

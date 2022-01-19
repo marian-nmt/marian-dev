@@ -186,9 +186,7 @@ public:
         "setShortlist() called on an MLP with an output layer that does not support short lists");
     p->setShortlist(shortlist);
   }
-  /**
-   * Remove shortlisted words from the mlp container.
-   */
+  /** Remove shortlisted words from the mlp container. */
   void clear() override final {
     auto p = tryAsHasShortlist();
     if(p)

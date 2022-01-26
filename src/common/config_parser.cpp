@@ -492,7 +492,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<double>("--factor-weight",
      "Weight for loss function for factors (factored vocab only) (1 to disable)", 1.0f);
   cli.add<float>("--clip-norm",
-     "Clip gradient norm to  arg  (0 to disable)",
+     "Clip gradient norm to arg (0 to disable)",
      1.f); // @TODO: this is currently wrong with ce-sum and should rather be disabled or fixed by multiplying with labels
   cli.add<float>("--exponential-smoothing",
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable. "
@@ -637,7 +637,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<bool>("--keep-best",
       "Keep best model for each validation metric");
   cli.add<std::string>("--valid-log",
-     "Log validation scores to file given by  arg");
+     "Log validation scores to file given by arg");
   cli.switchGroup(previous_group);
   // clang-format on
 }

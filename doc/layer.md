@@ -18,7 +18,7 @@ auto layer1 = mlp::dense()
       .construct(graph)->apply(x);          // construct this layer in graph
                                             // and link node x as the input
 ```
-The options are passed to the layer usin pairs of  `(key, value)`, where `key` is a predefined
+The options are passed to the layer using pairs of `(key, value)`, where `key` is a predefined
 option, and `value` is the option value.  Then `construct()` is called to create a layer instance in
 the graph, and `apply()` to link the input with this layer.
 
@@ -33,7 +33,7 @@ There are four categories of layers implemented in Marian, described in the sect
 
 ## Convolution layer
 
-To use a `convlolution` layer, you first need to install [NVIDIA cuDNN](https://developer.nvidia.com/cudnn).
+To use a `convolution` layer, you first need to install [NVIDIA cuDNN](https://developer.nvidia.com/cudnn).
 The convolution layer supported by Marian is a 2D
 [convolution layer](https://en.wikipedia.org/wiki/Convolutional_neural_network#Convolutional_layers).
 This layer creates a convolution kernel which is used to convolved with the input. The options that
@@ -62,7 +62,7 @@ auto conv_1 = convolution(graph)              // pass graph pointer to the layer
 Marian offers `mlp::mlp`, which creates a
 [multilayer perceptron (MLP)](https://en.wikipedia.org/wiki/Multilayer_perceptron) network.
 It is a container which can stack multiple layers using `push_back()` function. There are two types
-of MLP layers provided by Marian: `mlp::dense` and `mlp::ouput`.
+of MLP layers provided by Marian: `mlp::dense` and `mlp::output`.
 
 The `mlp::dense` layer, as introduced before, is a fully connected layer, and it accepts the
 following options:
@@ -90,7 +90,7 @@ auto dense_layer = mlp::dense()
 ```
 
 The `mlp::output` layer is used, as the name suggests, to construct an output layer. You can tie
-embedding layers to `mlp::ouput` layer using `tieTransposed()`, or set shortlisted words using
+embedding layers to `mlp::output` layer using `tieTransposed()`, or set shortlisted words using
 `setShortlist()`. The general options of `mlp::output` layer are listed below:
 
 | Option Name   | Definition     | Value Type    | Default Value  |
@@ -152,7 +152,7 @@ There are nine types of RNN cells provided by Marian: `gru`, `gru-nematus`, `lst
 | final         | Whether it is an RNN final layer or hidden layer | `bool` | `false` |
 
 ```{note}
-Not all the options listed above are avaliable for all the cells. For example, `final` option is
+Not all the options listed above are available for all the cells. For example, `final` option is
 only used for `gru` and `gru-nematus` cells.
 ```
 

@@ -5,7 +5,7 @@
 #include "models/model_factory.h"
 #include "models/encoder_decoder.h"
 #include "data/corpus_base.h"
-#include "tensors/cpu/fbgemm/expression_graph_packable.h"
+#include "tensors/cpu/expression_graph_packable.h"
 
 #include <memory>
 
@@ -20,7 +20,7 @@ namespace marian {
   // This is done by generating the tape for encoding followed by the first two decoding steps.
   // As we do this, we remember the Exprs on the tape that are the inputs and the outputs
   // of the three functions.
-  // Since not all Marian operations have a 1:1 ONNX counterpart, the tape now get rewritten 
+  // Since not all Marian operations have a 1:1 ONNX counterpart, the tape now get rewritten
   // such that it only consists of operations that ONNX has.
   // Now we cut out three sub-graphs from the tape. Each sub-graph represents one
   // of the three functions. The sub-graph is delimited by the inputs and outputs we remembered above.

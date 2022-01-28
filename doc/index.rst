@@ -14,10 +14,13 @@ This is developer documentation. User documentation is available at https://mari
 
    graph
    operators
-
+   layer
+   factors
    api/library_index
 
    contributing
+
+   doc_guide
 
 
 Indices and tables
@@ -26,8 +29,8 @@ Indices and tables
 * :ref:`genindex`
 
 
-.. |buildgpu| image:: https://img.shields.io/jenkins/s/http/vali.inf.ed.ac.uk/jenkins/view/marian/job/marian-dev-cuda-10.1.svg?label=CUDAC%20Build
-   :target: http://vali.inf.ed.ac.uk/jenkins/job/marian-dev/
+.. |buildgpu| image:: https://img.shields.io/jenkins/s/http/vali.inf.ed.ac.uk/jenkins/view/marian/job/marian-dev-cuda-10.2.svg?label=CUDAC%20Build
+   :target: http://vali.inf.ed.ac.uk/jenkins/job/marian-dev-cuda-10.2/
    :alt: GPU build status
 
 .. |buildcpu| image:: https://img.shields.io/jenkins/s/http/vali.inf.ed.ac.uk/jenkins/view/marian/job/marian-dev-cpu.svg?label=CPU%20Build

@@ -114,15 +114,21 @@ public:
   }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
+            const std::vector<io::Item>& items,
             bool /*markedReloaded*/ = true) override {
-    LOG(info, "Loading model from {}", name);
-    // load items from .npz file
-    auto ioItems = io::loadItems(name);
+    auto ioItems = items;
     // remap item names and remove dummy matrices
     remapIoItems(ioItems, opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"));
     // load items into the graph
     graph->load(ioItems);
+  }
+
+  void load(Ptr<ExpressionGraph> graph,
+            const std::string& name,
+            bool /*markReloaded*/ = true) override {
+    LOG(info, "Loading model from {}", name);
+    auto ioItems = io::loadItems(name);
+    load(graph, ioItems);
   }
 
   void save(Ptr<ExpressionGraph> graph,

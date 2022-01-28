@@ -28,11 +28,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Dynamic gradient-scaling with `--dynamic-gradient-scaling`.
 - Add unit tests for binary files.
 - Fix compilation with OMP
+- Added `--model-mmap` option to enable mmap loading for CPU-based translation
 - Compute aligned memory sizes using exact sizing
-- Support for loading lexical shortlist from a binary blob 
+- Support for loading lexical shortlist from a binary blob
 - Integrate a shortlist converter (which can convert a text lexical shortlist to a binary shortlist) into marian-conv with --shortlist option
 
 ### Fixed
+- Fix AVX2 and AVX512 detection on MacOS
+- Add GCC11 support into FBGEMM
+- Added pragma to ignore unused-private-field error on elementType_ on macOS
 - Do not set guided alignments for case augmented data if vocab is not factored
 - Various fixes to enable LSH in Quicksand
 - Added support to MPIWrappest::bcast (and similar) for count of type size_t
@@ -49,8 +53,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed loading binary models on architectures where `size_t` != `uint64_t`.
 - Missing float template specialisation for elem::Plus
 - Broken links to MNIST data sets
+- Enforce validation for the task alias in training mode.
 
 ### Changed
+- MacOS marian uses Apple Accelerate framework by default, as opposed to openblas/mkl.
 - Optimize LSH for speed by treating is as a shortlist generator. No option changes in decoder
 - Set REQUIRED_BIAS_ALIGNMENT = 16 in tensors/gpu/prod.cpp to avoid memory-misalignment on certain Ampere GPUs.
 - For BUILD_ARCH != native enable all intrinsics types by default, can be disabled like this: -DCOMPILE_AVX512=off

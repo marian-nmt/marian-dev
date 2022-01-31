@@ -534,10 +534,10 @@ public:
   }
 
   void actAfterEpoch(TrainingState& state) override {
-    // When running self-adaptive marian in server mode the "training-sets"
+    // When running self-adaptive marian in server mode the "train-sets"
     // option isn't present because the training sentences are passed in via the
     // request body
-    if (options_->has("training-sets")) {
+    if (options_->has("train-sets")) {
       // Stop if data streaming from STDIN is stopped for a TSV input.
       auto trainingSets = options_->get<std::vector<std::string>>("train-sets");
       if (trainingSets.size() > 0) {

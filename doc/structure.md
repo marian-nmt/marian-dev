@@ -34,7 +34,7 @@ Finally, the implementation of the command-line-interface for these commands is 
 ## Data
 ```
 marian/src
-├── data
+└── data
 ```
 Data refers to the handling and representation of the text input to Marian.
 This consists of source code for the representation of the corpus, vocabulary and batches.
@@ -52,7 +52,7 @@ marian/src
 ├── functional
 ├── graph
 ├── optimizers
-├── tensors
+└── tensors
 ```
 
 Marian implements a reverse-mode auto-differentiation computation graph. The relevant components reside in these subdirectories. The `graph` subdirectory concerns the structure of the graph, its nodes: operators, parameters and constants, as well as how to traverse it, both forwards and backwards. Moreover, it defines the APIs for operations that the graph is able to perform.
@@ -72,7 +72,7 @@ More specific documentation is available that describes the [graph][graph], and 
 marian/src
 ├── models
 ├── layers
-├── rnn
+└── rnn
 ```
 The subdirectories above constitute the components of a Model. There are two main types of model:
   - `IModel`, which maps inputs to predictions
@@ -85,14 +85,14 @@ An important specialisation of `IModel` is `IEncoderDecoder`, this specifies the
 The export of an ONNX-compliant model is handled by code here.
 ```
 marian/src
-├── onnx
+└── onnx
 ```
 
 
 ## Utility
 ```
 marian/src
-├── common
+└── common
 ```
 The `common` subdirectory contains many useful helper functions and classes.
 The majority of which fall under one of these categories:
@@ -111,7 +111,7 @@ Beyond these areas, this folder also contains metadata, such as the program vers
 ## External Libraries
 ```
 marian/src
-├── 3rd_party
+└── 3rd_party
   ```
 Many of the external libraries that marian depends on are contained in `3rd_party`.
 
@@ -122,7 +122,7 @@ These libraries are either copied into place here and version-controlled via the
 ```
 marian/src
 ├── examples
-├── tests
+└── tests
 ```
 There are basic tests and examples contained in `marian/src`.
 
@@ -133,7 +133,7 @@ The examples in this subdirectory demonstrate Marian's functionality using commo
 ```
 marian
 ├── examples
-├── regression-tests
+└── regression-tests
 ```
 Further tests and examples are contained in the root of the marian source code. The examples here are end-to-end tutorials on how to use Marian. These range from covering the basics of training a Marian model, to replicating the types of models presented at the Conference on Machine Translation (WMT).
 Similarly, the tests in `regression-tests` are more numerous and detailed. They cover some 250+ areas of the code. While the unit tests described above check basic consistency of certain functions, the regression tests offer end-to-end verification of the functionality of Marian.

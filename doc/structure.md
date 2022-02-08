@@ -26,7 +26,7 @@ The main `marian` command is capable of running all other modes (except server),
 Training is covered by the main `marian` command, with relevant implementation details kept inside the `training` subdirectory. Translation is facilitated by code in the `translator` subdirectory and is handled by the `marian-decoder` command, as well as `marian-server` which provides a web-socket service. `marian-scorer` is the tool used to re-score parallel inputs or n-best lists, and uses code in the `rescorer` subdirectory.
 
 The remaining commands `marian-vocab` and `marian-conv` provide useful auxiliary functions.  `marian-vocab` is a tool to create a vocabulary file from a given text corpus. This uses components described in the Data section of this document.
-`marian-conv` exists to convert marian model files from `.npz`, `.bin` as well as lexical shortlists to binary shortlists. It is also possible to use this command to emit an ONNX-compliant model representation. In addition to components defined in the Data section, this also makes use of Model specific components.
+`marian-conv` exists to convert Marian model files from `.npz`, `.bin` as well as lexical shortlists to binary shortlists. It is also possible to use this command to emit an ONNX-compliant model representation. In addition to components defined in the Data section, this also makes use of Model specific components.
 
 Finally, the implementation of the command-line-interface for these commands is described in the Utility section.
 
@@ -61,7 +61,7 @@ The `tensors` and `functional` subdirectories contain the implementation of oper
 
 One component of the `functional` subdirectory describes how functions operate on the underlying data types. This is a combination of standard operations on fundamental types, and SIMD intrinsics on extended types where available. The `functional` namespace also provides useful abstractions that enable generic formulas to be written. It defines variable-like objects `_1,_2`, such that `_1 * cos(_2)` represents the product of the argument at index 1 with the cosine of the argument at index 2.
 
-The `tensor` subdirectory contains the definition of a tensor object. In Marian, a tensor is a piece of memory which is ascribed a shape and type which is associated with a backend (the compute device).
+The `tensors` subdirectory contains the definition of a tensor object. In Marian, a tensor is a piece of memory which is ascribed a shape and type which is associated with a backend (the compute device).
 This directory also contains the implementations of tensor operations on CPU and GPU, as well as universal functions that dispatches the call to the relevant device.
 
 More specific documentation is available that describes the [graph][graph], and how its [operators][graph_ops] are implemented.
@@ -113,7 +113,7 @@ Beyond these areas, this folder also contains metadata, such as the program vers
 marian/src
 └── 3rd_party
   ```
-Many of the external libraries that marian depends on are contained in `3rd_party`.
+Many of the external libraries that Marian depends on are contained in `3rd_party`.
 
 These libraries are either copied into place here and version-controlled via the marian repository, or are included here as a submodule. Of these submodules, many have been forked and are maintained under the marian-nmt organisation.
 

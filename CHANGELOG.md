@@ -12,8 +12,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - Scripts using PyYAML now use `safe_load`; see https://msg.pyyaml.org/load
+- Fixed check for fortran_ordering in cnpy
 
 ### Changed
+- Parameters in npz files are no longer implicitly assumed to be row-ordered. Non row-ordered parameters will result in an abort
 
 ## [1.11.0] - 2022-02-08
 

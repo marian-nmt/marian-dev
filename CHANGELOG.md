@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Adds a `marian-adaptive` executable to enable self-adaptive translation (a.k.a, runtime domain adaptation).
+- Adds `marian-adaptive` and `marian-adaptive-server` executables to enable self-adaptive translation (a.k.a, runtime domain adaptation).
 
 ### Fixed
 - Scripts using PyYAML now use `safe_load`; see https://msg.pyyaml.org/load

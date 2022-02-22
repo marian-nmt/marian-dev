@@ -6,7 +6,7 @@ if (POLICY CMP0074)
 endif ()
 
 project(marian CXX C)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
@@ -32,6 +32,7 @@ option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
+option(DETERMINISTIC "Try to make training results as deterministic as possible (e.g. for testing)" OFF)
 
 # fbgemm and sentencepiece are both defined with "non-local" installation targets (the source projects don't define them,
 # so we define them in src\3rd_party\CMakeLists.txt), but that isn't supported until CMake 3.12. Prior to CMake 3.12,
@@ -91,10 +92,11 @@ if(MSVC)
   # C4310: cast truncates constant value
   # C4324: 'marian::cpu::int16::`anonymous-namespace'::ScatterPut': structure was padded due to alignment specifier
   # C4702: unreachable code; note it is also disabled globally in the VS project file
+  # C4996: warning STL4015: The std::iterator class template (used as a base class to provide typedefs) is deprecated in C++17
   if(USE_SENTENCEPIECE)
-    set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\" /wd\"4100\"")
+    set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\" /wd\"4996\" /wd\"4100\"")
   else()
-    set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\"")
+    set(DISABLE_GLOBALLY "/wd\"4310\" /wd\"4324\" /wd\"4702\" /wd\"4996\"")
   endif()
 
   # set(INTRINSICS "/arch:AVX")
@@ -572,6 +574,15 @@ if(USE_STATIC_LIBS)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ${_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
+if(DETERMINISTIC)
+  message(WARNING "Option DETERMINISTIC=ON: Trying to make training as deterministic as possible, may result in slow-down")
+  add_definitions(-DDETERMINISTIC=1)
+  list(APPEND CUDA_NVCC_FLAGS -DDETERMINISTIC=1; )
+else()
+  add_definitions(-DDETERMINISTIC=0)
+  list(APPEND CUDA_NVCC_FLAGS -DDETERMINISTIC=0; )
+endif()
+
 # Find MPI
 if(USE_MPI)
   # 2.0 refers to MPI2 standard. OpenMPI is an implementation of that standard regardless of the specific OpenMPI version
@@ -581,7 +592,7 @@ if(USE_MPI)
     include_directories(${MPI_INCLUDE_PATH})
     set(EXT_LIBS ${EXT_LIBS} ${MPI_LIBRARIES})
     if(USE_STATIC_LIBS) # alternatively this could install OpenMPI like NCCL and link against that statically with greater control
-      message(WARNING "MPI implementations are notoriously difficult to link statically, linking ${MPI_LIBRARIES} dynamically despite -DUSE_STATIC_LIBS=on")
+    message(WARNING "MPI implementations are notoriously difficult to link statically, linking ${MPI_LIBRARIES} dynamically despite -DUSE_STATIC_LIBS=on")
     endif(USE_STATIC_LIBS)
     add_definitions(-DMPI_FOUND=1)
   endif(MPI_FOUND)

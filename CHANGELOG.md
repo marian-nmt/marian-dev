@@ -10,7 +10,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Adds a `marian-adaptive` executable to enable self-adaptive translation (a.k.a, runtime domain adaptation).
-- Adds option --add-lsh to marian-conv which allows the LSH to be memory-mapped.
+
+### Fixed
+- Scripts using PyYAML now use `safe_load`; see https://msg.pyyaml.org/load
+- Fixed check for `fortran_ordering` in cnpy
+
+### Changed
+- Make guided-alignment faster via sparse memory layout, add alignment points for EOS, remove losses other than ce
+- Changed minimal C++ standard to C++-17
+- Faster LSH top-k search on CPU
+- Updated intgemm to the latest upstream version
+- Parameters in npz files are no longer implicitly assumed to be row-ordered. Non row-ordered parameters will result in an abort
+
+## [1.11.0] - 2022-02-08
+
+### Added
+- Parallelized data reading with e.g. `--data-threads 8`
+- Top-k sampling during decoding with e.g. `--output-sampling topk 10`
+- Improved mixed precision training with `--fp16`
+- Set FFN width in decoder independently from encoder with e.g. `--transformer-dim-ffn 4096 --transformer-decoder-dim-ffn 2048`
+- Adds option `--add-lsh` to marian-conv which allows the LSH to be memory-mapped.
 - Early stopping based on first, all, or any validation metrics via `--early-stopping-on`
 - Compute 8.6 support if using CUDA>=11.1
 - Support for RMSNorm as drop-in replace for LayerNorm from `Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization`. Enabled in Transformer model via `--transformer-postprocess dar` instead of `dan`.

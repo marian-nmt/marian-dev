@@ -11,6 +11,8 @@
 #include "data/rng_engine.h"
 #include "data/vocab.h"
 
+#include <future>
+
 namespace marian {
 namespace data {
 
@@ -22,7 +24,7 @@ namespace data {
  * construction of marian::data::CorpusBatch objects. They are not a part of
  * marian::data::CorpusBatch.
  */
-class SentenceTuple {
+class SentenceTupleImpl {
 private:
   size_t id_;
   std::vector<Words> tuple_;    // [stream index][step index]
@@ -34,11 +36,16 @@ public:
   typedef Words value_type;
 
   /**
+   * @brief Creates an empty tuple with 0 id (default constructor).
+   */
+  SentenceTupleImpl() : id_(0) {}
+
+  /**
    * @brief Creates an empty tuple with the given Id.
    */
-  SentenceTuple(size_t id) : id_(id) {}
+  SentenceTupleImpl(size_t id) : id_(id) {}
 
-  ~SentenceTuple() { tuple_.clear(); }
+  ~SentenceTupleImpl() {}
 
   /**
    * @brief Returns the sentence's ID.
@@ -112,6 +119,92 @@ public:
 
   const WordAlignment& getAlignment() const { return alignment_; }
   void setAlignment(const WordAlignment& alignment) { alignment_ = alignment; }
+};
+
+class SentenceTuple {
+private:
+  std::shared_ptr<std::future<SentenceTupleImpl>> fImpl_;
+  mutable std::shared_ptr<SentenceTupleImpl> impl_;
+
+public:
+  typedef Words value_type;
+
+  /**
+   * @brief Creates an empty tuple with no associated future.
+   */
+  SentenceTuple() {}
+  
+  SentenceTuple(const SentenceTupleImpl& tupImpl) 
+    : impl_(std::make_shared<SentenceTupleImpl>(tupImpl)) {}
+
+  SentenceTuple(std::future<SentenceTupleImpl>&& fImpl) 
+    : fImpl_(new std::future<SentenceTupleImpl>(std::move(fImpl))) {}
+
+  SentenceTupleImpl& get() const {
+    if(!impl_) {
+      ABORT_IF(!fImpl_ || !fImpl_->valid(), "No future tuple associated with SentenceTuple");
+      impl_ = std::make_shared<SentenceTupleImpl>(fImpl_->get());
+    }
+    return *impl_;
+  }
+
+  /**
+   * @brief Returns the sentence's ID.
+   */
+  size_t getId() const { return get().getId(); }
+
+  /**
+   * @brief Returns whether this Tuple was altered or augmented from what
+   * was provided to Marian in input.
+   */
+  bool isAltered() const { return get().isAltered(); }
+
+  /**
+   * @brief The size of the tuple, e.g. two for parallel data with a source and
+   * target sentences.
+   */
+  size_t size() const { return get().size(); }
+
+  /**
+   * @brief confirms that the tuple has been populated with data
+   */
+  bool valid() const {
+    return fImpl_ || impl_;
+  }
+
+  /**
+   * @brief The i-th tuple sentence.
+   *
+   * @param i Tuple's index.
+   */
+  Words& operator[](size_t i) { return get()[i]; }
+  const Words& operator[](size_t i) const { return get()[i]; }
+
+  /**
+   * @brief The last tuple sentence, i.e. the target sentence.
+   */
+  Words& back() { return get().back(); }
+  const Words& back() const { return get().back(); }
+
+  /**
+   * @brief Checks whether the tuple is empty.
+   */
+  bool empty() const { return get().empty(); }
+
+  auto begin() const -> decltype(get().begin()) { return get().begin(); }
+  auto end() const -> decltype(get().end()) { return get().end(); }
+
+  auto rbegin() const -> decltype(get().rbegin()) { return get().rbegin(); }
+  auto rend() const -> decltype(get().rend()) { return get().rend(); }
+
+  /**
+   * @brief Get sentence weights.
+   *
+   * For sentence-level weights the vector contains only one element.
+   */
+  const std::vector<float>& getWeights() const { return get().getWeights(); }
+
+  const WordAlignment& getAlignment() const { return get().getAlignment(); }
 };
 
 /**
@@ -245,7 +338,7 @@ public:
 class CorpusBatch : public Batch {
 protected:
   std::vector<Ptr<SubBatch>> subBatches_;
-  std::vector<float> guidedAlignment_; // [max source len, batch size, max target len] flattened
+  std::vector<WordAlignment> guidedAlignment_; // [max source len, batch size, max target len] flattened
   std::vector<float> dataWeights_;
 
 public:
@@ -351,8 +444,17 @@ public:
 
     if(options->get("guided-alignment", std::string("none")) != "none") {
       // @TODO: if > 1 encoder, verify that all encoders have the same sentence lengths
-      std::vector<float> alignment(batchSize * lengths.front() * lengths.back(),
-          0.f);
+      
+      std::vector<data::WordAlignment> alignment;
+      for(size_t k = 0; k < batchSize; ++k) {
+        data::WordAlignment perSentence;
+        // fill with random alignment points, add more twice the number of words to be safe.
+        for(size_t j = 0; j < lengths.back() * 2; ++j) {
+          size_t i = rand() % lengths.back();
+          perSentence.push_back(i, j, 1.0f);
+        }
+        alignment.push_back(std::move(perSentence));
+      }
       batch->setGuidedAlignment(std::move(alignment));
     }
 
@@ -379,7 +481,7 @@ public:
    * @see marian::data::SubBatch::split(size_t n)
    */
   std::vector<Ptr<Batch>> split(size_t n, size_t sizeLimit /*=SIZE_MAX*/) override {
-    ABORT_IF(size() == 0, "Encoutered batch size of 0");
+    ABORT_IF(size() == 0, "Encountered batch size of 0");
 
     std::vector<std::vector<Ptr<SubBatch>>> subs; // [subBatchIndex][streamIndex]
     // split each stream separately
@@ -408,29 +510,14 @@ public:
     }
 
     if(!guidedAlignment_.empty()) {
-      size_t oldTrgWords = back()->batchWidth();
-      size_t oldSize = size();
-
       pos = 0;
       for(auto split : splits) {
         auto cb = std::static_pointer_cast<CorpusBatch>(split);
-        size_t srcWords = cb->front()->batchWidth();
-        size_t trgWords = cb->back()->batchWidth();
         size_t dimBatch = cb->size();
-
-        std::vector<float> aligns(srcWords * dimBatch * trgWords, 0.f);
-
-        for(size_t i = 0; i < dimBatch; ++i) {
-          size_t bi = i + pos;
-          for(size_t sid = 0; sid < srcWords; ++sid) {
-            for(size_t tid = 0; tid < trgWords; ++tid) {
-              size_t bidx = sid * oldSize  * oldTrgWords + bi * oldTrgWords + tid; // [sid, bi, tid]
-              size_t idx  = sid * dimBatch *    trgWords +  i *    trgWords + tid;
-              aligns[idx] = guidedAlignment_[bidx];
-            }
-          }
-        }
-        cb->setGuidedAlignment(std::move(aligns));
+        std::vector<WordAlignment> batchAlignment;
+        for(size_t i = 0; i < dimBatch; ++i)
+          batchAlignment.push_back(std::move(guidedAlignment_[i + pos]));
+        cb->setGuidedAlignment(std::move(batchAlignment));
         pos += dimBatch;
       }
     }
@@ -463,13 +550,9 @@ public:
     return splits;
   }
 
-  const std::vector<float>& getGuidedAlignment() const { return guidedAlignment_; }  // [dimSrcWords, dimBatch, dimTrgWords] flattened
-  void setGuidedAlignment(std::vector<float>&& aln) override {
+  const std::vector<WordAlignment>& getGuidedAlignment() const { return guidedAlignment_; }  // [dimSrcWords, dimBatch, dimTrgWords] flattened
+  void setGuidedAlignment(std::vector<WordAlignment>&& aln) override {
     guidedAlignment_ = std::move(aln);
-  }
-
-  size_t locateInGuidedAlignments(size_t b, size_t s, size_t t) {
-    return ((s * size()) + b) * widthTrg() + t;
   }
 
   std::vector<float>& getDataWeights() { return dataWeights_; }
@@ -523,8 +606,8 @@ class CorpusBase : public DatasetBase<SentenceTuple, CorpusIterator, CorpusBatch
 public:
   typedef SentenceTuple Sample;
 
-  CorpusBase(Ptr<Options> options, 
-             bool translate = false, 
+  CorpusBase(Ptr<Options> options,
+             bool translate = false,
              size_t seed = Config::seed);
 
   CorpusBase(const std::vector<std::string>& paths,
@@ -583,17 +666,17 @@ protected:
    * @brief Helper function converting a line of text into words using the i-th
    * vocabulary and adding them to the sentence tuple.
    */
-  void addWordsToSentenceTuple(const std::string& line, size_t batchIndex, SentenceTuple& tup) const;
+  void addWordsToSentenceTuple(const std::string& line, size_t batchIndex, SentenceTupleImpl& tup) const;
   /**
    * @brief Helper function parsing a line with word alignments and adding them
    * to the sentence tuple.
    */
-  void addAlignmentToSentenceTuple(const std::string& line, SentenceTuple& tup) const;
+  void addAlignmentToSentenceTuple(const std::string& line, SentenceTupleImpl& tup) const;
   /**
    * @brief Helper function parsing a line of weights and adding them to the
    * sentence tuple.
    */
-  void addWeightsToSentenceTuple(const std::string& line, SentenceTuple& tup) const;
+  void addWeightsToSentenceTuple(const std::string& line, SentenceTupleImpl& tup) const;
 
   void addAlignmentsToBatch(Ptr<CorpusBatch> batch, const std::vector<Sample>& batchVector);
 

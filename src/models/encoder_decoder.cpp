@@ -38,7 +38,9 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("transformer-heads");
   modelFeatures_.insert("transformer-no-projection");
   modelFeatures_.insert("transformer-dim-ffn");
+  modelFeatures_.insert("transformer-decoder-dim-ffn");
   modelFeatures_.insert("transformer-ffn-depth");
+  modelFeatures_.insert("transformer-decoder-ffn-depth");
   modelFeatures_.insert("transformer-ffn-activation");
   modelFeatures_.insert("transformer-dim-aan");
   modelFeatures_.insert("transformer-aan-depth");
@@ -220,7 +222,7 @@ Ptr<DecoderState> EncoderDecoder::stepAll(Ptr<ExpressionGraph> graph,
   if(clearGraph)
     clear(graph);
 
-  // Required first step, also intializes shortlist
+  // Required first step, also initializes shortlist
   auto state = startState(graph, batch);
 
   // Fill state with embeddings from batch (ground truth)

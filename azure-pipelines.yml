@@ -6,6 +6,13 @@
 # 3. Choose "Existing Azure Pipelines YAML file" and specify path to this file
 # 4. "More actions" > "Save"
 
+parameters:
+# Allow skipping the entire 'Build' stage
+- name: runBuilds
+  displayName: Run builds? Uncheck to run regression tests only.
+  type: boolean
+  default: true
+
 # The pipeline CI trigger is set on the branch master only and PR trigger on a
 # (non-draft) pull request to any branch
 trigger:
@@ -45,6 +52,7 @@ stages:
 
   ######################################################################
   - job: BuildWindows
+    condition: eq(${{ parameters.runBuilds }}, true)
     displayName: Windows
 
     strategy:
@@ -180,9 +188,13 @@ stages:
 
   ######################################################################
   - job: BuildUbuntu
+    condition: eq(${{ parameters.runBuilds }}, true)
     displayName: Ubuntu
     timeoutInMinutes: 90
 
+    # Minimal tested configurations for marian-dev v1.11 and C++17:
+    # * Ubuntu 16.04, GCC 7.5, CMake 3.10.2, CUDA 9.2 (probably GCC 6 would work too)
+    # * Ubuntu 18.04, GCC 7.5, CMake 3.12.2, CUDA 10.0
     strategy:
       matrix:
         ################################################################
@@ -237,17 +249,7 @@ stages:
           examples: true
           static: true
         ################################################################
-        # Ubuntu 16.04 supports CUDA 8+
-        "16.04 CUDA 9.2 gcc-7":
-          image: ubuntu-16.04
-          boost: true
-          cpu: true
-          gpu: true
-          cuda: 9.2
-          gcc: 7
-          unit_tests: true
-          examples: true
-          static: false
+        # Ubuntu 16.04 is no longer available on Azure-hosted machines
 
     pool:
       vmImage: $(image)
@@ -321,57 +323,12 @@ stages:
       workingDirectory: build
 
   ######################################################################
-  - job: BuildUbuntuMinimal
-    displayName: Ubuntu CPU+GPU gcc-5 cmake 3.5
-
-    pool:
-      vmImage: ubuntu-16.04
-
-    steps:
-    - checkout: self
-      submodules: true
-
-    # The script simplifies installation of different versions of CUDA.
-    # Ubuntu 16.04 on Azure-hosted VMs have GCC 5.5 as gcc-5, which is not compatible with CUDA 9.
-    # Downgrading to GCC 5.4 (the default gcc on Ubuntu 16.04) would be more work...
-    - bash: ./scripts/ci/install_cuda_ubuntu.sh "10.0"
-      displayName: Install CUDA
-
-    # CMake 3.5.1 is the minimum version supported
-    - bash: |
-        wget -nv https://cmake.org/files/v3.5/cmake-3.5.1-Linux-x86_64.tar.gz
-        tar zxf cmake-3.5.1-Linux-x86_64.tar.gz
-        ./cmake-3.5.1-Linux-x86_64/bin/cmake --version
-      displayName: Download CMake
-
-    # GCC 5 is the minimum version supported
-    - bash: |
-        /usr/bin/gcc-5 --version
-        mkdir -p build
-        cd build
-        CC=/usr/bin/gcc-5 CXX=/usr/bin/g++-5 CUDAHOSTCXX=/usr/bin/g++-5 \
-        ../cmake-3.5.1-Linux-x86_64/bin/cmake .. \
-          -DCOMPILE_CPU=on \
-          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-10.0
-      displayName: Configure CMake
-
-    - bash: make -j3
-      displayName: Compile
-      workingDirectory: build
-
-    - bash: |
-        ./marian --version
-        ./marian-decoder --version
-        ./marian-scorer --version
-      displayName: Print versions
-      workingDirectory: build
-
-  ######################################################################
   - job: BuildMacOS
+    condition: eq(${{ parameters.runBuilds }}, true)
     displayName: macOS CPU clang
 
     pool:
-      vmImage: macos-latest
+      vmImage: macos-10.15
 
     steps:
     - checkout: self
@@ -416,6 +373,7 @@ stages:
 
   ######################################################################
   - job: BuildInstall
+    condition: eq(${{ parameters.runBuilds }}, true)
     displayName: Linux CPU library install
 
     pool:
@@ -470,7 +428,7 @@ stages:
 
 
 # Marian is built in the same job where the regression tests are run to make sure that executables
-# is compiled and run on a machine with the same CPU architecture, which is required for
+# are compiled and run on a machine with the same CPU architecture, which is required for
 # compilations with FBGEMM.
 - stage: Tests
   jobs:
@@ -530,6 +488,7 @@ stages:
           -DCMAKE_MAKE_PROGRAM="ninja.exe" ^
           -DCMAKE_TOOLCHAIN_FILE="$(VCPKG_DIR)\scripts\buildsystems\vcpkg.cmake" ^
           -DVCPKG_TARGET_TRIPLET="x64-windows-static" ^
+          -DDETERMINISTIC="TRUE" ^
           ^
           -DCOMPILE_CPU="TRUE" ^
           -DCOMPILE_CUDA="FALSE" ^
@@ -580,7 +539,7 @@ stages:
 
     # Avoid using $(Build.SourcesDirectory) in bash tasks because on Windows pools it uses '\'
     # instead of '/', which often breaks the job
-    - bash: MARIAN=../marian-dev/build bash ./run_mrt.sh '#cpu' '#basics'
+    - bash: MARIAN=../marian-dev/build TIMEOUT=10m bash ./run_mrt.sh '#cpu' '#basics' '#devops'
       continueOnError: true
       displayName: Run tests
       workingDirectory: marian-prod-tests
@@ -634,6 +593,7 @@ stages:
           -DCMAKE_BUILD_TYPE=slim \
           -DCOMPILE_CPU=on \
           -DCOMPILE_CUDA=off \
+          -DDETERMINISTIC=on \
           -DUSE_FBGEMM=on \
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=on
@@ -677,7 +637,7 @@ stages:
           AWS_SECRET_SAS_TOKEN: $(blob-sas-token)
       workingDirectory: marian-prod-tests
 
-    - bash: MARIAN=../marian-dev/build bash ./run_mrt.sh '#cpu' '#basics'
+    - bash: MARIAN=../marian-dev/build bash ./run_mrt.sh '#cpu' '#basics' '#devops'
       continueOnError: true
       displayName: Run tests
       workingDirectory: marian-prod-tests

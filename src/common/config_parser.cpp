@@ -139,7 +139,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--config,-c",
     "Configuration file(s). If multiple, later overrides earlier");
   cli.add<size_t>("--workspace,-w",
-    "Preallocate  arg  MB of work space",
+    "Preallocate arg MB of work space",
     defaultWorkspace);
   // Self-adaptive translation uses a training graph and a translation graph. We
   // want to be able to prealocate different amounts of memory for both (because
@@ -151,7 +151,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
       512);
   }
   cli.add<std::string>("--log",
-    "Log training process information to file given by  arg");
+    "Log training process information to file given by arg");
   cli.add<std::string>("--log-level",
     "Set verbosity level of logging: trace, debug, info, warn, err(or), critical, off",
     "info");
@@ -294,10 +294,16 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Pool encoder states instead of using cross attention (selects first encoder state, best used with special token)");
   cli.add<int>("--transformer-dim-ffn",
       "Size of position-wise feed-forward network (transformer)",
-      2048);
+      2048);  
+  cli.add<int>("--transformer-decoder-dim-ffn",
+      "Size of position-wise feed-forward network in decoder (transformer). Uses --transformer-dim-ffn if 0.",
+      0);
   cli.add<int>("--transformer-ffn-depth",
       "Depth of filters (transformer)",
       2);
+  cli.add<int>("--transformer-decoder-ffn-depth",
+      "Depth of filters in decoder (transformer). Uses --transformer-ffn-depth if 0",
+      0);
   cli.add<std::string>("--transformer-ffn-activation",
       "Activation between filters: swish or relu (transformer)",
       "swish");
@@ -423,17 +429,17 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Finish after this many chosen training units, 0 is infinity (e.g. 100e = 100 epochs, 10Gt = 10 billion target labels, 100Ku = 100,000 updates",
       "0e");
   cli.add<std::string/*SchedulerPeriod*/>("--disp-freq",
-      "Display information every  arg  updates (append 't' for every  arg  target labels)",
+      "Display information every arg updates (append 't' for every arg target labels)",
       defaultDispFreq);
   cli.add<size_t>("--disp-first",
-      "Display information for the first  arg  updates");
+      "Display information for the first arg updates");
   cli.add<bool>("--disp-label-counts",
       "Display label counts when logging loss progress",
       true);
 //   cli.add<int>("--disp-label-index",
 //       "Display label counts based on i-th input stream (-1 is last)", -1);
   cli.add<std::string/*SchedulerPeriod*/>("--save-freq",
-      "Save model file every  arg  updates (append 't' for every  arg  target labels)",
+      "Save model file every arg updates (append 't' for every arg target labels)",
       "10000u");
   cli.add<std::vector<std::string>>("--logical-epoch",
       "Redefine logical epoch counter as multiple of data epochs (e.g. 1e), updates (e.g. 100Ku) or labels (e.g. 1Gt). "
@@ -519,12 +525,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--lr-decay-repeat-warmup",
      "Repeat learning rate warmup when learning rate is decayed");
   cli.add<std::vector<std::string/*SchedulerPeriod*/>>("--lr-decay-inv-sqrt",
-     "Decrease learning rate at arg / sqrt(no. batches) starting at arg  (append 't' or 'e' for sqrt(target labels or epochs)). "
+     "Decrease learning rate at arg / sqrt(no. batches) starting at arg (append 't' or 'e' for sqrt(target labels or epochs)). "
      "Add second argument to define the starting point (default: same as first value)",
      {"0"});
 
   cli.add<std::string/*SchedulerPeriod*/>("--lr-warmup",
-     "Increase learning rate linearly for  arg  first batches (append 't' for  arg  first target labels)",
+     "Increase learning rate linearly for arg first batches (append 't' for arg first target labels)",
       "0");
   cli.add<float>("--lr-warmup-start-rate",
      "Start value for learning rate warmup");
@@ -538,7 +544,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<double>("--factor-weight",
      "Weight for loss function for factors (factored vocab only) (1 to disable)", 1.0f);
   cli.add<float>("--clip-norm",
-     "Clip gradient norm to  arg  (0 to disable)",
+     "Clip gradient norm to arg (0 to disable)",
      1.f); // @TODO: this is currently wrong with ce-sum and should rather be disabled or fixed by multiplying with labels
   cli.add<float>("--exponential-smoothing",
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable. "
@@ -550,7 +556,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "none");
   cli.add<std::string>("--guided-alignment-cost",
      "Cost type for guided alignment: ce (cross-entropy), mse (mean square error), mult (multiplication)",
-     "mse");
+     "ce");
   cli.add<double>("--guided-alignment-weight",
      "Weight for guided alignment cost",
      0.1);
@@ -574,15 +580,15 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   // mixed precision training
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision training with float16 and cost-scaling, "
-      "corresponds to: --precision float16 float32 --cost-scaling 0 1000 2 0.05 10 1e-5f");
+      "corresponds to: --precision float16 float32 --cost-scaling 256.f 1000 2.f 256.f");
   cli.add<std::vector<std::string>>("--precision",
       "Mixed precision training for forward/backward pass and optimizaton. "
       "Defines types for: forward/backward pass, optimization.",
       {"float32", "float32"});
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
-      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
-      ->implicit_val("0.f 1000 2.f 0.05f 10 1e-5f");
+      "scaling factor, frequency, multiplier, minimum factor")
+      ->implicit_val("256.f 1000 2.f 256.f");
   cli.add<size_t>("--gradient-norm-average-window",
       "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
       "After this many updates about 90% of the mass of the exponential average comes from these updates",
@@ -621,7 +627,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<std::vector<std::string>>("--valid-sets",
       "Paths to validation corpora: source target");
   cli.add<std::string/*SchedulerPeriod*/>("--valid-freq",
-      "Validate model every  arg  updates (append 't' for every  arg  target labels)",
+      "Validate model every arg updates (append 't' for every arg target labels)",
       "10000u");
   cli.add<std::vector<std::string>>("--valid-metrics",
       "Metric to use during validation: cross-entropy, ce-mean-words, perplexity, valid-script, "
@@ -631,7 +637,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<bool>("--valid-reset-stalled",
      "Reset all stalled validation metrics when the training is restarted");
   cli.add<size_t>("--early-stopping",
-     "Stop if the first validation metric does not improve for  arg  consecutive validation steps",
+     "Stop if the first validation metric does not improve for arg consecutive validation steps",
      10);
   cli.add<std::string>("--early-stopping-on",
       "Decide if early stopping should take into account first, all, or any validation metrics"
@@ -683,7 +689,7 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
   cli.add<bool>("--keep-best",
       "Keep best model for each validation metric");
   cli.add<std::string>("--valid-log",
-     "Log validation scores to file given by  arg");
+     "Log validation scores to file given by arg");
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -757,9 +763,10 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
      "Use softmax shortlist: path first best prune");
   cli.add<std::vector<float>>("--weights",
       "Scorer weights");
-  cli.add<bool>("--output-sampling",
-     "Noise output layer with gumbel noise",
-      false);
+  cli.add<std::vector<std::string>>("--output-sampling",
+     "Noise output layer with gumbel noise. Implicit default is 'full' for sampling from full distribution. "
+     " Also accepts 'topk num' (e.g. topk 100) for top-100 sampling.")
+     ->implicit_val("full");
   cli.add<std::vector<int>>("--output-approx-knn",
      "Use approximate knn search in output layer (currently only in transformer)")
      ->implicit_val("100 1024");
@@ -946,6 +953,15 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
   if(mode_ == cli::mode::training || mode_ == cli::mode::selfadaptive) {
     cli.add<bool>("--shuffle-in-ram",
         "Keep shuffled corpus in RAM, do not write to temp file");
+
+#if DETERMINISTIC
+    cli.add<size_t>("--data-threads",
+        "Number of concurrent threads to use during data reading and processing", 1);
+#else
+    cli.add<size_t>("--data-threads",
+        "Number of concurrent threads to use during data reading and processing", 8);
+#endif
+
     // @TODO: Consider making the next two options options of the vocab instead, to make it more local in scope.
     cli.add<size_t>("--all-caps-every",
         "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
@@ -964,6 +980,14 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
     cli.add<bool>("--mini-batch-round-up",
         "Round up batch size to next power of 2 for more efficient training, but this can make batch size less stable. Disable with --mini-batch-round-up=false",
         true);
+  } else {
+#if DETERMINISTIC
+    cli.add<size_t>("--data-threads",
+        "Number of concurrent threads to use during data reading and processing", 1);
+#else
+    cli.add<size_t>("--data-threads",
+        "Number of concurrent threads to use during data reading and processing", 8);
+#endif
   }
   // clang-format on
 }
@@ -1011,10 +1035,10 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   cli.add<std::string>("--ulr-query-vectors",
       "Path to file with universal sources embeddings from projection into universal space",
       "");
-  // keys: EK in Fig2 : is the keys of the target embbedings projected to unified space (i.e. ENU in
+  // keys: EK in Fig2 : is the keys of the target embeddings projected to unified space (i.e. ENU in
   // multi-lingual case)
   cli.add<std::string>("--ulr-keys-vectors",
-      "Path to file with universal sources embeddings of traget keys from projection into universal space",
+      "Path to file with universal sources embeddings of target keys from projection into universal space",
       "");
   cli.add<bool>("--ulr-trainable-transformation",
       "Make Query Transformation Matrix A trainable");

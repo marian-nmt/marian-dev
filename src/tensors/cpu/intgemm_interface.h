@@ -642,7 +642,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     float unquant_mult = 1.0f / (aQuantMult * bQuantMult);
     unquant_mult = unquant_mult * scale;
 
-    std::cerr << "dnnlDotOrAffineNodeOp" << (shifted ? " shifted" : "") << (transB ? " transB" : "") << std::endl;
+    // std::cerr << "dnnlDotOrAffineNodeOp" << (shifted ? " shifted" : "") << (transB ? " transB" : "") << std::endl;
 
     dnnl::matmul matmul_p;
 

@@ -24,80 +24,11 @@ static inline void printDNNLStatus(dnnl::status& status) {
   }
 }
 
-static inline dnnl::status my_gemm_s8s8s32(char transa      , /* 'N', whether A is transposed */
-                          char transb      , /* transposeB, whether B is transposed */
-                          char offsetc     , /* 'F', offsets applied to matrix C, F means same offset to each element, C each column, R each row*/
-                          dnnl_dim_t M     , /* M, */
-                          dnnl_dim_t N     , /* N, */
-                          dnnl_dim_t K     , /* K, */
-                          float alpha      , /* 1.0f, scales A and B */
-                          const int8_t* A  , /* aQuant->val()->data<int8_t>(), // M*K */
-                          dnnl_dim_t lda   , /* lda, leading dimension of A */
-                          int8_t ao        , /* ao, offset value for A */
-                          const int8_t* B  , /* bQuant->val()->data<int8_t>(), // K*N */
-                          dnnl_dim_t ldb   , /* ldb, leading dimension for B */
-                          int8_t bo        , /* bo, offset value of B */
-                          float beta       , /* 0.0f, scale for matrix C */
-                          int32_t* C       , /* out->val()->data<int32_t>(), // M*N */
-                          dnnl_dim_t ldc   , /* ldc, leading dimension for C */
-                          const int32_t* co /* co.data()); Array of offset values for C, see `offsetc` */
-) {
-  ABORT_UNLESS(offsetc == 'F' && co[0] == 0, "Offsets for C is not implemented");
+using matmul = dnnl::matmul;
+using dims = dnnl::memory::dims;
+using dt = dnnl::memory::data_type;
 
-  using matmul = dnnl::matmul;
-  using dims = dnnl::memory::dims;
-  using dt = dnnl::memory::data_type;
-
-  static dnnl::engine eng = dnnl::engine(dnnl::engine::kind::cpu, 0);
-  dnnl::matmul matmul_p;
-
-  dims a_dims_strides = transa == 'N' ? dims {DNNL_RUNTIME_DIM_VAL, 1} : dims {1, DNNL_RUNTIME_DIM_VAL};
-  dims b_dims_strides = transb == 'N' ? dims {DNNL_RUNTIME_DIM_VAL, 1} : dims {1, DNNL_RUNTIME_DIM_VAL};
-  
-  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
-  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-
-  dnnl::memory::desc a_md(rt_rt_dims, dt::s8,  a_dims_strides);
-  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
-  dnnl::memory::desc c_md(rt_rt_dims, dt::s32, c_dims_strides);
-
-
-  dnnl::primitive_attr attr;
-  attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
-  if (beta != 0.f) {
-      assert(beta == 1.f); // current limitation
-      dnnl::post_ops po;
-      po.append_sum(beta);
-      attr.set_post_ops(po);
-  }
-
-  matmul::desc matmul_d(a_md, b_md, c_md);
-  matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
-  if (matmul_pd) matmul_p = matmul(matmul_pd);
-
-  dims a_strides = transa == 'N' ? dims {lda, 1} : dims {1, lda};
-  dims b_strides = transb == 'N' ? dims {ldb, 1} : dims {1, ldb};
-
-
-  dnnl::memory A_m({{M, K}, dt::s8, a_strides}, eng, (void *)A);
-  dnnl::memory B_m({{K, N}, dt::s8, b_strides}, eng, (void *)B);
-  dnnl::memory C_m({{M, N}, dt::s32, {ldc, 1}}, eng, (void *)C);
-
-  // Prepare oneDNN memory for alpha
-  dnnl::memory alpha_m({{1}, dt::f32, {1}}, eng, &alpha);
-
-  dnnl::stream s(eng);
-  matmul_p.execute(s, {
-    {DNNL_ARG_SRC, A_m},
-    {DNNL_ARG_WEIGHTS, B_m},
-    {DNNL_ARG_DST, C_m},
-    {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}
-  });
-  s.wait();
-  
-  return dnnl::status::success;
-}
+static dnnl::engine eng = dnnl::engine(dnnl::engine::kind::cpu, 0);
 
 namespace marian {
 
@@ -397,6 +328,7 @@ public:
         const int8_t bo = 0;
         static const std::vector<int32_t> co(1,0);
         ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
+        std::cerr << "dnnl::gemm_u8s8s32 called on " << __LINE__ << std::endl;
         auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
                                         /*transB*/  'N',
                                         /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
@@ -481,6 +413,7 @@ public:
         const int8_t bo = 0;
         static const std::vector<int32_t> co(1,0);
         ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
+        std::cerr << "dnnl::gemm_u8s8s32 called on " << __LINE__ << std::endl;
         auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
                                         /*transB*/  'N',
                                         /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
@@ -709,71 +642,78 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     float unquant_mult = 1.0f / (aQuantMult * bQuantMult);
     unquant_mult = unquant_mult * scale;
 
-    // DNNL parameters
-    dnnl_dim_t M = rows(aQuant->val());
-    dnnl_dim_t K = cols(aQuant->val());
-    dnnl_dim_t N = cols(bQuant->val());
+    std::cerr << "dnnlDotOrAffineNodeOp" << (shifted ? " shifted" : "") << (transB ? " transB" : "") << std::endl;
 
-    dnnl_dim_t lda = K;
-    dnnl_dim_t ldb = N;
-    dnnl_dim_t ldc = N;
-    if (transB) {
-      N = rows(bQuant->val());
-      ldc = N;
-    }
+    dnnl::matmul matmul_p;
 
-    static const constexpr int8_t ao = 0;
-    static const constexpr int8_t bo = 0;
-    static const constexpr std::array<int32_t, 1> co = {0};
+    dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
+    dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
+    
+    dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+    dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+    dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
 
-    dnnl::status status;
-    char transposeB = transB ? 'T' : 'N';
+    dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
+    dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
+    dnnl::memory::desc c_md(rt_rt_dims, dt::s32, c_dims_strides);
 
-    if (shifted) {
-      status = dnnl::gemm_u8s8s32(/*transA*/  'N',
-                                   transposeB,
-                                   /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
-                                    M,
-                                    N,
-                                    K,
-                                    /*alpha*/ 1.0f,
-                                    aQuant->val()->data<uint8_t>(),
-                                    lda,
-                                    ao,
-                                    bQuant->val()->data<int8_t>(),
-                                    ldb,
-                                    bo,
-                                    /*beta*/ 0.0f,
-                                    out->val()->data<int32_t>(),
-                                    ldc,
-                                    co.data());
-    } else {
-      //https://oneapi-src.github.io/oneDNN/group_dnnl_api_blas.html?highlight=gemm_s8s8s32#doxid-group-dnnl-api-blas-1ga6bb7da88545097f097bbcd5778787826
-      status = my_gemm_s8s8s32(/* char transa       */ 'N',
-                                  /* char transb       */ transposeB,
-                                  /* char offsetc      */ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
-                                  /* dnnl_dim_t M      */ M,
-                                  /* dnnl_dim_t N      */ N,
-                                  /* dnnl_dim_t K      */ K,
-                                  /* float alpha       */ 1.0f,
-                                  /* const int8_t* A   */ aQuant->val()->data<int8_t>(), // M*K
-                                  /* dnnl_dim_t lda    */ lda,
-                                  /* int8_t ao         */ ao,
-                                  /* const int8_t* B   */ bQuant->val()->data<int8_t>(),
-                                  /* dnnl_dim_t ldb    */ ldb,
-                                  /* int8_t bo         */ bo,
-                                  /* float beta        */ 0.0f,
-                                  /* int32_t* C        */ out->val()->data<int32_t>(),
-                                  /* dnnl_dim_t ldc    */ ldc,
-                                  /* const int32_t* co */ co.data());
+    dnnl::primitive_attr attr;
+    attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
 
+    matmul::desc matmul_d(a_md, b_md, c_md);
+    matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+    if (matmul_pd) matmul_p = matmul(matmul_pd);
 
-    }
+    dnnl::memory A_m({
+        /* size   */ {rows(aQuant->val()), cols(aQuant->val())},
+        /* type   */ shifted ? dt::u8 : dt::s8,
+        /* stride */ {cols(aQuant->val()), 1}
+      },
+      eng,
+      shifted ? (void *) aQuant->val()->data<uint8_t>()
+              : (void *) aQuant->val()->data<int8_t>());
 
-    if (status != dnnl::status::success) {
-      printDNNLStatus(status);
-      ABORT("GEMM failed to run.");
-    }
+    dnnl::memory B_m(
+      transB ? dnnl::memory::desc{
+                 /* size   */ {cols(bQuant->val()), rows(bQuant->val())},
+                 /* type   */ dt::s8,
+                 /* stride */ {1, cols(bQuant->val())}
+               }
+             : dnnl::memory::desc {
+                 /* size   */ {rows(bQuant->val()), cols(bQuant->val())},
+                 /* type   */ dt::s8,
+                 /* stride */ {cols(bQuant->val()), 1}
+               },
+      eng,
+      (void *) bQuant->val()->data<int8_t>());
+    
+    dnnl::memory C_m({
+      /* size   */ {rows(out->val()), cols(out->val())},
+      /* type   */ dt::s32,
+      /* stride */ {cols(out->val()), 1}
+      },
+      eng,
+      (void *) out->val()->data<int32_t>());
+
+    // Prepare oneDNN memory for alpha
+    float alpha = 1.0f;
+    dnnl::memory alpha_m({{1}, dt::f32, {1}}, eng, &alpha);
+
+    dnnl::stream s(eng);
+    matmul_p.execute(s, {
+      {DNNL_ARG_SRC, A_m},
+      {DNNL_ARG_WEIGHTS, B_m},
+      {DNNL_ARG_DST, C_m},
+      {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}
+    });
+    s.wait();
+    
+    // TODO: How to get status?
+
+    // if (status != dnnl::status::success) {
+    //   printDNNLStatus(status);
+    //   ABORT("GEMM failed to run.");
+    // }
 
     //Unquantise and add bias if necessary
     if (bias && relu) {

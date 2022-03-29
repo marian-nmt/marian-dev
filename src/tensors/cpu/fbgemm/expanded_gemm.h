@@ -363,6 +363,13 @@ public:
                                            transB_)) };
     }
 #else // USE_FBGEMM
+    elementType_;
+    val_;
+    m_;
+    n_;
+    k_;
+    transA_;
+    transB_;
     ABORT("FbgemmPacked8AffineNodeOp can only be used with FBGEMM enabled.");
 #endif  // USE_FBGEMM
 

@@ -58,8 +58,6 @@ void JustUnquantise(marian::Tensor C, const float unquant_mult) {
 
 #ifdef __AVX512F__
   const __m512 unquant_mult_reg = _mm512_set1_ps(unquant_mult);
-#else
-  const __m128 unquant_mult_reg = _mm_set1_ps(unquant_mult);
 #endif
 
   const int m = C->shape().elements() / C->shape()[-1];
@@ -72,12 +70,6 @@ void JustUnquantise(marian::Tensor C, const float unquant_mult) {
     for(; i < n16; i += 16) {
       __m512 ai = _mm512_mul_ps(_mm512_cvtepi32_ps(_mm512_loadu_epi32(x + j * n + i)), unquant_mult_reg);
       _mm512_storeu_ps(y + j * n + i, ai);
-    }
-#else
-    int n4 = (n / 4) * 4;
-    for(; i < n4; i += 4) {
-      __m128 ai = _mm_mul_ps(_mm_cvtepi32_ps(_mm_loadu_epi32(x + j * n + i)), unquant_mult_reg);
-      _mm_storeu_ps(y + j * n + i, ai);
     }
 #endif
     for(; i < n; i++) {
@@ -94,9 +86,6 @@ void JustUnquantiseRelu(marian::Tensor C, const float unquant_mult) {
 #ifdef __AVX512F__
   const __m512 unquant_mult_reg = _mm512_set1_ps(unquant_mult);
   static const auto vconst_zero = _mm512_set1_ps(0.0f);
-#else
-  const __m128 unquant_mult_reg = _mm_set1_ps(unquant_mult);
-  static const auto vconst_zero = _mm_set1_ps(0.0f);
 #endif
 
   const int m = C->shape().elements() / C->shape()[-1];
@@ -109,12 +98,6 @@ void JustUnquantiseRelu(marian::Tensor C, const float unquant_mult) {
     for(; i < n16; i += 16) {
       __m512 ai = _mm512_mul_ps(_mm512_cvtepi32_ps(_mm512_loadu_epi32(x + j * n + i)), unquant_mult_reg);
       _mm512_storeu_ps(y + j * n + i, _mm512_max_ps(ai, vconst_zero));
-    }
-#else
-    int n4 = (n / 4) * 4;
-    for(; i < n4; i += 4) {
-      __m128 ai = _mm_mul_ps(_mm_cvtepi32_ps(_mm_loadu_epi32(x + j * n + i)), unquant_mult_reg);
-      _mm_storeu_ps(y + j * n + i, _mm_max_ps(ai, vconst_zero));
     }
 #endif
     for(; i < n; i++) {
@@ -132,8 +115,6 @@ void UnquantiseAndAddBias(marian::Tensor C, const marian::Tensor Bias, const flo
   const float* bias = Bias->data();
 #ifdef __AVX512F__
   const __m512 unquant_mult_reg = _mm512_set1_ps(unquant_mult);
-#else
-  const __m128 unquant_mult_reg = _mm_set1_ps(unquant_mult);
 #endif
 
   const int m = C->shape().elements() / C->shape()[-1];
@@ -148,14 +129,6 @@ void UnquantiseAndAddBias(marian::Tensor C, const marian::Tensor Bias, const flo
       __m512 bi = _mm512_loadu_ps(bias + i);
       __m512 yi = _mm512_add_ps(ai, bi);
       _mm512_storeu_ps(y + j * n + i, yi);
-    }
-#else
-    int n4 = (n / 4) * 4;
-    for(; i < n4; i += 4) {
-      __m128 ai = _mm_mul_ps(_mm_cvtepi32_ps(_mm_loadu_epi32(x + j * n + i)), unquant_mult_reg);
-      __m128 bi = _mm_loadu_ps(bias + i);
-      __m128 yi = _mm_add_ps(ai, bi);
-      _mm_storeu_ps(y + j * n + i, yi);
     }
 #endif
     for(; i < n; i++) {
@@ -172,9 +145,6 @@ void UnquantiseAndAddBiasAndRelu(marian::Tensor C, const marian::Tensor Bias, co
 #ifdef __AVX512F__
   const __m512 unquant_mult_reg = _mm512_set1_ps(unquant_mult);
   static const auto vconst_zero = _mm512_set1_ps(0.0f);
-#else
-  const __m128 unquant_mult_reg = _mm_set1_ps(unquant_mult);
-  static const auto vconst_zero = _mm_set1_ps(0.0f);
 #endif
 
   const int m = C->shape().elements() / C->shape()[-1];
@@ -189,14 +159,6 @@ void UnquantiseAndAddBiasAndRelu(marian::Tensor C, const marian::Tensor Bias, co
       __m512 bi = _mm512_loadu_ps(bias + i);
       __m512 yi = _mm512_max_ps(_mm512_add_ps(ai, bi), vconst_zero);
       _mm512_storeu_ps(y + j * n + i, yi);
-    }
-#else
-    int n4 = (n / 4) * 4;
-    for(; i < n4; i += 4) {
-      __m128 ai = _mm_mul_ps(_mm_cvtepi32_ps(_mm_loadu_epi32(x + j * n + i)), unquant_mult_reg);
-      __m128 bi = _mm_loadu_ps(bias + i);
-      __m128 yi = _mm_max_ps(_mm_add_ps(ai, bi), vconst_zero);
-      _mm_storeu_ps(y + j * n + i, yi);
     }
 #endif
     for(; i < n; i++) {

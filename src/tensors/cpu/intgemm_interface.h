@@ -30,6 +30,27 @@ using dt = dnnl::memory::data_type;
 
 static dnnl::engine eng = dnnl::engine(dnnl::engine::kind::cpu, 0);
 
+inline matmul::primitive_desc make_matmul_primitive(bool shifted, bool transB) {
+  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
+  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
+  
+  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  
+  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
+  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
+  dnnl::memory::desc c_md(rt_rt_dims, dt::s32, c_dims_strides);
+  
+  dnnl::primitive_attr attr;
+  attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
+  
+  matmul::desc matmul_d(a_md, b_md, c_md);
+  matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+
+  return matmul_pd;
+}
+
 namespace marian {
 
 namespace cpu {
@@ -644,25 +665,14 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
     // std::cerr << "dnnlDotOrAffineNodeOp" << (shifted ? " shifted" : "") << (transB ? " transB" : "") << std::endl;
 
-    dnnl::matmul matmul_p;
+    static std::array<matmul::primitive_desc, 4> matmul_x8s8s32 = {
+      make_matmul_primitive(false, false),
+      make_matmul_primitive(false, true),
+      make_matmul_primitive(true, false),
+      make_matmul_primitive(true, true),
+    };
 
-    dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
-    dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
-    
-    dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
-    dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-    dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-
-    dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
-    dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
-    dnnl::memory::desc c_md(rt_rt_dims, dt::s32, c_dims_strides);
-
-    dnnl::primitive_attr attr;
-    attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
-
-    matmul::desc matmul_d(a_md, b_md, c_md);
-    matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
-    if (matmul_pd) matmul_p = matmul(matmul_pd);
+    dnnl::matmul matmul_p = matmul(matmul_x8s8s32[2*shifted + transB]);
 
     dnnl::memory A_m({
         /* size   */ {rows(aQuant->val()), cols(aQuant->val())},
@@ -679,7 +689,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
                  /* type   */ dt::s8,
                  /* stride */ {1, cols(bQuant->val())}
                }
-             : dnnl::memory::desc {
+             : dnnl::memory::desc{
                  /* size   */ {rows(bQuant->val()), cols(bQuant->val())},
                  /* type   */ dt::s8,
                  /* stride */ {cols(bQuant->val()), 1}

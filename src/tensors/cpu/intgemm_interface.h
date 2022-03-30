@@ -328,7 +328,7 @@ public:
         const int8_t bo = 0;
         static const std::vector<int32_t> co(1,0);
         ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
-        std::cerr << "dnnl::gemm_u8s8s32 called on " << __LINE__ << std::endl;
+        ABORT("dnnl::gemm_u8s8s32 called");
         auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
                                         /*transB*/  'N',
                                         /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
@@ -413,7 +413,7 @@ public:
         const int8_t bo = 0;
         static const std::vector<int32_t> co(1,0);
         ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
-        std::cerr << "dnnl::gemm_u8s8s32 called on " << __LINE__ << std::endl;
+        ABORT("dnnl::gemm_u8s8s32 called");
         auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
                                         /*transB*/  'N',
                                         /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/

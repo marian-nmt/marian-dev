@@ -340,38 +340,46 @@ public:
         intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
       } else {
         static const std::vector<uint8_t> ones(64000, 1); // Large enough static array of ones that we can use
-        // DNNL parameters
-        const dnnl_dim_t M = 1;
-        dnnl_dim_t K = rows(b);
-        dnnl_dim_t N = cols(b);
+        static matmul::primitive_desc matmul_u8s8s32 = make_matmul_primitive(true, false);
 
-        const int8_t ao = 0;
-        const int8_t bo = 0;
-        static const std::vector<int32_t> co(1,0);
-        ///std::array<int32_t, 1> co = {0}; // This syntax is not allowed due to being in a macro
-        ABORT("dnnl::gemm_u8s8s32 called");
-        auto status = dnnl::gemm_u8s8s32(/*transA*/  'N',
-                                        /*transB*/  'N',
-                                        /*OffsetC*/ 'F', /* This parameter denotes whether there can be bias adition. Sadly while it technically supports it, it's only int32_t.*/
-                                        M,
-                                        N,
-                                        K,
-                                        /*alpha*/ 1.0f,
-                                        ones.data(),
-                                        /*lda*/ K,
-                                        ao,
-                                        b->template data<int8_t>(),
-                                        /*ldb*/ N,
-                                        bo,
-                                        /*beta*/ 0.0f,
-                                        val_->data<int32_t>(),
-                                        /*ldc*/ N,
-                                        co.data());
+        dnnl::matmul matmul_p = matmul(matmul_u8s8s32);
 
-        if (status != dnnl::status::success) {
-          printDNNLStatus(status);
-          ABORT("PrepareBias gemm didn't run");
-        }
+        dnnl::memory A_m({
+            /* size   */ {1, rows(b)},
+            /* type   */ dt::u8,
+            /* stride */ {rows(b), 1}
+          },
+          eng,
+          (void *) ones.data());
+
+        dnnl::memory B_m({
+           /* size   */ {rows(b), cols(b)},
+           /* type   */ dt::s8,
+           /* stride */ {cols(b), 1}
+                   },
+          eng,
+          (void *) b->template data<int8_t>());
+        
+        dnnl::memory C_m({
+          /* size   */ {rows(val_), cols(val_)},
+          /* type   */ dt::s32,
+          /* stride */ {cols(val_), 1}
+          },
+          eng,
+          (void *) val_->data<int32_t>());
+
+        // Prepare oneDNN memory for alpha
+        float alpha = 1.0f;
+        dnnl::memory alpha_m({{1}, dt::f32, {1}}, eng, &alpha);
+
+        dnnl::stream s(eng);
+        matmul_p.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}
+        });
+        s.wait();
 
         //Unquantise and add bias if necessary
         UnquantiseAndAddBias(val_, bias, unquant_mult);

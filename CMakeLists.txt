@@ -506,7 +506,7 @@ endif()
 # Find BLAS library
 if(COMPILE_CPU)
   if(NOT GENERATE_MARIAN_INSTALL_TARGETS)
-    set(EXT_LIBS ${EXT_LIBS} intgemm) # Enable intgemm when compiling CPU
+    set(EXT_LIBS ${EXT_LIBS} intgemm dnnl) # Enable intgemm when compiling CPU
     add_definitions(-DCOMPILE_CPU=1)
   endif()
   if(USE_APPLE_ACCELERATE)

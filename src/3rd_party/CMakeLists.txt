@@ -13,6 +13,11 @@ if(COMPILE_CPU)
     set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
     add_subdirectory(./intgemm)
   endif()
+
+  # OneDNN
+  set(DNNL_BUILD_TESTS OFF CACHE BOOL "Build dnnl tests")
+  add_subdirectory(./oneDNN)
+  include_directories(./oneDNN/include)
 endif(COMPILE_CPU)
 
 if(USE_FBGEMM)
@@ -169,7 +174,7 @@ if(CUDA_FOUND)
     endif(COMPILE_AMPERE)
 
     # install nccl in ${CMAKE_BINARY_DIR}/local similar to /usr/local linux installation
-    # Using $(MAKE) instead of $CMAKE_MAKE_PROGRAM in order to make parallelization in NCCL compilation work with make -j16. 
+    # Using $(MAKE) instead of $CMAKE_MAKE_PROGRAM in order to make parallelization in NCCL compilation work with make -j16.
     # Apparently this does not get properly propagated otherwise and builts with only a single thread/process.
     ExternalProject_Add(nccl_install
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nccl

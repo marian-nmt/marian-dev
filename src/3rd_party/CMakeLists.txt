@@ -17,6 +17,11 @@ if(COMPILE_CPU)
   # OneDNN
   set(DNNL_BUILD_TESTS OFF CACHE BOOL "Build dnnl tests")
   set(DNNL_BUILD_EXAMPLES OFF CACHE BOOL "Build dnnl examples")
+
+  if(USE_STATIC_LIBS)
+    set(DNNL_LIBRARY_TYPE "STATIC")
+  endif(USE_STATIC_LIBS)
+
   add_subdirectory(./oneDNN)
   include_directories(./oneDNN/include)
 endif(COMPILE_CPU)

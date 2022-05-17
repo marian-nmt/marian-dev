@@ -12,10 +12,6 @@
 #include "functional/tensor.h"
 #include "functional/operators.h"
 
-#if MKL_FOUND
-#include <mkl.h>
-#endif
-
 namespace marian {
 
 namespace cpu {
@@ -244,8 +240,6 @@ void Transpose0213(Tensor out, Tensor in) {
   }
 }
 
-// This function is called only when MKL is available.
-#if MKL_FOUND
 // Given a 4D array, transpose (swap) the initial 3 dimensions while keeping the last dimension.
 // e.g. 1234 --> 2134, 1234 --> 3214 (4 is always kept).
 // This is an optimized version for swapping first 3 dimensions
@@ -297,7 +291,7 @@ void TransposeFirst3In4(Tensor out, Tensor in, const std::vector<int>& vAxis) {
         float* outRow = out->data() + dst * innermost;
 
         if(!add) {
-          mkl_somatcopy('R', 'N', 1, innermost, 1.0f, inRow, innermost, outRow, innermost);
+          std::copy(inRow, inRow + innermost, outRow);
         } else {
           for(int ii = 0; ii < innermost; ++ii) {
             outRow[ii] += inRow[ii];
@@ -307,7 +301,6 @@ void TransposeFirst3In4(Tensor out, Tensor in, const std::vector<int>& vAxis) {
     }
   }
 }
-#endif  // MKL_FOUND
 
 inline void transpose4x4_SSE(const float* A,
                              float* B,
@@ -390,10 +383,8 @@ void TransposeGeneric(Tensor out, Tensor in, const std::vector<int>& vAxis) {
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
   if(vAxis == std::vector<int>({0, 2, 1, 3}))
     Transpose0213<false>(out, in);
-#if MKL_FOUND
   else if(vAxis.size() == 4 && vAxis[3] == 3)
     TransposeFirst3In4<false>(out, in, vAxis);
-#endif  // MKL_FOUND
   else if(vAxis == std::vector<int>({1, 0}) && in->shape()[-1] % 16 == 0
           && in->shape()[-2] % 16 == 0)
     Transpose10(out, in);
@@ -942,7 +933,7 @@ void CrossEntropyPick(Tensor out, Tensor in, Tensor labelIndices, float labelSmo
     // This appears to be safe i.e. that i >= 0 && i < cols is known
     float logsumexp = std::log(sumexp);
     float ce = logsumexp - sp[i] + max; // -log(p_i) = - logsoftmax(x_i - max) = - (x_i - max) - log(sum_j exp(x_j - max))
-    float ls = logsumexp - mean; 
+    float ls = logsumexp - mean;
     out->data()[j] = (1.f - labelSmoothingAlpha) * ce + labelSmoothingAlpha * ls;
   }
 }
@@ -977,7 +968,7 @@ void CrossEntropyPickBackward(Tensor out,
     // cross-entropy
     for(int i = 0; i < cols; ++i) {
       float sub = (float)(i == (int)labelIndices->data<IndexType>()[j]); // delta, true if label index and column index match
-      float dce = std::exp(sp[i] - max) / sumexp - sub 
+      float dce = std::exp(sp[i] - max) / sumexp - sub
                 + labelSmoothingAlpha * (sub - 1.f / (float)cols);
       so[i] += adj->data()[j] * dce;
     }
@@ -1383,7 +1374,7 @@ void RMSNormalizationGrad(Tensor gradX_,
       for(size_t i = 0; i < cols; ++i) {
         float rmsNorm  = (yRow[i] - beta[betaStride * i]) / gamma[gammaStride * i];
         float gradNorm = cols * adjRow[i] - rmsNorm * sum_adj_r;
-        gradNorm      /= cols * rms; 
+        gradNorm      /= cols * rms;
 
         gradXRow[i]                += gamma[gammaStride * i] * gradNorm;
         gradGamma[gammaStride * i] += adjRow[i] * rmsNorm;
@@ -1412,7 +1403,7 @@ void RMSNormalizationGrad(Tensor gradX_,
       for(size_t i = 0; i < cols; ++i) {
         float rmsNorm  = yRow[i] / gamma[gammaStride * i];
         float gradNorm = cols * adjRow[i] - rmsNorm * sum_adj_r;
-        gradNorm      /= cols * rms; 
+        gradNorm      /= cols * rms;
 
         gradXRow[i]                += gamma[gammaStride * i] * gradNorm;
         gradGamma[gammaStride * i] += adjRow[i] * rmsNorm;
@@ -1535,7 +1526,7 @@ void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
 template <typename FType>
 void LSTMOutputForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
   int rows = out_->shape().elements() / out_->shape()[-1];
-  
+
   int fVecSize = sizeof(FType) / sizeof(float);
   int cols = out_->shape()[-1] / fVecSize;
 
@@ -1568,7 +1559,7 @@ void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
 #ifdef __AVX__
   if(cols % 8 == 0)
     LSTMOutputForwardTyped<float32x8>(out, inputs);
-  else 
+  else
 #endif
   if(cols % 4 == 0)
     LSTMOutputForwardTyped<float32x4>(out, inputs);

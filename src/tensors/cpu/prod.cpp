@@ -205,7 +205,7 @@ void ProdBatched(marian::Tensor C,
     &group_size[0]);
 #else
   functional::Array<int, functional::Shape::size()> dims;
-  for(size_t i = 0; i < batchC; ++i) {
+  for(int i = 0; i < batchC; ++i) {
     cShapeMetaF.dims(i, dims);
     auto aIndex = aShapeMetaF.bindex(dims);
     auto bIndex = bShapeMetaF.bindex(dims);

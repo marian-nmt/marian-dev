@@ -140,7 +140,7 @@ void ProdBatched(marian::Tensor C,
   functional::Shape cShapeMetaF = cShapeMeta;
 
   functional::Array<int, functional::Shape::size()> dims;
-  for(size_t i = 0; i < batchC; ++i) {
+  for(int i = 0; i < batchC; ++i) {
     cShapeMetaF.dims(i, dims);
     auto aIndex = aShapeMetaF.bindex(dims);
     auto bIndex = bShapeMetaF.bindex(dims);

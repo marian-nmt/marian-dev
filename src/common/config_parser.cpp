@@ -15,13 +15,6 @@
 #include <stdexcept>
 #include <string>
 
-#if MKL_FOUND
-#include <mkl.h>
-#else
-#if BLAS_FOUND
-#include <cblas.h>
-#endif
-#endif
 
 namespace marian {
 
@@ -607,8 +600,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Regulariser flags (where to prune): edfh = encoder, decoder ffn heads",
      "");
 
-  
-  
+
+
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
   cli.switchGroup(previous_group);

@@ -20,6 +20,7 @@ if(USE_DNNL)
   set(DNNL_BUILD_TESTS OFF CACHE BOOL "Build dnnl tests")
   set(DNNL_BUILD_EXAMPLES OFF CACHE BOOL "Build dnnl examples")
 
+  set(DNNL_ENABLE_JIT_PROFILING OFF CACHE INTERNAL "" FORCE)
   if(USE_STATIC_LIBS)
     set(DNNL_LIBRARY_TYPE "STATIC" CACHE STRING "specifies whether oneDNN library should be SHARED or STATIC" FORCE)
   endif(USE_STATIC_LIBS)
@@ -27,6 +28,7 @@ if(USE_DNNL)
   if(NOT USE_OPENMP)
     set(DNNL_CPU_RUNTIME SEQ CACHE INTERNAL "" FORCE)
   endif()
+
   add_subdirectory(./oneDNN)
   include_directories(./oneDNN/include)
 

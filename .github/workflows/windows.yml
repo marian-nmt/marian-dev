@@ -51,9 +51,17 @@ jobs:
         echo "$env:CUDA_PATH/bin"       | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       shell: powershell
       if: matrix.gpu == true
+    # Cache boost install 
+    - name: Cache Boost
+      id: cache-boost
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.BOOST_ROOT }}
+        key: ${{ runner.os }}-${{ env.BOOST_URL }}
 
     # Boost is no longer pre-installed on GitHub-hosted Windows runners
     - name: Download Boost
+      if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
       run: |
         Write-Host "Downloading Boost to ${{ env.BOOST_ROOT }}"
         C:\msys64\usr\bin\wget.exe -nv "${{ env.BOOST_URL }}" -O "${{ github.workspace }}/boost.exe"

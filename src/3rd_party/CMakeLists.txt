@@ -29,6 +29,7 @@ if(USE_DNNL)
   endif()
   add_subdirectory(./oneDNN)
   include_directories(./oneDNN/include)
+
 endif(USE_DNNL)
 
 if(USE_FBGEMM)

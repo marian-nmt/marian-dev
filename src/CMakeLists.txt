@@ -128,7 +128,7 @@ set(MARIAN_SOURCES
 
 add_library(marian STATIC ${MARIAN_SOURCES})
 
-target_compile_options(marian PRIVATE ${ALL_WARNINGS})
+target_compile_options(marian PRIVATE ${ALL_WARNINGS} ${EXTRA_DEFINITIONS})
 
 # Generate git_revision.h to reflect current git revision information
 # [https://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake]

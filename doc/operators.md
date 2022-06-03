@@ -382,7 +382,7 @@ libraries containing device-specific optimisations. These libraries include:
     - CBLAS / OpenBLAS
     - FBGEMM
     - INTGEMM
-    - MKL
+    - oneDNN
   - GPU
     - CUDA (cuBLAS)
 

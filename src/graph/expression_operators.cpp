@@ -576,7 +576,7 @@ Expr bdot_legacy(Expr a, Expr b, bool transA, bool transB, float scale) {
 }
 
 Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
-  // general version, MKL, CBlas or CUDA
+  // general version (see affine for packed-type variants)
 
   int rows = a->shape().elements() / a->shape()[-1];
   Expr ones = a->graph()->ones({ rows, 1 });

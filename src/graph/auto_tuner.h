@@ -26,7 +26,7 @@ private:
   const size_t collectStatMax = 50;
   UPtr<timer::CPUTimer> timer_;
 
-  // This structure holds a hash key an algorithm function (e.g. int16, packed gemm, mkl gemm)
+  // This structure holds a hash key an algorithm function (e.g. int16, packed gemm, fp32 gemm)
   // for a specific operation size
   // hash: a unique hash key for each operation size
   //      (e.g. m, n, k, transpose A, transpose B, bias size for GEMM)

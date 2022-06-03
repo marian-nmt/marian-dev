@@ -8,7 +8,7 @@ namespace marian {
 // GEMM type enum
 typedef enum {
   Auto = 0,            // auto tuning between available GEMMs
-  Float32 = 1,         // MKL based GEMM, fp32
+  Float32 = 1,         // fp32 based GEMM
   FbFp16Packed = 10,   // FBGEMM based fp16 GEMM with packing
   FbInt8Packed = 11    // FBGEMM based int8 GEMM with packing
 } GemmType;

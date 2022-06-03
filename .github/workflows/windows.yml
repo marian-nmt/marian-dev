@@ -78,6 +78,7 @@ jobs:
 
     # Windows CUDA builds use USE_NCCL=off due to compilation errors.
     - name: Build Debug
+      id: build-debug
       uses: lukka/run-cmake@v3
       with:
         buildDirectory: ${{ github.workspace }}/build/Debug
@@ -102,6 +103,11 @@ jobs:
       # its main purpose is to detect warnings that the Release build is not
       # able to find sometimes.
       if: matrix.gpu == true
+
+    - name: Cleanup Debug
+      if: steps.build-debug.conclusion == 'success'
+      working-directory: ${{ github.workspace }}/build/Debug
+      run: cmake --build . --target clean
 
     # Windows CUDA builds use USE_NCCL=off due to compilation errors
     - name: Build Release

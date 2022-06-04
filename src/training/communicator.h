@@ -130,7 +130,7 @@ private:
       int totalSize = (int)graphs_[0]->params()->vals()->size();
       int shardSize = (int)ceil(totalSize / (float)graphs_.size());
 
-      int pos = 0;
+      // int pos = 0; // This was used at some point, but no longer is causes compilation fails with clang 13.0.1
       for(auto graph : graphs_) {
         int __size__ = std::min(shardSize, totalSize);
 
@@ -145,7 +145,7 @@ private:
         tmpTensors_.push_back(tmp);
 
         // move to next shard
-        pos += __size__;
+        // pos += __size__;
         totalSize -= __size__;
       }
     }

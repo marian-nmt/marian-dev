@@ -96,8 +96,8 @@ jobs:
     # https://github.com/actions/virtual-environments/issues/687#issuecomment-610471671
     - name: Configure CMake
       run: |
-        [ -z "${{ matrix.gcc }}"] || export CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }}
-        [ -z "${{ matrix.clang }}"] || export CC=/usr/bin/clang-{{ matrix.clang }} CXX=/usr/bin/clang++-${{ matrix.clang }}
+        [ -z "${{ matrix.gcc }}" ] || export CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }}
+        [ -z "${{ matrix.clang }}" ] || export CC=/usr/bin/clang-{{ matrix.clang }} CXX=/usr/bin/clang++-${{ matrix.clang }}
         mkdir -p build
         cd build
         cmake .. \

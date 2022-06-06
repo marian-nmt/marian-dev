@@ -33,6 +33,7 @@ jobs:
           - name: "Ubuntu 22.04 CPU clang-14"
             os: ubuntu-22.04
             cuda: ""
+            gcc: 9
             clang: 14
             cpu: true
             gpu: false
@@ -76,8 +77,8 @@ jobs:
     # Clang 14.0 is installed on the default ubuntu-22.04 image
     - name: Install dependencies
       run: |
-        sudo apt-get install -y libgoogle-perftools-dev libprotobuf-dev protobuf-compiler libboost-system-dev
-        [ -z "${{ matrix.gcc }}" ] || sudo apt-get install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }}
+        sudo apt-get install -y libgoogle-perftools-dev libprotobuf-dev protobuf-compiler libboost-system-dev \
+            gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }}
 
     # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html
     - name: Install MKL

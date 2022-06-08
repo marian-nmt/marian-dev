@@ -13,18 +13,20 @@ if(COMPILE_CPU)
     set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
     add_subdirectory(./intgemm)
   endif()
+endif(COMPILE_CPU)
 
+if(USE_DNNL)
   # OneDNN
   set(DNNL_BUILD_TESTS OFF CACHE BOOL "Build dnnl tests")
   set(DNNL_BUILD_EXAMPLES OFF CACHE BOOL "Build dnnl examples")
 
   if(USE_STATIC_LIBS)
-    set(DNNL_LIBRARY_TYPE "STATIC")
+    set(DNNL_LIBRARY_TYPE "STATIC" CACHE STRING "specifies whether oneDNN library should be SHARED or STATIC" FORCE)
   endif(USE_STATIC_LIBS)
 
   add_subdirectory(./oneDNN)
   include_directories(./oneDNN/include)
-endif(COMPILE_CPU)
+endif(USE_DNNL)
 
 if(USE_FBGEMM)
   # @TODO: find out if this is somehow harmful. This is supppressing CMake warnings for CMAKE_SUPPRESS_DEVELOPER_WARNINGS

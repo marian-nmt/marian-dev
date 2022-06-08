@@ -26,6 +26,7 @@ option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_DOXYGEN "Build documentation with Doxygen" ON)
 option(USE_FBGEMM "Use FBGEMM" OFF)
 option(USE_MKL "Compile with MKL support" ON)
+option(USE_DNNL "Compile with oneDNN support" OFF)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
@@ -512,9 +513,15 @@ endif()
 # Find BLAS library
 if(COMPILE_CPU)
   if(NOT GENERATE_MARIAN_INSTALL_TARGETS)
-    set(EXT_LIBS ${EXT_LIBS} intgemm dnnl) # Enable intgemm when compiling CPU
+    set(EXT_LIBS ${EXT_LIBS} intgemm) # Enable intgemm when compiling CPU
     add_definitions(-DCOMPILE_CPU=1)
   endif()
+
+  if(USE_DNNL)
+    set(EXT_LIBS ${EXT_LIBS} dnnl)
+    add_definitions(-DDNNL_FOUND=1)
+  endif(USE_DNNL)
+
   if(USE_APPLE_ACCELERATE)
     if(NOT APPLE)
       message(FATAL_ERROR "FATAL ERROR: Apple Accelerate only works on macOS.")
@@ -545,7 +552,7 @@ if(COMPILE_CPU)
           add_definitions(-DBLAS_FOUND=1)
         endif(CBLAS_FOUND)
       endif(BLAS_FOUND)
-    endif(MKL_FOUND)
+    endif()
   endif(USE_APPLE_ACCELERATE)
 endif(COMPILE_CPU)
 

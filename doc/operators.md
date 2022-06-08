@@ -383,6 +383,7 @@ libraries containing device-specific optimisations. These libraries include:
     - FBGEMM
     - INTGEMM
     - MKL
+    - oneDNN
   - GPU
     - CUDA (cuBLAS)
 

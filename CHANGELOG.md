@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix compilation with OMP
 - Compute aligned memory sizes using exact sizing
 - Added `--model-mmap` option to enable mmap loading for CPU-based translation
+- oneDNN is available for GEMM on CPU.
 
 ### Fixed
 - Missing depth-scaling in transformer FFN

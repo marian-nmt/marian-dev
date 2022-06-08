@@ -9,10 +9,10 @@
 
 #if MKL_FOUND
 #include <mkl.h>
-#else
-#if BLAS_FOUND
+#elif DNNL_FOUND
+#include <oneapi/dnnl/dnnl.hpp>
+#elif BLAS_FOUND
 #include <cblas.h>
-#endif
 #endif
 
 #include "integer_common.h"
@@ -30,7 +30,6 @@ void Prod(marian::Tensor C,
           bool transB,
           float beta,
           float scalar) {
-#if BLAS_FOUND
   float alpha = scalar;
 
   int m = A->shape().elements() / A->shape()[-1];
@@ -63,10 +62,6 @@ void Prod(marian::Tensor C,
         beta,
         C->data(),
         ldc);
-#else
-  C; A; B; transA; transB; beta; scalar;
-  ABORT("You need to compile with MKL in order to use the CPU version");
-#endif
 }
 
 // dummy implementation, computeType doesn't do anything on CPU
@@ -90,7 +85,6 @@ void ProdBatched(marian::Tensor C,
                  bool transB,
                  float beta,
                  float scalar) {
-#if BLAS_FOUND
   float alpha = scalar;
 
   size_t batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
@@ -193,10 +187,6 @@ void ProdBatched(marian::Tensor C,
           C->data() + i * strideC,
           (int)ldc);
   }
-#endif
-#else
-  C; A; B; transA; transB; beta; scalar;
-  ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
 }
 

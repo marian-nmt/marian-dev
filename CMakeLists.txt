@@ -545,6 +545,11 @@ if(COMPILE_CPU)
   endif(USE_APPLE_ACCELERATE)
 endif(COMPILE_CPU)
 
+
+if(NOT BLAS_FOUND AND USE_FBGEMM)
+message(FATAL_ERROR "FBGEMM was requested by BLAS vendor was not found.")
+endif()
+
 ###############################################################################
 # Find OpenSSL
 set(BOOST_COMPONENTS "")

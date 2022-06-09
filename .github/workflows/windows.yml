@@ -123,7 +123,7 @@ jobs:
           -DCOMPILE_TESTS="TRUE"
           -DDETERMINISTIC="TRUE"
           -DUSE_FBGEMM="TRUE"
-          -DUSE_DNNL="TRUE" -DUSE_MKL="FALSE"
+          -DUSE_DNNL="TRUE"
           -DUSE_MPI="FALSE"
           -DUSE_NCCL="FALSE"
           -DUSE_SENTENCEPIECE="TRUE"

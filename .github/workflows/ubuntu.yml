@@ -117,7 +117,6 @@ jobs:
       if: matrix.cpu == true && matrix.gpu == false
       id: cmake-onednn
       run: |
-        sudo apt install -y libopenblas-dev
         mkdir -p build-onednn
         cd build-onednn
         CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }} \

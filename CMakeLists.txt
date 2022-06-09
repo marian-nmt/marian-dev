@@ -547,7 +547,7 @@ endif(COMPILE_CPU)
 
 
 if(NOT BLAS_FOUND AND USE_FBGEMM)
-message(FATAL_ERROR "FBGEMM was requested by BLAS vendor was not found.")
+message(FATAL_ERROR "FBGEMM was requested but a BLAS vendor was not found.")
 endif()
 
 ###############################################################################

@@ -9,10 +9,6 @@
 
 #if MKL_FOUND
 #include <mkl.h>
-#elif DNNL_FOUND
-#include <oneapi/dnnl/dnnl.hpp>
-#elif BLAS_FOUND
-#include <cblas.h>
 #endif
 
 #include "integer_common.h"
@@ -139,7 +135,8 @@ void ProdBatched(marian::Tensor C,
   functional::Shape bShapeMetaF = bShapeMeta;
   functional::Shape cShapeMetaF = cShapeMeta;
 
-#if MKL_FOUND
+// Prefer DNNL when available
+#if MKL_FOUND && !defined(DNNL_FOUND)
   CBLAS_TRANSPOSE transA_forarr = CblasNoTrans;
   CBLAS_TRANSPOSE transB_forarr = CblasNoTrans;
 
@@ -263,7 +260,8 @@ void ProdBatchedLegacy(marian::Tensor C,
   auto strideC = n * m;
 
   auto batchC = std::max(batchA, batchB);
-#if MKL_FOUND
+// Prefer DNNL when available
+#if MKL_FOUND && !defined(DNNL_FOUND)
   CBLAS_TRANSPOSE transA_forarr = CblasNoTrans;
   CBLAS_TRANSPOSE transB_forarr = CblasNoTrans;
 

@@ -1,7 +1,9 @@
+#if DNNL_FOUND
+#include <oneapi/dnnl/dnnl.hpp>
+#endif
+
 #if MKL_FOUND
 #include <mkl.h>
-#elif DNNL_FOUND
-#include <oneapi/dnnl/dnnl.hpp>
 #elif BLAS_FOUND
 #include <cblas.h>
 #endif
@@ -20,7 +22,7 @@ inline void sgemm(bool transA,
                   float* c,
                   int ldc) {
 // MKL_FOUND also implies BLAS_FOUND so use DNNL only if MKL is not found
-#if defined(DNNL_FOUND) && !defined(MKL_FOUND)
+#if defined(DNNL_FOUND) //&& !defined(MKL_FOUND)
   dnnl::sgemm(transA ? 't' : 'n',
               transB ? 't' : 'n',
               rows_a,

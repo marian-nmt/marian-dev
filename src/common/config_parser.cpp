@@ -910,6 +910,10 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
         "When forming minibatches, preprocess every Nth line on the fly to all-caps. Assumes UTF-8");
     cli.add<size_t>("--english-title-case-every",
         "When forming minibatches, preprocess every Nth line on the fly to title-case. Assumes English (ASCII only)");
+    cli.add<size_t>("--all-lower-caps-every",
+        "When forming minibatches, preprocess every Nth line on the fly to all lower caps. Assumes UTF-8");
+    cli.add<size_t>("--all-title-case-every",
+        "When forming minibatches, preprocess every Nth line on the fly to all title case. Assumes UTF-8");
 
     cli.add<size_t>("--mini-batch-words-ref",
         "If given, the following hyper parameters are adjusted as-if we had this mini-batch size: "

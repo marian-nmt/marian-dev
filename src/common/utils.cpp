@@ -353,16 +353,24 @@ std::string utf8ToUpper(const std::string& s)     { return utf8ToUpperOrLower(s,
 std::string utf8ToLower(const std::string& s)     { return utf8ToUpperOrLower(s, /*toLower=*/true , /*toInitCap=*/false); }
 std::string utf8Capitalized(const std::string& s) { return utf8ToUpperOrLower(s, /*toLower=*/false, /*toInitCap=*/true ); }
 
+std::string toAllTitleCase(const std::string& s) {
+  return toEnglishTitleCase(s, true);
+}
+
 // convert an English sentence to title case
 // Since title case is an English thing, we only consider ASCII characters.
-std::string toEnglishTitleCase(const std::string& s) {
+std::string toEnglishTitleCase(const std::string& s, bool enableAllTitleCase) {
   auto res = s;
   // process token by token
   const std::string wordStartChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const std::string wordInternalChars = wordStartChars + "'"; // don't title-case letters after word-internal apostrophe
-  const std::set<std::string> exceptions = { // from moses-scripts/scripts/recaser/detruecase.perl
+  std::set<std::string> exceptions = { // from moses-scripts/scripts/recaser/detruecase.perl
     "a","after","against","al-.+","and","any","as","at","be","because","between","by","during","el-.+","for","from","his","in","is","its","last","not","of","off","on","than","the","their","this","to","was","were","which","will","with"
   };
+
+  if (enableAllTitleCase)
+    exceptions.clear();
+
   const std::set<char> wordPredChars = {' ', '"', '\'', '-'}; // only capitalize words if following these characters (to avoid upper-casing word-internal SPM units)
   // These are tokenization heuristics, which may be incomplete.
   size_t epos = 0;

@@ -84,9 +84,11 @@ public:
   // @TODO: Consider a different implementation where this does not show on the vocab interface,
   //        but instead as additional options passed to vocab instantiation.
   std::string toUpper(const std::string& line) const;
+  std::string toLower(const std::string& line) const;
 
   // for corpus augmentation: convert string to title case
   std::string toEnglishTitleCase(const std::string& line) const;
+  std::string toAllTitleCase(const std::string& line) const;
 
   // for short-list generation
   void transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const;

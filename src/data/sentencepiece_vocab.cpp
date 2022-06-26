@@ -284,7 +284,10 @@ public:
   }
 
   std::string toUpper(const std::string& line) const override { return utils::utf8ToUpper(line); }
+  std::string toLower(const std::string& line) const override { return utils::utf8ToLower(line); }
+
   std::string toEnglishTitleCase(const std::string& line) const override { return utils::toEnglishTitleCase(line); }
+  std::string toAllTitleCase(const std::string& line) const override { return utils::toAllTitleCase(line); }
 
   // SentencePiece with byte-fallback may generate control symbols with output sampling.
   // Let's mark them as special and suppress them later on output. This is generally safe

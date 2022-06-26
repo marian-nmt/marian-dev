@@ -48,7 +48,9 @@ public:
   // without specific knowledge of tokenization, these two functions can do nothing
   // Both SentencePieceVocab and FactoredSegmenterVocab
   virtual std::string toUpper(const std::string& line) const { return line; }
+  virtual std::string toLower(const std::string& line) const { return line; }
   virtual std::string toEnglishTitleCase(const std::string& line) const { return line; }
+  virtual std::string toAllTitleCase(const std::string& line) const { return line; }
 
   // Identity mapping for default vocabularies, hence do nothing
   virtual void transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const { ptr; num; }

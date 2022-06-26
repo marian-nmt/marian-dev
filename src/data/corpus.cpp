@@ -16,7 +16,9 @@ Corpus::Corpus(Ptr<Options> options, bool translate /*= false*/, size_t seed /*=
     : CorpusBase(options, translate, seed),
       shuffleInRAM_(options_->get<bool>("shuffle-in-ram", false)),
       allCapsEvery_(options_->get<size_t>("all-caps-every", 0)),
-      titleCaseEvery_(options_->get<size_t>("english-title-case-every", 0)) {
+      titleCaseEvery_(options_->get<size_t>("english-title-case-every", 0)),
+      allLowerCaseEvery_(options_->get<size_t>("all-lower-caps-every", 0)),
+      allTitleCaseEvery_(options_->get<size_t>("all-title-case-every", 0)) {
 
   auto numThreads = options_->get<size_t>("data-threads", 1);
   if(numThreads > 1)
@@ -31,7 +33,9 @@ Corpus::Corpus(std::vector<std::string> paths,
     : CorpusBase(paths, vocabs, options, seed),
       shuffleInRAM_(options_->get<bool>("shuffle-in-ram", false)),
       allCapsEvery_(options_->get<size_t>("all-caps-every", 0)),
-      titleCaseEvery_(options_->get<size_t>("english-title-case-every", 0)) {
+      titleCaseEvery_(options_->get<size_t>("english-title-case-every", 0)),
+      allLowerCaseEvery_(options_->get<size_t>("all-lower-caps-every", 0)),
+      allTitleCaseEvery_(options_->get<size_t>("all-title-case-every", 0)) {
   
   auto numThreads = options_->get<size_t>("data-threads", 1);
   if(numThreads > 1)
@@ -50,11 +54,30 @@ void Corpus::preprocessLine(std::string& line, size_t streamId, size_t lineId, b
       LOG_ONCE(info, "[data] Target all-caps'ed line to: {}", line);
     altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for all caps
   }
+  else if (allLowerCaseEvery_ != 0 && lineId % allLowerCaseEvery_ == 0 && !inference_) {
+    line = vocabs_[streamId]->toLower(line);
+    if (streamId == 0)
+      LOG_ONCE(info, "[data] Source lower-caps'ed line to: {}", line);
+    else
+      LOG_ONCE(info, "[data] Target lower-caps'ed line to: {}", line);
+    altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for all caps
+  }
   else if (titleCaseEvery_ != 0 && lineId % titleCaseEvery_ == 1 && !inference_ && streamId == 0) {
     // Only applied to stream 0 (source) since this feature is aimed at robustness against
     // title case in the source (and not at translating into title case).
     // Note: It is user's responsibility to not enable this if the source language is not English.
     line = vocabs_[streamId]->toEnglishTitleCase(line);
+    if (streamId == 0)
+      LOG_ONCE(info, "[data] Source English-title-case'd line to: {}", line);
+    else
+      LOG_ONCE(info, "[data] Target English-title-case'd line to: {}", line);
+    altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for title casing
+  }
+  else if (allTitleCaseEvery_ != 0 && lineId % allTitleCaseEvery_ == 1 && !inference_ && streamId == 0) {
+    // Only applied to stream 0 (source) since this feature is aimed at robustness against
+    // title case in the source (and not at translating into title case).
+    // Note: It is user's responsibility to not enable this if the source language is not English.
+    line = vocabs_[streamId]->toAllTitleCase(line);
     if (streamId == 0)
       LOG_ONCE(info, "[data] Source English-title-case'd line to: {}", line);
     else

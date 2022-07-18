@@ -20,3 +20,6 @@
 [submodule "src/3rd_party/simple-websocket-server"]
 	path = src/3rd_party/simple-websocket-server
 	url = https://github.com/marian-nmt/Simple-WebSocket-Server
+[submodule "src/3rd_party/pybind11"]
+	path = src/3rd_party/pybind11
+	url = https://github.com/marian-nmt/pybind11.git

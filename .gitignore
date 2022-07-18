@@ -63,3 +63,4 @@ examples/mnist/*ubyte
 .vs
 .vscode
 
+python/build

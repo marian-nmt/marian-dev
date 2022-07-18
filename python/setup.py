@@ -14,6 +14,6 @@ ext_modules = [
 ]
 
 setup(
-    include_dirs=["../src"],
+    include_dirs=["../src", "../src/3rd_party"],
     ext_modules=ext_modules,
 )

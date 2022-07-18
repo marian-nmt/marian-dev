@@ -257,8 +257,18 @@ private:
 
   size_t numDevices_;
 
+  Ptr<Options> toOptions(const std::string& yamlString) {
+    Ptr<Options> options = New<Options>();
+    YAML::Node config(yamlString);
+    options->merge(config);
+    return options;
+  }
+
 public:
   virtual ~TranslateService() {}
+
+  TranslateService(const std::string& yamlString)
+    : TranslateService(toOptions(yamlString)) {}
 
   TranslateService(Ptr<Options> options)
     : options_(New<Options>(options->clone())) {

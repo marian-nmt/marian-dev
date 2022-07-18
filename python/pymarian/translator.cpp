@@ -1,17 +1,15 @@
 #include <pybind11/pybind11.h>
+
+#include "marian.h"
 #include "translator/translator.h"
 #include "translator/beam_search.h"
 
 namespace py = pybind11;
 
-namespace marian {
-  class BeamTranslateService : public TranslateService<BeamSearch> {};
-};
-
-PYBIND11_MODULE(pymarian, m) {
+PYBIND11_MODULE(_pymarian, m) {
   // Classes
-  py::class_<marian::BeamTranslateService>(m, "BeamTranslator")
+  py::class_<marian::TranslateService<marian::BeamSearch>>(m, "Translator")
       .def(py::init<std::string>())
-      .def("translate", &marian::BeamTranslateService::run);
+      .def("translate", &marian::TranslateService<marian::BeamSearch>::run);
 }
 

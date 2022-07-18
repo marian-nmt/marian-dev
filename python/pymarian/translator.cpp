@@ -3,7 +3,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_torchtext, m) {
+PYBIND11_MODULE(_pymarian, m) {
   // Classes
   py::class_<marian::TranslateService>(m, "Translator")
       .def(py::init<std::string>())

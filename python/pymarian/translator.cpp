@@ -6,7 +6,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pymarian, m) {
+PYBIND11_MODULE(pymarian, m) {
   // Classes
   py::class_<marian::TranslateService<marian::BeamSearch>>(m, "Translator")
       .def(py::init<std::string>())

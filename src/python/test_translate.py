@@ -15,7 +15,13 @@ def encode(line, sp):
 def decode(line, sp):
     return sp.Decode(line.split(" "))
 
+input = []
 for line in sys.stdin:
-    input = encode(line, sp_src)
-    output = marian.translate(input) # synchronous line-by-line call
-    print(decode(output, sp_trg))
+    input.append(encode(line, sp_src))
+input = "\n".join(input)
+
+output = marian.translate(input)
+
+output = output.split("\n")
+for line in output:
+    print(decode(line, sp_trg))

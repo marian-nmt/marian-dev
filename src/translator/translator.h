@@ -327,6 +327,12 @@ public:
     }
   }
 
+  std::vector<std::string> run(const std::vector<std::string>& inputs) override {
+      auto input = utils::join(inputs, "\n");
+      auto translations = run(input);
+      return utils::split(translations, "\n");
+  }
+
   std::string run(const std::string& input) override {
     // split tab-separated input into fields if necessary
     auto inputs = options_->get<bool>("tsv", false)

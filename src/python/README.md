@@ -4,4 +4,4 @@ python -mpip install sentencepiece
 
 python setup.py build --verbose --parallel 16 install
 
-echo "Hello World." | python test.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm
+echo "Hello World." | python test_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm

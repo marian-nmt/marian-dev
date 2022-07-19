@@ -29,6 +29,7 @@ option(USE_MKL "Compile with MKL support" ON)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
+option(USE_TCMALLOC "Use TCMALLOC if available" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
 option(DETERMINISTIC "Try to make training results as deterministic as possible (e.g. for testing)" OFF)
@@ -491,16 +492,19 @@ if(USE_STATIC_LIBS)
 endif()
 
 ###############################################################################
-# Find Tcmalloc
-if(NOT WIN32)
-  find_package(Tcmalloc)
-  if(Tcmalloc_FOUND)
-    include_directories(${Tcmalloc_INCLUDE_DIR})
-    set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES})
-  else(Tcmalloc_FOUND)
-    message(WARNING "Cannot find TCMalloc library. Continuing.")
-  endif(Tcmalloc_FOUND)
-endif()
+# Seems to make SentencePiece Python module fail
+if(USE_TCMALLOC)
+  # Find Tcmalloc
+  if(NOT WIN32)
+    find_package(Tcmalloc)
+    if(Tcmalloc_FOUND)
+      include_directories(${Tcmalloc_INCLUDE_DIR})
+      set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES})
+    else(Tcmalloc_FOUND)
+      message(WARNING "Cannot find TCMalloc library. Continuing.")
+    endif(Tcmalloc_FOUND)
+  endif()
+endif(USE_TCMALLOC)
 
 ###############################################################################
 # Find BLAS library

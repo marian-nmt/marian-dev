@@ -332,7 +332,8 @@ public:
     auto inputs = options_->get<bool>("tsv", false)
                       ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
                       : std::vector<std::string>({input});
-    return run(inputs);
+    auto translations = run(inputs);
+    return utils::join(translations, "\n");
   }
 
   std::vector<std::string> run(const std::vector<std::string>& inputs) override {
@@ -375,7 +376,7 @@ public:
     }
 
     auto translations = collector->collect(options_->get<bool>("n-best"));
-    return utils::join(translations, "\n");
+    return translations;
   }
 
 private:

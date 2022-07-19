@@ -123,3 +123,12 @@ jobs:
         ./marian-server --version
         ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
+
+    - name: Install PyMarian
+      working-directory: build
+      run: |
+        python3 -m venv .venv && source .venv/bin/activate
+        pip install pybind11
+        cd python
+        python -m pip install .
+        

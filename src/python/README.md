@@ -1,6 +1,6 @@
 python3 -m venv ./venv
 source ./venv/bin/activate
-python -mpip install sentencepiece
+python -mpip install sentencepiece scikit-build pybind11
 
 python setup.py build --verbose --parallel 16 install
 

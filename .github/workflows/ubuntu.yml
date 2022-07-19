@@ -123,3 +123,12 @@ jobs:
         ./marian-server --version
         ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
+
+
+    - name: Install PyMarian
+      working-directory: build
+      run: |
+        python3 -m venv .venv && source .venv/bin/activate
+        python -m pip install pybind11 sentencepiece
+        python setup.py build -- -- -j16
+        echo "Hello World." | python test_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm

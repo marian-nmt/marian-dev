@@ -260,9 +260,10 @@ private:
   Ptr<Options> toOptions(const std::string& yamlFile) {
     Ptr<Options> options = New<Options>();
     YAML::Node config = YAML::LoadFile(yamlFile);
+    
     options->merge(config);
 
-    std::vector<std::string> models = options->get<std::vector<std::string>>("model");
+    std::vector<std::string> models = options->get<std::vector<std::string>>("models");
     for(int i = 0; i < models.size(); ++i) {
       YAML::Node modelConfig;
       io::getYamlFromModel(modelConfig, "special:model.yml", models[i]);
@@ -297,7 +298,7 @@ public:
     trgVocab_->load(vocabPaths.back());
     auto srcVocab = srcVocabs_.front();
 
-    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn");
+    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
 
     // load lexical shortlist

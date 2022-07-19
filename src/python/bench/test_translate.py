@@ -14,4 +14,4 @@ def batch(s, batch_size=1600):
         yield chunk
 
 for b in batch(map(str.strip, sys.stdin)):
-    print(marian.translate("\n".join(b)))
+    print("\n".join(marian.translate(b)))

@@ -257,27 +257,11 @@ private:
 
   size_t numDevices_;
 
-  Ptr<Options> toOptions(const std::string& yamlFile) {
-    Ptr<Options> options = New<Options>();
-    YAML::Node config = YAML::LoadFile(yamlFile);
-    
-    options->merge(config);
-
-    std::vector<std::string> models = options->get<std::vector<std::string>>("models");
-    for(int i = 0; i < models.size(); ++i) {
-      YAML::Node modelConfig;
-      io::getYamlFromModel(modelConfig, "special:model.yml", models[i]);
-      options->merge(modelConfig);
-    }
-
-    return options;
-  }
-
 public:
   virtual ~TranslateService() {}
 
-  TranslateService(const std::string& yamlFile)
-    : TranslateService(toOptions(yamlFile)) {}
+  TranslateService(const std::string& cliString)
+    : TranslateService(parseOptions(cliString, cli::mode::translation, /*validate=*/true)) {}
 
   TranslateService(Ptr<Options> options)
     : options_(New<Options>(options->clone())) {

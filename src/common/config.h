@@ -114,4 +114,19 @@ Ptr<Options> parseOptions(int argc,
                           cli::mode mode,
                           bool validate = true);
 
+/**
+ * Parse the command line options. 
+ * Same as above, but args provided as C++ string object, space-delimited. This is used for instance
+ * in the python bindings as a simple string-based interface.
+ *
+ * @param args space delimited command line options
+ * @param mode change the set of available command-line options, e.g. training, translation, etc.
+ * @param validate validate parsed options and abort on failure
+ *
+ * @return parsed options
+ */
+Ptr<Options> parseOptions(const std::string& args, 
+                          cli::mode mode,
+                          bool validate = true);
+
 }  // namespace marian

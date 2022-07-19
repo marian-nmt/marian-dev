@@ -1,12 +1,11 @@
 import sys
 
-import pymarian
+from pymarian import Translator
 from sentencepiece import SentencePieceProcessor
 
-sp_src = SentencePieceProcessor(model_file="/home/marcinjd/MTMA/source.spm")
-sp_trg = SentencePieceProcessor(model_file="/home/marcinjd/MTMA/target.spm")
-
-marian = pymarian.Translator("/home/marcinjd/MTMA/decoder.yml")
+marian = Translator(sys.argv[1])
+sp_src = SentencePieceProcessor(model_file=sys.argv[2])
+sp_trg = SentencePieceProcessor(model_file=sys.argv[3])
 
 for line in sys.stdin:
     line = " ".join(sp_src.Encode(line, out_type=str))

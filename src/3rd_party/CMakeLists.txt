@@ -8,6 +8,8 @@ add_subdirectory(./zlib)
 add_subdirectory(./faiss)
 include_directories(./faiss)
 
+add_subdirectory(./pybind11)
+
 if(COMPILE_CPU)
   if(NOT GENERATE_MARIAN_INSTALL_TARGETS)
     set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")

@@ -83,15 +83,6 @@ jobs:
       run: ./scripts/ci/install_cuda_ubuntu.sh ${{ matrix.cuda }}
       if: matrix.gpu == true
 
-- name: Install PyMarian
-      working-directory: build
-      run: |
-        python3 -m venv .venv && source .venv/bin/activate
-        python -m pip install pybind11 sentencepiece
-        cd src/python
-        python setup.py build --verbose --parallel 16 install
-        echo "Hello World." | python test_foobar_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm
-
     # https://github.com/actions/virtual-environments/issues/687#issuecomment-610471671
     - name: Configure CMake
       run: |
@@ -133,12 +124,3 @@ jobs:
         ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
 
-
-    - name: Install PyMarian
-      working-directory: build
-      run: |
-        python3 -m venv .venv && source .venv/bin/activate
-        python -m pip install pybind11 sentencepiece
-        cd src/python
-        python setup.py build --verbose --parallel 16 install
-        echo "Hello World." | python test_foobar_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm

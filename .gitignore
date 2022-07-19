@@ -1,4 +1,4 @@
-# Config files from CMake
+python/pymarian.egg-info/# Config files from CMake
 src/common/project_version.h
 src/common/git_revision.h
 src/common/build_info.cpp
@@ -63,4 +63,6 @@ examples/mnist/*ubyte
 .vs
 .vscode
 
-python/build
+src/python/build/
+src/python/dist/
+src/python/pymarian.egg-info/

@@ -299,15 +299,18 @@ endif(COMPILE_EXAMPLES)
 
 if(GENERATE_MARIAN_INSTALL_TARGETS)
   # Install the marian library if given a "make install" target
-  include(GNUInstallDirs)                 # This defines default values for installation directories (all platforms even if named GNU)
+  include(GNUInstallDirs) # This defines default values for installation directories (all platforms even if named GNU)
   install(TARGETS marian
     EXPORT marian-targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 endif(GENERATE_MARIAN_INSTALL_TARGETS)
 
-pybind11_add_module(pymarian MODULE python/pymarian/translator.cpp)
-target_link_libraries(pymarian PUBLIC marian)
-if(CUDA_FOUND)
-  target_link_libraries(pymarian PUBLIC marian_cuda)
-endif(CUDA_FOUND)
+if(SKBUILD)
+  pybind11_add_module(pymarian MODULE python/pymarian/translator.cpp)
+  target_link_libraries(pymarian PUBLIC marian)
+  if(CUDA_FOUND)
+    target_link_libraries(pymarian PUBLIC marian_cuda)
+  endif(CUDA_FOUND)
+  install(TARGETS pymarian DESTINATION .)
+endif(SKBUILD)

@@ -3,21 +3,30 @@ import sys
 
 from skbuild import setup
 
+def getVersion():
+    with open("../../VERSION", encoding = 'utf-8') as f:
+        return f.read().rstrip()
+
 setup(
     name="pymarian",
-    version="0.0.1",
+    version=getVersion(),
     author="Marcin Junczys-Dowmunt",
     author_email="marcinjd@microsoft.com",
     description="A test project using pybind11 and CMake",
     long_description="",
     cmake_source_dir="../..",
     cmake_args = [
-        f"-DUSE_SENTENCEPIECE=ON",
-        f"-DCOMPILE_CUDA=ON",
-        f"-DUSE_FBGEMM=ON",
-        f"-DUSE_TCMALLOC=OFF",
+        "-DBUILD_ARCH=x86-64",
+        "-DCMAKE_BUILD_TYPE=Slim",
+        "-DUSE_STATIC_LIBS=ON",
+        "-DCOMPILE_AVX2=OFF",
+        "-DCOMPILE_AVX512=OFF",
+        "-DCOMPILE_CUDA=OFF",
+        "-DUSE_FBGEMM=ON",
+        "-DUSE_TCMALLOC=OFF",
+        "-DUSE_SENTENCEPIECE=ON",
+        "-DGENERATE_MARIAN_INSTALL_TARGETS=OFF",
         f"-DPYTHON_EXECUTABLE={sys.executable}",
-        f"-DCMAKE_BUILD_TYPE=Release",
     ],
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},

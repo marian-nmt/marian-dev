@@ -8,7 +8,9 @@ add_subdirectory(./zlib)
 add_subdirectory(./faiss)
 include_directories(./faiss)
 
-add_subdirectory(./pybind11)
+if(SKBUILD)
+  add_subdirectory(./pybind11)
+endif(SKBUILD)
 
 if(COMPILE_CPU)
   if(NOT GENERATE_MARIAN_INSTALL_TARGETS)

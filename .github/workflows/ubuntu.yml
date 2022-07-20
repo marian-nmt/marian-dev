@@ -115,7 +115,7 @@ jobs:
       working-directory: build
       run: |
         python3 -m pip install -U pip
-        python3 -m pip install pybind11 sentencepiece scikit-build
+        python3 -m pip install pybind11 sentencepiece scikit-build setuptools>=60.7.0 
         pwd
         cd ../src/python
         python3 setup.py build --verbose --parallel 16 install

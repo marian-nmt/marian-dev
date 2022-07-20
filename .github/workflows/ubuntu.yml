@@ -93,6 +93,7 @@ jobs:
           -DBoost_ARCHITECTURE=-x64 \
           -DCMAKE_BUILD_TYPE=Release \
           -DCOMPILE_CPU=${{ matrix.cpu }} \
+          -DCOMPILE_CUDA=${{ matrix.gpu }} \
           -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-${{ matrix.cuda }} \
           -DDETERMINISTIC=on \
           -DUSE_STATIC_LIBS=on \

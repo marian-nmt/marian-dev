@@ -5,7 +5,7 @@ from skbuild import setup
 
 def getVersion():
     with open("../../VERSION", encoding = 'utf-8') as f:
-        return f.read().rstrip()
+        return f.read().rstrip().lstrip("v") # gets rid of 'v' prefix in v1.17.5 etc.
 
 setup(
     name="pymarian",
@@ -28,6 +28,7 @@ setup(
         "-DGENERATE_MARIAN_INSTALL_TARGETS=OFF",
         f"-DPYTHON_EXECUTABLE={sys.executable}",
     ],
+    # cmake_install_target = "pymarian",
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.6",

@@ -111,11 +111,9 @@ jobs:
         ./marian-scorer --version
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" \))
 
-
     - name: Install PyMarian
       working-directory: build
       run: |
-        python3 -m venv .venv && source .venv/bin/
         python3 -m pip install -U pip
         python -m pip install pybind11 sentencepiece scikit-build
         cd src/python

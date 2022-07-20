@@ -109,9 +109,7 @@ jobs:
         ./marian --version
         ./marian-decoder --version
         ./marian-scorer --version
-        ./marian-server --version
-        ./spm_encode --version
-        ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
+        ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" \))
 
 
     - name: Install PyMarian

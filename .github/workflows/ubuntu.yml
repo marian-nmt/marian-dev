@@ -116,6 +116,7 @@ jobs:
       run: |
         python3 -m pip install -U pip
         python3 -m pip install pybind11 sentencepiece scikit-build
+        pwd
         cd src/python
         python3 setup.py build --verbose --parallel 16 install
-        echo "▁Hello ▁World ." | python test_foobar_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm
+        echo "▁Hello ▁World ." | python3 test_foobar_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm

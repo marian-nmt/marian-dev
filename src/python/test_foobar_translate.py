@@ -1,6 +1,12 @@
 import sys
 
 from pymarian import Translator
+
+marian_options = sys.argv[1]
+output = marian.translate(sys.stdin)
+print(output)
+
+"""
 from sentencepiece import SentencePieceProcessor
 
 marian_options = sys.argv[1]
@@ -20,5 +26,5 @@ input = []
 for line in sys.stdin:
     input.append(encode(line, sp_src))
 input = "\n".join(input)
+"""
 
-print(input)

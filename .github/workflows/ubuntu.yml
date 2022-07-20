@@ -95,7 +95,6 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DCOMPILE_CPU=${{ matrix.cpu }} \
           -DCOMPILE_CUDA=${{ matrix.gpu }} \
-          -DCOMPILE_TESTS=${{ matrix.unit_tests }} \
           -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-${{ matrix.cuda }} \
           -DDETERMINISTIC=on \
           -DUSE_STATIC_LIBS=on \
@@ -103,13 +102,6 @@ jobs:
     - name: Compile
       working-directory: build
       run: make -j2
-
-    # TODO: add a flag to CMake to compile unit tests only on CPU
-    - name: Run unit tests
-      working-directory: build
-      run: make test
-      # GitHub-hosted VMs do not have GPUs, so can not be run in CUDA builds
-      if: matrix.unit_tests == true && matrix.gpu == false
 
     - name: Print versions
       working-directory: build

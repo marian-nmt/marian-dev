@@ -342,7 +342,7 @@ public:
   std::vector<std::string> run(const std::vector<std::string>& inputs) override {
       auto input = utils::join(inputs, "\n");
       auto translations = run(input);
-      return utils::split(translations, "\n");
+      return utils::split(translations, "\n", /*keepEmpty=*/true);
   }
 
   std::string run(const std::string& input) override {

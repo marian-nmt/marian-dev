@@ -9,7 +9,7 @@ on:
 jobs:
   build-macos:
     name: MacOS CPU-only
-    runs-on: macos-10.15
+    runs-on: macos-10.11
 
     steps:
     - name: Checkout

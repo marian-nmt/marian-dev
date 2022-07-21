@@ -88,6 +88,7 @@ jobs:
       run: |
         python3 -m pip install -U pip
         python3 -m pip install pybind11 sentencepiece scikit-build setuptools>=60.7.0 
+        mkdir -p build
         cd ../src/python
         python3 -m pip install -e . 
         cd ../../

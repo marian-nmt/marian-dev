@@ -24,21 +24,24 @@ std::shared_ptr<spdlog::logger> createStderrLogger(const std::string& name,
                                                    const std::string& pattern,
                                                    const std::vector<std::string>& files,
                                                    bool quiet) {
-  std::vector<spdlog::sink_ptr> sinks;
+  auto logger = spdlog::get(name);
+  if(!logger) {
+    std::vector<spdlog::sink_ptr> sinks;
 
-  auto stderr_sink = spdlog::sinks::stderr_sink_mt::instance();
-  if(!quiet)
-    sinks.push_back(stderr_sink);
+    auto stderr_sink = spdlog::sinks::stderr_sink_mt::instance();
+    if(!quiet)
+      sinks.push_back(stderr_sink);
 
-  for(auto&& file : files) {
-    auto file_sink = std::make_shared<spdlog::sinks::simple_file_sink_st>(file, true);
-    sinks.push_back(file_sink);
+    for(auto&& file : files) {
+      auto file_sink = std::make_shared<spdlog::sinks::simple_file_sink_st>(file, true);
+      sinks.push_back(file_sink);
+    }
+
+    logger = std::make_shared<spdlog::logger>(name, begin(sinks), end(sinks));
+
+    spdlog::register_logger(logger);
+    logger->set_pattern(pattern);
   }
-
-  auto logger = std::make_shared<spdlog::logger>(name, begin(sinks), end(sinks));
-
-  spdlog::register_logger(logger);
-  logger->set_pattern(pattern);
   return logger;
 }
 
@@ -65,6 +68,7 @@ bool setLoggingLevel(spdlog::logger& logger, std::string const level) {
 }
 
 static void setErrorHandlers();
+
 void createLoggers(const marian::Config* config) {
   std::vector<std::string> generalLogs;
   std::vector<std::string> validLogs;

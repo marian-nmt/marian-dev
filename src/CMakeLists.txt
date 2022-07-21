@@ -3,7 +3,7 @@ add_subdirectory(3rd_party)
 include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
-include_directories(3rd_party/sentencepiece)
+# include_directories(3rd_party/sentencepiece)
 
 include_directories(3rd_party/pybind11/include)
 
@@ -320,7 +320,7 @@ if(SKBUILD)
   # Now we can find pybind11
   find_package(pybind11 CONFIG REQUIRED)
 
-  pybind11_add_module(pymarian MODULE python/pymarian/translator.cpp)
+  pybind11_add_module(pymarian MODULE python/pymarian/bind.cpp)
   target_link_libraries(pymarian PUBLIC marian)
   if(CUDA_FOUND)
     target_link_libraries(pymarian PUBLIC marian_cuda)

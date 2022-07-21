@@ -136,7 +136,7 @@ jobs:
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
 
 
-- name: Install PyMarian
+    - name: Install PyMarian
       working-directory: build
       run: |
         python3 -m pip install -U pip

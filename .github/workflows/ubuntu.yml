@@ -130,6 +130,6 @@ jobs:
         python3 -m pip install -U setuptools wheel
         python3 -m pip install pybind11 sentencepiece scikit-build 
         cd ../src/python
-        python3 setup.py build -j16 install
+        CUDA_VERSION=${{ matrix.cuda }} python3 setup.py build -j16 install
         cd ../../
         python3 -c "import pymarian"

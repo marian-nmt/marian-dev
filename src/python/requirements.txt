@@ -1,0 +1,1 @@
+https://github.com/mediacloud/sentence-splitter/archive/refs/tags/1.4.zip

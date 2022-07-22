@@ -141,7 +141,7 @@ jobs:
       run: |
         python3 -m venv .venv
         .venv\Scipts\activate.bat
-        python3 -m pip install -U setuptools
+        python3 -m pip install -U setuptools wheel
         python3 -m pip install pybind11 sentencepiece scikit-build
         cd ../src/python
         python3 setup.py build -j16 install

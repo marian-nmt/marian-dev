@@ -54,9 +54,9 @@ jobs:
       working-directory: build
       run: |
         python3 -m venv .venv && source .venv/bin/activate
-        python3 -m pip install -U setuptools
+        python3 -m pip install -U setuptools wheel
         python3 -m pip install pybind11 sentencepiece scikit-build
         cd ../src/python
-        python3 -m pip install -e .
+        python3 setup.py install -j16
         cd ../../
         python3 -c "import pymarian"

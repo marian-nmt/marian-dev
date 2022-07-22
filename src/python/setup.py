@@ -13,7 +13,6 @@ def getVersion(cuda_version=None):
 setup(
     name="pymarian",
     packages=["pymarian"],
-    python_requires='>=3.6',
     version=getVersion(os.environ.get("CUDA_VERSION")),
     author="Marcin Junczys-Dowmunt",
     author_email="marcinjd@microsoft.com",

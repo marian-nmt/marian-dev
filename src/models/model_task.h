@@ -11,7 +11,7 @@ struct ModelTask {
 
 struct ModelServiceTask {
   virtual ~ModelServiceTask() {}
-  virtual std::string run(const std::string&) = 0;
-  virtual std::vector<std::string> run(const std::vector<std::string>&) = 0;
+  virtual std::string run(const std::string&, const std::string&) = 0;
+  virtual std::vector<std::string> run(const std::vector<std::string>&, const std::string&) = 0;
 };
 }  // namespace marian

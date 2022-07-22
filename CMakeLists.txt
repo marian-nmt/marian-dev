@@ -499,7 +499,11 @@ if(USE_TCMALLOC)
     find_package(Tcmalloc)
     if(Tcmalloc_FOUND)
       include_directories(${Tcmalloc_INCLUDE_DIR})
-      set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES})
+      # Please review whether the -Wl is needed, without it CI complains.
+      # But if we set this -Wl, it goes into errors like
+      # /usr/lib/gcc/x86_64-linux-gnu/7/libgcc.a(bid128.o):(.data+0x5ec0): multiple definition 
+      ##set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES} -Wl,-whole-archive)
+      set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES} -Wl,-no-whole-archive)
     else(Tcmalloc_FOUND)
       message(WARNING "Cannot find TCMalloc library. Continuing.")
     endif(Tcmalloc_FOUND)

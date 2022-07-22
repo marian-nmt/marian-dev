@@ -9,7 +9,7 @@ on:
 jobs:
   build-macos:
     name: MacOS CPU-only
-    runs-on: macos-10.15
+    runs-on: macos-12
 
     steps:
     - name: Checkout
@@ -49,3 +49,13 @@ jobs:
         ./marian-scorer --version
         ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -perm +ugo+x \( -name "marian*" -o -name "spm*" \))
+
+    - name: Install PyMarian
+      working-directory: build
+      run: |
+        python3 -m pip install -U pip
+        python3 -m pip install pybind11 sentencepiece scikit-build setuptools>=60.7.0 
+        cd ../src/python
+        python3 -m pip install -e .
+        cd ../../
+        echo "Hello World." | python src/python/test_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm

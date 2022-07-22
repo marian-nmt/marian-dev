@@ -342,7 +342,7 @@ public:
   std::vector<std::string> run(const std::vector<std::string>& inputs, const std::string& yamlOverridesStr="") override {
       auto input = utils::join(inputs, "\n");
       auto translations = run(input, yamlOverridesStr);
-      return utils::split(translations, "\n");
+      return utils::split(translations, "\n", /*keepEmpty=*/true);
   }
 
   std::string run(const std::string& input, const std::string& yamlOverridesStr="") override {
@@ -351,7 +351,7 @@ public:
     auto currentOptions = New<Options>(options_->clone());
     if (!configOverrides.IsNull()) {
       LOG(info,  "Overriding options:\n {}", configOverrides);
-      currentOptions->merge(configOverrides, true);
+      currentOptions->merge(configOverrides, /*overwrite=*/true);
     }
 
     // split tab-separated input into fields if necessary

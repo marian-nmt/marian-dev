@@ -339,22 +339,30 @@ public:
     }
   }
 
-  std::vector<std::string> run(const std::vector<std::string>& inputs) override {
+  std::vector<std::string> run(const std::vector<std::string>& inputs, const std::string& yamlOverridesStr="") override {
       auto input = utils::join(inputs, "\n");
-      auto translations = run(input);
+      auto translations = run(input, yamlOverridesStr);
       return utils::split(translations, "\n", /*keepEmpty=*/true);
   }
 
-  std::string run(const std::string& input) override {
-    // split tab-separated input into fields if necessary
-    auto inputs = options_->get<bool>("tsv", false)
-                      ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
-                      : std::vector<std::string>({input});
-    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
-    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_, nullptr, /*runAsync=*/false);
+  std::string run(const std::string& input, const std::string& yamlOverridesStr="") override {
+    YAML::Node configOverrides = YAML::Load(yamlOverridesStr);
 
-    auto collector = New<StringCollector>(options_->get<bool>("quiet-translation", false));
-    auto printer = New<OutputPrinter>(options_, trgVocab_);
+    auto currentOptions = New<Options>(options_->clone());
+    if (!configOverrides.IsNull()) {
+      LOG(info,  "Overriding options:\n {}", configOverrides);
+      currentOptions->merge(configOverrides, /*overwrite=*/true);
+    }
+
+    // split tab-separated input into fields if necessary
+    auto inputs = currentOptions->get<bool>("tsv", false)
+                      ? convertTsvToLists(input, currentOptions->get<size_t>("tsv-fields", 1))
+                      : std::vector<std::string>({input});
+    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, currentOptions);
+    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, currentOptions, nullptr, /*runAsync=*/false);
+
+    auto collector = New<StringCollector>(currentOptions->get<bool>("quiet-translation", false));
+    auto printer = New<OutputPrinter>(currentOptions, trgVocab_);
     size_t batchId = 0;
 
     batchGenerator.prepare();
@@ -372,7 +380,7 @@ public:
             scorers = scorers_[id % numDevices_];
           }
 
-          auto search = New<Search>(options_, scorers, trgVocab_);
+          auto search = New<Search>(currentOptions, scorers, trgVocab_);
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
@@ -388,7 +396,7 @@ public:
       }
     }
 
-    auto translations = collector->collect(options_->get<bool>("n-best"));
+    auto translations = collector->collect(currentOptions->get<bool>("n-best"));
     return utils::join(translations, "\n");
   }
 

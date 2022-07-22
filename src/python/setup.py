@@ -9,6 +9,7 @@ def getVersion():
 
 setup(
     name="pymarian",
+    py_modules=["pymarian"]
     version=getVersion(),
     author="Marcin Junczys-Dowmunt",
     author_email="marcinjd@microsoft.com",
@@ -32,4 +33,5 @@ setup(
     zip_safe=False,
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.6",
+
 )

@@ -9,7 +9,7 @@ on:
 jobs:
   build-macos:
     name: MacOS CPU-only
-    runs-on: macos-12
+    runs-on: macos-10.5
 
     steps:
     - name: Checkout
@@ -53,9 +53,10 @@ jobs:
     - name: Install PyMarian
       working-directory: build
       run: |
-        python3 -m pip install -U pip
-        python3 -m pip install pybind11 sentencepiece scikit-build setuptools>=60.7.0 
+        python3 -m venv .venv && source .venv/bin/activate
+        python3 -m pip install -U setuptools
+        python3 -m pip install pybind11 sentencepiece scikit-build
         cd ../src/python
         python3 -m pip install -e .
         cd ../../
-        echo "Hello World." | python src/python/test_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm
+        python3 -c "import pymarian"

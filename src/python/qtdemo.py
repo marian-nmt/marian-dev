@@ -80,17 +80,23 @@ class Example(QWidget):
         self.current = self.cache[command]
 
     def translate(self, inputText):
-        inputLines = self.splitter.split(inputText)
+        inputLines = [self.splitter.split(p) for p in inputText.split("\n")]
+
         candidates = []
-        for line in inputLines:
-            if line not in self.current:
-                candidates.append(line)
+        for paragraph in inputLines:
+            for line in paragraph:
+                if line not in self.current:
+                    candidates.append(line)
         outputLines = self.current["#MODEL#"].translate(
             [self.norm.normalize(c) for c in candidates]
         )
         for (src, trg) in zip(candidates, outputLines):
             self.current[src] = trg 
-        return "\n".join([self.current[src] for src in inputLines])
+        
+        return "\n".join([
+            " ".join([self.current[src] for src in paragraph]) 
+            for paragraph in inputLines
+        ])
     
 if __name__ == '__main__':
     app = QApplication(sys.argv)

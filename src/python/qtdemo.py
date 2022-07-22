@@ -4,6 +4,7 @@ from sacremoses import MosesPunctNormalizer
 from sentence_splitter import SentenceSplitter
 
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import * 
 
 class Example(QWidget):
     
@@ -15,6 +16,7 @@ class Example(QWidget):
         self.splitter = SentenceSplitter("en")
                     
         self.setWindowTitle("Live Translator")
+        self.setFont(QFont(self.font().family(), 11))
         # setting the geometry of window
         self.setGeometry(300, 300, 1200, 800)
 
@@ -77,17 +79,17 @@ class Example(QWidget):
         inputLines = [self.splitter.split(p) 
             for p in inputText.split("\n")]
 
-        candidates = []
+        unseenLines = []
         for paragraph in inputLines:
             for line in paragraph:
                 if line not in self.current:
-                    candidates.append(line)
+                    unseenLines.append(line)
     
         outputLines = self.current["#MODEL#"].translate(
-            [self.norm.normalize(c) for c in candidates]
+            [self.norm.normalize(c) for c in unseenLines]
         )
 
-        for (src, trg) in zip(candidates, outputLines):
+        for (src, trg) in zip(unseenLines, outputLines):
             self.current[src] = trg 
         
         return "\n".join([

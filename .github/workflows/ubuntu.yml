@@ -95,6 +95,7 @@ jobs:
           -DCOMPILE_CPU=${{ matrix.cpu }} \
           -DCOMPILE_CUDA=${{ matrix.gpu }} \
           -DCOMPILE_EXAMPLES=${{ matrix.examples }} \
+          -DUSE_TCMALLOC=OFF \
           -DCOMPILE_SERVER=on \
           -DCOMPILE_TESTS=${{ matrix.unit_tests }} \
           -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-${{ matrix.cuda }} \
@@ -119,18 +120,16 @@ jobs:
       run: |
         ./marian --version
         ./marian-decoder --version
-        ./marian-scorer --version
-        ./marian-server --version
-        ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
 
 
     - name: Install PyMarian
       working-directory: build
       run: |
-        python3 -m pip install -U pip
-        python3 -m pip install pybind11 sentencepiece scikit-build setuptools>=60.7.0 
+        python3 -m venv .venv && source .venv/bin/activate
+        python3 -m pip install -U setuptools
+        python3 -m pip install pybind11 sentencepiece scikit-build 
         cd ../src/python
-        python3 -m pip install -e pymarian
+        python3 setup.py build -j16 install
         cd ../../
-        echo "Hello World." | python src/python/test_translate.py '--config /home/marcinjd/MTMA/decoder.yml' /home/marcinjd/MTMA/source.spm /home/marcinjd/MTMA/target.spm
+        python3 -c "import pymarian"

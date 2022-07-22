@@ -20,7 +20,7 @@ for line in sys.stdin:
     input.append(encode(line, sp_src))
 input = "\n".join(input)
 
-output = marian.translate(input)
+output = marian.translate(input, beam_size=10)
 
 output = output.split("\n")
 for line in output:

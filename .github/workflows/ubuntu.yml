@@ -126,7 +126,9 @@ jobs:
     - name: Install PyMarian
       working-directory: build
       run: |
-        python3 -m pip install pybind11 sentencepiece scikit-build setuptools==58.5.3
+        python3 -m venv .venv && source .venv/bin/activate
+        pip install -U setuptools
+        pip install pybind11 sentencepiece scikit-build 
         cd ../src/python
         python3 setup.py build -j16 install
         cd ../../

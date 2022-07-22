@@ -9,7 +9,6 @@ PYBIND11_MODULE(pymarian, m) {
   // Classes
   py::class_<TranslateServicePyWrapper>(m, "Translator")
       .def(py::init<std::string>())
-      .def("translate", py::overload_cast<const std::vector<std::string>&>(&TranslateServicePyWrapper::run))
-      .def("translate", py::overload_cast<const std::string&>(&TranslateServicePyWrapper::run))
-      .def("translate", py::overload_cast<const std::string&, const py::kwargs&>(&TranslateServicePyWrapper::run));
+      .def("translate", py::overload_cast<const std::string&, const py::kwargs&>(&TranslateServicePyWrapper::run))
+      .def("translate", py::overload_cast<const std::vector<std::string>&, const py::kwargs&>(&TranslateServicePyWrapper::run));
 }

@@ -4,6 +4,7 @@
 """
 import os
 from typing import Optional, Union, List
+import torch
 
 from pymarian import Translator
 from transformers import PretrainedConfig, PreTrainedModel, MarianTokenizer
@@ -99,7 +100,8 @@ class PyMarianModel(PreTrainedModel):
 
         # model = super().from_pretrained(model_name_or_path, *model_args, **kwargs)
         model = cls(config)
-        print(model_name_or_path)
+
+        # marian_configs = _convert_hf_config_to_marian_config(config)
         model.marian_model = Translator(f"--config {model_name_or_path}/decoder.yml")
         return model
 
@@ -110,6 +112,16 @@ class PyMarianModel(PreTrainedModel):
         input_tokens = [' '.join(x) for x in input_tokens]
         return self.marian_model.translate(input_tokens)
 
+    @torch.no_grad()
+    def generate(
+        self,
+        inputs: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> List[str]:
+
+        input_tokens = [' '.join(x) for x in inputs]
+        return self.marian_model.translate(input_tokens, **kwargs)
+
 
 def main():
     model_path = '/home/alferre/models/hf-opus-2020-02-26'
@@ -118,17 +130,19 @@ def main():
     tokenizer = PyMarianTokenizer.from_pretrained(model_path)
     model = PyMarianModel.from_pretrained(model_path, config=config)
 
-
     src_text = [
-    "What is my translation?",
-    "Hello World!",
-    "I am a translator.",
+        "What is my translation?",
+        "Hello World!",
+        "I am a translator, but this is a much longer sequence than I thought",
+        "Another supposition is that the author of the Liber Pontificals gives the papal interpretation of a grant that had been expressed by Pippin in ambiguous terms; and this view is supported by the history of the subsequent controversy between king and pope."
     ]
 
     batch_tokens = [tokenizer._tokenize(x) for x in src_text]
-    print('tokens', batch_tokens)
 
-    translated_tokens = model(input_tokens=batch_tokens)
+    translated_tokens = model.generate(inputs=batch_tokens, beam_size=1)
+    print(translated_tokens)
+
+    translated_tokens = model.generate(inputs=batch_tokens, beam_size=10)
     print(translated_tokens)
 
 

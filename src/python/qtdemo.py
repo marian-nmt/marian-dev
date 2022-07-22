@@ -1,15 +1,9 @@
 import sys
 import pymarian
 from sacremoses import MosesPunctNormalizer
-from sentence_splitter import SentenceSplitter, split_text_into_sentences
+from sentence_splitter import SentenceSplitter
 
 from PyQt5.QtWidgets import *
-
-# marian = pymarian.Translator(
-#     model="model.bin", vocabs=["enu.spm", "enu.spm"], 
-#     beam_search=2, normalize=1, mini_batch=1, maxi_batch=1, 
-#     cpu_threads=1, output_approx_knn=[128, 1024]
-# ) ---> Translator("--model model.bin --vocabs enu.spm enu.spm --beam-search 2 --normalize 1 --mini-batch 1 --maxi-batch 1 --cpu-threads 1 --output-approx-knn 128 1024")
 
 class Example(QWidget):
     
@@ -80,16 +74,19 @@ class Example(QWidget):
         self.current = self.cache[command]
 
     def translate(self, inputText):
-        inputLines = [self.splitter.split(p) for p in inputText.split("\n")]
+        inputLines = [self.splitter.split(p) 
+            for p in inputText.split("\n")]
 
         candidates = []
         for paragraph in inputLines:
             for line in paragraph:
                 if line not in self.current:
                     candidates.append(line)
+    
         outputLines = self.current["#MODEL#"].translate(
             [self.norm.normalize(c) for c in candidates]
         )
+
         for (src, trg) in zip(candidates, outputLines):
             self.current[src] = trg 
         

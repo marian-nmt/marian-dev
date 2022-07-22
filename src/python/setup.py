@@ -9,7 +9,7 @@ def getVersion():
 
 setup(
     name="pymarian",
-    py_modules=["pymarian"]
+    py_modules=["pymarian"],
     version=getVersion(),
     author="Marcin Junczys-Dowmunt",
     author_email="marcinjd@microsoft.com",

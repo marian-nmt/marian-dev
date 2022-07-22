@@ -6,7 +6,7 @@ from skbuild import setup
 def getVersion(cuda_version=None):
     with open("../../VERSION", encoding = 'utf-8') as f:
         version = f.read().rstrip().lstrip("v") # gets rid of 'v' prefix in v1.17.5 etc.
-    v = version if cuda_version is None else f"{version}+cu{cuda_version.replace('.', '')}"
+    v = version if not cuda_version else f"{version}+cu{cuda_version.replace('.', '')}"
     print("VERSION IS ", v)
     return v
 

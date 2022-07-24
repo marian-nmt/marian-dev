@@ -59,4 +59,4 @@ jobs:
         cd ../src/python
         python3 setup.py install -j2
         cd ../../
-        python3 -c "import pymarian"
+        python3 -c "from pymarian import Translator"

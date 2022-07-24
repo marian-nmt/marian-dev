@@ -135,3 +135,18 @@ jobs:
         .\marian-scorer.exe --version
         dir *.exe
       shell: cmd
+
+    - name: Install PyMarian
+      working-directory: build
+      run: |
+        python3 -m venv .venv
+        .venv\Scripts\activate.bat
+        python3 -m pip install -U setuptools wheel
+        python3 -m pip install pybind11 sentencepiece scikit-build
+        cd ..\src\python
+        python3 setup.py install -j2
+        cd ..\..\
+        python3 -c "from pymarian import Translator"
+      env:
+        CUDA_VERSION: ${{ matrix.cuda }}
+      shell: cmd

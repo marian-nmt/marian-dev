@@ -83,6 +83,8 @@ class Example(QWidget):
         self.current = self.cache[command]
 
     def translate(self, inputText):
+        t0 = time.perf_counter()
+
         inputLines = [self.splitter.split(p) 
             for p in inputText.split("\n")]
 
@@ -92,15 +94,16 @@ class Example(QWidget):
                 if line not in self.current:
                     unseenLines.append(line)
     
+        normLines = [self.norm.normalize(c) for c in unseenLines]
+
         t1 = time.perf_counter()
-        outputLines = self.current["#MODEL#"].translate(
-            [self.norm.normalize(c) for c in unseenLines]
-        )
+        outputLines = self.current["#MODEL#"].translate(normLines)
         t2 = time.perf_counter()
+        
         totalStat = sum([len(self.tok.tokenize(line)) for line in unseenLines])
 
         if totalStat:
-            self.statusBar.showMessage(f"Translated {totalStat} tokens in {t2 - t1:.2f} second ({totalStat / (t2 - t1):.2f} tokens per second)")
+            self.statusBar.showMessage(f"Translated {totalStat} tokens ({len(unseenLines)} lines) in {t2 - t1:.2f} second ({totalStat / (t2 - t1):.2f} tokens per second). Preprocessing took {t1 - t0:.2f} seconds. Total: {t2 - t0:.2f} seconds")
 
         for (src, trg) in zip(unseenLines, outputLines):
             self.current[src] = trg 

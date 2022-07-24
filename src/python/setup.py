@@ -28,7 +28,7 @@ setup(
         "-DBUILD_ARCH=x86-64",
         "-DCMAKE_BUILD_TYPE=Slim",
         "-DUSE_STATIC_LIBS=ON",
-        "-DCOMPILE_AVX2=OFF",
+        "-DCOMPILE_AVX2=ON",
         "-DCOMPILE_AVX512=OFF",
         "-DCOMPILE_CUDA=OFF",
         "-DUSE_FBGEMM=ON",

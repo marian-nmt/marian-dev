@@ -1,7 +1,8 @@
 import sys
 import pymarian
-from sacremoses import MosesPunctNormalizer
+from sacremoses import MosesPunctNormalizer, MosesTokenizer
 from sentence_splitter import SentenceSplitter
+import time
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import * 
@@ -13,6 +14,7 @@ class Example(QWidget):
 
         self.cache = dict()
         self.norm = MosesPunctNormalizer(lang="en")
+        self.tok = MosesTokenizer(lang="en")
         self.splitter = SentenceSplitter("en")
                     
         self.setWindowTitle("Live Translator")
@@ -34,7 +36,7 @@ class Example(QWidget):
         
         hbox = QHBoxLayout()
         self.cli = QLineEdit(self)
-        self.cli.setText("-c models/enu.deu.yml --cpu-threads 8")
+        self.cli.setText("-c models/enu.deu.yml --cpu-threads 8 -b1 --mini-batch-words 256 --maxi-batch 100 --maxi-batch-sort src")
 
         self.reload = QPushButton("Reload")
         self.reload.clicked.connect(self.onClicked)
@@ -51,6 +53,10 @@ class Example(QWidget):
         hbox2.addWidget(self.input)
         hbox2.addWidget(self.output)
         layout.addLayout(hbox2)
+
+        self.statusBar = QStatusBar()
+        layout.addWidget(self.statusBar)
+
         self.setLayout(layout)
 
         self.reloadMarian()
@@ -70,6 +76,7 @@ class Example(QWidget):
     def reloadMarian(self):
         command = self.cli.text()
         print(command)
+        self.cache = dict() # clean instead of caching
         if command not in self.cache:
             self.cache[command] = dict()
             self.cache[command]["#MODEL#"] = pymarian.Translator(command)
@@ -85,9 +92,15 @@ class Example(QWidget):
                 if line not in self.current:
                     unseenLines.append(line)
     
+        t1 = time.perf_counter()
         outputLines = self.current["#MODEL#"].translate(
             [self.norm.normalize(c) for c in unseenLines]
         )
+        t2 = time.perf_counter()
+        totalStat = sum([len(self.tok.tokenize(line)) for line in unseenLines])
+
+        if totalStat:
+            self.statusBar.showMessage(f"Translated {totalStat} tokens in {t2 - t1:.2f} second ({totalStat / (t2 - t1):.2f} tokens per second)")
 
         for (src, trg) in zip(unseenLines, outputLines):
             self.current[src] = trg 

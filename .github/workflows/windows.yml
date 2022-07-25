@@ -134,6 +134,8 @@ jobs:
         .\marian-decoder.exe --version
         .\marian-scorer.exe --version
         dir *.exe
+        cd ..
+        rd /s /q build
       shell: cmd
 
     - name: Install PyMarian

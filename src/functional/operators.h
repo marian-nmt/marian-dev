@@ -466,6 +466,15 @@ struct Ops<float32x8> {
 } // end namespace functional
 } // end namespace marian
 #endif
+
+#ifdef __AVX512F__
+#include "3rd_party/avx512_mathfun.h"
+
+namespace marian {
+namespace functional {
+} // end namespace functional
+} // end namespace marian
+#endif
 #endif // of "#ifndef __CUDACC__"
 
 #ifdef __CUDACC__

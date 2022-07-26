@@ -171,21 +171,20 @@ struct intgemm8avx512vnni  { int8_t x;  };
 #ifndef __CUDACC__ // vectorized types not available from .cu files
 
 // @TODO: check what intrinsics are actually available.
-/* Templated implementation to get to to work later
-typedef __m128 float32x4;
+/* Currently doesn't work due to https://stackoverflow.com/questions/41676311/implication-of-gcc-warning-ignoring-attributes-on-template-argument-wignored
+// I am not entirely sure wrapping it in a struct wouldn't at some point accidentally cause a misalignment
+//Templated implementation to get to to work later
 template <class Register> static inline Register set1_ps(float to);
 template <> inline __m128 set1_ps<__m128>(float to) {
   return _mm_set1_ps(to);
 }
 #ifdef __AVX__
-typedef __m256 float32x8;
 template <> inline __m256 set1_ps<__m256>(float to) {
   return _mm256_set1_ps(to);
 }
 #endif
 #ifdef __AVX512F__
-typedef __m256 float32x16;
-template <> inline __m512 set1_ps<__m512>(float to) {
+template <> inline __m512 set1_ps<__m5__attribute__ ((aligned (16)))12>(float to) {
   return _mm512_set1_ps(to);
 }
 #endif
@@ -193,12 +192,12 @@ template <> inline __m512 set1_ps<__m512>(float to) {
 template<class Register>
 struct float32v {
 private:
-  Register f_;
+  Register __attribute__ ((aligned (32))) f_;
 
 public:
-  float32vector() {}
-  float32vector(const Register& f) : f_(f) {}
-  float32vector(const float& f) : f_(set1_ps<Register>(f)) {}
+  float32v() {}
+  float32v(const Register& f) : f_(f) {}
+  float32v(const float& f) : f_(set1_ps<Register>(f)) {}
 
   operator const Register&() const { return f_; }
   operator Register&() { return f_; }
@@ -208,7 +207,7 @@ public:
   }
 
   friend std::ostream& operator<<(std::ostream& out, Register f) {
-    size_t length = sizeof(Register)/sizeof(float);
+    const size_t constexpr length = sizeof(Register)/sizeof(float);
     float* a = (float*)&f;
     out << "[" << a[0];
     for(size_t i = 1; i < length; i++)
@@ -219,7 +218,15 @@ public:
 
 };
 
+using float32x4 = float32v<__m128>;
+#ifdef __AVX__
+using float32x8 = float32v<__m256>;
+#endif
+#ifdef __AVX512F__
+using float32x16 = float32v<__m512>;
+#endif
 */
+
 struct float32x4 {
 private:
   __m128 f_;
@@ -278,7 +285,6 @@ public:
 struct float32x8 {
 };
 #endif
-#endif
 
 #ifdef __AVX512F__
 struct float32x16 {
@@ -307,7 +313,7 @@ public:
   }
 };
 #endif
-
+#endif // #ifndef __CUDACC__
 
 #if COMPILE_FP16
 

@@ -17,20 +17,20 @@ typedef __m512i v16si; // vector of 16 int   (avx512)
 
 /* yes I know, the top of this file is quite ugly */
 #ifdef _MSC_VER /* visual c++ */
-# define ALIGN32_BEG __declspec(align(32))
-# define ALIGN32_END 
+# define ALIGN64_BEG __declspec(align(64))
+# define ALIGN64_END
 #else /* gcc or icc */
-# define ALIGN32_BEG
-# define ALIGN32_END __attribute__((aligned(32)))
+# define ALIGN64_BEG
+# define ALIGN64_END __attribute__((aligned(64)))
 #endif
 
 /* declare some AVX512 constants -- why can't I figure a better way to do that? */
 #define _PS512_CONST(Name, Val)                                            \
-  static const constexpr ALIGN32_BEG float _ps512_##Name[16] ALIGN32_END = { Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val }
+  static const constexpr ALIGN64_BEG float _ps512_##Name[16] ALIGN64_END = { Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val }
 #define _PI32_CONST512(Name, Val)                                            \
-  static const constexpr ALIGN32_BEG int _pi32_512_##Name[16] ALIGN32_END = { Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val }
+  static const constexpr ALIGN64_BEG int _pi32_512_##Name[16] ALIGN64_END = { Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val }
 #define _PS512_CONST_TYPE(Name, Type, Val)                                 \
-  static const constexpr ALIGN32_BEG Type _ps512_##Name[16] ALIGN32_END = { Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val }
+  static const constexpr ALIGN64_BEG Type _ps512_##Name[16] ALIGN64_END = { Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val, Val }
 
 _PS512_CONST(1  , 1.0f);
 _PS512_CONST(0p5, 0.5f);

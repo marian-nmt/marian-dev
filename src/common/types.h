@@ -197,10 +197,11 @@ private:
 public:
   float32v() {}
   float32v(const Register& f) : f_(f) {}
-  float32v(const float& f) : f_(set1_ps<Register>(f)) {}
+  float32v(const float& f) : f_(set1_ps<Register>(f)) {} // copies value into all slots
 
   operator const Register&() const { return f_; }
   operator Register&() { return f_; }
+  Register* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
 
   float operator[] (size_t i) const {
     return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __mXXX is an array of floats
@@ -238,6 +239,7 @@ public:
 
   operator const __m128&() const { return f_; }
   operator __m128&() { return f_; }
+  __m128* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
 
   float operator[] (size_t i) const {
     return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats
@@ -266,6 +268,7 @@ public:
 
   operator const __m256&() const { return f_; }
   operator __m256&() { return f_; }
+  __m256* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
 
   float operator[] (size_t i) const {
     return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats
@@ -298,6 +301,7 @@ public:
 
   operator const __m512&() const { return f_; }
   operator __m512&() { return f_; }
+  __m512* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
 
   float operator[] (size_t i) const {
     return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats

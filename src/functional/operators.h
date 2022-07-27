@@ -253,7 +253,12 @@ struct Ops<float32x4> {
 
   static inline float32x4 sin(const float32x4& x) { return sin_ps(x); }
   static inline float32x4 cos(const float32x4& x) { return cos_ps(x); }
-  static inline float32x4 tan(const float32x4& x) { return div(sin(x), cos(x)); }
+  static inline float32x4 tan(const float32x4& x) {
+    float32x4 my_sin;
+    float32x4 my_cos;
+    sincos_ps(x, my_sin.get(), my_cos.get());
+    return div(my_sin, my_cos);
+  }
   static inline float32x4 log(const float32x4& x) { return log_ps(x); }
   static inline float32x4 exp(const float32x4& x) { return exp_ps(x); }
 
@@ -382,7 +387,12 @@ struct Ops<float32x8> {
 
   static inline float32x8 sin(const float32x8& x) { return sin256_ps(x); }
   static inline float32x8 cos(const float32x8& x) { return cos256_ps(x); }
-  static inline float32x8 tan(const float32x8& x) { return div(sin(x), cos(x)); } // @TODO: use sincos256_ps
+  static inline float32x8 tan(const float32x8& x) {
+    float32x8 my_sin;
+    float32x8 my_cos;
+    sincos256_ps(x, my_sin.get(), my_cos.get());
+    return div(my_sin, my_cos);
+  }
   static inline float32x8 log(const float32x8& x) { return log256_ps(x); }
   static inline float32x8 exp(const float32x8& x) { return exp256_ps(x); }
 
@@ -508,7 +518,12 @@ struct Ops<float32x16> {
 
   static inline float32x16 sin(const float32x16& x) { return sin512_ps(x); }
   static inline float32x16 cos(const float32x16& x) { return cos512_ps(x); }
-  static inline float32x16 tan(const float32x16& x) { return div(sin(x), cos(x)); } // @TODO: use sincos256_ps
+  static inline float32x16 tan(const float32x16& x) {
+    float32x16 my_sin;
+    float32x16 my_cos;
+    sincos512_ps(x, my_sin.get(), my_cos.get());
+    return div(my_sin, my_cos);
+  }
   static inline float32x16 log(const float32x16& x) { return log512_ps(x); }
   static inline float32x16 exp(const float32x16& x) { return exp512_ps(x); }
 
@@ -572,11 +587,6 @@ struct Ops<float32x16> {
     // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=mm512_reduce_add_ps&ig_expand=5926,5926,5703,5730,5660,5660&avx512techs=AVX512F
     Single sum = _mm512_reduce_add_ps(x);
     return sum;
-    /*
-    Single sum = 0;
-    for(int i = 0; i < 16; ++i)
-      sum = Ops<Single>::add(sum, x[i]);
-    return sum;*/
   }
 
   static inline Single maxReduce(const float32x16& x) {
@@ -584,11 +594,6 @@ struct Ops<float32x16> {
     // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=mm512_reduce_max_ps&ig_expand=5926,5926,5703&avx512techs=AVX512F
     Single max = _mm512_reduce_max_ps(x);
     return max;
-    /*
-    Single maxs = x[0];
-    for(int i = 1; i < 16; ++i)
-      maxs = Ops<Single>::max(maxs, x[i]);
-    return maxs;*/
   }
 
   static inline Single minReduce(const float32x16& x) {
@@ -596,12 +601,6 @@ struct Ops<float32x16> {
     // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=mm512_reduce_min_ps&ig_expand=5926,5926,5703,5730&avx512techs=AVX512F
     Single min = _mm512_reduce_min_ps(x);
     return min;
-    /*
-    Single mins = x[0];
-    for(int i = 1; i < 16; ++i)
-      mins = Ops<Single>::min(mins, x[i]);
-    return mins;
-    */
   }
 };
 

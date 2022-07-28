@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ## [Unreleased]
-
+- Added avx512 types and functional path.
+- Small optimisation on AVX and SSE instruction path.
 ### Added
 
 ### Fixed

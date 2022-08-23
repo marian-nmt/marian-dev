@@ -171,6 +171,63 @@ struct intgemm8avx512vnni  { int8_t x;  };
 #ifndef __CUDACC__ // vectorized types not available from .cu files
 
 // @TODO: check what intrinsics are actually available.
+/* Currently doesn't work due to https://stackoverflow.com/questions/41676311/implication-of-gcc-warning-ignoring-attributes-on-template-argument-wignored
+// I am not entirely sure wrapping it in a struct wouldn't at some point accidentally cause a misalignment
+//Templated implementation to get to to work later
+template <class Register> static inline Register set1_ps(float to);
+template <> inline __m128 set1_ps<__m128>(float to) {
+  return _mm_set1_ps(to);
+}
+#ifdef __AVX__
+template <> inline __m256 set1_ps<__m256>(float to) {
+  return _mm256_set1_ps(to);
+}
+#endif
+#ifdef __AVX512F__
+template <> inline __m512 set1_ps<__m5__attribute__ ((aligned (16)))12>(float to) {
+  return _mm512_set1_ps(to);
+}
+#endif
+
+template<class Register>
+struct float32v {
+private:
+  Register __attribute__ ((aligned (32))) f_;
+
+public:
+  float32v() {}
+  float32v(const Register& f) : f_(f) {}
+  float32v(const float& f) : f_(set1_ps<Register>(f)) {} // copies value into all slots
+
+  operator const Register&() const { return f_; }
+  operator Register&() { return f_; }
+  Register* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
+
+  float operator[] (size_t i) const {
+    return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __mXXX is an array of floats
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, Register f) {
+    const size_t constexpr length = sizeof(Register)/sizeof(float);
+    float* a = (float*)&f;
+    out << "[" << a[0];
+    for(size_t i = 1; i < length; i++)
+      out << " " << a[i];
+    out << "]";
+    return out;
+  }
+
+};
+
+using float32x4 = float32v<__m128>;
+#ifdef __AVX__
+using float32x8 = float32v<__m256>;
+#endif
+#ifdef __AVX512F__
+using float32x16 = float32v<__m512>;
+#endif
+*/
+
 struct float32x4 {
 private:
   __m128 f_;
@@ -182,6 +239,7 @@ public:
 
   operator const __m128&() const { return f_; }
   operator __m128&() { return f_; }
+  __m128* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
 
   float operator[] (size_t i) const {
     return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats
@@ -210,6 +268,7 @@ public:
 
   operator const __m256&() const { return f_; }
   operator __m256&() { return f_; }
+  __m256* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
 
   float operator[] (size_t i) const {
     return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats
@@ -229,7 +288,36 @@ public:
 struct float32x8 {
 };
 #endif
+
+#ifdef __AVX512F__
+struct float32x16 {
+private:
+  __m512 f_;
+
+public:
+  float32x16() {}
+  float32x16(const __m512& f) : f_(f) {}
+  float32x16(const float& f) : f_(_mm512_set1_ps(f)) {} // __m256 _mm_set1_ps(float) copies value into all slots
+
+  operator const __m512&() const { return f_; }
+  operator __m512&() { return f_; }
+  __m512* get() { return &f_; } // For when we need to pass a ptr, as opposed to value or reference.
+
+  float operator[] (size_t i) const {
+    return *(((float*)&f_) + i); // potentially undefined, but efficient. In practice __m128 is an array of floats
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, float32x16 f16) {
+    float* a = (float*)&f16;
+    out << "[" << a[0];
+    for(int i = 1; i < 16; i++)
+      out << " " << a[i];
+    out << "]";
+    return out;
+  }
+};
 #endif
+#endif // #ifndef __CUDACC__
 
 #if COMPILE_FP16
 

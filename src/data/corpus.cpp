@@ -54,7 +54,8 @@ void Corpus::preprocessLine(std::string& line, size_t streamId, size_t lineId, b
       LOG_ONCE(info, "[data] Target all-caps'ed line to: {}", line);
     altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for all caps
   }
-  else if (allLowerCaseEvery_ != 0 && lineId % allLowerCaseEvery_ == 0 && !inference_) {
+  else if (allLowerCaseEvery_ != 0 && lineId % allLowerCaseEvery_ == 1 && !inference_  && streamId == 0) {
+    // Again for general purpose robustness, so applied only to source
     line = vocabs_[streamId]->toLower(line);
     if (streamId == 0)
       LOG_ONCE(info, "[data] Source lower-caps'ed line to: {}", line);
@@ -62,7 +63,7 @@ void Corpus::preprocessLine(std::string& line, size_t streamId, size_t lineId, b
       LOG_ONCE(info, "[data] Target lower-caps'ed line to: {}", line);
     altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for all caps
   }
-  else if (titleCaseEvery_ != 0 && lineId % titleCaseEvery_ == 1 && !inference_ && streamId == 0) {
+  else if (titleCaseEvery_ != 0 && lineId % titleCaseEvery_ == 2 && !inference_ && streamId == 0) {
     // Only applied to stream 0 (source) since this feature is aimed at robustness against
     // title case in the source (and not at translating into title case).
     // Note: It is user's responsibility to not enable this if the source language is not English.
@@ -73,15 +74,15 @@ void Corpus::preprocessLine(std::string& line, size_t streamId, size_t lineId, b
       LOG_ONCE(info, "[data] Target English-title-case'd line to: {}", line);
     altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for title casing
   }
-  else if (allTitleCaseEvery_ != 0 && lineId % allTitleCaseEvery_ == 1 && !inference_ && streamId == 0) {
+  else if (allTitleCaseEvery_ != 0 && lineId % allTitleCaseEvery_ == 3 && !inference_ && streamId == 0) {
     // Only applied to stream 0 (source) since this feature is aimed at robustness against
     // title case in the source (and not at translating into title case).
     // Note: It is user's responsibility to not enable this if the source language is not English.
     line = vocabs_[streamId]->toAllTitleCase(line);
     if (streamId == 0)
-      LOG_ONCE(info, "[data] Source English-title-case'd line to: {}", line);
+      LOG_ONCE(info, "[data] Source cap-case'd line to: {}", line);
     else
-      LOG_ONCE(info, "[data] Target English-title-case'd line to: {}", line);
+      LOG_ONCE(info, "[data] Target cap-case'd line to: {}", line);
     altered = isFactoredVocab ? false : true; // FS vocab does not really "alter" the token lemma for title casing
   }
 }

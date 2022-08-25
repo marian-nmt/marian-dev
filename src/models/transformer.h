@@ -566,6 +566,9 @@ public:
       dimFfn = opt<int>("transformer-dim-ffn"); // won't enter it but just in case, change to use it as default later
     }
 
+    if (dimFfn == 0)
+      return input;
+
     auto actName = opt<std::string>("transformer-ffn-activation");
     int depthFfn = opt<int>("transformer-ffn-depth");
     float ffnDropProb

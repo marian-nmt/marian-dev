@@ -19,7 +19,7 @@ This is developer documentation. User documentation is available at https://mari
    factors
    api/library_index
 
-   contributing
+   CONTRIBUTING
 
    doc_guide
 

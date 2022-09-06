@@ -7,7 +7,6 @@ on:
     branches: [ master ]
 
 env:
-  MKL_URL: "https://romang.blob.core.windows.net/mariandev/ci/mkl-2020.1-windows-static.zip"
   BOOST_ROOT: "C:/hostedtoolcache/windows/Boost/1.72.0/x86_64"
   BOOST_URL: "https://sourceforge.net/projects/boost/files/boost-binaries/1.72.0/boost_1_72_0-msvc-14.2-64.exe"
 
@@ -34,15 +33,6 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Download MKL
-      run: |
-        # Wget retries downloading files and is faster than Invoke-WebRequest
-        C:\msys64\usr\bin\wget.exe -nv ${{ env.MKL_URL }} -O mkl.zip
-        Expand-Archive -Force mkl.zip ${{ github.workspace }}\mkl
-        # Set MKLROOT environment variable so that CMake can find MKL
-        echo "MKLROOT=${{ github.workspace }}\mkl" | Out-File -FilePath $env:GITHUB_ENV  -Encoding utf8 -Append
-      shell: powershell
-
     - name: Install CUDA
       run: |
         .\scripts\ci\install_cuda_windows.ps1 "10.2"
@@ -51,9 +41,17 @@ jobs:
         echo "$env:CUDA_PATH/bin"       | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       shell: powershell
       if: matrix.gpu == true
+    # Cache boost install 
+    - name: Cache Boost
+      id: cache-boost
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.BOOST_ROOT }}
+        key: ${{ runner.os }}-${{ env.BOOST_URL }}
 
     # Boost is no longer pre-installed on GitHub-hosted Windows runners
     - name: Download Boost
+      if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
       run: |
         Write-Host "Downloading Boost to ${{ env.BOOST_ROOT }}"
         C:\msys64\usr\bin\wget.exe -nv "${{ env.BOOST_URL }}" -O "${{ github.workspace }}/boost.exe"
@@ -70,6 +68,7 @@ jobs:
 
     # Windows CUDA builds use USE_NCCL=off due to compilation errors.
     - name: Build Debug
+      id: build-debug
       uses: lukka/run-cmake@v3
       with:
         buildDirectory: ${{ github.workspace }}/build/Debug
@@ -94,6 +93,11 @@ jobs:
       # its main purpose is to detect warnings that the Release build is not
       # able to find sometimes.
       if: matrix.gpu == true
+
+    - name: Cleanup Debug
+      if: steps.build-debug.conclusion == 'success'
+      working-directory: ${{ github.workspace }}/build/Debug
+      run: cmake --build . --target clean
 
     # Windows CUDA builds use USE_NCCL=off due to compilation errors
     - name: Build Release

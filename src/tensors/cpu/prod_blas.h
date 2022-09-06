@@ -1,5 +1,5 @@
-#if MKL_FOUND
-#include <mkl.h>
+#if DNNL_FOUND
+#include <oneapi/dnnl/dnnl.hpp>
 #else
 #if BLAS_FOUND
 #include <cblas.h>
@@ -19,6 +19,21 @@ inline void sgemm(bool transA,
                   float beta,
                   float* c,
                   int ldc) {
+#if DNNL_FOUND
+  dnnl::sgemm(transA ? 't' : 'n',
+              transB ? 't' : 'n',
+              rows_a,
+              rows_b,
+              width,
+              alpha,
+              a,
+              lda,
+              b,
+              ldb,
+              beta,
+              c,
+              ldc);
+#else
 #if BLAS_FOUND
   cblas_sgemm(CblasRowMajor,
               transA ? CblasTrans : CblasNoTrans,
@@ -37,5 +52,6 @@ inline void sgemm(bool transA,
 #else
     transA; transB; rows_a; rows_b; width; alpha; a; lda; b; ldb; beta; c; ldc; // make compiler happy
     ABORT("Marian must be compiled with a BLAS library");
+#endif
 #endif
 }

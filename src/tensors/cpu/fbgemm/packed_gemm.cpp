@@ -38,11 +38,6 @@
 #include <omp.h>
 #endif
 
-#if MKL_FOUND
-#include <mkl.h>
-#include <mkl_types.h>
-#endif
-
 using namespace fbgemm;
 #endif // USE_FBGEMM
 
@@ -71,7 +66,7 @@ static thread_local PackedGemmMatrixFP16 packedPlaceholder(1, 1, 1, 1, 1, 1, 1, 
 // Copied code from fbgemm. It's padding required from some kernel in FBGEMM
 // Verbatim - 'required by sw pipelined kernels'
 // https://github.com/marian-nmt/FBGEMM/blob/master/include/fbgemm/FbgemmFP16.h#L109
-const int PACK16_PADDING = 1024;  
+const int PACK16_PADDING = 1024;
 
 // This is a memory space to store auxiliary variables for FBGEMM (e.g. block row, block column, kernel_ncol_blocks and etc.)
 const int PACK16_SPECIALMEM = 256;
@@ -91,7 +86,7 @@ inline float clip(float value, float min, float max) {
 // will be removed, when FBGEMM api is changed
 // blocked row-major format address arithmetic
 //
-// Returns the memory address in the packed (block formatted) matrix array of a specific element 
+// Returns the memory address in the packed (block formatted) matrix array of a specific element
 // indexed by the original non-packed array.
 //
 // @param r_ row index in the original matrix
@@ -338,7 +333,7 @@ void fbgemmPacked16Pack(marian::Tensor out,
 // quantRangeStdDevs: the range to be quantized for the original float data in multiples standard deviation
 //                    the default value is 0.0f which means min/max quantization
 //                    only a half range of normal int8 which is [-64, 63] used to avoid overflow
-//                    during the accumulation in VPMADDUBSW instruction 
+//                    during the accumulation in VPMADDUBSW instruction
 //                    https://intel.github.io/mkl-dnn/dev_guide_int8_computations.html
 //                    (e.g. 3.f means the original tensor is quantized
 //                    from [mean - 3.f * standard deviation, mean + 3.f * standard deviation] to [-64, 63])
@@ -433,7 +428,7 @@ void fbgemmPacked8Pack(marian::Tensor out,
 
   // 4. packing
   const fbgemm::BlockingFactors* params = getBlockingFactors(packType);
-  
+
   PackBMatrix<int8_t> packedBN(
       transpose ? matrix_op_t::Transpose : matrix_op_t::NoTranspose,
       nrow, ncol, quantized, transpose ? nrow : ncol, packedBuf, 1, params);
@@ -491,15 +486,9 @@ void fbgemmPacked16Gemm(marian::Tensor C,
   packedPlaceholder.pmat_ = (fbgemm::float16*)(B->data<uint8_t>() + 256);
 
   if(bias != nullptr) {
-#if MKL_FOUND
-    for(int i = 0; i < m; ++i) {
-      mkl_somatcopy('R', 'N', 1, n, 1, bias->data(), n, C->data() + n * i, n);
-    }
-#else
     for(int i = 0; i < m; ++i) {
       std::copy(bias->data(), bias->data() + n, C->data() + n * i);
     }
-#endif
   }
 
 #ifdef _OPENMP

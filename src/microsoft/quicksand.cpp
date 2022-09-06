@@ -1,10 +1,6 @@
 #include "quicksand.h"
 #include "marian.h"
 
-#if MKL_FOUND
-#include "mkl.h"
-#endif
-
 #include "data/shortlist.h"
 #include "translator/beam_search.h"
 #include "translator/scorers.h"
@@ -77,10 +73,6 @@ public:
     device_ = New<cpu::WrappedDevice>(deviceId);
     graph_->setDevice(deviceId, device_);
 
-#if MKL_FOUND
-    mkl_set_num_threads(options_->get<int>("mkl-threads", 1));
-#endif
-
     std::vector<std::string> models
         = options_->get<std::vector<std::string>>("model");
 
@@ -124,7 +116,7 @@ public:
   QSNBestBatch decode(const QSBatch& qsBatch,
                       size_t maxLength,
                       const std::unordered_set<WordIndex>& shortlist) override {
-    
+
     std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
     ABORT_IF(lshOpts.size() == 2 && shortlist.size() > 0, "LSH and shortlist cannot be used at the same time");
@@ -138,7 +130,7 @@ public:
         shortListGen = New<data::LSHShortlistGenerator>(lshOpts[0], lshOpts[1], vocabs_[1]->lemmaSize(), /*abortIfDynamic=*/true);
       } else {
         shortListGen = New<data::FakeShortlistGenerator>(shortlist);
-      } 
+      }
       for(auto scorer : scorers_)
         scorer->setShortlistGenerator(shortListGen);
     }
@@ -299,8 +291,8 @@ bool convertModel(std::string inputFile, std::string outputFile, int32_t targetP
   }
 
   Type targetPrecType = (Type) targetPrec;
-  if (targetPrecType == Type::packed16 
-      || targetPrecType == Type::packed8avx2 
+  if (targetPrecType == Type::packed16
+      || targetPrecType == Type::packed8avx2
       || targetPrecType == Type::packed8avx512
       || (targetPrecType == Type::float32 && addLsh)) { // only allow non-conversion to float32 if we also use the LSH
     graph->packAndSave(outputFile, configStr.str(), targetPrecType);

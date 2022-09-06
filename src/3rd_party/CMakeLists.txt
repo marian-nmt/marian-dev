@@ -15,6 +15,25 @@ if(COMPILE_CPU)
   endif()
 endif(COMPILE_CPU)
 
+if(USE_DNNL)
+  # OneDNN
+  set(DNNL_BUILD_TESTS OFF CACHE BOOL "Build dnnl tests")
+  set(DNNL_BUILD_EXAMPLES OFF CACHE BOOL "Build dnnl examples")
+
+  set(DNNL_ENABLE_JIT_PROFILING OFF CACHE INTERNAL "" FORCE)
+  if(USE_STATIC_LIBS)
+    set(DNNL_LIBRARY_TYPE "STATIC" CACHE STRING "specifies whether oneDNN library should be SHARED or STATIC" FORCE)
+  endif(USE_STATIC_LIBS)
+
+  if(NOT USE_OPENMP)
+    set(DNNL_CPU_RUNTIME SEQ CACHE INTERNAL "" FORCE)
+  endif()
+
+  add_subdirectory(./oneDNN)
+  include_directories(./oneDNN/include)
+
+endif(USE_DNNL)
+
 if(USE_FBGEMM)
   # @TODO: find out if this is somehow harmful. This is supppressing CMake warnings for CMAKE_SUPPRESS_DEVELOPER_WARNINGS
   # meant to silence CMakeFiles of 3rd_party tools.
@@ -169,7 +188,7 @@ if(CUDA_FOUND)
     endif(COMPILE_AMPERE)
 
     # install nccl in ${CMAKE_BINARY_DIR}/local similar to /usr/local linux installation
-    # Using $(MAKE) instead of $CMAKE_MAKE_PROGRAM in order to make parallelization in NCCL compilation work with make -j16. 
+    # Using $(MAKE) instead of $CMAKE_MAKE_PROGRAM in order to make parallelization in NCCL compilation work with make -j16.
     # Apparently this does not get properly propagated otherwise and builts with only a single thread/process.
     ExternalProject_Add(nccl_install
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/nccl

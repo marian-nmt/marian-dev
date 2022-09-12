@@ -131,9 +131,10 @@ jobs:
       if: matrix.cpu == true && matrix.gpu == false
       id: cmake-onednn
       run: |
+        [ -z "${{ matrix.gcc }}" ] || export CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }}
+        [ -z "${{ matrix.clang }}" ] || export CC=/usr/bin/clang-${{ matrix.clang }} CXX=/usr/bin/clang++-${{ matrix.clang }}
         mkdir -p build-onednn
         cd build-onednn
-        CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }} \
         cmake .. \
           -DBoost_ARCHITECTURE=-x64 \
           -DCMAKE_BUILD_TYPE=Debug \

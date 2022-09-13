@@ -42,7 +42,7 @@ void fillRandomRotationMatrix(Tensor output, Ptr<Allocator> allocator) {
   allocator->free(memory);
 #else
   output; allocator;
-  ABORT("LSH with rotation matrix requires Marian to be compiled with a BLAS library");
+  ABORT("LSH with rotation matrix requires Marian to be compiled with MKL");
 #endif
 }
 

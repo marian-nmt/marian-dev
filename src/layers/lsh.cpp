@@ -4,7 +4,7 @@
 
 #include "3rd_party/faiss/utils/hamming.h"
 
-#if BLAS_FOUND
+#if defined(BLAS_FOUND) && defined(MKL_FOUND)
 #include "3rd_party/faiss/VectorTransform.h"
 #endif
 
@@ -20,7 +20,7 @@ int bytesPerVector(int nBits) {
 }
 
 void fillRandomRotationMatrix(Tensor output, Ptr<Allocator> allocator) {
-#if BLAS_FOUND
+#if defined(BLAS_FOUND) && defined(MKL_FOUND)
   int nRows = output->shape()[-2];
   int nBits = output->shape()[-1];
 

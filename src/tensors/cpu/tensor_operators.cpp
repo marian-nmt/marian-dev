@@ -448,7 +448,12 @@ void Softmax(Tensor out, Tensor in) {
 void Softmax(Tensor out, Tensor in) {
   matchOrAbort<float>(out->type());
   matchOrAbort<float>(in->type());
-
+#ifdef __AVX512F__
+  if(out->shape()[-1] % 16 == 0) {
+    Softmax<float32x16>(out, in);
+    return;
+  }
+#endif
 #ifdef __AVX__
   if(out->shape()[-1] % 8 == 0) {
     Softmax<float32x8>(out, in);
@@ -505,6 +510,12 @@ void LogSoftmax(Tensor out, Tensor in) {
   matchOrAbort<float>(out->type());
   matchOrAbort<float>(in->type());
 
+#ifdef __AVX512F__
+  if(out->shape()[-1] % 16 == 0) {
+    LogSoftmax<float32x16>(out, in);
+    return;
+  }
+#endif
 #ifdef __AVX__
   if(out->shape()[-1] % 8 == 0) {
     LogSoftmax<float32x8>(out, in);
@@ -1564,6 +1575,11 @@ void LSTMCellForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
 
 void LSTMCellForward(Tensor out, std::vector<Tensor> inputs) {
   int cols = out->shape()[-1];
+#ifdef __AVX512F__
+  if(cols % 16 == 0)
+    LSTMCellForwardTyped<float32x16>(out, inputs);
+  else
+#endif
 #ifdef __AVX__
   if(cols % 8 == 0)
     LSTMCellForwardTyped<float32x8>(out, inputs);
@@ -1608,10 +1624,15 @@ void LSTMOutputForwardTyped(Tensor out_, const std::vector<Tensor>& inputs) {
 void LSTMOutputForward(Tensor out, std::vector<Tensor> inputs) {
   int cols = out->shape()[-1];
 
+#ifdef __AVX512F__
+  if(cols % 16 == 0)
+    LSTMOutputForwardTyped<float32x16>(out, inputs);
+  else
+#endif
 #ifdef __AVX__
   if(cols % 8 == 0)
     LSTMOutputForwardTyped<float32x8>(out, inputs);
-  else 
+  else
 #endif
   if(cols % 4 == 0)
     LSTMOutputForwardTyped<float32x4>(out, inputs);

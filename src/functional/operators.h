@@ -253,7 +253,12 @@ struct Ops<float32x4> {
 
   static inline float32x4 sin(const float32x4& x) { return sin_ps(x); }
   static inline float32x4 cos(const float32x4& x) { return cos_ps(x); }
-  static inline float32x4 tan(const float32x4& x) { return div(sin(x), cos(x)); }
+  static inline float32x4 tan(const float32x4& x) {
+    float32x4 my_sin;
+    float32x4 my_cos;
+    sincos_ps(x, my_sin.get(), my_cos.get());
+    return div(my_sin, my_cos);
+  }
   static inline float32x4 log(const float32x4& x) { return log_ps(x); }
   static inline float32x4 exp(const float32x4& x) { return exp_ps(x); }
 
@@ -382,7 +387,12 @@ struct Ops<float32x8> {
 
   static inline float32x8 sin(const float32x8& x) { return sin256_ps(x); }
   static inline float32x8 cos(const float32x8& x) { return cos256_ps(x); }
-  static inline float32x8 tan(const float32x8& x) { return div(sin(x), cos(x)); } // @TODO: use sincos256_ps
+  static inline float32x8 tan(const float32x8& x) {
+    float32x8 my_sin;
+    float32x8 my_cos;
+    sincos256_ps(x, my_sin.get(), my_cos.get());
+    return div(my_sin, my_cos);
+  }
   static inline float32x8 log(const float32x8& x) { return log256_ps(x); }
   static inline float32x8 exp(const float32x8& x) { return exp256_ps(x); }
 
@@ -460,6 +470,137 @@ struct Ops<float32x8> {
     for(int i = 1; i < 8; ++i)
       mins = Ops<Single>::min(mins, x[i]);
     return mins;
+  }
+};
+
+} // end namespace functional
+} // end namespace marian
+#endif
+
+#ifdef __AVX512F__
+#include "3rd_party/avx512_mathfun.h"
+
+namespace marian {
+namespace functional {
+
+
+//*******************************************************************************************
+// Specialization for float32x16 (=__m512, CPU AVX512 intrisics)
+template <>
+struct Ops<float32x16> {
+  typedef float Single;
+
+  static inline float32x16 loop16(const std::function<float(const float&)>& f, const float32x16& x) {
+    float32x16 out;
+    for(int i = 0; i < 16; i++)
+      ((float*)&out)[i] = f(((const float*)&x)[i]);
+    return out;
+  }
+
+  static inline float32x16 loop16(const std::function<float(const float&, const float&)>& f, const float32x16& x, const float32x16& y) {
+    float32x16 out;
+    for(int i = 0; i < 16; i++)
+      ((float*)&out)[i] = f(((const float*)&x)[i], ((const float*)&y)[i]);
+    return out;
+  }
+
+  static inline float32x16 loop16(const std::function<float(const float&, const float&, const float&)>& f, const float32x16& x, const float32x16& y, const float32x16& z) {
+    float32x16 out;
+    for(int i = 0; i < 16; i++)
+      ((float*)&out)[i] = f(((const float*)&x)[i], ((const float*)&y)[i], ((const float*)&z)[i]);
+    return out;
+  }
+
+  static inline float32x16 tanh(const float32x16& x) { // ( e^x - e^-x )/( e^x + e^-x )
+    float32x16 e2x = exp(mul(2.f, x));
+    return div(sub(e2x, 1.f), add(e2x, 1.f));
+  }
+
+  static inline float32x16 sin(const float32x16& x) { return sin512_ps(x); }
+  static inline float32x16 cos(const float32x16& x) { return cos512_ps(x); }
+  static inline float32x16 tan(const float32x16& x) {
+    float32x16 my_sin;
+    float32x16 my_cos;
+    sincos512_ps(x, my_sin.get(), my_cos.get());
+    return div(my_sin, my_cos);
+  }
+  static inline float32x16 log(const float32x16& x) { return log512_ps(x); }
+  static inline float32x16 exp(const float32x16& x) { return exp512_ps(x); }
+
+  // @TODO: get rid of loop16 with proper intrisics
+  static inline float32x16 abs(const float32x16& x)  { return loop16(Ops<float>::abs, x); }
+  static inline float32x16 sqr(const float32x16& x)  { return _mm512_mul_ps(x, x); }
+  static inline float32x16 sqrt(const float32x16& x) { return _mm512_sqrt_ps(x); }
+  static inline float32x16 neg(const float32x16& x)  { return sub(0.f, x); }
+
+  // @TODO: get rid of loop16 with proper intrisics
+  static inline float32x16 sgn(const float32x16& x)  { return loop16(Ops<float>::sgn, x); }
+
+  static inline float32x16 round(const float32x16& x)  { return _mm512_roundscale_ps(x, _MM_FROUND_TO_NEAREST_INT); } // Thank you, Intel: https://stackoverflow.com/questions/50854991/instrinsic-mm512-round-ps-is-missing-for-avx512
+  static inline float32x16 floor(const float32x16& x)  { return _mm512_floor_ps(x); }
+  static inline float32x16 ceil(const float32x16& x)   { return _mm512_ceil_ps(x); }
+
+  static inline float32x16 add(const float32x16& x, const float32x16& y) { return _mm512_add_ps(x, y); }
+  static inline float32x16 sub(const float32x16& x, const float32x16& y) { return _mm512_sub_ps(x, y); }
+  static inline float32x16 mul(const float32x16& x, const float32x16& y) { return _mm512_mul_ps(x, y); }
+  static inline float32x16 div(const float32x16& x, const float32x16& y) { return _mm512_div_ps(x, y); }
+
+  static inline float32x16 max(const float32x16& x, const float32x16& y) { return _mm512_max_ps(x, y); }
+  static inline float32x16 min(const float32x16& x, const float32x16& y) { return _mm512_min_ps(x, y); }
+  static inline float32x16 pow(const float32x16& x, const float32x16& y) { return exp(mul(y, log(x))); }
+
+  // @TODO: get rid of loop16 with proper intrisics
+  static inline float32x16 negate(float32x16& x)  { return loop16(Ops<float>::negate, x); }
+
+  static inline float32x16 eq(const float32x16& x, const float32x16& y)   { return loop16(Ops<float>::eq, x, y); }
+  static inline float32x16 neq(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::neq, x, y); }
+  static inline float32x16 gt(const float32x16& x, const float32x16& y)   { return loop16(Ops<float>::gt, x, y); }
+  static inline float32x16 lt(const float32x16& x, const float32x16& y)   { return loop16(Ops<float>::lt, x, y); }
+  static inline float32x16 geq(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::geq, x, y); }
+  static inline float32x16 leq(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::leq, x, y); }
+  static inline float32x16 and_(const float32x16& x, const float32x16& y) { return loop16(Ops<float>::and_, x, y); } // 'and' is used by gcc
+  static inline float32x16 or_(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::or_, x, y); } // 'or' is used by gcc
+
+
+  // Neural Networks specific functions
+  // @TODO: this is unsafe
+  static inline float32x16 sigmoid(const float32x16& x) {
+    float32x16 e = exp(x);
+    return div(e, add(1.f, e));
+  }
+
+  static inline float32x16 logaddexp(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::logaddexp, x, y); }
+
+  static inline float32x16 clip(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::clip, x, y); }
+  static inline float32x16 bump(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::bump, x, y); }
+
+  static inline float32x16 relu(const float32x16& x)  { return max(0.f, x); }
+
+  static inline float32x16 reluBack(const float32x16& x)  { return loop16(Ops<float>::reluBack, x); }
+  static inline float32x16 prelu(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::prelu, x, y); }
+  static inline float32x16 preluBack(const float32x16& x, const float32x16& y)  { return loop16(Ops<float>::preluBack, x, y); }
+
+  static inline float32x16 if_then_else(const float32x16& x, const float32x16& y, const float32x16& z) { return loop16(Ops<float>::if_then_else, x, y, z);  }
+
+  static inline Single sumReduce(const float32x16& x) {
+    // It's a sequence instruction so performance might be suboptimal, but this probably gives the compiler  the best chance at optimising it:
+    // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=mm512_reduce_add_ps&ig_expand=5926,5926,5703,5730,5660,5660&avx512techs=AVX512F
+    Single sum = _mm512_reduce_add_ps(x);
+    return sum;
+  }
+
+  static inline Single maxReduce(const float32x16& x) {
+    // It's a sequence instruction so performance might be suboptimal, but this probably gives the compiler  the best chance at optimising it:
+    // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=mm512_reduce_max_ps&ig_expand=5926,5926,5703&avx512techs=AVX512F
+    Single max = _mm512_reduce_max_ps(x);
+    return max;
+  }
+
+  static inline Single minReduce(const float32x16& x) {
+    // It's a sequence instruction so performance might be suboptimal, but this probably gives the compiler  the best chance at optimising it:
+    // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=mm512_reduce_min_ps&ig_expand=5926,5926,5703,5730&avx512techs=AVX512F
+    Single min = _mm512_reduce_min_ps(x);
+    return min;
   }
 };
 

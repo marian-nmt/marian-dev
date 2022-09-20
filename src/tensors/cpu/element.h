@@ -83,16 +83,27 @@ template <class Functor, class... Tensors>
 void elementFloat(const Functor& functor, marian::Tensor out, Tensors... tensors) {
 #ifndef __CUDACC__
   std::vector<marian::Tensor> ts({out, tensors...});
+  bool div16 = true;
   bool div8 = true;
   bool div4 = true;
 
   for(auto t : ts) {
+    if(t->shape()[-1] % 16 != 0)
+      div16 = false;
     if(t->shape()[-1] % 8 != 0)
       div8 = false;
     if(t->shape()[-1] % 4 != 0) {
       div4 = false;
       break;
     }
+  }
+
+  if(div16) {
+    // std::cerr << "16: " << functor.to_string() << std::endl;
+#ifdef __AVX512F__
+    element<float32x16>(functor, out, tensors...);
+    return;
+#endif
   }
 
   if(div8) {

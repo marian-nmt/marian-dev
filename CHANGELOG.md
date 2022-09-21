@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Adds `marian-adaptive` and `marian-adaptive-server` executables to enable self-adaptive translation (a.k.a, runtime domain adaptation).
 
 ### Fixed
 - Multi-loss casts type to first loss-type before accumulation (aborted before due to missing cast)

@@ -43,7 +43,12 @@ public:
   SentenceTuple next() override;
 
   void shuffle() override {}
-  void reset() override {}
+  void reset() override {
+    for (auto& file : files_) {
+      file->clear();
+      file->seekg(0);
+    }
+  }
 
   iterator begin() override { return iterator(*this); }
   iterator end() override { return iterator(); }

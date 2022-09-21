@@ -47,9 +47,9 @@ const SentenceTuple& CorpusIterator::dereference() const {
   return tup_;
 }
 
-// These types of corpus constructors are used in in-training validators
-// (only?), so do not load additional files for guided alignment or data
-// weighting.
+// These types of corpus constructors are used in in-training validators (only?
+// (also in self-adaptive translation)), so do not load additional files for
+// guided alignment or data weighting.
 CorpusBase::CorpusBase(const std::vector<std::string>& paths,
                        const std::vector<Ptr<Vocab>>& vocabs,
                        Ptr<Options> options,
@@ -71,9 +71,15 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
   }
 
   for(auto path : paths_) {
-    UPtr<io::InputFileStream> strm(new io::InputFileStream(path));
-    ABORT_IF(strm->empty(), "File '{}' is empty", path);
-    files_.emplace_back(std::move(strm));
+    // This constructor is also used in self-adaptive translation and it needs
+    // support for reading translation inputs from stdin
+    if(path == "stdin" || path == "-")
+      files_.emplace_back(new std::istream(std::cin.rdbuf()));
+    else {
+      UPtr<io::InputFileStream> strm(new io::InputFileStream(path));
+      ABORT_IF(strm->empty(), "File '{}' is empty", path);
+      files_.emplace_back(std::move(strm));
+    }
   }
 
   initEOS(/*training=*/true);

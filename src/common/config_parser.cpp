@@ -69,13 +69,29 @@ std::string const& ConfigParser::cmdLine() const {
   return cmdLine_;
 }
 
-ConfigParser::ConfigParser(cli::mode mode)
-  : cli_(config_,"Marian: Fast Neural Machine Translation in C++",
-         "General options", "", 40),
-    mode_(mode == cli::mode::server ? cli::mode::translation : mode) {
+/**
+ * Convert some special modes (currently, server-like modes) to their non-special counterparts.
+ */
+cli::mode convertSpecialModes(cli::mode mode) {
+  switch(mode) {
+    case cli::mode::server:
+      return cli::mode::translation;
+    case cli::mode::selfadaptiveServer:
+      return cli::mode::selfadaptive;
+    default:
+      return mode;
+  }
+}
 
+ConfigParser::ConfigParser(cli::mode mode)
+    : cli_(config_, "Marian: Fast Neural Machine Translation in C++", "General options", "", 40),
+      // Server-like modes should mostly act like their non-server counterparts
+      // when parsing options. We keep all special handling in the constructor
+      // but in the rest of the parsing code we just pretend that we have a
+      // non-server mode.
+      mode_(convertSpecialModes(mode)) {
   addOptionsGeneral(cli_);
-  if (mode == cli::mode::server)
+  if (mode == cli::mode::server || mode == cli::mode::selfadaptiveServer)
     addOptionsServer(cli_);
   addOptionsModel(cli_);
 
@@ -93,6 +109,10 @@ ConfigParser::ConfigParser(cli::mode mode)
       break;
     case cli::mode::embedding:
       addOptionsEmbedding(cli_);
+      break;
+    case cli::mode::selfadaptive:
+      addOptionsTraining(cli_);
+      addOptionsTranslation(cli_);
       break;
     default:
       ABORT("wrong CLI mode");
@@ -121,6 +141,15 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
   cli.add<int>("--workspace,-w",
     "Preallocate arg MB of work space. Negative `--workspace -N` value allocates workspace as total available GPU memory minus N megabytes.",
     defaultWorkspace);
+  // Self-adaptive translation uses a training graph and a translation graph. We
+  // want to be able to prealocate different amounts of memory for both (because
+  // translation usually needs less) so we add a dedicated opiton for
+  // translation if self-adaptive translation is used.
+  if (mode_ == cli::mode::selfadaptive) {
+    cli.add<size_t>("--workspace-translate",
+      "Preallocate  arg  MB of work space for translation",
+      512);
+  }
   cli.add<std::string>("--log",
     "Log training process information to file given by arg");
   cli.add<std::string>("--log-level",
@@ -159,9 +188,7 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
 void ConfigParser::addOptionsServer(cli::CLIWrapper& cli) {
   // clang-format off
   auto previous_group = cli.switchGroup("Server options");
-  cli.add<size_t>("--port,-p",
-      "Port number for web socket server",
-      8080);
+  cli.add<size_t>("--port,-p", "Port number for web socket server", 8080);
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -336,7 +363,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       {1, 2, 3, 4, 5, 6, 7, 8});
 #endif
 
-  if(mode_ == cli::mode::training) {
+  if(mode_ == cli::mode::training || mode_ == cli::mode::selfadaptive) {
     // TODO: add ->range(0,1);
     cli.add<float>("--dropout-rnn",
         "Scaling dropout along rnn layers and time (0 = no dropout)");
@@ -388,9 +415,13 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
 #endif
   // scheduling options
 
+  // In self-adaptive mode users would typically want less updates to happen than in regular training
+  size_t defaultAfterEpochs = (mode_ == cli::mode::selfadaptive) ? 2 : 0;
+  std::string defaultDispFreq = (mode_ == cli::mode::selfadaptive) ? "1u" : "1000u";
+
   // @TODO: these should be re-defined as aliases for `--after` but the current frame work matches on value, so not doable.
   cli.add<size_t>("--after-epochs,-e",
-      "Finish after this many epochs, 0 is infinity (deprecated, '--after-epochs N' corresponds to '--after Ne')"); // @TODO: replace with alias
+      "Finish after this many epochs, 0 is infinity (deprecated, '--after-epochs N' corresponds to '--after Ne')", defaultAfterEpochs); // @TODO: replace with alias
   cli.add<size_t>("--after-batches",
       "Finish after this many batch updates, 0 is infinity (deprecated, '--after-batches N' corresponds to '--after Nu')"); // @TODO: replace with alias
 
@@ -399,7 +430,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "0e");
   cli.add<std::string/*SchedulerPeriod*/>("--disp-freq",
       "Display information every arg updates (append 't' for every arg target labels)",
-      "1000u");
+      defaultDispFreq);
   cli.add<size_t>("--disp-first",
       "Display information for the first arg updates");
   cli.add<bool>("--disp-label-counts",
@@ -416,34 +447,49 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       {"1e", "0"});
 
   addSuboptionsInputLength(cli);
-  addSuboptionsTSV(cli);
+  // TSV inputs aren't currently supported for self-adaptive translation because
+  // self-adaptive translation uses a custom training data reader
+  // (`AdaptiveContextReader`) which doesn't yet support TSV.
+  if (mode_ != cli::mode::selfadaptive)
+    addSuboptionsTSV(cli);
 
   // data management options
-  cli.add<std::string>("--shuffle",
-      "How to shuffle input data (data: shuffles data and sorted batches; batches: "
-      "data is read in order into batches, but batches are shuffled; none: no shuffling). "
-      "Use with '--maxi-batch-sort none' in order to achieve exact reading order", "data");
-  cli.add<bool>("--no-shuffle",
-      "Shortcut for backwards compatiblity, equivalent to --shuffle none (deprecated)");
-  cli.add<bool>("--no-restore-corpus",
-      "Skip restoring corpus state after training is restarted");
-  cli.add<std::string>("--tempdir,-T",
-      "Directory for temporary (shuffled) files and database",
-      "/tmp");
-  cli.add<std::string>("--sqlite",
-      "Use disk-based sqlite3 database for training corpus storage, default"
-      " is temporary with path creates persistent storage")
-    ->implicit_val("temporary");
-  cli.add<bool>("--sqlite-drop",
-      "Drop existing tables in sqlite3 database");
+  //
+  // These options are disabled for self-adaptive translation because they seem
+  // to not make much sense in that context, except for --shuffle, because they
+  // deal with the storage of training data, but, in self-adaptive translation,
+  // training data sets are small and they typically change for each input
+  // sentence. --shuffle isn't currently supported because we use `TextInput`
+  // for training data and shuffle is a no-op in that class. This might get
+  // implemented in the future.
+  if (mode_ != cli::mode::selfadaptive) {
+    cli.add<std::string>("--shuffle",
+        "How to shuffle input data (data: shuffles data and sorted batches; batches: "
+        "data is read in order into batches, but batches are shuffled; none: no shuffling). "
+        "Use with '--maxi-batch-sort none' in order to achieve exact reading order", "data");
+    cli.add<bool>("--no-shuffle",
+        "Shortcut for backwards compatiblity, equivalent to --shuffle none (deprecated)");
+    cli.add<bool>("--no-restore-corpus",
+        "Skip restoring corpus state after training is restarted");
+    cli.add<std::string>("--tempdir,-T",
+        "Directory for temporary (shuffled) files and database",
+        "/tmp");
+    cli.add<std::string>("--sqlite",
+        "Use disk-based sqlite3 database for training corpus storage, default"
+        " is temporary with path creates persistent storage")
+      ->implicit_val("temporary");
+    cli.add<bool>("--sqlite-drop",
+        "Drop existing tables in sqlite3 database");
+  }
 
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
 
   // optimizer options
-  cli.add<std::string>("--optimizer,-o",
+  auto defaultOptimizer = (mode_ == cli::mode::selfadaptive) ? "sgd" : "adam";
+  cli.add<std::string>("--optimizer",
      "Optimization algorithm: sgd, adagrad, adam",
-     "adam");
+     defaultOptimizer);
   cli.add<std::vector<float>>("--optimizer-params",
      "Parameters for optimization algorithm, e.g. betas for Adam. "
      "Auto-adjusted to --mini-batch-words-ref if given");
@@ -658,8 +704,11 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::string>("--output,-o",
       "Path to output file, stdout by default",
       "stdout");
-  cli.add<std::vector<std::string>>("--vocabs,-v",
-      "Paths to vocabulary files have to correspond to --input");
+  // for self-adaptive mode these are already added via the training options
+  if(mode_ != cli::mode::selfadaptive) {
+    cli.add<std::vector<std::string>>("--vocabs,-v",
+        "Paths to vocabulary files have to correspond to --input");
+  }
   // decoding options
   cli.add<size_t>("--beam-size,-b",
       "Beam size used during search with validating translator",
@@ -691,16 +740,22 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Keep the output segmented into SentencePiece subwords");
 #endif
 
-  addSuboptionsInputLength(cli);
-  addSuboptionsTSV(cli);
-  addSuboptionsDevices(cli);
-  addSuboptionsBatching(cli);
+  // For self-adaptive translation these options are already added in
+  // `addOptionsTraining`
+  if(mode_ != cli::mode::selfadaptive) {
+    addSuboptionsInputLength(cli);
+    addSuboptionsTSV(cli);
+    addSuboptionsDevices(cli);
+    addSuboptionsBatching(cli);
+  }
 
-  cli.add<bool>("--fp16",
-      "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
-  cli.add<std::vector<std::string>>("--precision",
-      "Mixed precision for inference, set parameter type in expression graph",
-      {"float32"});
+  if(mode_ != cli::mode::selfadaptive) {
+    cli.add<bool>("--fp16",
+        "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
+    cli.add<std::vector<std::string>>("--precision",
+        "Mixed precision for inference, set parameter type in expression graph",
+        {"float32"});
+  }
   cli.add<bool>("--skip-cost",
     "Ignore model cost during translation, not recommended for beam-size > 1");
 
@@ -727,7 +782,8 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
-  addSuboptionsULR(cli);
+  if(mode_ != cli::mode::selfadaptive)
+    addSuboptionsULR(cli);
 #endif
 
   cli.switchGroup(previous_group);
@@ -860,8 +916,9 @@ void ConfigParser::addSuboptionsDevices(cli::CLIWrapper& cli) {
 }
 
 void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
-  int defaultMiniBatch = (mode_ == cli::mode::translation) ? 1 : 64;
-  int defaultMaxiBatch = (mode_ == cli::mode::translation) ? 1 : 100;
+  bool transMode = mode_ == cli::mode::translation || mode_ == cli::mode::selfadaptive;
+  int defaultMiniBatch = transMode ? 1 : 64;
+  int defaultMaxiBatch = transMode ? 1 : 100;
   std::string defaultMaxiBatchSort = (mode_ == cli::mode::translation) ? "none" : "trg";
 
   // clang-format off
@@ -893,7 +950,7 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
       "Sorting strategy for maxi-batch: none, src, trg (not available for decoder)",
       defaultMaxiBatchSort);
 
-  if(mode_ == cli::mode::training) {
+  if(mode_ == cli::mode::training || mode_ == cli::mode::selfadaptive) {
     cli.add<bool>("--shuffle-in-ram",
         "Keep shuffled corpus in RAM, do not write to temp file");
 
@@ -936,13 +993,25 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
 }
 
 void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
-  size_t defaultMaxLength = (mode_ == cli::mode::training) ? 50 : 1000;
+  size_t defaultMaxLength =
+    (mode_ == cli::mode::training || mode_ == cli::mode::selfadaptive)
+    ? 50
+    : 1000;
   // clang-format off
   cli.add<size_t>("--max-length",
       "Maximum length of a sentence in a training sentence pair",
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
       "Crop a sentence to max-length instead of omitting it if longer than max-length");
+  // In self-adaptive translation, the user might want to be able to set
+  // different max lengths for training and translation. In that case,
+  // --max-length is assumed to be meant for training (as per the help message)
+  // and we add a --max-length-translate parameter for translation.
+  if (mode_ == cli::mode::selfadaptive) {
+    cli.add<size_t>("--max-length-translate",
+        "Maximum input sentence length for translation",
+        1000);
+  }
   // clang-format on
 }
 
@@ -1088,7 +1157,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
   // (or --data-weighting and 'weight').
   //
   // Note: this may modify the config, so it is safer to do it after --dump-config.
-  if(mode_ == cli::mode::training || get<bool>("tsv")) {
+  if(mode_ == cli::mode::training || get<bool>("tsv", false)) {
     auto inputTypes = get<std::vector<std::string>>("input-types");
     if(!inputTypes.empty()) {
       bool seenAligns = false;

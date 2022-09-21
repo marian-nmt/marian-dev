@@ -103,6 +103,7 @@ set(MARIAN_SOURCES
   translator/nth_element.cpp
   translator/helpers.cpp
   translator/scorers.cpp
+  translator/swappable.cpp
 
   training/graph_group_async.cpp
   training/graph_group_sync.cpp
@@ -127,6 +128,12 @@ set(MARIAN_SOURCES
   $<TARGET_OBJECTS:zlib>
   $<TARGET_OBJECTS:faiss>
 )
+
+if(COMPILE_ADAPTIVE)
+  set(MARIAN_SOURCES ${MARIAN_SOURCES}
+    data/adaptive_context.cpp
+  )
+endif(COMPILE_ADAPTIVE)
 
 add_library(marian STATIC ${MARIAN_SOURCES})
 
@@ -187,6 +194,7 @@ if(CUDA_FOUND)
     tensors/gpu/add_all.cu
     tensors/gpu/tensor_operators.cu
     tensors/gpu/cudnn_wrappers.cu
+    tensors/gpu/swap.cu
     translator/nth_element.cu
     translator/helpers.cu
     STATIC)
@@ -272,6 +280,18 @@ if (NOT COMPILE_LIBRARY_ONLY)
     endif(MSVC)
     set(EXECUTABLES ${EXECUTABLES} marian_server)
   endif(COMPILE_SERVER)
+
+  if(COMPILE_ADAPTIVE)
+    add_executable(marian_adaptive command/marian_adaptive.cpp)
+    set_target_properties(marian_adaptive PROPERTIES OUTPUT_NAME marian-adaptive)
+    set(EXECUTABLES ${EXECUTABLES} marian_adaptive)
+
+    if(COMPILE_SERVER)
+      add_executable(marian_adaptive_server command/marian_adaptive_server.cpp)
+      set_target_properties(marian_adaptive_server PROPERTIES OUTPUT_NAME marian-adaptive-server)
+      set(EXECUTABLES ${EXECUTABLES} marian_adaptive_server)
+    endif(COMPILE_SERVER)
+  endif(COMPILE_ADAPTIVE)
 
   foreach(exec ${EXECUTABLES})
     target_link_libraries(${exec} marian)

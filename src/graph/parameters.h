@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <map>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "common/definitions.h"
@@ -20,9 +21,9 @@ class Parameters {
 protected:
   Type acceptedElementType_; // this parameter object only takes paramters of this type
 
-  /** @brief List of all parameter nodes of this expression graph. */
+  /** List of all parameter nodes of this expression graph. */
   std::vector<Expr> params_;
-  std::map<std::string, Expr> named_;
+  std::unordered_map<std::string, Expr> named_;
 
   Ptr<TensorAllocator> vals_;
   Ptr<TensorAllocator> grads_;
@@ -42,6 +43,22 @@ public:
 
   virtual ~Parameters() {
     LOG(debug, "Destroyed parameter object of type {}", acceptedElementType_);
+  }
+
+  /**
+   * Retrieves the memory corresponding to the parameter values.
+   * @return A vector of memorypieces each corresponding to a single parameter
+   */
+  std::vector<MemoryPiece::PtrType> toMemoryPieces() {
+    std::vector<MemoryPiece::PtrType> res;
+    res.reserve(params_.size());
+    auto read_it = begin();
+    int i = 0;
+    for(; read_it != end(); ++read_it) {
+      i++;
+      res.push_back((*read_it)->val()->memory());
+    }
+    return res;
   }
 
   auto begin() -> decltype(params_.begin()) { return params_.begin(); }

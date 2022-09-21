@@ -14,7 +14,7 @@
 namespace marian {
 
 namespace cli {
-enum struct mode { training, translation, scoring, server, embedding };
+  enum struct mode { training, translation, scoring, server, embedding, selfadaptive, selfadaptiveServer };
 }  // namespace cli
 
 /**
@@ -120,6 +120,16 @@ private:
   T get(const std::string& key) const {
     ABORT_IF(!has(key), "CLI object has no key '{}'", key);
     return config_[key].as<T>();
+  }
+
+  // Return value for given option key cast to given type. Return the supplied
+  // default value if option is not set.
+  template <typename T>
+  T get(const std::string& key, T defaultValue) const {
+    if(has(key))
+      return config_[key].as<T>();
+    else
+      return defaultValue;
   }
 
   void addOptionsGeneral(cli::CLIWrapper&);

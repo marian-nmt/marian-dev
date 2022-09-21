@@ -184,6 +184,15 @@ public:
       kvParams.second->clear();
   }
 
+
+  /**
+   * Call `clear()` on each of the parameters in the graph
+   */
+  void clearParams() {
+    for(auto kvParams : paramsByElementType_)
+      kvParams.second->clear();
+  }
+
   /**
    * Set device options used to run the graph.
    * @param deviceId a struct type which stores device no. (size_t)
@@ -228,6 +237,22 @@ public:
    */
   void switchParams(const std::string& newNamespace) {
     namespace_ = newNamespace;
+  }
+
+  /**
+   * Extract graph parameters into a named map.
+   * @return A map with parameter names as keys and the corresponding graph elements as values
+   */
+  const std::unordered_map<std::string, Expr> & getParamsNamedMap() const {
+    if (paramsByElementType_.size() != 1) {
+      ABORT("Expected exactly one parameter datatype, got", paramsByElementType_.size());
+    }
+    for(auto&& kvParams : paramsByElementType_) {
+      auto cur_param = kvParams.second;
+      return cur_param->getMap();
+    }
+    ABORT("We should never get here"); // Just to satisfy compiler warnings;
+    return paramsByElementType_.find(Type::float32)->second->getMap();
   }
 
   /**
@@ -737,11 +762,22 @@ public:
   bool getThrowNaN() { return throwNaN_; }
 
 public:
-  /** Load model (mainly parameter objects) from array of io::Items */
-  void load(const std::vector<io::Item>& ioItems, bool markReloaded = true) {
+  /**
+   * Load model (mainly parameter objects) from array of io::Items
+   *
+   * @param dropF0prefix modify the `io::Item` names upon loading by removing
+   * "F0::" prefixes. "F*::" prefixes are used to distinguish parameters from
+   * different scorers in the translation graph. This option is used by
+   * self-adaptive translation to support loading these `io::Item`s for
+   * training.
+   */
+  void load(const std::vector<io::Item>& ioItems, bool markReloaded = true, bool dropF0prefix = false) {
     setReloaded(false);
     for(auto& item : ioItems) {
       std::string pName = item.name;
+      if (dropF0prefix && pName.substr(0, 4) == "F0::") {
+        pName = pName.substr(4);
+      }
       // skip over special parameters starting with "special:"
       if(pName.substr(0, 8) == "special:")
         continue;

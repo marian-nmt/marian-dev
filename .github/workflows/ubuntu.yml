@@ -10,6 +10,7 @@ on:
 jobs:
   build-ubuntu:
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Ubuntu CPU-only build

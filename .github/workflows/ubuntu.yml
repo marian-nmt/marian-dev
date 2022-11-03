@@ -4,7 +4,6 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
 
 jobs:
   build-ubuntu:
@@ -157,4 +156,3 @@ jobs:
         ./marian-scorer --version
         ./marian-server --version
         ./spm_encode --version
-

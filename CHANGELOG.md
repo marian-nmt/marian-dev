@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Fused inplace-dropout in FFN layer in Transformer
+- `--force-decode` option for marian-decoder
+- `--output-sampling` now works with ensembles (requires proper normalization via e.g `--weights 0.5 0.5`)
 
 ### Fixed
+- Use allocator in hashing
+- Read/restore checkpoints from main process only when training with MPI
 - Multi-loss casts type to first loss-type before accumulation (aborted before due to missing cast)
 - Throw `ShapeSizeException` if total expanded shape size exceeds numeric capacity of the maximum int value (2^31-1)
 - During mini-batch-fitting, catch `ShapeSizeException` and use another sizing hint. Aborts outside mini-batch-fitting.
@@ -20,9 +25,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed check for `fortran_ordering` in cnpy
 - Fixed fp16 training/inference with factors-combine concat method
 - Fixed clang 13.0.1 compatibility
-- Fixed potential vulnerabilities from lxml<4.9.1 or mistune<2.0.3
+- Fixed potential vulnerabilities from lxml<4.9.1 or mistune<2.0.31
+- Fixed the `--best-deep` RNN alias not setting the s2s model type
 
 ### Changed
+- Parameter synchronization in local sharding model now executes hash checksum before syncing
 - Make guided-alignment faster via sparse memory layout, add alignment points for EOS, remove losses other than ce
 - Negative `--workspace -N` value allocates workspace as total available GPU memory minus N megabytes.
 - Set default parameters for cost-scaling to 8.f 10000 1.f 8.f, i.e. when scaling scale by 8 and do not try to automatically scale up or down. This seems most stable.

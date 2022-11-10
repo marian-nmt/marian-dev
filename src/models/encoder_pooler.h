@@ -26,6 +26,11 @@ public:
   virtual ~EncoderPoolerBase() {}
 
   virtual void load(Ptr<ExpressionGraph> graph,
+                    const std::vector<io::Item>& items,
+                    bool markedReloaded = true) override
+      = 0;
+
+  virtual void load(Ptr<ExpressionGraph> graph,
                     const std::string& name,
                     bool markedReloaded = true) override
       = 0;
@@ -125,6 +130,7 @@ public:
 
     modelFeatures_.insert("transformer-heads");
     modelFeatures_.insert("transformer-no-projection");
+    modelFeatures_.insert("transformer-rnn-projection");
     modelFeatures_.insert("transformer-dim-ffn");
     modelFeatures_.insert("transformer-ffn-depth");
     modelFeatures_.insert("transformer-ffn-activation");
@@ -161,6 +167,12 @@ public:
 
   void push_back(Ptr<EncoderBase> encoder) { encoders_.push_back(encoder); }
   void push_back(Ptr<PoolerBase> pooler) { poolers_.push_back(pooler); }
+
+  void load(Ptr<ExpressionGraph> graph,
+            const std::vector<io::Item>& items,
+            bool markedReloaded) override {
+    graph->load(items, markedReloaded && !opt<bool>("ignore-model-config", false));
+  }
 
   void load(Ptr<ExpressionGraph> graph,
             const std::string& name,

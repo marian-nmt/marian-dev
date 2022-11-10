@@ -431,16 +431,13 @@ private:
 public:
   AffineWithReluNodeOp(Expr a, 
                        Expr b, 
-                       Expr bias,
-                       bool transA,
-                       bool transB,
-                       float scalar)
-      : NaryNodeOp({a, b, bias}, newShape(a, b, transA, transB)),
-        transA_(transA),
-        transB_(transB),
-        scalar_(scalar) {
-    ABORT_IF(!graph()->isInference() || graph()->getDeviceId().type != DeviceType::gpu,
-             "AffineWithReluNodeOp currently only supported for inference on GPU");
+                       Expr bias)
+      : NaryNodeOp({a, b, bias}, newShape(a, b, false, false)),
+        transA_(false),
+        transB_(false),
+        scalar_(1.0) {
+    ABORT_IF(!graph()->isInference(),
+             "AffineWithReluNodeOp currently only supported for inference");
   }
 
   Shape newShape(Expr a, Expr b, bool transA, bool transB) {
@@ -464,8 +461,8 @@ public:
   }
 
   NodeOps forwardOps() override {
-    ABORT_IF(!graph()->isInference() || graph()->getDeviceId().type != DeviceType::gpu,
-             "AffineWithReluNodeOp currently only supported for inference on GPU");
+    ABORT_IF(!graph()->isInference(),
+             "AffineWithReluNodeOp currently only supported for inference");
     
     return {
       NodeOp(Affine(val_,
@@ -1040,7 +1037,7 @@ struct GatherNodeOp : public NaryNodeOp {
   NodeOps backwardOps() override {
     return {NodeOp(
       // @TODO: rename to scatter
-      Insert</*add=*/true>(child(0)->grad(), adj_, child(1)->val(), axis_))};
+      Insert</*add=*/true>(child(0)->grad(), adj_, /*indices=*/child(1)->val(), axis_))};
   }
 
   Shape newShape(Expr a, int axis, Expr indices) {
@@ -1097,7 +1094,7 @@ struct ScatterNodeOp : public NaryNodeOp {
   NodeOps forwardOps() override {
     return {NodeOp(
       CopyCast(val_, child(0)->val()); // @TODO: use normal copy
-      Insert</*add=*/false>(val_, child(2)->val(), child(1)->val(), axis_)
+      Insert</*add=*/false>(val_, /*source=*/child(2)->val(), /*indices=*/child(1)->val(), axis_)
     )};
   }
 
@@ -1107,7 +1104,7 @@ struct ScatterNodeOp : public NaryNodeOp {
 
   Shape newShape(Expr a, int axis, Expr indices, Expr source) {
     ABORT_IF(axis != -1, "only last dimensions");
-    ABORT_IF(indices->shape() != source->shape(), "Shapes must match");
+    // ABORT_IF(indices->shape() != source->shape(), "Shapes must match"); or broadcast
 
     Shape shape = a->shape();
     // @TODO: do proper checking

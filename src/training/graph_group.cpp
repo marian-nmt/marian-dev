@@ -91,6 +91,43 @@ void GraphGroup::initGraphsAndOpts() {
   }
 }
 
+void GraphGroup::syncParametersAndShards() {
+  // In local model we have seen that parameters can diverge occasionally due to non-determinism in NCCL.
+  // Here, we try to catch this and if caught, re-sync everything (also optimizer state) across nodes.
+  if(shardingMode_ == ShardingMode::local) {
+    std::vector<size_t> hashes(mpi_->numMPIProcesses(), 0);
+    // compute hash value of parameters of 0-th graph (we only need to check one graph per node)
+    for(int i = 0; i < hashes.size(); i++) {
+      if(i == mpi_->myMPIRank()) {
+        auto allocator = graphs_[0]->allocator();
+        hashes[i] = graphs_[0]->params()->vals()->hash(1234, allocator); // this is quite fast with on-GPU implementation
+        LOG(debug, "Parameter hash for graph 0 on node {}: {}", mpi_->myMPIRank(), hashes[i]);
+      }
+    }
+
+    // Collect hashes from all nodes, note changing rootRank.
+    // After this hashes contains all hashes from all nodes.
+    for(int i = 0; i < hashes.size(); i++)
+      mpi_->bCast(&hashes[i], 1, mpi_->getDataType(&hashes[i]), /*rootRank=*/i);
+
+    // If any of the hashes diverges, re-sync.
+    if(std::any_of(hashes.begin(), hashes.end(), [&hashes](size_t v){ return v != hashes[0]; })) {
+      if(isMainProcess()) {
+        LOG(warn, "Parameters diverged:");
+        for(int i = 0; i < hashes.size(); i++)
+          LOG(warn, "\tGot hash {} for node {}", hashes[i], i);
+        LOG(warn, "Syncing all parameters and optimizer shards across {} MPI processes", mpi_->numMPIProcesses());
+      }
+
+      comm_->broadcastParams();
+      comm_->broadcastShards(optimizerShards_);
+
+      if(isMainProcess())
+        LOG(warn, "Re-synced all shards");
+    }
+  }
+}
+
 // increase cost-scaling factor if no NaN has been detected for a
 // given number of iterations. Usually we increase by 2 which adds
 // one more bit for precision.
@@ -283,25 +320,51 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
   */
   if(!options_->get<bool>("no-reload")) {
     std::string modelFileName = options_->get<std::string>("model");
+    bool foundModel = false;
 
-    if(filesystem::exists(modelFileName)) {
+    // these are structures that get fill in the main process and then broadcasted to other MPI
+    std::vector<io::Item> items;
+    bool markReloaded = true;
+
+    if(isMainProcess()) {
+      if(filesystem::exists(modelFileName)) {
+        LOG(info, "Loading model from {}", modelFileName);
+        foundModel    = true;
+        items         = io::loadItems(modelFileName);
+        markReloaded  = true;
+      } else if(options_->hasAndNotEmpty("pretrained-model")) {
+        std::string pretrainedModelFileName = options_->get<std::string>("pretrained-model");
+        LOG(info, "[training] Initializing model weights with pre-trained model {}", pretrainedModelFileName);
+        foundModel    = true;
+        items         = io::loadItems(pretrainedModelFileName);
+        markReloaded  = false;
+      }
+    }
+
+    // if a model file exists, the main process will find it and propagate this information to other MPI nodes
+    if(mpi_)
+      mpi_->bCast(&foundModel, 1, mpi_->getDataType(&foundModel));
+
+    if(foundModel) {
+      // continue with checkpoint loading
+      if(mpi_) {
+        // broadcast model information to other processes
+        mpi_->bCast(items);
+        mpi_->bCast(&markReloaded, 1, mpi_->getDataType(&markReloaded));
+      }
+
+      // handles MPI
       if(scheduler_)
         scheduler_->load(modelFileName);
+      
       // we just load it N times from disk (it'll be in disk cache after the first)
       // this also allocates memory correctly when calling forward() inside restoreFromCheckPoint
       size_t i = 0;
       for(auto graph : graphs_)
-        models_[i++]->load(graph, modelFileName);
+        models_[i++]->load(graph, items, markReloaded);
 
       // try to restore everything from checkpoint now
       restoreFromCheckpoint(modelFileName, scatterFn);
-    } else if(options_->hasAndNotEmpty("pretrained-model")) {
-      std::string nameInit = options_->get<std::string>("pretrained-model");
-      LOG(info, "[training] Initializing model weights with pre-trained model {}", nameInit);
-
-      size_t i = 0;
-      for(auto graph : graphs_)
-        models_[i++]->load(graph, nameInit, false);
     }
   }
 }
@@ -316,19 +379,26 @@ bool GraphGroup::restoreFromCheckpoint(const std::string& modelFileName,
 
   std::string checkpointName = modelFileName + ".optimizer.npz"; // @TODO: change to .checkpoint.npz, would break backwards compat
 
-  if(!filesystem::exists(checkpointName)) {
+  // if a checkpoint exists, the main process will find it and propagate this information to other MPI nodes
+  bool foundCheckpoint = filesystem::exists(checkpointName);
+  if(mpi_)
+    mpi_->bCast(&foundCheckpoint, 1, mpi_->getDataType(&foundCheckpoint));
+  
+  // all nodes will either continue or exit
+  if(!foundCheckpoint) {
     LOG(warn, "No checkpoint found, parameters reloaded from last inference model");
     return false; // failed to restore
   }
 
-  auto items = io::loadItems(checkpointName);
-  
-  // make sure all nodes see the same checkpoint data, may not be the case with distributed file systems
-  // when there was a delay in updating the caches accross nodes. So here node 0 sends its data to all.
-  // We still load them all from disk, but that serves more as a trick to allocate the correct memory.
-  if(mpi_)
-    for(auto& item : items)
-      mpi_->bCast(item);
+  std::vector<marian::io::Item> items;
+  // make sure all nodes receive the same checkpoint data from the main process.
+  if(mpi_) { // only the main process loads the checkpoint and the rest receives a copy
+    if(isMainProcess())
+      items = io::loadItems(checkpointName);
+    mpi_->bCast(items);
+  } else { // not doing MPI, so just load the checkpoint from disk
+    items = io::loadItems(checkpointName);
+  }
 
   // @TODO: probably we want to have the list of DeviceIds as an attribute
   std::vector<Ptr<Backend>> backends;
@@ -351,7 +421,8 @@ bool GraphGroup::restoreFromCheckpoint(const std::string& modelFileName,
     // run a full forward pass over the paramters to allocate the parameters values in order (by parameter name).
     // Just doing graph->params()->allocateForward() is not sufficient.
     ABORT_IF(graph->params()->vals()->shape() != masterParameters.shape,
-             "Graph parameter sizes and master copy parameter sizes in checkpoint do not match");
+             "Graph parameter sizes and master copy parameter sizes in checkpoint do not match ({} != {})",
+             graph->params()->vals()->shape(), masterParameters.shape);
 
     // Convert type of io::Item to match graph parameter type.
     if(masterParameters.type != graph->params()->vals()->type())

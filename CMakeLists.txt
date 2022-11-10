@@ -492,23 +492,22 @@ if(USE_STATIC_LIBS)
 endif()
 
 ###############################################################################
-# Seems to make SentencePiece Python module fail
-if(USE_TCMALLOC)
-  # Find Tcmalloc
-  if(NOT WIN32)
-    find_package(Tcmalloc)
-    if(Tcmalloc_FOUND)
-      include_directories(${Tcmalloc_INCLUDE_DIR})
-      # Please review whether the -Wl is needed, without it CI complains.
-      # But if we set this -Wl, it goes into errors like
-      # /usr/lib/gcc/x86_64-linux-gnu/7/libgcc.a(bid128.o):(.data+0x5ec0): multiple definition 
-      ##set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES} -Wl,-whole-archive)
-      set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES} -Wl,-no-whole-archive)
-    else(Tcmalloc_FOUND)
-      message(WARNING "Cannot find TCMalloc library. Continuing.")
-    endif(Tcmalloc_FOUND)
+# Find Tcmalloc_minimal 
+# re-used from sentencepiece
+if(NOT WIN32)
+  if(USE_STATIC_LIBS)
+    find_library(TCMALLOC_LIB NAMES libtcmalloc_minimal.a)
+  else()
+    find_library(TCMALLOC_LIB NAMES tcmalloc_minimal)
   endif()
-endif(USE_TCMALLOC)
+  if (TCMALLOC_LIB)
+    message(STATUS "Found TCMalloc: ${TCMALLOC_LIB}")
+    set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES})
+    add_definitions(-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free)
+  else()
+    message(STATUS "Not Found TCMalloc: ${TCMALLOC_LIB}")
+  endif()
+endif()
 
 ###############################################################################
 # Find BLAS library

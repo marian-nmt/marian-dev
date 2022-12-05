@@ -26,6 +26,7 @@ option(USE_CUDNN "Use CUDNN library" OFF)
 option(USE_DOXYGEN "Build documentation with Doxygen" ON)
 option(USE_FBGEMM "Use FBGEMM" OFF)
 option(USE_MKL "Compile with MKL support" ON)
+option(USE_DNNL "Compile with oneDNN support" OFF)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
@@ -84,6 +85,7 @@ endif()
 # Set compilation flags
 if(MSVC)
 # These are used in src/CMakeLists.txt on a per-target basis
+  list(APPEND EXTRA_DEFINITIONS  /DUNICODE /D_UNICODE)
   list(APPEND ALL_WARNINGS /WX; /W4;)
 
   # Disabled bogus warnings for CPU intrinsics and Protobuf:
@@ -105,7 +107,7 @@ if(MSVC)
   set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
   # /bigobj is necessary for expression_operators.cpp. See https://stackoverflow.com/questions/15110580/penalty-of-the-msvs-compiler-flag-bigobj
-  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS /bigobj ${DISABLE_GLOBALLY}")
+  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS /bigobj ${DISABLE_GLOBALLY}")
   set(CMAKE_CXX_FLAGS_RELEASE   "${CMAKE_CXX_FLAGS} /MT /O2 ${INTRINSICS} /Zi /MP /GL /DNDEBUG")
   set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
@@ -515,6 +517,12 @@ if(COMPILE_CPU)
     set(EXT_LIBS ${EXT_LIBS} intgemm) # Enable intgemm when compiling CPU
     add_definitions(-DCOMPILE_CPU=1)
   endif()
+
+  if(USE_DNNL)
+    set(EXT_LIBS ${EXT_LIBS} dnnl)
+    add_definitions(-DDNNL_FOUND=1)
+  endif(USE_DNNL)
+
   if(USE_APPLE_ACCELERATE)
     if(NOT APPLE)
       message(FATAL_ERROR "FATAL ERROR: Apple Accelerate only works on macOS.")
@@ -524,6 +532,7 @@ if(COMPILE_CPU)
     # you may need to install Xcode command line tools if you don't have them already (https://developer.apple.com/xcode/features/)
     include_directories("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/Headers")
     set(EXT_LIBS ${EXT_LIBS} "-framework Accelerate")
+    set(BLAS_FOUND TRUE)
     add_definitions(-DBLAS_FOUND=1)
   else(USE_APPLE_ACCELERATE)
     if(USE_MKL)
@@ -545,9 +554,14 @@ if(COMPILE_CPU)
           add_definitions(-DBLAS_FOUND=1)
         endif(CBLAS_FOUND)
       endif(BLAS_FOUND)
-    endif(MKL_FOUND)
+    endif()
   endif(USE_APPLE_ACCELERATE)
 endif(COMPILE_CPU)
+
+
+if(NOT BLAS_FOUND AND USE_FBGEMM)
+message(FATAL_ERROR "FBGEMM was requested but a BLAS vendor was not found.")
+endif()
 
 ###############################################################################
 # Find OpenSSL

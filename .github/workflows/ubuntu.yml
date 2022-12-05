@@ -127,6 +127,35 @@ jobs:
       working-directory: build
       run: make -j2
 
+    - name: Configure CMake (oneDNN)
+      if: matrix.cpu == true && matrix.gpu == false
+      id: cmake-onednn
+      run: |
+        [ -z "${{ matrix.gcc }}" ] || export CC=/usr/bin/gcc-${{ matrix.gcc }} CXX=/usr/bin/g++-${{ matrix.gcc }} CUDAHOSTCXX=/usr/bin/g++-${{ matrix.gcc }}
+        [ -z "${{ matrix.clang }}" ] || export CC=/usr/bin/clang-${{ matrix.clang }} CXX=/usr/bin/clang++-${{ matrix.clang }}
+        mkdir -p build-onednn
+        cd build-onednn
+        cmake .. \
+          -DBoost_ARCHITECTURE=-x64 \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCOMPILE_CPU=${{ matrix.cpu }} \
+          -DCOMPILE_CUDA=${{ matrix.gpu }} \
+          -DCOMPILE_EXAMPLES=${{ matrix.examples }} \
+          -DCOMPILE_SERVER=on \
+          -DCOMPILE_TESTS=${{ matrix.unit_tests }} \
+          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-${{ matrix.cuda }} \
+          -DDETERMINISTIC=on \
+          -DUSE_FBGEMM=${{ matrix.cpu }} \
+          -DUSE_SENTENCEPIECE=on \
+          -DUSE_STATIC_LIBS=on \
+          -DUSE_MKL=OFF -DUSE_DNNL=ON
+
+    - name: Compile (oneDNN)
+      if: steps.cmake-onednn.conclusion == 'success'
+      working-directory: build-onednn
+      run: make -j2 && make clean
+
+
     # TODO: add a flag to CMake to compile unit tests only on CPU
     - name: Run unit tests
       working-directory: build

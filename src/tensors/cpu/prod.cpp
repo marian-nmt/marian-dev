@@ -9,10 +9,6 @@
 
 #if MKL_FOUND
 #include <mkl.h>
-#else
-#if BLAS_FOUND
-#include <cblas.h>
-#endif
 #endif
 
 #include "integer_common.h"
@@ -30,7 +26,6 @@ void Prod(marian::Tensor C,
           bool transB,
           float beta,
           float scalar) {
-#if BLAS_FOUND
   float alpha = scalar;
 
   int m = A->shape().elements() / A->shape()[-1];
@@ -63,10 +58,6 @@ void Prod(marian::Tensor C,
         beta,
         C->data(),
         ldc);
-#else
-  C; A; B; transA; transB; beta; scalar;
-  ABORT("You need to compile with MKL in order to use the CPU version");
-#endif
 }
 
 // dummy implementation, computeType doesn't do anything on CPU
@@ -90,7 +81,6 @@ void ProdBatched(marian::Tensor C,
                  bool transB,
                  float beta,
                  float scalar) {
-#if BLAS_FOUND
   float alpha = scalar;
 
   // determine meta-shape of bdot operation. Essentially treat the last two dimensions as single elements
@@ -145,7 +135,8 @@ void ProdBatched(marian::Tensor C,
   functional::Shape bShapeMetaF = bShapeMeta;
   functional::Shape cShapeMetaF = cShapeMeta;
 
-#if MKL_FOUND
+// Prefer DNNL when available
+#if MKL_FOUND && !defined(DNNL_FOUND)
   CBLAS_TRANSPOSE transA_forarr = CblasNoTrans;
   CBLAS_TRANSPOSE transB_forarr = CblasNoTrans;
 
@@ -211,7 +202,7 @@ void ProdBatched(marian::Tensor C,
     &group_size[0]);
 #else
   functional::Array<int, functional::Shape::size()> dims;
-  for(size_t i = 0; i < batchC; ++i) {
+  for(int i = 0; i < batchC; ++i) {
     cShapeMetaF.dims(i, dims);
     auto aIndex = aShapeMetaF.bindex(dims);
     auto bIndex = bShapeMetaF.bindex(dims);
@@ -231,10 +222,6 @@ void ProdBatched(marian::Tensor C,
           ldc);
   }
 #endif
-#else
-  C; A; B; transA; transB; beta; scalar;
-  ABORT("You need to compile with MKL in order to use the CPU version");
-#endif
 }
 
 
@@ -246,7 +233,6 @@ void ProdBatchedLegacy(marian::Tensor C,
                        bool transB,
                        float beta,
                        float scalar) {
-#if BLAS_FOUND
   float alpha = scalar;
 
   size_t batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);
@@ -274,7 +260,8 @@ void ProdBatchedLegacy(marian::Tensor C,
   auto strideC = n * m;
 
   auto batchC = std::max(batchA, batchB);
-#if MKL_FOUND
+// Prefer DNNL when available
+#if MKL_FOUND && !defined(DNNL_FOUND)
   CBLAS_TRANSPOSE transA_forarr = CblasNoTrans;
   CBLAS_TRANSPOSE transB_forarr = CblasNoTrans;
 
@@ -349,10 +336,6 @@ void ProdBatchedLegacy(marian::Tensor C,
           C->data() + i * strideC,
           (int)ldc);
   }
-#endif
-#else
-  C; A; B; transA; transB; beta; scalar;
-  ABORT("You need to compile with MKL in order to use the CPU version");
 #endif
 }
 

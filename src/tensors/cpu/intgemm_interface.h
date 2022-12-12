@@ -15,8 +15,8 @@ static inline void printDNNLStatus(dnnl::status& status) {
       std::cout << "The operation failed because of incorrect function arguments." << std::endl;
   } else if (status == dnnl::status::unimplemented) {
       std::cout << "The operation failed because requested functionality is not implemented." << std::endl;
-  } else if (status == dnnl::status::iterator_ends) {
-      std::cout << "Primitive iterator passed over last primitive descriptor." << std::endl;
+  } else if (status == dnnl::status::last_impl_reached) {
+      std::cout << "The last available implementation is reached." << std::endl;
   } else if (status == dnnl::status::runtime_error) {
       std::cout << "Primitive or engine failed on execution." << std::endl;
   } else if (status == dnnl::status::not_required) {
@@ -43,10 +43,98 @@ inline matmul::primitive_desc make_matmul_primitive(bool shifted, bool transB) {
   dnnl::memory::desc c_md(rt_rt_dims, dt::s32, c_dims_strides);
   
   dnnl::primitive_attr attr;
-  attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
+  //attr.set_scales_mask(DNNL_ARG_DST);
+  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
   
-  matmul::desc matmul_d(a_md, b_md, c_md);
-  matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+  //matmul::desc matmul_d(a_md, b_md, c_md);
+  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+
+  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
+
+  return matmul_pd;
+}
+
+inline matmul::primitive_desc make_matmul_primitive_unquant(bool shifted, bool transB) {
+  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
+  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
+  
+  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  
+  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
+  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
+  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
+  
+  dnnl::primitive_attr attr;
+  //attr.set_scales_mask(DNNL_ARG_DST);
+  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
+  
+  //matmul::desc matmul_d(a_md, b_md, c_md);
+  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+
+  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
+
+  return matmul_pd;
+}
+
+inline matmul::primitive_desc make_matmul_primitive_unquant_bias(bool shifted, bool transB) {
+  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
+  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
+  
+  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  
+  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
+  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
+  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
+  dnnl::memory::desc bias_md(rt_rt_dims, dt::f32, c_dims_strides);
+  
+  dnnl::primitive_attr attr;
+  //attr.set_scales_mask(DNNL_ARG_DST);
+  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
+  
+  //matmul::desc matmul_d(a_md, b_md, c_md);
+  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+
+  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, bias_md, c_md, attr);
+
+  return matmul_pd;
+}
+
+inline matmul::primitive_desc make_matmul_primitive_unquant_bias_relu(bool shifted, bool transB) {
+  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
+  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
+  
+  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  
+  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
+  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
+  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
+  dnnl::memory::desc bias_md(rt_rt_dims, dt::f32, c_dims_strides);
+  
+  dnnl::primitive_attr attr;
+  //attr.set_scales_mask(DNNL_ARG_DST);
+  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
+  
+  //matmul::desc matmul_d(a_md, b_md, c_md);
+  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
+
+   // Create primitive post-ops (ReLU).
+  const float alpha = 0.f;
+  const float beta = 0.f;
+  dnnl::post_ops matmul_ops;
+  matmul_ops.append_eltwise(dnnl::algorithm::eltwise_relu, alpha, beta);
+  attr.set_post_ops(matmul_ops);
+
+  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, bias_md, c_md, attr);
 
   return matmul_pd;
 }

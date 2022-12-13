@@ -44,7 +44,7 @@ inline matmul::primitive_desc make_matmul_primitive(bool shifted, bool transB) {
   
   dnnl::primitive_attr attr;
   //attr.set_scales_mask(DNNL_ARG_DST);
-  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
   //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
   
   //matmul::desc matmul_d(a_md, b_md, c_md);
@@ -69,7 +69,7 @@ inline matmul::primitive_desc make_matmul_primitive_unquant(bool shifted, bool t
   
   dnnl::primitive_attr attr;
   //attr.set_scales_mask(DNNL_ARG_DST);
-  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
   //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
   
   //matmul::desc matmul_d(a_md, b_md, c_md);
@@ -95,7 +95,7 @@ inline matmul::primitive_desc make_matmul_primitive_unquant_bias(bool shifted, b
   
   dnnl::primitive_attr attr;
   //attr.set_scales_mask(DNNL_ARG_DST);
-  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
   //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
   
   //matmul::desc matmul_d(a_md, b_md, c_md);
@@ -121,7 +121,7 @@ inline matmul::primitive_desc make_matmul_primitive_unquant_bias_relu(bool shift
   
   dnnl::primitive_attr attr;
   //attr.set_scales_mask(DNNL_ARG_DST);
-  attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
+  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
   //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
   
   //matmul::desc matmul_d(a_md, b_md, c_md);
@@ -776,7 +776,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
       make_matmul_primitive(true, false),
       make_matmul_primitive(true, true),
     };
-
+    //std::cerr << "Shifted: " << std::boolalpha << shifted << " transB " << std::boolalpha << transB << std::endl;
     dnnl::matmul matmul_p = matmul(matmul_x8s8s32[2*shifted + transB]);
 
     dnnl::memory A_m({

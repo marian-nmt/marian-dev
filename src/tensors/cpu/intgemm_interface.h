@@ -30,120 +30,6 @@ using dt = dnnl::memory::data_type;
 
 static dnnl::engine eng = dnnl::engine(dnnl::engine::kind::cpu, 0);
 
-inline matmul::primitive_desc make_matmul_primitive(bool shifted, bool transB) {
-  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
-  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
-  
-  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
-  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  
-  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
-  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
-  dnnl::memory::desc c_md(rt_rt_dims, dt::s32, c_dims_strides);
-  
-  dnnl::primitive_attr attr;
-  //attr.set_scales_mask(DNNL_ARG_DST);
-  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
-  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
-  
-  //matmul::desc matmul_d(a_md, b_md, c_md);
-  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
-
-  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
-
-  return matmul_pd;
-}
-
-inline matmul::primitive_desc make_matmul_primitive_unquant(bool shifted, bool transB) {
-  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
-  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
-  
-  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
-  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  
-  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
-  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
-  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
-  
-  dnnl::primitive_attr attr;
-  attr.set_scales_mask(DNNL_ARG_SRC, /* mask */ 0);
-  attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0);
-  //attr.set_zero_points_mask(DNNL_ARG_SRC, /* mask */ 0);
-  //attr.set_scales_mask(DNNL_ARG_DST);
-  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
-  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
-  
-  //matmul::desc matmul_d(a_md, b_md, c_md);
-  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
-
-  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
-
-  return matmul_pd;
-}
-
-inline matmul::primitive_desc make_matmul_primitive_unquant_bias(bool shifted, bool transB) {
-  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
-  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
-  
-  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
-  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  dims rt_1_dims = {1, DNNL_RUNTIME_DIM_VAL};
-  
-  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
-  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
-  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
-  dnnl::memory::desc bias_md(rt_1_dims, dt::f32, c_dims_strides);
-  
-  dnnl::primitive_attr attr;
-  attr.set_scales_mask(DNNL_ARG_SRC, /* mask */ 0);
-  attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0);
-  //attr.set_scales_mask(DNNL_ARG_DST);
-  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
-  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
-  
-  //matmul::desc matmul_d(a_md, b_md, c_md);
-  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
-
-  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, bias_md, c_md, attr);
-
-  return matmul_pd;
-}
-
-inline matmul::primitive_desc make_matmul_primitive_unquant_bias_relu(bool shifted, bool transB) {
-  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
-  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
-  
-  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
-  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  
-  dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
-  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
-  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
-  dnnl::memory::desc bias_md(rt_rt_dims, dt::f32, c_dims_strides);
-  
-  dnnl::primitive_attr attr;
-  //attr.set_scales_mask(DNNL_ARG_DST);
-  //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
-  //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
-  
-  //matmul::desc matmul_d(a_md, b_md, c_md);
-  //matmul::primitive_desc matmul_pd(matmul_d, attr, eng, true);
-
-   // Create primitive post-ops (ReLU).
-  const float alpha = 0.f;
-  const float beta = 0.f;
-  dnnl::post_ops matmul_ops;
-  matmul_ops.append_eltwise(dnnl::algorithm::eltwise_relu, alpha, beta);
-  attr.set_post_ops(matmul_ops);
-
-  auto matmul_pd = matmul::primitive_desc(eng, a_md, b_md, bias_md, c_md, attr);
-
-  return matmul_pd;
-}
-
 inline dnnl::matmul make_matmul(bool transB, bool bias, bool relu) {
   dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
   dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
@@ -467,10 +353,10 @@ public:
       if (!use_oneDNN) {
         intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndAddBiasAndWrite(unquant_mult, bias->data(), val_->data()));
       } else {
+        ABORT("Shifted is not yet implemented properly, so disable it");
         static const std::vector<uint8_t> ones(64000, 1); // Large enough static array of ones that we can use
-        static matmul::primitive_desc matmul_u8s8s32 = make_matmul_primitive(true, false);
 
-        dnnl::matmul matmul_p = matmul(matmul_u8s8s32);
+        static dnnl::matmul matmul_p = make_matmul(true, false, false);
 
         dnnl::memory A_m({
             /* size   */ {1, rows(b)},
@@ -560,11 +446,10 @@ public:
     if (!use_oneDNN) {
       intgemm::Int8Shift::PrepareBias((const int8_t *)b->data(), rows(b), cols(b), intgemm::callbacks::UnquantizeAndWrite(unquant_mult, val_->data()));
     } else {
+      ABORT("Shifted is not yet implemented properly, so disable it");
       static const std::vector<uint8_t> ones(64000, 1); // Large enough static array of ones that we can use
 
-      static matmul::primitive_desc matmul_u8s8s32 = make_matmul_primitive(true, false);
-
-      dnnl::matmul matmul_p = matmul(matmul_u8s8s32);
+      static dnnl::matmul matmul_p = make_matmul(true, false, false);
 
       dnnl::memory A_m({
           /* size   */ {1, rows(b)},
@@ -810,24 +695,6 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
 
     // std::cerr << "dnnlDotOrAffineNodeOp" << (shifted ? " shifted" : "") << (transB ? " transB" : "") << std::endl;
 
-    static std::array<matmul::primitive_desc, 4> matmul_x8s8s32 = {
-      make_matmul_primitive(false, false),
-      make_matmul_primitive(false, true),
-      make_matmul_primitive(true, false),
-      make_matmul_primitive(true, true),
-    };
-
-    static matmul::primitive_desc matmul_s8s8f32_desc = make_matmul_primitive_unquant(false, false);
-    static matmul::primitive_desc matmul_s8s8f32_trans_desc = make_matmul_primitive_unquant(false, true);
-    static dnnl::matmul matmul_s8s8f32 = matmul(matmul_s8s8f32_desc);
-    static dnnl::matmul matmul_s8s8f32_trans = matmul(matmul_s8s8f32_trans_desc);
-
-    static matmul::primitive_desc matmul_s8s8f32_bias_desc = make_matmul_primitive_unquant_bias(false, false);
-    static matmul::primitive_desc matmul_s8s8f32_bias_trans_desc = make_matmul_primitive_unquant_bias(false, true);
-    static dnnl::matmul matmul_s8s8f32_bias = matmul(matmul_s8s8f32_bias_desc);
-    static dnnl::matmul matmul_s8s8f32_bias_trans = matmul(matmul_s8s8f32_bias_trans_desc);
-
-
     static dnnl::matmul matmul_nt_nb_nr = make_matmul(/*transB*/false, /*bias*/ false, /*relu*/ false); // 0, no transpose, no bias, no relu
     static dnnl::matmul matmul_t_nb_nr = make_matmul(/*transB*/true, /*bias*/ false, /*relu*/ false); // 1, transpose, no bias, no relu
     static dnnl::matmul matmul_nt_b_nr = make_matmul(/*transB*/false, /*bias*/ true, /*relu*/ false); // 2, no transpose, bias, no relu
@@ -836,8 +703,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     static dnnl::matmul matmul_t_nb_r = make_matmul(/*transB*/true, /*bias*/ false, /*relu*/ true); // 5, transpose, no bias, relu
     static dnnl::matmul matmul_nt_b_r = make_matmul(/*transB*/false, /*bias*/ true, /*relu*/ true); // 6, no transpose, bias, relu
     static dnnl::matmul matmul_t_b_r = make_matmul(/*transB*/true, /*bias*/ true, /*relu*/ true); // 7, transpose, bias, relu
-    //std::cerr << "Shifted: " << std::boolalpha << shifted << " transB " << std::boolalpha << transB << std::endl;
-    dnnl::matmul matmul_p = matmul(matmul_x8s8s32[2*shifted + transB]);
+
 
     dnnl::memory A_m({
         /* size   */ {rows(aQuant->val()), cols(aQuant->val())},
@@ -874,8 +740,6 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
       dnnl::memory alpha_qm({{1}, dt::f32, {1}}, eng, &aQuantMult);
       dnnl::memory beta_qm({{1}, dt::f32, {1}}, eng, &bQuantMult);
 
-    if (true) {
-      /*new_codepath*/
       dnnl::stream s(eng);
       if (bias) {
         dnnl::memory bias_m({
@@ -958,133 +822,6 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
         }
       }
       s.wait();
-    } else {
-      /*old_codepath*/
-      if (!bias && !relu) {
-      dnnl::memory C_m({
-        /* size   */ {rows(out->val()), cols(out->val())},
-        /* type   */ dt::f32,
-        /* stride */ {cols(out->val()), 1}
-        },
-        eng,
-        (void *) out->val()->data<float>());
-        aQuantMult = 1/aQuantMult;
-        bQuantMult = 1/bQuantMult;
-      dnnl::memory alpha_qm({{1}, dt::f32, {1}}, eng, &aQuantMult);
-      dnnl::memory beta_qm({{1}, dt::f32, {1}}, eng, &bQuantMult);
-      if (!transB) {
-        dnnl::stream s(eng);
-        matmul_s8s8f32.execute(s, {
-          {DNNL_ARG_SRC, A_m},
-          {DNNL_ARG_WEIGHTS, B_m},
-          {DNNL_ARG_DST, C_m},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
-        });
-        s.wait();
-      } else {
-        dnnl::stream s(eng);
-        matmul_s8s8f32_trans.execute(s, {
-          {DNNL_ARG_SRC, A_m},
-          {DNNL_ARG_WEIGHTS, B_m},
-          {DNNL_ARG_DST, C_m},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
-        });
-        s.wait();
-      }
-
-      std::cerr << "Unbiased dequant: " << out->val()->data<float>()[0] << std::endl;
-
-    } else if (bias && !relu) {
-      dnnl::memory C_m({
-        /* size   */ {rows(out->val()), cols(out->val())},
-        /* type   */ dt::f32,
-        /* stride */ {cols(out->val()), 1}
-        },
-        eng,
-        (void *) out->val()->data<float>());
-
-      dnnl::memory bias_m({
-        /* size   */ {rows(bias->val()), cols(bias->val())},
-        /* type   */ dt::f32,
-        /* stride */ {cols(bias->val()), 1}
-        },
-        eng,
-        (void *) bias->val()->data<float>());
-
-        aQuantMult = 1/aQuantMult;
-        bQuantMult = 1/bQuantMult;
-      dnnl::memory alpha_qm({{1}, dt::f32, {1}}, eng, &aQuantMult);
-      dnnl::memory beta_qm({{1}, dt::f32, {1}}, eng, &bQuantMult);
-
-      if (!transB) {
-        dnnl::stream s(eng);
-        matmul_s8s8f32_bias.execute(s, {
-          {DNNL_ARG_SRC, A_m},
-          {DNNL_ARG_WEIGHTS, B_m},
-          {DNNL_ARG_BIAS, bias_m},
-          {DNNL_ARG_DST, C_m},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
-        });
-        s.wait();
-      } else {
-        dnnl::stream s(eng);
-        matmul_s8s8f32_bias_trans.execute(s, {
-          {DNNL_ARG_SRC, A_m},
-          {DNNL_ARG_WEIGHTS, B_m},
-          {DNNL_ARG_BIAS, bias_m},
-          {DNNL_ARG_DST, C_m},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
-          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
-        });
-        s.wait();
-      }
-
-      std::cerr << "biased dequant, transposed: " << std::boolalpha << transB << " : " << out->val()->data<float>()[0] << std::endl;
-    } else {
-
-      dnnl::memory C_m({
-        /* size   */ {rows(out->val()), cols(out->val())},
-        /* type   */ dt::s32,
-        /* stride */ {cols(out->val()), 1}
-        },
-        eng,
-        (void *) out->val()->data<int32_t>());
-
-      // Prepare oneDNN memory for alpha
-      float alpha = 1.0f;
-      dnnl::memory alpha_m({{1}, dt::f32, {1}}, eng, &alpha);
-
-      dnnl::stream s(eng);
-      matmul_p.execute(s, {
-        {DNNL_ARG_SRC, A_m},
-        {DNNL_ARG_WEIGHTS, B_m},
-        {DNNL_ARG_DST, C_m},
-        {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}
-      });
-      s.wait();
-
-      // TODO: How to get status?
-
-      // if (status != dnnl::status::success) {
-      //   printDNNLStatus(status);
-      //   ABORT("GEMM failed to run.");
-      // }
-
-      //Unquantise and add bias if necessary
-      if (bias && relu) {
-        UnquantiseAndAddBiasAndRelu(out->val(), bias->val(), unquant_mult);
-      } else if (bias) {
-        UnquantiseAndAddBias(out->val(), bias->val(), unquant_mult);
-      } else if (relu) {
-        JustUnquantiseRelu(out->val(), unquant_mult);
-      } else {
-        JustUnquantise(out->val(), unquant_mult);
-      }
-    }
-    }
   };
 
   // wrap the multiply finctions to be executed in the forward step of a Lambda node

@@ -144,6 +144,41 @@ inline matmul::primitive_desc make_matmul_primitive_unquant_bias_relu(bool shift
   return matmul_pd;
 }
 
+inline dnnl::matmul make_matmul(bool transB, bool bias, bool relu) {
+  dims a_dims_strides{DNNL_RUNTIME_DIM_VAL, 1};
+  dims b_dims_strides = transB ? dims {1, DNNL_RUNTIME_DIM_VAL} : dims {DNNL_RUNTIME_DIM_VAL, 1};
+
+  dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
+  dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  dims rt_1_dims = {1, DNNL_RUNTIME_DIM_VAL};
+
+  dnnl::memory::desc a_md(rt_rt_dims, false /*used to be shifted left for legacy reasons*/ ? dt::u8 : dt::s8,  a_dims_strides);
+  dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
+  dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
+  dnnl::memory::desc bias_md(rt_1_dims, dt::f32, c_dims_strides);
+
+  dnnl::primitive_attr attr;
+  // Dequantisation
+  attr.set_scales_mask(DNNL_ARG_SRC, /* mask */ 0);
+  attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0);
+
+  if (relu) {
+    // Create primitive post-ops (ReLU).
+    const float alpha = 0.f;
+    const float beta = 0.f;
+    dnnl::post_ops matmul_ops;
+    matmul_ops.append_eltwise(dnnl::algorithm::eltwise_relu, alpha, beta);
+    attr.set_post_ops(matmul_ops);
+  }
+
+  if (bias) {
+    return matmul(matmul::primitive_desc(eng, a_md, b_md, bias_md, c_md, attr));
+  } else {
+    return matmul(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
+  }
+
+}
+
 namespace marian {
 
 namespace cpu {
@@ -793,6 +828,14 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
     static dnnl::matmul matmul_s8s8f32_bias_trans = matmul(matmul_s8s8f32_bias_trans_desc);
 
 
+    static dnnl::matmul matmul_nt_nb_nr = make_matmul(/*transB*/false, /*bias*/ false, /*relu*/ false); // 0, no transpose, no bias, no relu
+    static dnnl::matmul matmul_t_nb_nr = make_matmul(/*transB*/true, /*bias*/ false, /*relu*/ false); // 1, transpose, no bias, no relu
+    static dnnl::matmul matmul_nt_b_nr = make_matmul(/*transB*/false, /*bias*/ true, /*relu*/ false); // 2, no transpose, bias, no relu
+    static dnnl::matmul matmul_t_b_nr = make_matmul(/*transB*/true, /*bias*/ true, /*relu*/ false); // 3, ranspose, bias, no relu
+    static dnnl::matmul matmul_nt_nb_r = make_matmul(/*transB*/false, /*bias*/ false, /*relu*/ true); // 4, no transpose, no bias, relu
+    static dnnl::matmul matmul_t_nb_r = make_matmul(/*transB*/true, /*bias*/ false, /*relu*/ true); // 5, transpose, no bias, relu
+    static dnnl::matmul matmul_nt_b_r = make_matmul(/*transB*/false, /*bias*/ true, /*relu*/ true); // 6, no transpose, bias, relu
+    static dnnl::matmul matmul_t_b_r = make_matmul(/*transB*/true, /*bias*/ true, /*relu*/ true); // 7, transpose, bias, relu
     //std::cerr << "Shifted: " << std::boolalpha << shifted << " transB " << std::boolalpha << transB << std::endl;
     dnnl::matmul matmul_p = matmul(matmul_x8s8s32[2*shifted + transB]);
 
@@ -819,7 +862,105 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
       eng,
       (void *) bQuant->val()->data<int8_t>());
 
-    if (!bias && !relu) {
+      dnnl::memory C_m({
+        /* size   */ {rows(out->val()), cols(out->val())},
+        /* type   */ dt::f32,
+        /* stride */ {cols(out->val()), 1}
+        },
+        eng,
+        (void *) out->val()->data<float>());
+        aQuantMult = 1/aQuantMult;
+        bQuantMult = 1/bQuantMult;
+      dnnl::memory alpha_qm({{1}, dt::f32, {1}}, eng, &aQuantMult);
+      dnnl::memory beta_qm({{1}, dt::f32, {1}}, eng, &bQuantMult);
+
+    if (true) {
+      /*new_codepath*/
+      dnnl::stream s(eng);
+      if (bias) {
+        dnnl::memory bias_m({
+        /* size   */ {rows(bias->val()), cols(bias->val())},
+        /* type   */ dt::f32,
+        /* stride */ {cols(bias->val()), 1}
+        },
+        eng,
+        (void *) bias->val()->data<float>());
+        if (transB && relu) {
+          matmul_t_b_r.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_BIAS, bias_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        } else if (!transB && relu) {
+          matmul_nt_b_r.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_BIAS, bias_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        } else if (transB && !relu) {
+          matmul_t_b_nr.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_BIAS, bias_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        } else if (!transB && !relu) {
+          matmul_nt_b_nr.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_BIAS, bias_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        }
+      } else {
+        if (transB && relu) {
+          matmul_t_nb_r.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        } else if (!transB && relu) {
+          matmul_nt_nb_r.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        } else if (transB && !relu) {
+          matmul_t_nb_nr.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        } else if (!transB && !relu) {
+          matmul_nt_nb_nr.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+          });
+        }
+      }
+      s.wait();
+    } else {
+      /*old_codepath*/
+      if (!bias && !relu) {
       dnnl::memory C_m({
         /* size   */ {rows(out->val()), cols(out->val())},
         /* type   */ dt::f32,
@@ -942,6 +1083,7 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
       } else {
         JustUnquantise(out->val(), unquant_mult);
       }
+    }
     }
   };
 

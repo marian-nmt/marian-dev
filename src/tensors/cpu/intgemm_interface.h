@@ -68,6 +68,9 @@ inline matmul::primitive_desc make_matmul_primitive_unquant(bool shifted, bool t
   dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
   
   dnnl::primitive_attr attr;
+  attr.set_scales_mask(DNNL_ARG_SRC, /* mask */ 0);
+  attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0);
+  //attr.set_zero_points_mask(DNNL_ARG_SRC, /* mask */ 0);
   //attr.set_scales_mask(DNNL_ARG_DST);
   //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
   //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
@@ -86,14 +89,16 @@ inline matmul::primitive_desc make_matmul_primitive_unquant_bias(bool shifted, b
   
   dims c_dims_strides = {DNNL_RUNTIME_DIM_VAL, 1};
   dims rt_rt_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
-  dims rt_1_dims = {DNNL_RUNTIME_DIM_VAL, DNNL_RUNTIME_DIM_VAL};
+  dims rt_1_dims = {1, DNNL_RUNTIME_DIM_VAL};
   
   dnnl::memory::desc a_md(rt_rt_dims, shifted ? dt::u8 : dt::s8,  a_dims_strides);
   dnnl::memory::desc b_md(rt_rt_dims, dt::s8,  b_dims_strides);
   dnnl::memory::desc c_md(rt_rt_dims, dt::f32, c_dims_strides);
-  dnnl::memory::desc bias_md(rt_rt_dims, dt::f32, c_dims_strides);
+  dnnl::memory::desc bias_md(rt_1_dims, dt::f32, c_dims_strides);
   
   dnnl::primitive_attr attr;
+  attr.set_scales_mask(DNNL_ARG_SRC, /* mask */ 0);
+  attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0);
   //attr.set_scales_mask(DNNL_ARG_DST);
   //attr.set_scales_mask(DNNL_ARG_ATTR_OUTPUT_SCALES, /* mask */ 0);
   //attr.set_output_scales(/* mask */ 0, {DNNL_RUNTIME_F32_VAL});
@@ -735,7 +740,7 @@ static Expr PrepareBiasForBTyped(Expr bias, Expr inputB_preppd, Expr inputA_prep
  */
 template<Type vtype>
 static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool transB, float scale, bool relu) {
-#if COMPILE_CPU
+#if 1
   ABORT_IF(!isFloat(a->value_type()), "Intgemm expects type of A to be float32 not {}", a->value_type());
   ABORT_IF(!isIntgemm(bQuant->value_type()), "Intgemm expects type of B to be a variant of intgemm not {}", bQuant->value_type());
 
@@ -776,6 +781,18 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
       make_matmul_primitive(true, false),
       make_matmul_primitive(true, true),
     };
+
+    static matmul::primitive_desc matmul_s8s8f32_desc = make_matmul_primitive_unquant(false, false);
+    static matmul::primitive_desc matmul_s8s8f32_trans_desc = make_matmul_primitive_unquant(false, true);
+    static dnnl::matmul matmul_s8s8f32 = matmul(matmul_s8s8f32_desc);
+    static dnnl::matmul matmul_s8s8f32_trans = matmul(matmul_s8s8f32_trans_desc);
+
+    static matmul::primitive_desc matmul_s8s8f32_bias_desc = make_matmul_primitive_unquant_bias(false, false);
+    static matmul::primitive_desc matmul_s8s8f32_bias_trans_desc = make_matmul_primitive_unquant_bias(false, true);
+    static dnnl::matmul matmul_s8s8f32_bias = matmul(matmul_s8s8f32_bias_desc);
+    static dnnl::matmul matmul_s8s8f32_bias_trans = matmul(matmul_s8s8f32_bias_trans_desc);
+
+
     //std::cerr << "Shifted: " << std::boolalpha << shifted << " transB " << std::boolalpha << transB << std::endl;
     dnnl::matmul matmul_p = matmul(matmul_x8s8s32[2*shifted + transB]);
 
@@ -801,44 +818,130 @@ static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA,
                },
       eng,
       (void *) bQuant->val()->data<int8_t>());
-    
-    dnnl::memory C_m({
-      /* size   */ {rows(out->val()), cols(out->val())},
-      /* type   */ dt::s32,
-      /* stride */ {cols(out->val()), 1}
-      },
-      eng,
-      (void *) out->val()->data<int32_t>());
 
-    // Prepare oneDNN memory for alpha
-    float alpha = 1.0f;
-    dnnl::memory alpha_m({{1}, dt::f32, {1}}, eng, &alpha);
+    if (!bias && !relu) {
+      dnnl::memory C_m({
+        /* size   */ {rows(out->val()), cols(out->val())},
+        /* type   */ dt::f32,
+        /* stride */ {cols(out->val()), 1}
+        },
+        eng,
+        (void *) out->val()->data<float>());
+        aQuantMult = 1/aQuantMult;
+        bQuantMult = 1/bQuantMult;
+      dnnl::memory alpha_qm({{1}, dt::f32, {1}}, eng, &aQuantMult);
+      dnnl::memory beta_qm({{1}, dt::f32, {1}}, eng, &bQuantMult);
+      if (!transB) {
+        dnnl::stream s(eng);
+        matmul_s8s8f32.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+        });
+        s.wait();
+      } else {
+        dnnl::stream s(eng);
+        matmul_s8s8f32_trans.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+        });
+        s.wait();
+      }
 
-    dnnl::stream s(eng);
-    matmul_p.execute(s, {
-      {DNNL_ARG_SRC, A_m},
-      {DNNL_ARG_WEIGHTS, B_m},
-      {DNNL_ARG_DST, C_m},
-      {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}
-    });
-    s.wait();
-    
-    // TODO: How to get status?
+      std::cerr << "Unbiased dequant: " << out->val()->data<float>()[0] << std::endl;
 
-    // if (status != dnnl::status::success) {
-    //   printDNNLStatus(status);
-    //   ABORT("GEMM failed to run.");
-    // }
+    } else if (bias && !relu) {
+      dnnl::memory C_m({
+        /* size   */ {rows(out->val()), cols(out->val())},
+        /* type   */ dt::f32,
+        /* stride */ {cols(out->val()), 1}
+        },
+        eng,
+        (void *) out->val()->data<float>());
 
-    //Unquantise and add bias if necessary
-    if (bias && relu) {
-      UnquantiseAndAddBiasAndRelu(out->val(), bias->val(), unquant_mult);
-    } else if (bias) {
-      UnquantiseAndAddBias(out->val(), bias->val(), unquant_mult);
-    } else if (relu) {
-      JustUnquantiseRelu(out->val(), unquant_mult);
+      dnnl::memory bias_m({
+        /* size   */ {rows(bias->val()), cols(bias->val())},
+        /* type   */ dt::f32,
+        /* stride */ {cols(bias->val()), 1}
+        },
+        eng,
+        (void *) bias->val()->data<float>());
+
+        aQuantMult = 1/aQuantMult;
+        bQuantMult = 1/bQuantMult;
+      dnnl::memory alpha_qm({{1}, dt::f32, {1}}, eng, &aQuantMult);
+      dnnl::memory beta_qm({{1}, dt::f32, {1}}, eng, &bQuantMult);
+
+      if (!transB) {
+        dnnl::stream s(eng);
+        matmul_s8s8f32_bias.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_BIAS, bias_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+        });
+        s.wait();
+      } else {
+        dnnl::stream s(eng);
+        matmul_s8s8f32_bias_trans.execute(s, {
+          {DNNL_ARG_SRC, A_m},
+          {DNNL_ARG_WEIGHTS, B_m},
+          {DNNL_ARG_BIAS, bias_m},
+          {DNNL_ARG_DST, C_m},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_qm},
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, beta_qm}
+        });
+        s.wait();
+      }
+
+      std::cerr << "biased dequant, transposed: " << std::boolalpha << transB << " : " << out->val()->data<float>()[0] << std::endl;
     } else {
-      JustUnquantise(out->val(), unquant_mult);
+
+      dnnl::memory C_m({
+        /* size   */ {rows(out->val()), cols(out->val())},
+        /* type   */ dt::s32,
+        /* stride */ {cols(out->val()), 1}
+        },
+        eng,
+        (void *) out->val()->data<int32_t>());
+
+      // Prepare oneDNN memory for alpha
+      float alpha = 1.0f;
+      dnnl::memory alpha_m({{1}, dt::f32, {1}}, eng, &alpha);
+
+      dnnl::stream s(eng);
+      matmul_p.execute(s, {
+        {DNNL_ARG_SRC, A_m},
+        {DNNL_ARG_WEIGHTS, B_m},
+        {DNNL_ARG_DST, C_m},
+        {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}
+      });
+      s.wait();
+
+      // TODO: How to get status?
+
+      // if (status != dnnl::status::success) {
+      //   printDNNLStatus(status);
+      //   ABORT("GEMM failed to run.");
+      // }
+
+      //Unquantise and add bias if necessary
+      if (bias && relu) {
+        UnquantiseAndAddBiasAndRelu(out->val(), bias->val(), unquant_mult);
+      } else if (bias) {
+        UnquantiseAndAddBias(out->val(), bias->val(), unquant_mult);
+      } else if (relu) {
+        JustUnquantiseRelu(out->val(), unquant_mult);
+      } else {
+        JustUnquantise(out->val(), unquant_mult);
+      }
     }
   };
 

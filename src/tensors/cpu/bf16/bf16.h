@@ -123,6 +123,7 @@ dnnl::status gemm_bf16bf16(char transa, char transb, dnnl_dim_t M, dnnl_dim_t N,
             po.append_sum(beta);
             attr.set_post_ops(po);
         }
+        attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0); // Because undocumenty API changes. DNNL_ARG_DST doesn't work
 
         matmul::primitive_desc matmul_pd(eng, ab_md, ab_md, c_md, attr);
         if (matmul_pd) matmul_p = matmul(matmul_pd);
@@ -146,7 +147,7 @@ dnnl::status gemm_bf16bf16(char transa, char transb, dnnl_dim_t M, dnnl_dim_t N,
     stream s(eng);
     matmul_p.execute(s,
             {{DNNL_ARG_SRC, A_m}, {DNNL_ARG_WEIGHTS, B_m}, {DNNL_ARG_DST, C_m},
-                    {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}});
+                    {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, alpha_m}});
     s.wait();
 
     return status::success;
@@ -174,6 +175,8 @@ dnnl::status gemm_f32f32bf16(dnnl_dim_t M, dnnl_dim_t N,
     constexpr memory::data_type c_data_type =
         std::is_same<c_dt, float>::value ? memory::data_type::f32 : bf16;
 
+    //std::cerr << "Alpha: " << alpha << " beta: " << beta << std::endl;
+
     std::call_once(initialized, [=] {
         eng = engine(engine::kind::cpu, 0);
 
@@ -194,6 +197,8 @@ dnnl::status gemm_f32f32bf16(dnnl_dim_t M, dnnl_dim_t N,
             po.append_sum(beta);
             attr.set_post_ops(po);
         }
+
+        attr.set_scales_mask(DNNL_ARG_WEIGHTS, /* mask */ 0); // Because undocumenty API changes. DNNL_ARG_DST doesn't work
 
         matmul::primitive_desc matmul_pd(eng, a_md, a_md, c_md, attr);
         if (matmul_pd) matmul_p = matmul(matmul_pd);
@@ -232,7 +237,8 @@ dnnl::status gemm_f32f32bf16(dnnl_dim_t M, dnnl_dim_t N,
     stream s(eng);
     matmul_p.execute(s,
             {{DNNL_ARG_SRC, A_m}, {DNNL_ARG_WEIGHTS, B_m}, {DNNL_ARG_DST, C_m},
-                    {DNNL_ARG_ATTR_OUTPUT_SCALES, alpha_m}});
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, alpha_m}
+                    });
     s.wait();
     //auto end_MULT = std::chrono::steady_clock::now();
 

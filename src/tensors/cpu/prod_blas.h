@@ -21,7 +21,8 @@ inline void sgemm(bool transA,
                   int ldb,
                   float beta,
                   float* c,
-                  int ldc) {
+                  int ldc,
+                  bool cache=false) {
 // MKL_FOUND also implies BLAS_FOUND so use DNNL only if MKL is not found
 #if defined(DNNL_FOUND) //&& !defined(MKL_FOUND)
 #if 1
@@ -37,7 +38,8 @@ inline void sgemm(bool transA,
              ldb,
              beta,
              c,
-             ldc);
+             ldc,
+             cache);
 #else
   dnnl::sgemm(transA ? 't' : 'n',
               transB ? 't' : 'n',

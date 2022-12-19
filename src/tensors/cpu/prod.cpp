@@ -57,7 +57,8 @@ void Prod(marian::Tensor C,
         ldb,
         beta,
         C->data(),
-        ldc);
+        ldc,
+        true);
 }
 
 // dummy implementation, computeType doesn't do anything on CPU
@@ -108,6 +109,8 @@ void ProdBatched(marian::Tensor C,
   auto strideC = n * m;
 
   auto batchC = std::max(batchA, batchB);
+
+  //std::cerr << "Batched: " << B->shape
 // Prefer DNNL when available
 #if MKL_FOUND && !defined(DNNL_FOUND)
   CBLAS_TRANSPOSE transA_forarr = CblasNoTrans;

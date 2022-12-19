@@ -10,9 +10,46 @@
 #include "bfloat16.hpp"
 #include <dnnl.hpp>
 #include <chrono>
+#include <unordered_map>
 
 
 namespace proxy {
+
+// Proper conversion from fp32 to bf16. Zero copy. Memoize B based on its address in memory since it should be constant, unless
+// We do a reallocation. Shouldn't happen if we give large enough workspace.
+inline dnnl::memory float2bf16_memoize_b(dnnl::engine& eng, int K, int N, const float *B, dnnl::memory::dims& b_strides) {
+    thread_local static std::unordered_map<const float *, dnnl::memory> cache;
+    auto hit = cache.find(B);
+    if (hit == cache.end()) {
+        using namespace dnnl;
+        memory B_m({{K, N}, memory::data_type::bf16, b_strides}, eng);
+        /*f32 to bf16 conversion*/
+        //Create memory description. The memory tag corresponds to source-target reordering
+        auto src_md_B = memory::desc({K, N}, memory::data_type::f32, memory::format_tag::ab);
+        auto trg_md_B = memory::desc({K, N}, memory::data_type::bf16, memory::format_tag::ab);
+
+        // Zero copy initialisation of the fp32 memory
+        auto src_mem_FP32 = memory(src_md_B, eng, (void *)B);
+
+        // Creating reodering engine. It doesn't actually do any reodering, just converts to bf16
+        auto reorder_pd = reorder::primitive_desc(eng, src_md_B, eng, trg_md_B);
+
+        //Set the arguments
+        std::unordered_map<int, memory> reorder_args;
+        reorder_args.insert({DNNL_ARG_SRC, src_mem_FP32});
+        reorder_args.insert({DNNL_ARG_DST, B_m});
+
+        //Perform the reordering
+        auto reorder_prim = reorder(reorder_pd);
+        stream reorder_stream(eng);
+        reorder_prim.execute(reorder_stream, reorder_args);
+        reorder_stream.wait();
+        cache.insert({B, B_m});
+        return B_m;
+    } else {
+        return hit->second;
+    }
+}
 
 // Proper conversion from fp32 to bf16. Zero copy
 inline void float2bf16(dnnl::engine& eng, int M, int K, const float *A, dnnl::memory& A_m) {
@@ -156,7 +193,7 @@ dnnl::status gemm_bf16bf16(char transa, char transb, dnnl_dim_t M, dnnl_dim_t N,
 template <typename c_dt, bool beta_is_zero, char transa, char transb>
 dnnl::status gemm_f32f32bf16(dnnl_dim_t M, dnnl_dim_t N,
         dnnl_dim_t K, float alpha, const float *A, dnnl_dim_t lda,
-        const float *B, dnnl_dim_t ldb, float beta, c_dt *C, dnnl_dim_t ldc) {
+        const float *B, dnnl_dim_t ldb, float beta, c_dt *C, dnnl_dim_t ldc, bool cache) {
     using namespace dnnl;
     using dims = memory::dims;
 
@@ -220,12 +257,19 @@ dnnl::status gemm_f32f32bf16(dnnl_dim_t M, dnnl_dim_t N,
     //float2bf16dnnlmemory(A, A_m, (size_t)M*(size_t)K);
     //auto end_CONVA = std::chrono::steady_clock::now();
     //auto start_BM = std::chrono::steady_clock::now();
-    memory B_m({{K, N}, bf16, b_strides}, eng);
+    memory B_m;
+    if (cache) {
+        B_m = float2bf16_memoize_b(eng, K, N, B, b_strides);
+    } else {
+        B_m = memory({{K, N}, bf16, b_strides}, eng);
+        float2bf16(eng, K, N, B, B_m);
+    }
+    //memory B_m({{K, N}, bf16, b_strides}, eng);
     //auto end_BM = std::chrono::steady_clock::now();
     //auto start_CONVB = std::chrono::steady_clock::now();
     //float2bf16dnnlmemory(B, B_m, (size_t)K*(size_t)N);
     /*f32 to bf16 conversion*/
-    float2bf16(eng, K, N, B, B_m);
+    //float2bf16(eng, K, N, B, B_m);
     //dnnl::impl::cvt_float_to_bfloat16(static_cast<dnnl::impl::bfloat16_t *>(B_m.get_data_handle()), B, (size_t)K*(size_t)N);
     //auto end_CONVB = std::chrono::steady_clock::now();
     memory C_m({{M, N}, c_data_type, {ldc, 1}}, eng, (void *)C);
@@ -274,30 +318,30 @@ inline dnnl::status gemm_bf16bf16f32(char transa, char transb, dnnl_dim_t M,
 
 inline dnnl::status gemm_f32f32bf16f32(bool transa, bool transb, dnnl_dim_t M,
         dnnl_dim_t N, dnnl_dim_t K, float alpha, const float *A, dnnl_dim_t lda,
-        const float *B, dnnl_dim_t ldb, float beta, float *C, dnnl_dim_t ldc) {
+        const float *B, dnnl_dim_t ldb, float beta, float *C, dnnl_dim_t ldc, bool cache) {
     if (beta == 0.f) {
         //std::cerr << "C=A*B" << std::endl;
         if (transa && transb) {
-            return proxy::gemm_f32f32bf16<float, true, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, true, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         } else if (transa && !transb) {
-            return proxy::gemm_f32f32bf16<float, true, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, true, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         } else if (!transa && transb) {
-            return proxy::gemm_f32f32bf16<float, true, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, true, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         } else if (!transa && !transb) {
-            return proxy::gemm_f32f32bf16<float, true, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, true, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         }
         //return proxy::gemm_f32f32bf16<float, true>(
     //transa ? 'T' : 'N', transb ? 'T' : 'N', M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
     } else if (beta == 1.f) {
         //std::cerr << "C+=A*B" << std::endl;
         if (transa && transb) {
-            return proxy::gemm_f32f32bf16<float, false, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, false, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         } else if (transa && !transb) {
-            return proxy::gemm_f32f32bf16<float, false, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, false, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         } else if (!transa && transb) {
-            return proxy::gemm_f32f32bf16<float, false, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, false, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         } else if (!transa && !transb) {
-            return proxy::gemm_f32f32bf16<float, false, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<float, false, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, cache);
         }
         //return proxy::gemm_f32f32bf16<float, false>(
     //transa ? 'T' : 'N', transb ? 'T' : 'N', M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
@@ -313,25 +357,25 @@ inline dnnl::status gemm_f32f32bf16bf16(bool transa, bool transb, dnnl_dim_t M,
         const float *B, dnnl_dim_t ldb, float beta, void *C, dnnl_dim_t ldc) {
     if (beta == 0.f) {
         if (transa && transb) {
-            return proxy::gemm_f32f32bf16<void, true, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, true, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         } else if (transa && !transb) {
-            return proxy::gemm_f32f32bf16<void, true, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, true, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         } else if (!transa && transb) {
-            return proxy::gemm_f32f32bf16<void, true, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, true, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         } else if (!transa && !transb) {
-            return proxy::gemm_f32f32bf16<void, true, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, true, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         }
         //return proxy::gemm_f32f32bf16<void, true>(
         //        transa ? 'T' : 'N', transb ? 'T' : 'N', M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
     } else if (beta == 1.f) {
         if (transa && transb) {
-            return proxy::gemm_f32f32bf16<void, false, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, false, 'T', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         } else if (transa && !transb) {
-            return proxy::gemm_f32f32bf16<void, false, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, false, 'T', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         } else if (!transa && transb) {
-            return proxy::gemm_f32f32bf16<void, false, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, false, 'N', 'T'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         } else if (!transa && !transb) {
-            return proxy::gemm_f32f32bf16<void, false, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+            return proxy::gemm_f32f32bf16<void, false, 'N', 'N'>(M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, false);
         }
         //return proxy::gemm_f32f32bf16<void, false>(
         //        transa ? 'T' : 'N', transb ? 'T' : 'N', M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);

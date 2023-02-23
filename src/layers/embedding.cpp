@@ -179,7 +179,7 @@ Expr Embedding::applyIndices(const std::vector<WordIndex>& embIdx, const Shape& 
                                                                                           : prefix_ + "_Wemb",
       "fixed",          embeddingFix_,
       "dimFactorEmb",   opt<int>("factors-dim-emb", 0),  // for factored embeddings
-      "factorsCombine", opt<std::string>("factors-combine", ""),  // for factored embeddings
+      "factorsCombine", opt<std::string>("factors-combine", "sum"),  // for factored embeddings
       "vocab",     opt<std::vector<std::string>>("vocabs")[batchIndex_]);  // for factored embeddings
   // clang-format on
   if(options_->hasAndNotEmpty("embedding-vectors")) {

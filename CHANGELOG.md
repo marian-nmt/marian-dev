@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+- Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp)
+
 ## [1.12.0] - 2023-02-20
 
 ### Added

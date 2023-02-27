@@ -12,6 +12,7 @@
 #include "models/s2s.h"
 #include "models/laser.h"
 #include "models/transformer_factory.h"
+#include "models/transformer_new.h"
 
 #ifdef CUDNN
 #include "models/char_s2s.h"
@@ -183,20 +184,43 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
         .construct(graph);
   }
 
-  else if(type == "transformer") {
-#if 1
+  else if(type == "transformer-new") {
     auto newOptions = options->with("usage", use);
     auto res = New<EncoderDecoder>(graph, newOptions);
-    res->push_back(New<EncoderTransformer>(graph, newOptions->with("type", "transformer")));
-    res->push_back(New<DecoderTransformer>(graph, newOptions->with("type", "transformer")));
+    
+    auto enc = New<TransformerBatchEncoder>(graph, newOptions->with("type", "transformer"));
+    enc->setName("TransformerBatchEncoder");
+    res->push_back(enc);
+    
+    auto dec = New<TransformerBatchDecoder>(graph, newOptions->with("type", "transformer"));
+    dec->setName("TransformerBatchDecoder");
+    res->push_back(dec);
+    
     return res;
-#else
-    return models::encoder_decoder(options->with(
-         "usage", use))
-        .push_back(models::encoder()("type", "transformer"))
-        .push_back(models::decoder()("type", "transformer"))
-        .construct(graph);
-#endif
+  }
+
+  else if(type == "transformer") {
+    const char* tflavor = std::getenv("TRANSFORMER_FLAVOR");
+    if(tflavor && std::strcmp(tflavor, "experimental") == 0) {
+      auto newOptions = options->with("usage", use);
+      auto res = New<TransformerLegacy>(graph, newOptions);
+      
+      auto enc = New<TransformerBatchEncoder>(graph, newOptions->with("type", "transformer"));
+      enc->setName("TransformerBatchEncoder");
+      res->push_back(enc);
+      
+      auto dec = New<TransformerBatchDecoder>(graph, newOptions->with("type", "transformer"));
+      dec->setName("TransformerBatchDecoder");
+      res->push_back(dec);
+      
+      return res;
+    } else {
+      auto newOptions = options->with("usage", use);
+      auto res = New<EncoderDecoder>(graph, newOptions);
+      res->push_back(New<EncoderTransformer>(graph, newOptions->with("type", "transformer")));
+      res->push_back(New<DecoderTransformer>(graph, newOptions->with("type", "transformer")));
+      return res;
+    }
   }
 
   else if(type == "transformer_s2s") {

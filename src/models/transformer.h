@@ -285,6 +285,7 @@ public:
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
     auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
+    
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
     Expr kh;
@@ -633,35 +634,6 @@ public:
   virtual void clear() override {}
 };
 
-class TransformerState : public DecoderState {
-public:
-  TransformerState(const rnn::States& states,
-                   Logits logProbs,
-                   const std::vector<Ptr<EncoderState>>& encStates,
-                   Ptr<data::CorpusBatch> batch)
-      : DecoderState(states, logProbs, encStates, batch) {}
-
-  virtual Ptr<DecoderState> select(const std::vector<IndexType>& hypIndices,   // [beamIndex * activeBatchSize + batchIndex]
-                                   const std::vector<IndexType>& batchIndices, // [batchIndex]
-                                   int beamSize) const override {
-
-    // @TODO: code duplication with DecoderState only because of isBatchMajor=true, should rather be a contructor argument of DecoderState?
-    
-    std::vector<Ptr<EncoderState>> newEncStates;
-    for(auto& es : encStates_) 
-      // If the size of the batch dimension of the encoder state context changed, subselect the correct batch entries    
-      newEncStates.push_back(es->getContext()->shape()[-2] == batchIndices.size() ? es : es->select(batchIndices));
-
-    // Create hypothesis-selected state based on current state and hyp indices
-    auto selectedState = New<TransformerState>(states_.select(hypIndices, beamSize, /*isBatchMajor=*/true), logProbs_, newEncStates, batch_); 
-
-    // Set the same target token position as the current state
-    // @TODO: This is the same as in base function.
-    selectedState->setPosition(getPosition());
-    return selectedState;
-  }
-};
-
 class DecoderTransformer : public Transformer<DecoderBase> {
   typedef Transformer<DecoderBase> Base;
   using Base::Base;
@@ -718,12 +690,11 @@ public:
       start->set_name("decoder_start_state_" + std::to_string(batchIndex_));
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
-      // don't use TransformerState for RNN layers
-      return New<DecoderState>(startStates, Logits(), encStates, batch);
+      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
     }
     else {
       rnn::States startStates;
-      return New<TransformerState>(startStates, Logits(), encStates, batch);
+      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/true);
     }
   }
 
@@ -825,7 +796,7 @@ public:
       rnn::State prevDecoderState;
       if(prevDecoderStates.size() > 0)
         prevDecoderState = prevDecoderStates[i];
-
+      
       // self-attention
       std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
       rnn::State decoderState;
@@ -903,7 +874,6 @@ public:
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
 
     //************************************************************************//
-
     // final feed-forward layer (output)
     if(shortlist_)
       output_->setShortlist(shortlist_);
@@ -912,11 +882,9 @@ public:
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
     if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {
-      nextState = New<DecoderState>(
-        decoderStates, logits, state->getEncoderStates(), state->getBatch());
+      nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), state->isBatchMajor());
     } else {
-      nextState = New<TransformerState>(
-        decoderStates, logits, state->getEncoderStates(), state->getBatch());
+      nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), state->isBatchMajor());
     }
     nextState->setPosition(state->getPosition() + 1);
     return nextState;

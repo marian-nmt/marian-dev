@@ -388,12 +388,13 @@ void TransposeGeneric(Tensor out, Tensor in, const std::vector<int>& vAxis) {
 }
 
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
+#if MKL_FOUND
+  if(vAxis.size() == 4 && vAxis[3] == 3)
+    TransposeFirst3In4<false>(out, in, vAxis);
+  else
+#endif  // MKL_FOUND
   if(vAxis == std::vector<int>({0, 2, 1, 3}))
     Transpose0213<false>(out, in);
-#if MKL_FOUND
-  else if(vAxis.size() == 4 && vAxis[3] == 3)
-    TransposeFirst3In4<false>(out, in, vAxis);
-#endif  // MKL_FOUND
   else if(vAxis == std::vector<int>({1, 0}) && in->shape()[-1] % 16 == 0
           && in->shape()[-2] % 16 == 0)
     Transpose10(out, in);

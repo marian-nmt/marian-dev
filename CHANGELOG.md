@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- New experimental layer framework for Transformer-like models.
+
 ### Fixed
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp)
 

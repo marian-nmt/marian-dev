@@ -577,8 +577,8 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
-
-    if(!transA_ && transB_)
+    
+    if(!transA_ && transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
                                  adj_,
@@ -595,8 +595,7 @@ public:
                                  false,
                                  1.0,
                                  scalar_))};
-
-    if(transA_ && !transB_)
+    } else if(transA_ && !transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
                                  child(1)->val(),
@@ -613,8 +612,7 @@ public:
                                  false,
                                  1.0,
                                  scalar_))};
-
-    if(transA_ && transB_)
+    } else if(transA_ && transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
                                  child(1)->val(),
@@ -631,23 +629,24 @@ public:
                                  true,
                                  1.0,
                                  scalar_))};
-
-    return {NodeOp(ProdBatched(child(0)->grad(),
-                               graph()->allocator(),
-                               adj_,
-                               child(1)->val(),
-                               false,
-                               true,
-                               1.0,
-                               scalar_)),
-            NodeOp(ProdBatched(child(1)->grad(),
-                               graph()->allocator(),
-                               child(0)->val(),
-                               adj_,
-                               true,
-                               false,
-                               1.0,
-                               scalar_))};
+    } else { // !transA && !transB
+      return {NodeOp(ProdBatched(child(0)->grad(),
+                                graph()->allocator(),
+                                adj_,
+                                child(1)->val(),
+                                false,
+                                true,
+                                1.0,
+                                scalar_)),
+              NodeOp(ProdBatched(child(1)->grad(),
+                                graph()->allocator(),
+                                child(0)->val(),
+                                adj_,
+                                true,
+                                false,
+                                1.0,
+                                scalar_))};
+    }
   }
 
   const std::string type() override { return "bdot"; }

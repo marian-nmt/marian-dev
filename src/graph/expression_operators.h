@@ -976,7 +976,7 @@ static inline Expr dropout(Expr x, float dropProb, Shape shape) {
 
 
 /**
- * Performs dropout with a given probably.
+ * Performs dropout with a given probability.
  */
 static inline Expr dropout(Expr x, float dropProb) {
   if(dropProb == 0)

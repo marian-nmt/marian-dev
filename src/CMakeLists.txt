@@ -80,6 +80,8 @@ set(MARIAN_SOURCES
   layers/logits.cpp
   layers/lsh.cpp
 
+  layers_new/neuralnet.cpp
+
   rnn/cells.cpp
   rnn/attention.cpp
 

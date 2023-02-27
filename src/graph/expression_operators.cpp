@@ -759,8 +759,7 @@ Expr transpose(Expr a, const std::vector<int>& axes) {
   return Expression<TransposeNodeOp>(a, axes);
 }
 
-Expr swapAxes(Expr x, int axis1, int axis2)
-{
+Expr swapAxes(Expr x, int axis1, int axis2) {
   const auto& shape = x->shape();
   axis1 = shape.axis(axis1);
   axis2 = shape.axis(axis2);
@@ -880,8 +879,8 @@ Expr rmsNorm(Expr x,
   return Expression<RMSNormalizationOp>(nodes, eps);
 }
 
-Expr highway(Expr y, Expr x, Expr t) {
-  std::vector<Expr> nodes = {y, x, t};
+Expr highway(Expr input1, Expr input2, Expr gate) {
+  std::vector<Expr> nodes = {input1, input2, gate};
   return Expression<HighwayNodeOp>(nodes);
 }
 

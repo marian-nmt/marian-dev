@@ -246,7 +246,7 @@ public:
     }
 
     rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
-    return New<DecoderState>(startStates, Logits(), encStates, batch);
+    return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
   }
 
   virtual Ptr<DecoderState> step(Ptr<ExpressionGraph> graph,
@@ -341,8 +341,7 @@ public:
       logits = output_->applyAsLogits({embeddings, decoderContext});
 
     // return unormalized(!) probabilities
-    auto nextState = New<DecoderState>(
-      decoderStates, logits, state->getEncoderStates(), state->getBatch());
+    auto nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), /*isBatchMajor=*/false);
 
     // Advance current target token position by one
     nextState->setPosition(state->getPosition() + 1);
@@ -351,8 +350,7 @@ public:
 
   // helper function for guided alignment
   virtual const std::vector<Expr> getAlignments(int i = 0) override {
-    auto att
-        = rnn_->at(0)->as<rnn::StackedCell>()->at(i + 1)->as<rnn::Attention>();
+    auto att = rnn_->at(0)->as<rnn::StackedCell>()->at(i + 1)->as<rnn::Attention>();
     return att->getAlignments();
   }
 

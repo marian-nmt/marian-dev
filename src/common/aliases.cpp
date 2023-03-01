@@ -227,6 +227,34 @@ void ConfigParser::addAliases(cli::CLIWrapper& cli) {
       config["valid-mini-batch"] = 8;
       config["normalize"] = 1.0;
     });
+
+    // Model architecture for Unbabel's COMET-QE models
+    cli.alias("task", "comet-qe", [](YAML::Node& config) {
+      // Model options
+      config["bert-train-type-embeddings"] = false;
+      config["bert-type-vocab-size"] = 0;
+      config["comet-final-sigmoid"] = true;
+      config["comet-mix"] = false;
+      config["comet-mix-norm"] = false;
+      config["comet-dropout"] = 0.1;
+      config["comet-pooler-ffn"] = std::vector<int>({2048, 1024});
+      config["comet-prepend-zero"] = true;
+      config["dim-emb"] = 1024;
+      config["dim-vocabs"] = std::vector<int>({250000});
+      config["enc-depth"] = 24;
+      config["max-length"] = 512;
+      config["valid-max-length"] = 512;
+      config["tied-embeddings-all"] = true;
+      config["transformer-dim-ffn"] = 4096;
+      config["transformer-ffn-activation"] = "gelu";
+      config["transformer-ffn-depth"] = 2;
+      config["transformer-heads"] = 16;
+      config["transformer-postprocess"] = "dan";
+      config["transformer-postprocess-emb"] = "nd";
+      config["transformer-preprocess"] = "";
+      config["transformer-train-position-embeddings"] = true;
+      config["type"] = "comet-qe";
+    });
   }
 }
 

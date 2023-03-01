@@ -359,6 +359,25 @@ private:
   bool quiet_{ false };
 };
 
+// Validator that writes embeddings to a file and computes any metric specified with an external script
+class EmbeddingValidator : public Validator<data::Corpus, models::IModel> {
+public:
+  EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  virtual ~EmbeddingValidator() {}
+
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                         Ptr<const TrainingState> state) override;
+
+  std::string type() override { return "embed"; }
+
+protected:
+  bool quiet_{false};
+
+  virtual float validateBG(const std::vector<Ptr<ExpressionGraph>>& /*graphs*/) override {
+    return 0;
+  }
+};
+
 /**
  * @brief Creates validators from options
  *

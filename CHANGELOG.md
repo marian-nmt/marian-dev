@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-
+- Re-implementation of COMET-QE for inference and training; conversion scripts from Unbabel-Comet to Marian.
+- Validator that generates embeddings and can be used during COMET training with an external script.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
-- Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp)
+- Only collect batch statistics during mini-batch-fit up to actual max-length.
+- Implemented fully correct version of GELU instead of using bad approximatin via Swish.
+- Handle copying from fp32 or fp16 embeddings in embedder mode correctly.
+- Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
 
 ## [1.12.0] - 2023-02-20
 

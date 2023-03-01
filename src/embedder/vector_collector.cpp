@@ -11,14 +11,17 @@ namespace marian {
 // This class manages multi-threaded writing of embedded vectors to stdout or an output file.
 // It will either output string versions of float vectors or binary equal length versions depending
 // on its binary_ flag.
+VectorCollector::VectorCollector(bool binary)
+  : nextId_(0),
+    binary_(binary) {}
 
-VectorCollector::VectorCollector(const Ptr<Options>& options)
-    : nextId_(0), binary_{options->get<bool>("binary", false)} {
-    if(options->get<std::string>("output") == "stdout")
-      outStrm_.reset(new std::ostream(std::cout.rdbuf()));
-    else
-      outStrm_.reset(new io::OutputFileStream(options->get<std::string>("output")));
-  }
+VectorCollector::VectorCollector(std::string outFile, bool binary)
+  : nextId_(0),
+    outStrm_(new std::ostream(std::cout.rdbuf())),
+    binary_(binary) {
+  if (outFile != "stdout")
+    outStrm_.reset(new io::OutputFileStream(outFile));
+}
 
 void VectorCollector::Write(long id, const std::vector<float>& vec) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -60,8 +63,7 @@ void VectorCollector::WriteVector(const std::vector<float>& vec) {
   if(binary_) {
     outStrm_->write((char*)vec.data(), vec.size() * sizeof(float));
   } else {
-    std::stringstream ss;
-    ss << std::fixed << std::setprecision(8);
+    *outStrm_ << std::fixed << std::setprecision(4);
     for(auto v : vec)
       *outStrm_ << v << " ";
     *outStrm_ << std::endl;

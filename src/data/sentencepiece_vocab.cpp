@@ -227,7 +227,8 @@ public:
     else
       spm_->SampleEncode(line, -1, alpha_, &spmIds);
 
-    Words words; words.reserve(spmIds.size() + addEOS);
+    Words words;
+    words.reserve(spmIds.size() + addEOS);
     for (auto&& spmId : spmIds)
       words.push_back(Word::fromWordIndex(spmId));
 

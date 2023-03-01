@@ -212,7 +212,7 @@ struct TransformerEncoderLayer final : public LayerWithOptions, public IBinaryLa
  * with RNN models and for easier beam-search we transpose batch and time dimensions on input and output. 
  * @TODO: get rid of these transposes.
  */
-struct TransformerEncoder final : public LayerWithOptions, public IBinaryLayer {
+struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
   Ptr<PositionEmbeddingLayer> positionEmbedding;
   Ptr<TransformerPrePostProcessor> preprocessor;
   Ptr<LayerList> layers;
@@ -249,6 +249,8 @@ struct TransformerEncoder final : public LayerWithOptions, public IBinaryLayer {
       opt<float>("transformer-dropout", 0.f));
     registerLayer(postprocessor);
   }
+
+  virtual ~TransformerEncoder() = default;
 
   Expr apply(Expr input, Expr mask = nullptr) const override {
     // first and last operations (see at the bottom of this function) switch the time and batch

@@ -1,5 +1,7 @@
 #include "marian.h"
 
+#include "common/fastopt.h"
+
 #include "models/model_factory.h"
 #include "models/encoder_decoder.h"
 #include "models/encoder_classifier.h"
@@ -13,6 +15,8 @@
 #include "models/laser.h"
 #include "models/transformer_factory.h"
 #include "models/transformer_new.h"
+
+#include "models/comet_qe.h"
 
 #ifdef CUDNN
 #include "models/char_s2s.h"
@@ -46,7 +50,7 @@ Ptr<EncoderBase> EncoderFactory::construct(Ptr<ExpressionGraph> graph) {
   if(options_->get<std::string>("type") == "bert-encoder")
     return New<BertEncoder>(graph, options_);
 
-  ABORT("Unknown encoder type");
+  ABORT("Unknown encoder type {}", options_->get<std::string>("type"));
 }
 
 Ptr<DecoderBase> DecoderFactory::construct(Ptr<ExpressionGraph> graph) {
@@ -69,7 +73,7 @@ Ptr<ClassifierBase> ClassifierFactory::construct(Ptr<ExpressionGraph> graph) {
 Ptr<PoolerBase> PoolerFactory::construct(Ptr<ExpressionGraph> graph) {
   if(options_->get<std::string>("type") == "max-pooler")
     return New<MaxPooler>(graph, options_);
-  if(options_->get<std::string>("type") == "slice-pooler")
+  else if(options_->get<std::string>("type") == "slice-pooler")
     return New<SlicePooler>(graph, options_);
   else if(options_->get<std::string>("type") == "sim-pooler")
     return New<SimPooler>(graph, options_);
@@ -136,6 +140,34 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     size_t fields = trainEmbedderRank ? dimVocabs.size() : 0;
     int dimVocab = dimVocabs[0];
     
+    if(type == "comet-qe") {
+      auto newOptions = options->with("usage", use);
+      auto res = New<EncoderPooler>(newOptions);
+
+      auto inputTypes = options->get<std::vector<std::string>>("input-types");
+      ABORT_IF(inputTypes.empty(),
+        "Required option --input-types for COMET-QE not set. "
+        "For inference that should be --input-types sequence sequence. "
+        "For training set --input-types class sequence sequence");
+
+      int shift = 0;
+      if(inputTypes[0] == "class")
+        shift = 1;
+      
+      auto enc1 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 0 + shift));
+      enc1->setName("CometEncoder");
+      res->push_back(enc1);
+      
+      auto enc2 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 1 + shift));
+      enc2->setName("CometEncoder");
+      res->push_back(enc2);
+      
+      auto pooler = New<CometQEPooler>(graph, newOptions);
+      pooler->setName("CometQEPooler");
+      res->push_back(pooler);
+      return res;
+    }
+
     Ptr<Options> newOptions;
     if(options->get<bool>("compute-similarity", false)) {
       newOptions = options->with("usage", use,
@@ -173,6 +205,28 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     }
 
     return res;
+  }
+
+  if(use == usage::training || use == usage::scoring) {
+    if(type == "comet-qe") {
+      auto newOptions = options->with("usage", use);
+      auto res = New<EncoderPooler>(newOptions);
+      
+      // For training, first rank in batch is class!
+
+      auto enc1 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 1));
+      enc1->setName("CometEncoder");
+      res->push_back(enc1);
+      
+      auto enc2 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 2));
+      enc2->setName("CometEncoder");
+      res->push_back(enc2);
+      
+      auto pooler = New<CometQEPooler>(graph, newOptions);
+      pooler->setName("CometQEPooler");
+      res->push_back(pooler);
+      return res;
+    }
   }
 
   if(type == "s2s" || type == "amun" || type == "nematus") {
@@ -435,6 +489,8 @@ Ptr<ICriterionFunction> createCriterionFunctionFromOptions(Ptr<Options> options,
     return New<Trainer>(baseModel, New<MNISTCrossEntropyCost>());
 #endif
 #endif
+  else if (type == "comet-qe" && std::dynamic_pointer_cast<EncoderPooler>(baseModel))
+    return New<Trainer>(baseModel, New<CometBinaryCE>(options));
   else if (std::dynamic_pointer_cast<EncoderPooler>(baseModel))
     return New<Trainer>(baseModel, New<EncoderPoolerRankCost>(options));
   else

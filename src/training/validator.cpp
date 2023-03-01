@@ -1,4 +1,5 @@
 #include "training/validator.h"
+#include "embedder/vector_collector.h"
 
 namespace marian {
 
@@ -36,6 +37,9 @@ std::vector<Ptr<ValidatorBase/*<data::Corpus>*/>> Validators(
       validators.push_back(validator);
     } else if(metric == "bert-sentence-accuracy") {
       auto validator = New<BertAccuracyValidator>(vocabs, config, false);
+      validators.push_back(validator);
+    } else if(metric == "embedding") {
+      auto validator = New<EmbeddingValidator>(vocabs, config);
       validators.push_back(validator);
     } else {
       ABORT("Unknown validation metric: {}", metric);
@@ -417,6 +421,115 @@ float TranslationValidator::validate(const std::vector<Ptr<ExpressionGraph>>& gr
 
   if(!quiet_)
     LOG(info, "Total translation time: {:.5f}s", timer.elapsed());
+
+  for(auto graph : graphs)
+    graph->setInference(false);
+
+  float val = 0.0f;
+
+  // Run post-processing script if given
+  if(options_->hasAndNotEmpty("valid-script-path")) {
+    // auto command = options_->get<std::string>("valid-script-path") + " " + fileName;
+    // auto valStr = utils::exec(command);
+    auto valStr = utils::exec(options_->get<std::string>("valid-script-path"),
+                              options_->get<std::vector<std::string>>("valid-script-args"),
+                              fileName);
+    val = (float)std::atof(valStr.c_str());
+    updateStalled(graphs, val);
+  }
+
+  return val;
+};
+
+///////////////////////////////////////////////////////////////////////////////////////
+EmbeddingValidator::EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
+    : Validator(vocabs, options, false), quiet_(options_->get<bool>("quiet-translation")) {
+  // @TODO: remove, only used for saving?
+  builder_ = models::createModelFromOptions(options_, models::usage::embedding);
+
+  if(!options_->hasAndNotEmpty("valid-script-path"))
+    LOG_VALID(warn, "No post-processing script given for validating translator");
+
+  createBatchGenerator(/*isTranslating=*/true);
+}
+
+float EmbeddingValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                                   Ptr<const TrainingState> state) {
+  using namespace data;
+
+  // Generate batches
+  batchGenerator_->prepare();
+
+  std::vector<Ptr<models::IModel>> models;
+  for(auto graph : graphs) {
+    models.push_back(models::createModelFromOptions(options_, models::usage::embedding));
+    graph->setInference(true);
+  }
+
+  // Set up output file
+  std::string fileName;
+  Ptr<io::TemporaryFile> tempFile;
+
+  if(options_->hasAndNotEmpty("valid-translation-output")) {
+    fileName = options_->get<std::string>("valid-translation-output");
+    // fileName can be a template with fields for training state parameters:
+    fileName = state->fillTemplate(fileName);
+  } else {
+    tempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
+    fileName = tempFile->getFileName();
+  }
+ 
+  timer::Timer timer;
+  {
+    // @TODO: This can be simplified. If there is no "valid-translation-output", fileName already
+    // contains the name of temporary file that should be used?
+    auto output = options_->hasAndNotEmpty("valid-translation-output")
+                         ? New<VectorCollector>(fileName)
+                         : New<VectorCollector>(tempFile->getFileName());
+
+    std::deque<Ptr<ExpressionGraph>> graphQueue(graphs.begin(), graphs.end());
+    std::deque<Ptr<models::IModel>> modelQueue(models.begin(), models.end());
+    auto task = [=, &graphQueue, &modelQueue](BatchPtr batch) {
+      thread_local Ptr<ExpressionGraph> graph;
+      thread_local Ptr<models::IModel> builder;
+
+      if(!graph) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        ABORT_IF(graphQueue.empty(), "Asking for graph, but none left on queue");
+        graph = graphQueue.front();
+        graphQueue.pop_front();
+
+        ABORT_IF(modelQueue.empty(), "Asking for scorer, but none left on queue");
+        builder = modelQueue.front();
+        modelQueue.pop_front();
+      }
+
+      auto embedder    = std::dynamic_pointer_cast<EncoderPooler>(builder);
+      auto corpusBatch = std::dynamic_pointer_cast<data::CorpusBatch>(batch);
+      auto embeddings  = cast(embedder->apply(graph, corpusBatch, /*clearGraph=*/true)[0], Type::float32);
+
+      graph->forward();
+
+      std::vector<float> sentVectors;
+      embeddings->val()->get(sentVectors);
+
+      // collect embedding vector per sentence.
+      // if we compute similarities this is only one similarity per sentence pair.
+      for(size_t i = 0; i < batch->size(); ++i) {
+          auto embSize = embeddings->shape()[-1];
+          auto beg = i * embSize;
+          auto end = (i + 1) * embSize;
+          std::vector<float> sentVector(sentVectors.begin() + beg, sentVectors.begin() + end);
+          output->Write((long)batch->getSentenceIds()[i], sentVector);
+      }
+    };
+
+    threadPool_.reserve(graphs.size());
+    TaskBarrier taskBarrier;
+    for(auto batch : *batchGenerator_)
+      taskBarrier.push_back(threadPool_.enqueue(task, batch));
+    // ~TaskBarrier waits until all are done
+  }
 
   for(auto graph : graphs)
     graph->setInference(false);

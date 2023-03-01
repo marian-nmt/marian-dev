@@ -563,8 +563,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
   size_t step = options_->get<size_t>("mini-batch-fit-step");
 
   size_t maxLength = options_->get<size_t>("max-length");
-  maxLength = (size_t)(std::ceil(maxLength / (float)step) * step);
-
+  
   // this should be only one class label per line on input, hence restricting length to 1
   std::vector<size_t> localMaxes(numFiles, maxLength);
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {});
@@ -599,7 +598,11 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
 
   // Do a binary search for maxmimum batch size that fits into given workspace memory
   // for a tested sentence length.
-  for(size_t i = step; i <= maxLength; i += step) {
+  // We round the maxLength to the next larger step to avoid a situation where we do not
+  // collect batch statistics for maximum length between steps. However, we do not exceed 
+  // the actual maxLength even if the rounded value is larger.
+  size_t maxLengthRounded = (size_t)(std::ceil(maxLength / (float)step) * step);
+  for(size_t i = step; i <= maxLengthRounded; i += step) {
     size_t start = 1;
     size_t end = maxBatch;
 

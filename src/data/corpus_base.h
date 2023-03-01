@@ -638,6 +638,7 @@ protected:
   size_t maxLength_{0};
   bool maxLengthCrop_{false};
   bool rightLeft_{false};
+  bool prependZero_{false};
 
   bool tsv_{false};  // true if the input is a single file with tab-separated values
   size_t tsvNumInputFields_{0};  // number of fields from the TSV input that are associated

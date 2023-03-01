@@ -14,7 +14,8 @@ namespace marian {
 // on its binary_ flag.
 class VectorCollector {
 public:
-  VectorCollector(const Ptr<Options>& options);
+  VectorCollector(bool binary=false);
+  VectorCollector(std::string outFile, bool binary=false);
   virtual ~VectorCollector() {}
   
   virtual void Write(long id, const std::vector<float>& vec);

@@ -202,9 +202,9 @@ struct LearnedPositionEmbedding : public PositionEmbeddingLayer {
       int dimEmb   = input->shape()[-1];
       int dimWords = input->shape()[positionAxis];
 
-      registerParameter(embeddings, 
-                        Shape({maxLength, dimEmb}), 
-                        inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true));
+      registerParameterLazy(embeddings, 
+                            Shape({maxLength, dimEmb}), 
+                            inits::glorotUniform(/*fanIn=*/false, /*fanOut=*/true));
 
       ABORT_IF(start + dimWords > maxLength, 
                "Number of positions ({}) starting at position {} exceeds maximum length {}",

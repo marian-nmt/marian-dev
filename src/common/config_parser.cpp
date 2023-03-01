@@ -323,6 +323,17 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<float>("--bert-masking-fraction", "Fraction of masked out tokens during training", 0.15f);
   cli.add<bool>("--bert-train-type-embeddings", "Train bert type embeddings, set to false to use static sinusoidal embeddings", true);
   cli.add<int>("--bert-type-vocab-size", "Size of BERT type vocab (sentence A and B)", 2);
+
+  // Options specific for the "comet-qe" model type
+  cli.add<bool>("--comet-final-sigmoid", "Add final sigmoid to COMET model");
+  cli.add<bool>("--comet-mix", "Mix encoder layers to produce embedding");
+  cli.add<bool>("--comet-mix-norm", "Normalize layers prior to mixing");
+  cli.add<float>("--comet-dropout", "Dropout for pooler layers", 0.1f);
+  cli.add<float>("--comet-mixup", "Alpha parameter for Beta distribution for mixup", 0.0f);
+  cli.add<bool>("--comet-mixup-reg", "Use original and mixed-up samples in training");
+  cli.add<std::vector<int>>("--comet-pooler-ffn", "Hidden sizes for comet pooler", {2048, 1024});
+  cli.add<bool>("--comet-prepend-zero", "Add a start symbol to batch entries");
+
 #ifdef CUDNN
   cli.add<int>("--char-stride",
       "Width of max-pooling layer after convolution layer in char-s2s model",

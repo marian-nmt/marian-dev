@@ -59,6 +59,7 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
+      prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       tsv_(options_->get<bool>("tsv", false)),
       tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
   // TODO: support passing only one vocab file if we have fully-tied embeddings
@@ -84,6 +85,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
+      prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       tsv_(options_->get<bool>("tsv", false)),
       tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
   bool training = !translate;
@@ -420,8 +422,12 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
   // on the vocabulary type, this can be non-trivial, e.g. when SentencePiece
   // is used.
   Words words = vocabs_[batchIndex]->encode(line, /*addEOS =*/ addEOS_[batchIndex], inference_);
-
   ABORT_IF(words.empty(), "Empty input sequences are presently untested");
+
+  auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
+
+  if(prependZero_ && inputTypes[batchIndex] == "sequence")
+    words.insert(words.begin(), Word::fromWordIndex(0));
 
   if(maxLengthCrop_ && words.size() > maxLength_) {
     words.resize(maxLength_);

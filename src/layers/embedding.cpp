@@ -40,6 +40,13 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
     }
   }
 
+#if 0
+  auto emb = graph_->get(name);
+  if(emb) {
+    dimVoc = emb->shape()[-2];
+  }
+#endif
+
   E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
 }
 

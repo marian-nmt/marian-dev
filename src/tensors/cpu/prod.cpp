@@ -58,7 +58,7 @@ void Prod(marian::Tensor C,
         beta,
         C->data(),
         ldc,
-        true);
+        false);
 }
 
 // dummy implementation, computeType doesn't do anything on CPU

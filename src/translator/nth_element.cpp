@@ -53,7 +53,7 @@ public:
     return max_idx;
 }
 #elif defined(__AVX__)
-  int max_elem(float * vec, size_t size) {
+  int max_elem(const float * vec, size_t size) {
       float maxVal = vec[0];
       int max_idx = 0;
       div_t setup = div(size, 8);
@@ -82,7 +82,7 @@ public:
       return max_idx;
   }
 #elif defined(__SSE__)
-  int max_elem(float * vec, size_t size) {
+  int max_elem(const float * vec, size_t size) {
       float maxVal = vec[0];
       int max_idx = 0;
       div_t setup = div(size, 4);

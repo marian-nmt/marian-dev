@@ -24,6 +24,8 @@ public:
 
 // Efficient max_element implementations following https://github.com/XapaJIaMnu/maxelem_test
 #if  defined(__AVX512F__)
+#pragma warning( push )
+#pragma warning( disable : 4267)
   int max_elem(const float * vec, size_t size) {
     float maxVal = vec[0];
     int max_idx = 0;
@@ -116,6 +118,7 @@ int max_elem(const float * vec, size_t size) {
     auto elem = std::max_element(vec, vec + size);
     return std::distance(vec, elem);
 }
+#pragma warning( pop )
 #endif
 
 

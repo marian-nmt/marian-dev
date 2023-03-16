@@ -23,9 +23,12 @@ public:
   NthElementCPU(const NthElementCPU& copy) = delete;
 
 // Efficient max_element implementations following https://github.com/XapaJIaMnu/maxelem_test
+private:
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4267)
+#endif
 #if  defined(__AVX512F__)
-#pragma warning( push )
-#pragma warning( disable : 4267)
   int max_elem(const float * vec, size_t size) {
     float maxVal = vec[0];
     int max_idx = 0;
@@ -118,9 +121,10 @@ int max_elem(const float * vec, size_t size) {
     auto elem = std::max_element(vec, vec + size);
     return std::distance(vec, elem);
 }
+#endif
+#ifdef _MSC_VER
 #pragma warning( pop )
 #endif
-
 
 public:
   void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShortlist]

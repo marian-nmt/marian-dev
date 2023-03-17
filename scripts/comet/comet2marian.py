@@ -4,30 +4,54 @@ This script converts Unbabel COMET-QE models to Marian weight file.
 """
 
 import argparse
-import yaml
+import logging as log
 import numpy as np
+import yaml
+
+from pathlib import Path
+
+## Uncomment to see model names supported by your installed version of unbabel-comet
+# from comet.models import available_metrics
+# supported_comets = [m for m in available_metrics if 'qe' in m.lower()]
+supported_comets = ['wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da']
+log.basicConfig(level=log.INFO)
 
 parser = argparse.ArgumentParser(description='Convert Unbabel COMET-QE models to Marian weight file.')
 inputs = parser.add_mutually_exclusive_group(required=True)
-inputs.add_argument('--comet', help='Path to COMET model')
-inputs.add_argument('--roberta', help='Initialize with Roberta model', action='store_true')
-parser.add_argument('--marian', help='Output path for Marian weight file', required=True)
+inputs.add_argument('--roberta', '-r', help='Initialize with Roberta model', action='store_true')
+inputs.add_argument('--comet', '-c', help=f'COMET model path or an ID: {", ".join(supported_comets)}')
+parser.add_argument('--marian', '-m', help='Output path for Marian weight file', required=True)
 parser.add_argument('-s', '--add_sigmoid', help='Add final sigmoid if not already present', action='store_true')
 args = parser.parse_args()
 
 
-if args.roberta:
+def load_from_huggingface(model_id):
+    log.info(f"Loading COMET model from huggingface {model_id}")
     from transformers import AutoModel
+    try:
+        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False)    
+    except:
+        log.error(f"Could not resolve {model_id} from huggingface")
+        raise
+    return model.eval()
+
+
+if args.roberta:
     # Load the model that Unbabel based COMET on: https://huggingface.co/microsoft/infoxlm-large
-    robertaModel = AutoModel.from_pretrained("microsoft/infoxlm-large", add_pooling_layer=False)
-    robertaModel.eval()
-    print(robertaModel)
-    cometModel = robertaModel
+    cometModel = load_from_huggingface("microsoft/infoxlm-large")
 else:
-    from comet import load_from_checkpoint
-    cometModel = load_from_checkpoint(args.comet)
+    from comet import load_from_checkpoint, download_model
+    model_path = args.comet
+    if not Path(model_path).exists():
+        if model_path not in supported_comets:
+            log.info(f"Could not find {model_path}")  # maybe it's an invalid path
+        log.info(f"trying to resolve download {model_path}")
+        model_path = download_model(model_path)
+    log.info(f"Loading COMET model from checkpoint {model_path}")
+    cometModel = load_from_checkpoint(model_path)
     cometModel.eval()
-    print(cometModel)
+
+print(cometModel)
 
 marianModel = dict()
 

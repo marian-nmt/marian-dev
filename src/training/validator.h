@@ -30,16 +30,18 @@ class ValidatorBase : public TrainingObserver {
 protected:
   bool lowerIsBetter_{true};
   float lastBest_;
+  float epsilon_{0.f};
   size_t stalled_{0};
   std::mutex mutex_;
   ThreadPool threadPool_;
 
 public:
-  ValidatorBase(bool lowerIsBetter) : lowerIsBetter_(lowerIsBetter), lastBest_{initScore()} {}
+  ValidatorBase(bool lowerIsBetter, float epsilon = 0.f)
+      : lowerIsBetter_(lowerIsBetter), lastBest_(initScore()), epsilon_(epsilon) {}
   virtual ~ValidatorBase() {}
 
-  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                         Ptr<const TrainingState> state) = 0;
+  virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs, Ptr<const TrainingState> state) = 0;
+
   virtual std::string type() = 0;
 
   float& lastBest() { return lastBest_; }
@@ -53,8 +55,8 @@ template <class DataSet, class BuilderType> // @TODO: BuilderType doesn't really
 class Validator : public ValidatorBase {
 public:
   virtual ~Validator() {}
-  Validator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool lowerIsBetter = true)
-      : ValidatorBase(lowerIsBetter),
+  Validator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool lowerIsBetter = true, float epsilon = 0.f)
+      : ValidatorBase(lowerIsBetter, epsilon),
         vocabs_(vocabs),
         // options_ is a clone of global options, so it can be safely modified within the class
         options_(New<Options>(options->clone())) {
@@ -119,13 +121,20 @@ protected:
 
   void updateStalled(const std::vector<Ptr<ExpressionGraph>>& graphs,
                      float val) {
-    if((lowerIsBetter_ && lastBest_ > val)
-       || (!lowerIsBetter_ && lastBest_ < val)) {
-      stalled_ = 0;
+    if((lowerIsBetter_ && lastBest_ > val) || (!lowerIsBetter_ && lastBest_ < val)) {
+      // If epsilon is given, reset the stall count only if the improvement is greater than the epsilon
+      if(epsilon_ != 0.f && ((lowerIsBetter_ && lastBest_ - val < epsilon_)
+                         || (!lowerIsBetter_ && val - lastBest_ < epsilon_))) {
+        stalled_++;
+      } else {
+        stalled_ = 0;
+      }
       lastBest_ = val;
       if(options_->get<bool>("keep-best"))
         keepBest(graphs);
-    } else /* if (lastBest_ != val) */ { // (special case 0 at start)  @TODO: needed? Seems stall count gets reset each time it does improve. If not needed, remove "if(...)" again.
+    } else /* if (lastBest_ != val) */ { // (special case 0 at start)
+    // @TODO: needed? Seems stall count gets reset each time it does improve.
+    // If not needed, remove "if(...)" again.
       stalled_++;
     }
   }
@@ -142,7 +151,7 @@ class CrossEntropyValidator : public Validator<data::Corpus, models::ICriterionF
   using Validator::BatchPtr;
 
 public:
-  CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon = 0.f);
   virtual ~CrossEntropyValidator() {}
 
   std::string type() override { return options_->get<std::string>("cost-type"); }
@@ -154,7 +163,7 @@ protected:
 // Used for validating with classifiers. Compute prediction accuracy versus ground truth for a set of classes
 class AccuracyValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon = 0.f);
   virtual ~AccuracyValidator() {}
 
   std::string type() override { return "accuracy"; }
@@ -168,7 +177,7 @@ private:
   bool evalMaskedLM_{true};
 
 public:
-  BertAccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool evalMaskedLM);
+  BertAccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, bool evalMaskedLM, float epsilon = 0.f);
   virtual ~BertAccuracyValidator() {}
 
   std::string type() override {
@@ -185,7 +194,7 @@ protected:
 
 class ScriptValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon = 0.f);
   virtual ~ScriptValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
@@ -202,7 +211,7 @@ protected:
 // validator that translates and computes BLEU (or any metric) with an external script
 class TranslationValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon = 0.f);
   virtual ~TranslationValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
@@ -223,7 +232,7 @@ protected:
 // @TODO: combine with TranslationValidator (above) to avoid code duplication
 class SacreBleuValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric);
+  SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric, float epsilon = 0.f);
   virtual ~SacreBleuValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
@@ -362,7 +371,7 @@ private:
 // Validator that writes embeddings to a file and computes any metric specified with an external script
 class EmbeddingValidator : public Validator<data::Corpus, models::IModel> {
 public:
-  EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
+  EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon = 0.f);
   virtual ~EmbeddingValidator() {}
 
   virtual float validate(const std::vector<Ptr<ExpressionGraph>>& graphs,

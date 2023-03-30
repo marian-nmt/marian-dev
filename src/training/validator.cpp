@@ -1,48 +1,59 @@
 #include "training/validator.h"
 #include "embedder/vector_collector.h"
 
+#include <deque>
+
 namespace marian {
+
+static std::vector<std::string> CE_METRICS
+    = {"cross-entropy", "ce-mean", "ce-sum", "ce-mean-words", "perplexity"};
 
 std::vector<Ptr<ValidatorBase/*<data::Corpus>*/>> Validators(
     std::vector<Ptr<Vocab>> vocabs,
     Ptr<Options> config) {
   std::vector<Ptr<ValidatorBase/*<data::Corpus>*/>> validators;
 
+  auto epsilonsVec = config->get<std::vector<float>>("early-stopping-epsilon");
+  std::deque<float> epsilons(epsilonsVec.begin(), epsilonsVec.end());
+  auto eps = epsilons.front();
+  epsilons.pop_front();
+
   auto validMetrics = config->get<std::vector<std::string>>("valid-metrics");
-
-  std::vector<std::string> ceMetrics
-      = {"cross-entropy", "ce-mean", "ce-sum", "ce-mean-words", "perplexity"};
-
   for(auto metric : validMetrics) {
-    if(std::find(ceMetrics.begin(), ceMetrics.end(), metric) != ceMetrics.end()) {
+    if(std::find(CE_METRICS.begin(), CE_METRICS.end(), metric) != CE_METRICS.end()) {
       Ptr<Options> opts = New<Options>(*config);
       opts->set("cost-type", metric);
 
-      auto validator = New<CrossEntropyValidator>(vocabs, opts);
+      auto validator = New<CrossEntropyValidator>(vocabs, opts, eps);
       validators.push_back(validator);
     } else if(metric == "valid-script") {
-      auto validator = New<ScriptValidator>(vocabs, config);
+      auto validator = New<ScriptValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else if(metric == "translation") {
-      auto validator = New<TranslationValidator>(vocabs, config);
+      auto validator = New<TranslationValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else if(metric == "bleu" || metric == "bleu-detok" || metric == "bleu-segmented" || metric == "chrf") {
-      auto validator = New<SacreBleuValidator>(vocabs, config, metric);
+      auto validator = New<SacreBleuValidator>(vocabs, config, metric, eps);
       validators.push_back(validator);
     } else if(metric == "accuracy") {
-      auto validator = New<AccuracyValidator>(vocabs, config);
+      auto validator = New<AccuracyValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else if(metric == "bert-lm-accuracy") {
-      auto validator = New<BertAccuracyValidator>(vocabs, config, true);
+      auto validator = New<BertAccuracyValidator>(vocabs, config, true, eps);
       validators.push_back(validator);
     } else if(metric == "bert-sentence-accuracy") {
-      auto validator = New<BertAccuracyValidator>(vocabs, config, false);
+      auto validator = New<BertAccuracyValidator>(vocabs, config, false, eps);
       validators.push_back(validator);
     } else if(metric == "embedding") {
-      auto validator = New<EmbeddingValidator>(vocabs, config);
+      auto validator = New<EmbeddingValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else {
       ABORT("Unknown validation metric: {}", metric);
+    }
+
+    if(!epsilons.empty()) {
+      eps = epsilons.front();
+      epsilons.pop_front();
     }
   }
 
@@ -63,8 +74,8 @@ void ValidatorBase::actAfterLoaded(TrainingState& state) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-CrossEntropyValidator::CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options) {
+CrossEntropyValidator::CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, true, epsilon) {
   createBatchGenerator(/*isTranslating=*/false);
 
   auto opts = options_->with("inference",
@@ -126,8 +137,8 @@ float CrossEntropyValidator::validateBG(const std::vector<Ptr<ExpressionGraph>>&
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-AccuracyValidator::AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, /*lowerIsBetter=*/false) {
+AccuracyValidator::AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, /*lowerIsBetter=*/false, epsilon) {
   createBatchGenerator(/*isTranslating=*/false);
 
   // @TODO: remove, only used for saving?
@@ -200,8 +211,9 @@ float AccuracyValidator::validateBG(const std::vector<Ptr<ExpressionGraph>>& gra
 ///////////////////////////////////////////////////////////////////////////////////////
 BertAccuracyValidator::BertAccuracyValidator(std::vector<Ptr<Vocab>> vocabs,
                                            Ptr<Options> options,
-                                           bool evalMaskedLM)
-    : Validator(vocabs, options, /*lowerIsBetter=*/false), evalMaskedLM_(evalMaskedLM) {
+                                           bool evalMaskedLM,
+                                           float epsilon)
+    : Validator(vocabs, options, /*lowerIsBetter=*/false, epsilon), evalMaskedLM_(evalMaskedLM) {
   createBatchGenerator(/*isTranslating=*/false);
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::raw);
@@ -295,8 +307,8 @@ float BertAccuracyValidator::validateBG(const std::vector<Ptr<ExpressionGraph>>&
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-ScriptValidator::ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, false) {
+ScriptValidator::ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, false, epsilon) {
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::raw);
 
@@ -322,8 +334,8 @@ float ScriptValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-TranslationValidator::TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, false), quiet_(options_->get<bool>("quiet-translation")) {
+TranslationValidator::TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, false, epsilon), quiet_(options_->get<bool>("quiet-translation")) {
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::translation);
 
@@ -442,8 +454,8 @@ float TranslationValidator::validate(const std::vector<Ptr<ExpressionGraph>>& gr
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////
-EmbeddingValidator::EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, false), quiet_(options_->get<bool>("quiet-translation")) {
+EmbeddingValidator::EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, false, epsilon), quiet_(options_->get<bool>("quiet-translation")) {
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::embedding);
 
@@ -478,7 +490,7 @@ float EmbeddingValidator::validate(const std::vector<Ptr<ExpressionGraph>>& grap
     tempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
     fileName = tempFile->getFileName();
   }
- 
+
   timer::Timer timer;
   {
     // @TODO: This can be simplified. If there is no "valid-translation-output", fileName already
@@ -551,8 +563,8 @@ float EmbeddingValidator::validate(const std::vector<Ptr<ExpressionGraph>>& grap
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////
-SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric)
-    : Validator(vocabs, options, /*lowerIsBetter=*/false),
+SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric, float epsilon)
+    : Validator(vocabs, options, /*lowerIsBetter=*/false, epsilon),
       metric_(metric),
       computeChrF_(metric == "chrf"),
       useWordIds_(metric == "bleu-segmented"),

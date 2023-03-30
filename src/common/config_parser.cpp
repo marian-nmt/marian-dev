@@ -602,14 +602,18 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Multiple metrics can be specified",
       {"cross-entropy"});
   cli.add<bool>("--valid-reset-stalled",
-     "Reset stalled validation metrics when the training is restarted");
+      "Reset stalled validation metrics when the training is restarted");
   cli.add<bool>("--valid-reset-all",
-     "Reset all validation metrics when the training is restarted");
+      "Reset all validation metrics when the training is restarted");
   cli.add<size_t>("--early-stopping",
-     "Stop if the first validation metric does not improve for arg consecutive validation steps",
-     10);
+      "Stop if the first validation metric does not improve for arg consecutive validation steps",
+      10);
+  cli.add<std::vector<float>>("--early-stopping-epsilon",
+      "An improvement lower than or equal to arg does not prevent stalled validation. "
+      "i-th value corresponds to i-th metric in --valid-metrics",
+      {0});
   cli.add<std::string>("--early-stopping-on",
-      "Decide if early stopping should take into account first, all, or any validation metrics"
+      "Decide if early stopping should take into account first, all, or any validation metrics. "
       "Possible values: first, all, any",
       "first");
 

@@ -141,6 +141,11 @@ void ConfigValidator::validateOptionsTraining() const {
   ABORT_IF(supportedStops.find(get<std::string>("early-stopping-on")) == supportedStops.end(),
            "Supported options for --early-stopping-on are: first, all, any");
 
+  // check if --early-stopping-epsilon is provided for each validation metric or is a single value
+  auto epsilons = get<std::vector<float>>("early-stopping-epsilon");
+  ABORT_IF(epsilons.size() > 1 && epsilons.size() != get<std::vector<std::string>>("valid-metrics").size(),
+           "--early-stopping-epsilon must have as many values as there is --valid-metrics or only one");
+
   // validations for learning rate decaying
   ABORT_IF(get<float>("lr-decay") > 1.f, "Learning rate decay factor greater than 1.0 is unusual");
 

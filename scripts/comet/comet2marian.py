@@ -22,36 +22,64 @@ inputs.add_argument('--roberta', '-r', help='Initialize with Roberta model', act
 inputs.add_argument('--comet', '-c', help=f'COMET model path or an ID: {", ".join(supported_comets)}')
 parser.add_argument('--marian', '-m', help='Output path for Marian weight file', required=True)
 parser.add_argument('-s', '--add_sigmoid', help='Add final sigmoid if not already present', action='store_true')
+parser.add_argument('--spm', '-spm', type=Path, help='Save tokenizer SPM file here', required=False)
 args = parser.parse_args()
 
 
 def load_from_huggingface(model_id):
-    log.info(f"Loading COMET model from huggingface {model_id}")
-    from transformers import AutoModel
+    log.info(f"Loading transformer model from huggingface {model_id}")
+    from transformers import AutoModel, AutoTokenizer
     try:
-        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False)    
+        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False) 
+        AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        return model.eval(), getattr(tokenizer, 'vocab_file', None)
     except:
         log.error(f"Could not resolve {model_id} from huggingface")
         raise
-    return model.eval()
 
 
-if args.roberta:
-    # Load the model that Unbabel based COMET on: https://huggingface.co/microsoft/infoxlm-large
-    cometModel = load_from_huggingface("microsoft/infoxlm-large")
-else:
+def load_comet_model(model_path):
     from comet import load_from_checkpoint, download_model
-    model_path = args.comet
+    from transformers import AutoTokenizer
+
     if not Path(model_path).exists():
         if model_path not in supported_comets:
             log.info(f"Could not find {model_path}")  # maybe it's an invalid path
         log.info(f"trying to resolve download {model_path}")
         model_path = download_model(model_path)
     log.info(f"Loading COMET model from checkpoint {model_path}")
-    cometModel = load_from_checkpoint(model_path)
-    cometModel.eval()
+    comet_model = load_from_checkpoint(model_path)
+    comet_model.eval()
+    
+    vocab_file = None
+    try:
+        pretrained_model = comet_model.hparams.get('pretrained_model')
+        log.info(f"comet: {model_path}; pretrained: {pretrained_model}")
+        if pretrained_model:
+            tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+        vocab_file =  getattr(tokenizer, 'vocab_file', None)
+    except Exception as e:
+        log.warning(f'Error while locating vocab file: {e}')
+        pass
+    return comet_model, vocab_file
 
-print(cometModel)
+if args.roberta:
+    # Load the model that Unbabel based COMET on: https://huggingface.co/microsoft/infoxlm-large
+    cometModel, vocab_file = load_from_huggingface("microsoft/infoxlm-large")
+else:
+    cometModel, vocab_file = load_comet_model(args.comet)
+
+if args.spm:
+    vocab_file = vocab_file and Path(vocab_file)
+    if vocab_file and vocab_file.exists():
+        if not args.spm.parent.exists():
+            raise Exception(f"Directory {args.spm.parent} does not exist")
+        log.info(f"Copying {vocab_file} to {args.spm}")
+        args.spm.write_bytes(vocab_file.read_bytes())
+    else:
+        raise Exception(f"Could not locate or save the vocab file: {vocab_file}; please remove --spm argument and try downloading the file manually")
+
 
 marianModel = dict()
 

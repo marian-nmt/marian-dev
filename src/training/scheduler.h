@@ -286,6 +286,13 @@ public:
     return state_->enteredNewPeriodOf(options_->get<std::string>("sync-freq", "0"));
   }
 
+  bool replacingWithSmoothed() {
+    if(options_->get<float>("exponential-smoothing", 0.f) != 0.f)
+      return state_->enteredNewPeriodOf(options_->get<std::string>("exponential-smoothing-replace-freq", "0"));
+    else
+      return false;
+  }
+
   void validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
                 bool isFinal = false) {
     // Do not validate if already validated (for instance, after the model is loaded)

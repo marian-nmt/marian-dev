@@ -348,7 +348,7 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
     if(scheduler_->syncing()) {
       syncParametersAndShards();
     }
-
+    
     // save intermediate model (and optimizer state) to file
     if(scheduler_->saving()) {
       save();
@@ -360,6 +360,10 @@ void SyncGraphGroup::update(std::vector<Ptr<data::Batch>> subBatches, size_t num
       swapWithSmoothed();
       scheduler_->validate(graphs_);
       swapWithSmoothed();
+    }
+
+    if(scheduler_->replacingWithSmoothed()) {
+      replaceWithSmoothed();
     }
   }
 

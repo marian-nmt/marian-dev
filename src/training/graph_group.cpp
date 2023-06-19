@@ -526,6 +526,24 @@ void GraphGroup::swapWithSmoothed() {
   barrier();
 }
 
+void GraphGroup::replaceWithSmoothed() {
+  if(isMainProcess())
+    LOG(info, "Replacing master parameters with smoothed parameters");
+
+  auto replace = [&](size_t i, size_t begin, size_t end) {
+    auto curParam = graphs_[i]->params()->vals()->subtensor(begin, end-begin);
+    optimizerShards_[i]->replaceWithSmoothed(curParam);
+    return true; // dummy success
+  };
+  comm_->foreach(replace);
+  comm_->allGatherParams();
+  
+  if(shardingMode_ == ShardingMode::local)
+    comm_->broadcastParams();
+    
+  barrier();
+}
+
 void GraphGroup::validate() { //@TODO: rename this function to something less confusing.
   ABORT_IF(finalized_, "Training has already finished.");
 }

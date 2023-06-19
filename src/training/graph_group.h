@@ -114,7 +114,13 @@ private:
                       const OptimizerBase::GatherStateFunc& gatherFn);
 
 public:
+  // This function swaps out the current optimizer parameters with the smoothed version (provided smoothing is enabled).
+  // Usually we will call this twice, to swap in and to swap out.
   void swapWithSmoothed();
+
+  // This function replaces the current optimizer parameters with the smoothed version (provided smoothing is enabled).
+  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten. 
+  void replaceWithSmoothed();
 
   bool isMainProcess() const { return mpi_->isMainProcess(); } // (we need this test a few times)
   void barrier() const { mpi_->barrier(); } // (we need this several times)

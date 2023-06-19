@@ -517,6 +517,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      "Maintain smoothed version of parameters for validation and saving with smoothing factor. 0 to disable. "
       "Auto-adjusted to --mini-batch-words-ref if given.",
      0.f)->implicit_val("1e-4");
+  cli.add<std::string/*SchedulerPeriod*/>("--exponential-smoothing-replace-freq",
+      "When exponential-smoothing is enabled replace master parameters with smoothed parameters once every n steps (possible units u=updates, t=target labels, e=epochs)",
+      "0");
   cli.add<std::string>("--guided-alignment",
      "Path to a file with word alignments. Use guided alignment to guide attention or 'none'. "
      "If --tsv it specifies the index of a TSV field that contains the alignments (0-based)",

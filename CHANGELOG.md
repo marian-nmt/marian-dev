@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Add --throw-on-divergence and --fp16-fallback-to-fp32 options to detect (fp16 and fp32) and recover (only fp16) 
+  diverged runs. If not recoverable, exception gets rethrown and goes unhandled to force fatal error and shutdown.
 - Re-implementation of COMET-QE for inference and training; conversion scripts from Unbabel-Comet to Marian.
 - Validator that generates embeddings and can be used during COMET training with an external script.
 - New experimental layer framework for Transformer-like models.

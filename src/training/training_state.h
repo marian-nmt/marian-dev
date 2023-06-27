@@ -73,6 +73,12 @@ public:
   // Number of updates seen since last display
   size_t updatesDisp{0};
 
+  // Running average of training cost per label
+  float lossAvgSlow{0};
+  float lossAvgFast{0};
+  // Running variance of training cost per label
+  float lossVarSlow{0};
+
   // Running average of gradient norm
   float gradientNormAvg{0};
   // Running variance of gradient norm
@@ -230,6 +236,10 @@ public:
     samplesDisp = config["disp-samples"].as<size_t>();
     updatesDisp = config["disp-updates"].as<size_t>();
 
+    lossAvgSlow = config["loss-avg-slow"].as<float>();
+    lossAvgFast = config["loss-avg-fast"].as<float>();
+    lossVarSlow = config["loss-var-slow"].as<float>();
+
     gradientNormAvg = config["gradient-norm-avg"].as<float>();
     gradientNormVar = config["gradient-norm-var"].as<float>();
 
@@ -276,6 +286,10 @@ public:
     config["disp-updates"] = updatesDisp;
     config["disp-samples"] = samplesDisp;
     config["disp-words"] = wordsDisp;
+
+    config["loss-avg-slow"] = lossAvgSlow;
+    config["loss-avg-fast"] = lossAvgFast;
+    config["loss-var-slow"] = lossVarSlow;
 
     config["gradient-norm-avg"] = gradientNormAvg;
     config["gradient-norm-var"] = gradientNormVar;

@@ -559,6 +559,12 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Dynamic cost scaling for mixed precision training: "
       "scaling factor, frequency, multiplier, minimum factor")
       ->implicit_val("8.f 10000 1.f 8.f");
+  cli.add<std::vector<std::string>>("--throw-on-divergence",
+      "Throw exception if training diverges. Divergence is detected if the running average loss over arg1 steps "
+      "is exceeded by the running average loss over arg2 steps (arg1 >> arg2) by arg3 standard deviations")
+      ->implicit_val("100 10 3.0f");
+  cli.add<bool>("--fp16-fallback-to-fp32", 
+      "If fp16 training diverges and throws try to continue training with fp32 precision");
   cli.add<size_t>("--gradient-norm-average-window",
       "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
       "After this many updates about 90% of the mass of the exponential average comes from these updates",

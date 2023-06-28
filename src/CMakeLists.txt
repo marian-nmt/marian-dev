@@ -235,33 +235,10 @@ if (NOT COMPILE_LIBRARY_ONLY)
 
   set(EXECUTABLES ${EXECUTABLES} marian_train marian_decoder marian_scorer marian_vocab marian_conv)
 
-  # marian.zip and marian.tgz
-  # This combines marian, marian_decoder in a single ZIP or TAR file for
-  # execution in MSFT internal tools FLO and Philly.
-  # For Philly submission, we need statically-linked versions to deal with
-  # library dependencies, so this target is only enabled for static builds.
-  add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/marian.zip"
-    COMMAND zip -v -0 -j "${CMAKE_BINARY_DIR}/marian.zip"
-                "${CMAKE_BINARY_DIR}/marian"
-                "${CMAKE_BINARY_DIR}/marian-decoder"
-                "${CMAKE_BINARY_DIR}/marian-scorer"
-                "${CMAKE_BINARY_DIR}/marian-vocab"
-                "${CMAKE_BINARY_DIR}/marian-conv"
+  # generate the tgz file via a custom script. This will always re-create the tarball
+  add_custom_target(marian_tgz
+    COMMAND ${CMAKE_COMMAND} -DCWD=${CMAKE_BINARY_DIR} -P ${CMAKE_SOURCE_DIR}/cmake/Tarball.cmake
     DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
-  add_custom_target(marian_zip DEPENDS "${CMAKE_BINARY_DIR}/marian.zip")
-
-  add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/marian.tgz"
-    COMMAND tar -cvvzf "${CMAKE_BINARY_DIR}/marian.tgz" -C "${CMAKE_BINARY_DIR}"
-                "marian"
-                "marian-decoder"
-                "marian-scorer"
-                "marian-vocab"
-                "marian-conv"
-    DEPENDS marian_train marian_decoder marian_scorer marian_vocab marian_conv)
-  add_custom_target(marian_tgz DEPENDS "${CMAKE_BINARY_DIR}/marian.tgz")
-  add_custom_target(philly DEPENDS marian_tgz marian_zip)
 
   if(COMPILE_SERVER)
     add_executable(marian_server command/marian_server.cpp)

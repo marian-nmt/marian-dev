@@ -13,8 +13,11 @@ parameters:
   type: boolean
   default: true
 
-# The pipeline CI trigger is set on the branch master only and PR trigger on a
-# (non-draft) pull request to any branch
+# Warning: the current branch policies disable the automatic triggering to
+# minimize VM usage!
+# The configuration below specifies that the pipeline CI trigger is set on the
+# branch master only and a PR trigger is on a (non-draft) pull request to any
+# branch.
 trigger:
   # This minimizes the number of parallel pipeline runs. When a pipeline is
   # running, the CI waits until it is completed before starting another one.

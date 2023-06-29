@@ -61,6 +61,7 @@ set(MARIAN_SOURCES
   tensors/cpu/tensor_operators.cpp
   tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
+  tensors/gpu/gpu_info.cpp
 
   graph/expression_graph.cpp
   graph/expression_operators.cpp

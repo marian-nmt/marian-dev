@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-This script converts Unbabel COMET-QE models to Marian weight file.
+This script converts Google BLEURT models to Marian weight file.
 """
 
 import argparse
@@ -9,68 +9,27 @@ import numpy as np
 import yaml
 from pathlib import Path
 
-## Uncomment to see model names supported by your installed version of unbabel-comet
-# from comet.models import available_metrics
-# supported_comets = [m for m in available_metrics if 'qe' in m.lower()]
-supported_comets = [
-    'wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da',
-    'wmt20-comet-da', 'wmt21-comet-da'
-]
+BLEURT_LOCATION = 'lucadiliello/BLEURT-20'
+
 log.basicConfig(level=log.INFO)
 
-parser = argparse.ArgumentParser(description='Convert Unbabel COMET-QE models to Marian weight file.')
-inputs = parser.add_mutually_exclusive_group(required=True)
-inputs.add_argument('--roberta', '-r', help='Initialize with Roberta model', action='store_true')
-inputs.add_argument('--comet', '-c', help=f'COMET model path or an ID: {", ".join(supported_comets)}')
+parser = argparse.ArgumentParser(description='Convert Google BLEURT models to Marian weight file.')
 parser.add_argument('--marian', '-m', help='Output path for Marian weight file', required=True)
-parser.add_argument('-s', '--add_sigmoid', help='Add final sigmoid if not already present', action='store_true')
 parser.add_argument('--spm', '-spm', type=Path, help='Save tokenizer SPM file here', required=False)
 args = parser.parse_args()
 
+def load_bleurt_model():
+    from bleurt_pytorch import BleurtForSequenceClassification, BleurtTokenizer
 
-def load_from_huggingface(model_id):
-    log.info(f"Loading transformer model from huggingface {model_id}")
-    from transformers import AutoModel, AutoTokenizer
-    try:
-        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False) 
-        AutoTokenizer.from_pretrained(model_id)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        return model.eval(), getattr(tokenizer, 'vocab_file', None)
-    except:
-        log.error(f"Could not resolve {model_id} from huggingface")
-        raise
-
-
-def load_comet_model(model_path):
-    from comet import load_from_checkpoint, download_model
-    from transformers import AutoTokenizer
-
-    if not Path(model_path).exists():
-        if model_path not in supported_comets:
-            log.info(f"Could not find {model_path}")  # maybe it's an invalid path
-        log.info(f"trying to resolve download {model_path}")
-        model_path = download_model(model_path)
-    log.info(f"Loading COMET model from checkpoint {model_path}")
-    comet_model = load_from_checkpoint(model_path)
-    comet_model.eval()
-    
+    bleurt_model = BleurtForSequenceClassification.from_pretrained(BLEURT_LOCATION)
+    bleurt_model.eval()
+    tokenizer = BleurtTokenizer.from_pretrained(BLEURT_LOCATION)
     vocab_file = None
-    try:
-        pretrained_model = comet_model.hparams.get('pretrained_model')
-        log.info(f"comet: {model_path}; pretrained: {pretrained_model}")
-        if pretrained_model:
-            tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
-        vocab_file =  getattr(tokenizer, 'vocab_file', None)
-    except Exception as e:
-        log.warning(f'Error while locating vocab file: {e}')
-        pass
-    return comet_model, vocab_file
+    if tokenizer.vocab_file and Path(tokenizer.vocab_file).exists():
+        vocab_file = tokenizer.vocab_file
+    return bleurt_model, vocab_file
 
-if args.roberta:
-    # Load the model that Unbabel based COMET on: https://huggingface.co/microsoft/infoxlm-large
-    cometModel, vocab_file = load_from_huggingface("microsoft/infoxlm-large")
-else:
-    cometModel, vocab_file = load_comet_model(args.comet)
+bleurt_model, vocab_file = load_bleurt_model()
 
 if args.spm:
     vocab_file = vocab_file and Path(vocab_file)
@@ -85,14 +44,7 @@ if args.spm:
 marianModel = dict()
 config = dict()
 
-model_type = type(cometModel).__name__
-if model_type == "RegressionMetric":
-    config["type"] = "comet"
-elif model_type == "ReferencelessRegression":
-    config["type"] = "comet-qe"
-else:
-    raise Exception(f'Unknown type of model {model_type}')
-
+config["type"] = "bleurt"
 config["tied-embeddings-all"] = True
 config["tied-embeddings-src"] = False
 config["transformer-ffn-depth"] = 2
@@ -101,13 +53,11 @@ config["transformer-train-position-embeddings"] = True
 config["transformer-preprocess"] = ""
 config["transformer-postprocess"] = "dan"
 config["transformer-postprocess-emb"] = "nd"
-config["bert-train-type-embeddings"] = False
-config["bert-type-vocab-size"] = 0
+config["bert-train-type-embeddings"] = True
+config["bert-type-vocab-size"] = 2
 config["comet-prepend-zero"] = True
-config["comet-final-sigmoid"] = args.add_sigmoid
-config["comet-pooler-ffn"] = [2048, 1024]
-# @TODO: figure out if it's worth adding `cometModel.name_or_path` to the end of this version string.
-config["version"] = "comet2marian2.py conversion"
+config["input-join-fields"] = True
+config["version"] = "bleurt2marian.py conversion"
 config["enc-depth"] = 0
 
 def yaml2np(config):
@@ -142,14 +92,33 @@ def convert(pd, srcs, trg, transpose=True, bias=False):
 def extract(layer, nth, level):
     name = type(layer).__name__
     print("  " * level, nth, name)
-    if "RobertaLayer" in name:
+
+    if "BleurtEncoder" in name:
+        # embedding projection
+        prefix = "BleurtEncoder"
+
+        pd = dict(layer.named_parameters())
+        for n in pd:
+            if "embedding_projection" in n:
+                print("  " * (level + 1), n, pd[n].shape)
+
+        convert(pd, ["embedding_projection.weight"], f"{prefix}->encoder->eProj->weight")
+        convert(pd, ["embedding_projection.bias"],   f"{prefix}->encoder->eProj->bias", bias=True)
+        
+        # continue recursing down the model structure
+        recurse(layer, level + 1)
+
+    elif "BleurtLayer" in name:
         pd = dict(layer.named_parameters())
         for n in pd:
             print("  " * (level + 1), n, pd[n].shape)
 
-        prefix = "CometEncoder"
-
+        prefix = "BleurtEncoder"
         blockPrefix = f"{prefix}->encoder->layers->at({nth})->as<marian::nn::TransformerEncoderLayer>()->selfAttentionBlock"
+
+        if not "transformer-dim-model" in config:
+            query = pd["attention.self.query.weight"].detach().numpy()
+            config["transformer-dim-model"] = query.shape[1]
 
         # self-attention    
         # query transformation
@@ -189,24 +158,27 @@ def extract(layer, nth, level):
         config["transformer-heads"] = layer.attention.self.num_attention_heads
         config["enc-depth"] += 1
 
-    elif "RobertaEmbeddings" in name:
+    elif "BleurtEmbeddings" in name:
         for n, p in layer.named_parameters():
             print("  " * (level + 1), n, p.shape)
         pd = dict(layer.named_parameters())
 
-        # shift word embeddings so that we are back at 250,000 vocab items
-        npWembTemp = pd["word_embeddings.weight"].detach().numpy()
-        npWemb = npWembTemp[1:-1, :].copy()
-        npWemb[0, :] = npWembTemp[0, :]
-        npWemb[2, :] = npWembTemp[2, :]
+        # @TODO: this is a dirty trickery and should be solved differently in the future
+        npWemb = pd["word_embeddings.weight"].detach().numpy()
+        # put embedding of [CLS] in place of [PAD] (0)
+        npWemb[0, :] = npWemb[312, :]
+        # put embedding of [SEP] in place of </s>
+        npWemb[1, :] = npWemb[313, :]
         marianModel["Wemb"] = npWemb
 
-        prefix = "CometEncoder"
+        prefix = "BleurtEncoder"
         
-        # shift position embeddings so that we are back at 512 items and start at 0
         npPos = pd["position_embeddings.weight"].detach().numpy()
-        npPos = npPos[2:, :].copy()
+        # this should be moved out of the encoder into a special embedding layer
         marianModel[f"{prefix}->encoder->positionEmbedding->embeddings"] = npPos
+        
+        npType = pd["token_type_embeddings.weight"].detach().numpy()
+        marianModel[f"{prefix}->typeEmbedding->embeddings"] = npType
 
         # post-embedding layer normalization
         convert(pd, ["LayerNorm.weight"], f"{prefix}->encoder->preprocessor->norm->weight", bias=True)
@@ -214,51 +186,19 @@ def extract(layer, nth, level):
 
         config["dim-emb"]    =   npWemb.shape[1]
         config["dim-vocabs"] = [ npWemb.shape[0] ]
-        config["max-length"] = npPos.shape[0]
+        config["max-length"] = npPos.shape[0]        
 
-    elif name == "LayerwiseAttention":
+    # this will be the bleurt pooler right here:
+    elif name == "BleurtPooler":
         for n, p in layer.named_parameters():
             print("  " * (level + 1), n, p.shape)
         pd = dict(layer.named_parameters())
 
-        # mix layers
-        weights = []
-        for i in range(25):
-            weights.append(pd[f"scalar_parameters.{i}"].detach().numpy())
-        marianModel["CometEncoder->encoder->weights"] = np.concatenate(weights).copy()
 
-        # gamma for weird batch/layer-norm step in pooler/encoder of COMET
-        # @TODO: make optional
-        marianModel["CometEncoder->encoder->gamma"] = pd["gamma"].detach().numpy().copy()
-        config["comet-mix"] = True
-        config["comet-mix-norm"] = True
-        
+        prefix = "BleurtPooler"
+        convert(pd, ["dense.weight"], f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->weight")
+        convert(pd, ["dense.bias"],   f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->bias", bias=True)
 
-    elif name == "FeedForward":
-        for n, p in layer.named_parameters():
-            print("  " * (level + 1), n, p.shape)
-        pd = dict(layer.named_parameters())
-
-        if layer.ff[-1].__class__.__name__ == "Sigmoid" or args.add_sigmoid:
-            config["comet-final-sigmoid"] = True
-
-        config["comet-pooler-ffn"] = [
-            pd["ff.0.bias"].shape[0],
-            pd["ff.3.bias"].shape[0]
-        ]
-
-        # 3-layer FFN network that computes COMET regression
-        prefix = "CometQEPooler"
-
-        # @TODO: make final sigmoid optional
-        convert(pd, ["ff.0.weight"], f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->weight")
-        convert(pd, ["ff.0.bias"],   f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->bias", bias=True)
-
-        convert(pd, ["ff.3.weight"], f"{prefix}->layers->at(3)->as<marian::nn::Linear>()->weight")
-        convert(pd, ["ff.3.bias"],   f"{prefix}->layers->at(3)->as<marian::nn::Linear>()->bias", bias=True)
-
-        convert(pd, ["ff.6.weight"], f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->weight")
-        convert(pd, ["ff.6.bias"],   f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->bias", bias=True)        
     else:
         recurse(layer, level + 1)
 
@@ -266,7 +206,14 @@ def recurse(parent, level=0):
     for i, child in enumerate(parent.children()):
         extract(child, i, level)
 
-recurse(cometModel)
+recurse(bleurt_model)
+
+# last layer
+prefix = "BleurtPooler"
+pd = dict(bleurt_model.named_parameters())
+convert(pd, ["classifier.weight"], f"{prefix}->layers->at(3)->as<marian::nn::Linear>()->weight")
+convert(pd, ["classifier.bias"],   f"{prefix}->layers->at(3)->as<marian::nn::Linear>()->bias", bias=True)
+
 marianModel["special:model.yml"] = yaml2np(config)
 
 for m in marianModel:

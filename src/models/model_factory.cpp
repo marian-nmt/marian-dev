@@ -17,6 +17,7 @@
 #include "models/transformer_new.h"
 
 #include "models/comet_qe.h"
+#include "models/bleurt.h"
 
 #ifdef CUDNN
 #include "models/char_s2s.h"
@@ -133,40 +134,89 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
   Ptr<ExpressionGraph> graph = nullptr; // graph unknown at this stage
   // clang-format off
 
+  if(type == "comet-qe" || type == "comet") {
+    if(type == "comet") {
+      ABORT_IF(use == usage::training, "Usage {} is not supported for model of type {}", (int)use, type); 
+      ABORT_IF(use == usage::scoring, "Usage {} is not supported for model of type {}", (int)use, type); 
+    }
+    
+    auto inputTypes = options->get<std::vector<std::string>>("input-types");
+    ABORT_IF(inputTypes.empty(),
+      "Required option --input-types for COMET-QE not set. "
+      "For inference that should be --input-types sequence sequence. "
+      "For training set --input-types class sequence sequence");
+
+    int shift = 0;
+    if(inputTypes[0] == "class")
+      shift = 1;
+    
+    auto newOptions = options->with("usage", use);
+    auto res = New<EncoderPooler>(newOptions);
+
+    size_t numEncoders = 0;
+    bool addMetricPooler = false;
+    bool addEmbeddingPooler = false;
+
+    switch(use) {
+      case usage::embedding:  numEncoders = 1; addEmbeddingPooler = true; break;
+      case usage::evaluating:   
+      case usage::scoring:
+      case usage::training:   numEncoders = (type == "comet-qe") ? 2 : 3; addMetricPooler = true; break;
+      default: ABORT("Usage {} is not supported for model of type {}", (int)use, type); 
+    }
+  
+    for(size_t i = 0; i < numEncoders; i++) {
+      auto enc = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", i + shift));
+      enc->setName("CometEncoder"); // parameters will be shared
+      res->push_back(enc);
+    }
+    
+    if(addEmbeddingPooler) {
+      auto pooler = New<CometEmbeddingPooler>(graph, newOptions);
+      pooler->setName("CometEmbeddingPooler"); 
+      res->push_back(pooler);
+    }
+    
+    if(addMetricPooler) {
+      auto pooler = New<CometMetricPooler>(graph, newOptions);
+      pooler->setName("CometQEPooler"); // @TODO: change name for different models
+      res->push_back(pooler);
+    }
+
+    return res;
+  }
+
+  if(type == "bleurt") {
+    ABORT_IF(use != usage::evaluating, "Usage other than 'evaluating' is not supported for model of type {}", type); 
+    
+    auto newOptions = options->with("usage", use);
+    auto res = New<EncoderPooler>(newOptions);
+
+    auto inputTypes = options->get<std::vector<std::string>>("input-types");
+    ABORT_IF(inputTypes.empty(),
+      "Required option --input-types for BLEURT not set. "
+      "For inference that should be --input-types sequence. "
+      "For training set --input-types class sequence");
+
+    int shift = 0;
+    if(inputTypes[0] == "class")
+      shift = 1;
+    
+    auto enc = New<BleurtBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 0 + shift));
+    enc->setName("BleurtEncoder");
+    res->push_back(enc);
+          
+    auto pooler = New<BleurtPooler>(graph, newOptions);
+    pooler->setName("BleurtPooler");
+    res->push_back(pooler);
+    return res;
+  }
+
   bool trainEmbedderRank = options->hasAndNotEmpty("train-embedder-rank");
   if(use == usage::embedding || trainEmbedderRank) { // hijacking an EncoderDecoder model for embedding only
-
     auto dimVocabs = options->get<std::vector<int>>("dim-vocabs");
     size_t fields = trainEmbedderRank ? dimVocabs.size() : 0;
     int dimVocab = dimVocabs[0];
-    
-    if(type == "comet-qe") {
-      auto newOptions = options->with("usage", use);
-      auto res = New<EncoderPooler>(newOptions);
-
-      auto inputTypes = options->get<std::vector<std::string>>("input-types");
-      ABORT_IF(inputTypes.empty(),
-        "Required option --input-types for COMET-QE not set. "
-        "For inference that should be --input-types sequence sequence. "
-        "For training set --input-types class sequence sequence");
-
-      int shift = 0;
-      if(inputTypes[0] == "class")
-        shift = 1;
-      
-      auto enc1 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 0 + shift));
-      enc1->setName("CometEncoder");
-      res->push_back(enc1);
-      
-      auto enc2 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 1 + shift));
-      enc2->setName("CometEncoder");
-      res->push_back(enc2);
-      
-      auto pooler = New<CometQEPooler>(graph, newOptions);
-      pooler->setName("CometQEPooler");
-      res->push_back(pooler);
-      return res;
-    }
 
     Ptr<Options> newOptions;
     if(options->get<bool>("compute-similarity", false)) {
@@ -205,28 +255,6 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     }
 
     return res;
-  }
-
-  if(use == usage::training || use == usage::scoring) {
-    if(type == "comet-qe") {
-      auto newOptions = options->with("usage", use);
-      auto res = New<EncoderPooler>(newOptions);
-      
-      // For training, first rank in batch is class!
-
-      auto enc1 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 1));
-      enc1->setName("CometEncoder");
-      res->push_back(enc1);
-      
-      auto enc2 = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 2));
-      enc2->setName("CometEncoder");
-      res->push_back(enc2);
-      
-      auto pooler = New<CometQEPooler>(graph, newOptions);
-      pooler->setName("CometQEPooler");
-      res->push_back(pooler);
-      return res;
-    }
   }
 
   if(type == "s2s" || type == "amun" || type == "nematus") {
@@ -462,10 +490,10 @@ Ptr<IModel> createModelFromOptions(Ptr<Options> options, usage use) {
     else
       ABORT("'usage' parameter 'translation' cannot be applied to model type: {}", type);
   }
-  else if (use == usage::raw || use == usage::embedding)
+  else if (use == usage::raw || use == usage::embedding || use == usage::evaluating)
     return baseModel;
   else
-    ABORT("'Usage' parameter must be 'translation' or 'raw'");
+    ABORT("'Usage' parameter must be 'translation' or 'raw'"); // I am actually not sure what this is supposed to mean any more.
 }
 
 Ptr<ICriterionFunction> createCriterionFunctionFromOptions(Ptr<Options> options, usage use) {

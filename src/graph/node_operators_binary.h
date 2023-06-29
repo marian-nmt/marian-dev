@@ -317,6 +317,8 @@ public:
     if(!isParameter(child(2)) && computeTypeC == Type::float16)
       computeTypeC = Type::float32;
 
+    ABORT_IF(children().size() != 4, "Did we lose the column of ones required for backprob of bias??");
+
     // We reduce bias gradients with a matrix multiply
     if(!transA_ && transB_)
       return {

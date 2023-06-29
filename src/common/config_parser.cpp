@@ -94,6 +94,9 @@ ConfigParser::ConfigParser(cli::mode mode)
     case cli::mode::embedding:
       addOptionsEmbedding(cli_);
       break;
+    case cli::mode::evaluating:
+      addOptionsEvaluating(cli_);
+      break;
     default:
       ABORT("wrong CLI mode");
       break;
@@ -563,7 +566,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Throw exception if training diverges. Divergence is detected if the running average loss over arg1 steps "
       "is exceeded by the running average loss over arg2 steps (arg1 >> arg2) by arg3 standard deviations")
       ->implicit_val("100 10 3.0f");
-  cli.add<bool>("--fp16-fallback-to-fp32", 
+  cli.add<bool>("--fp16-fallback-to-fp32",
       "If fp16 training diverges and throws try to continue training with fp32 precision");
   cli.add<size_t>("--gradient-norm-average-window",
       "Window size over which the exponential average of the gradient norm is recorded (for logging and scaling). "
@@ -824,7 +827,7 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
 }
 
 void ConfigParser::addOptionsEmbedding(cli::CLIWrapper& cli) {
-  auto previous_group = cli.switchGroup("Scorer options");
+  auto previous_group = cli.switchGroup("Embedder options");
 
   // clang-format off
   cli.add<bool>("--no-reload",
@@ -856,17 +859,122 @@ void ConfigParser::addOptionsEmbedding(cli::CLIWrapper& cli) {
       "Mixed precision for inference, set parameter type in expression graph. Supported values: float32, float16",
       {"float32"});
 
+  cli.add<std::string>("--like",
+    "Set good defaults for supported embedder types: roberta (works for all COMET flavors)");
+
+  // Short-cut for Unbabel comet-qe metric
+  cli.alias("like", "roberta", [](YAML::Node& config) {
+    // Model options
+    config["train-sets"] = std::vector<std::string>({"stdin"});
+    config["input-types"] = std::vector<std::string>({"sequence"});
+    config["max-length"] = 512;
+    config["max-length-crop"] = true;
+    config["mini-batch"] = 32;
+    config["maxi-batch"] = 100;
+    config["maxi-batch-sort"] = "src";
+    config["workspace"] = -4000;
+    config["devices"] = std::vector<std::string>({"all"});
+  });
+
   cli.switchGroup(previous_group);
   // clang-format on
 }
 
+void ConfigParser::addOptionsEvaluating(cli::CLIWrapper& cli) {
+  auto previous_group = cli.switchGroup("Evaluator options");
+
+  cli.add<bool>("--no-reload",
+      "Do not load existing model specified in --model arg");
+  // @TODO: move options like vocabs and train-sets to a separate procedure as they are defined twice
+  cli.add<std::vector<std::string>>("--train-sets,-t",
+      "Paths to corpora to be scored: source target");
+  cli.add<std::string>("--output,-o",
+      "Path to output file, stdout by default",
+      "stdout");
+  cli.add<std::vector<std::string>>("--vocabs,-v",
+      "Paths to vocabulary files have to correspond to --train-sets. "
+      "If this parameter is not supplied we look for vocabulary files source.{yml,json} and target.{yml,json}. "
+      "If these files do not exists they are created");
+  cli.add<size_t>("--width",
+      "Floating point precision of metric outputs",
+      4);
+  cli.add<std::string>("--average",
+      "Report average of all sentence-level values. By default the average is appended as the last line. "
+      "Alternatively, we can provide `--average only` which supresses other values.",
+      "skip")->implicit_val("append");
+
+  addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
+  addSuboptionsDevices(cli);
+  addSuboptionsBatching(cli);
+
+  cli.add<bool>("--fp16",
+      "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
+  cli.add<std::vector<std::string>>("--precision",
+      "Mixed precision for inference, set parameter type in expression graph. Supported values: float32, float16",
+      {"float32"});
+
+  cli.add<std::string>("--like",
+      "Set good defaults for supported metric types: comet-qe, comet, bleurt");
+
+  // Short-cut for Unbabel comet-qe metric
+  cli.alias("like", "comet-qe", [](YAML::Node& config) {
+    // Model options
+    config["train-sets"] = std::vector<std::string>({"stdin"});
+    config["tsv"] = true;
+    config["tsv-fields"] = 2;
+    config["input-types"] = std::vector<std::string>({"sequence", "sequence"});
+    config["max-length"] = 512;
+    config["max-length-crop"] = true;
+    config["mini-batch"] = 32;
+    config["maxi-batch"] = 100;
+    config["maxi-batch-sort"] = "src";
+    config["workspace"] = -4000;
+    config["devices"] = std::vector<std::string>({"all"});
+  });
+
+  // Short-cut for Unbabel comet metric
+  cli.alias("like", "comet", [cli](YAML::Node& config) {
+    // Model options
+    config["train-sets"] = std::vector<std::string>({"stdin"});
+    config["tsv"] = true;
+    config["tsv-fields"] = 3;
+    config["input-types"] = std::vector<std::string>({"sequence", "sequence", "sequence"});
+    config["max-length"] = 512;
+    config["max-length-crop"] = true;
+    config["mini-batch"] = 32;
+    config["maxi-batch"] = 100;
+    config["maxi-batch-sort"] = "src";
+    config["workspace"] = -4000;
+    config["devices"] = std::vector<std::string>({"all"});
+  });
+
+  // Short-cut for Google bleurt metric
+  cli.alias("like", "bleurt", [](YAML::Node& config) {
+    // Model options
+    config["train-sets"] = std::vector<std::string>({"stdin"});
+    config["tsv"] = true;
+    config["tsv-fields"] = 2;
+    config["input-types"] = std::vector<std::string>({"sequence", "sequence"});
+    config["max-length"] = 512;
+    config["max-length-crop"] = true;
+    config["mini-batch"] = 32;
+    config["maxi-batch"] = 100;
+    config["maxi-batch-sort"] = "src";
+    config["workspace"] = -4000;
+    config["devices"] = std::vector<std::string>({"all"});
+  });
+
+  cli.switchGroup(previous_group);
+  // clang-format on
+}
+
+
 void ConfigParser::addSuboptionsDevices(cli::CLIWrapper& cli) {
   // clang-format off
   cli.add<std::vector<std::string>>("--devices,-d",
-      "Specifies GPU ID(s) to use for training. Defaults to 0..num-devices-1",
+      "Specifies GPU ID(s) (e.g. '0 1 2 3' or 'all') to use for training. Defaults to GPU ID 0",
       {"0"});
-  cli.add<size_t>("--num-devices",
-      "Number of GPUs to use for this process. Defaults to length(devices) or 1");
 #ifdef USE_NCCL
   if(mode_ == cli::mode::training) {
     cli.add<bool>("--no-nccl",
@@ -1093,10 +1201,6 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
       cli_.updateConfig(config, cli::OptionPriority::CommandLine, "A shortcut for STDIN failed.");
   }
 
-  if(doValidate) {
-    ConfigValidator(config_).validateOptions(mode_);
-  }
-
   // remove extra config files from the config to avoid redundancy
   config_.remove("config");
 
@@ -1107,6 +1211,10 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 
     if(dumpMode == "expand") {
       cli_.parseAliases();
+    }
+
+    if(doValidate) {  // validate before options are dumped and we exit
+      ConfigValidator(config_, true).validateOptions(mode_);
     }
 
     bool minimal = (dumpMode == "minimal" || dumpMode == "expand");
@@ -1186,6 +1294,10 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 #endif
 
   cli_.parseAliases();
+  if(doValidate) {  // validate the options after aliases are expanded
+    ConfigValidator(config_).validateOptions(mode_);
+  }
+
   auto opts = New<Options>();
   opts->merge(Config(*this).get());
   return opts;

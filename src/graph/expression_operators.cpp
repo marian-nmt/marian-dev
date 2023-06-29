@@ -582,10 +582,14 @@ Expr bdot_legacy(Expr a, Expr b, bool transA, bool transB, float scale) {
 
 Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
+  std::vector<Expr> nodes = { a, b, bias };
 
-  int rows = a->shape().elements() / a->shape()[-1];
-  Expr ones = a->graph()->ones({ rows, 1 });
-  std::vector<Expr> nodes = { a, b, bias, ones };
+  auto graph = a->graph();
+  if(!graph->isInference()) {
+    int rows = a->shape().elements() / a->shape()[-1];
+    Expr ones = a->graph()->ones({ rows, 1 }, bias->value_type());
+    nodes.push_back(ones);
+  }
   return Expression<AffineNodeOp>(nodes, transA, transB, scale);
 }
 

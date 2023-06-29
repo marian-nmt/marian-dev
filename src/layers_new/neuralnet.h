@@ -130,10 +130,18 @@ struct Linear : public Layer, public IUnaryLayer {
       registerParameterLazy(bias, Shape({ dimOut }), inits::zeros());
     }
 
+    Type outputType = x->value_type();
     if(useBias)
-      return marian::affine(x, weight, bias, /*transA=*/false, /*transB=*/transposed);
+      return marian::affine(x, 
+                            marian::cast(weight, outputType), 
+                            marian::cast(bias, outputType), 
+                            /*transA=*/false, 
+                            /*transB=*/transposed);
     else
-      return marian::dot(x, weight, /*transA=*/false, /*transB=*/transposed);
+      return marian::dot(x, 
+                         marian::cast(weight, outputType), 
+                         /*transA=*/false, 
+                         /*transB=*/transposed);
   }
 };
 

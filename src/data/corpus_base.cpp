@@ -61,7 +61,8 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       rightLeft_(options_->get<bool>("right-left")),
       prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
+      tsvNumInputFields_(getNumberOfTSVInputFields(options)),
+      joinFields_(options_->get<bool>("input-join-fields", false)) {
   // TODO: support passing only one vocab file if we have fully-tied embeddings
   if(tsv_) {
     ABORT_IF(tsvNumInputFields_ != vocabs_.size(),
@@ -87,7 +88,8 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
       rightLeft_(options_->get<bool>("right-left")),
       prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
+      tsvNumInputFields_(getNumberOfTSVInputFields(options)),
+      joinFields_(options_->get<bool>("input-join-fields", false)) {
   bool training = !translate;
 
   if(training)
@@ -426,8 +428,12 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
 
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
 
-  if(prependZero_ && inputTypes[batchIndex] == "sequence")
-    words.insert(words.begin(), Word::fromWordIndex(0));
+  // This handles adding starts symbols for COMET (<s>) and BERT/BLEURT ([CLS])
+  bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && batchIndex == 0));
+  if(prepend && inputTypes[batchIndex] == "sequence") {
+    auto prependedWord = Word::fromWordIndex(0);
+    words.insert(words.begin(), prependedWord);
+  }
 
   if(maxLengthCrop_ && words.size() > maxLength_) {
     words.resize(maxLength_);
@@ -438,7 +444,12 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
   if(rightLeft_)
     std::reverse(words.begin(), words.end() - 1);
 
-  tup.push_back(words);
+  // if true, the numeric indices get joined with the previous sentence, <eos> acts as a separator here
+  // @TODO: make this cleaner.
+  if(joinFields_)
+    tup.appendToBack(words);
+  else
+    tup.pushBack(words);
 }
 
 void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,

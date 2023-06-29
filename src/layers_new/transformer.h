@@ -126,7 +126,7 @@ struct TransformerFilterBlock final : public LayerWithOptions, public IUnaryLaye
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
     
-    int modelDim = opt<int>("dim-emb");
+    int modelDim = opt<int>("transformer-dim-model", opt<int>("dim-emb"));
     int ffnDim   = opt<int>("transformer-dim-ffn");
     if(isDecoder && opt<int>("transformer-decoder-dim-ffn") != 0)
       ffnDim = opt<int>("transformer-decoder-dim-ffn");
@@ -370,7 +370,8 @@ public:
     registerLayer(preprocessor);
 
     // @TODO: factory to support different attention flavors?
-    rnn = New<RNN<SSRU>>(graph, opt<int>("dim-emb"), opt<bool>("transformer-rnn-projection", false));
+    int modelDim = opt<int>("transformer-dim-model", opt<int>("dim-emb"));
+    rnn = New<RNN<SSRU>>(graph, modelDim, opt<bool>("transformer-rnn-projection", false));
     registerLayer(rnn);
 
     postprocessor = New<TransformerPrePostProcessor>(

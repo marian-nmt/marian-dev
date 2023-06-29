@@ -191,8 +191,7 @@ Expr Embedding::applyIndices(const std::vector<WordIndex>& embIdx, const Shape& 
   // clang-format on
   if(options_->hasAndNotEmpty("embedding-vectors")) {
     auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
-    options->set(
-        "embFile", embFiles[batchIndex_], "normalization", opt<bool>("embedding-normalization"));
+    options->set("embFile", embFiles[batchIndex_], "normalization", opt<bool>("embedding-normalization"));
   }
   return New<Embedding>(graph_, options);
 }

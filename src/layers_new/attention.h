@@ -178,7 +178,8 @@ static Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<
   // in the future we might add SingleHead or Additive or LSH-based as in Reformer
   if(selfAttentionType == "default") {
     int numHeads = options->get<int>("transformer-heads");
-    int modelDim = options->get<int>("dim-emb");
+    int modelDim = options->get<int>("transformer-dim-model", options->get<int>("dim-emb"));
+
     float attentionDropoutProbability = options->get<float>("transformer-dropout-attention", 0.f);
 
     return New<MultiHeadAttention<MultiplicativeAttention>>(graph, numHeads, modelDim, modelDim, attentionDropoutProbability);

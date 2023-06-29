@@ -52,7 +52,7 @@ SentenceTuple TextInput::next() {
 
       ABORT_IF(words.empty(),   "No words (not even EOS) found in string??");
       ABORT_IF(tup.size() != i, "Previous tuple elements are missing.");
-      tup.push_back(words);
+      tup.pushBack(words);
     }
   }
 

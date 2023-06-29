@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Implementations of COMET-20 (reference-based) and BLEURT-20 for inference with conversion scripts.
+- `./marian evaluate` sub command for evaluation with COMET-QE-20, COMET-20 and BLEURT-20
+- A bunch of scripts for metrics use and early MBR experiments
 - LSH vocab filtering for GPU. Speed is not competitive with non-LSH. Checking in for completeness and possible future use of LSH on GPU for non-filtering stuff
 - Add --throw-on-divergence and --fp16-fallback-to-fp32 options to detect (fp16 and fp32) and recover (only fp16) 
   diverged runs. If not recoverable, exception gets rethrown and goes unhandled to force fatal error and shutdown.
@@ -20,6 +23,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Implemented fully correct version of GELU instead of using bad approximatin via Swish.
 - Handle copying from fp32 or fp16 embeddings in embedder mode correctly.
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
+
+### Changed
+- Removed --num-devices N option that wasn't really used by anyone (I assume).
+
 
 ## [1.12.0] - 2023-02-20
 

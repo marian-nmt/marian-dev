@@ -17,6 +17,10 @@ ConfigValidator::ConfigValidator(const YAML::Node& config)
       dumpConfigOnly_(config["dump-config"] && !config["dump-config"].as<std::string>().empty()
                       && config["dump-config"].as<std::string>() != "false") {}
 
+ConfigValidator::ConfigValidator(const YAML::Node& config, bool dumpConfigOnly)
+    : config_(config),
+      dumpConfigOnly_(dumpConfigOnly) {}
+
 ConfigValidator::~ConfigValidator() {}
 
 void ConfigValidator::validateOptions(cli::mode mode) const {
@@ -30,6 +34,10 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
       validateOptionsScoring();
       break;
     case cli::mode::embedding:
+      validateOptionsParallelData();
+      validateOptionsScoring();
+      break;
+    case cli::mode::evaluating:
       validateOptionsParallelData();
       validateOptionsScoring();
       break;
@@ -49,9 +57,13 @@ void ConfigValidator::validateOptions(cli::mode mode) const {
 
 void ConfigValidator::validateOptionsTranslation() const {
   auto models = get<std::vector<std::string>>("models");
-  auto configs = get<std::vector<std::string>>("config");
+  bool no_configs = true;
+  if(has("config")) {
+      auto configs = get<std::vector<std::string>>("config");
+      no_configs = configs.empty();
+  }
 
-  ABORT_IF(models.empty() && configs.empty(),
+  ABORT_IF(models.empty() && no_configs,
            "You need to provide at least one model file or a config file");
 
 #ifdef COMPILE_CPU
@@ -195,8 +207,8 @@ void ConfigValidator::validateDevices(cli::mode /*mode*/) const {
   std::string help;
 
   // valid strings: '0', '0 1 2 3', '3 2 0 1'
-  pattern = "[0-9]+( *[0-9]+)*";
-  help = "Supported formats: '0 1 2 3'";
+  pattern = "([0-9]+|all)( *([0-9]+|all))*";
+  help = "Supported formats: '0 1 2 3' or 'all'";
 
   ABORT_IF(!regex::regex_match(devices, pattern),
            "the argument '{}' for option '--devices' is invalid. {}",

@@ -26,9 +26,6 @@ struct CometEncoder final : public nn::TransformerEncoder {
     // apply positional embeddings to contextual input
     output = positionEmbedding->apply(output);
 
-    // handle for skip connection at top
-    auto prevOutput = output;
-
     // apply dropout or layer-norm to embeddings if required
     output = preprocessor->apply(output);
 
@@ -142,14 +139,34 @@ struct CometBatchEncoder final : public nn::LayerWithOptions,
   }
 };
 
-class CometQEPooler final : public nn::LayerWithOptions, 
-                            public PoolerBase {
+// Dummpy pooler that only returns the encoder context
+class CometEmbeddingPooler final : public nn::LayerWithOptions, 
+                                   public PoolerBase {
+public:
+  CometEmbeddingPooler(Ptr<ExpressionGraph> graph, Ptr<Options> options)
+  : LayerWithOptions(graph, options),
+    PoolerBase(graph, options) {}
+
+  std::vector<Expr> apply(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch, const std::vector<Ptr<EncoderState>>& encoderStates) override {
+    auto usage = (models::usage)LayerWithOptions::opt<int>("usage");
+    ABORT_IF(usage != models::usage::embedding, "This pooler should only be used for generating embeddings??");
+    ABORT_IF(encoderStates.size() != 1, "Size of encoderStates {} != 1", encoderStates.size());
+
+    return { encoderStates[0]->getContext() };
+  }
+  
+  void clear() override {}
+};
+
+// Actual COMET-like pooler, works for COMET-QE and COMET models (prior to WMT22)
+class CometMetricPooler final : public nn::LayerWithOptions, 
+                                public PoolerBase {
 private:
   Ptr<nn::Sequential> layers;
   std::mt19937 rng{(uint32_t)Config::seed};
 
 public:
-  CometQEPooler(Ptr<ExpressionGraph> graph, Ptr<Options> options)
+  CometMetricPooler(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   : LayerWithOptions(graph, options),
     PoolerBase(graph, options) {
     
@@ -221,49 +238,80 @@ public:
       return {xMixup, yMixup};
     };
 
-    ABORT_IF(encoderStates.size() != 2, "Pooler expects exactly two encoder state");
-    
-    auto src = encoderStates[0]->getContext();
-    auto mt  = encoderStates[1]->getContext();
-    
-    auto diff = abs(mt - src);
-    auto prod = mt * src;
+    auto usage = (models::usage)LayerWithOptions::opt<int>("usage");
+    ABORT_IF(usage == models::usage::embedding, "Wrong pooler for embedding??");
 
-    Expr output;
-    if(LayerWithOptions::opt<int>("usage") == (int)models::usage::embedding) {
-      auto embFwd  = concatenate({mt, src, prod, diff}, /*axis=*/-1); // [batch, 1, model]
-      auto embBwd  = concatenate({src, mt, prod, diff}, /*axis=*/-1); // [batch, 1, model]
-      auto emb     = concatenate({embFwd, embBwd}, /*axis=*/-2);
-      output = layers->apply(emb);
+    auto modelType = LayerWithOptions::opt<std::string>("type");
+    ABORT_IF(modelType == "comet-qe" && encoderStates.size() != 2, "Pooler expects exactly two encoder states for comet-qe");
+    ABORT_IF(modelType == "comet"    && encoderStates.size() != 3, "Pooler expects exactly three encoder states for comet");
+    
+    if(modelType == "comet-qe") {
+      auto src = encoderStates[0]->getContext();
+      auto mt  = encoderStates[1]->getContext();
+      
+      auto diff = abs(mt - src);
+      auto prod = mt * src;
 
-      int dimBatch = output->shape()[-3];
-      output = reshape(output, {dimBatch, 1, 2});
-      return { output };
+      Expr output;
+      if(usage == models::usage::evaluating) {
+        auto embFwd  = concatenate({mt, src, prod, diff}, /*axis=*/-1); // [batch, 1, model]
+        auto embBwd  = concatenate({src, mt, prod, diff}, /*axis=*/-1); // [batch, 1, model]
+        auto emb     = concatenate({embFwd, embBwd}, /*axis=*/-2);
+        output = layers->apply(emb);
+
+        int dimBatch = output->shape()[-3];
+        output = reshape(output, {dimBatch, 1, 2});
+        return { output };
+      } else {
+        auto emb = concatenate({mt, src, prod, diff}, /*axis=*/-1); // [batch, 1, model]
+        
+        auto softLabelsWords = batch->front()->data();
+        auto classVocab      = batch->front()->vocab();
+        
+        int dimBatch = (int)softLabelsWords.size();
+        std::vector<float> softLabels;
+        for(auto w : softLabelsWords) {
+          // @TODO: this is a super-ugly hack to get regression values
+          float score = w != Word::NONE ? std::stof((*classVocab)[w]) : 0.f;
+          softLabels.push_back(score);
+        }
+        auto labels = graph->constant({dimBatch, 1, 1}, inits::fromVector(softLabels), Type::float32);
+
+        if(getMode() == Mode::train) {
+          float mixupAlpha = LayerWithOptions::opt<float>("comet-mixup", 0.f);
+          bool mixupReg    = LayerWithOptions::opt<bool>("comet-mixup-reg", false);
+          auto xy = mixup(emb, labels, mixupAlpha, mixupReg);
+          emb     = get<0>(xy);
+          labels  = get<1>(xy);
+        }
+        output = marian::cast(layers->apply(emb), Type::float32);
+        return { output, labels };
+      }  
+    } else if(modelType == "comet") {
+      auto src = encoderStates[0]->getContext();
+      auto mt  = encoderStates[1]->getContext();
+      auto ref = encoderStates[2]->getContext();
+      
+      auto diffRef = abs(mt - ref);
+      auto prodRef = mt * ref;
+
+      auto diffSrc = abs(mt - src);
+      auto prodSrc = mt * src;
+
+      Expr output;
+      if(usage == models::usage::evaluating) {
+        auto emb  = concatenate({mt, ref, prodRef, diffRef, prodSrc, diffSrc}, /*axis=*/-1); // [batch, 1, model]
+        output = layers->apply(emb);
+        int dimBatch = output->shape()[-3];
+        output = reshape(output, {dimBatch, 1, 1});
+        return { output };
+      } else {
+        // Currently no training for COMET with reference @TODO: add training
+        ABORT("Usage other than 'evaluating' not implemented");  
+      }
     } else {
-      auto emb = concatenate({mt, src, prod, diff}, /*axis=*/-1); // [batch, 1, model]
-      
-      auto softLabelsWords = batch->front()->data();
-      auto classVocab      = batch->front()->vocab();
-      
-      int dimBatch = (int)softLabelsWords.size();
-      std::vector<float> softLabels;
-      for(auto w : softLabelsWords) {
-        // @TODO: this is a super-ugly hack to get regression values
-        float score = w != Word::NONE ? std::stof((*classVocab)[w]) : 0.f;
-        softLabels.push_back(score);
-      }
-      auto labels = graph->constant({dimBatch, 1, 1}, inits::fromVector(softLabels), Type::float32);
-
-      if(getMode() == Mode::train) {
-        float mixupAlpha = LayerWithOptions::opt<float>("comet-mixup", 0.f);
-        bool mixupReg    = LayerWithOptions::opt<bool>("comet-mixup-reg", false);
-        auto xy = mixup(emb, labels, mixupAlpha, mixupReg);
-        emb     = get<0>(xy);
-        labels  = get<1>(xy);
-      }
-      output = marian::cast(layers->apply(emb), Type::float32);
-      return { output, labels };
-    }  
+      ABORT("Unknown model type {}", modelType);
+    }
   }
 
   void clear() override {}

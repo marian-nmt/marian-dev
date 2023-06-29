@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- LSH vocab filtering for GPU. Speed is not competitive with non-LSH. Checking in for completeness and possible future use of LSH on GPU for non-filtering stuff
 - Add --throw-on-divergence and --fp16-fallback-to-fp32 options to detect (fp16 and fp32) and recover (only fp16) 
   diverged runs. If not recoverable, exception gets rethrown and goes unhandled to force fatal error and shutdown.
 - Re-implementation of COMET-QE for inference and training; conversion scripts from Unbabel-Comet to Marian.

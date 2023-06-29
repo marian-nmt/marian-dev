@@ -44,6 +44,11 @@ DISPATCH4(IsNaN, const Tensor, Ptr<Allocator>, bool&, bool&);
 #ifdef CUDA_FOUND
 namespace gpu {
 bool SanitizeGradient(marian::Tensor in, Ptr<Allocator> allocator, bool pruneNaN, bool clipInf);
+void Float2Bit(marian::Tensor output, const marian::Tensor input);
+void HammmingAndSort(marian::Tensor outIdx, marian::Tensor outCounts,
+                  const marian::Tensor weightHash, const marian::Tensor inputHash,
+                  uint32_t kBest, uint16_t minVal, uint16_t maxVal, 
+                  marian::Ptr<marian::Allocator> &alloc, marian::Ptr<marian::Backend> &backend);
 }
 #endif
 

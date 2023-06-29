@@ -1,3 +1,9 @@
+# if defined(_MSC_VER)
+#define NPP_MAX_32U     ( 4294967295U )              /**<  Maximum 32-bit unsigned integer */
+#else
+#include <nppdefs.h>
+#endif
+
 #include "common/types.h"
 #include "tensors/tensor_operators.h"
 
@@ -3391,5 +3397,219 @@ void PoolingWithMaskingBackward(Tensor adj,
                                            width,
                                            lastWidth);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// Calc sign(x) for vectors of float. GPU counterpart to Faiss' CPU fvecs2bitvecs()
+__global__ void Float2Bit(const float *in, uint32_t *out, int batch, int dim, int outDim)
+{
+  int batchIdx = blockIdx.x;
+  const float *inBatchOffset = in + batchIdx * dim;
+  uint32_t *outBatchOffset = out + batchIdx * outDim;
+  
+  int outDimIdx = threadIdx.x;
+  while (outDimIdx < outDim) {
+    const float *inDimOffset = inBatchOffset + outDimIdx * 32;
+    uint32_t &outDimOffset = outBatchOffset[outDimIdx];
+    uint32_t outVal = 0;
+    uint32_t mask = 1;
+    
+    for (int bitIdx = 0; bitIdx < 32; ++bitIdx) {
+      if (inDimOffset[bitIdx] >= 0) 
+        outVal |= mask;
+
+        mask <<= 1;
+    }
+    //printf("outVal=%lu \n", outVal);
+    outDimOffset = outVal;
+    outDimIdx += blockDim.x;
+  }
+}
+
+// Calc sign(x) for vectors of float. GPU counterpart to Faiss' CPU fvecs2bitvecs()
+void Float2Bit(marian::Tensor output, const marian::Tensor input)
+{
+  int dim = input->shape()[-1];
+  assert(dim % 32 == 0);
+  int batch = input->shape().elements() / input->shape()[-1];
+  int outDim = output->shape()[-1] / 4;
+
+  unsigned threads = std::min((unsigned)MAX_THREADS, (unsigned)outDim);
+
+  Float2Bit<<<batch, threads>>>(input->data(), output->data<uint32_t>(), batch, dim, outDim);
+  CUDA_CHECK(cudaGetLastError());
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// Calc hamming distance between input and weight hash. Return sorted indices and counts accoding to counting sort algo
+// https://www.geeksforgeeks.org/counting-sort/
+__global__ void HammmingAndSort(const uint32_t *weightHash, 
+                      const uint32_t *inputHash,
+                      uint16_t *hamming,
+                      uint32_t *outCounts, 
+                      uint32_t *outIdx, 
+                      uint32_t kBest, uint16_t minVal, uint16_t maxVal, uint16_t range, 
+                      int hashDim, int dim, int batch)
+{
+  extern __shared__ uint32_t sharedCounts[];
+
+  int batchIdx = blockIdx.x;
+
+  uint32_t *stopVal = sharedCounts + range;
+  uint16_t *hammingBatchOffset = hamming 
+                              ? hamming + batchIdx * dim 
+                              : (uint16_t*) (sharedCounts + range);
+
+  uint32_t *outCountsBatchOffset = outCounts ? outCounts + batchIdx * kBest : nullptr;
+  uint32_t *outIdxBatchOffset = outIdx ? outIdx + batchIdx * kBest : nullptr;
+  const uint32_t *inputHashOffset = inputHash + batchIdx * hashDim;
+
+  // init count array
+  int countsIdx = threadIdx.x;
+  while (countsIdx < range) {
+    sharedCounts[countsIdx] = 0;
+    countsIdx += blockDim.x;
+  }
+
+  __syncthreads();
+  int dimIdx = threadIdx.x;
+  while (dimIdx < dim) {
+    // Hamming distance between input and hashes
+    const uint32_t *weightHashOffset = weightHash + dimIdx * hashDim;
+
+    uint16_t dist = 0;
+    for (int hashDimIdx = 0; hashDimIdx < hashDim; ++hashDimIdx) {
+      const uint32_t &inputHashes = inputHashOffset[hashDimIdx];
+      const uint32_t &weightHashes = weightHashOffset[hashDimIdx];
+      uint32_t diff = inputHashes ^ weightHashes;
+      uint16_t distT = __popc(diff);
+      dist += distT;
+    }
+
+    hammingBatchOffset[dimIdx] = dist;
+
+    // counts
+    uint32_t countIdx = dist - minVal;
+    assert(countIdx < range);
+#if __CUDA_ARCH__ >= 600
+    atomicAdd_block(&sharedCounts[countIdx], 1);
+#endif
+    dimIdx += blockDim.x;
+  }
+
+  // Start counting sort algorithm
+  __syncthreads();
+  // Calc acumulate counts
+  if (threadIdx.x == 0) {
+    if (sharedCounts[0] >= kBest) {
+      (*stopVal) = 0;
+    }
+    else {
+      for (int rangeIdx = 1; rangeIdx < range; ++rangeIdx) {
+        uint32_t preval = sharedCounts[rangeIdx - 1];
+        sharedCounts[rangeIdx] += preval;
+        if (sharedCounts[rangeIdx] >= kBest) {
+          (*stopVal) = rangeIdx;
+          break;
+        }
+      }
+    }
+  }
+
+  // init output - reuse count array
+  __syncthreads();
+  int rangeIdx = (*stopVal) + threadIdx.x + 1;
+  while (rangeIdx < range) {
+    sharedCounts[rangeIdx] = NPP_MAX_32U;
+    rangeIdx += blockDim.x;
+  }
+
+  __syncthreads();
+  // Reduce
+  dimIdx = threadIdx.x;
+  while (dimIdx < dim) {
+    uint16_t val = hammingBatchOffset[dimIdx];
+    assert(val >= minVal);
+    assert(val <= maxVal);
+
+    uint32_t countIdx = val - minVal;
+    assert(countIdx < range);
+    uint32_t &outIdx = sharedCounts[countIdx];
+    
+    if (outIdx != NPP_MAX_32U) {
+      uint32_t prevOutIdx;
+// Not supported in Maxwells or older
+// Not supported in Maxwells or older
+#if __CUDA_ARCH__ >= 600
+      prevOutIdx = atomicAdd_block(&outIdx, (uint32_t) -1);
+#else
+      prevOutIdx = 0;
+#endif
+      assert(prevOutIdx > 0);
+      assert(prevOutIdx - 1 < dim);
+
+      if (prevOutIdx - 1 < kBest) {
+        if (outCountsBatchOffset) outCountsBatchOffset[prevOutIdx - 1] = val;
+        if (outIdxBatchOffset) outIdxBatchOffset[prevOutIdx - 1] = dimIdx;
+      }
+    }
+
+    dimIdx += blockDim.x;
+  }
+}
+
+// Calc hamming distance between input and weight hash. Return sorted indices and counts accoding to counting sort algo
+// https://www.geeksforgeeks.org/counting-sort/
+void HammmingAndSort(marian::Tensor outIdx, marian::Tensor outCounts,
+                  const marian::Tensor weightHash, 
+                  const marian::Tensor inputHash,
+                  uint32_t kBest, uint16_t minVal, uint16_t maxVal, 
+                  marian::Ptr<marian::Allocator> &alloc, 
+                  marian::Ptr<marian::Backend> &backend)
+{
+  size_t SHARED_MEM_SIZE = 48000;
+
+  assert(weightHash->shape()[-1] == inputHash->shape()[-1]);
+  int hashDim = weightHash->shape()[-1] / 4;
+
+  int dim = weightHash->shape().elements() / weightHash->shape()[-1];
+  int inputBatch = inputHash->shape().elements() / inputHash->shape()[-1];
+
+  uint16_t range = maxVal - minVal + 1;
+
+  marian::Shape hammingShape = inputHash->shape();
+  hammingShape.set(-1, (int) kBest);
+
+
+  size_t mem = range * sizeof(uint32_t) // counts
+              + sizeof(uint32_t)    // stopval
+              + dim * sizeof(uint16_t); // hamming;
+  
+  marian::Tensor hamming;
+  if (mem > SHARED_MEM_SIZE) {
+    // shared memory too small. Write haming distance to global mem instead
+    mem = range *sizeof(uint32_t) + sizeof(uint32_t);
+    assert(mem <= SHARED_MEM_SIZE);
+
+    hammingShape.set(-1, dim);
+    auto memory = alloc->alloc(requiredBytes(hammingShape, marian::Type::uint16));
+
+    hamming = marian::TensorBase::New(memory, hammingShape, marian::Type::uint16, backend);
+  }
+
+  HammmingAndSort<<<inputBatch, 256, mem>>>
+              (weightHash->data<uint32_t>(), 
+              inputHash->data<uint32_t>(),
+              hamming ? hamming->data<uint16_t>() : nullptr,
+              outCounts ? outCounts->data<uint32_t>() : nullptr,
+              outIdx ? outIdx->data<uint32_t>() : nullptr,
+              kBest, minVal, maxVal, range, 
+              hashDim, dim, inputBatch);
+  CUDA_CHECK(cudaGetLastError());
+
+  if (hamming) {
+    alloc->free(hamming->memory());
+  }
+}
+
 }  // namespace gpu
 }  // namespace marian

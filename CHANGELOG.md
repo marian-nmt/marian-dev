@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Fixed unit test for LayerNorm
 - Only collect batch statistics during mini-batch-fit up to actual max-length.
 - Implemented fully correct version of GELU instead of using bad approximatin via Swish.
 - Handle copying from fp32 or fp16 embeddings in embedder mode correctly.

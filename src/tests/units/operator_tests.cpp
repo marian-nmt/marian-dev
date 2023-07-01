@@ -271,33 +271,69 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     graph->clear();
     values.clear();
 
-#ifdef CUDA_FOUND
-    std::vector<T> vLn({
-      -1.1962, 1.43061, 0.380288, -0.614697, 0.816638, 0.622649,
-      -1.69679, 0.257504, -1.12563, -0.151387, 1.61181, -0.334796,
-      1.07207, -0.622614, 0.862014, -1.31147
-    });
-#else
-    std::vector<T> vLn({
-      -1.49821, -0.152206, 0.394932, 1.25548, -1.51701, -0.28032,
-      0.9483, 0.849025, 0.855183, 1.11657, -0.788354, -1.1834,
-      -0.85939, -1.13109, 0.972076, 1.01841
-    });
-#endif
+    std::vector<T> init = {
+      2.88794374, 4.67853451, 3.96257305, 3.28433037,
+      0.37778997, 0.67662024, 4.24959183, 1.23910618,
+      0.68929380, 2.00369596, 4.38251686, 1.75624943,
+      4.96126175, 3.01947117, 4.72057724, 2.23017120
+    };
 
-    auto a = graph->constant({2, 2, 4}, inits::glorotUniform());
-    auto gamma = graph->param("gamma", {1, 4}, inits::ones());
-    auto beta = graph->param("beta", {1, 4}, inits::zeros());
-    auto ln = layerNorm(a, gamma, beta);
+    auto a1 = graph->param("test1", {2, 2, 4}, inits::fromVector(init));
+    auto a2 = graph->param("test2", {2, 2, 4}, inits::fromVector(init));
+
+    std::vector<T> gammaVec({0.1f, -0.2f, 0.3f, -0.4f});
+    std::vector<T> betaVec({-0.1f, 0.2f, -0.3f, 0.4f});
+    
+    auto gamma1 = graph->param("gamma1", {4}, inits::fromVector(gammaVec));
+    auto beta1  = graph->param("beta1",  {4}, inits::fromVector(betaVec));
+    
+    auto gamma2 = graph->param("gamma2", {4}, inits::fromVector(gammaVec));
+    auto beta2  = graph->param("beta2",  {4}, inits::fromVector(betaVec));
+    
+    // layernorm via special operator
+    auto ln =  layerNorm(a1, gamma1, beta1, 1e-5f);
+
+    // layernorm via elementary operators
+    auto num = a2 - mean(a2, /*axis=*/-1);
+    auto den = sqrt(mean(square(num), /*axis=*/-1) + 1e-5f);
+    auto ln2 = gamma2 * (num / den) + beta2;
+
+    auto top = sum(flatten(ln + ln2));
 
     graph->forward();
+    graph->backward();
 
     CHECK(ln->shape() == Shape({2, 2, 4}));
 
-    ln->val()->get(values);
-    CHECK( std::equal(values.begin(), values.end(),
-                      vLn.begin(), floatApprox) );
+    std::vector<T> values2;
 
+    // compare values of ln and ln2 to make sure forward computation is correct
+    ln->val()->get(values);
+    ln2->val()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox2) );
+
+    // compare adjoints of a1 and a2 (parameters) to makes sure gradient computation is correct
+    a1->grad()->get(values);
+    a2->grad()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox2) );
+  
+    // compare adjoints of gamma1 and gamma2 (parameters) to makes sure gradient computation is correct
+    gamma1->grad()->get(values);
+    gamma2->grad()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox2) );
+
+    // compare adjoints of beta1 and beta2 (parameters) to makes sure gradient computation is correct
+    beta1->grad()->get(values);
+    beta2->grad()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      values2.begin(), floatApprox2) );
   }
 
   SECTION("RMS normalization") {
@@ -313,7 +349,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
     auto a1 = graph->param("test1", {2, 2, 4}, inits::fromVector(init));
     auto a2 = graph->param("test2", {2, 2, 4}, inits::fromVector(init));
-    auto gamma = graph->param("gamma", {1, 4}, inits::ones());
+    auto gamma = graph->param("gamma",    {4}, inits::ones());
     
     auto rms = rmsNorm(a1, gamma, nullptr, 1e-5f);
     auto rms2 = gamma * (a2 / sqrt(mean(a2 * a2, /*axis=*/-1) + 1e-5f));

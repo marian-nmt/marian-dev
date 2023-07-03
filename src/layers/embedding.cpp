@@ -169,8 +169,7 @@ Expr Embedding::applyIndices(const std::vector<WordIndex>& embIdx, const Shape& 
   // @BUGBUG: We should not broadcast along dimBatch=[-2]. Then we can also dropout before reshape()
   // (test that separately)
   if(!inference_)
-    selectedEmbs = dropout(
-        selectedEmbs, options_->get<float>("dropout", 0.0f), {selectedEmbs->shape()[-3], 1, 1});
+    selectedEmbs = dropout(selectedEmbs, options_->get<float>("dropout", 0.0f), Shape::Axes({-3}));
   return selectedEmbs;
 }
 

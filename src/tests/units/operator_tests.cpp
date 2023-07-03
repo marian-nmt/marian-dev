@@ -631,8 +631,15 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     auto aff1 = affine(A, B, bias);
     auto aff2 = dot(A, B) + bias;
 
-    auto affRelu1 = affineWithReluDropout(A, B, bias);
-    auto affRelu2 = relu(dot(A, B) + bias);
+    auto A2 = graph->param("A2", {4, 3}, inits::fromVector(vA));
+    auto B2 = graph->param("B2", {3, 2}, inits::fromVector(vB));
+
+    // @TODO: using this operator here is currently dangerous since the inplace 
+    // operator inside might modify values in-place if the same operation is executed
+    // twice on the same inputs. (Hence the new parameters A2 and B2 here)
+    // This needs to be fixed in the future.
+    auto affRelu1 = affineWithReluDropout(A2, B2, bias);
+    auto affRelu2 = relu(dot(A2, B2) + bias);
 
     graph->forward();
 
@@ -643,7 +650,7 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     values2.clear();
     CHECK(aff2->shape() == aff1->shape());
     aff2->val()->get(values2);
-    CHECK(values2 == values);
+    CHECK(values == values2);
 
     affRelu1->val()->get(values);
     affRelu2->val()->get(values2);

@@ -888,8 +888,6 @@ public:
   }
 };
 
-
-
 // @TODO: add version with access to backward step
 // This allows to attach a lambda function to any node during the execution. It is a non-operation otherwise
 // i.e. doesn't consume any memory or take any time to execute (it's a reshape onto itself) other than the
@@ -934,25 +932,32 @@ private:
   Expr mask_;
   
 public:
-  DropoutReluInplaceNodeOp(Expr node, Expr mask)
+  DropoutReluInplaceNodeOp(Expr node, Expr mask = nullptr)
   : ReshapeNodeOp(node, node->shape()), 
     mask_(mask) {}
 
   void forward() override {
     using namespace marian::functional;
-    Element(_1 = ReLU(_1 * _2), val(), mask_->val());
+    if(mask_)
+      Element(_1 = ReLU(_1 * _2), val(), mask_->val());
+    else
+      Element(_1 = ReLU(_1), val());
   }
 
   void backward() override {
     using namespace marian::functional;
-    Element(_1 = _1 * ReLUback(_2) * _3, grad(), val(), mask_->val());
+    if(mask_)
+      Element(_1 = _1 * ReLUback(_2) * _3, grad(), val(), mask_->val());
+    else
+      Element(_1 = _1 * ReLUback(_2), grad(), val());
   }
 
   const std::string type() override { return "dropoutReluInplace"; }
 
   virtual size_t hash() override {
     size_t seed = ReshapeNodeOp::hash();
-    util::hash_combine(seed, mask_->hash());
+    if(mask_)
+      util::hash_combine(seed, mask_->hash());
     return seed;
   }
 

@@ -239,7 +239,17 @@ struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
       if(opt<bool>("transformer-depth-scaling", false))
         for(auto linear : transformerEncoderLayer->allLayers<Linear>())
           linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
-
+      
+      if(opt<bool>("transformer-no-bias", false))
+        for(auto linear : transformerEncoderLayer->allLayers<Linear>())
+          linear->useBias = false;
+      
+      if(opt<bool>("transformer-no-affine", false)) {
+        for(auto norm : transformerEncoderLayer->allLayers<Norm>()) {
+          norm->useScale = false;
+          norm->useBias  = false;
+        }
+      }
       layers->append(transformerEncoderLayer);
     }
 
@@ -491,7 +501,17 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
           linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
         for(auto linear : currentLayer->filterBlock->allLayers<Linear>())
           linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
+      }
 
+      if(opt<bool>("transformer-no-bias", false))
+        for(auto linear : currentLayer->allLayers<Linear>())
+          linear->useBias = false;
+      
+      if(opt<bool>("transformer-no-affine", false)) {
+        for(auto norm : currentLayer->allLayers<Norm>()) {
+          norm->useScale = false;
+          norm->useBias = false;
+        }
       }
     }
 

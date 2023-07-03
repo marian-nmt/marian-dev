@@ -638,7 +638,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
         auto loss = model->build(graph, batch);
         fits = graph->fits();
       } catch(const ShapeSizeException& e) {
-        LOG(debug, "Exception for maxBatch size {}: {}", maxBatch, e.what());
+        LOG(debug, "Exception for maxBatch size {}: {}", current, e.what());
         fits = false;
       }
 

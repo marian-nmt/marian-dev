@@ -156,7 +156,7 @@ void ExpressionGraph::forward(std::list<Expr>& forwardTape, bool finalPass) {
     if(v->marked_for_debug()) {
       Logger log = spdlog::get("general");
       if(log) {
-        LOG(info, "Debug: {} op={}", v->debug_message(), v->type());
+        LOG(info, "Debug: {} op={} name={}", v->debug_message(), v->type(), v->name());
         LOG(info, v->val()->debug());
       }
       else {

@@ -320,6 +320,11 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--transformer-depth-scaling",
       "Scale down weight initialization in transformer layers by 1 / sqrt(depth)");
 
+  cli.add<bool>("--transformer-no-bias",
+      "Don't use any bias vectors in linear layers");
+  cli.add<bool>("--transformer-no-affine",
+      "Don't use any scale or bias vectors in layer norm");
+
   cli.add<std::string>("--bert-mask-symbol", "Masking symbol for BERT masked-LM training", "[MASK]");
   cli.add<std::string>("--bert-sep-symbol", "Sentence separator symbol for BERT next sentence prediction training", "[SEP]");
   cli.add<std::string>("--bert-class-symbol", "Class symbol BERT classifier training", "[CLS]");

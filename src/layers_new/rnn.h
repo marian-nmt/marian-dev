@@ -31,7 +31,7 @@ public:
     registerLayer(iProj);
     fProj = New<Linear>(graph, dimState);
     registerLayer(fProj);
-    dropout = New<Dropout>(graph, dropProb, Shape({dimState}));
+    dropout = New<Dropout>(graph, dropProb, Shape::Axes({-1}));
     registerLayer(dropout);
   }
 

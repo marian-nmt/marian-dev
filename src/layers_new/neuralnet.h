@@ -146,28 +146,26 @@ struct Linear : public Layer, public IUnaryLayer {
 };
 
 struct Dropout final : public Layer, public IUnaryLayer {
-  float dropoutProbabilty;
-  UPtr<Shape> dropoutMaskShape;
+  float dropoutProbability;
+  Shape::Axes dropoutAxes{{-2, -1}};
   
   Dropout(Ptr<ExpressionGraph> graph, 
-          float dropoutProbabilty,
-          const Shape& dropoutMaskShape) 
-    : Layer(graph), dropoutProbabilty(dropoutProbabilty), dropoutMaskShape(new Shape(dropoutMaskShape))
+          float dropoutProbability,
+          const Shape::Axes& dropoutAxes) 
+    : Layer(graph), dropoutProbability(dropoutProbability), dropoutAxes(dropoutAxes)
   {}
 
   Dropout(Ptr<ExpressionGraph> graph, 
-          float dropoutProbabilty) 
-    : Layer(graph), dropoutProbabilty(dropoutProbabilty), dropoutMaskShape(nullptr)
+          float dropoutProbability) 
+    : Layer(graph), dropoutProbability(dropoutProbability)
   {}
 
   Expr apply(Expr input) const override {
     if(getMode() == Mode::eval)
       return input;
 
-    if(dropoutMaskShape && dropoutProbabilty > 0.f) {
-      return marian::dropout(input, dropoutProbabilty, *dropoutMaskShape);
-    } else if(dropoutProbabilty > 0.f) {
-      return marian::dropout(input, dropoutProbabilty, {input->shape()[-2], input->shape()[-1]});
+    if(dropoutProbability > 0.f) {
+      return marian::dropout(input, dropoutProbability, dropoutAxes);
     } else {
       return input;
     }
@@ -185,30 +183,29 @@ struct LinearReluDropout final : public Linear {
   using Linear::transposed;
   using Linear::init;
 
-  float dropoutProbabilty;
-  UPtr<Shape> dropoutMaskShape;
+  float dropoutProbability;
+  Shape::Axes dropoutAxes{{-2, -1}};
 
   // Typical constructor that can take an initializer function
   LinearReluDropout(Ptr<ExpressionGraph> graph, 
                     int dimOut,
-                    float dropoutProbabilty,
+                    float dropoutProbability,
                     bool useBias = true,
                     bool transposed = false,
                     Ptr<inits::NodeInitializer> init = inits::glorotUniform())
     : Linear(graph, dimOut, useBias, transposed, init),  
-      dropoutProbabilty(dropoutProbabilty), 
-      dropoutMaskShape(nullptr) {}
+      dropoutProbability(dropoutProbability) {}
 
+  // Typical constructor that can take an initializer function
   LinearReluDropout(Ptr<ExpressionGraph> graph, 
                     int dimOut,
-                    float dropoutProbabilty,
-                    const Shape& dropoutMaskShape,
+                    float dropoutProbability,
+                    const Shape::Axes& dropoutAxes,
                     bool useBias = true,
                     bool transposed = false,
                     Ptr<inits::NodeInitializer> init = inits::glorotUniform())
     : Linear(graph, dimOut, useBias, transposed, init),  
-      dropoutProbabilty(dropoutProbabilty), 
-      dropoutMaskShape(new Shape(dropoutMaskShape)) {}
+      dropoutProbability(dropoutProbability), dropoutAxes(dropoutAxes) {}
 
   Expr apply(Expr x) const override {
     int dimIn = x->shape()[-1];
@@ -224,83 +221,94 @@ struct LinearReluDropout final : public Linear {
       registerParameterLazy(bias, Shape({ dimOut }), inits::zeros());
     }
 
-    // @TODO: handle relu inplace for inference etc.
     Expr output;
     if(useBias)
       output = marian::affine(x, weight, bias, /*transA=*/false, /*transB=*/transposed);
     else
       output = marian::dot(x, weight, /*transA=*/false, /*transB=*/transposed);
 
-    if(getMode() == Mode::eval)
-      return relu(output);
-
-    if(dropoutMaskShape && dropoutProbabilty > 0.f) {
-      return marian::dropoutReluInplace(output, dropoutProbabilty, *dropoutMaskShape);
-    } else if(dropoutProbabilty > 0.f) {
-      return marian::dropoutReluInplace(output, dropoutProbabilty, {output->shape()[-2], output->shape()[-1]});
+    if(getMode() == Mode::eval) {
+      return marian::dropoutReluInplace(output); // no dropout
     } else {
-      return relu(output);
+      return marian::dropoutReluInplace(output, dropoutProbability, dropoutAxes);
     }
   }
 
   virtual void clear() override {}
 };
 
-
 struct Norm : public Layer, public IUnaryLayer {
-  Norm(Ptr<ExpressionGraph> graph) : Layer(graph) {}
-  virtual ~Norm() = default;
+  Expr scale{nullptr};
+  Expr bias{nullptr};
+  
+  bool useScale{true};
+  bool useBias{true};
+  bool elementwise{true};
+  float eps{1e-5f};
+
+  Norm(Ptr<ExpressionGraph> graph, 
+       bool useScale = true, 
+       bool useBias = true, 
+       bool elementwise = true, 
+       float eps = 1e-5f)
+    : Layer(graph), 
+      useScale(useScale), 
+      useBias(useBias), 
+      elementwise(elementwise), 
+      eps(eps) {}
+
+  virtual Expr getScale(int dimModel) const {
+    Expr scaleVector = nullptr;
+    if(useScale) {
+      registerParameterLazy(scale, Shape({ elementwise ? dimModel : 1 }), inits::ones());
+      // if elementwise==false we multiply with a vector of 1s - that's a trick to make gradient computation faster
+      scaleVector = elementwise ? scale : scale * graph()->ones({dimModel}); // @TODO: make this obsolete
+    }
+    return scaleVector;
+  }
+
+  virtual Expr getBias(int dimModel) const {
+    Expr biasVector = nullptr;
+    if(useBias) {
+      registerParameterLazy(bias,  Shape({ elementwise ? dimModel : 1 }), inits::zeros());
+      // if elementwise==false we multiply with a vector of 1s - that's a trick to make gradient computation faster
+      biasVector = elementwise ? bias : bias * graph()->ones({dimModel}); // @TODO: make this obsolete
+    }
+    return biasVector;
+  }
 
   Expr apply(Expr x) const override = 0;
 };
 
-struct LayerNorm final : public Norm {
-  Expr weight;
-  Expr bias;
-
-  float eps{1e-5f};
-  bool elementwiseAffine{true};
-
+struct LayerNorm : public Norm {
   LayerNorm(Ptr<ExpressionGraph> graph, 
-            float eps = 1e-5f,
-            bool elementwiseAffine = true)
-   : Norm(graph), eps(eps), elementwiseAffine(elementwiseAffine) 
+            bool useScale = true,
+            bool useBias = true,
+            bool elementwise = true,
+            float eps = 1e-5f)
+   : Norm(graph, useScale, useBias, elementwise, eps)
   {}
 
   Expr apply(Expr x) const override {
     int dimModel = x->shape()[-1];
-    if(elementwiseAffine) {
-      registerParameterLazy(weight, Shape({ dimModel }), inits::ones());
-      registerParameterLazy(bias,   Shape({ dimModel }), inits::zeros());
-      return marian::layerNorm(x, weight, bias, eps);
-    } else {
-      return marian::layerNorm(x, nullptr, nullptr, eps);
-    }
+    return marian::layerNorm(x, getScale(dimModel), getBias(dimModel), eps);
   }
 
   virtual void clear() override {}
 };
 
-struct RMSNorm final : public Norm {
-  Expr weight;
-
-  float eps{1e-5f};
-  bool elementwiseAffine{true};
-
+struct RMSNorm : public Norm {
   RMSNorm(Ptr<ExpressionGraph> graph, 
-          float eps = 1e-5f,
-          bool elementwiseAffine = true)
-   : Norm(graph), eps(eps), elementwiseAffine(elementwiseAffine) 
+          bool useScale = true, 
+          bool useBias = true, 
+          bool elementwise = true,
+          float eps = 1e-5f)
+   : Norm(graph, useScale, useBias, elementwise, eps)
   {}
 
   Expr apply(Expr x) const override {
     int dimModel = x->shape()[-1];
-    if(elementwiseAffine) {
-      registerParameterLazy(weight, Shape({ dimModel }), inits::ones());
-      return marian::rmsNorm(x, weight, nullptr, eps);
-    } else {
-      return marian::rmsNorm(x, nullptr, nullptr, eps);
-    }
+    return marian::rmsNorm(x, getScale(dimModel), getBias(dimModel), eps);
   }
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "graph/node_operators.h"
 #include "graph/node_operators_unary.h"
 
 namespace marian {
@@ -133,7 +134,7 @@ public:
   }
 
   void backward() override {
-    Insert</*add=*/true>(/*out*/child(0)->grad(), adj_, val_, axis_);
+    Insert</*add=*/true>(/*out*/child(0)->grad(), adj_, tupleVal_, axis_);
   }
 
   const std::string type() override { return "topk"; }
@@ -159,6 +160,74 @@ public:
     if(axis_ != cnode->axis_)
       return false;
     if(descending_ != cnode->descending_)
+      return false;
+    return true;
+  }
+};
+
+// This node attaches multiple children to a parent node and allows 
+// to select one of them via a given index. This is mostly used to avoid
+// unattached nodes that might nevertheless get created based on some 
+// runtime criterion that is not fully clear during construction.
+class ChooseNodeOp : public NaryNodeOp {
+protected:
+  friend class SerializationHelpers;
+  Expr chosen_;
+  size_t index_;
+  
+public:
+  ChooseNodeOp(std::vector<Expr> nodes, size_t index) 
+  : NaryNodeOp(nodes, nodes[index]->shape(), nodes[index]->value_type()), 
+    chosen_(nodes[index]), index_(index) {
+    Node::destroy_ = false;
+  }
+
+  ~ChooseNodeOp() {}
+
+  void allocate() override {}
+  void free() override {}
+
+  void forward() override {}
+  void backward() override {}
+
+  void init_dependent() override { chosen_->init_dependent(); }
+
+  void set_zero_adjoint() override { chosen_->set_zero_adjoint(); }
+
+  Tensor& val() override {
+    auto childVal = chosen_->val();
+    auto temp = TensorBase::New(childVal->memory(), shape(), childVal->type(), childVal->getBackend());
+    val_.swap(temp);
+    return val_;
+  };
+
+  Tensor& grad() override {
+    auto childGrad = chosen_->grad();
+    auto temp = TensorBase::New(childGrad->memory(), shape(), childGrad->type(), childGrad->getBackend());
+    adj_.swap(temp);
+    return adj_;
+  };
+
+  const std::string type() override { return "choose"; }
+
+  const std::string color() override { return "grey"; }
+
+  virtual size_t hash() override {
+    if(!hash_) {
+      size_t seed = NaryNodeOp::hash();
+      util::hash_combine(seed, index_);
+      hash_ = seed;
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<ChooseNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(index_ != cnode->index_)
       return false;
     return true;
   }

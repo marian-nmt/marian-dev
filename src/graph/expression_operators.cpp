@@ -159,6 +159,16 @@ Expr2 topk(Expr a, int k, int axis, bool descending) {
   return std::make_tuple(swapAxes(topkVal, axis, -1), swapAxes(topkIdx, axis, -1)); // non-op if axes are the same
 }
 
+Expr topkIndices(Expr a, int k, int axis, bool descending) {
+  const auto& [values, indices] = topk(a, k, axis, descending);
+  return choose({values, indices}, 1);
+}
+
+Expr topkValues(Expr a, int k, int axis, bool descending) {
+  const auto& [values, indices] = topk(a, k, axis, descending);
+  return choose({values, indices}, 0);
+}
+
 Expr2 argmax(Expr a, int axis) {
   return topk(a, 1, axis, /*descending=*/true);
 }
@@ -353,10 +363,30 @@ Expr flatten_2d(Expr a) {
 }
 
 Expr stopGradient(Expr a) {
+#if 0 
+  // This is a different implementation which is more reliable than the original, 
+  // but it introduces a full copy which hogs memory. Keeping it around for now
+  // to decide later which one to use.
+
+  auto fwd = [](Expr output, const std::vector<Expr> inputs) {
+    CopyCast(output->val(), inputs[0]->val());
+  };
+
+  auto bwd = [](Expr output, const std::vector<Expr> inputs) {
+    /*Dummy*/
+  };
+
+  return lambda({a}, a->shape(), a->value_type(), fwd, bwd, (size_t)&fwd);
+#else
   // implemented as a dummy reshape that is not trainable
   auto res = Expression<ReshapeNodeOp>(a, a->shape());
   res->setTrainable(false);
   return res;
+#endif
+}
+
+Expr choose(std::vector<Expr> nodes, size_t index) {
+  return Expression<ChooseNodeOp>(nodes, index);
 }
 
 // gather() -- gather arbitrary elements along an axis; batched or non-batched
@@ -693,21 +723,28 @@ Expr affineWithReluDropout(Expr x, Expr W, Expr bias, float dropProb) {
     return Expression<AffineWithReluNodeOp>(x, W, bias);
   } else {
     Expr output = affine(x, W, bias);
-    int dimModel = output->shape()[-1];
-    int dimTime  = output->shape()[-2];
-    output = dropoutReluInplace(output, dropProb, {dimTime, dimModel});
+    output = dropoutReluInplace(output, dropProb, Shape::Axes({-2, -1}));
     return output;
   }
 }
 
+Expr dropoutReluInplace(Expr x, Expr mask) {
+  return Expression<DropoutReluInplaceNodeOp>(x, mask);
+}
+
 Expr dropoutReluInplace(Expr x, float dropProb, Shape shape) {
-  if(dropProb == 0) {
-    return relu(x);
-  } else {
-    auto graph = x->graph();
-    auto mask = graph->dropoutMask(dropProb, shape);
-    return Expression<DropoutReluInplaceNodeOp>(x, mask);
-  }
+  Expr mask = dropProb ? x->graph()->dropoutMask(dropProb, shape) : nullptr;
+  return dropoutReluInplace(x, mask);
+}
+
+Expr dropoutReluInplace(Expr x, float dropProb, const Shape::Axes& axes) {
+  Expr mask = dropProb ? x->graph()->dropoutMask(dropProb, x->shape().fromAxes(axes)) : nullptr;
+  return dropoutReluInplace(x, mask);
+}
+
+Expr dropoutReluInplace(Expr x, float dropProb) {
+  Expr mask = dropProb ? x->graph()->dropoutMask(dropProb, x->shape()) : nullptr;
+  return dropoutReluInplace(x, mask);
 }
 
 // @TODO: Not a great place to check this
@@ -860,24 +897,28 @@ Expr square(Expr a) {
 }
 
 Expr layerNorm(Expr x,
-               Expr gamma,
+               Expr gamma/*= nullptr*/,
                Expr beta /*= nullptr*/,
                float eps /*= 1e-9*/) {
 
   // layerNorm accumulates in float, so small eps is fine
-  std::vector<Expr> nodes = {x, gamma};
+  std::vector<Expr> nodes = {x};
+  if(gamma)
+    nodes.push_back(gamma);
   if(beta)
     nodes.push_back(beta);
   return Expression<LayerNormalizationOp>(nodes, eps);
 }
 
 Expr rmsNorm(Expr x,
-             Expr gamma,
+             Expr gamma /*= nullptr*/,
              Expr beta /*= nullptr*/,
              float eps /*= 1e-9*/) {
 
   // layerNorm accumulates in float, so small eps is fine
-  std::vector<Expr> nodes = {x, gamma};
+  std::vector<Expr> nodes = {x};
+  if(gamma)
+    nodes.push_back(gamma);
   if(beta)
     nodes.push_back(beta);
   return Expression<RMSNormalizationOp>(nodes, eps);

@@ -113,7 +113,7 @@ public:
     auto selectedEmbs = rows(embeddings, embIdx);        // [(B*W) x E]
     selectedEmbs = reshape(selectedEmbs, shape); // [W, B, E]
     // @BUGBUG: We should not broadcast along dimBatch=[-2]. Then we can also dropout before reshape() (test that separately)
-    selectedEmbs = dropout(selectedEmbs, opt<float>("dropout", 0.0f), { selectedEmbs->shape()[-3], 1, 1 });
+    selectedEmbs = dropout(selectedEmbs, opt<float>("dropout", 0.0f), Shape::Axes({-3})); // @TODO: dropout here seems wrong!
     return selectedEmbs;
   }
 

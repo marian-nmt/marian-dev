@@ -1304,7 +1304,7 @@ void PasteCols(Tensor out,
   }
 }
 
-template <typename T>
+template <bool add, typename T>
 __global__ void gSelect(T* out,
                         functional::Shape outShape,
                         const T* in,
@@ -1322,7 +1322,10 @@ __global__ void gSelect(T* out,
       int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
       dims[axis] = (int)d_indices[idxIndex];    
       int inIndex = inShape.index(dims);
-      out[index] = in[inIndex];
+      if(add)
+        out[index] += in[inIndex];
+      else
+        out[index] = in[inIndex];
     }
   }
 }
@@ -1353,6 +1356,7 @@ __global__ void gInsert(T* out,
   }
 }
 
+template <bool add>
 void Select(Tensor out,
             const Tensor in,
             const Tensor indices,
@@ -1369,35 +1373,38 @@ void Select(Tensor out,
   int axisGPU = axis + functional::Shape::size() - out->shape().size();
 
   if(out->type() == Type::float32) {
-    gSelect<<<blocks, threads>>>(out->data<float>(),
-                                 out->shape(),
-                                 in->data<float>(),
-                                 in->shape(),
-                                 axisGPU,
-                                 indices->data<IndexType>(), 
-                                 indices->shape());
+    gSelect<add><<<blocks, threads>>>(out->data<float>(),
+                                      out->shape(),
+                                      in->data<float>(),
+                                      in->shape(),
+                                      axisGPU,
+                                      indices->data<IndexType>(), 
+                                      indices->shape());
 #if COMPILE_FP16
   } else if (out->type() == Type::float16) {
-    gSelect<<<blocks, threads>>>(out->data<half>(),
-                                 out->shape(),
-                                 in->data<half>(),
-                                 in->shape(),
-                                 axisGPU,
-                                 indices->data<IndexType>(),
-                                 indices->shape());
+    gSelect<add><<<blocks, threads>>>(out->data<half>(),
+                                      out->shape(),
+                                      in->data<half>(),
+                                      in->shape(),
+                                      axisGPU,
+                                      indices->data<IndexType>(),
+                                      indices->shape());
 #endif
   } else if(out->type() == Type::uint32) {
-    gSelect<<<blocks, threads>>>(out->data<IndexType>(),
-                                 out->shape(),
-                                 in->data<IndexType>(),
-                                 in->shape(),
-                                 axisGPU,
-                                 indices->data<IndexType>(), 
-                                 indices->shape());
+    gSelect<add><<<blocks, threads>>>(out->data<IndexType>(),
+                                      out->shape(),
+                                      in->data<IndexType>(),
+                                      in->shape(),
+                                      axisGPU,
+                                      indices->data<IndexType>(), 
+                                      indices->shape());
   } else {
     ABORT("Select not implemented for type {}", out->type());
   }
 }
+
+template void Select<true>(Tensor out, const Tensor in, const Tensor indices, int axis);
+template void Select<false>(Tensor out, const Tensor in, const Tensor indices, int axis);
 
 template <bool add>
 void Insert(Tensor out,
@@ -2152,7 +2159,7 @@ __global__ void gLNormalization(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          AccType gammav = (AccType)gamma[id];
+          AccType gammav = gamma ? (AccType)gamma[id] : (AccType)1.f;
           AccType xv     = (AccType)xRow[id];
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
           AccType lv     = (xv - mean) / sigma;
@@ -2182,7 +2189,7 @@ void LayerNormalization(Tensor out,
   if(out->type() == Type::float32) {
     gLNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
                                                  in->data<float>(),
-                                                 gamma->data<float>(),
+                                                 gamma ? gamma->data<float>() : nullptr,
                                                  beta ? beta->data<float>() : nullptr,
                                                  rows,
                                                  cols,
@@ -2191,7 +2198,7 @@ void LayerNormalization(Tensor out,
   } else if (out->type() == Type::float16) {
     gLNormalization<half, float><<<blocks, threads, shared>>>(out->data<half>(),
                                                  in->data<half>(),
-                                                 gamma->data<half>(),
+                                                 gamma ? gamma->data<half>() : nullptr,
                                                  beta ? beta->data<half>() : nullptr,
                                                  rows,
                                                  cols,
@@ -2241,7 +2248,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType xv     = xRow[id];
           AccType yv     = yRow[id];
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
-          AccType gammav = (AccType)gamma[id];
+          AccType gammav = gamma ? (AccType)gamma[id] : (AccType)1.f;
           AccType adjv   = adjRow[id];
           AccType lv     = (yv - betav) / gammav; // go back to LN(x) from scaled and shifted version for accumulation
 
@@ -2297,7 +2304,7 @@ __global__ void gLayerNormalizationGrad(T* gradX,
         if(id < cols) {
 
           AccType xv     = xRow[id];
-          AccType gammav = (AccType)gamma[id];
+          AccType gammav = gamma ? (AccType)gamma[id] : (AccType)1.f;
           AccType adjv   = adjRow[id];
           AccType lv     = (xv - mean) / sigma;
 
@@ -2318,10 +2325,12 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           T* gradXRow      = gradX     + j * cols;
           gradXRow[id]    += (T)(gradXv);
 
-          T* gradGammaRow  = gradGamma + j * cols;
-          // assignment is correct here as this gets summed up
-          // in the next kernel via matrix product
-          gradGammaRow[id] = (T)(adjv * lv);
+          if(gamma) {
+            T* gradGammaRow  = gradGamma + j * cols;
+            // assignment is correct here as this gets summed up
+            // in the next kernel via matrix product
+            gradGammaRow[id] = (T)(adjv * lv);
+          }
         }
       }
     }
@@ -2358,12 +2367,12 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
     int shared = sizeof(float) * threads * 4;
     gLayerNormalizationGrad<float, float><<<blocks, threads, shared>>>(
       gradX->data<float>(),
-      tempGradGamma->data<float>(),
+      gamma ? tempGradGamma->data<float>() : nullptr,
       adj->data<float>(),
       y->data<float>(),
       x->data<float>(),
-      gamma->data<float>(),
-      (beta) ? beta->data<float>() : nullptr,
+      gamma ? gamma->data<float>() : nullptr,
+      beta ? beta->data<float>() : nullptr,
       rows,
       cols,
       eps);
@@ -2373,12 +2382,12 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
     int shared = sizeof(float) * threads * 4;
     gLayerNormalizationGrad<half, float><<<blocks, threads, shared>>>(
       gradX->data<half>(),
-      tempGradGamma->data<half>(),
+      gamma ? tempGradGamma->data<half>() : nullptr,
       adj->data<half>(),
       y->data<half>(),
       x->data<half>(),
-      gamma->data<half>(),
-      (beta) ? beta->data<half>() : nullptr,
+      gamma ? gamma->data<half>() : nullptr,
+      beta ? beta->data<half>() : nullptr,
       rows,
       cols,
       eps);
@@ -2392,7 +2401,8 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
   // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
   // This preserves precision with larger batches where all batch entries reduce into a single vector.
   // See also AffineNodeOp where we do the same for biases
-  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
+  if(gradGamma)
+    gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
 
   if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
     gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1, Type::float32); // beta set to one to add

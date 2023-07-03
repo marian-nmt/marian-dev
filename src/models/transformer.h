@@ -170,11 +170,8 @@ public:
     auto output = input;
     for(auto op : ops) {
       // dropout
-      if (op == 'd') {
-        int dimModel = output->shape()[-1];
-        int dimTime  = output->shape()[-2];
-        output = dropout(output, dropProb, {dimTime, dimModel});
-      }
+      if (op == 'd')
+        output = dropout(output, dropProb, Shape::Axes({-2, -1}));
       // layer normalization
       else if (op == 'n')
         output = layerNorm(output, prefix, "_pre");
@@ -191,7 +188,7 @@ public:
     for(auto op : ops) {
       // dropout
       if(op == 'd')
-        output = dropout(output, dropProb);
+        output = dropout(output, dropProb, Shape::Axes({-2, -1}));
       // skip connection
       else if(op == 'a')
         output = output + prevInput;

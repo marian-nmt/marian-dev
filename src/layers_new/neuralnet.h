@@ -238,7 +238,7 @@ struct LinearReluDropout final : public Linear {
 };
 
 struct Norm : public Layer, public IUnaryLayer {
-  Expr scale{nullptr};
+  Expr weight{nullptr}; // = scale
   Expr bias{nullptr};
   
   bool useScale{true};
@@ -260,9 +260,9 @@ struct Norm : public Layer, public IUnaryLayer {
   virtual Expr getScale(int dimModel) const {
     Expr scaleVector = nullptr;
     if(useScale) {
-      registerParameterLazy(scale, Shape({ elementwise ? dimModel : 1 }), inits::ones());
+      registerParameterLazy(weight, Shape({ elementwise ? dimModel : 1 }), inits::ones());
       // if elementwise==false we multiply with a vector of 1s - that's a trick to make gradient computation faster
-      scaleVector = elementwise ? scale : scale * graph()->ones({dimModel}); // @TODO: make this obsolete
+      scaleVector = elementwise ? weight : weight * graph()->ones({dimModel}); // @TODO: make this obsolete
     }
     return scaleVector;
   }

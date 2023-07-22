@@ -358,19 +358,19 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
         scheduler_->load(modelFileName);
       
       // we just load it N times from disk (it'll be in disk cache after the first)
-      // this also allocates memory correctly when calling forward() inside restoreFromCheckPoint
+      // this also allocates memory correctly when calling forward() inside restoreOptimizerState
       size_t i = 0;
       for(auto graph : graphs_)
         models_[i++]->load(graph, items, markReloaded);
 
       // try to restore everything from checkpoint now
-      restoreFromCheckpoint(modelFileName, scatterFn);
+      loadOptimizerState(modelFileName, scatterFn);
     }
   }
 }
 
-bool GraphGroup::restoreFromCheckpoint(const std::string& modelFileName, 
-                                       const OptimizerBase::ScatterStateFunc& scatterFn) {
+bool GraphGroup::loadOptimizerState(const std::string& modelFileName, 
+                                    const OptimizerBase::ScatterStateFunc& scatterFn) {
   /*
   if model checkpoint is available:
     - load model from checkpoint, not from model.npz
@@ -436,8 +436,8 @@ bool GraphGroup::restoreFromCheckpoint(const std::string& modelFileName,
   return true; // succeeded to restore
 }
 
-void GraphGroup::saveCheckpoint(const std::string& modelFileName,
-                                const OptimizerBase::GatherStateFunc& gatherFn) {
+void GraphGroup::saveOptimizerState(const std::string& modelFileName,
+                                    const OptimizerBase::GatherStateFunc& gatherFn) {
   // @TODO: change to .checkpoint.npz, would break backwards compat                                  
   std::string checkpointName = modelFileName + ".optimizer.npz";
 
@@ -467,48 +467,54 @@ void GraphGroup::saveCheckpoint(const std::string& modelFileName,
   }
 }
 
-void GraphGroup::save(bool isFinal,
-                      const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn) {
+void GraphGroup::saveCheckPoint(const std::string& modelFileName,
+                                bool isFinal,
+                                bool doSaveOptimizerState, 
+                                const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn) {
   barrier(); // (for better grouping of log messages)
-
   // bring the smoothed model in
   // Note that it is sharded. For multi-node, it is sharded over multiple machines, so this is a network access.
   // Also note that the swap must run on all MPI processes concurrently, although only one actually validates.
-
   swapWithSmoothed();
-  
-  if(isFinal && scheduler_)
-    scheduler_->validate(graphs_, isFinal);
 
-  barrier(); // (for better grouping of log messages)
-  
-  std::string modelFileName = options_->get<std::string>("model");
   if(isMainProcess()) {
     // save main model file
-    if(options_->get<bool>("overwrite")) {
-      models_[0]->save(graphs_[0], modelFileName, /*saveTranslatorConfig=*/true);
-      // save scheduler-related state
-      if(scheduler_)
-        scheduler_->save(modelFileName);
-    } else {
-      if(!isFinal) { // save a model with iteration number
-        std::string numberOfBatches = scheduler_ ? std::to_string(scheduler_->numberOfBatches()) : "unknown";
-        std::string nameOverwrite = modelFileName;
-        nameOverwrite.replace(modelFileName.size() - 4, 4, ".iter" + numberOfBatches + ".npz");
-        models_[0]->save(graphs_[0], nameOverwrite);
-      }
-      models_[0]->save(graphs_[0], modelFileName, /*saveTranslatorConfig=*/true);
-
-      // save scheduler-related state
-      if(scheduler_)
-        scheduler_->save(modelFileName);
-    }
+    models_[0]->save(graphs_[0], modelFileName, /*saveTranslatorConfig=*/true);
+    // save scheduler-related state
+    if(doSaveOptimizerState && scheduler_)
+      scheduler_->save(modelFileName);
   }
 
   swapWithSmoothed();
-  saveCheckpoint(modelFileName, gatherOptimizerStateFn);
-  
+
+  if(doSaveOptimizerState)
+    saveOptimizerState(modelFileName, gatherOptimizerStateFn);
+
   barrier(); // (for better grouping of log messages)
+}
+
+void GraphGroup::save(bool isFinal,
+                      const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn) {
+  if(isFinal && scheduler_) {
+    barrier(); // (for better grouping of log messages)
+    swapWithSmoothed();
+    scheduler_->validate(graphs_, isFinal);
+    swapWithSmoothed();
+    barrier(); // (for better grouping of log messages)
+  }
+
+  std::string modelFileName = options_->get<std::string>("model");
+  bool overwrite = options_->get<bool>("overwrite", false);
+
+  if(!overwrite && !isFinal) { // save a model with iteration number
+    std::string numberOfBatches = scheduler_ ? std::to_string(scheduler_->numberOfBatches()) : "unknown";
+    std::string nameOverwrite = modelFileName;
+    nameOverwrite.replace(modelFileName.size() - 4, 4, ".iter" + numberOfBatches + ".npz");
+
+    bool overwriteCheckpoint = options_->get<bool>("overwrite-checkpoint", true);
+    saveCheckPoint(nameOverwrite, isFinal, /*doSaveOptimizerState=*/!overwriteCheckpoint, gatherOptimizerStateFn);
+  }
+  saveCheckPoint(modelFileName, isFinal, /*doSaveOptimizerState=*/true, gatherOptimizerStateFn);
 }
 
 void GraphGroup::swapWithSmoothed() {

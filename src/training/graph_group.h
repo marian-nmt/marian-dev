@@ -104,14 +104,20 @@ public:
 
 private:
   void load(const OptimizerBase::ScatterStateFunc& scatterFn);
+
+  bool loadOptimizerState(const std::string& modelFileName,
+                          const OptimizerBase::ScatterStateFunc& scatterFn);
+
   void save(bool isFinal,
             const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
-  bool restoreFromCheckpoint(const std::string& modelFileName,
-                             const OptimizerBase::ScatterStateFunc& scatterFn);
+  void saveCheckPoint(const std::string& modelFileName,
+                      bool isFinal,
+                      bool doSaveOptimizerState, 
+                      const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
-  void saveCheckpoint(const std::string& modelFileName,
-                      const OptimizerBase::GatherStateFunc& gatherFn);
+  void saveOptimizerState(const std::string& modelFileName,
+                          const OptimizerBase::GatherStateFunc& gatherFn);
 
 public:
   // This function swaps out the current optimizer parameters with the smoothed version (provided smoothing is enabled).

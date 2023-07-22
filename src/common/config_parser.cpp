@@ -388,6 +388,11 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--overwrite",
       "Do not create model checkpoints, only overwrite main model file with last checkpoint. "
       "Reduces disk usage");
+  cli.add<bool>("--overwrite-checkpoint",
+      "When --overwrite=false (default) only model files get written at saving intervals (with iterations numbers). " 
+      "Setting --overwrite-checkpoint=false also saves full checkpoints checkpoints with optimizer parameters, etc. "
+      "Uses (a lot) more disk space.",
+      true);
   cli.add<bool>("--no-reload",
       "Do not load existing model specified in --model arg");
   cli.add<std::vector<std::string>>("--train-sets,-t",

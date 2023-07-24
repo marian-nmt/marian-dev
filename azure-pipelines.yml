@@ -371,7 +371,7 @@ stages:
           -DCOMPILE_CPU=on \
           -DCOMPILE_CUDA=off \
           -DCOMPILE_EXAMPLES=on \
-          -DCOMPILE_SERVER=on \
+          -DCOMPILE_SERVER=off \
           -DCOMPILE_TESTS=on \
           -DUSE_FBGEMM=on \
           -DUSE_SENTENCEPIECE=on \

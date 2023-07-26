@@ -30,10 +30,11 @@ private:
 
   bool first_{true};                  // true if this is the first update after renewing the training
 
-  bool throwOnDivergence_{false};     // throw an exception if training divergence is detected
-  size_t lossAvgWindowSlow_{100};     // window size for slow-moving average loss for divergence detection
-  size_t lossAvgWindowFast_{10};      // window size for fast-moving average loss for divergence detection
-  float divergenceTolerance_{3.f};    // tolerance for divergence detection as multiples of standard deviation
+  bool throwOnDivergence_{false};   // throw an exception if training divergence is detected
+  size_t lossAvgWindowSlow_{1000};  // window size for slow-moving average loss for divergence detection
+  size_t lossAvgWindowFast_{10};    // window size for fast-moving average loss for divergence detection
+  float divergenceTolerance_{5.f};  // tolerance for divergence detection as multiples of standard deviation
+  SchedulingParameter throwAfter_;  // for diagnostics only; training will throw if non-zero and training has progressed this far
   
   size_t gradientNormAvgWindow_{100}; // window size for recording the exponential average of gradient norms, after this many updates about 90% of the mass comes from this many last updates
   SchedulingParameter logicalEpoch_;
@@ -161,10 +162,17 @@ public:
         lossAvgWindowFast_ = std::stoul(throwParameters[1]);
       if(throwParameters.size() > 2)
         divergenceTolerance_ = std::stof(throwParameters[2]);
-        LOG(info, 
-            "[scheduler] Divergence detection is enabled for slow-moving averaging window over {} steps "
-            "vs fast-moving window over {} steps with tolerance of {} sigmas", 
-            lossAvgWindowSlow_, lossAvgWindowFast_, divergenceTolerance_);
+      if(throwParameters.size() > 3)
+        throwAfter_ = SchedulingParameter::parse(throwParameters[3]);
+        
+      LOG(info, 
+          "[scheduler] Divergence detection is enabled for slow-moving averaging window over {} steps "
+          "vs fast-moving window over {} steps with tolerance of {} sigmas", 
+          lossAvgWindowSlow_, lossAvgWindowFast_, divergenceTolerance_);
+
+      if(throwAfter_) {
+        LOG(warn, "[scheduler] Diagnostic DivergenceException will be thrown when training reaches {}", (std::string)throwAfter_);
+      }
     }
 
     // parse logical-epoch parameters
@@ -503,6 +511,14 @@ public:
                 "delta(={:.4f}) = avgFast(={:.4f}) - avgSlow(={:.4f}) = {:.4f} * sigma(={:.4f}) < {:.4f} * sigma",
                 delta, state_->lossAvgFast, state_->lossAvgSlow, delta / sigma, sigma, divergenceTolerance_);
           }
+        }
+      }
+
+      // purely diagnostic. This will throw a divergence exception once the specified training progress has occurred. 
+      if(throwAfter_) {
+        if(state_->enteredNewPeriodOf(throwAfter_)) {
+          LOG(warn, "Training reached {}; throwing diagnostic DivergenceException", (std::string)throwAfter_);
+          throw DivergenceException(state_->lossAvgSlow, state_->lossAvgFast, 0.f);
         }
       }
       

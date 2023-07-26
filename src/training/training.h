@@ -45,13 +45,18 @@ public:
 
     dataset->prepare();
 
-    // We run training in a do-while loop. It should only restart if a fp16 training run was interrupted
+    // We run training in a do-while loop. It should only restart if a training run was interrupted
     // via the throwing of a DivergenceException from training/scheduler.h and if --throw-on-divergence and
-    // --fp16-fallback-to-fp32 are enabled. 
-    // The repeated training run will continue from last checkpoint (similar to a manually interrupted training) 
-    // but attempt training in fp32. If that training run or any other fp32 training happens to diverge, 
-    // training will exit with an unhandled DivergenceException. This is on purpose to indicate a fatal error.
-    bool restartTraining;
+    // custom-fallbacks are specified (directly or the via alias fp16-fallback-to-fp32) otherwise it will die with the rethrown exception. 
+    // The repeated training run will continue from the last checkpoint (similar to a manually interrupted training) 
+    // but attempt training with the options specified in the current fallback. If that training run in turn happens to diverge, 
+    // training will move on to the next defined fallback or exit with an unhandled DivergenceException if there are no more fallbacks. 
+    // The unhandled exception is on purpose to indicate a fatal error.
+
+    auto originalOptions = options_->clone(); // clone in order to keep unaltered option object around
+    bool restartTraining;      // record if training should be restarted after catching a DivergenceException
+    size_t restartCounter = 0; // count how many restarts occured. Used to progress through the list of fallbacks
+
     do {
       try {
         // there will be only one training loop execution unless in special situations,
@@ -133,34 +138,28 @@ public:
 
       } catch(DivergenceException& e) { // handling divergent training if scheduler is configured 
         // to throw via --throw-on-divergence
-        if(options_->get<bool>("fp16-fallback-to-fp32", false)) {
-          auto precisions = options_->get<std::vector<std::string>>("precision");
-          Type parameterType = typeFromString(precisions[0]);
-          if(parameterType == Type::float16) {
-            // we diverged, but we were apparently training with fp16 and fallback to fp32
-            // is enabled. There is a chance we can rescue the training run by restarting
-            // from the last checkpoint but using fp32 precision training.
-            LOG(warn, "Training diverged, but --fp16-fallback-to-fp32 is enabled. "
-                      "Attempting restart from the last checkpoint with fp32 precision.");
 
-            // undo all options that would be set for fp16 training
-            options_ = options_->with(
-              "fp16", false,
-              "precision", std::vector<std::string>({"float32", "float32"}),
-              "cost-scaling", std::vector<std::string>({})
-            );
+        // get the list of possible fallback set of options
+        auto fallbacks = options_->get<std::vector<YAML::Node>>("custom-fallbacks", {});
+
+        // check if we exceeded the number of available fallbacks, if not, take the current one
+        if(restartCounter < fallbacks.size()) {
+            auto fallback = fallbacks[restartCounter];
+            fallback.SetStyle(YAML::EmitterStyle::Flow);
+
+            // we diverged, but a set of fallback options is specified. There is a chance we can rescue the training run by 
+            // restarting from the last checkpoint with the options from the current fallback.
+            LOG(warn, "Training diverged, but fallback is enabled. Attempting restart from the last checkpoint with these options: {}", YAML::Dump(fallback));
+
+            // overwrite all original options with fallback options
+            options_ = originalOptions->with(fallback);
 
             // this gets checked at final do-while condition
             restartTraining = true;
-          } else {
-            // We diverged and fallback is enabled, but we are already training with fp32, 
-            // hence rethrow and let training die with error.
-            LOG(warn, "Training diverged, rethrowing divergence exception");
-            throw e;
-          }
+            restartCounter++;
         } else {
-          // We diverged and no fallback enabled, hence rethrow and let training die with error.
-          LOG(warn, "Training diverged, rethrowing divergence exception");
+          // we diverged and no fallback is available, hence rethrow and let training die with error.
+          LOG(warn, "Training diverged and there are either no fallbacks or we exceeded the number of defined fallbacks, rethrowing divergence exception");
           throw e;
         }
       }

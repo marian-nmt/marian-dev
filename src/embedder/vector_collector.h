@@ -14,7 +14,7 @@ namespace marian {
 // on its binary flag. If binary=false, width can be used to set the number of decimal places.
 class VectorCollector {
 public:
-  static const size_t DEFAULT_WIDTH = 4;
+  static const size_t DEFAULT_WIDTH;
 
   VectorCollector(bool binary=false, size_t width=DEFAULT_WIDTH);
   VectorCollector(std::string outFile, bool binary=false, size_t width=DEFAULT_WIDTH);

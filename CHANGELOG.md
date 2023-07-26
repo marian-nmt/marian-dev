@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added --custom-fallbacks option that allows to specify a list of option sets that get traversed for subsequent fallbacks upon divergence
 - Added --overwrite-checkpoint option that (when set to false) can be used to dump checkpoints with iteration numbers.   
 - Implementations of COMET-20 (reference-based) and BLEURT-20 for inference with conversion scripts.
 - `./marian evaluate` sub command for evaluation with COMET-QE-20, COMET-20 and BLEURT-20

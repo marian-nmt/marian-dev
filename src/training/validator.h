@@ -59,7 +59,7 @@ public:
       : ValidatorBase(lowerIsBetter, epsilon),
         vocabs_(vocabs),
         // options_ is a clone of global options, so it can be safely modified within the class
-        options_(New<Options>(options->clone())) {
+        options_(options->clone()) {
     // set options common for all validators
     options_->set("inference", true);
     options_->set("shuffle", "none"); // don't shuffle validation sets

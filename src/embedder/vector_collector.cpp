@@ -94,7 +94,7 @@ void AveragingVectorCollector::WriteAverage() {
 Ptr<VectorCollector> VectorCollector::Create(Ptr<Options> options) {
   std::string average = options->get<std::string>("average", "skip");
   std::string output  = options->get<std::string>("output");
-  size_t width        = options->get<size_t>("width", DEFAULT_WIDTH);
+  size_t width        = options->get<size_t>("width", VectorCollector::DEFAULT_WIDTH);
 
   Ptr<VectorCollector> collector;
   if(average == "skip")
@@ -108,5 +108,7 @@ Ptr<VectorCollector> VectorCollector::Create(Ptr<Options> options) {
   
   return collector;
 }
+
+const size_t VectorCollector::DEFAULT_WIDTH = 4;
 
 }  // namespace marian

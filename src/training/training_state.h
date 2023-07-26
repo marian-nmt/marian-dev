@@ -147,15 +147,20 @@ public:
   // between calls to this. We call it from update(). Unfortunately, newEpoch()
   // is called at the wrong place for this to work, so SchedulingUnit::epoch is forbidden
   // for periods.
-  bool enteredNewPeriodOf(std::string schedulingParam) const {
-    auto period = SchedulingParameter::parse(schedulingParam);
+  bool enteredNewPeriodOf(SchedulingParameter schedulingParam) const {
     // @TODO: adapt to logical epochs
-    ABORT_IF(period.unit == SchedulingUnit::epochs,
+    ABORT_IF(schedulingParam.unit == SchedulingUnit::epochs,
              "Unit {} is not supported for frequency parameters",
-             schedulingParam);
-    auto previousProgress = getPreviousProgressIn(period.unit);
-    auto progress = getProgressIn(period.unit);
-    return period && progress / period.n != previousProgress / period.n;
+             (std::string)schedulingParam);
+    auto previousProgress = getPreviousProgressIn(schedulingParam.unit);
+    auto progress = getProgressIn(schedulingParam.unit);
+    return schedulingParam && progress / schedulingParam.n != previousProgress / schedulingParam.n;
+  }
+
+  // std::string version of the above function
+  bool enteredNewPeriodOf(std::string schedulingParam) const {
+    SchedulingParameter parsedSchedulingParam = SchedulingParameter::parse(schedulingParam);
+    return enteredNewPeriodOf(parsedSchedulingParam);
   }
 
   void newEpoch() {

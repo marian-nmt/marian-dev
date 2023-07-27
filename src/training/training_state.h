@@ -209,6 +209,10 @@ public:
   void loadFromString(const std::string& yamlString) {
     YAML::Node config = YAML::Load(yamlString);
 
+    // WARNING! When adding new options to the training state, make sure to
+    //          check of their existance when loading from the progress.yml
+    //          file for backward compatibility
+
     epochs = config["epochs"].as<size_t>();
     batches = config["batches"].as<size_t>();
     batchesEpoch = config["batches-epoch"].as<size_t>();
@@ -241,9 +245,9 @@ public:
     samplesDisp = config["disp-samples"].as<size_t>();
     updatesDisp = config["disp-updates"].as<size_t>();
 
-    lossAvgSlow = config["loss-avg-slow"].as<float>();
-    lossAvgFast = config["loss-avg-fast"].as<float>();
-    lossVarSlow = config["loss-var-slow"].as<float>();
+    lossAvgSlow = config["loss-avg-slow"] ? config["loss-avg-slow"].as<float>() : 0;
+    lossAvgFast = config["loss-avg-fast"] ? config["loss-avg-fast"].as<float>() : 0;
+    lossVarSlow = config["loss-var-slow"] ? config["loss-var-slow"].as<float>() : 0;
 
     gradientNormAvg = config["gradient-norm-avg"].as<float>();
     gradientNormVar = config["gradient-norm-var"].as<float>();

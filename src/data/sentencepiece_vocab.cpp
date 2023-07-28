@@ -39,6 +39,9 @@ private:
   // Keeps sentences segmented into subword units
   bool keepEncoded_{false};
 
+  // Assume sentencepiece has already been applied and we are expecting spm vocabulary IDs as input.
+  bool noEncode_{false};
+
   // Contains control characters added to vocab due to byte-fallback
   std::vector<Word> controlChars_;
 
@@ -127,7 +130,8 @@ public:
       : options_(options),
         batchIndex_(batchIndex),
         generator_((uint32_t)Config::seed),
-        keepEncoded_(options->get<bool>("no-spm-decode", false)) {
+        keepEncoded_(options->get<bool>("no-spm-decode", false)),
+        noEncode_(options->get<bool>("no-spm-encode", false)) {
     if(options_->has("sentencepiece-alphas")) {
       auto alphas = options_->get<std::vector<float>>("sentencepiece-alphas");
       if(alphas.size() <= batchIndex)
@@ -222,10 +226,18 @@ public:
 
   Words encode(const std::string& line, bool addEOS, bool inference) const override {
     std::vector<int> spmIds;
-    if(inference || alpha_ == 0)
-      spm_->Encode(line, &spmIds);
-    else
-      spm_->SampleEncode(line, -1, alpha_, &spmIds);
+    if (noEncode_) {
+      auto lineTokens = utils::split(line, " ");
+      spmIds.reserve(lineTokens.size());
+      for (auto&& token : lineTokens) {
+        spmIds.push_back((int)strtol(token.c_str(), nullptr, 10));
+      }
+    } else {
+      if(inference || alpha_ == 0)
+        spm_->Encode(line, &spmIds);
+      else
+        spm_->SampleEncode(line, -1, alpha_, &spmIds);
+    }
 
     Words words; words.reserve(spmIds.size() + addEOS);
     for (auto&& spmId : spmIds)

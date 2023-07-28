@@ -389,7 +389,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       2000000);
   cli.add<bool>("--no-spm-encode",
       "Assume the input has already had sentencepiece applied before decoding. "
-      "Expects spm vocabulary IDs, like the ones produced by spm_encode --output_format id");
+      "Expects spm pieces, like the ones produced by spm_encode's default format.");
 #endif
   // scheduling options
 
@@ -703,7 +703,7 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Keep the output segmented into SentencePiece subwords");
   cli.add<bool>("--no-spm-encode",
       "Assume the input has already had sentencepiece applied before decoding. "
-      "Expects spm vocabulary IDs, like the ones produced by spm_encode --output_format id");
+      "Expects spm pieces, like the ones produced by spm_encode's default format.");
 #endif
 
   addSuboptionsInputLength(cli);

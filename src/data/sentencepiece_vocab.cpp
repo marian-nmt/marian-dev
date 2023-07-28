@@ -39,7 +39,7 @@ private:
   // Keeps sentences segmented into subword units
   bool keepEncoded_{false};
 
-  // Assume sentencepiece has already been applied and we are expecting spm vocabulary IDs as input.
+  // Assume sentencepiece has already been applied and we are expecting spm pieces as input
   bool noEncode_{false};
 
   // Contains control characters added to vocab due to byte-fallback
@@ -225,23 +225,24 @@ public:
   }
 
   Words encode(const std::string& line, bool addEOS, bool inference) const override {
-    std::vector<int> spmIds;
+    Words words;
     if (noEncode_) {
       auto lineTokens = utils::split(line, " ");
-      spmIds.reserve(lineTokens.size());
+      words.reserve(lineTokens.size() + addEOS);
       for (auto&& token : lineTokens) {
-        spmIds.push_back((int)strtol(token.c_str(), nullptr, 10));
+        words.push_back((*this)[token]);
       }
     } else {
+      std::vector<int> spmIds;
       if(inference || alpha_ == 0)
         spm_->Encode(line, &spmIds);
       else
         spm_->SampleEncode(line, -1, alpha_, &spmIds);
-    }
 
-    Words words; words.reserve(spmIds.size() + addEOS);
-    for (auto&& spmId : spmIds)
-      words.push_back(Word::fromWordIndex(spmId));
+      words.reserve(spmIds.size() + addEOS);
+      for (auto&& spmId : spmIds)
+        words.push_back(Word::fromWordIndex(spmId));
+    }
 
     if(addEOS)
       words.push_back(getEosId());

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.
 ## [1.12.0] - 2023-02-20
 
 ### Added

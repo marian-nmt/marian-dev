@@ -466,7 +466,7 @@ public:
     state_->newUpdate(numReadBatches);
 
     // true if --throw-on-divergence [lossAvgWindowSlow_] [lossAvgWindowFast_] [divergenceTolerance_] is enabled, false otherwise
-    if(throwOnDivergence_) {
+    if(throwOnDivergence_ && isFinite(currentNormalizedLoss)) {
       size_t windowSlow = std::min(lossAvgWindowSlow_, state_->batches); // we compare the running exponential average over a longer window
       size_t windowFast = std::min(lossAvgWindowFast_, state_->batches); // with the running exponential everage over a shorter window (for smoothing)
       

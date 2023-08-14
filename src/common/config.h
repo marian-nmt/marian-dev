@@ -14,12 +14,17 @@
 
 namespace marian {
 
+namespace gpu {
+  // defined in src/tensors/gpu/gpu_info.cpp
+  size_t availableDevices();
+}
+
 // TODO: Finally refactorize Config, Options, ConfigParser and ConfigValidator
 // classes.
 //
 // TODO: The problem is that there are many config classes in here, plus
 // "configuration" can refer to the high-level concept of the entire program's
-// configuration, and/or any of its representations. Avoidthe term "config" and
+// configuration, and/or any of its representations. Avoid the term "config" and
 // always qualify it what kind of config, e.g. new Options instance.
 //
 // TODO: What is not clear is the different config levels as there are classes

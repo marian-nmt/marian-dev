@@ -72,7 +72,22 @@ public:
    *
    * @param words A vector of word indices.
    */
-  void push_back(const Words& words) { tuple_.push_back(words); }
+  void pushBack(const Words& words) { tuple_.push_back(words); }
+
+  /**
+   * @brief Appends mroe words to the last sentence of the tuple.
+   *
+   * @param words A vector of word indices.
+   */
+  void appendToBack(const Words& words) { 
+    if(tuple_.empty()) {
+      tuple_.push_back(words);
+    } else {
+      for(auto& w : words) {
+        tuple_.back().push_back(w);
+      }
+    }
+  }
 
   /**
    * @brief The size of the tuple, e.g. two for parallel data with a source and
@@ -638,11 +653,15 @@ protected:
   size_t maxLength_{0};
   bool maxLengthCrop_{false};
   bool rightLeft_{false};
+  bool prependZero_{false};
 
   bool tsv_{false};  // true if the input is a single file with tab-separated values
   size_t tsvNumInputFields_{0};  // number of fields from the TSV input that are associated
                                   // with vocabs, i.e. excluding fields with alignment or
                                   // weights, only if --tsv
+
+  bool joinFields_{false}; // if true when given a TSV file or multiple inputs, join them together with a specified separator.
+
   /**
    * @brief Determine the number of fields from the TSV input that are associated with
    * vocabs, i.e. excluding fields that contain alignment or weights

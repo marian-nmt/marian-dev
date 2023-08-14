@@ -1,6 +1,8 @@
 #pragma once
 
 #include "common/types.h"
+
+#define _USE_MATH_DEFINES
 #include <cmath>
 
 namespace marian {
@@ -24,7 +26,8 @@ struct Ops {
   static HOST_DEVICE_INLINE T sqrt(const T&) { ABORT("Unknown type"); }
   static HOST_DEVICE_INLINE T neg(const T&)  { ABORT("Unknown type"); }
   static HOST_DEVICE_INLINE T sgn(const T&)  { ABORT("Unknown type"); }
-
+  static HOST_DEVICE_INLINE T erf(const T&)  { ABORT("Unknown type"); }
+  
   static HOST_DEVICE_INLINE T round(const T&)  { ABORT("Unknown type"); }
   static HOST_DEVICE_INLINE T floor(const T&)  { ABORT("Unknown type"); }
   static HOST_DEVICE_INLINE T ceil(const T&)   { ABORT("Unknown type"); }
@@ -82,6 +85,7 @@ struct Ops<float> {
   static HOST_DEVICE_INLINE float sqrt(const float& x) { return sqrtf(x); }
   static HOST_DEVICE_INLINE float neg(const float& x)  { return -x; }
   static HOST_DEVICE_INLINE float sgn(const float& x)  { return (float)((0 < x) - (x < 0)); }
+  static HOST_DEVICE_INLINE float erf(const float& x)  { return erff(x); }
 
   static HOST_DEVICE_INLINE float round(const float& x)  { return roundf(x); }
   static HOST_DEVICE_INLINE float floor(const float& x)  { return floorf(x); }
@@ -151,6 +155,7 @@ struct Ops<double> {
   static HOST_DEVICE_INLINE double sqrt(const double& x) { return std::sqrt(x); }
   static HOST_DEVICE_INLINE double neg(const double& x)  { return -x; }
   static HOST_DEVICE_INLINE double sgn(const double& x)  { return (0 < x) - (x < 0); }
+  static HOST_DEVICE_INLINE double erf(const double& x)  { return std::erf(x); }
 
   static HOST_DEVICE_INLINE double round(const double& x)  { return std::round(x); }
   static HOST_DEVICE_INLINE double floor(const double& x)  { return std::floor(x); }
@@ -265,6 +270,7 @@ struct Ops<float32x4> {
 
   // @TODO: get rid of loop4 with proper intrisics
   static inline float32x4 sgn(const float32x4& x)  { return loop4(Ops<float>::sgn, x); }
+  static inline float32x4 erf(const float32x4& x)  { return loop4(Ops<float>::erf, x); }
 
   static inline float32x4 round(const float32x4& x)  { return _mm_round_ps(x, _MM_FROUND_TO_NEAREST_INT); }
   static inline float32x4 floor(const float32x4& x)  { return _mm_floor_ps(x); }
@@ -394,6 +400,7 @@ struct Ops<float32x8> {
 
   // @TODO: get rid of loop8 with proper intrisics
   static inline float32x8 sgn(const float32x8& x)  { return loop8(Ops<float>::sgn, x); }
+  static inline float32x8 erf(const float32x8& x)  { return loop8(Ops<float>::erf, x); }
 
   static inline float32x8 round(const float32x8& x)  { return _mm256_round_ps(x, _MM_FROUND_TO_NEAREST_INT); }
   static inline float32x8 floor(const float32x8& x)  { return _mm256_floor_ps(x); }
@@ -494,6 +501,7 @@ struct Ops<half> {
 #endif
 
   static DEVICE_INLINE half sgn(const half& x)  { half zero = 0.f; return (zero < x) - (x < zero); } // @TODO half has this information somewhere in the struct, right?
+  static DEVICE_INLINE half erf(const half& x)  { return erff((float)x); }
 
   static DEVICE_INLINE half round(const half& x)  { return hrint(x); }
   static DEVICE_INLINE half floor(const half& x)  { return hfloor(x); }
@@ -597,6 +605,7 @@ struct Ops<halfx2> {
 #endif
   
   static DEVICE_INLINE halfx2 sgn(const halfx2& x)  { halfx2 zero(0.f, 0.f); return __hsub2(__hlt2(zero, x), __hlt2(x, zero)); }
+  static DEVICE_INLINE halfx2 erf(const halfx2& x)  { return {Ops<half>::erf(x[0]), Ops<half>::erf(x[1])}; }
 
   static DEVICE_INLINE halfx2 round(const halfx2& x)  { return h2rint(x); }
   static DEVICE_INLINE halfx2 floor(const halfx2& x)  { return h2floor(x); }
@@ -714,6 +723,7 @@ UNARY(Sqr,     sqr,        Ops<ElementType>::sqr(x));
 UNARY(Sqrt,    sqrt,       Ops<ElementType>::sqrt(x));
 UNARY(Neg,     operator-,  Ops<ElementType>::neg(x));
 UNARY(Sgn,     sgn,        Ops<ElementType>::sgn(x));
+UNARY(Erf,     erf,        Ops<ElementType>::erf(x));
 
 UNARY(Round,   round,      Ops<ElementType>::round(x));
 UNARY(Floor,   floor,      Ops<ElementType>::floor(x));

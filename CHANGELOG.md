@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- Added --custom-fallbacks option that allows to specify a list of option sets that get traversed for subsequent fallbacks upon divergence
+- Added --overwrite-checkpoint option that (when set to false) can be used to dump checkpoints with iteration numbers.   
+- Implementations of COMET-20 (reference-based) and BLEURT-20 for inference with conversion scripts.
+- `./marian evaluate` sub command for evaluation with COMET-QE-20, COMET-20 and BLEURT-20
+- A bunch of scripts for metrics use and early MBR experiments
+- LSH vocab filtering for GPU. Speed is not competitive with non-LSH. Checking in for completeness and possible future use of LSH on GPU for non-filtering stuff
+- Added --throw-on-divergence and --fp16-fallback-to-fp32 options to detect (fp16 and fp32) and recover (only fp16) 
+  diverged runs. If not recoverable, exception gets rethrown and goes unhandled to force fatal error and shutdown.
+- Re-implementation of COMET-QE for inference and training; conversion scripts from Unbabel-Comet to Marian.
+- Validator that generates embeddings and can be used during COMET training with an external script.
+- New experimental layer framework for Transformer-like models.
+
+### Fixed
+- Fixed wrong paramter name for norm in new layer framework
+- Fixed unit test for LayerNorm
+- Only collect batch statistics during mini-batch-fit up to actual max-length.
+- Implemented fully correct version of GELU instead of using bad approximatin via Swish.
+- Handle copying from fp32 or fp16 embeddings in embedder mode correctly.
+- Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
+
+### Changed
+- Removed --num-devices N option that wasn't really used by anyone (I assume).
+
+
 ## [1.12.0] - 2023-02-20
 
 ### Added

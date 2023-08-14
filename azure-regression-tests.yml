@@ -64,6 +64,24 @@ stages:
       displayName: Collect system info
       workingDirectory: regression-tests
 
+    # Always run regression tests from the master branch
+    # The current SAS token will expire on 12/31/2023 and a new one will need to be set in Marian > Pipelines > Library
+    # This is run at the beginning for easier debugging of the Python environment
+    - bash: |
+        set -x
+        git checkout master
+        git pull origin master
+        # Uninstall Cython because the newest 3.0.0 is incompatible with newest available versions of pyyaml and numpy as of July 2023
+        python3 -m pip uninstall -y cython
+        python3 -m pip install 'cython<3'
+        # These modules will be installed via `make install` below, but Cython needs to be installed before
+        python3 -m pip install 'pyyaml<6.0.1' 'numpy>=1.22,<2' websocket-client
+        make install
+      displayName: Prepare regression tests
+      env:
+        AZURE_STORAGE_SAS_TOKEN: $(marian-pub-tests-blob-sas-token)
+      workingDirectory: regression-tests
+
     # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html
     - bash: |
         wget -qO- "https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB" | sudo apt-key add -
@@ -105,17 +123,6 @@ stages:
     - bash: ctest --verbose --output-on-failure
       displayName: Run unit tests
       workingDirectory: build
-
-    # Always run regression tests from the master branch
-    # The current SAS token will expire on 12/31/2023 and a new one will need to be set in Marian > Pipelines > Library
-    - bash: |
-        git checkout master
-        git pull origin master
-        make install
-      displayName: Prepare regression tests
-      env:
-        AZURE_STORAGE_SAS_TOKEN: $(marian-pub-tests-blob-sas-token)
-      workingDirectory: regression-tests
 
     # Continue on error to be able to collect outputs and publish them as an artifact
     - bash: MARIAN=../build ./run_mrt.sh

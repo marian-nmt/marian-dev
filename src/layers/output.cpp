@@ -6,6 +6,28 @@
 namespace marian {
 namespace mlp {
 
+// @TODO: get rid of factored code altogether
+static std::string getLemmaDependency(int lemmaDimEmb, const std::string& lemmaDependencyIn) {
+  // ensures factors backward compatibility whilst keeping the more user friendly CLI
+  std::string lemmaDependencyOut;
+  if(lemmaDependencyIn.empty()) {
+    if(lemmaDimEmb > 0) {
+      lemmaDependencyOut = "re-embedding";
+    } else if(lemmaDimEmb == -1) {
+      lemmaDependencyOut = "lemma-dependent-bias";
+    } else if(lemmaDimEmb == -2) {
+      lemmaDependencyOut = "soft-transformer-layer";
+    } else if(lemmaDimEmb == -3) {
+      lemmaDependencyOut = "hard-transformer-layer";
+    } else {
+      lemmaDependencyOut = "";
+    }
+  } else {
+    lemmaDependencyOut = lemmaDependencyIn;
+  }
+  return lemmaDependencyOut;
+}
+
 /*private*/ void Output::lazyConstruct(int inputDim) {
   // We must construct lazily since we won't know tying nor input dim in constructor.
   if(Wt_)
@@ -36,7 +58,8 @@ namespace mlp {
     b_ = graph_->param(name + "_b", {1, numOutputClasses}, inits::zeros());
 
   /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-  std::string lemmaDependency = options_->get<std::string>("lemma-dependency", "");
+  std::string lemmaDependency = getLemmaDependency(lemmaDimEmb, options_->get<std::string>("lemma-dependency", ""));
+
   ABORT_IF(lemmaDimEmb && !factoredVocab_, "--lemma-dim-emb requires a factored vocabulary");
   if(lemmaDependency == "re-embedding") {  // embed the (expected) word with a different embedding matrix
     ABORT_IF(
@@ -112,7 +135,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     Expr Plemma = nullptr;                              // used for lemmaDependency = lemma-dependent-bias
     Expr inputLemma = nullptr;                          // used for lemmaDependency = hard-transformer-layer and soft-transformer-layer
 
-    std::string factorsCombine = options_->get<std::string>("factors-combine", "");
+    std::string factorsCombine = options_->get<std::string>("factors-combine", "sum");
     ABORT_IF(factorsCombine == "concat", "Combining lemma and factors embeddings with concatenation on the target side is currently not supported");
 
     for(size_t g = 0; g < numGroups; g++) {
@@ -134,7 +157,8 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
           factorB = slice(b_, -1, Slice((int)range.first, (int)range.second));
       }
       /*const*/ int lemmaDimEmb = options_->get<int>("lemma-dim-emb", 0);
-      std::string lemmaDependency = options_->get<std::string>("lemma-dependency", "");
+      std::string lemmaDependency = getLemmaDependency(lemmaDimEmb, options_->get<std::string>("lemma-dependency", ""));
+
       if((lemmaDependency == "soft-transformer-layer" || lemmaDependency == "hard-transformer-layer") && g > 0) {
         // this mimics one transformer layer
         //  - attention over two inputs:

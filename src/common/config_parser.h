@@ -14,7 +14,7 @@
 namespace marian {
 
 namespace cli {
-enum struct mode { training, translation, scoring, server, embedding };
+enum struct mode { training, translation, scoring, server, embedding, evaluating };
 }  // namespace cli
 
 /**
@@ -130,6 +130,7 @@ private:
   void addOptionsTranslation(cli::CLIWrapper&);
   void addOptionsScoring(cli::CLIWrapper&);
   void addOptionsEmbedding(cli::CLIWrapper&);
+  void addOptionsEvaluating(cli::CLIWrapper&);
 
   void addAliases(cli::CLIWrapper&);
 

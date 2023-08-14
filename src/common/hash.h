@@ -24,5 +24,25 @@ inline HashType hashMem(const T* beg, size_t len, HashType seed = 0) {
   return seed;
 }
 
+/**
+ * Base case for template recursion below (no arguments are hashed to 0)
+ */
+template <class HashType = std::size_t>
+inline HashType hashArgs() {
+  return 0;
+}
+
+/**
+ * Hash an arbitrary number of arguments of arbitrary type via template recursion
+ */
+template <class T, class ...Args, class HashType = std::size_t>
+inline HashType hashArgs(T arg, Args... args) {
+  // Hash arguments without first arg
+  HashType seed = hashArgs(args...);
+  // Hash first arg and combine which above hash
+  hash_combine(seed, arg);
+  return seed;
+}
+
 }
 }

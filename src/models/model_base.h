@@ -9,8 +9,16 @@
 namespace marian {
 namespace models {
 
-enum struct usage { raw, training, scoring, translation, embedding };
-}
+enum struct usage {
+  raw, 
+  training, 
+  scoring, 
+  translation, 
+  embedding,   // used for laser and other models to produce embedding vectors
+  evaluating   // evaluating is a special mode for neural metrics, different from (probabilistic) scoring
+};
+
+}  // namespace models
 }  // namespace marian
 
 YAML_REGISTER_TYPE(marian::models::usage, int)

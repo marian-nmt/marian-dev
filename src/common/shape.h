@@ -12,28 +12,20 @@
 
 namespace marian {
 
-class ShapeSizeException : public std::exception {
-private:
-  char* message_;
-
+/**
+ * This exception gets thrown when the requested shape cannot be allocated due to numeric capacity limitations.
+*/
+class ShapeSizeException : public std::runtime_error {
 public:
-  ShapeSizeException(size_t available, size_t asked) {
-    std::string mstr = "Expanded shape size " + std::to_string(asked)
-                       + " exceeds numeric capcacity " + std::to_string(available);
-
-    message_ = new char[mstr.size() + 1];
-    std::copy(mstr.begin(), mstr.end(), message_);
-    message_[mstr.size()] = 0;
-  }
-
-  ~ShapeSizeException() { delete[] message_; }
-
-  virtual const char* what() const noexcept override { return message_; }
+  ShapeSizeException(size_t available, size_t asked) 
+  : std::runtime_error(fmt::format("Expanded shape size {} exceeds numeric capcacity {}", asked, available))
+  {}
 };
 
-
-struct Slice // Python-like slice/index descriptor
-{
+/**
+ * Python-like slice/index descriptor
+ */
+struct Slice {
   Slice(int b, int e, int s) : begin(b), end(e), stride(s) {}
   Slice(int b, int e) : Slice(b, e, 1) {}
   Slice() : Slice(0, END) {}
@@ -46,6 +38,7 @@ struct Slice // Python-like slice/index descriptor
   /*const*/ int begin, end, stride;
   static const int END = INT_MAX;
 };
+
 typedef std::vector<Slice> Slices;
 
 /**
@@ -61,6 +54,8 @@ private:
   std::vector<int> shape_;
 
 public:
+  typedef std::vector<int> Axes;
+
   Shape() : shape_({1}) {}
 
   Shape(std::initializer_list<int> il) : Shape() {
@@ -252,6 +247,14 @@ public:
       }
     }
     return shape;
+  }
+
+  Shape fromAxes(const Axes& axes) const {
+    Shape subShape;
+    subShape.resize(size());
+    for(Axes::value_type axis : axes)
+      subShape.set(axis, dim(axis));
+    return subShape;
   }
 
   size_t hash() const {

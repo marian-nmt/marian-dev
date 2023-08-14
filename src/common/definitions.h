@@ -193,6 +193,14 @@ typedef Ptr<ClipperBase> ClipperBasePtr;
 class RunBase;
 typedef Ptr<RunBase> RunBasePtr;
 
-
 const float NEMATUS_LN_EPS = 1e-5f;
+
+// With -Ofast enabled gcc will fail to identify NaN or Inf. Safeguard here.
+static inline bool isFinite(float x) {
+#ifdef __GNUC__
+  ABORT_IF(std::isfinite(0.f / 0.f), "NaN detection unreliable. Disable -Ofast compiler option.");
+#endif
+  return std::isfinite(x);
+}
+
 }  // namespace marian

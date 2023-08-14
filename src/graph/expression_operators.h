@@ -386,6 +386,8 @@ Expr get(Expr2 tuple) { return std::get<I>(tuple); }
  * @returns An ordered 2-tuple of Expressions
  */
 Expr2 topk(Expr a, int k, int axis, bool descending = true);
+Expr  topkIndices(Expr a, int k, int axis, bool descending = true);
+Expr  topkValues(Expr a, int k, int axis, bool descending = true);
 
 /**
  * Returns largest elements of an expression along an axis.
@@ -684,6 +686,13 @@ Expr flatten_2d(Expr a);
 Expr stopGradient(Expr a);
 
 /**
+ * Return index-th node from nodes. This is a selector which add `nodes` into the computation graph
+ * and makes sure they do not end up unattached if not used due to some condition that computes `index`
+ * for only one of them. This is a no-op similar to `reshape`.
+*/
+Expr choose(std::vector<Expr> nodes, size_t index);
+
+/**
  * Gathers elements along an axis.
  * @param a       The input expression
  * @param axis    The axis along which to index
@@ -924,7 +933,7 @@ Expr weighted_average(Expr in, Expr weights, int ax = 0);
  * @f]
  * @see LayerNormalizationOp
  */
-Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
+Expr layerNorm(Expr x, Expr gamma = nullptr, Expr beta = nullptr, float eps = 1e-9);
 
 /**
  * Applies RMS normalization over the last dimension. 
@@ -936,7 +945,7 @@ Expr layerNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
  * @f]
  * @see RMSNormalizationOp
  */
-Expr rmsNorm(Expr x, Expr gamma, Expr beta = nullptr, float eps = 1e-9);
+Expr rmsNorm(Expr x, Expr gamma = nullptr, Expr beta = nullptr, float eps = 1e-9);
 
 /**
  * Highway transformation.
@@ -957,7 +966,7 @@ Expr highway(const std::string prefix, Expr x);
  * Performs dropout using a given mask.
  */
 static inline Expr dropout(Expr x, Expr mask) {
-  if (mask)
+  if(mask)
     return x * mask;
   else
     return x;
@@ -967,24 +976,30 @@ static inline Expr dropout(Expr x, Expr mask) {
  * Performs dropout with a given probably and explicit shape.
  */
 static inline Expr dropout(Expr x, float dropProb, Shape shape) {
-  if(dropProb == 0)
-    return x;
-  auto graph = x->graph();
-  auto mask = graph->dropoutMask(dropProb, shape);
+  auto mask = dropProb ? x->graph()->dropoutMask(dropProb, shape) : nullptr;
   return dropout(x, mask);
 }
 
-
 /**
- * Performs dropout with a given probably.
+ * Performs dropout with a given probably over explicit axes.
  */
-static inline Expr dropout(Expr x, float dropProb) {
-  if(dropProb == 0)
-    return x;
-  return dropout(x, dropProb, x->shape());
+static inline Expr dropout(Expr x, float dropProb, const Shape::Axes& axes) {
+  auto mask = dropProb ? x->graph()->dropoutMask(dropProb, x->shape().fromAxes(axes)) : nullptr;
+  return dropout(x, mask);
 }
 
-Expr dropoutReluInplace(Expr x, float dropProb, Shape shape);
+/**
+ * Performs dropout with a given probability.
+ */
+static inline Expr dropout(Expr x, float dropProb) {
+  auto mask = dropProb ? x->graph()->dropoutMask(dropProb, x->shape()) : nullptr;
+  return dropout(x, mask);
+}
+
+Expr dropoutReluInplace(Expr x, Expr mask=nullptr);
+Expr dropoutReluInplace(Expr x, float dropProb, Shape maskShape);
+Expr dropoutReluInplace(Expr x, float dropProb, const Shape::Axes& axes);
+Expr dropoutReluInplace(Expr x, float dropProb);
 
 /**
  * Shifts the elements of an expression by a per-axis offset @p shift

@@ -5,7 +5,7 @@
 #include "models/model_factory.h"
 #include "models/encoder_decoder.h"
 #include "data/corpus_base.h"
-#include "tensors/cpu/fbgemm/expression_graph_packable.h"
+#include "tensors/cpu/expression_graph_packable.h"
 
 #include <memory>
 

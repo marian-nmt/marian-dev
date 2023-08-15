@@ -1,7 +1,5 @@
-# if defined(_MSC_VER)
+# if !defined(NPP_MAX_32U)
 #define NPP_MAX_32U     ( 4294967295U )              /**<  Maximum 32-bit unsigned integer */
-#else
-#include <nppdefs.h>
 #endif
 
 #include "common/types.h"

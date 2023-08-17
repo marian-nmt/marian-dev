@@ -411,6 +411,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Maximum lines to train SentencePiece vocabulary, selected with sampling from all data. "
       "When set to 0 all lines are going to be used.",
       2000000);
+  cli.add<bool>("--no-spm-encode",
+      "Assume the input has already had sentencepiece applied before decoding. "
+      "Expects spm pieces, like the ones produced by spm_encode's default format.");
 #endif
   // scheduling options
 
@@ -752,6 +755,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
 #ifdef USE_SENTENCEPIECE
   cli.add<bool>("--no-spm-decode",
       "Keep the output segmented into SentencePiece subwords");
+  cli.add<bool>("--no-spm-encode",
+      "Assume the input has already had sentencepiece applied before decoding. "
+      "Expects spm pieces, like the ones produced by spm_encode's default format.");
 #endif
 
   addSuboptionsInputLength(cli);

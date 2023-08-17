@@ -109,7 +109,7 @@ void OptimizerBase::swapWithSmoothed(Tensor params) {
   if(castOptimizerType_) {
     // If true then optimizer type is different from the graph type,
     // hence a parameter master copy exists and we swap with the master copy.
-    // We then from optimizer parameter type to graph parameter type
+    // We then copy and cast from optimizer parameter type to graph parameter type
     pm_->swap(avg_);
     CopyCast(params, pm_);
   } else {
@@ -120,6 +120,26 @@ void OptimizerBase::swapWithSmoothed(Tensor params) {
     params->swap(avg_);
   }
 }
+
+void OptimizerBase::replaceWithSmoothed(Tensor params) {
+  if(!mvAvg_) // no smoothing, don't do anything
+    return;
+
+  // This function will overwrite the original parameters which are then lost.
+  if(castOptimizerType_) {
+    // If true then optimizer type is different from the graph type,
+    // hence a parameter master copy exists and we copy to the master copy.
+    // We then copy and cast from optimizer parameter type to graph parameter type
+    pm_->copyFrom(avg_);
+    CopyCast(params, pm_);
+  } else {
+    // Types are equal hence there is no parameter master copy. This means
+    // we need to do a proper copy from the graph params to the smoothed
+    // version. 
+    params->copyFrom(avg_);
+  }
+}
+
 
 void OptimizerBase::load(std::vector<io::Item>& items,
                          const std::vector<Ptr<OptimizerBase>>& opts,

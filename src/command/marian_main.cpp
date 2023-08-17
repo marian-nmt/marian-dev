@@ -28,6 +28,9 @@
 #define main mainEmbedder
 #include "marian_embedder.cpp"
 #undef main
+#define main mainEvaluator
+#include "marian_evaluator.cpp"
+#undef main
 #define main mainVocab
 #include "marian_vocab.cpp"
 #undef main
@@ -49,6 +52,7 @@ int main(int argc, char** argv) {
     else if(cmd == "decode")     return mainDecoder(argc, argv);
     else if (cmd == "score")     return mainScorer(argc, argv);
     else if (cmd == "embed")     return mainEmbedder(argc, argv);
+    else if (cmd == "evaluate")  return mainEvaluator(argc, argv);
     else if (cmd == "vocab")     return mainVocab(argc, argv);
     else if (cmd == "convert")   return mainConv(argc, argv);
     std::cerr << "Command must be train, decode, score, embed, vocab, or convert." << std::endl;

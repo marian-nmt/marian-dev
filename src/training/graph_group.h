@@ -11,14 +11,6 @@
 
 namespace marian {
 
-// With -Ofast enabled gcc will fail to identify NaN or Inf. Safeguard here.
-static inline bool isFinite(float x) {
-#ifdef __GNUC__
-  ABORT_IF(std::isfinite(0.f / 0.f), "NaN detection unreliable. Disable -Ofast compiler option.");
-#endif
-  return std::isfinite(x);
-}
-
 #ifdef _MSC_VER // MS Visual studio insists that this funtion is not being referenced although is being referenced by name as an argument
 #pragma warning(push)
 #pragma warning(disable: 4505) //Unreferenced local function has been removed
@@ -104,17 +96,29 @@ public:
 
 private:
   void load(const OptimizerBase::ScatterStateFunc& scatterFn);
+
+  bool loadOptimizerState(const std::string& modelFileName,
+                          const OptimizerBase::ScatterStateFunc& scatterFn);
+
   void save(bool isFinal,
             const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
-  bool restoreFromCheckpoint(const std::string& modelFileName,
-                             const OptimizerBase::ScatterStateFunc& scatterFn);
+  void saveCheckPoint(const std::string& modelFileName,
+                      bool isFinal,
+                      bool doSaveOptimizerState, 
+                      const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
-  void saveCheckpoint(const std::string& modelFileName,
-                      const OptimizerBase::GatherStateFunc& gatherFn);
+  void saveOptimizerState(const std::string& modelFileName,
+                          const OptimizerBase::GatherStateFunc& gatherFn);
 
 public:
+  // This function swaps out the current optimizer parameters with the smoothed version (provided smoothing is enabled).
+  // Usually we will call this twice, to swap in and to swap out.
   void swapWithSmoothed();
+
+  // This function replaces the current optimizer parameters with the smoothed version (provided smoothing is enabled).
+  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten. 
+  void replaceWithSmoothed();
 
   bool isMainProcess() const { return mpi_->isMainProcess(); } // (we need this test a few times)
   void barrier() const { mpi_->barrier(); } // (we need this several times)

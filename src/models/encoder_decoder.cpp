@@ -68,6 +68,9 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("lemma-dependency");
   modelFeatures_.insert("factors-combine");
   modelFeatures_.insert("factors-dim-emb");
+
+  modelFeatures_.insert("transformer-no-bias");
+  modelFeatures_.insert("transformer-no-affine");
 }
 
 std::vector<Ptr<EncoderBase>>& EncoderDecoder::getEncoders() {

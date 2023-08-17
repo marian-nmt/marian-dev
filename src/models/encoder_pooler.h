@@ -122,7 +122,6 @@ public:
                     "skip",
                     "layer-normalization",
                     "right-left",
-                    "input-types",
                     "special-vocab",
                     "tied-embeddings",
                     "tied-embeddings-src",
@@ -158,6 +157,12 @@ public:
     modelFeatures_.insert("lemma-dependency");
     modelFeatures_.insert("factors-combine");
     modelFeatures_.insert("factors-dim-emb");
+
+    modelFeatures_.insert("comet-prepend-zero");
+    modelFeatures_.insert("comet-pooler-ffn");
+    modelFeatures_.insert("comet-final-sigmoid");
+    modelFeatures_.insert("comet-mix");
+    modelFeatures_.insert("comet-mix-norm");
   }
 
   virtual Ptr<Options> getOptions() override { return options_; }

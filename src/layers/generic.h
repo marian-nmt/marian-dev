@@ -239,9 +239,7 @@ static inline Expr denseInline(Expr x,
     x = affine(x, W, b);
     x = activationByName(actName)(x);
     
-    int dimModel = x->shape()[-1];
-    int dimTime  = x->shape()[-2];
-    x = dropout(x, dropProb, {dimTime, dimModel});
+    x = dropout(x, dropProb, Shape::Axes({-2, -1}));
   }
   
   return x;

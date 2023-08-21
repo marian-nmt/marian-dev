@@ -171,7 +171,7 @@ public:
     for(auto op : ops) {
       // dropout
       if (op == 'd')
-        output = dropout(output, dropProb);
+        output = dropout(output, dropProb, Shape::Axes({-2, -1}));
       // layer normalization
       else if (op == 'n')
         output = layerNorm(output, prefix, "_pre");
@@ -188,7 +188,7 @@ public:
     for(auto op : ops) {
       // dropout
       if(op == 'd')
-        output = dropout(output, dropProb);
+        output = dropout(output, dropProb, Shape::Axes({-2, -1}));
       // skip connection
       else if(op == 'a')
         output = output + prevInput;
@@ -282,6 +282,7 @@ public:
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
     auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
+    
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
     Expr kh;
@@ -435,7 +436,7 @@ public:
 
     // the stack of FF layers
     for(int i = 1; i < depthFfn; ++i)
-      output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, initFn, actName, ffnDropProb);
+        output = denseInline(output, prefix, /*suffix=*/std::to_string(i), dimFfn, initFn, actName, ffnDropProb);
     output = denseInline(output, prefix, /*suffix=*/std::to_string(depthFfn), dimModel, initFn);
 
     auto opsPost = opt<std::string>("transformer-postprocess");
@@ -538,6 +539,13 @@ public:
     decoderState = rnn->lastCellStates()[0];
     output = transposeTimeBatch(output);
 
+    if(opt<bool>("transformer-rnn-projection", false)) {
+      int dimModel = output->shape()[-1];
+      auto Wo = graph_->param(prefix + "_Wo", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
+      auto bo = graph_->param(prefix + "_bo", {1, dimModel}, inits::zeros());
+      output = affine(output, Wo, bo);  // [-4: beam depth, -3: batch size, -2: 1, -1: vector dim]
+    }
+
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_ffn", opsPost, output, input, dropProb);
 
@@ -623,35 +631,6 @@ public:
   virtual void clear() override {}
 };
 
-class TransformerState : public DecoderState {
-public:
-  TransformerState(const rnn::States& states,
-                   Logits logProbs,
-                   const std::vector<Ptr<EncoderState>>& encStates,
-                   Ptr<data::CorpusBatch> batch)
-      : DecoderState(states, logProbs, encStates, batch) {}
-
-  virtual Ptr<DecoderState> select(const std::vector<IndexType>& hypIndices,   // [beamIndex * activeBatchSize + batchIndex]
-                                   const std::vector<IndexType>& batchIndices, // [batchIndex]
-                                   int beamSize) const override {
-
-    // @TODO: code duplication with DecoderState only because of isBatchMajor=true, should rather be a contructor argument of DecoderState?
-    
-    std::vector<Ptr<EncoderState>> newEncStates;
-    for(auto& es : encStates_) 
-      // If the size of the batch dimension of the encoder state context changed, subselect the correct batch entries    
-      newEncStates.push_back(es->getContext()->shape()[-2] == batchIndices.size() ? es : es->select(batchIndices));
-
-    // Create hypothesis-selected state based on current state and hyp indices
-    auto selectedState = New<TransformerState>(states_.select(hypIndices, beamSize, /*isBatchMajor=*/true), logProbs_, newEncStates, batch_); 
-
-    // Set the same target token position as the current state
-    // @TODO: This is the same as in base function.
-    selectedState->setPosition(getPosition());
-    return selectedState;
-  }
-};
-
 class DecoderTransformer : public Transformer<DecoderBase> {
   typedef Transformer<DecoderBase> Base;
   using Base::Base;
@@ -679,7 +658,7 @@ private:
         "output-approx-knn", opt<std::vector<int>>("output-approx-knn", {}),
         "lemma-dim-emb", opt<int>("lemma-dim-emb", 0), // for factored outputs
         "lemma-dependency", opt<std::string>("lemma-dependency", ""), // for factored outputs
-        "factors-combine", opt<std::string>("factors-combine", "")); // for factored outputs
+        "factors-combine", opt<std::string>("factors-combine", "sum")); // for factored outputs
 
     if(opt<bool>("tied-embeddings") || opt<bool>("tied-embeddings-all"))
       outputFactory.tieTransposed(opt<bool>("tied-embeddings-all") || opt<bool>("tied-embeddings-src") ? "Wemb" : prefix_ + "_Wemb");
@@ -708,12 +687,11 @@ public:
       start->set_name("decoder_start_state_" + std::to_string(batchIndex_));
       rnn::States startStates(opt<size_t>("dec-depth"), {start, start});
 
-      // don't use TransformerState for RNN layers
-      return New<DecoderState>(startStates, Logits(), encStates, batch);
+      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
     }
     else {
       rnn::States startStates;
-      return New<TransformerState>(startStates, Logits(), encStates, batch);
+      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/true);
     }
   }
 
@@ -815,7 +793,7 @@ public:
       rnn::State prevDecoderState;
       if(prevDecoderStates.size() > 0)
         prevDecoderState = prevDecoderStates[i];
-
+      
       // self-attention
       std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
       rnn::State decoderState;
@@ -893,7 +871,6 @@ public:
     auto decoderContext = transposeTimeBatch(query); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
 
     //************************************************************************//
-
     // final feed-forward layer (output)
     if(shortlist_)
       output_->setShortlist(shortlist_);
@@ -902,11 +879,9 @@ public:
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
     if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {
-      nextState = New<DecoderState>(
-        decoderStates, logits, state->getEncoderStates(), state->getBatch());
+      nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), state->isBatchMajor());
     } else {
-      nextState = New<TransformerState>(
-        decoderStates, logits, state->getEncoderStates(), state->getBatch());
+      nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), state->isBatchMajor());
     }
     nextState->setPosition(state->getPosition() + 1);
     return nextState;

@@ -1,16 +1,18 @@
-#include "layers/lsh.h"
-#include "tensors/tensor_operators.h"
+#include "common/timer.h"
 #include "common/utils.h"
+#include "layers/lsh.h"
+#include "layers/lsh_impl.h"
+#include "tensors/tensor_operators.h"
+
+#if _MSC_VER
+#include "3rd_party/faiss/Index.h"
+#endif
 
 #include "3rd_party/faiss/utils/hamming.h"
 
 #if BLAS_FOUND
 #include "3rd_party/faiss/VectorTransform.h"
 #endif
-
-#include "common/timer.h"
-
-#include "layers/lsh_impl.h"
 
 namespace marian {
 namespace lsh {
@@ -49,7 +51,14 @@ void fillRandomRotationMatrix(Tensor output, Ptr<Allocator> allocator) {
 void encode(Tensor output, Tensor input) {
   int nBits = input->shape()[-1]; // number of bits is equal last dimension of float matrix
   int nRows = input->shape().elements() / nBits;
-  faiss::fvecs2bitvecs(input->data<float>(), output->data<uint8_t>(), (size_t)nBits, (size_t)nRows);
+  if (input->getDeviceId().type == DeviceType::cpu) {
+    faiss::fvecs2bitvecs(input->data<float>(), output->data<uint8_t>(), (size_t)nBits, (size_t)nRows);
+  }
+  else {
+#ifdef CUDA_FOUND
+    marian::gpu::Float2Bit(output, input);
+#endif
+}
 }
 
 void encodeWithRotation(Tensor output, Tensor input, Tensor rotation, Ptr<Allocator> allocator) {
@@ -116,34 +125,85 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
 
   int currBeamSize = encodedQuery->shape()[0];
   int batchSize    = encodedQuery->shape()[2];
-
+  
   auto search = [=](Expr out, const std::vector<Expr>& inputs) {
     Expr encodedQuery   = inputs[0];
     Expr encodedWeights = inputs[1];
 
-    int bytesPerVector = encodedWeights->shape()[-1];
-    int wRows = encodedWeights->shape().elements() / bytesPerVector;
-    
-    // we use this with Factored Segmenter to skip the factor embeddings at the end
-    if(firstNRows != 0)
-      wRows = firstNRows;
+    if (encodedQuery->val()->getDeviceId().type == DeviceType::cpu) {
+      int bytesPerVector = encodedWeights->shape()[-1];
+      int wRows = encodedWeights->shape().elements() / bytesPerVector;
+      
+      // we use this with Factored Segmenter to skip the factor embeddings at the end
+      if(firstNRows != 0)
+        wRows = firstNRows;
 
-    ABORT_IF(dimK > wRows, "k is larger than number of candidate values?"); // @TODO: use min(k, wRows) silently?
+      ABORT_IF(dimK > wRows, "k is larger than number of candidate values?"); // @TODO: use min(k, wRows) silently?
 
-    IndexType* outData = out->val()->data<IndexType>();
-    auto gather = [outData, dimK](IndexType rowId, IndexType k, IndexType kthColId, DistType /*dist*/) { 
-      outData[rowId * dimK + k] = kthColId; 
-    };
+#if _MSC_VER // unfortunately MSVC is horrible at loop unrolling, so we fall back to the old code (hrmph!) @TODO: figure this out one day
+      int qRows = encodedQuery->shape().elements() / bytesPerVector;
 
-    Parameters params;
-    params.k              = dimK;
-    params.queryRows      = encodedQuery->val()->data<uint8_t>();
-    params.numQueryRows   = encodedQuery->shape().elements() / bytesPerVector;
-    params.codeRows       = encodedWeights->val()->data<uint8_t>();
-    params.numCodeRows    = wRows;
-    params.bytesPerVector = bytesPerVector;
+      uint8_t* qCodes = encodedQuery->val()->data<uint8_t>();
+      uint8_t* wCodes = encodedWeights->val()->data<uint8_t>();
 
-    hammingTopK(params, gather);
+      // use actual faiss code for performing the hamming search. 
+      std::vector<int> distances(qRows * dimK);
+      std::vector<faiss::Index::idx_t> ids(qRows * dimK);
+      faiss::int_maxheap_array_t res = {(size_t)qRows, (size_t)dimK, ids.data(), distances.data()};
+      faiss::hammings_knn_hc(&res, qCodes, wCodes, (size_t)wRows, (size_t)bytesPerVector, 0);
+
+      // Copy int64_t indices to Marian index type and sort by increasing index value per hypothesis.
+      // The sorting is required as we later do a binary search on those values for reverse look-up.
+      uint32_t* outData = out->val()->data<uint32_t>();
+      
+      int numHypos = out->shape().elements() / dimK;
+      for (size_t hypoIdx = 0; hypoIdx < numHypos; ++hypoIdx) {
+        size_t startIdx = dimK * hypoIdx;
+        size_t endIdx = startIdx + dimK;
+        for(size_t i = startIdx; i < endIdx; ++i)
+          outData[i] = (uint32_t)ids[i];
+        if(!noSort)
+          std::sort(outData + startIdx, outData + endIdx);
+      }
+#else // this is using the new code for search, other parts of the code, like conversion are fine.
+      IndexType* outData = out->val()->data<IndexType>();
+      auto gather = [outData, dimK](IndexType rowId, IndexType k, IndexType kthColId, DistType /*dist*/) { 
+        outData[rowId * dimK + k] = kthColId; 
+      };
+
+      Parameters params;
+      params.k              = dimK;
+      params.queryRows      = encodedQuery->val()->data<uint8_t>();
+      params.numQueryRows   = encodedQuery->shape().elements() / bytesPerVector;
+      params.codeRows       = encodedWeights->val()->data<uint8_t>();
+      params.numCodeRows    = wRows;
+      params.bytesPerVector = bytesPerVector;
+
+      hammingTopK(params, gather);
+#endif
+    }
+    else {
+#ifdef CUDA_FOUND
+      Ptr<Backend> backend = out->val()->getBackend();
+
+      const size_t CHUNK = 128;
+      const size_t MBYTE = 1024 * 1024;
+      const size_t GROW = CHUNK * MBYTE;
+      Ptr<Allocator> alloc = marian::New<marian::Allocator>(backend->getDeviceId(), 0, GROW);
+
+      auto memory = alloc->alloc(requiredBytes(out->shape(), marian::Type::uint32));
+
+      // not required for calculations. Useful for debugging
+      Tensor outCounts = nullptr; //marian::TensorBase::New(memory, out->shape(), marian::Type::uint32, backend);
+
+      uint16_t numHash = (uint16_t) encodedWeights->shape()[-1] * 8;
+
+      marian::gpu::HammmingAndSort(out->val(), outCounts,
+                  encodedWeights->val(), encodedQuery->val(),
+                  dimK, 0, numHash, 
+                  alloc, backend);
+#endif
+    }
   };
 
   Shape kShape({currBeamSize, batchSize, dimK});

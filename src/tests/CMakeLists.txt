@@ -10,6 +10,7 @@ if(NOT MSVC)
       prod
       cli
       pooling
+      # transformer_new
   )
 
   foreach(test ${APP_TESTS})

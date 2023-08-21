@@ -42,7 +42,7 @@ private:
 
 public:
   Translate(Ptr<Options> options)
-    : options_(New<Options>(options->clone())) { // @TODO: clone should return Ptr<Options> same as "with"?
+    : options_(options->clone()) {
     // This is currently safe as the translator is either created stand-alone or
     // or config is created anew from Options in the validator
 
@@ -165,15 +165,6 @@ public:
     // abort early to avoid potentially costly batching and translation before error message
     ABORT_IF(statFreq.unit != SchedulingUnit::updates, "Units other than 'u' are not supported for --stat-freq value {}", statFreq);
 
-    // Override display for progress heartbeat for MS-internal Philly compute cluster
-    // otherwise this job may be killed prematurely if no log for 4 hrs
-    if(getenv("PHILLY_JOB_ID")) { // this environment variable exists when running on the cluster
-      if(statFreq.n == 0) {
-        statFreq.n = 10000;
-        statFreq.unit = SchedulingUnit::updates;
-      }
-    }
-
     bool doNbest = options_->get<bool>("n-best");
 
     bg.prepare();
@@ -265,7 +256,7 @@ public:
     : TranslateService(parseOptions(cliString, cli::mode::translation, /*validate=*/true)) {}
 
   TranslateService(Ptr<Options> options)
-    : options_(New<Options>(options->clone())) {
+    : options_(options->clone()) {
     // initialize vocabs
     options_->set("inference", true);
     options_->set("shuffle", "none");

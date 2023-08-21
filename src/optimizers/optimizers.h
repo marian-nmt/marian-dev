@@ -114,6 +114,10 @@ public:
   // This function swaps out the current optimizer parameters with the smoothed version (provided smoothing is enabled).
   // Usually we will call this twice, to swap in and to swap out.
   void swapWithSmoothed(Tensor params);
+  
+  // This function replaces the current optimizer parameters with the smoothed version (provided smoothing is enabled).
+  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten. 
+  void replaceWithSmoothed(Tensor params);
 
   // return stateful optimizer shards, for base that's only averaged parameters
   virtual std::vector<Tensor> getShards() { 

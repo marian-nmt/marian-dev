@@ -2,14 +2,23 @@
 
 #include <string>
 #include "marian.h"
+#include "common/io_item.h"
 #include "layers/loss.h"
 #include "layers/generic.h"
 
 namespace marian {
 namespace models {
 
-enum struct usage { raw, training, scoring, translation, embedding };
-}
+enum struct usage {
+  raw, 
+  training, 
+  scoring, 
+  translation, 
+  embedding,   // used for laser and other models to produce embedding vectors
+  evaluating   // evaluating is a special mode for neural metrics, different from (probabilistic) scoring
+};
+
+}  // namespace models
 }  // namespace marian
 
 YAML_REGISTER_TYPE(marian::models::usage, int)
@@ -24,6 +33,12 @@ public:
                     const std::string&,
                     bool markReloaded = true)
       = 0;
+
+  virtual void load(Ptr<ExpressionGraph>,
+                    const std::vector<io::Item>&,
+                    bool markReloaded = true)
+      = 0;
+
   virtual void save(Ptr<ExpressionGraph>,
                     const std::string&,
                     bool saveTranslatorConfig = false)
@@ -47,6 +62,12 @@ public:
                     const std::string&,
                     bool markReloaded = true)
       = 0;
+
+  virtual void load(Ptr<ExpressionGraph>,
+                    const std::vector<io::Item>&,
+                    bool markReloaded = true)
+      = 0;
+
   virtual void save(Ptr<ExpressionGraph>,
                     const std::string&,
                     bool saveTranslatorConfig = false)

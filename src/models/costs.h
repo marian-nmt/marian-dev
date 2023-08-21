@@ -217,6 +217,12 @@ public:
 
   Ptr<IModel> getModel() { return model_; }
 
+  void load(Ptr<ExpressionGraph> graph,
+            const std::vector<io::Item>& items,
+            bool markedReloaded) override {
+    model_->load(graph, items, markedReloaded);
+  }
+
   virtual void load(Ptr<ExpressionGraph> graph,
                     const std::string& name,
                     bool markedReloaded = true) override {
@@ -264,6 +270,12 @@ public:
   Ptr<IModel> getModel() { return model_; }
 
   virtual void load(Ptr<ExpressionGraph> graph,
+                    const std::vector<io::Item>& items,
+                    bool markReloaded = true) override {
+    model_->load(graph, items, markReloaded);
+  }
+
+  virtual void load(Ptr<ExpressionGraph> graph,
                     const std::string& name,
                     bool markedReloaded = true) override {
     model_->load(graph, name, markedReloaded);
@@ -294,32 +306,6 @@ public:
 class LogSoftmaxStep : public ILogProbStep {
 public:
   virtual ~LogSoftmaxStep() {}
-  virtual Ptr<DecoderState> apply(Ptr<DecoderState> state) override;
-};
-
-// Gumbel-max noising for sampling during translation.
-// Produces accurate sampling with beam=1. Turn on
-// with --output-sampling [full] during translation
-// with marian-decoder for samnpling from the full
-// softmax distribution.
-class GumbelSoftmaxStep : public ILogProbStep {
-public:
-  virtual ~GumbelSoftmaxStep() {}
-  virtual Ptr<DecoderState> apply(Ptr<DecoderState> state) override;
-};
-
-
-// Gumbel-max noising for top-k sampling during translation.
-// Produces accurate sampling with beam=1. Turn on
-// with --output-sampling topk [10] during translation
-// with marian-decoder for top-10 sampling.
-class TopkGumbelSoftmaxStep : public ILogProbStep {
-private:
-  int k_{1};
-
-public:
-  TopkGumbelSoftmaxStep(int k);
-  virtual ~TopkGumbelSoftmaxStep() {}
   virtual Ptr<DecoderState> apply(Ptr<DecoderState> state) override;
 };
 

@@ -64,6 +64,14 @@ Expr ExpressionGraph::add(Expr node) {
   }
 }
 
+/**
+ * Removes the node from the set of roots (will not be initialized during back propagation)
+ * @param node a pointer to a expression node
+ */
+void ExpressionGraph::removeAsRoot(Expr node) {
+  topNodes_.erase(node);
+}
+
 // Call on every checkpoint in backwards order
 void createSubtape(Expr node) {
   auto subtape = New<std::list<Expr>>();
@@ -148,7 +156,7 @@ void ExpressionGraph::forward(std::list<Expr>& forwardTape, bool finalPass) {
     if(v->marked_for_debug()) {
       Logger log = spdlog::get("general");
       if(log) {
-        LOG(info, "Debug: {} op={}", v->debug_message(), v->type());
+        LOG(info, "Debug: {} op={} name={}", v->debug_message(), v->type(), v->name());
         LOG(info, v->val()->debug());
       }
       else {

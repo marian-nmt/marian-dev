@@ -1,15 +1,18 @@
 #pragma once
 
-#include "tensors/backend.h"
-#include "tensors/tensor.h"
-
+#include "common/definitions.h"
 #include "functional/functional.h"
 #include "graph/node.h"
+#include "tensors/backend.h"
 #include "tensors/tensor_operators.h"
+#include "tensors/tensor.h"
 
 #ifdef CUDNN
 #include "tensors/gpu/cudnn_wrappers.h"
 #endif
+
+#define _USE_MATH_DEFINES  // enables math constants. We need M_PI
+#include <math.h>
 
 namespace marian {
 
@@ -415,6 +418,33 @@ struct SwishNodeOp : public UnaryNodeOp {
   }
 
   float b_;
+};
+
+/**
+ * Represents a <a href="https://arxiv.org/pdf/1606.08415.pdf">GELU</a> node
+ * in an expression graph.
+ */
+struct GeluNodeOp : public UnaryNodeOp {
+  GeluNodeOp(Expr a) : UnaryNodeOp(a) {}
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+    return {
+      NodeOp(Element(_1 = 0.5f * _2 * (1.f + erf(_2 / sqrt(2.f))), val_, child(0)->val()))
+    };
+  }
+
+  NodeOps backwardOps() override {
+    using namespace functional;
+    auto erf_prime = (2.f / sqrt((float)M_PI)) * exp(-(_1 * _1) / 2.f);
+    auto dx = 0.5 * (erf(_1 / sqrt(2.f)) + _1 * erf_prime / sqrt(2.f) + 1.f);
+    return {NodeOp(Add(dx * _2,
+                       child(0)->grad(),
+                       child(0)->val(),
+                       adj_))};
+  }
+
+  const std::string type() override { return "gelu"; }
 };
 
 struct SoftmaxNodeOp : public UnaryNodeOp {
@@ -892,6 +922,52 @@ public:
     if(!cnode)
       return false;
     if(callback_ != cnode->callback_)   // pointer compare on purpose
+      return false;
+    return true;
+  }
+};
+
+class DropoutReluInplaceNodeOp : public ReshapeNodeOp {
+private:
+  Expr mask_;
+  
+public:
+  DropoutReluInplaceNodeOp(Expr node, Expr mask = nullptr)
+  : ReshapeNodeOp(node, node->shape()), 
+    mask_(mask) {}
+
+  void forward() override {
+    using namespace marian::functional;
+    if(mask_)
+      Element(_1 = ReLU(_1 * _2), val(), mask_->val());
+    else
+      Element(_1 = ReLU(_1), val());
+  }
+
+  void backward() override {
+    using namespace marian::functional;
+    if(mask_)
+      Element(_1 = _1 * ReLUback(_2) * _3, grad(), val(), mask_->val());
+    else
+      Element(_1 = _1 * ReLUback(_2), grad(), val());
+  }
+
+  const std::string type() override { return "dropoutReluInplace"; }
+
+  virtual size_t hash() override {
+    size_t seed = ReshapeNodeOp::hash();
+    if(mask_)
+      util::hash_combine(seed, mask_->hash());
+    return seed;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!ReshapeNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<DropoutReluInplaceNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(mask_ != cnode->mask_)
       return false;
     return true;
   }

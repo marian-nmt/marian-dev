@@ -26,6 +26,11 @@ public:
   virtual ~EncoderPoolerBase() {}
 
   virtual void load(Ptr<ExpressionGraph> graph,
+                    const std::vector<io::Item>& items,
+                    bool markedReloaded = true) override
+      = 0;
+
+  virtual void load(Ptr<ExpressionGraph> graph,
                     const std::string& name,
                     bool markedReloaded = true) override
       = 0;
@@ -117,7 +122,6 @@ public:
                     "skip",
                     "layer-normalization",
                     "right-left",
-                    "input-types",
                     "special-vocab",
                     "tied-embeddings",
                     "tied-embeddings-src",
@@ -125,6 +129,7 @@ public:
 
     modelFeatures_.insert("transformer-heads");
     modelFeatures_.insert("transformer-no-projection");
+    modelFeatures_.insert("transformer-rnn-projection");
     modelFeatures_.insert("transformer-dim-ffn");
     modelFeatures_.insert("transformer-ffn-depth");
     modelFeatures_.insert("transformer-ffn-activation");
@@ -152,6 +157,12 @@ public:
     modelFeatures_.insert("lemma-dependency");
     modelFeatures_.insert("factors-combine");
     modelFeatures_.insert("factors-dim-emb");
+
+    modelFeatures_.insert("comet-prepend-zero");
+    modelFeatures_.insert("comet-pooler-ffn");
+    modelFeatures_.insert("comet-final-sigmoid");
+    modelFeatures_.insert("comet-mix");
+    modelFeatures_.insert("comet-mix-norm");
   }
 
   virtual Ptr<Options> getOptions() override { return options_; }
@@ -161,6 +172,12 @@ public:
 
   void push_back(Ptr<EncoderBase> encoder) { encoders_.push_back(encoder); }
   void push_back(Ptr<PoolerBase> pooler) { poolers_.push_back(pooler); }
+
+  void load(Ptr<ExpressionGraph> graph,
+            const std::vector<io::Item>& items,
+            bool markedReloaded) override {
+    graph->load(items, markedReloaded && !opt<bool>("ignore-model-config", false));
+  }
 
   void load(Ptr<ExpressionGraph> graph,
             const std::string& name,

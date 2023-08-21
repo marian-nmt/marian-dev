@@ -116,21 +116,6 @@ void Config::initialize(ConfigParser const& cp) {
     config_["tsv-fields"] = tsvFields;
   }
 
-  // ensures factors backward compatibility whilst keeping the more user friendly CLI
-  if(get<std::string>("lemma-dependency").empty()) {
-    YAML::Node config;
-    int lemmaDimEmb = get<int>("lemma-dim-emb");
-    if(lemmaDimEmb > 0) {
-      config_["lemma-dependency"] = "re-embedding";
-    } else if(lemmaDimEmb == -1) {
-      config_["lemma-dependency"] = "lemma-dependent-bias";
-    } else if(lemmaDimEmb == -2) {
-      config_["lemma-dependency"] = "soft-transformer-layer";
-    } else if(lemmaDimEmb == -3) {
-      config_["lemma-dependency"] = "hard-transformer-layer";
-    }
-  }
-
   // echo full configuration
   log();
 
@@ -262,48 +247,23 @@ std::vector<DeviceId> Config::getDevices(Ptr<Options> options,
   }
   // GPU: devices[] are interpreted in a more complex way
   else {
-    size_t numDevices = options->get<size_t>("num-devices", 0);
     std::vector<size_t> deviceNos;
-    for(auto d : devicesArg)
-      deviceNos.push_back((size_t)std::stoull(d));
+    for(auto d : devicesArg) {
+      if(d == "all") {
+        // on encoutering "all" overwrite all given ids with all available ids
+        size_t numDevices = gpu::availableDevices();
+        deviceNos.resize(numDevices);
+        std::iota(deviceNos.begin(), deviceNos.end(), 0);
+        break;
+      } else {
+        deviceNos.push_back((size_t)std::stoull(d));
+      }
+    }
 
-    // if devices[] is empty then default to 0..N-1, where N = numDevices or 1
     if (deviceNos.empty()) {
-      if(numDevices == 0)  // if neither is given, then we default to 1 device, which is device[0]
-        numDevices = 1;
-      for(size_t i = 0; i < numDevices; ++i) // default to 0..N-1
-        deviceNos.push_back(i);
+      deviceNos.push_back(0);
     }
-    // devices[] is not empty
-    else if(numDevices == 0) // if device list then num devices defaults to list size
-      numDevices = deviceNos.size(); // default to #devices
 
-    // If multiple MPI processes then we can either have one set of devices shared across all
-    // MPI-processes, or the full list across all MPI processes concatenated.  E.g. --num-devices 1
-    // --devices 0 2 4 5 means 4 processes using devices 0, 2, 4, and 5, respectively.  In that
-    // case, we cut out and return our own slice. In the above example, for MPI process 1, we would
-    // return {2}.
-
-    // special-case the error message (also caught indirectly below, but with a msg that is
-    // confusing when one does not run multi-node)
-    if(numMPIProcesses == 1)
-      // same as requiring numPerMPIProcessDeviceNos == 1
-      // @TODO: improve logging message as devices[] and numDevices are not informative for the user
-      ABORT_IF(numDevices != deviceNos.size(), "devices[] size must be equal to numDevices");
-
-    // how many lists concatenated in devices[]? Allowed is either 1 (=shared) or numWorkers
-    size_t numPerMPIProcessDeviceNos = deviceNos.size() / numDevices;
-    // @TODO: improve logging message as devices[] and numDevices are not informative for the user
-    ABORT_IF(numDevices * numPerMPIProcessDeviceNos != deviceNos.size(),
-             "devices[] size must be equal to or a multiple of numDevices");  // (check that it is a multiple)
-
-    // if multiple concatenated lists are given, slice out the one for myMPIRank
-    if(numPerMPIProcessDeviceNos != 1) {
-      ABORT_IF(numPerMPIProcessDeviceNos != numMPIProcesses,
-               "devices[] must either list a shared set of devices, or one set per MPI process");
-      deviceNos.erase(deviceNos.begin(), deviceNos.begin() + myMPIRank * numDevices);
-      deviceNos.resize(numDevices);
-    }
     // form the final vector
     for(auto d : deviceNos)
       devices.push_back({ d, DeviceType::gpu });

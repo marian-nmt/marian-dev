@@ -37,6 +37,7 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
 
   modelFeatures_.insert("transformer-heads");
   modelFeatures_.insert("transformer-no-projection");
+  modelFeatures_.insert("transformer-rnn-projection");
   modelFeatures_.insert("transformer-dim-ffn");
   modelFeatures_.insert("transformer-decoder-dim-ffn");
   modelFeatures_.insert("transformer-ffn-depth");
@@ -67,6 +68,9 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   modelFeatures_.insert("lemma-dependency");
   modelFeatures_.insert("factors-combine");
   modelFeatures_.insert("factors-dim-emb");
+
+  modelFeatures_.insert("transformer-no-bias");
+  modelFeatures_.insert("transformer-no-affine");
 }
 
 std::vector<Ptr<EncoderBase>>& EncoderDecoder::getEncoders() {

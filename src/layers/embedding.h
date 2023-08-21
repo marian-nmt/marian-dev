@@ -170,7 +170,7 @@ public:
     if(!inference_)
       batchEmbeddings = dropout(batchEmbeddings,
                                 options_->get<float>("dropout-embeddings", 0.0f),
-                                {batchEmbeddings->shape()[-3], 1, 1});
+                                Shape::Axes({-3}));
     return std::make_tuple(batchEmbeddings, batchMask);
   }
 

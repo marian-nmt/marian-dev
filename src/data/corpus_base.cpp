@@ -59,8 +59,10 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
+      prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
+      tsvNumInputFields_(getNumberOfTSVInputFields(options)),
+      joinFields_(options_->get<bool>("input-join-fields", false)) {
   // TODO: support passing only one vocab file if we have fully-tied embeddings
   if(tsv_) {
     ABORT_IF(tsvNumInputFields_ != vocabs_.size(),
@@ -84,8 +86,10 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
+      prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
+      tsvNumInputFields_(getNumberOfTSVInputFields(options)),
+      joinFields_(options_->get<bool>("input-join-fields", false)) {
   bool training = !translate;
 
   if(training)
@@ -347,11 +351,18 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
 
     auto vocabDims = options_->get<std::vector<int>>("dim-vocabs");
     vocabDims.resize(numVocs, 0);
-    for(size_t i = 0; i + 1 < numVocs; ++i) {
+
+    // when force-decoding we want the last vocab to be part of the batch,
+    // hence we do not drop it from the input batch.
+    bool forceDecoding = options_->get<bool>("force-decode", false);
+    size_t shift = !forceDecoding ? 1 : 0;
+
+    for(size_t i = 0; i + shift < numVocs; ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);
       vocabDims[i] = (int) vocab->load(vocabPaths[i], maxVocabs[i]);
       vocabs_.emplace_back(vocab);
-    }
+    } 
+
     // TODO: As above, this is not nice as it modifies the option object and needs to expose the changes
     // outside the corpus as models need to know about the vocabulary size; extract the vocab
     // creation functionality from the class.
@@ -368,10 +379,11 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
     }
   }
 
-  ABORT_IF(!tsv_ && vocabs_.size() != files_.size(),
+  size_t numStreams = files_.size();
+  ABORT_IF(!tsv_ && vocabs_.size() != numStreams,
            "Number of {} files ({}) and vocab files ({}) does not agree",
            training ? "corpus" : "input",
-           files_.size(),
+           numStreams,
            vocabs_.size());
 
   // Handle guided alignment and data weighting files. Alignments and weights in TSV input were
@@ -412,8 +424,16 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
   // on the vocabulary type, this can be non-trivial, e.g. when SentencePiece
   // is used.
   Words words = vocabs_[batchIndex]->encode(line, /*addEOS =*/ addEOS_[batchIndex], inference_);
-
   ABORT_IF(words.empty(), "Empty input sequences are presently untested");
+
+  auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
+
+  // This handles adding starts symbols for COMET (<s>) and BERT/BLEURT ([CLS])
+  bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && batchIndex == 0));
+  if(prepend && inputTypes[batchIndex] == "sequence") {
+    auto prependedWord = Word::fromWordIndex(0);
+    words.insert(words.begin(), prependedWord);
+  }
 
   if(maxLengthCrop_ && words.size() > maxLength_) {
     words.resize(maxLength_);
@@ -424,7 +444,12 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
   if(rightLeft_)
     std::reverse(words.begin(), words.end() - 1);
 
-  tup.push_back(words);
+  // if true, the numeric indices get joined with the previous sentence, <eos> acts as a separator here
+  // @TODO: make this cleaner.
+  if(joinFields_)
+    tup.appendToBack(words);
+  else
+    tup.pushBack(words);
 }
 
 void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,
@@ -468,7 +493,10 @@ void CorpusBase::addAlignmentsToBatch(Ptr<CorpusBatch> batch,
     // If the batch vector is altered within marian by, for example, case augmentation,
     // the guided alignments we received for this tuple cease to be valid.
     // Hence skip setting alignments for that sentence tuple..
-    if (!batchVector[b].isAltered()) {
+    if (batchVector[b].isAltered()) {
+      LOG_ONCE(info, "Using guided-alignment with case-augmentation is not recommended and can result in unexpected behavior");
+      aligns.push_back(WordAlignment());
+    } else {
       aligns.push_back(std::move(batchVector[b].getAlignment()));
     }
   }

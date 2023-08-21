@@ -2,6 +2,96 @@
 
 namespace marian {
 
+// name space for helper template specializations
+namespace options_helpers {
+
+// Generic template-based implementation
+template <class T> 
+T Get<T>::apply(const Options* opt, const char* const key) {
+#if FASTOPT
+  opt->lazyRebuild();
+  ABORT_IF(!opt->has(key), "Required option '{}' has not been set", key);
+  return opt->fastOptions_[key].as<T>();
+#else
+  ABORT_IF(!opt->has(key), "Required option '{}' has not been set", key);
+  return opt->options_[key].as<T>();
+#endif
+}
+
+// Generic template-based implementation
+template <class T> 
+T Get<T>::apply(const Options* opt, const char* const key, const T& defaultValue) {
+#if FASTOPT
+  opt->lazyRebuild();
+  if(opt->has(key))
+    return opt->fastOptions_[key].as<T>();
+#else
+  if(opt->has(key))
+    return opt->options_[key].as<T>();
+#endif
+  else
+    return defaultValue;
+}
+
+// specializations for simple types
+template struct Get<bool>;
+template struct Get<int>;
+template struct Get<unsigned long>;
+template struct Get<unsigned long long>;
+template struct Get<float>;
+template struct Get<double>;
+template struct Get<std::string>;
+
+// specialization for vector of simple types
+template struct Get<std::vector<bool>>;
+template struct Get<std::vector<int>>;
+template struct Get<std::vector<unsigned long long>>;
+template struct Get<std::vector<unsigned long>>;
+template struct Get<std::vector<float>>;
+template struct Get<std::vector<double>>;
+template struct Get<std::vector<std::string>>;
+
+// specializations for std::vector<YAML::Node>
+template <>
+std::vector<YAML::Node> Get<std::vector<YAML::Node>>::apply(const Options* opt, const char* const key) {
+  ABORT_IF(!opt->has(key), "Required option '{}' has not been set", key);
+  auto vec = opt->options_[key].as<std::vector<YAML::Node>>();
+  for(auto& node : vec)  {
+    if(node.IsScalar())
+      node = YAML::Load(node.as<std::string>());
+  }
+  return vec;
+}
+
+template <>
+std::vector<YAML::Node> Get<std::vector<YAML::Node>>::apply(const Options* opt, const char* const key, const std::vector<YAML::Node>& defaultValue) {
+  if(opt->has(key))
+    return apply(opt, key);
+  return defaultValue;
+}
+
+template struct Get<std::vector<YAML::Node>>;
+
+// specializations for YAML::Node
+template <>
+YAML::Node Get<YAML::Node>::apply(const Options* opt, const char* const key) {
+  ABORT_IF(!opt->has(key), "Required option '{}' has not been set", key);
+  YAML::Node node = opt->options_[key];
+  if(node.IsScalar())
+    node = YAML::Load(node.as<std::string>());
+  return node;
+}
+
+template <>
+YAML::Node Get<YAML::Node>::apply(const Options* opt, const char* const key, const YAML::Node& defaultValue) {
+  if(opt->has(key))
+    return apply(opt, key);
+  return defaultValue;
+}
+
+template struct Get<YAML::Node>;
+}
+
 Options::Options()
 #if FASTOPT
   : fastOptions_(options_)
@@ -16,8 +106,8 @@ Options::Options(const Options& other)
   : options_(YAML::Clone(other.options_)) {}
 #endif
 
-Options Options::clone() const {
-  return Options(*this); // fastOptions_ get set in constructor above
+Ptr<Options> Options::clone() const {
+  return New<Options>(*this); // fastOptions_ get set in constructor above
 }
 
 YAML::Node Options::cloneToYamlNode() const {

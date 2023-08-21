@@ -27,6 +27,11 @@ Expr checkpoint(Expr a) {
   return a;
 }
 
+Expr removeAsRoot(Expr a) {
+  a->graph()->removeAsRoot(a); // ugly, hence why hidden here
+  return a;
+}
+
 Expr lambda(const std::vector<Expr>& nodes, Shape shape, Type type,
             LambdaNodeFunctor fwd, size_t hash) {
   return Expression<LambdaNodeOp>(nodes, shape, type, fwd, hash);
@@ -90,7 +95,7 @@ Expr swish(Expr a) {
 }
 
 Expr gelu(Expr a) {
-  return Expression<SwishNodeOp>(a, 1.702f);
+  return Expression<GeluNodeOp>(a);
 }
 
 Expr operator-(Expr a) {
@@ -152,6 +157,16 @@ Expr2 topk(Expr a, int k, int axis, bool descending) {
   auto topkVal = Expression<TopKNodeOp>(a, k, -1, descending); // axis=-1 is OK now as we swapped
   auto topkIdx = std::dynamic_pointer_cast<TopKNodeOp>(topkVal)->tupleView(); // get a view on the top-k values
   return std::make_tuple(swapAxes(topkVal, axis, -1), swapAxes(topkIdx, axis, -1)); // non-op if axes are the same
+}
+
+Expr topkIndices(Expr a, int k, int axis, bool descending) {
+  const auto& [values, indices] = topk(a, k, axis, descending);
+  return choose({values, indices}, 1);
+}
+
+Expr topkValues(Expr a, int k, int axis, bool descending) {
+  const auto& [values, indices] = topk(a, k, axis, descending);
+  return choose({values, indices}, 0);
 }
 
 Expr2 argmax(Expr a, int axis) {
@@ -348,10 +363,30 @@ Expr flatten_2d(Expr a) {
 }
 
 Expr stopGradient(Expr a) {
+#if 0 
+  // This is a different implementation which is more reliable than the original, 
+  // but it introduces a full copy which hogs memory. Keeping it around for now
+  // to decide later which one to use.
+
+  auto fwd = [](Expr output, const std::vector<Expr> inputs) {
+    CopyCast(output->val(), inputs[0]->val());
+  };
+
+  auto bwd = [](Expr output, const std::vector<Expr> inputs) {
+    /*Dummy*/
+  };
+
+  return lambda({a}, a->shape(), a->value_type(), fwd, bwd, (size_t)&fwd);
+#else
   // implemented as a dummy reshape that is not trainable
   auto res = Expression<ReshapeNodeOp>(a, a->shape());
   res->setTrainable(false);
   return res;
+#endif
+}
+
+Expr choose(std::vector<Expr> nodes, size_t index) {
+  return Expression<ChooseNodeOp>(nodes, index);
 }
 
 // gather() -- gather arbitrary elements along an axis; batched or non-batched
@@ -577,10 +612,14 @@ Expr bdot_legacy(Expr a, Expr b, bool transA, bool transB, float scale) {
 
 Expr affineDefault(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   // general version, MKL, CBlas or CUDA
+  std::vector<Expr> nodes = { a, b, bias };
 
-  int rows = a->shape().elements() / a->shape()[-1];
-  Expr ones = a->graph()->ones({ rows, 1 });
-  std::vector<Expr> nodes = { a, b, bias, ones };
+  auto graph = a->graph();
+  if(!graph->isInference()) {
+    int rows = a->shape().elements() / a->shape()[-1];
+    Expr ones = a->graph()->ones({ rows, 1 }, bias->value_type());
+    nodes.push_back(ones);
+  }
   return Expression<AffineNodeOp>(nodes, transA, transB, scale);
 }
 
@@ -676,13 +715,36 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
   }
 }
 
-Expr affineWithRelu(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
-  auto graph = a->graph();
+// @TODO: unify all these
+Expr affineWithReluDropout(Expr x, Expr W, Expr bias, float dropProb) {
+  auto graph = x->graph();
+  if(graph->isInference() && graph->getDeviceId().type == DeviceType::gpu) {
+    // not doing any dropout in inference mode
+    return Expression<AffineWithReluNodeOp>(x, W, bias);
+  } else {
+    Expr output = affine(x, W, bias);
+    output = dropoutReluInplace(output, dropProb, Shape::Axes({-2, -1}));
+    return output;
+  }
+}
 
-  if(graph->isInference() && graph->getDeviceId().type == DeviceType::gpu)
-    return Expression<AffineWithReluNodeOp>(a, b, bias, transA, transB, scale);
-  else
-    return relu(affine(a, b, bias, transA, transB, scale));
+Expr dropoutReluInplace(Expr x, Expr mask) {
+  return Expression<DropoutReluInplaceNodeOp>(x, mask);
+}
+
+Expr dropoutReluInplace(Expr x, float dropProb, Shape shape) {
+  Expr mask = dropProb ? x->graph()->dropoutMask(dropProb, shape) : nullptr;
+  return dropoutReluInplace(x, mask);
+}
+
+Expr dropoutReluInplace(Expr x, float dropProb, const Shape::Axes& axes) {
+  Expr mask = dropProb ? x->graph()->dropoutMask(dropProb, x->shape().fromAxes(axes)) : nullptr;
+  return dropoutReluInplace(x, mask);
+}
+
+Expr dropoutReluInplace(Expr x, float dropProb) {
+  Expr mask = dropProb ? x->graph()->dropoutMask(dropProb, x->shape()) : nullptr;
+  return dropoutReluInplace(x, mask);
 }
 
 // @TODO: Not a great place to check this
@@ -738,8 +800,7 @@ Expr transpose(Expr a, const std::vector<int>& axes) {
   return Expression<TransposeNodeOp>(a, axes);
 }
 
-Expr swapAxes(Expr x, int axis1, int axis2)
-{
+Expr swapAxes(Expr x, int axis1, int axis2) {
   const auto& shape = x->shape();
   axis1 = shape.axis(axis1);
   axis2 = shape.axis(axis2);
@@ -836,31 +897,35 @@ Expr square(Expr a) {
 }
 
 Expr layerNorm(Expr x,
-               Expr gamma,
+               Expr gamma/*= nullptr*/,
                Expr beta /*= nullptr*/,
                float eps /*= 1e-9*/) {
 
   // layerNorm accumulates in float, so small eps is fine
-  std::vector<Expr> nodes = {x, gamma};
+  std::vector<Expr> nodes = {x};
+  if(gamma)
+    nodes.push_back(gamma);
   if(beta)
     nodes.push_back(beta);
   return Expression<LayerNormalizationOp>(nodes, eps);
 }
 
 Expr rmsNorm(Expr x,
-             Expr gamma,
+             Expr gamma /*= nullptr*/,
              Expr beta /*= nullptr*/,
              float eps /*= 1e-9*/) {
 
   // layerNorm accumulates in float, so small eps is fine
-  std::vector<Expr> nodes = {x, gamma};
+  std::vector<Expr> nodes = {x};
+  if(gamma)
+    nodes.push_back(gamma);
   if(beta)
     nodes.push_back(beta);
   return Expression<RMSNormalizationOp>(nodes, eps);
 }
 
-Expr highway(Expr y, Expr x, Expr t) {
-  std::vector<Expr> nodes = {y, x, t};
+Expr highway(Expr input1, Expr input2, Expr gate) {
+  std::vector<Expr> nodes = {input1, input2, gate};
   return Expression<HighwayNodeOp>(nodes);
 }
 

@@ -1,11 +1,12 @@
 #pragma once
 
 #include "common/definitions.h"
+#include "common/file_stream.h"
 #include "common/filesystem.h"
 #include "common/scheduling_parameter.h"
 #include "common/utils.h"
 
-#include <fstream>
+#include <sstream>
 #include <vector>
 
 namespace marian {
@@ -71,6 +72,12 @@ public:
   size_t samplesDisp{0};
   // Number of updates seen since last display
   size_t updatesDisp{0};
+
+  // Running average of training cost per label
+  float lossAvgSlow{0};
+  float lossAvgFast{0};
+  // Running variance of training cost per label
+  float lossVarSlow{0};
 
   // Running average of gradient norm
   float gradientNormAvg{0};
@@ -140,15 +147,20 @@ public:
   // between calls to this. We call it from update(). Unfortunately, newEpoch()
   // is called at the wrong place for this to work, so SchedulingUnit::epoch is forbidden
   // for periods.
-  bool enteredNewPeriodOf(std::string schedulingParam) const {
-    auto period = SchedulingParameter::parse(schedulingParam);
+  bool enteredNewPeriodOf(SchedulingParameter schedulingParam) const {
     // @TODO: adapt to logical epochs
-    ABORT_IF(period.unit == SchedulingUnit::epochs,
+    ABORT_IF(schedulingParam.unit == SchedulingUnit::epochs,
              "Unit {} is not supported for frequency parameters",
-             schedulingParam);
-    auto previousProgress = getPreviousProgressIn(period.unit);
-    auto progress = getProgressIn(period.unit);
-    return period && progress / period.n != previousProgress / period.n;
+             (std::string)schedulingParam);
+    auto previousProgress = getPreviousProgressIn(schedulingParam.unit);
+    auto progress = getProgressIn(schedulingParam.unit);
+    return schedulingParam && progress / schedulingParam.n != previousProgress / schedulingParam.n;
+  }
+
+  // std::string version of the above function
+  bool enteredNewPeriodOf(std::string schedulingParam) const {
+    SchedulingParameter parsedSchedulingParam = SchedulingParameter::parse(schedulingParam);
+    return enteredNewPeriodOf(parsedSchedulingParam);
   }
 
   void newEpoch() {
@@ -194,11 +206,12 @@ public:
     }
   }
 
-  void load(const std::string& name) {
-    if(!filesystem::exists(name))
-      return;
+  void loadFromString(const std::string& yamlString) {
+    YAML::Node config = YAML::Load(yamlString);
 
-    YAML::Node config = YAML::LoadFile(name);
+    // WARNING! When adding new options to the training state, make sure to
+    //          check of their existance when loading from the progress.yml
+    //          file for backward compatibility
 
     epochs = config["epochs"].as<size_t>();
     batches = config["batches"].as<size_t>();
@@ -232,6 +245,10 @@ public:
     samplesDisp = config["disp-samples"].as<size_t>();
     updatesDisp = config["disp-updates"].as<size_t>();
 
+    lossAvgSlow = config["loss-avg-slow"] ? config["loss-avg-slow"].as<float>() : 0;
+    lossAvgFast = config["loss-avg-fast"] ? config["loss-avg-fast"].as<float>() : 0;
+    lossVarSlow = config["loss-var-slow"] ? config["loss-var-slow"].as<float>() : 0;
+
     gradientNormAvg = config["gradient-norm-avg"].as<float>();
     gradientNormVar = config["gradient-norm-var"].as<float>();
 
@@ -240,6 +257,13 @@ public:
 
     seedBatch = config["seed-batch"].as<std::string>();
     seedCorpus = config["seed-corpus"].as<std::string>();
+  }
+
+  void load(const std::string& name) {
+    if(!filesystem::exists(name))
+      return;
+
+    loadFromString(io::InputFileStream(name).readToString());
   }
 
   void save(const std::string& name) const {
@@ -271,6 +295,10 @@ public:
     config["disp-updates"] = updatesDisp;
     config["disp-samples"] = samplesDisp;
     config["disp-words"] = wordsDisp;
+
+    config["loss-avg-slow"] = lossAvgSlow;
+    config["loss-avg-fast"] = lossAvgFast;
+    config["loss-var-slow"] = lossVarSlow;
 
     config["gradient-norm-avg"] = gradientNormAvg;
     config["gradient-norm-var"] = gradientNormVar;

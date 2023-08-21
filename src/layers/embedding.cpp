@@ -6,10 +6,8 @@ namespace marian {
 Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
     : LayerBase(graph, options), inference_(opt<bool>("inference")) {
   std::string name = opt<std::string>("prefix");
-  int dimVoc       = opt<int>("dimVocab");
-  int dimEmb       = opt<int>("dimEmb");
-  int dimFactorEmb = opt<int>("dimFactorEmb");
-
+  int dimVoc = opt<int>("dimVocab");
+  int dimEmb = opt<int>("dimEmb");
   bool fixed = opt<bool>("fixed", false);
 
   // Embedding layer initialization should depend only on embedding size, hence fanIn=false
@@ -21,6 +19,7 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
     dimVoc = (int)factoredVocab_->factorVocabSize();
     LOG_ONCE(info, "[embedding] Factored embeddings enabled");
     if(opt<std::string>("factorsCombine") == "concat") {
+      int dimFactorEmb = opt<int>("dimFactorEmb", 0);
       ABORT_IF(dimFactorEmb == 0,
                "Embedding: If concatenation is chosen to combine the factor embeddings, a factor "
                "embedding size must be specified.");
@@ -40,6 +39,13 @@ Embedding::Embedding(Ptr<ExpressionGraph> graph, Ptr<Options> options)
       initFunc  = inits::fromWord2vec(file, dimVoc, dimEmb, norm);
     }
   }
+
+#if 0
+  auto emb = graph_->get(name);
+  if(emb) {
+    dimVoc = emb->shape()[-2];
+  }
+#endif
 
   E_ = graph_->param(name, {dimVoc, dimEmb}, initFunc, fixed);
 }
@@ -163,8 +169,7 @@ Expr Embedding::applyIndices(const std::vector<WordIndex>& embIdx, const Shape& 
   // @BUGBUG: We should not broadcast along dimBatch=[-2]. Then we can also dropout before reshape()
   // (test that separately)
   if(!inference_)
-    selectedEmbs = dropout(
-        selectedEmbs, options_->get<float>("dropout", 0.0f), {selectedEmbs->shape()[-3], 1, 1});
+    selectedEmbs = dropout(selectedEmbs, options_->get<float>("dropout", 0.0f), Shape::Axes({-3}));
   return selectedEmbs;
 }
 
@@ -179,14 +184,13 @@ Expr Embedding::applyIndices(const std::vector<WordIndex>& embIdx, const Shape& 
       "prefix",         (opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all")) ? "Wemb"
                                                                                           : prefix_ + "_Wemb",
       "fixed",          embeddingFix_,
-      "dimFactorEmb",   opt<int>("factors-dim-emb"),  // for factored embeddings
-      "factorsCombine", opt<std::string>("factors-combine"),  // for factored embeddings
+      "dimFactorEmb",   opt<int>("factors-dim-emb", 0),  // for factored embeddings
+      "factorsCombine", opt<std::string>("factors-combine", "sum"),  // for factored embeddings
       "vocab",     opt<std::vector<std::string>>("vocabs")[batchIndex_]);  // for factored embeddings
   // clang-format on
   if(options_->hasAndNotEmpty("embedding-vectors")) {
     auto embFiles = opt<std::vector<std::string>>("embedding-vectors");
-    options->set(
-        "embFile", embFiles[batchIndex_], "normalization", opt<bool>("embedding-normalization"));
+    options->set("embFile", embFiles[batchIndex_], "normalization", opt<bool>("embedding-normalization"));
   }
   return New<Embedding>(graph_, options);
 }

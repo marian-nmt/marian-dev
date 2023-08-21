@@ -19,7 +19,7 @@ using namespace data;
 
 /*
  * The tool is used to create output sentence embeddings from available
- * Marian encoders. With --compute-similiarity and can return the cosine
+ * Marian encoders. With --compute-similiarity it can return the cosine
  * similarity between two sentences provided from two sources.
  */
 class Embedder {
@@ -56,8 +56,7 @@ public:
   Embed(Ptr<Options> options) : options_(options) {
     
     options_ = options_->with("inference", true, 
-                              "shuffle", "none",
-                              "input-types", std::vector<std::string>({"sequence"}));
+                              "shuffle", "none");
 
     // if a similarity is computed then double the input types and vocabs for
     // the two encoders that are used in the model.
@@ -109,7 +108,7 @@ public:
     auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus_, options_);
     batchGenerator->prepare();
 
-    auto output = New<VectorCollector>(options_);
+    auto output = New<VectorCollector>(options_->get<std::string>("output"), options_->get<bool>("binary"));
 
     size_t batchId = 0;
     {
@@ -128,8 +127,19 @@ public:
           auto embeddings = builder->build(graph, batch);
           graph->forward();
 
+          // handle copying from fp32 or fp16 embeddings correctly.
           std::vector<float> sentVectors;
-          embeddings->val()->get(sentVectors);
+          if(embeddings->value_type() == Type::float32) {
+            embeddings->val()->get(sentVectors);
+          } else if (embeddings->value_type() == Type::float16) {
+            std::vector<float16> sentVectors16;
+            embeddings->val()->get(sentVectors16);
+            sentVectors.reserve(sentVectors16.size());
+            for(auto& v: sentVectors16)
+              sentVectors.push_back(v);
+          } else {
+            ABORT("Unknown embedding type {}", embeddings->value_type());
+          }
           
           // collect embedding vector per sentence.
           // if we compute similarities this is only one similarity per sentence pair.

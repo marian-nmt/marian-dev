@@ -317,6 +317,8 @@ public:
     if(!isParameter(child(2)) && computeTypeC == Type::float16)
       computeTypeC = Type::float32;
 
+    ABORT_IF(children().size() != 4, "Did we lose the column of ones required for backprob of bias??");
+
     // We reduce bias gradients with a matrix multiply
     if(!transA_ && transB_)
       return {
@@ -577,8 +579,8 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
-
-    if(!transA_ && transB_)
+    
+    if(!transA_ && transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
                                  adj_,
@@ -595,8 +597,7 @@ public:
                                  false,
                                  1.0,
                                  scalar_))};
-
-    if(transA_ && !transB_)
+    } else if(transA_ && !transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
                                  child(1)->val(),
@@ -613,8 +614,7 @@ public:
                                  false,
                                  1.0,
                                  scalar_))};
-
-    if(transA_ && transB_)
+    } else if(transA_ && transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
                                  child(1)->val(),
@@ -631,23 +631,24 @@ public:
                                  true,
                                  1.0,
                                  scalar_))};
-
-    return {NodeOp(ProdBatched(child(0)->grad(),
-                               graph()->allocator(),
-                               adj_,
-                               child(1)->val(),
-                               false,
-                               true,
-                               1.0,
-                               scalar_)),
-            NodeOp(ProdBatched(child(1)->grad(),
-                               graph()->allocator(),
-                               child(0)->val(),
-                               adj_,
-                               true,
-                               false,
-                               1.0,
-                               scalar_))};
+    } else { // !transA && !transB
+      return {NodeOp(ProdBatched(child(0)->grad(),
+                                graph()->allocator(),
+                                adj_,
+                                child(1)->val(),
+                                false,
+                                true,
+                                1.0,
+                                scalar_)),
+              NodeOp(ProdBatched(child(1)->grad(),
+                                graph()->allocator(),
+                                child(0)->val(),
+                                adj_,
+                                true,
+                                false,
+                                1.0,
+                                scalar_))};
+    }
   }
 
   const std::string type() override { return "bdot"; }
@@ -1030,13 +1031,11 @@ struct GatherNodeOp : public NaryNodeOp {
 
   NodeOps forwardOps() override {
     return {NodeOp(
-      // @TODO: rename to gather
-      Select(val_, child(0)->val(), child(1)->val(), axis_))};
+      Select</*add=*/false>(val_, child(0)->val(), child(1)->val(), axis_))};
   }
 
   NodeOps backwardOps() override {
     return {NodeOp(
-      // @TODO: rename to scatter
       Insert</*add=*/true>(child(0)->grad(), adj_, /*indices=*/child(1)->val(), axis_))};
   }
 
@@ -1094,17 +1093,52 @@ struct ScatterNodeOp : public NaryNodeOp {
   NodeOps forwardOps() override {
     return {NodeOp(
       CopyCast(val_, child(0)->val()); // @TODO: use normal copy
-      Insert</*add=*/false>(val_, /*source=*/child(2)->val(), /*indices=*/child(1)->val(), axis_)
+      Insert</*add=*/false>(val_, /*source=*/child(2)->val(), /*indices*/child(1)->val(), axis_);
     )};
   }
 
   NodeOps backwardOps() override {
-    ABORT("backward for ScatterNodeOp not yet implemented");
+    auto backwardForVal = [this]() {
+      auto allocator = graph()->allocator();
+
+      // create temporary tensor of child(0)->grad().shape() == adj_.shape() 
+      // copy adj_ to temporary
+      auto grad = child(0)->grad();
+      auto tempGradMem = allocator->alloc(grad->memory()->size());
+      Tensor tempGrad = TensorBase::New(tempGradMem, grad->shape(), grad->type(), grad->getBackend());
+      CopyCast(tempGrad, adj_);
+
+      // create temporary tensor of zeros of values.shape() and values type
+      auto source = child(2)->val();
+      auto tempZeroMem = allocator->alloc(source->memory()->size());
+      Tensor tempZero = TensorBase::New(tempZeroMem, source->shape(), source->type(), source->getBackend());
+      tempZero->set(0);
+
+      // insert tensor of zeros into temporary
+      Insert</*add=*/false>(tempGrad, /*source=*/tempZero, /*indices*/child(1)->val(), axis_);
+      
+      // add temporary do child(0)->grad()
+      Add(functional::_1, grad, tempGrad);
+
+      // clear temporary memory
+      allocator->free(tempGradMem);
+      allocator->free(tempZeroMem);
+    };
+
+    return {
+      // val - add gradients every where else to gradient of "a"
+      NodeOp(backwardForVal()), 
+      
+      NodeOp(/*no gradient*/[](){}), // indices
+
+      // add gradients on indices to gradient of "source"
+      NodeOp(Select</*add=*/true>(/*source*/child(2)->grad(), adj_, /*indices=*/child(1)->val(), axis_))
+    };
   }
 
   Shape newShape(Expr a, int axis, Expr indices, Expr source) {
     ABORT_IF(axis != -1, "only last dimensions");
-    // ABORT_IF(indices->shape() != source->shape(), "Shapes must match"); or broadcast
+    ABORT_IF(indices->shape() != source->shape(), "Shapes must match");
 
     Shape shape = a->shape();
     // @TODO: do proper checking
@@ -1151,7 +1185,9 @@ struct ColsNodeOp : public NaryNodeOp {
   }
 
   NodeOps backwardOps() override {
-    return {NodeOp(PasteCols(child(0)->grad(), adj_, child(1)->val()))};
+    return {NodeOp(
+      PasteCols(child(0)->grad(), adj_, child(1)->val());
+    )};
   }
 
   Shape newShape(Expr a, Expr indices) {
@@ -1554,7 +1590,7 @@ public:
     return {NodeOp(
         LayerNormalization(val_,
                            child(0)->val(),
-                           child(1)->val(),
+                           (children_.size() >= 2) ? child(1)->val() : nullptr,
                            (children_.size() == 3) ? child(2)->val() : nullptr,
                            eps_))};
   }
@@ -1565,12 +1601,12 @@ public:
       LayerNormalizationGrad(
         graph()->allocator(),
         child(0)->grad(),
-        child(1)->grad(),
+        (children_.size() >= 2) ? child(1)->grad() : nullptr,
         (children_.size() == 3) ? child(2)->grad() : nullptr,
         adj_,
         val_,
         child(0)->val(),
-        child(1)->val(),
+        (children_.size() >= 2) ? child(1)->val() : nullptr,
         (children_.size() == 3) ? child(2)->val() : nullptr,
         eps_))};
   }

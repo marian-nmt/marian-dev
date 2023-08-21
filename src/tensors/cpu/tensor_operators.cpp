@@ -388,12 +388,13 @@ void TransposeGeneric(Tensor out, Tensor in, const std::vector<int>& vAxis) {
 }
 
 void TransposeND(Tensor out, Tensor in, const std::vector<int>& vAxis) {
+#if MKL_FOUND
+  if(vAxis.size() == 4 && vAxis[3] == 3)
+    TransposeFirst3In4<false>(out, in, vAxis);
+  else
+#endif  // MKL_FOUND
   if(vAxis == std::vector<int>({0, 2, 1, 3}))
     Transpose0213<false>(out, in);
-#if MKL_FOUND
-  else if(vAxis.size() == 4 && vAxis[3] == 3)
-    TransposeFirst3In4<false>(out, in, vAxis);
-#endif  // MKL_FOUND
   else if(vAxis == std::vector<int>({1, 0}) && in->shape()[-1] % 16 == 0
           && in->shape()[-2] % 16 == 0)
     Transpose10(out, in);
@@ -709,6 +710,7 @@ void SelectAxis2(Tensor out,
 }
 #endif
 
+template <bool add>
 void Select(Tensor out,
             const Tensor in,
             const Tensor indices,
@@ -735,9 +737,15 @@ void Select(Tensor out,
     int idxIndex = idxShape.bindex(dims);                      // return global index for indices based on dimension-specific indices from out, take broadcasting into account;
     dims[axisCPU] = (int)indices->data<IndexType>()[idxIndex]; // substitute index of out-tensor with corresponding axis-local position from in-tensor;
     int inIndex = inShape.index(dims);                         // compute global index from dimension-specific indices, no broadcasting as out and in match in all dimensions apart from axis
-    out->data()[index] = in->data()[inIndex];                  // assign corresponding values.
+    if(add)
+      out->data()[index] += in->data()[inIndex];               // add for gradients.
+    else
+      out->data()[index] = in->data()[inIndex];                // assign corresponding values.
   }
 }
+
+template void Select<true>(Tensor out, const Tensor in, const Tensor indices, int axis);
+template void Select<false>(Tensor out, const Tensor in, const Tensor indices, int axis);
 
 template <bool add>
 void Insert(Tensor out,

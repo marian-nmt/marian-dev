@@ -1,44 +1,59 @@
 #include "training/validator.h"
+#include "embedder/vector_collector.h"
+
+#include <deque>
 
 namespace marian {
+
+static std::vector<std::string> CE_METRICS
+    = {"cross-entropy", "ce-mean", "ce-sum", "ce-mean-words", "perplexity"};
 
 std::vector<Ptr<ValidatorBase/*<data::Corpus>*/>> Validators(
     std::vector<Ptr<Vocab>> vocabs,
     Ptr<Options> config) {
   std::vector<Ptr<ValidatorBase/*<data::Corpus>*/>> validators;
 
+  auto epsilonsVec = config->get<std::vector<float>>("early-stopping-epsilon");
+  std::deque<float> epsilons(epsilonsVec.begin(), epsilonsVec.end());
+  auto eps = epsilons.front();
+  epsilons.pop_front();
+
   auto validMetrics = config->get<std::vector<std::string>>("valid-metrics");
-
-  std::vector<std::string> ceMetrics
-      = {"cross-entropy", "ce-mean", "ce-sum", "ce-mean-words", "perplexity"};
-
   for(auto metric : validMetrics) {
-    if(std::find(ceMetrics.begin(), ceMetrics.end(), metric) != ceMetrics.end()) {
+    if(std::find(CE_METRICS.begin(), CE_METRICS.end(), metric) != CE_METRICS.end()) {
       Ptr<Options> opts = New<Options>(*config);
       opts->set("cost-type", metric);
 
-      auto validator = New<CrossEntropyValidator>(vocabs, opts);
+      auto validator = New<CrossEntropyValidator>(vocabs, opts, eps);
       validators.push_back(validator);
     } else if(metric == "valid-script") {
-      auto validator = New<ScriptValidator>(vocabs, config);
+      auto validator = New<ScriptValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else if(metric == "translation") {
-      auto validator = New<TranslationValidator>(vocabs, config);
+      auto validator = New<TranslationValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else if(metric == "bleu" || metric == "bleu-detok" || metric == "bleu-segmented" || metric == "chrf") {
-      auto validator = New<SacreBleuValidator>(vocabs, config, metric);
+      auto validator = New<SacreBleuValidator>(vocabs, config, metric, eps);
       validators.push_back(validator);
     } else if(metric == "accuracy") {
-      auto validator = New<AccuracyValidator>(vocabs, config);
+      auto validator = New<AccuracyValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else if(metric == "bert-lm-accuracy") {
-      auto validator = New<BertAccuracyValidator>(vocabs, config, true);
+      auto validator = New<BertAccuracyValidator>(vocabs, config, true, eps);
       validators.push_back(validator);
     } else if(metric == "bert-sentence-accuracy") {
-      auto validator = New<BertAccuracyValidator>(vocabs, config, false);
+      auto validator = New<BertAccuracyValidator>(vocabs, config, false, eps);
+      validators.push_back(validator);
+    } else if(metric == "embedding") {
+      auto validator = New<EmbeddingValidator>(vocabs, config, eps);
       validators.push_back(validator);
     } else {
       ABORT("Unknown validation metric: {}", metric);
+    }
+
+    if(!epsilons.empty()) {
+      eps = epsilons.front();
+      epsilons.pop_front();
     }
   }
 
@@ -59,8 +74,8 @@ void ValidatorBase::actAfterLoaded(TrainingState& state) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-CrossEntropyValidator::CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options) {
+CrossEntropyValidator::CrossEntropyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, true, epsilon) {
   createBatchGenerator(/*isTranslating=*/false);
 
   auto opts = options_->with("inference",
@@ -122,8 +137,8 @@ float CrossEntropyValidator::validateBG(const std::vector<Ptr<ExpressionGraph>>&
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-AccuracyValidator::AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, /*lowerIsBetter=*/false) {
+AccuracyValidator::AccuracyValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, /*lowerIsBetter=*/false, epsilon) {
   createBatchGenerator(/*isTranslating=*/false);
 
   // @TODO: remove, only used for saving?
@@ -196,8 +211,9 @@ float AccuracyValidator::validateBG(const std::vector<Ptr<ExpressionGraph>>& gra
 ///////////////////////////////////////////////////////////////////////////////////////
 BertAccuracyValidator::BertAccuracyValidator(std::vector<Ptr<Vocab>> vocabs,
                                            Ptr<Options> options,
-                                           bool evalMaskedLM)
-    : Validator(vocabs, options, /*lowerIsBetter=*/false), evalMaskedLM_(evalMaskedLM) {
+                                           bool evalMaskedLM,
+                                           float epsilon)
+    : Validator(vocabs, options, /*lowerIsBetter=*/false, epsilon), evalMaskedLM_(evalMaskedLM) {
   createBatchGenerator(/*isTranslating=*/false);
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::raw);
@@ -291,8 +307,8 @@ float BertAccuracyValidator::validateBG(const std::vector<Ptr<ExpressionGraph>>&
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-ScriptValidator::ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, false) {
+ScriptValidator::ScriptValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, false, epsilon) {
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::raw);
 
@@ -318,8 +334,8 @@ float ScriptValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
-TranslationValidator::TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : Validator(vocabs, options, false), quiet_(options_->get<bool>("quiet-translation")) {
+TranslationValidator::TranslationValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, false, epsilon), quiet_(options_->get<bool>("quiet-translation")) {
   // @TODO: remove, only used for saving?
   builder_ = models::createModelFromOptions(options_, models::usage::translation);
 
@@ -438,8 +454,117 @@ float TranslationValidator::validate(const std::vector<Ptr<ExpressionGraph>>& gr
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////
-SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric)
-    : Validator(vocabs, options, /*lowerIsBetter=*/false),
+EmbeddingValidator::EmbeddingValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, float epsilon)
+    : Validator(vocabs, options, false, epsilon), quiet_(options_->get<bool>("quiet-translation")) {
+  // @TODO: remove, only used for saving?
+  builder_ = models::createModelFromOptions(options_, models::usage::embedding);
+
+  if(!options_->hasAndNotEmpty("valid-script-path"))
+    LOG_VALID(warn, "No post-processing script given for validating translator");
+
+  createBatchGenerator(/*isTranslating=*/true);
+}
+
+float EmbeddingValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
+                                   Ptr<const TrainingState> state) {
+  using namespace data;
+
+  // Generate batches
+  batchGenerator_->prepare();
+
+  std::vector<Ptr<models::IModel>> models;
+  for(auto graph : graphs) {
+    models.push_back(models::createModelFromOptions(options_, models::usage::embedding));
+    graph->setInference(true);
+  }
+
+  // Set up output file
+  std::string fileName;
+  Ptr<io::TemporaryFile> tempFile;
+
+  if(options_->hasAndNotEmpty("valid-translation-output")) {
+    fileName = options_->get<std::string>("valid-translation-output");
+    // fileName can be a template with fields for training state parameters:
+    fileName = state->fillTemplate(fileName);
+  } else {
+    tempFile.reset(new io::TemporaryFile(options_->get<std::string>("tempdir"), false));
+    fileName = tempFile->getFileName();
+  }
+
+  timer::Timer timer;
+  {
+    // @TODO: This can be simplified. If there is no "valid-translation-output", fileName already
+    // contains the name of temporary file that should be used?
+    auto output = options_->hasAndNotEmpty("valid-translation-output")
+                         ? New<VectorCollector>(fileName)
+                         : New<VectorCollector>(tempFile->getFileName());
+
+    std::deque<Ptr<ExpressionGraph>> graphQueue(graphs.begin(), graphs.end());
+    std::deque<Ptr<models::IModel>> modelQueue(models.begin(), models.end());
+    auto task = [=, &graphQueue, &modelQueue](BatchPtr batch) {
+      thread_local Ptr<ExpressionGraph> graph;
+      thread_local Ptr<models::IModel> builder;
+
+      if(!graph) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        ABORT_IF(graphQueue.empty(), "Asking for graph, but none left on queue");
+        graph = graphQueue.front();
+        graphQueue.pop_front();
+
+        ABORT_IF(modelQueue.empty(), "Asking for scorer, but none left on queue");
+        builder = modelQueue.front();
+        modelQueue.pop_front();
+      }
+
+      auto embedder    = std::dynamic_pointer_cast<EncoderPooler>(builder);
+      auto corpusBatch = std::dynamic_pointer_cast<data::CorpusBatch>(batch);
+      auto embeddings  = cast(embedder->apply(graph, corpusBatch, /*clearGraph=*/true)[0], Type::float32);
+
+      graph->forward();
+
+      std::vector<float> sentVectors;
+      embeddings->val()->get(sentVectors);
+
+      // collect embedding vector per sentence.
+      // if we compute similarities this is only one similarity per sentence pair.
+      for(size_t i = 0; i < batch->size(); ++i) {
+          auto embSize = embeddings->shape()[-1];
+          auto beg = i * embSize;
+          auto end = (i + 1) * embSize;
+          std::vector<float> sentVector(sentVectors.begin() + beg, sentVectors.begin() + end);
+          output->Write((long)batch->getSentenceIds()[i], sentVector);
+      }
+    };
+
+    threadPool_.reserve(graphs.size());
+    TaskBarrier taskBarrier;
+    for(auto batch : *batchGenerator_)
+      taskBarrier.push_back(threadPool_.enqueue(task, batch));
+    // ~TaskBarrier waits until all are done
+  }
+
+  for(auto graph : graphs)
+    graph->setInference(false);
+
+  float val = 0.0f;
+
+  // Run post-processing script if given
+  if(options_->hasAndNotEmpty("valid-script-path")) {
+    // auto command = options_->get<std::string>("valid-script-path") + " " + fileName;
+    // auto valStr = utils::exec(command);
+    auto valStr = utils::exec(options_->get<std::string>("valid-script-path"),
+                              options_->get<std::vector<std::string>>("valid-script-args"),
+                              fileName);
+    val = (float)std::atof(valStr.c_str());
+    updateStalled(graphs, val);
+  }
+
+  return val;
+};
+
+///////////////////////////////////////////////////////////////////////////////////////
+SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options, const std::string& metric, float epsilon)
+    : Validator(vocabs, options, /*lowerIsBetter=*/false, epsilon),
       metric_(metric),
       computeChrF_(metric == "chrf"),
       useWordIds_(metric == "bleu-segmented"),

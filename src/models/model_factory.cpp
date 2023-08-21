@@ -1,5 +1,7 @@
 #include "marian.h"
 
+#include "common/fastopt.h"
+
 #include "models/model_factory.h"
 #include "models/encoder_decoder.h"
 #include "models/encoder_classifier.h"
@@ -12,6 +14,10 @@
 #include "models/s2s.h"
 #include "models/laser.h"
 #include "models/transformer_factory.h"
+#include "models/transformer_new.h"
+
+#include "models/comet_qe.h"
+#include "models/bleurt.h"
 
 #ifdef CUDNN
 #include "models/char_s2s.h"
@@ -45,7 +51,7 @@ Ptr<EncoderBase> EncoderFactory::construct(Ptr<ExpressionGraph> graph) {
   if(options_->get<std::string>("type") == "bert-encoder")
     return New<BertEncoder>(graph, options_);
 
-  ABORT("Unknown encoder type");
+  ABORT("Unknown encoder type {}", options_->get<std::string>("type"));
 }
 
 Ptr<DecoderBase> DecoderFactory::construct(Ptr<ExpressionGraph> graph) {
@@ -68,7 +74,7 @@ Ptr<ClassifierBase> ClassifierFactory::construct(Ptr<ExpressionGraph> graph) {
 Ptr<PoolerBase> PoolerFactory::construct(Ptr<ExpressionGraph> graph) {
   if(options_->get<std::string>("type") == "max-pooler")
     return New<MaxPooler>(graph, options_);
-  if(options_->get<std::string>("type") == "slice-pooler")
+  else if(options_->get<std::string>("type") == "slice-pooler")
     return New<SlicePooler>(graph, options_);
   else if(options_->get<std::string>("type") == "sim-pooler")
     return New<SimPooler>(graph, options_);
@@ -128,13 +134,90 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
   Ptr<ExpressionGraph> graph = nullptr; // graph unknown at this stage
   // clang-format off
 
+  if(type == "comet-qe" || type == "comet") {
+    if(type == "comet") {
+      ABORT_IF(use == usage::training, "Usage {} is not supported for model of type {}", (int)use, type); 
+      ABORT_IF(use == usage::scoring, "Usage {} is not supported for model of type {}", (int)use, type); 
+    }
+    
+    auto inputTypes = options->get<std::vector<std::string>>("input-types");
+    ABORT_IF(inputTypes.empty(),
+      "Required option --input-types for COMET-QE not set. "
+      "For inference that should be --input-types sequence sequence. "
+      "For training set --input-types class sequence sequence");
+
+    int shift = 0;
+    if(inputTypes[0] == "class")
+      shift = 1;
+    
+    auto newOptions = options->with("usage", use);
+    auto res = New<EncoderPooler>(newOptions);
+
+    size_t numEncoders = 0;
+    bool addMetricPooler = false;
+    bool addEmbeddingPooler = false;
+
+    switch(use) {
+      case usage::embedding:  numEncoders = 1; addEmbeddingPooler = true; break;
+      case usage::evaluating:   
+      case usage::scoring:
+      case usage::training:   numEncoders = (type == "comet-qe") ? 2 : 3; addMetricPooler = true; break;
+      default: ABORT("Usage {} is not supported for model of type {}", (int)use, type); 
+    }
+  
+    for(size_t i = 0; i < numEncoders; i++) {
+      auto enc = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", i + shift));
+      enc->setName("CometEncoder"); // parameters will be shared
+      res->push_back(enc);
+    }
+    
+    if(addEmbeddingPooler) {
+      auto pooler = New<CometEmbeddingPooler>(graph, newOptions);
+      pooler->setName("CometEmbeddingPooler"); 
+      res->push_back(pooler);
+    }
+    
+    if(addMetricPooler) {
+      auto pooler = New<CometMetricPooler>(graph, newOptions);
+      pooler->setName("CometQEPooler"); // @TODO: change name for different models
+      res->push_back(pooler);
+    }
+
+    return res;
+  }
+
+  if(type == "bleurt") {
+    ABORT_IF(use != usage::evaluating, "Usage other than 'evaluating' is not supported for model of type {}", type); 
+    
+    auto newOptions = options->with("usage", use);
+    auto res = New<EncoderPooler>(newOptions);
+
+    auto inputTypes = options->get<std::vector<std::string>>("input-types");
+    ABORT_IF(inputTypes.empty(),
+      "Required option --input-types for BLEURT not set. "
+      "For inference that should be --input-types sequence. "
+      "For training set --input-types class sequence");
+
+    int shift = 0;
+    if(inputTypes[0] == "class")
+      shift = 1;
+    
+    auto enc = New<BleurtBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 0 + shift));
+    enc->setName("BleurtEncoder");
+    res->push_back(enc);
+          
+    auto pooler = New<BleurtPooler>(graph, newOptions);
+    pooler->setName("BleurtPooler");
+    res->push_back(pooler);
+    return res;
+  }
+
   bool trainEmbedderRank = options->hasAndNotEmpty("train-embedder-rank");
   if(use == usage::embedding || trainEmbedderRank) { // hijacking an EncoderDecoder model for embedding only
-
     auto dimVocabs = options->get<std::vector<int>>("dim-vocabs");
     size_t fields = trainEmbedderRank ? dimVocabs.size() : 0;
     int dimVocab = dimVocabs[0];
-    
+
     Ptr<Options> newOptions;
     if(options->get<bool>("compute-similarity", false)) {
       newOptions = options->with("usage", use,
@@ -183,20 +266,43 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
         .construct(graph);
   }
 
-  else if(type == "transformer") {
-#if 1
+  else if(type == "transformer-new") {
     auto newOptions = options->with("usage", use);
     auto res = New<EncoderDecoder>(graph, newOptions);
-    res->push_back(New<EncoderTransformer>(graph, newOptions->with("type", "transformer")));
-    res->push_back(New<DecoderTransformer>(graph, newOptions->with("type", "transformer")));
+    
+    auto enc = New<TransformerBatchEncoder>(graph, newOptions->with("type", "transformer"));
+    enc->setName("TransformerBatchEncoder");
+    res->push_back(enc);
+    
+    auto dec = New<TransformerBatchDecoder>(graph, newOptions->with("type", "transformer"));
+    dec->setName("TransformerBatchDecoder");
+    res->push_back(dec);
+    
     return res;
-#else
-    return models::encoder_decoder(options->with(
-         "usage", use))
-        .push_back(models::encoder()("type", "transformer"))
-        .push_back(models::decoder()("type", "transformer"))
-        .construct(graph);
-#endif
+  }
+
+  else if(type == "transformer") {
+    const char* tflavor = std::getenv("TRANSFORMER_FLAVOR");
+    if(tflavor && std::strcmp(tflavor, "experimental") == 0) {
+      auto newOptions = options->with("usage", use);
+      auto res = New<TransformerLegacy>(graph, newOptions);
+      
+      auto enc = New<TransformerBatchEncoder>(graph, newOptions->with("type", "transformer"));
+      enc->setName("TransformerBatchEncoder");
+      res->push_back(enc);
+      
+      auto dec = New<TransformerBatchDecoder>(graph, newOptions->with("type", "transformer"));
+      dec->setName("TransformerBatchDecoder");
+      res->push_back(dec);
+      
+      return res;
+    } else {
+      auto newOptions = options->with("usage", use);
+      auto res = New<EncoderDecoder>(graph, newOptions);
+      res->push_back(New<EncoderTransformer>(graph, newOptions->with("type", "transformer")));
+      res->push_back(New<DecoderTransformer>(graph, newOptions->with("type", "transformer")));
+      return res;
+    }
   }
 
   else if(type == "transformer_s2s") {
@@ -384,10 +490,10 @@ Ptr<IModel> createModelFromOptions(Ptr<Options> options, usage use) {
     else
       ABORT("'usage' parameter 'translation' cannot be applied to model type: {}", type);
   }
-  else if (use == usage::raw || use == usage::embedding)
+  else if (use == usage::raw || use == usage::embedding || use == usage::evaluating)
     return baseModel;
   else
-    ABORT("'Usage' parameter must be 'translation' or 'raw'");
+    ABORT("'Usage' parameter must be 'translation' or 'raw'"); // I am actually not sure what this is supposed to mean any more.
 }
 
 Ptr<ICriterionFunction> createCriterionFunctionFromOptions(Ptr<Options> options, usage use) {
@@ -411,6 +517,8 @@ Ptr<ICriterionFunction> createCriterionFunctionFromOptions(Ptr<Options> options,
     return New<Trainer>(baseModel, New<MNISTCrossEntropyCost>());
 #endif
 #endif
+  else if (type == "comet-qe" && std::dynamic_pointer_cast<EncoderPooler>(baseModel))
+    return New<Trainer>(baseModel, New<CometBinaryCE>(options));
   else if (std::dynamic_pointer_cast<EncoderPooler>(baseModel))
     return New<Trainer>(baseModel, New<EncoderPoolerRankCost>(options));
   else

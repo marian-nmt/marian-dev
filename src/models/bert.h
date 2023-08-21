@@ -238,6 +238,7 @@ public:
                                ("prefix", "Wtype")
                                ("dimVocab", dimTypeVocab) // sentence A or sentence B
                                ("dimEmb", dimEmb)
+                               ("inference", graph_->isInference())
                                .construct(graph_);
       signal = sentenceEmbeddings->applyIndices(bertBatch->bertSentenceIndices(), {dimWords, dimBatch, dimEmb});
     } else {

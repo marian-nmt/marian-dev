@@ -11,14 +11,19 @@ namespace marian {
 // This class manages multi-threaded writing of embedded vectors to stdout or an output file.
 // It will either output string versions of float vectors or binary equal length versions depending
 // on its binary_ flag.
+VectorCollector::VectorCollector(bool binary, size_t width)
+  : nextId_(0),
+    binary_(binary),
+    width_{width} {}
 
-VectorCollector::VectorCollector(const Ptr<Options>& options)
-    : nextId_(0), binary_{options->get<bool>("binary", false)} {
-    if(options->get<std::string>("output") == "stdout")
-      outStrm_.reset(new std::ostream(std::cout.rdbuf()));
-    else
-      outStrm_.reset(new io::OutputFileStream(options->get<std::string>("output")));
-  }
+VectorCollector::VectorCollector(std::string outFile, bool binary, size_t width)
+  : nextId_(0),
+    outStrm_(new std::ostream(std::cout.rdbuf())),
+    binary_(binary),
+    width_(width) {
+  if (outFile != "stdout")
+    outStrm_.reset(new io::OutputFileStream(outFile));
+}
 
 void VectorCollector::Write(long id, const std::vector<float>& vec) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -60,12 +65,50 @@ void VectorCollector::WriteVector(const std::vector<float>& vec) {
   if(binary_) {
     outStrm_->write((char*)vec.data(), vec.size() * sizeof(float));
   } else {
-    std::stringstream ss;
-    ss << std::fixed << std::setprecision(8);
+    *outStrm_ << std::fixed << std::setprecision(width_);
     for(auto v : vec)
       *outStrm_ << v << " ";
     *outStrm_ << std::endl;
   }
 }
+
+void AveragingVectorCollector::WriteVector(const std::vector<float>& vec) {
+  if(!onlyLast_)
+    VectorCollector::WriteVector(vec);
+  
+  if(sum_.size() < vec.size())
+    sum_.resize(vec.size());
+  for(size_t i = 0; i < vec.size(); ++i)
+    sum_[i] += vec[i];
+  count_++;
+}
+
+void AveragingVectorCollector::WriteAverage() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto avg = sum_;
+  for(auto& val : avg)
+    val /= (float)count_;
+  VectorCollector::WriteVector(avg);
+}
+
+Ptr<VectorCollector> VectorCollector::Create(Ptr<Options> options) {
+  std::string average = options->get<std::string>("average", "skip");
+  std::string output  = options->get<std::string>("output");
+  size_t width        = options->get<size_t>("width", VectorCollector::DEFAULT_WIDTH);
+
+  Ptr<VectorCollector> collector;
+  if(average == "skip")
+    collector = New<VectorCollector>(output, /*binary=*/false, width);
+  else if(average == "append")
+    collector = New<AveragingVectorCollector>(output, /*binary=*/false, width, /*onlyLast=*/false);
+  else if(average == "only")
+    collector = New<AveragingVectorCollector>(output, /*binary=*/false, width, /*onlyLast=*/true);
+  else
+    ABORT("Unknown configuration for VectorCollector");
+  
+  return collector;
+}
+
+const size_t VectorCollector::DEFAULT_WIDTH = 4;
 
 }  // namespace marian

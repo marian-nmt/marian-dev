@@ -95,10 +95,6 @@ Expr LSHShortlist::getIndicesExpr() const {
 }
 
 void LSHShortlist::filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) {
-
-  ABORT_IF(input->graph()->getDeviceId().type == DeviceType::gpu,
-           "LSH index (--output-approx-knn) currently not implemented for GPU");
-
   indicesExpr_ = callback(lsh::search(input, weights, k_, nbits_, (int)lemmaSize_, abortIfDynamic_),
                           [this](Expr node) { 
                             node->val()->get(indices_); // set the value of the field indices_ whenever the graph traverses this node

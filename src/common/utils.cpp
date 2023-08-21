@@ -440,3 +440,33 @@ double parseNumber(std::string param) {
 
 }  // namespace utils
 }  // namespace marian
+
+
+// Code for demangling gnu g++ type names, closing/re-opening namespaces to keep things local
+// This is used to determine Layer type names for display and nameing.
+#ifdef __GNUG__
+#include <cxxabi.h>
+#endif
+
+namespace marian {
+namespace utils {
+
+#ifdef __GNUG__ // gnu g++ and clang seem to do this similarly
+std::string cxxTypeNameDemangle(const char* name) {
+  int status = -4; // some arbitrary value to eliminate the compiler warning
+  // __cxa_demangle allocates a string that has to be freed, we pass the deallocation function
+  std::unique_ptr<char, void(*)(void*)> res(
+      abi::__cxa_demangle(name, NULL, NULL, &status),
+      std::free
+  );
+  return (status == 0) ? res.get() : name;
+}
+#else
+// does nothing if not g++, should be correct for MSVC
+std::string cxxTypeNameDemangle(const char* name) {
+  return name;
+}
+#endif
+
+}  // namespace utils
+}  // namespace marian

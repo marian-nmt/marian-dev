@@ -30,6 +30,17 @@ namespace YAML {                                            \
 
 namespace marian {
 
+class Options;
+
+// helper class to enable template specialization in options.cpp
+namespace options_helpers {
+  template <class T> 
+  struct Get {
+    static T apply(const Options* opt, const char* const key);
+    static T apply(const Options* opt, const char* const key, const T& defaultValue);
+  };
+}
+
 /**
  * Container for options stored as key-value pairs. Keys are unique strings.
  * This is not thread-safe and locking is the responsibility of the caller.
@@ -60,6 +71,8 @@ protected:
 
 public:
   Options();
+
+  // This creates a proper clone
   Options(const Options& other);
  
   // constructor with one or more key-value pairs
@@ -72,20 +85,34 @@ public:
   Options(const YAML::Node& node) : Options() {
      merge(node);
   }
-  
-  // constructor that clones and zero or more updates
+
+  template <typename T>
+  friend struct options_helpers::Get;
+
+  // Clones current set of options
+  Ptr<Options> clone() const;
+
+  // Clones current set of options and performs zero updates (just calls clone()).
+  Ptr<Options> with() const {
+    return clone();
+  }
+
+  // Clones current set of options and performs one or more updates
   // options->with("var1", val1, "var2", val2, ...)
-  template <typename... Args>
-  Ptr<Options> with(Args&&... args) const {
-    auto options = New<Options>(*this);
-    options->set(std::forward<Args>(args)...);
+  template <typename T, typename... Args>
+  Ptr<Options> with(const std::string& key, T value, Args&&... args) const {
+    auto options = clone();
+    options->set(key, value, std::forward<Args>(args)...);
     return options;
   }
 
-  /**
-   * @brief Return a copy of the object that can be safely modified.
-   */
-  Options clone() const;
+  // Clones current set of options and performs zero or more updates from a YAML::Node.
+  // Matching existing options get overwritten with options from the argument node.
+  Ptr<Options> with(const YAML::Node& node) const {
+    auto options = clone();
+    options->merge(node, /*overwrite=*/true);
+    return options;
+  }
 
   // Do not allow access to internal YAML object as changes on the outside are difficult to track
   // and mess with the rebuilding of the fast options lookup. Hence only return a clone which guarentees
@@ -129,14 +156,8 @@ public:
 
   template <typename T>
   T get(const char* const key) const {
-#if FASTOPT
-    lazyRebuild();
-    ABORT_IF(!has(key), "Required option '{}' has not been set", key);
-    return fastOptions_[key].as<T>();
-#else
-    ABORT_IF(!has(key), "Required option '{}' has not been set", key);
-    return options_[key].as<T>();
-#endif
+    // this way we can add type-based specialization, e.g. use options_ for YAML::Node and fastOptions_ for other types. See options.cpp
+    return options_helpers::Get<T>::apply(this, key);
   }
 
   template <typename T>
@@ -145,21 +166,13 @@ public:
   }
 
   template <typename T>
-  T get(const char* const key, T defaultValue) const {
-#if FASTOPT
-    lazyRebuild();
-    if(has(key))
-      return fastOptions_[key].as<T>();
-#else
-    if(has(key))
-      return options_[key].as<T>();
-#endif
-    else
-      return defaultValue;
+  T get(const char* const key, const T& defaultValue) const {
+    // As above, this way we can add type-based specialization, e.g. use options_ for YAML::Node and fastOptions_ for other types. See options.cpp
+    return options_helpers::Get<T>::apply(this, key, defaultValue);
   }
 
   template <typename T>
-  T get(const std::string& key, T defaultValue) const {
+  T get(const std::string& key, const T& defaultValue) const {
     return get<T>(key.c_str(), defaultValue);
   }
 

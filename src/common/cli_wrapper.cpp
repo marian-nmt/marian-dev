@@ -13,6 +13,7 @@ namespace cli {
 const std::unordered_set<std::string> DEPRECATED_OPTIONS = {
   "version",
   "special-vocab",
+  "num-devices",
 // @TODO: uncomment once we actually deprecate them.
 //  "after-batches",
 //  "after-epochs"

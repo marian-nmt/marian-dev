@@ -42,7 +42,7 @@ private:
 
 public:
   Translate(Ptr<Options> options)
-    : options_(New<Options>(options->clone())) { // @TODO: clone should return Ptr<Options> same as "with"?
+    : options_(options->clone()) {
     // This is currently safe as the translator is either created stand-alone or
     // or config is created anew from Options in the validator
 
@@ -256,7 +256,7 @@ public:
     : TranslateService(parseOptions(cliString, cli::mode::translation, /*validate=*/true)) {}
 
   TranslateService(Ptr<Options> options)
-    : options_(New<Options>(options->clone())) {
+    : options_(options->clone()) {
     // initialize vocabs
     options_->set("inference", true);
     options_->set("shuffle", "none");

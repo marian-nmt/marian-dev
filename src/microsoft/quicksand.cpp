@@ -1,5 +1,7 @@
 #include "quicksand.h"
 #include "marian.h"
+#include <unordered_map>
+#include <mutex>
 
 #if MKL_FOUND
 #include "mkl.h"
@@ -60,6 +62,8 @@ private:
 
   std::vector<Ptr<Vocab>> vocabs_;
 
+  static inline std::unordered_map<std::string, YAML::Node> configCache_;
+  static inline std::mutex configCacheMutex_;
 public:
   BeamSearchDecoder(Ptr<Options> options,
                     const std::vector<const void*>& ptrs,
@@ -87,16 +91,27 @@ public:
     for(int i = 0; i < models.size(); ++i) {
       Ptr<Options> modelOpts = New<Options>();
 
+      // serializing this YAML can be costly, so read from cache
       YAML::Node config;
-      if(io::isBin(models[i]) && ptrs_[i] != nullptr)
-        io::getYamlFromModel(config, "special:model.yml", ptrs_[i]);
-      else
-        io::getYamlFromModel(config, "special:model.yml", models[i]);
+      auto cachedConfig = getConfigFromCache(models[i]);
+      if(cachedConfig != nullptr) {
+        config = *cachedConfig;
+      } else {
+        if(io::isBin(models[i]) && ptrs_[i] != nullptr)
+          io::getYamlFromModel(config, "special:model.yml", ptrs_[i]);
+        else
+          io::getYamlFromModel(config, "special:model.yml", models[i]);
+        writeConfigToCache(config, models[i]);
+      }
 
       modelOpts->merge(options_);
       modelOpts->merge(config);
 
-      std::cerr << modelOpts->asYamlString() << std::flush; // @TODO: take a look at why this is even here.
+      // serializing this to YAML is expensive. we only want to do this once 
+      // we can use whether we loaded the cache from config as a signal 
+      if(cachedConfig == nullptr){
+        std::cerr << modelOpts->asYamlString() << std::flush;
+      }
 
       auto encdec = models::createModelFromOptions(modelOpts, models::usage::translation);
 
@@ -117,6 +132,21 @@ public:
 
     // run parameter init once, this is required for graph_->get("parameter name") to work correctly
     graph_->forward();
+  }
+
+  YAML::Node* getConfigFromCache(std::string key){
+    const std::lock_guard<std::mutex> lock(configCacheMutex_);
+    bool inCache = configCache_.find(key) != configCache_.end();
+    if (inCache) {
+      return &configCache_[key];
+    } else {
+      // return null if no cache hit
+      return nullptr;
+    }
+  }
+  void writeConfigToCache(YAML::Node config, std::string key) {
+    const std::lock_guard<std::mutex> lock(configCacheMutex_);
+    configCache_[key] = config;
   }
 
   void setWorkspace(uint8_t* data, size_t size) override { device_->set(data, size); }

@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- Added avx512 types and functional path.
+- Small optimisation on AVX and SSE instruction path.
 ### Added
 - Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.
 - Added --custom-fallbacks option that allows to specify a list of option sets that get traversed for subsequent fallbacks upon divergence

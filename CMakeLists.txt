@@ -80,6 +80,29 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
+# ARM bits
+if(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
+  # Define that we are using ARM
+  add_compile_definitions(ARM)
+  set(ARM ON)
+  option(USE_RUY "Use Ruy" ON) # For 8 bit code, later on
+  set(EXT_LIBS ${EXT_LIBS} ruy)
+
+  # Apple M1 has Apple Accelerate. Otherwise fallback to RUY
+  if(APPLE)
+    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" OFF)
+  else(APPLE)
+    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
+  endif(APPLE)
+
+  set(USE_SIMD_UTILS ON)
+
+  # Some warnings as errors. I don't feel comfortable about the strict aliasing.
+  set(ARM_WARNINGS "-fno-strict-aliasing -Wno-comment")
+
+endif(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
+
+
 ###############################################################################
 # Set compilation flags
 if(MSVC)
@@ -221,7 +244,7 @@ else(MSVC)
     # Clang-10.0.0 complains when CUDA is newer than 10.1
     set(CLANG_IGNORE_UNKNOWN_CUDA "-Wno-unknown-warning-option -Wno-unknown-cuda-version")
   endif()
-  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA}")
+  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA} ${ARM_WARNINGS}")
 
   # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS -Wall; -Werror; -Wextra; -Wno-unused-result; -Wno-deprecated;

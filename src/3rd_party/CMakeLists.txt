@@ -9,7 +9,7 @@ add_subdirectory(./faiss)
 include_directories(./faiss)
 
 if(COMPILE_CPU)
-  if((NOT ARM) AND (NOT GENERATE_MARIAN_INSTALL_TARGETS))
+  if((NOT ${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm") AND (NOT GENERATE_MARIAN_INSTALL_TARGETS))
     set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
     add_subdirectory(./intgemm)
   endif()

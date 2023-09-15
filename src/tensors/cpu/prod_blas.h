@@ -91,12 +91,7 @@ inline void GemmRuy(const bool transA,
     }
 
   } else {
-    // @jerinphilip has not yet been able to find a ruy primitive that does in
-    // place addition to obtain full gemm.
-    //
-    // Safe bet is to make an additional allocation to store the result of
-    // multiply  and use the existing values in C.
-    //
+    // No multiply-add in Ruy
     // See also: https://github.com/google/ruy/issues/307
 
     AlignedVector<float> intermediate(M * N);

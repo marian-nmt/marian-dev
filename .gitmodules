@@ -23,3 +23,6 @@
 [submodule "src/3rd_party/ruy"]
 	path = src/3rd_party/ruy
 	url = https://github.com/google/ruy.git
+[submodule "src/3rd_party/simd_utils"]
+	path = src/3rd_party/simd_utils
+	url = https://github.com/JishinMaster/simd_utils.git

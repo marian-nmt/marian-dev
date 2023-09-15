@@ -19,6 +19,10 @@
 
 using namespace faiss;
 
+#ifdef ARM
+#include "3rd_party/simd_utils/simd_utils.h"
+#endif
+
 
 extern "C" {
 

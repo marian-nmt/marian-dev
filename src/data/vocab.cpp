@@ -166,8 +166,13 @@ std::vector<WordIndex> Vocab::suppressedIndices(bool suppressUnk, bool suppressS
 // for corpus augmentation: convert string to all-caps
 std::string Vocab::toUpper(const std::string& line) const { return vImpl_->toUpper(line); }
 
+// for corpus augmentation: convert string to lower-case
+std::string Vocab::toLower(const std::string& line) const { return vImpl_->toLower(line); }
+
 // for corpus augmentation: convert string to title case
 std::string Vocab::toEnglishTitleCase(const std::string& line) const { return vImpl_->toEnglishTitleCase(line); }
+std::string Vocab::toAllTitleCase(const std::string& line) const { return vImpl_->toAllTitleCase(line); }
+
 
 // for short-list generation
 void Vocab::transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const { vImpl_->transcodeToShortlistInPlace(ptr, num); }

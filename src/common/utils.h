@@ -54,7 +54,8 @@ bool endsWith(const std::string& text, const std::string& suffix);
 std::string utf8ToUpper(const std::string& s);
 std::string utf8ToLower(const std::string& s);
 std::string utf8Capitalized(const std::string& word); // capitalize the first character only
-std::string toEnglishTitleCase(const std::string& s);
+std::string toEnglishTitleCase(const std::string& s, bool enableAllTitleCase = false);
+std::string toAllTitleCase(const std::string& s);
 
 std::u32string utf8ToUnicodeString(const std::string& s);
 std::string utf8FromUnicodeString(const std::u32string& s);

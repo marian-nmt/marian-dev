@@ -702,6 +702,11 @@ void ConfigParser::addOptionsValidation(cli::CLIWrapper& cli) {
       "Keep best model for each validation metric");
   cli.add<std::string>("--valid-log",
      "Log validation scores to file given by arg");
+
+  // general options for validation
+  cli.add<bool>("--quiet-validation",
+    "Suppress logging hyp./ref. samples during validation");
+
   cli.switchGroup(previous_group);
   // clang-format on
 }

@@ -366,6 +366,7 @@ private:
   static const size_t statsPerOrder = 3;   // 0: common ngrams, 1: candidate ngrams, 2: reference ngrams
   bool useWordIds_{ false };               // compute BLEU score by matching numeric segment ids
   bool quiet_{ false };
+  bool quiet_sample_{ false };             // do not print Hyp/Ref samples
 };
 
 // Validator that writes embeddings to a file and computes any metric specified with an external script

@@ -6,16 +6,16 @@ Implements Microsoft's MTAPI (https://docs.microsoft.com/en-us/azure/cognitive-s
 
 import sys
 import json
-import pymarian
-
-from flask import Flask, request
+import argparse
 from typing import List
 
-SOURCE_LANG = "en"
-TARGET_LANG = "de"
-
+from flask import Flask, request
 from sacremoses import MosesPunctNormalizer
 from sentence_splitter import SentenceSplitter, split_text_into_sentences
+
+import pymarian
+SOURCE_LANG = "en"
+TARGET_LANG = "de"
 
 # marian = pymarian.Translator(
 #     model="model.bin", vocabs=["enu.spm", "enu.spm"],
@@ -34,6 +34,7 @@ norm = MosesPunctNormalizer(lang="en")
 splitter = SentenceSplitter(SOURCE_LANG)
 
 class MarianServer:
+
     def __init__(self, flags=""):
         self.marian = None
         self.flags = flags
@@ -80,3 +81,7 @@ def translate():
 
     return json.dumps(response), 200
 
+
+
+if __name__ == '__main__':
+    app.run()

@@ -51,7 +51,7 @@ template <class Model>
 class Evaluate : public ModelTask {
 private:
   Ptr<Options> options_;
-  Ptr<CorpusBase> corpus_;
+
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
   std::vector<marian::io::Item> ioItems_;
@@ -60,9 +60,6 @@ public:
   Evaluate(Ptr<Options> options) : options_(options) {
     options_ = options_->with("inference", true, 
                               "shuffle", "none");
-
-    corpus_ = New<Corpus>(options_);
-    corpus_->prepare();
 
     auto devices = Config::getDevices(options_);
 
@@ -96,17 +93,25 @@ public:
   void run() override {
     LOG(info, "Evaluating");
     timer::Timer timer;
-    
-    auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus_, options_);
-    batchGenerator->prepare();
+
+    Ptr<CorpusBase> corpus_ = New<Corpus>(options_);
+    corpus_->prepare();
+    auto batchGenerator_ = New<BatchGenerator<CorpusBase>>(corpus_, options_);
+    batchGenerator_->prepare();
 
     Ptr<VectorCollector> output = VectorCollector::Create(options_);
-
+    run(batchGenerator_, output);
+    LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
+  }
+  
+  template <typename T>
+  auto run(Ptr<BatchGenerator<T>> batchGenerator_,  Ptr<VectorCollector> collector_) {
+  
     size_t batchId = 0;
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
       
-      for(auto batch : *batchGenerator) {
+      for(auto batch : *batchGenerator_) {
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local Ptr<Model> builder;
@@ -140,14 +145,13 @@ public:
               auto beg = i * numScores;
               auto end = (i + 1) * numScores;
               std::vector<float> sentVector(sentVectors.begin() + beg, sentVectors.begin() + end);
-              output->Write((long)batch->getSentenceIds()[i], sentVector);
+              collector_->Write((long)batch->getSentenceIds()[i], sentVector);
           }
         };
 
         pool.enqueue(task, batchId++);
       }
     }
-    LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
   }
 
 };

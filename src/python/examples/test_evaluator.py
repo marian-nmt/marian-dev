@@ -10,10 +10,10 @@ DEF_BATCH_SIZE = 2
 log.basicConfig(level=log.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
 
-def make_batches(s, batch_size=DEF_BATCH_SIZE):
-    it = iter(s)
+def make_batches(lines, batch_size=DEF_BATCH_SIZE):
+    iter = (line.spplit('\t') for line in lines)
     while True:
-        chunk = list(itertools.islice(it, batch_size))
+        chunk = list(itertools.islice(iter, batch_size))
         if not chunk:
             return
         yield chunk
@@ -51,14 +51,7 @@ def main():
     #cli_string += " --log-level debug"
     evaluator = Evaluator(cli_string)
     log.info(f"====Loaded evaluator=========")
-    # this test is for QE model evaluators that have two inputs
-    rows = [
-        ["Hola como estas","Hello how are you"],
-        ["Hola como estas", "Hello whats up"],
-        ["this is a test", "this is also a test"],
-        ["this is another test", "this is test2"]
-    ]
-    batches = make_batches(rows, batch_size=batch_size)
+    batches = make_batches(sys.stdin, batch_size=batch_size)
     for batch in batches:
         scores = evaluator.run(batch)
         for ex, score in zip(batch, scores):

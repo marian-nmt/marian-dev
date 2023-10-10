@@ -7,6 +7,7 @@ import time
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import * 
 
+
 class Example(QWidget):
     
     def __init__(self):
@@ -113,7 +114,10 @@ class Example(QWidget):
             for paragraph in inputLines
         ])
     
-if __name__ == '__main__':
+def main():
     app = QApplication(sys.argv)
     ex = Example()
     sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()

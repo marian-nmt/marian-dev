@@ -3,36 +3,50 @@ set -euo pipefail
 
 mydir=$(dirname $0)
 
-tools=(marian sacrebleu)
-for tool in ${tools[@]}; do
-  which $tool >&2 || { echo "$tool not found"; exit 1; }
-done
-
 
 tmpdir=$mydir/tmp.testdata
 mkdir -p $tmpdir
 
-log(){ echo "$@" >&2; }
+# CPU only
+MARIAN_ARGS="--cpu-threads 12"
+n_recs=5
 
-for langs in en-de en-ru; do
+# IF GPU is available
+MARIAN_ARGS="--devices 0 1 2 3"
+n_recs=20
+
+log(){ echo "$@" >&2; }
+BACKENDS=()
+
+pip list | grep pymarian >& /dev/null && { log "pymarian found"; BACKENDS+=(pymarian); } || { log "pymarian not found"; }
+which marian >&2 && { log "marian CLI bin found"; BACKENDS+=(subprocess); } || { log "marian CLI bin not found"; }
+[[ ${#BACKENDS[@]} -eq 0 ]] && { log "No Marian backend found"; exit 1; }
+
+
+LANGS=(en-de en-ru)
+for langs in ${LANGS[@]}; do
    prefix=$tmpdir/$langs
    teset=wmt21/systems
    sysname=Online-B
    [[ -s $prefix.src ]] || sacrebleu -t $teset -l $langs --echo src > $prefix.src
    [[ -s $prefix.ref ]] || sacrebleu -t $teset -l $langs --echo ref > $prefix.ref
    [[ -s $prefix.mt ]] || sacrebleu -t $teset -l $langs --echo $sysname > $prefix.mt
+done
 
-   n_recs=5
+
+for langs in ${LANGS[@]}; do
    model="cometoid22-wmt22"
-   n_threads=12
-   paste $prefix.{src,mt} | head -$n_recs | $mydir/evaluator.py -m $model --stdin --cpu-threads $n_threads --backend pymarian || log "pymarian $model exited with code $?"
-   paste $prefix.{src,mt} | head -$n_recs | $mydir/evaluator.py -m $model --stdin --cpu-threads $n_threads --backend subprocess || log "subprocess $model exited with code $?"
-   
+   for backed in ${BACKENDS[@]}; do
+      paste $prefix.{src,mt} | head -$n_recs | python -m pymarian.evaluate -m $model --stdin $MARIAN_ARGS --backend $backed || log "$backed $model exited with code $?"
+   done
+
    model="comet20-da"
-   paste $prefix.{src,mt,ref} | head -$n_recs | $mydir/evaluator.py -m $model --stdin --cpu-threads $n_threads --backend pymarian || log "pymarian $model exited with code $?"
-   paste $prefix.{src,mt,ref} | head -$n_recs | $mydir/evaluator.py -m $model --stdin --cpu-threads $n_threads --backend subprocess || log "subprocess $model exited with code $?"
+   for backed in ${BACKENDS[@]}; do
+      paste $prefix.{src,mt,ref} | head -$n_recs | python -m pymarian.evaluate -m $model --stdin $MARIAN_ARGS --backend $backed || log "$backed $model exited with code $?"
+   done
 
    model="bleurt20"
-   paste $prefix.{ref,mt}  | head -$n_recs | $mydir/evaluator.py -m $model --stdin --cpu-threads $n_threads --backend pymarian || log "pymarian $model exited with code $?"
-   paste $prefix.{ref,mt} | head -$n_recs | $mydir/evaluator.py -m $model --stdin --cpu-threads $n_threads --backend subprocess || log "subprocess $model exited with code $?"
+   for backed in ${BACKENDS[@]}; do
+      paste $prefix.{ref,mt} | head -$n_recs | python -m pymarian.evaluate -m $model --stdin $MARIAN_ARGS --backend $backed || log "$backed $model exited with code $?"
+   done
 done

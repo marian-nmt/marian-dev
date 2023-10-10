@@ -291,6 +291,11 @@ if(SKBUILD)
   # Scikit-Build does not add your site-packages to the search path
   # automatically, so we need to add it _or_ the pybind11 specific directory
   # here.
+  
+  if(NOT PYTHON_EXECUTABLE)
+    set(PYTHON_EXECUTABLE python)   # default to python in the environment
+  endif()
+
   execute_process(
     COMMAND "${PYTHON_EXECUTABLE}" -c
             "import pybind11; print(pybind11.get_cmake_dir())"
@@ -301,10 +306,10 @@ if(SKBUILD)
   # Now we can find pybind11
   find_package(pybind11 CONFIG REQUIRED)
 
-  pybind11_add_module(pymarian MODULE python/pymarian/bind.cpp)
-  target_link_libraries(pymarian PUBLIC marian)
+  pybind11_add_module(_pymarian MODULE python/binding/bind.cpp)
+  target_link_libraries(_pymarian PUBLIC marian)
   if(CUDA_FOUND)
-    target_link_libraries(pymarian PUBLIC marian_cuda)
+    target_link_libraries(_pymarian PUBLIC marian_cuda)
   endif(CUDA_FOUND)
-  install(TARGETS pymarian DESTINATION .)
+  install(TARGETS _pymarian DESTINATION .)
 endif(SKBUILD)

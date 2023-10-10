@@ -13,80 +13,12 @@ import itertools
 from typing import Iterator, Optional, List, Union, Tuple
 import shutil
 
-import requests
-from tqdm.auto import tqdm
+
+from .constants import Defaults as D
+from .utils import get_known_model
 
 log.basicConfig(level=log.INFO)
 DEBUG_MODE=False
-
-BASE_URL="https://textmt.blob.core.windows.net/www/models/mt-metric"
-CACHE_PATH = Path.home() / '.cache' / 'marian' / 'metrics'
-DEF_MINI_BATCH = 16
-DEF_MAXI_BATCH = 100
-DEF_WORKSPACE = 8000
-DEF_MAX_LENGTH = 512
-
-# NOTE: model names must be lower case for caseless matching
-KNOWN_METRICS = {
-    'cometoid22-wmt21': "comet-qe",
-    'cometoid22-wmt22': "comet-qe",
-    'cometoid22-wmt23': "comet-qe",
-    'chrfoid-wmt23': "comet-qe",
-    'comet20-da-qe':  "comet-qe",
-    'bleurt20': "bleurt",
-    'comet20-da': "comet",
-    }
-
-KNOWN_SCHEMA = {
-    'comet-qe': 'src+mt',
-    'bleurt': 'ref+mt',
-    'comet': 'src+mt+ref'
-}
-DEF_MODEL = 'cometoid22-wmt22'
-DEF_SCHEMA = KNOWN_METRICS[DEF_MODEL]
-
-
-def get_known_model(model_name):
-    assert model_name in KNOWN_METRICS, f'Unknown model {model_name}'
-
-    model_url = f'{BASE_URL}/{model_name}.tgz'
-    local_file = CACHE_PATH / f'{model_name}.tgz'
-    local_dir = CACHE_PATH / model_name
-    maybe_download_file(model_url, local_file)
-    maybe_extract(local_file, local_dir)
-    checkpt_file = list(local_dir.glob('model.*.npz'))
-    vocab_file = list(local_dir.glob('vocab*.spm'))
-    assert len(checkpt_file) == 1, f'Expected exactly one model file in {local_dir}'
-    assert len(vocab_file) == 1, f'Expected exactly one vocab file in {local_dir}'
-    checkpt_file = checkpt_file[0]
-    vocab_file = vocab_file[0]
-    return checkpt_file, vocab_file
-
-def maybe_download_file(url, local_file: Path):
-    flag_file = local_file.with_name(local_file.name + '._OK')
-    if local_file.exists() and flag_file.exists():
-        log.info(f'Using cached file {local_file}')
-        return
-    log.info(f'Downloading {url} to {local_file}')
-    local_file.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()
-        file_size = int(r.headers.get('Content-Length', 0))
-        with tqdm.wrapattr(r.raw, "read", total=file_size, desc='Downloading', dynamic_ncols=True) as r_raw:
-            with open(local_file, "wb") as f:
-                shutil.copyfileobj(r_raw, f)
-    flag_file.touch()
-
-def maybe_extract(archive: Path, outdir: Path):
-    assert archive.exists(), f'{archive} does not exist'
-    flag_file = outdir / '._EXTRACT_OK'
-    if not outdir.exists() or not flag_file.exists():
-        shutil.rmtree(outdir, ignore_errors=True)
-        log.info(f'Extracting {archive} to {outdir}')
-        # assumption: root dir in tar matches model name
-        shutil.unpack_archive(archive, outdir.parent)
-        flag_file.touch()
-    return outdir
 
 
 def copy_lines_to_stdin(proc, lines: Iterator[str]):
@@ -104,8 +36,10 @@ def copy_lines_to_stdin(proc, lines: Iterator[str]):
 
 def marian_evaluate(model: Path, input_lines: Iterator[str],
                 vocab_file:Path=None, devices:Optional[List[int]]=None,
-                width=4, mini_batch=DEF_MINI_BATCH, like=DEF_SCHEMA, maxi_batch=DEF_MAXI_BATCH, workspace=DEF_WORKSPACE,
-                max_length=DEF_MAX_LENGTH, cpu_threads=0, average:str='skip', backend='subprocess') -> Iterator[Union[float, Tuple[float, float]]]:
+                width=D.FLOAT_PRECISION, mini_batch=D.MINI_BATCH, like=D.DEF_SCHEMA,
+                maxi_batch=D.MAXI_BATCH, workspace=D.WORKSPACE,
+                max_length=D.MAX_LENGTH, cpu_threads=0, average:str='skip', backend='subprocess'
+                ) -> Iterator[Union[float, Tuple[float, float]]]:
     """Run marian evaluate, write input and and read scores
     Depending on the `model` argument, either a single score or a tuple of scores is returned per input line.
     :param model: path to model file, or directory containing model.npz.best-embed.npz
@@ -141,7 +75,7 @@ def marian_evaluate(model: Path, input_lines: Iterator[str],
     assert model_file.exists(), f'{model_file} does not exist'
     assert vocab_file.exists(), f'{vocab_file} does not exist'
 
-    n_inputs = len(KNOWN_SCHEMA[like].split('+'))
+    n_inputs = len(D.KNOWN_SCHEMA[like].split('+'))
     vocabs = [vocab_file] * n_inputs
     kwargs = dict(
         model=model_file,
@@ -190,12 +124,13 @@ def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str]):
     except:
         raise ImportError('pymarian is not installed. Please install it and rerun')
 
+    log.info(f'Marian CLI::\n\t{cmd_line}')
     evaluator = Evaluator(cmd_line)
     
     lines = (line.rstrip('\n').split('\t') for line in input_lines)
     # NOTE: pymarian doesnt support iterator input yet; so mini batching here
     # TODO: support iterator input
-    def make_mini_batches(lines, batch_size=DEF_MINI_BATCH):
+    def make_mini_batches(lines, batch_size=D.MINI_BATCH):
         assert batch_size > 0
         while True:
             chunk = list(itertools.islice(lines, batch_size))
@@ -248,8 +183,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('-m', '--model', help=f'Model name, or path. Known models={list(KNOWN_METRICS.keys())}',
-                        default=DEF_MODEL, type=str)
+    parser.add_argument('-m', '--model', help=f'Model name, or path. Known models={list(D.KNOWN_METRICS.keys())}',
+                        default=D.DEF_MODEL, type=str)
 
     parser.add_argument('--stdin', action='store_true',
                         help='Read input from stdin. TSV file with following format: \
@@ -270,7 +205,7 @@ def parse_args():
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-d', '--devices', nargs='*', type=int,
                        help='GPU device IDs')
-    group.add_argument('-c', '--cpu-threads', default=2,
+    group.add_argument('-c', '--cpu-threads', default=None, type=int,
                        help='Use CPU threads. 0=use gpu device 0')
     parser.add_argument('-ws', '--workspace', default=8000, help='Workspace memory', type=int)
     parser.add_argument('--backend', default='pymarian', choices=['subprocess', 'pymarian'], 
@@ -281,8 +216,8 @@ def parse_args():
 
 
 def read_input(args, model_id, schema=None):
-    model_schema = KNOWN_METRICS.get(model_id, schema or DEF_SCHEMA)
-    input_schema = KNOWN_SCHEMA[model_schema]
+    model_schema = D.KNOWN_METRICS.get(model_id, schema or D.DEF_SCHEMA)
+    input_schema = D.KNOWN_SCHEMA[model_schema]
     n_inputs = len(input_schema.split('+'))
     if args.pop('stdin'):
         del args['mt_file']
@@ -329,20 +264,20 @@ def main(**args):
         log.debug(args)
 
     model_id = args.pop('model')
-    if model_id.lower() in KNOWN_METRICS:
+    if model_id.lower() in D.KNOWN_METRICS:
         model_path, vocab = get_known_model(model_id.lower())
         log.info(f'{model_id} --> {model_path}')
     else:
         model_path, vocab = Path(model_id), None
-    assert model_path.exists(), f'{model_path} does not exist. Known models are {list(KNOWN_METRICS.keys())}'
+    assert model_path.exists(), f'{model_path} does not exist. Known models are {list(D.KNOWN_METRICS.keys())}'
     args['model'] = model_path
     args['vocab_file'] = vocab
 
 
     args['input_lines'] = read_input(args, model_id=model_id)
-    args['like'] = KNOWN_METRICS.get(model_id, DEF_SCHEMA)
+    args['like'] = D.KNOWN_METRICS.get(model_id, D.DEF_SCHEMA)
     out = args.pop('out')
-    width = args.pop('width', 4)
+    width = args.pop('width', D.FLOAT_PRECISION)
     scores = marian_evaluate(**args)
     for i, score in enumerate(scores, start=1):
         if isinstance(score, (tuple, list)):

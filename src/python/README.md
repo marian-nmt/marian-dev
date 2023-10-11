@@ -110,8 +110,14 @@ options:
   --backend {subprocess,pymarian}
                         Marian backend interface. subprocess looks for marian binary in PATH. pymarian is a pybind wrapper (default:
                         pymarian)
-
 ```
+
+**Performance Tuning Tips**:
+* For CPU parallelization, `--cpu-threads <n>`
+* For GPU parallelization, assuming pymarian was compiled with cuda support, e.g., `--devices 0 1 2 3` to use the specified 4 gpu devices.
+* When OOM error: adjust `--mini-batch` argument
+* To see full logs from marian, set `--debug`
+
 
 *Example Usage*
 ```bash
@@ -124,7 +130,20 @@ sacrebleu -t $teset -l $langs --echo src > $prefix.src
 sacrebleu -t $teset -l $langs --echo ref > $prefix.ref
 sacrebleu -t $teset -l $langs --echo $sysname > $prefix.mt
 
-# test
+# chrfoid
+paste $prefix.{src,mt} | head | pymarian-evaluate --stdin -m chrfoid-wmt23 
+
+# cometoid22-wmt{21,22,23}
+paste $prefix.{src,mt} | head | pymarian-evaluate --stdin -m cometoid22-wmt22
+
+# bleurt20
+paste $prefix.{ref,mt} | head | pymarian-evaluate --stdin  -m bleurt20 --debug
+
+# FIXME: comet20-da-qe and comet20-da appear to be broken 
+# comet20-da-qe
+paste $prefix.{src,mt} | head | pymarian-evaluate --stdin -m comet20-da-qe
+# comet20-da
+paste $prefix.{src,mt,ref} | pymarian-evaluate  -m comet20-da 
 
 ```
 
@@ -154,15 +173,19 @@ pymnarian-qt
 ```
 
 ---
-## Developer 
+
+## Developer: Build and Release Package 
 
 
 ```bash
 # run this from root of project i.e., dir having pyproject.toml
 
 # build a package
-CMAKE_ARGS="..."
-pip wheel -v .
+CMAKE_ARGS="..."  # add your cmake flags here
+pip wheel -v . -w dist 
+
+# 
+twine upload dist/*
 ```
 
 

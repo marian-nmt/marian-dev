@@ -49,14 +49,12 @@ cmake.minimum-version = "3.15"
 # config or envvar will override toml. See also ``cmake.define``.
 cmake.args = [
     "-DSKBUILD=ON",
-    "-DBUILD_ARCH=x86-64",
     "-DUSE_STATIC_LIBS=ON",
     "-DUSE_NCCL=OFF",
-    "-DCOMPILE_AVX2=ON",
-    "-DUSE_FBGEMM=ON",
+    "-DCOMPILE_CUDA=OFF",
+    "-DUSE_FBGEMM=OFF",
     "-DUSE_TCMALLOC=OFF",
     "-DUSE_SENTENCEPIECE=ON",
-    "-DCOMPILE_LIBRARY_ONLY=ON",
     "-DGENERATE_MARIAN_INSTALL_TARGETS=OFF",
 ]
 

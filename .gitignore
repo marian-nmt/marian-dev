@@ -48,6 +48,8 @@ pingme.txt
 # CMake files
 build
 build-*
+# pymarian wheels
+dist/
 
 # Examples
 examples/*/*.gz

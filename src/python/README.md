@@ -35,6 +35,7 @@ CMAKE_ARGS="-DCMAKE_C_COMPILER=gcc-9 -DCMAKE_CXX_COMPILER=g++-9 -DCOMPILE_CUDA=O
 ## Python API
 
 Python API is designed to take same argument as marian CLI string.
+> NOTE: these APIs are experimental only and not finalized. see `mtapi_server.py` for an example use of Translator API 
 
 **Translator**
 ```python
@@ -45,7 +46,7 @@ cli_string = "..."
 translator = Translator(cli_string)
 
 sources = ["sent1" , "sent2" ]
-result = translator.run(sources)
+result = translator.translate(sources)
 print(result)
 ```
 

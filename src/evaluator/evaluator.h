@@ -94,24 +94,24 @@ public:
     LOG(info, "Evaluating");
     timer::Timer timer;
 
-    Ptr<CorpusBase> corpus_ = New<Corpus>(options_);
-    corpus_->prepare();
-    auto batchGenerator_ = New<BatchGenerator<CorpusBase>>(corpus_, options_);
-    batchGenerator_->prepare();
+    Ptr<CorpusBase> corpus = New<Corpus>(options_);
+    corpus->prepare();
+    auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus, options_);
+    batchGenerator->prepare();
 
     Ptr<VectorCollector> output = VectorCollector::Create(options_);
-    run(batchGenerator_, output);
+    run(batchGenerator, output);
     LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
   }
   
   template <typename T>
-  auto run(Ptr<BatchGenerator<T>> batchGenerator_,  Ptr<VectorCollector> collector_) {
+  auto run(Ptr<BatchGenerator<T>> batchGenerator,  Ptr<VectorCollector> collector) {
   
     size_t batchId = 0;
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
       
-      for(auto batch : *batchGenerator_) {
+      for(auto batch : *batchGenerator) {
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
           thread_local Ptr<Model> builder;
@@ -145,7 +145,7 @@ public:
               auto beg = i * numScores;
               auto end = (i + 1) * numScores;
               std::vector<float> sentVector(sentVectors.begin() + beg, sentVectors.begin() + end);
-              collector_->Write((long)batch->getSentenceIds()[i], sentVector);
+              collector->Write((long)batch->getSentenceIds()[i], sentVector);
           }
         };
 

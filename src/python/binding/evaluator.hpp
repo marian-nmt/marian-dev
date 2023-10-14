@@ -70,16 +70,16 @@ namespace pymarian {
       TODO: support for iterator of rows
       */
       StrVector columnFiles = concatColumns(inputs);
-      auto corpus_ = New<data::TextInput>(columnFiles, vocabs_, options_);
-      corpus_->prepare();
+      auto corpus = New<data::TextInput>(columnFiles, vocabs_, options_);
+      corpus->prepare();
 
-      auto batchGenerator_ = New<BatchGenerator<data::TextInput>>(corpus_, options_, nullptr, /*runAsync=*/false);
-      batchGenerator_->prepare();
+      auto batchGenerator = New<BatchGenerator<data::TextInput>>(corpus, options_, nullptr, /*runAsync=*/false);
+      batchGenerator->prepare();
 
       std::string output = options_->get<std::string>("output");
-      Ptr<BufferedVectorCollector> collector_ = New<BufferedVectorCollector>(output, /*binary=*/false);
-      evaluator_->run(batchGenerator_, collector_);
-      FloatVectors outputs = collector_->getBuffer();
+      Ptr<BufferedVectorCollector> collector = New<BufferedVectorCollector>(output, /*binary=*/false);
+      evaluator_->run(batchGenerator, collector);
+      FloatVectors outputs = collector->getBuffer();
       return outputs;
     }
 

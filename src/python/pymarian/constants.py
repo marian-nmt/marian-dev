@@ -6,7 +6,7 @@ class Defaults:
     BASE_URL="https://textmt.blob.core.windows.net/www/models/mt-metric"
     CACHE_PATH = Path.home() / '.cache' / 'marian' / 'metrics'
     MINI_BATCH = 16
-    MAXI_BATCH = 100
+    MAXI_BATCH = 256
     WORKSPACE = 8000
     MAX_LENGTH = 512
     FLOAT_PRECISION = 4

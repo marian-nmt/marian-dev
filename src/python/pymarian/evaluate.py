@@ -112,13 +112,15 @@ def marian_evaluate(model: Path, input_lines: Iterator[str],
         return subprocess_evaluate(cmd_line, input_lines)
     elif backend == 'pymarian':
         cmd_line = ' '.join(cmd_line)
-        return pymarian_evaluate(cmd_line, input_lines)
+        batch_size = mini_batch * maxi_batch
+        return pymarian_evaluate(cmd_line, input_lines, batch_size=batch_size)
     else:
         raise ValueError(f'Unknown backend {backend}')
 
     
 
-def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str]):
+def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str], 
+                      batch_size=int(D.MINI_BATCH * D.MAXI_BATCH)):
     try:
         from pymarian import Evaluator
     except:
@@ -130,7 +132,7 @@ def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str]):
     lines = (line.rstrip('\n').split('\t') for line in input_lines)
     # NOTE: pymarian doesnt support iterator input yet; so mini batching here
     # TODO: support iterator input
-    def make_mini_batches(lines, batch_size=D.MINI_BATCH):
+    def make_mini_batches(lines, batch_size=batch_size):
         assert batch_size > 0
         while True:
             chunk = list(itertools.islice(lines, batch_size))

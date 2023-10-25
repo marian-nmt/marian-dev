@@ -7,21 +7,6 @@ endif ()
 
 project(marian CXX C)
 
-######### ARCH DETECTION #########
-# Architecture detection
-include(TargetArch)
-
-target_architecture(CMAKE_TARGET_ARCHITECTURES)
-list(LENGTH CMAKE_TARGET_ARCHITECTURES cmake_target_arch_len)
-if(NOT "${cmake_target_arch_len}" STREQUAL "1")
-    set(CMAKE_TARGET_ARCHITECTURE_UNIVERSAL TRUE)
-    set(CMAKE_TARGET_ARCHITECTURE_CODE "universal")
-else()
-    set(CMAKE_TARGET_ARCHITECTURE_UNIVERSAL FALSE)
-    set(CMAKE_TARGET_ARCHITECTURE_CODE "${CMAKE_TARGET_ARCHITECTURES}")
-endif()
-######### ARCH DETECTION #########
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
@@ -96,37 +81,42 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-# ARM bits
-if(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
-  # Define that we are using ARM
-  add_compile_definitions(ARM)
+# iOS support
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" )
   set(ARM ON)
-  option(USE_RUY "Use Ruy" ON) # For 8 bit code, later on
-  set(EXT_LIBS ${EXT_LIBS} ruy)
+  # need to ignore this warning for Xcode to be happy
+  list(APPEND ALL_WARNINGS -Wno-shorten-64-to-32;)
+endif()
 
-  # Apple M1 has Apple Accelerate. Otherwise fallback to RUY
+# ARM support
+if(ARM)
+  # Apple by default has Apple Accelerate. Otherwise fallback to RUY for GEMM
   if(APPLE)
+    message(STATUS "Using Apple Accelerate SGEMM")
     option(USE_RUY_SGEMM "Compile with Ruy SGEMM" OFF)
   else(APPLE)
+    message(STATUS "Using Ruy SGEMM")
+    set(EXT_LIBS ${EXT_LIBS} ruy)
     option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
   endif(APPLE)
 
+  # Define that we are using ARM
+  add_compile_definitions(ARM FMA SSE)
   set(USE_SIMD_UTILS ON)
 
   # Some warnings as errors. I don't feel comfortable about the strict aliasing.
   set(ARM_WARNINGS "-fno-strict-aliasing -Wno-comment")
 
-  set(USE_SIMD_UTILS ON)
   # @TODO this assumes ArmV8. We should also look at armv7
-  add_compile_definitions(ARM FMA SSE) #added for ARM
   if(MSVC)
     add_compile_options(/flax-vector-conversions)
   else(MSVC)
     add_compile_options(-flax-vector-conversions)
   endif(MSVC)
+endif(ARM)
 
-endif(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
-
+#if(SDK_NAME EQUAL "iphoneos" OR SDK_NAME EQUAL "iphonesimulator")
+#endif(SDK_NAME)
 
 ###############################################################################
 # Set compilation flags
@@ -187,13 +177,16 @@ else(MSVC)
   set(INTRINSICS "")
   list(APPEND INTRINSICS_NVCC)
 
-  option(COMPILE_SSE2   "Compile CPU code with SSE2 support"   ON)
-  option(COMPILE_SSE3   "Compile CPU code with SSE3 support"   ON)
-  option(COMPILE_SSE4_1 "Compile CPU code with SSE4.1 support" ON)
-  option(COMPILE_SSE4_2 "Compile CPU code with SSE4.2 support" ON)
-  option(COMPILE_AVX    "Compile CPU code with AVX support"    ON)
-  option(COMPILE_AVX2   "Compile CPU code with AVX2 support"   ON)
-  option(COMPILE_AVX512 "Compile CPU code with AVX512 support" ON)
+  if(NOT ARM)
+    # none of these options are available on ARM
+    option(COMPILE_SSE2   "Compile CPU code with SSE2 support"   ON)
+    option(COMPILE_SSE3   "Compile CPU code with SSE3 support"   ON)
+    option(COMPILE_SSE4_1 "Compile CPU code with SSE4.1 support" ON)
+    option(COMPILE_SSE4_2 "Compile CPU code with SSE4.2 support" ON)
+    option(COMPILE_AVX    "Compile CPU code with AVX support"    ON)
+    option(COMPILE_AVX2   "Compile CPU code with AVX2 support"   ON)
+    option(COMPILE_AVX512 "Compile CPU code with AVX512 support" ON)
+  endif(NOT ARM)
 
   if(BUILD_ARCH STREQUAL "native")
     message(STATUS "Building with -march=native and intrinsics will be chosen automatically by the compiler to match the current machine.")

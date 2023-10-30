@@ -3,9 +3,12 @@
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/text_input.h"
+#include "data/text_input2.hpp"
 #include "evaluator/evaluator.h"
 #include "common/timer.h"
 #include "common/logging.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 
 using namespace marian;
@@ -18,6 +21,46 @@ namespace pymarian {
   using FloatVector = std::vector<float>;
   using FloatVectors = std::vector<FloatVector>;
   using Evaluator = marian::Evaluate<marian::Evaluator>;
+  namespace py = pybind11;
+
+
+  class PyIterator: public data::TextIterator2 {
+    private:
+    py::iterator iter_;
+
+    public:
+    PyIterator(py::iterator pyIter, data::RowEncoder encoder): data::TextIterator2(encoder), iter_(pyIter) {
+      ended_ = false;
+      increment();
+    }
+
+    PyIterator(): data::TextIterator2(), iter_(py::iterator::sentinel()) {
+      ended_ = true;
+    }
+
+    // destructor
+    ~PyIterator() {}
+
+    void increment(){
+      if (iter_ != py::iterator::sentinel()) {
+        auto next_row = iter_->cast<std::vector<std::string>>();
+        next_ = encoder_(next_row, ++pos_);
+        ++iter_;
+      } else {
+        ended_ = true;
+      }
+    }
+  };
+
+
+  class PyIteratorInput: public data::TextInput2<PyIterator> {
+    public:
+    using data::TextInput2<PyIterator>::TextInput2;
+    PyIteratorInput(py::iterator iterator, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
+    : TextInput2(New<PyIterator>(iterator, [&](StrVector row, long long int id) -> data::SentenceTuple { return this->encode(row, id);}), vocabs, options)
+    {}
+
+  };
 
   class EvaluatorPyWrapper {
     
@@ -87,5 +130,21 @@ namespace pymarian {
       StrVectors inputs = { input };
       return run(inputs)[0];
     }
+
+    auto run_iter(py::iterator pyIter) -> FloatVectors {
+      auto corpus = New<PyIteratorInput>(pyIter, vocabs_, options_);
+      corpus->prepare();
+
+      auto batchGenerator = New<BatchGenerator<PyIteratorInput>>(corpus, options_, nullptr, /*runAsync=*/false);
+      batchGenerator->prepare();
+
+      std::string output = options_->get<std::string>("output");
+      Ptr<BufferedVectorCollector> collector = New<BufferedVectorCollector>(output, /*binary=*/false);
+      evaluator_->run(batchGenerator, collector);
+      FloatVectors outputs = collector->getBuffer();
+      return outputs;
+    }
   };
+
+
 }

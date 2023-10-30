@@ -1,6 +1,7 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
-
+// if your IDE/vscode complains about missing paths 
+// pybind11 can be found by "python -m pybind11 --includes"; you may need to add both pybind11 and Python.h
 #include "translator.hpp"
 #include "evaluator.hpp"
 
@@ -21,6 +22,9 @@ PYBIND11_MODULE(_pymarian, m) {
     py::class_<EvaluatorPyWrapper>(m, "Evaluator")
         .def(py::init<std::string>())
         //.def("run", py::overload_cast<const StrVector&>(&EvaluatorPyWrapper::run))
-        .def("run", py::overload_cast<const StrVectors&>(&EvaluatorPyWrapper::run));
+        .def("run", py::overload_cast<const StrVectors&>(&EvaluatorPyWrapper::run))
+        .def("run_iter", py::overload_cast<py::iterator>(&EvaluatorPyWrapper::run_iter))
+        ;
+
 }
 

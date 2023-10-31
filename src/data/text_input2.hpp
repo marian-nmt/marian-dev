@@ -37,7 +37,9 @@ namespace marian::data {
       return next_;
     };
 
-    virtual void increment() override const = 0;
+    virtual void increment() override{
+      throw std::runtime_error("increment() not implemented");
+    };
 
   };
 

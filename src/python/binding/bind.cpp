@@ -4,6 +4,9 @@
 // pybind11 can be found by "python -m pybind11 --includes"; you may need to add both pybind11 and Python.h
 #include "translator.hpp"
 #include "evaluator.hpp"
+#include "trainer.hpp"
+#include "embedder.hpp"
+
 
 #define PYBIND11_DETAILED_ERROR_MESSAGES
 
@@ -21,9 +24,18 @@ PYBIND11_MODULE(_pymarian, m) {
 
     py::class_<EvaluatorPyWrapper>(m, "Evaluator")
         .def(py::init<std::string>())
-        //.def("run", py::overload_cast<const StrVector&>(&EvaluatorPyWrapper::run))
         .def("run", py::overload_cast<const StrVectors&>(&EvaluatorPyWrapper::run))
         .def("run_iter", py::overload_cast<py::iterator>(&EvaluatorPyWrapper::run_iter))
+        ;
+
+    py::class_<PyTrainer>(m, "Trainer")
+        .def(py::init<std::string>())
+        .def("train", py::overload_cast<>(&PyTrainer::train))
+        ;
+
+      py::class_<PyEmbedder>(m, "Embedder")
+        .def(py::init<std::string>())
+        .def("embed", py::overload_cast<>(&PyEmbedder::embed))
         ;
 
 }

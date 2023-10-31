@@ -122,7 +122,8 @@ wheel.packages = ["src/python/pymarian"]
 # / Limited API (only on CPython and if the version is sufficient, otherwise
 # this has no effect). Or you can set it to "py3" or "py2.py3" to ignore Python
 # ABI compatibility. The ABI tag is inferred from this tag.
-wheel.py-api = "cp37"
+#wheel.py-api = "cp37"
+wheel.py-api = "py3"
 
 # Fill out extra tags that are not required. This adds "x86_64" and "arm64" to
 # the list of platforms when "universal2" is used, which helps older Pip's

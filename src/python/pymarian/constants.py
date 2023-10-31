@@ -8,6 +8,7 @@ class Defaults:
     MINI_BATCH = 16
     MAXI_BATCH = 256
     WORKSPACE = 8000
+    AVERAGE = 'skip'
     MAX_LENGTH = 512
     FLOAT_PRECISION = 4
 

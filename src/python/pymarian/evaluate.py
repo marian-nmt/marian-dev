@@ -38,7 +38,7 @@ def marian_evaluate(model: Path, input_lines: Iterator[str],
                 vocab_file:Path=None, devices:Optional[List[int]]=None,
                 width=D.FLOAT_PRECISION, mini_batch=D.MINI_BATCH, like=D.DEF_SCHEMA,
                 maxi_batch=D.MAXI_BATCH, workspace=D.WORKSPACE,
-                max_length=D.MAX_LENGTH, cpu_threads=0, average:str='skip', backend='subprocess'
+                max_length=D.MAX_LENGTH, cpu_threads=0, average:str=D.AVERAGE, backend='subprocess'
                 ) -> Iterator[Union[float, Tuple[float, float]]]:
     """Run marian evaluate, write input and and read scores
     Depending on the `model` argument, either a single score or a tuple of scores is returned per input line.
@@ -89,8 +89,12 @@ def marian_evaluate(model: Path, input_lines: Iterator[str],
         max_length_crop=True,
         workspace=workspace,    # negative memory => relative to total memory
         cpu_threads=cpu_threads,
-        average=average
+        average = average
     )
+    if backend == 'pymarian':
+        # handled separately for pymarian due to minibatching and iterator input
+        # TODO: remove this when iterator is supported in c++
+        kwargs['average'] = 'skip'
 
     cmd_line = []
     for key, val in kwargs.items():
@@ -113,13 +117,12 @@ def marian_evaluate(model: Path, input_lines: Iterator[str],
     elif backend == 'pymarian':
         cmd_line = ' '.join(cmd_line)
         batch_size = mini_batch * maxi_batch
-        return pymarian_evaluate(cmd_line, input_lines, batch_size=batch_size)
+        return pymarian_evaluate(cmd_line, input_lines, batch_size=batch_size, average=average)
     else:
         raise ValueError(f'Unknown backend {backend}')
 
-    
 
-def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str], 
+def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str], average=D.AVERAGE,
                       batch_size=int(D.MINI_BATCH * D.MAXI_BATCH)):
     try:
         from pymarian import Evaluator
@@ -128,7 +131,7 @@ def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str],
 
     log.info(f'Marian CLI::\n\t{cmd_line}')
     evaluator = Evaluator(cmd_line)
-    
+    assert average in ('skip', 'append', 'only')
     lines = (line.rstrip('\n').split('\t') for line in input_lines)
     # NOTE: pymarian doesnt support iterator input yet; so mini batching here
     # TODO: support iterator input
@@ -139,11 +142,21 @@ def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str],
             if not chunk:
                 return
             yield chunk
+
+    total, count = 0.0, 0        
     for batch in make_mini_batches(lines):
         scores = evaluator.run(batch)
         assert len(scores) == len(batch)
         for score in scores:
-            yield score
+            if isinstance(score, (tuple, list)):
+                score = score[0]
+            total += score
+            count += 1
+            if average != 'only':   # skip or append
+                yield score
+
+    if average != 'skip':
+        yield total / count
 
 
 def subprocess_evaluate(cmd_line: List[str], input_lines: Iterator[str]):

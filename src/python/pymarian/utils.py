@@ -18,7 +18,6 @@ log.basicConfig(level=log.INFO)
 DEBUG_MODE=False
 
 
-
 def get_known_model(model_name):
     """Given a known model name, gets the model and vocab paths. This function downloads and extracts files if necessary.
     :param model_name: model name
@@ -74,3 +73,25 @@ def maybe_extract(archive: Path, outdir: Path) -> Path:
         flag_file.touch()
     return outdir
 
+
+def kwargs_to_cli(**kwargs) -> str:
+    """Converts kwargs to cli args
+    :param kwargs: kwargs
+    :return: cli args
+    """
+    args = []
+    for k, v in kwargs.items():
+        if v is None: 
+            continue # ignore keys if values are None
+        k = k.replace('_', '-')
+        args.append(f'--{k}')
+        if v is '':
+            continue  # only add keys for empty values
+        elif isinstance(v, bool):
+            args.append("true" if v else "false")
+        elif isinstance(v, (list, tuple)):
+            args.extend(str(x) for x in v)
+        else:
+            args.append(f'{v}')
+
+    return ' '.join(args)

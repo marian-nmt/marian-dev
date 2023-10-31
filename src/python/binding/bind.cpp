@@ -7,15 +7,37 @@
 #include "trainer.hpp"
 #include "embedder.hpp"
 
+#include "command/marian_main.cpp"
+
+
 
 #define PYBIND11_DETAILED_ERROR_MESSAGES
 
 namespace py = pybind11;
 using namespace pymarian;
 
-PYBIND11_MODULE(_pymarian, m) {
-    //py::module m = base.def_submodule("capi", "Marian CAPI");   //pymarian.capi
 
+auto cli_main(std::vector<std::string> args) {
+    // convert args to char**
+    std::vector<char*> cstrs;
+    cstrs.reserve(args.size());
+    for (auto& s : args) {
+        cstrs.push_back(const_cast<char*>(s.c_str()));
+    }
+    char** c_args = &cstrs[0];
+    main(args.size(), c_args);
+}
+
+
+PYBIND11_MODULE(_pymarian, m) {
+    m.doc() = "Marian C++ API";
+    m.def("main", &cli_main, "Marian command line interface");
+
+    /** TODOS 
+     *  1. API to check if gpu available: cuda_is_available() -> bool
+     *  2. API to check number of gpus:: cuda_device_count() -> int
+     * 
+    */
     // Classes
     py::class_<TranslateServicePyWrapper>(m, "Translator")
         .def(py::init<std::string>())

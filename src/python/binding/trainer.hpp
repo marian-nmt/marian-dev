@@ -44,7 +44,7 @@ namespace pymarian {
             // returns for timeout -s SIGTERM <seconds> ...., because exiting after SIGTERM
             // is not technically a fatal error (which is what the 128+x convention usually
             // stands for).
-            exit(getSignalFlag(SIGTERM) ? 128 + SIGTERM : EXIT_SUCCESS);
+            return getSignalFlag(SIGTERM) ? 128 + SIGTERM : EXIT_SUCCESS;
         }
     };
 

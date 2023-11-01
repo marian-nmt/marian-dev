@@ -6,12 +6,12 @@ import logging as log
 
 from pymarian import Evaluator
 
-DEF_BATCH_SIZE = 2
+DEF_BATCH_SIZE = 4
 log.basicConfig(level=log.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
 
 def make_batches(lines, batch_size=DEF_BATCH_SIZE):
-    iter = (line.spplit('\t') for line in lines)
+    iter = (line.strip().split('\t') for line in lines)
     while True:
         chunk = list(itertools.islice(iter, batch_size))
         if not chunk:
@@ -53,7 +53,11 @@ def main():
     log.info(f"====Loaded evaluator=========")
     batches = make_batches(sys.stdin, batch_size=batch_size)
     for batch in batches:
-        scores = evaluator.run(batch)
+        #scores = evaluator.run(batch)
+        #batch = ["\t".join(x) for x in batch]
+        print(">>", batch)
+        scores = evaluator.run_iter(iter(batch))
+        print("<<", scores)
         for ex, score in zip(batch, scores):
             print(f'{ex}\t{score[0]:.6f}')
 

@@ -3,12 +3,12 @@
 export MARIAN_QUIET=yes
 
 # run all tests in this file
-  pytest -v src/python/tests/unit/test_evaluate.py 
-  pytest -vx src/python/tests/unit/test_evaluate.py   #stop on first failure
+  pytest -v src/python/tests/test_evaluate.py 
+  pytest -vx src/python/tests/test_evaluate.py   #stop on first failure
 
 # run a single test:
-   pytest -v src/python/tests/unit/test_evaluate.py -k test_evaluator_chrfoid
-   pytest -vs src/python/tests/unit/test_evaluate.py -k test_evaluator_chrfoid # see stdout and stderr
+   pytest -v src/python/tests/test_evaluate.py -k test_evaluator_chrfoid
+   pytest -vs src/python/tests/test_evaluate.py -k test_evaluator_chrfoid # see stdout and stderr
 """
 import os
 from pymarian import Evaluator

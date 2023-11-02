@@ -3,7 +3,6 @@
 #include "data/batch_generator.h"
 #include "data/corpus.h"
 #include "data/text_input.h"
-#include "data/text_input2.hpp"
 #include "evaluator/evaluator.h"
 #include "common/timer.h"
 #include "common/logging.h"
@@ -23,42 +22,28 @@ namespace pymarian {
   using Evaluator = marian::Evaluate<marian::Evaluator>;
   namespace py = pybind11;
 
-
-  class PyIterator: public data::TextIterator2 {
-    private:
+  class PyIteratorInput: public data::TextInput {
+    protected:
     py::iterator iter_;
 
     public:
-    PyIterator(py::iterator pyIter, data::RowEncoder encoder): data::TextIterator2(encoder), iter_(pyIter) {
-      ended_ = false;
-      increment();
+    PyIteratorInput(py::iterator iterator, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
+    : data::TextInput({}, vocabs, options) {
+      iter_ = iterator;
     }
 
-    PyIterator(): data::TextIterator2(), iter_(py::iterator::sentinel()) {
-      ended_ = true;
-    }
-
-    // destructor
-    ~PyIterator() {}
-
-    void increment(){
+    auto next() -> data::SentenceTuple override {
       if (iter_ != py::iterator::sentinel()) {
         auto next_row = iter_->cast<std::vector<std::string>>();
-        next_ = encoder_(next_row, ++pos_);
+        std::cout << "next_row:\n" << utils::join(next_row, "<tab>") << std::endl;
+        auto next_ = encode(next_row, ++pos_);
         ++iter_;
+        return next_;
       } else {
-        ended_ = true;
+        std::cout << "next_row: sentinel (end)" << std::endl;
+        return SentenceTupleImpl();
       }
     }
-  };
-
-
-  class PyIteratorInput: public data::TextInput2<PyIterator> {
-    public:
-    using data::TextInput2<PyIterator>::TextInput2;
-    PyIteratorInput(py::iterator iterator, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : TextInput2(New<PyIterator>(iterator, [&](StrVector row, long long int id) -> data::SentenceTuple { return this->encode(row, id);}), vocabs, options)
-    {}
 
   };
 
@@ -132,16 +117,24 @@ namespace pymarian {
     }
 
     auto run_iter(py::iterator pyIter) -> FloatVectors {
+      std::cout << "1. run_iter" << std::endl;
+
       auto corpus = New<PyIteratorInput>(pyIter, vocabs_, options_);
       corpus->prepare();
+      std::cout << "2. corpus done" << std::endl;
 
       auto batchGenerator = New<BatchGenerator<PyIteratorInput>>(corpus, options_, nullptr, /*runAsync=*/false);
       batchGenerator->prepare();
+      std::cout << "3. Batch generaror done" << std::endl;
 
       std::string output = options_->get<std::string>("output");
       Ptr<BufferedVectorCollector> collector = New<BufferedVectorCollector>(output, /*binary=*/false);
+
       evaluator_->run(batchGenerator, collector);
+      std::cout << "4. run done" << std::endl;
+
       FloatVectors outputs = collector->getBuffer();
+      std::cout << "5. getBuffer done" << std::endl;
       return outputs;
     }
   };

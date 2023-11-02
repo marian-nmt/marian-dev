@@ -141,7 +141,7 @@ def test_evaluator_chrfoid_iter():
         vocabs=[vocab_path, vocab_path],
     )
 
-    eval = Evaluator(**args)
+    eval = Evaluator(log_level='debug', **args)
     data = SAMPLE_SRC_HYP
     expected_scores = [
         0.0548,
@@ -151,6 +151,8 @@ def test_evaluator_chrfoid_iter():
  
     data_iter = iter(data)
     scores = eval.run_iter(data_iter)
+    scores = list(scores)
+    len(scores) == len(data)
     for score, expected_score in zip_longest(scores, expected_scores):
         if isinstance(score, list):
             score = score[0]

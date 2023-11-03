@@ -22,31 +22,6 @@ namespace pymarian {
   using Evaluator = marian::Evaluate<marian::Evaluator>;
   namespace py = pybind11;
 
-  class PyIteratorInput: public data::TextInput {
-    protected:
-    py::iterator iter_;
-
-    public:
-    PyIteratorInput(py::iterator iterator, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options)
-    : data::TextInput({}, vocabs, options) {
-      iter_ = iterator;
-    }
-
-    auto next() -> data::SentenceTuple override {
-      if (iter_ != py::iterator::sentinel()) {
-        auto next_row = iter_->cast<std::vector<std::string>>();
-        std::cout << "next_row:\n" << utils::join(next_row, "<tab>") << std::endl;
-        auto next_ = encode(next_row, ++pos_);
-        ++iter_;
-        return next_;
-      } else {
-        std::cout << "next_row: sentinel (end)" << std::endl;
-        return SentenceTupleImpl();
-      }
-    }
-
-  };
-
   class EvaluatorPyWrapper {
     
   private:
@@ -111,33 +86,6 @@ namespace pymarian {
       return outputs;
     }
 
-    auto run(const StrVector& input) -> FloatVector{
-      StrVectors inputs = { input };
-      return run(inputs)[0];
-    }
-
-    auto run_iter(py::iterator pyIter) -> FloatVectors {
-      std::cout << "1. run_iter" << std::endl;
-
-      auto corpus = New<PyIteratorInput>(pyIter, vocabs_, options_);
-      corpus->prepare();
-      std::cout << "2. corpus done" << std::endl;
-
-      auto batchGenerator = New<BatchGenerator<PyIteratorInput>>(corpus, options_, nullptr, /*runAsync=*/false);
-      batchGenerator->prepare();
-      std::cout << "3. Batch generaror done" << std::endl;
-
-      std::string output = options_->get<std::string>("output");
-      Ptr<BufferedVectorCollector> collector = New<BufferedVectorCollector>(output, /*binary=*/false);
-
-      evaluator_->run(batchGenerator, collector);
-      std::cout << "4. run done" << std::endl;
-
-      FloatVectors outputs = collector->getBuffer();
-      std::cout << "5. getBuffer done" << std::endl;
-      return outputs;
-    }
   };
-
 
 }

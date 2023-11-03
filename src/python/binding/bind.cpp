@@ -46,8 +46,7 @@ PYBIND11_MODULE(_pymarian, m) {
 
     py::class_<EvaluatorPyWrapper>(m, "Evaluator")
         .def(py::init<std::string>())
-        .def("run", py::overload_cast<const StrVectors&>(&EvaluatorPyWrapper::run))
-        .def("run_iter", py::overload_cast<py::iterator>(&EvaluatorPyWrapper::run_iter))
+        .def("evaluate", py::overload_cast<const StrVectors&>(&EvaluatorPyWrapper::run))
         ;
 
     py::class_<PyTrainer>(m, "Trainer")

@@ -176,7 +176,7 @@ experimental = false
 minimum-version = "0.5"  # current version
 
 # The build directory. Defaults to a temporary directory, but can be set.
-build-dir = "build-pymarian"
+build-dir = "build"
 #build-dir = "build-pymarian/{wheel_tag}"
 
 [tool.setuptools_scm]

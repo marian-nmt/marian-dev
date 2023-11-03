@@ -54,11 +54,9 @@ jobs:
         rm -rf build/
 
     - name: Install PyMarian
-      working-directory: src/python
+      #working-directory: .  # root
       run: |
         python3 -m venv .venv && source .venv/bin/activate
-        python3 -m pip install -U setuptools wheel
-        python3 -m pip install pybind11 sentencepiece scikit-build
-        python3 setup.py install -j2 -- -G"Unix Makefiles"
-        cd ../../
-        python3 -c "from pymarian import Translator"
+        python3 -m pip install -U setuptools wheel pytest
+        CMAKE_ARGS="" python3 -m pip install -v .
+        MARIAN_QUIET=YES python3 -m pytest -vs src/python/tests

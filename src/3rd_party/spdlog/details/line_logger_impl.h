@@ -5,9 +5,9 @@
 #pragma once
 #include <type_traits>
 
-#include <spdlog/details/line_logger_fwd.h>
-#include <spdlog/common.h>
-#include <spdlog/logger.h>
+#include "spdlog/details/line_logger_fwd.h"
+#include "spdlog/common.h"
+#include "spdlog/logger.h"
 
 #include <string>
 #include <utility>

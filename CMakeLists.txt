@@ -279,7 +279,7 @@ else(MSVC)
     set(CMAKE_RDYNAMIC_FLAG "-rdynamic")
   endif(CMAKE_COMPILER_IS_GNUCC)
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -289,7 +289,7 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")

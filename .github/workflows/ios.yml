@@ -1,0 +1,43 @@
+name: iOS
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-macos:
+    name: iOS CPU-only
+    runs-on: macos-12
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: brew install boost openblas openssl protobuf
+
+    - name: Configure CMake
+      run: |
+        export LDFLAGS="-L/usr/local/opt/openblas/lib"
+        export CPPFLAGS="-I/usr/local/opt/openblas/include"
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCOMPILE_CPU=on \
+          -DCOMPILE_CUDA=off \
+          -DCOMPILE_EXAMPLES=on \
+          -DCOMPILE_SERVER=off \
+          -DCOMPILE_TESTS=on \
+          -DUSE_SENTENCEPIECE=on \
+          -DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake \
+          -DUSE_SENTENCEPIECE=on \
+          -DPLATFORM=OS64 \
+          -DDEPLOYMENT_TARGET=13.0
+
+    - name: Compile
+      working-directory: build
+      run: cmake --build . --config Release

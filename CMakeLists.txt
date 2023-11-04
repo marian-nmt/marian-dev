@@ -102,8 +102,6 @@ if(ARM)
 
   # Define that we are using ARM
   add_compile_definitions(ARM FMA SSE)
-  set(USE_SIMD_UTILS ON)
-
   # Some warnings as errors. I don't feel comfortable about the strict aliasing.
   set(ARM_WARNINGS "-fno-strict-aliasing -Wno-comment")
 

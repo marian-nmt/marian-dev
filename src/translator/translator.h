@@ -248,6 +248,9 @@ private:
 
   size_t numDevices_;
 
+  std::vector<mio::mmap_source> model_mmaps_; // map
+  std::vector<std::vector<io::Item>> model_items_; // non-mmap
+
 public:
   virtual ~TranslateService() {}
 
@@ -282,36 +285,62 @@ public:
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
 
+    ThreadPool threadPool(numDevices_, numDevices_);
+    scorers_.resize(numDevices_);
+    graphs_.resize(numDevices_);
+    
     // preload models
-    std::vector<std::vector<io::Item>> model_items_;
     auto models = options->get<std::vector<std::string>>("models");
-    for(auto model : models) {
-      auto items = io::loadItems(model);
-      model_items_.push_back(std::move(items));
+    if(options_->get<bool>("model-mmap", false)) {
+      for(auto model : models) {
+        ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
+        LOG(info, "Loading model from {}", model);
+        model_mmaps_.push_back(mio::mmap_source(model));
+      }
+    }
+    else {
+      for(auto model : models) {
+        LOG(info, "Loading model from {}", model);
+        auto items = io::loadItems(model);
+        model_items_.push_back(std::move(items));
+      }
     }
 
     // initialize scorers
+    size_t id = 0;
     for(auto device : devices) {
-      auto graph = New<ExpressionGraph>(true);
+      auto task = [&](DeviceId device, size_t id) {
+        auto graph = New<ExpressionGraph>(true);
+        auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
+        graph->setDefaultElementType(typeFromString(prec[0]));
+        graph->setDevice(device);
+        if (device.type == DeviceType::cpu) {
+          graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+          graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
+          graph->getBackend()->setQuantizeRange(options_->get<float>("quantize-range"));
+        }
+        graph->reserveWorkspaceMB(options_->get<int>("workspace"));
+        graphs_[id] = graph;
 
-      auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
-      graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
-      graph->setDevice(device);
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-        graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
-        graph->getBackend()->setQuantizeRange(options_->get<float>("quantize-range"));
-      }
-      graph->reserveWorkspaceMB(options_->get<int>("workspace"));
-      graphs_.push_back(graph);
+        std::vector<Ptr<Scorer>> scorers;
+        if(options_->get<bool>("model-mmap", false)) {
+          scorers = createScorers(options_, model_mmaps_);
+        }
+        else {
+          scorers = createScorers(options_, model_items_);
+        }
 
-      auto scorers = createScorers(options_, model_items_);
-      for(auto scorer : scorers) {
-        scorer->init(graph);
-        if(shortlistGenerator_)
-          scorer->setShortlistGenerator(shortlistGenerator_);
-      }
-      scorers_.push_back(scorers);
+        for(auto scorer : scorers) {
+          scorer->init(graph);
+          if(shortlistGenerator_)
+            scorer->setShortlistGenerator(shortlistGenerator_);
+        }
+
+        scorers_[id] = scorers;
+        graph->forward();
+      };
+
+      threadPool.enqueue(task, device, id++);
     }
   }
 

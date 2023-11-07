@@ -334,11 +334,14 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
 
   // Options specific for the "comet-qe" model type
   cli.add<bool>("--comet-final-sigmoid", "Add final sigmoid to COMET model");
+  cli.add<bool>("--comet-stop-grad", "Do not propagate gradients through COMET model");
+  
   cli.add<bool>("--comet-mix", "Mix encoder layers to produce embedding");
   cli.add<bool>("--comet-mix-norm", "Normalize layers prior to mixing");
   cli.add<float>("--comet-dropout", "Dropout for pooler layers", 0.1f);
   cli.add<float>("--comet-mixup", "Alpha parameter for Beta distribution for mixup", 0.0f);
   cli.add<bool>("--comet-mixup-reg", "Use original and mixed-up samples in training");
+  cli.add<float>("--comet-augment-bad", "Fraction of bad examples added via shuffling for class/label 0.f", 0.0f);
   cli.add<std::vector<int>>("--comet-pooler-ffn", "Hidden sizes for comet pooler", {2048, 1024});
   cli.add<bool>("--comet-prepend-zero", "Add a start symbol to batch entries");
 

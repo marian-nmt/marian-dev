@@ -143,7 +143,7 @@ SentenceTuple Corpus::next() {
       // check if all streams are valid, that is, non-empty and no longer than maximum allowed length
       if(std::all_of(tup.begin(), tup.end(), [=](const Words& words) {
             return words.size() > 0 && words.size() <= maxLength_;
-          })) {
+         })) {
         return tup;
       } else {
         return SentenceTupleImpl(); // return an empty tuple if above test does not pass

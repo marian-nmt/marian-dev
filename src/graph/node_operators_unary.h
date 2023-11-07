@@ -1042,6 +1042,29 @@ public:
   }
 };
 
+// This class is used to stop gradients from flowing through a node.
+// This is slighyly costly, as memory is allocated and a copy is made on the forward step.
+class StopGradientNodeOp : public UnaryNodeOp {
+public:
+  StopGradientNodeOp(Expr a)
+   : UnaryNodeOp(a) {}
+
+  ~StopGradientNodeOp() {}
+
+  // On forward the values are just copied from the input node.
+  NodeOps forwardOps() override {
+    return { NodeOp(CopyCast(val_, child(0)->val())) };
+  }
+
+  // On backward nothing happens, i.e. the gradient does not flow through.
+  NodeOps backwardOps() override {
+    return { NodeOp( /*dummy*/; ) };
+  }
+
+  const std::string type() override { return "stopGradient"; }
+  const std::string color() override { return "grey"; }
+};
+
 // narrow an axis to [begin, end)
 // The resulting object must be consecutive in memory.
 class SliceViewNodeOp : public UnaryNodeOp {

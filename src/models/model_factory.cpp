@@ -159,6 +159,7 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
 
     switch(use) {
       case usage::embedding:  numEncoders = 1; addEmbeddingPooler = true; break;
+      case usage::raw:
       case usage::evaluating:   
       case usage::scoring:
       case usage::training:   numEncoders = (type == "comet-qe") ? 2 : 3; addMetricPooler = true; break;
@@ -518,7 +519,7 @@ Ptr<ICriterionFunction> createCriterionFunctionFromOptions(Ptr<Options> options,
 #endif
 #endif
   else if (type == "comet-qe" && std::dynamic_pointer_cast<EncoderPooler>(baseModel))
-    return New<Trainer>(baseModel, New<CometBinaryCE>(options));
+    return New<Trainer>(baseModel, New<CometLoss>(options));
   else if (std::dynamic_pointer_cast<EncoderPooler>(baseModel))
     return New<Trainer>(baseModel, New<EncoderPoolerRankCost>(options));
   else

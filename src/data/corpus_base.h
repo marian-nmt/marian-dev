@@ -117,6 +117,9 @@ public:
   auto begin() const -> decltype(tuple_.begin()) { return tuple_.begin(); }
   auto end() const -> decltype(tuple_.end()) { return tuple_.end(); }
 
+  auto begin() -> decltype(tuple_.begin()) { return tuple_.begin(); }
+  auto end() -> decltype(tuple_.end()) { return tuple_.end(); }
+
   auto rbegin() const -> decltype(tuple_.rbegin()) { return tuple_.rbegin(); }
   auto rend() const -> decltype(tuple_.rend()) { return tuple_.rend(); }
 

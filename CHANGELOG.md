@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added MSE and MAE costs to COMET-QE training.
+- Added augmentation of shuffled examples to COMET-QE training via `--comet-augment-bad`.
+- Minor changes and fixes related to metric training.
 - Added `--quiet-validation` option that disables printing Hyp/Ref samples during validation
 - Added --custom-fallbacks option that allows to specify a list of option sets that get traversed for subsequent fallbacks upon divergence
 - Added --overwrite-checkpoint option that (when set to false) can be used to dump checkpoints with iteration numbers.

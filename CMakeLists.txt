@@ -279,7 +279,7 @@ else(MSVC)
     set(CMAKE_RDYNAMIC_FLAG "-rdynamic")
   endif(CMAKE_COMPILER_IS_GNUCC)
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -289,7 +289,7 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -297,6 +297,12 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
+
+  # set -march for all builds except iOS cross compilation
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
+    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
+  endif()
 endif(MSVC)
 
 # with gcc 7.0 and above we need to mark fallthrough in switch case statements

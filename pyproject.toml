@@ -53,9 +53,9 @@ cmake.args = [
     "-DUSE_NCCL=OFF",
     "-DCOMPILE_CUDA=OFF",
     "-DUSE_FBGEMM=OFF",
-    "-DUSE_TCMALLOC=OFF",
+    #"-DUSE_TCMALLOC=OFF",
     "-DUSE_SENTENCEPIECE=ON",
-    "-DGENERATE_MARIAN_INSTALL_TARGETS=OFF",
+    #"-DGENERATE_MARIAN_INSTALL_TARGETS=OFF",
 ]
 
 # to select compiler at runtime:

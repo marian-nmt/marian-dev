@@ -134,7 +134,6 @@ def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str], average=D.AVERA
     assert average in ('skip', 'append', 'only')
     lines = (line.rstrip('\n').split('\t') for line in input_lines)
     # NOTE: pymarian doesnt support iterator input yet; so mini batching here
-    # TODO: support iterator input
     def make_mini_batches(lines, batch_size=batch_size):
         assert batch_size > 0
         while True:
@@ -145,7 +144,7 @@ def pymarian_evaluate(cmd_line: str, input_lines: Iterator[str], average=D.AVERA
 
     total, count = 0.0, 0        
     for batch in make_mini_batches(lines):
-        scores = evaluator.run(batch)
+        scores = evaluator.evaluate(batch)
         assert len(scores) == len(batch)
         for score in scores:
             if isinstance(score, (tuple, list)):

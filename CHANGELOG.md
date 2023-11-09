@@ -10,13 +10,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.
+- Added MSE and MAE costs to COMET-QE training.
+- Added augmentation of shuffled examples to COMET-QE training via `--comet-augment-bad`.
+- Minor changes and fixes related to metric training.
+- Added `--quiet-validation` option that disables printing Hyp/Ref samples during validation
 - Added --custom-fallbacks option that allows to specify a list of option sets that get traversed for subsequent fallbacks upon divergence
-- Added --overwrite-checkpoint option that (when set to false) can be used to dump checkpoints with iteration numbers.   
+- Added --overwrite-checkpoint option that (when set to false) can be used to dump checkpoints with iteration numbers.
 - Implementations of COMET-20 (reference-based) and BLEURT-20 for inference with conversion scripts.
 - `./marian evaluate` sub command for evaluation with COMET-QE-20, COMET-20 and BLEURT-20
 - A bunch of scripts for metrics use and early MBR experiments
 - LSH vocab filtering for GPU. Speed is not competitive with non-LSH. Checking in for completeness and possible future use of LSH on GPU for non-filtering stuff
-- Added --throw-on-divergence and --fp16-fallback-to-fp32 options to detect (fp16 and fp32) and recover (only fp16) 
+- Added --throw-on-divergence and --fp16-fallback-to-fp32 options to detect (fp16 and fp32) and recover (only fp16)
   diverged runs. If not recoverable, exception gets rethrown and goes unhandled to force fatal error and shutdown.
 - Re-implementation of COMET-QE for inference and training; conversion scripts from Unbabel-Comet to Marian.
 - Validator that generates embeddings and can be used during COMET training with an external script.

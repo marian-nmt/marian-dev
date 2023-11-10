@@ -217,8 +217,11 @@ struct Ops<double> {
 // __CUDACC__ is defined when compiling with NVCC regardless of device type
 // __CUDA_ARCH__ is defined when compiling device (GPU) code
 #ifndef __CUDACC__
-
+#ifndef ARM
 #include "3rd_party/sse_mathfun.h"
+#else
+#include "3rd_party/simd_utils/simd_utils.h" // @TODO this might be dependent on NEON
+#endif
 
 namespace marian {
 namespace functional {

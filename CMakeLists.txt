@@ -6,6 +6,22 @@ if (POLICY CMP0074)
 endif ()
 
 project(marian CXX C)
+
+######### ARCH DETECTION #########
+# Architecture detection
+include(TargetArch)
+
+target_architecture(CMAKE_TARGET_ARCHITECTURES)
+list(LENGTH CMAKE_TARGET_ARCHITECTURES cmake_target_arch_len)
+if(NOT "${cmake_target_arch_len}" STREQUAL "1")
+    set(CMAKE_TARGET_ARCHITECTURE_UNIVERSAL TRUE)
+    set(CMAKE_TARGET_ARCHITECTURE_CODE "universal")
+else()
+    set(CMAKE_TARGET_ARCHITECTURE_UNIVERSAL FALSE)
+    set(CMAKE_TARGET_ARCHITECTURE_CODE "${CMAKE_TARGET_ARCHITECTURES}")
+endif()
+######### ARCH DETECTION #########
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
@@ -79,6 +95,38 @@ if(NOT CMAKE_BUILD_TYPE)
   message(WARNING "CMAKE_BUILD_TYPE not set; setting to Release")
   set(CMAKE_BUILD_TYPE "Release")
 endif()
+
+# ARM bits
+if(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
+  # Define that we are using ARM
+  add_compile_definitions(ARM)
+  set(ARM ON)
+  option(USE_RUY "Use Ruy" ON) # For 8 bit code, later on
+  set(EXT_LIBS ${EXT_LIBS} ruy)
+
+  # Apple M1 has Apple Accelerate. Otherwise fallback to RUY
+  if(APPLE)
+    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" OFF)
+  else(APPLE)
+    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
+  endif(APPLE)
+
+  set(USE_SIMD_UTILS ON)
+
+  # Some warnings as errors. I don't feel comfortable about the strict aliasing.
+  set(ARM_WARNINGS "-fno-strict-aliasing -Wno-comment")
+
+  set(USE_SIMD_UTILS ON)
+  # @TODO this assumes ArmV8. We should also look at armv7
+  add_compile_definitions(ARM FMA SSE) #added for ARM
+  if(MSVC)
+    add_compile_options(/flax-vector-conversions)
+  else(MSVC)
+    add_compile_options(-flax-vector-conversions)
+  endif(MSVC)
+
+endif(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
+
 
 ###############################################################################
 # Set compilation flags
@@ -221,7 +269,7 @@ else(MSVC)
     # Clang-10.0.0 complains when CUDA is newer than 10.1
     set(CLANG_IGNORE_UNKNOWN_CUDA "-Wno-unknown-warning-option -Wno-unknown-cuda-version")
   endif()
-  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA}")
+  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA} ${ARM_WARNINGS}")
 
   # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS -Wall; -Werror; -Wextra; -Wno-unused-result; -Wno-deprecated;
@@ -241,9 +289,9 @@ else(MSVC)
   endif(CMAKE_COMPILER_IS_GNUCC)
 
   set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
-  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
-  set(CMAKE_CXX_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
+  set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS_RELEASE}")
   set(CMAKE_CXX_FLAGS_PROFILE         "${CMAKE_CXX_FLAGS_RELEASE} -pg")
   set(CMAKE_CXX_FLAGS_PROFGEN         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
@@ -251,9 +299,9 @@ else(MSVC)
 
   # these need to be set separately
   set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
-  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
-  set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
+  set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO  "${CMAKE_C_FLAGS_RELEASE}")
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
@@ -511,7 +559,7 @@ endif()
 ###############################################################################
 # Find BLAS library
 if(COMPILE_CPU)
-  if(NOT GENERATE_MARIAN_INSTALL_TARGETS)
+  if(NOT GENERATE_MARIAN_INSTALL_TARGETS AND NOT ARM)
     set(EXT_LIBS ${EXT_LIBS} intgemm) # Enable intgemm when compiling CPU
     add_definitions(-DCOMPILE_CPU=1)
   endif()

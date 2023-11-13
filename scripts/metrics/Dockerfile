@@ -1,5 +1,6 @@
-FROM nvidia/cuda:11.1.1-devel-ubuntu20.04
-
+FROM mcr.microsoft.com/azureml/minimal-ubuntu20.04-py38-cuda11.6.2-gpu-inference:20231102.v2
+# use this if microsoft image is not accessible;
+#FROM nvidia/cuda:11.1.1-devel-ubuntu20.04
 LABEL description="Marian image - Ubuntu 20.04"
 
 ARG DEBIAN_FRONTEND=noninteractive

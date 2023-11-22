@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 - Fixed compilation with clang 16.0.6
+- Added Threads::Threads to EXT_LIBS
+
 
 ### Added
 - Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.

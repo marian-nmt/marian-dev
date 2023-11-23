@@ -49,5 +49,16 @@ jobs:
         ./marian --version
         ./marian-decoder --version
         ./marian-scorer --version
-        ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -perm +ugo+x \( -name "marian*" -o -name "spm*" \))
+        cd ..
+        rm -rf build/
+
+    - name: Install PyMarian
+      working-directory: src/python
+      run: |
+        python3 -m venv .venv && source .venv/bin/activate
+        python3 -m pip install -U setuptools wheel
+        python3 -m pip install pybind11 sentencepiece scikit-build
+        python3 setup.py install -j2 -- -G"Unix Makefiles"
+        cd ../../
+        python3 -c "from pymarian import Translator"

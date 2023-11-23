@@ -1,12 +1,16 @@
 
 include_directories(.)
 
-add_subdirectory(./yaml-cpp)
-add_subdirectory(./SQLiteCpp)
-add_subdirectory(./pathie-cpp)
-add_subdirectory(./zlib)
-add_subdirectory(./faiss)
+add_subdirectory(./yaml-cpp EXCLUDE_FROM_ALL)
+add_subdirectory(./SQLiteCpp EXCLUDE_FROM_ALL)
+add_subdirectory(./pathie-cpp EXCLUDE_FROM_ALL)
+add_subdirectory(./zlib EXCLUDE_FROM_ALL)
+add_subdirectory(./faiss EXCLUDE_FROM_ALL)
 include_directories(./faiss)
+
+# if(SKBUILD)
+#   add_subdirectory(./pybind11 EXCLUDE_FROM_ALL)
+# endif(SKBUILD)
 
 if(COMPILE_CPU)
   if(NOT GENERATE_MARIAN_INSTALL_TARGETS)
@@ -42,7 +46,7 @@ if(USE_FBGEMM)
 
   set(FBGEMM_BUILD_TESTS OFF CACHE BOOL "Disable fbgemm tests")
   set(FBGEMM_BUILD_BENCHMARKS OFF CACHE BOOL "Disable fbgemm benchmark")
-  add_subdirectory(./fbgemm)
+  add_subdirectory(./fbgemm EXCLUDE_FROM_ALL)
 
   # asmjit (3rd-party submodule of fbgemm) sets -Wall -Wextra near the end of
   # the compile options, invalidating any -Wno-... flags that we may have set
@@ -72,15 +76,19 @@ if(USE_SENTENCEPIECE)
 
   # regardless of -DUSE_STATIC_LIBS setting always build sentencepiece statically
   set(SPM_ENABLE_SHARED OFF CACHE BOOL  "Builds shared libaries in addition to static libraries." FORCE)
-  set(SPM_ENABLE_TCMALLOC ON CACHE BOOL "Enable TCMalloc if available.")
 
-  if(USE_STATIC_LIBS)
-    set(SPM_TCMALLOC_STATIC ON CACHE BOOL "Link static library of TCMALLOC." FORCE)
-  else(USE_STATIC_LIBS)
-    set(SPM_TCMALLOC_STATIC OFF CACHE BOOL "Link static library of TCMALLOC.")
-  endif(USE_STATIC_LIBS)
+  if(USE_TCMALLOC)
+    set(SPM_ENABLE_TCMALLOC ON CACHE BOOL "Enable TCMalloc if available.")
+    if(USE_STATIC_LIBS)
+      set(SPM_TCMALLOC_STATIC ON CACHE BOOL "Link static library of TCMALLOC." FORCE)
+    else(USE_STATIC_LIBS)
+      set(SPM_TCMALLOC_STATIC OFF CACHE BOOL "Link static library of TCMALLOC.")
+    endif(USE_STATIC_LIBS)
+  else(USE_TCMALLOC)
+    set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL "Enable TCMalloc if available.")
+  endif(USE_TCMALLOC)
 
-  add_subdirectory(./sentencepiece)
+  add_subdirectory(./sentencepiece EXCLUDE_FROM_ALL)
   include_directories(./sentencepiece)
 
   set_target_properties(spm_encode spm_decode spm_train spm_normalize spm_export_vocab

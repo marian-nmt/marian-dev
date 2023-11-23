@@ -4,6 +4,9 @@ include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
+
+include_directories(3rd_party/pybind11/include)
+
 if(USE_SENTENCEPIECE)
   include_directories(3rd_party/sentencepiece/third_party/protobuf-lite)
 endif(USE_SENTENCEPIECE)
@@ -255,11 +258,11 @@ if (NOT COMPILE_LIBRARY_ONLY)
   endif(COMPILE_SERVER)
 
   foreach(exec ${EXECUTABLES})
-    target_link_libraries(${exec} marian)
-    if(CUDA_FOUND)
-      target_link_libraries(${exec} marian_cuda)
-    endif(CUDA_FOUND)
-    set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+  target_link_libraries(${exec} marian)
+  if(CUDA_FOUND)
+    target_link_libraries(${exec} marian_cuda)
+  endif(CUDA_FOUND)
+  set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   endforeach(exec)
 endif(NOT COMPILE_LIBRARY_ONLY)
 
@@ -277,9 +280,31 @@ endif(COMPILE_EXAMPLES)
 
 if(GENERATE_MARIAN_INSTALL_TARGETS)
   # Install the marian library if given a "make install" target
-  include(GNUInstallDirs)                 # This defines default values for installation directories (all platforms even if named GNU)
+  include(GNUInstallDirs) # This defines default values for installation directories (all platforms even if named GNU)
   install(TARGETS marian
     EXPORT marian-targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 endif(GENERATE_MARIAN_INSTALL_TARGETS)
+
+if(SKBUILD)
+  # Scikit-Build does not add your site-packages to the search path
+  # automatically, so we need to add it _or_ the pybind11 specific directory
+  # here.
+  execute_process(
+    COMMAND "${PYTHON_EXECUTABLE}" -c
+            "import pybind11; print(pybind11.get_cmake_dir())"
+    OUTPUT_VARIABLE _tmp_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ECHO STDOUT)
+  list(APPEND CMAKE_PREFIX_PATH "${_tmp_dir}")
+
+  # Now we can find pybind11
+  find_package(pybind11 CONFIG REQUIRED)
+
+  pybind11_add_module(pymarian MODULE python/pymarian/bind.cpp)
+  target_link_libraries(pymarian PUBLIC marian)
+  if(CUDA_FOUND)
+    target_link_libraries(pymarian PUBLIC marian_cuda)
+  endif(CUDA_FOUND)
+  install(TARGETS pymarian DESTINATION .)
+endif(SKBUILD)

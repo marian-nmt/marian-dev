@@ -276,10 +276,20 @@ std::vector<DeviceId> Config::getDevices(Ptr<Options> options,
   return devices;
 }
 
-Ptr<Options>
-parseOptions(int argc, char** argv, cli::mode mode, bool validate){
+Ptr<Options> parseOptions(int argc, char** argv, cli::mode mode, bool validate) {
   ConfigParser cp(mode);
   return cp.parseOptions(argc, argv, validate);
+}
+
+Ptr<Options> parseOptions(const std::string& args, cli::mode mode, bool validate) {
+  std::vector<std::string> vArgs = utils::split(args, " ");
+  
+  std::string dummy("dummy");
+  std::vector<char*> cArgs = { &dummy[0] };
+  for(auto& arg : vArgs)
+    cArgs.push_back(&arg[0]);
+
+  return parseOptions((int)cArgs.size(), cArgs.data(), mode, validate);
 }
 
 std::ostream& operator<<(std::ostream& out, const Config& config) {

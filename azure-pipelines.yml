@@ -8,10 +8,26 @@
 
 parameters:
 # Allow skipping the entire 'Build' stage
-- name: runBuilds
-  displayName: Run builds? Uncheck to run regression tests only.
+- name: disableAllBuilds
+  displayName: Disable all builds and run regression tests only
   type: boolean
-  default: true
+  default: false
+- name: disableAllTests
+  displayName: Do not run regression tests
+  type: boolean
+  default: false
+- name: disableLinux
+  displayName: Disable Linux builds
+  type: boolean
+  default: false
+- name: disableMacOS
+  displayName: Disable MacOS builds
+  type: boolean
+  default: false
+- name: disableWindows
+  displayName: Disable Windows builds
+  type: boolean
+  default: false
 
 # Warning: the current branch policies disable the automatic triggering to
 # minimize VM usage!
@@ -54,7 +70,7 @@ variables:
   - name: MKL_URL
     value: "https://data.statmt.org/romang/marian-regression-tests/ci/mkl-2020.1-windows-static.zip"
   - name: VCPKG_COMMIT
-    value: 2022.03.10
+    value: 2023.11.20
   - name: VCPKG_DIR
     value: "$(Build.SourcesDirectory)/vcpkg"
   - name: VCPKG_PACKAGES
@@ -73,7 +89,7 @@ stages:
   ######################################################################
   - job: BuildWindows
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableWindows }}, false) )
     displayName: Windows
 
     strategy:
@@ -210,7 +226,7 @@ stages:
   ######################################################################
   - job: BuildUbuntu
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableLinux }}, false) )
     displayName: Ubuntu
     timeoutInMinutes: 120
 
@@ -348,7 +364,7 @@ stages:
   ######################################################################
   - job: BuildMacOS
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableMacOS }}, false) )
     displayName: macOS CPU clang
 
     pool:
@@ -398,7 +414,7 @@ stages:
   ######################################################################
   - job: BuildInstall
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableLinux }}, false) )
     displayName: Linux CPU library install
 
     pool:
@@ -462,6 +478,7 @@ stages:
   ######################################################################
   - job: TestWindows
     cancelTimeoutInMinutes: 1
+    condition: eq(${{ parameters.disableAllTests }}, false)
     displayName: Windows CPU+FBGEMM
 
     pool:
@@ -588,6 +605,7 @@ stages:
   ######################################################################
   - job: TestLinux
     cancelTimeoutInMinutes: 1
+    condition: eq(${{ parameters.disableAllTests }}, false)
     displayName: Linux CPU+FBGEMM
 
     pool:

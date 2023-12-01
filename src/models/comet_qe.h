@@ -33,6 +33,7 @@ struct CometEncoder final : public nn::TransformerEncoder {
     // It norms over time, not batch, also should be optimized. Seems safe to disable for custom
     // models trained by us, but required when doing inference with Unbabel models.
     auto cometNorm = [&, this](Expr x, Expr binMask) {
+      Expr output;
       if(opt<bool>("comet-mix-norm", false)) {
         registerParameterLazy(gamma, Shape({ 1 }), inits::ones());
         int dimModel = x->shape()[-1];
@@ -48,13 +49,16 @@ struct CometEncoder final : public nn::TransformerEncoder {
         auto sigma = sum(sum(square(x - mu), -1), -2) / denom;
 
         auto normed = (x - mu) / sqrt(sigma + 1e-12f);
-        auto output = marian::cast(gamma, Type::float32) * sum(normed * binMask, -2) / sum(binMask, -2);
+        output = marian::cast(gamma, Type::float32) * sum(normed * binMask, -2) / sum(binMask, -2);
 
         // Undo conversion to fp32 if not originally fp32 (most likely fp16 then)
-        return marian::cast(output, origType);
+        output = marian::cast(output, origType);
       } else {
-        return sum(x * binMask, -2) / sum(binMask, -2);
+        // average over time dimension
+        output = sum(x * binMask, -2) / sum(binMask, -2);
       }
+
+      return output;
     };
 
     std::vector<Expr> pooler;
@@ -69,7 +73,7 @@ struct CometEncoder final : public nn::TransformerEncoder {
     }
 
     if(opt<bool>("comet-mix", false)) {
-      registerParameterLazy(weights, Shape({ opt<int>("enc-depth") + 1 }), inits::ones());
+      registerParameterLazy(weights, Shape({ opt<int>("enc-depth") + 1 }), inits::zeros());
       auto weightsNorm = reshape(softmax(weights), {weights->shape()[-1], 1});
       output = sum(weightsNorm * concatenate(pooler, /*axis=*/-2), -2); // [batch, 1, modelDim]
     } else {
@@ -172,16 +176,14 @@ public:
     
     float dropoutProb = LayerWithOptions::opt<float>("comet-dropout", 0.1f);
     auto ffnHidden = LayerWithOptions::opt<std::vector<int>>("comet-pooler-ffn", {2048, 1024});
-    layers = New<nn::Sequential>(
-      graph,
-      New<nn::Linear>(graph, ffnHidden[0]),
-      New<nn::Tanh>(graph),
-      New<nn::Dropout>(graph, dropoutProb),
-      New<nn::Linear>(graph, ffnHidden[1]),
-      New<nn::Tanh>(graph),
-      New<nn::Dropout>(graph, dropoutProb),
-      New<nn::Linear>(graph, 1)
-    );
+
+    layers = New<nn::Sequential>(graph);
+    for(auto dim : ffnHidden) {
+      layers->append(New<nn::Linear>(graph, dim));
+      layers->append(New<nn::Tanh>(graph));
+      layers->append(New<nn::Dropout>(graph, dropoutProb));
+    }
+    layers->append(New<nn::Linear>(graph, 1));
 
     if(LayerWithOptions::opt<bool>("comet-final-sigmoid"))
       layers->append(New<nn::Sigmoid>(graph));
@@ -238,6 +240,36 @@ public:
       return {xMixup, yMixup};
     };
 
+    // add bad examples to the batch
+    auto addBad = [&](Expr src, Expr mt, int& dimBad) -> Expr2 {
+      int dimBatch = src->shape()[-3];
+      float badRatio = LayerWithOptions::opt<float>("comet-augment-bad", 0.f);
+      dimBad = (int)std::ceil(dimBatch * badRatio); // use ceiling to make sure it's at least 1
+      
+      if(dimBad > 0) {
+        LOG_ONCE(info, "Adding {:.1f} percent of bad examples to batch with label 0.0f", badRatio * 100);
+
+        // select dimBad random examples from the batch and add them to the end
+        std::vector<IndexType> indicesSrc(dimBatch), indicesMt(dimBatch);
+        std::iota(indicesSrc.begin(), indicesSrc.end(), 0);
+
+        // permute the indices and select batch entries accordingly
+        std::shuffle(indicesSrc.begin(), indicesSrc.end(), rng);
+        indicesSrc.resize(dimBad); // shrink to size
+        auto srcSub = index_select(src, -3, indicesSrc);
+        src = concatenate({src, srcSub}, /*axis=*/-3);
+        
+        std::iota(indicesMt.begin(), indicesMt.end(), 0);
+        // permute the indices and select batch entries accordingly
+        std::shuffle(indicesMt.begin(), indicesMt.end(), rng);
+        indicesMt.resize(dimBad); // shrink to size
+        auto mtSub = index_select(mt, -3, indicesMt);
+        mt  = concatenate({mt, mtSub}, /*axis=*/-3);
+      }
+
+      return {src, mt};
+    };
+
     auto usage = (models::usage)LayerWithOptions::opt<int>("usage");
     ABORT_IF(usage == models::usage::embedding, "Wrong pooler for embedding??");
 
@@ -248,6 +280,21 @@ public:
     if(modelType == "comet-qe") {
       auto src = encoderStates[0]->getContext();
       auto mt  = encoderStates[1]->getContext();
+
+      int dimBad = 0; // number of bad examples added to the batch
+      if(getMode() == Mode::train) {
+        // do not propagate gradients through the encoder if requested
+        if(LayerWithOptions::opt<bool>("comet-stop-grad", false)) {
+          src = stopGradient(src);
+          mt  = stopGradient(mt);
+        }
+
+        // add bad examples to the batch
+        // dimBad is the number of bad examples added to the batch and gets modified here if used
+        auto srcMt = addBad(src, mt, /*out=*/dimBad);
+        src = get<0>(srcMt);
+        mt  = get<1>(srcMt);
+      }
       
       auto diff = abs(mt - src);
       auto prod = mt * src;
@@ -257,6 +304,7 @@ public:
         auto embFwd  = concatenate({mt, src, prod, diff}, /*axis=*/-1); // [batch, 1, model]
         auto embBwd  = concatenate({src, mt, prod, diff}, /*axis=*/-1); // [batch, 1, model]
         auto emb     = concatenate({embFwd, embBwd}, /*axis=*/-2);
+
         output = layers->apply(emb);
 
         int dimBatch = output->shape()[-3];
@@ -268,13 +316,17 @@ public:
         auto softLabelsWords = batch->front()->data();
         auto classVocab      = batch->front()->vocab();
         
-        int dimBatch = (int)softLabelsWords.size();
+        // we add bad examples to the batch, so we need to make sure the soft labels are padded accordingly with 0s
+        int dimBatch = (int)softLabelsWords.size() + dimBad;
         std::vector<float> softLabels;
         for(auto w : softLabelsWords) {
           // @TODO: this is a super-ugly hack to get regression values
           float score = w != Word::NONE ? std::stof((*classVocab)[w]) : 0.f;
           softLabels.push_back(score);
         }
+        // pad with 0s
+        softLabels.resize(dimBatch, 0.f);
+
         auto labels = graph->constant({dimBatch, 1, 1}, inits::fromVector(softLabels), Type::float32);
 
         if(getMode() == Mode::train) {
@@ -284,6 +336,7 @@ public:
           emb     = get<0>(xy);
           labels  = get<1>(xy);
         }
+
         output = marian::cast(layers->apply(emb), Type::float32);
         return { output, labels };
       }  
@@ -318,14 +371,14 @@ public:
 };
 
 // Wraps an EncoderClassifier so it can produce a cost from raw logits. @TODO: Needs refactoring
-class CometBinaryCE final : public ICost {
+class CometLoss final : public ICost {
 protected:
   Ptr<Options> options_;
   const bool inference_{false};
   const bool rescore_{false};
 
 public:
-  CometBinaryCE(Ptr<Options> options)
+  CometLoss(Ptr<Options> options)
     : options_(options), inference_(options->get<bool>("inference", false)), 
       rescore_(options->get<std::string>("cost-type", "ce-sum") == "ce-rescore") { }
 
@@ -341,13 +394,28 @@ public:
              "Expected input-types to be have fields (class, sequence, sequence)");
     ABORT_IF(corpusBatch->sets() != 3, "Expected 3 sub-batches, not {}", corpusBatch->sets());
 
-    auto lossFn = [&](Expr x, Expr y) {
-      float eps = 1e-5f;
-      if(!options_->get<bool>("comet-final-sigmoid"))
-        x = sigmoid(x);
-      return -(y * log(x + eps) + (1.f - y) * log((1.f + eps) - x));
-    };
+    std::function<Expr(Expr, Expr)> lossFn;
+    auto lossType = options_->get<std::string>("cost-type", "ce-sum");
 
+    if(lossType == "ce-sum" || lossType == "ce-mean") {
+      lossFn = [&](Expr x, Expr y) {
+        float eps = 1e-5f;
+        if(!options_->get<bool>("comet-final-sigmoid"))
+          x = sigmoid(x);
+        return -(y * log(x + eps) + (1.f - y) * log((1.f + eps) - x));
+      };
+    } else if(lossType == "mse") {
+      lossFn = [&](Expr x, Expr y) {
+        return square(x - y);
+      };
+    } else if(lossType == "mae") {
+      lossFn = [&](Expr x, Expr y) {
+        return abs(x - y);
+      };
+    } else {
+      ABORT("Unknown loss type {} for COMET training", lossType);
+    }
+  
     auto encoded = encpool->apply(graph, corpusBatch, clearGraph);
     
     Expr x = encoded[0];

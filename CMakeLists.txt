@@ -113,8 +113,13 @@ if(ARM)
   endif(MSVC)
 endif(ARM)
 
-#if(SDK_NAME EQUAL "iphoneos" OR SDK_NAME EQUAL "iphonesimulator")
-#endif(SDK_NAME)
+########
+# pThreads: consider it as EXT_LIBS for a more portable binary
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
+set(EXT_LIBS ${EXT_LIBS} Threads::Threads)
+########
 
 ###############################################################################
 # Set compilation flags

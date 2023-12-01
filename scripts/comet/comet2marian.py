@@ -90,6 +90,8 @@ if model_type == "RegressionMetric":
     config["type"] = "comet"
 elif model_type == "ReferencelessRegression":
     config["type"] = "comet-qe"
+elif model_type == "XLMRobertaModel":
+    config["type"] = "comet-qe"
 else:
     raise Exception(f'Unknown type of model {model_type}')
 
@@ -104,8 +106,10 @@ config["transformer-postprocess-emb"] = "nd"
 config["bert-train-type-embeddings"] = False
 config["bert-type-vocab-size"] = 0
 config["comet-prepend-zero"] = True
-config["comet-final-sigmoid"] = args.add_sigmoid
-config["comet-pooler-ffn"] = [2048, 1024]
+if not args.roberta:
+    config["comet-final-sigmoid"] = args.add_sigmoid
+    config["comet-pooler-ffn"] = [2048, 1024]
+
 # @TODO: figure out if it's worth adding `cometModel.name_or_path` to the end of this version string.
 config["version"] = "comet2marian2.py conversion"
 config["enc-depth"] = 0

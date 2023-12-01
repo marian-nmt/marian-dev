@@ -121,6 +121,8 @@ private:
       ss << std::exp(state->costSum / state->costCount);
     } else if(lossType == "cross-entropy" || lossType == "ce-mean") { // backwards-compat, @TODO: get rid of this?
       ss << state->costSum / state->samplesDisp;
+    } else if(lossType == "mse" || lossType == "mae") {
+      ss << state->costSum / state->costCount;
     } else {
       ABORT("Unknown loss type {}", lossType);
     }

@@ -1692,23 +1692,40 @@ private:
   float eps_;
 };
 
-
+// @TODO: rewriting this fixes a bug for this one node. There should be exactly one 
+// NodeOp per gradient tensor many other nodes have that bug and need to be fixed. 
+// This will only manifest if the first op is not trainable, then gradients for the 
+// other nodes might get skipped despite being trainable.
 struct HighwayNodeOp : public NaryNodeOp {
-  HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes) {}
+  HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes, Shape::broadcast(nodes)) {}
 
   NodeOps forwardOps() override {
-    return {NodeOp(HighwayForward(
-        val_, child(0)->val(), child(1)->val(), child(2)->val()))};
+    using namespace functional;
+    auto alpha = sigmoid(_4);
+    auto fwd = _1 = alpha * _2 + (1.f - alpha) * _3;
+    
+    return {
+      NodeOp(Element(fwd, val_, child(0)->val(), child(1)->val(), child(2)->val()))
+    };
   }
 
   NodeOps backwardOps() override {
-    return {NodeOp(HighwayBackward(child(0)->grad(),
-                                   child(1)->grad(),
-                                   child(2)->grad(),
-                                   child(0)->val(),
-                                   child(1)->val(),
-                                   child(2)->val(),
-                                   adj_))};
+    using namespace functional;
+
+    auto alpha = sigmoid(_1);
+    auto bwd1  = alpha * _2;
+    auto bwd2  = (1.f - alpha) * _2;
+    auto bwd3  = alpha * (1.f - alpha) * _2 * (_3 - _4);
+
+    auto& in1  = child(0)->val();
+    auto& in2  = child(1)->val();
+    auto& gate = child(2)->val();
+
+    return {
+      NodeOp(Add(bwd1, child(0)->grad(), gate, adj_)),
+      NodeOp(Add(bwd2, child(1)->grad(), gate, adj_)),
+      NodeOp(Add(bwd3, child(2)->grad(), gate, adj_, in1, in2))
+    };
   }
 
   const std::string type() override { return "highway"; }

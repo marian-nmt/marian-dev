@@ -358,7 +358,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
 
       bool anyCanExpand = false; // stays false if all hyps are invalid factor expansions
       if(t == 0 && factorGroup == 0) { // no scores yet
-        prevPathScores = graph->constant({1, 1, 1, 1}, inits::fromValue(0));
+        prevPathScores = graph->constant({1, 1, 1, 1}, inits::fromValue(0), Type::float32);
         anyCanExpand = true;
 
         // at the beginning all batch entries are used
@@ -407,7 +407,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
         }
         if(factorGroup == 0)
           currentDimBatch = (IndexType) batchIndices.size(); // keep batch size constant for all factor groups in a time step
-        prevPathScores = graph->constant({(int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores));
+        prevPathScores = graph->constant({(int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores), Type::float32);
       }
       if (!anyCanExpand) // all words cannot expand this factor: skip
         continue;
@@ -462,7 +462,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
       }
 
       // make beams continuous
-      auto expandedPathScores = prevPathScores + stepScores; // will become [maxBeamSize, 1, currDimBatch, dimVocab]
+      auto expandedPathScores = prevPathScores + cast(stepScores, Type::float32); // will become [maxBeamSize, 1, currDimBatch, dimVocab]
       expandedPathScores = swapAxes(expandedPathScores, 0, 2); // -> [currentDimBatch, 1, maxBeamSize, dimVocab]
 
       // perform NN computation

@@ -142,6 +142,14 @@ Word Vocab::getEosId() const { return vImpl_->getEosId(); }
 // return UNK symbol id
 Word Vocab::getUnkId() const { return vImpl_->getUnkId(); }
 
+// return generic separator symbol id
+Word Vocab::getSepId() const { 
+  std::string sepSym = options_->get<std::string>("separator-symbol", "[eos]");
+  Word id = (*vImpl_)[sepSym];
+  ABORT_IF(id == getUnkId(), "Separator symbol '{}' not found in vocabulary", sepSym);
+  return id;
+}
+
 std::vector<Word> Vocab::suppressedIds(bool suppressUnk, bool suppressSpecial) const {
   std::vector<Word> ids;
   if(suppressUnk) {

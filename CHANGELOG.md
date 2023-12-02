@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed compilation with clang 16.0.6
 
 ### Added
+- Added ALIBI related options to new layer framework.
 - Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.
 - Added MSE and MAE costs to COMET-QE training.
 - Added augmentation of shuffled examples to COMET-QE training via `--comet-augment-bad`.

@@ -82,6 +82,8 @@ set(MARIAN_SOURCES
   layers/lsh.cpp
 
   layers_new/neuralnet.cpp
+  layers_new/alibi.cpp
+  layers_new/attention.cpp
 
   rnn/cells.cpp
   rnn/attention.cpp
@@ -179,6 +181,7 @@ set_target_properties(marian PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY
 
 if(CUDA_FOUND)
   cuda_add_library(marian_cuda
+    layers_new/alibi.cu
     tensors/gpu/device.cu
     tensors/gpu/hash.cu
     tensors/gpu/algorithm.cu

@@ -55,6 +55,8 @@ void CopyCastFrom(Tensor out, const T* in, int length) {
     CopyCastTo<add>(out->data<float>(), in, length);
   } else if(out->type() == Type::float16) {
     CopyCastTo<add>(out->data<float16>(), in, length);
+  } else if(out->type() == Type::uint32) {
+    CopyCastTo<add>(out->data<uint32_t>(), in, length);
   } else {
     ABORT("CopyCastTo to type {} not implemented", out->type());
   }

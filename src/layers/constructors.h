@@ -246,7 +246,7 @@ private:
   public:
     AsLayerFactory(const WrappedFactory& wrapped) : us(wrapped) {}
     Ptr<IUnaryLayer> construct(Ptr<ExpressionGraph> graph) override final {
-      auto p = std::static_pointer_cast<IUnaryLayer>(us.construct(graph));
+      auto p = std::dynamic_pointer_cast<IUnaryLayer>(us.construct(graph));
       ABORT_IF(!p, "Attempted to cast a Factory to LayerFactory that isn't one");
       return p;
     }

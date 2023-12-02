@@ -62,7 +62,7 @@ public:
 
   virtual Ptr<data::Shortlist> getShortlist() = 0;
 
-  virtual data::SoftAlignment getAlignment() = 0;
+  virtual data::SoftAlignment getAlignment() = 0; 
 };
 
 class EncoderDecoder : public IEncoderDecoder, public LayerBase {

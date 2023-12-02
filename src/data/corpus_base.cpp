@@ -355,7 +355,7 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
     // when force-decoding we want the last vocab to be part of the batch,
     // hence we do not drop it from the input batch.
     bool forceDecoding = options_->get<bool>("force-decode", false);
-    size_t shift = !forceDecoding ? 1 : 0;
+    size_t shift = forceDecoding ? 0 : 1;
 
     for(size_t i = 0; i + shift < numVocs; ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);

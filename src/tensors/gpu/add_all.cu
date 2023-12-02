@@ -111,6 +111,21 @@ void AggregateAll(Ptr<Allocator> allocator,
   AggregateAllVar<T, AccType>(allocator, functor, aggInit, aggFunctor, scale, out, in1, in2, in3);
 }
 
+template <typename T, typename AccType, class Functor, class AggFunctor>
+void AggregateAll(Ptr<Allocator> allocator,
+                  Functor functor, 
+                  AccType aggInit,
+                  AggFunctor aggFunctor,
+                  AccType scale,
+                  marian::Tensor out, 
+                  const marian::Tensor in1,
+                  const marian::Tensor in2,
+                  const marian::Tensor in3,
+                  const marian::Tensor in4) {
+  AggregateAllVar<T, AccType>(allocator, functor, aggInit, aggFunctor, scale, out, in1, in2, in3, in4);
+}
+
+
 #include "tensors/gpu/add_all.inc"
 
 }

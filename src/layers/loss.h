@@ -198,11 +198,12 @@ private:
   virtual Expr accumulateLoss(const RationalLoss& current) override {
     if(loss_) {
       const auto& first = partialLosses_.front();
-      return loss_
-             + current.loss() * first.count()
-                   / current.count();  // scale up/down to match scale of first loss
+      Type lossType = loss_->value_type();
+       // scale up/down to match scale of first loss
+      return loss_ + cast(current.loss(), lossType) * first.count() / cast(current.count(), lossType); 
     } else {
-      return current.loss();  // first reference loss, keeps to scale with this one
+      // first reference loss, keeps to scale with this one
+      return current.loss(); 
     }
   }
 
@@ -212,7 +213,7 @@ private:
     } else {
       return current.count();  // This is the first loss
     }
-  }
+  } 
 
 public:
   ScaledMultiRationalLoss() : MultiRationalLoss() {}
@@ -233,18 +234,19 @@ public:
 class MeanMultiRationalLoss : public MultiRationalLoss {
 private:
   virtual Expr accumulateLoss(const RationalLoss& current) override {
-    if(loss_)
-      return loss_ + current.loss() / current.count();
-    else
+    if(loss_) {
+      Type lossType = loss_->value_type();
+      return loss_ + cast(current.loss(), lossType) / cast(current.count(), lossType);
+    } else {
       return current.loss() / current.count();
+    }
   }
 
   virtual Expr accumulateCount(const RationalLoss& current) override {
     if(count_)
       return count_;  // keep the existing '1'
     else
-      return current.count()->graph()->ones(
-          {1}, current.loss()->value_type());  // just '1' as labels are factored into loss_
+      return current.count()->graph()->ones({1}, current.loss()->value_type());  // just '1' as labels are factored into loss_
   }
 
 public:

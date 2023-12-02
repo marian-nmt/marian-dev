@@ -255,7 +255,8 @@ public:
       for(const Word& id : sentence)
         if(!ignoreEOS || id != getEosId())
           line += (*this)[id] + " ";
-      line.pop_back();  // trim the trailing whitespace
+      if(!line.empty())
+        line.pop_back();  // trim the trailing whitespace
     } else {
       // convert vector of Word to vector of int
       std::vector<int> spmSentence;

@@ -3217,8 +3217,7 @@ __global__ void gHighwayBackward(T* out1,
       T sigma = functional::Ops<T>::sigmoid(t[index]);
       out1[index] = sigma * adj[index];
       out2[index] = ((T)1.f - sigma) * adj[index];
-      outt[index]
-          = sigma * ((T)1.f - sigma) * (in1[index] - in2[index]) * adj[index];
+      outt[index] = sigma * ((T)1.f - sigma) * (in1[index] - in2[index]) * adj[index];
     }
   }
 }

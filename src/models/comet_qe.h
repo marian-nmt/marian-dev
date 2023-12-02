@@ -8,7 +8,41 @@
 namespace marian {
 namespace models {
 
-struct CometEncoder final : public nn::TransformerEncoder {
+class CometEncoder final : public nn::TransformerEncoder {
+private:
+  // This seems to be a mix of LayerNorm and BatchNorm and present in the original Unbabel code.
+  // It norms over time, not batch, also should be optimized. Seems safe to disable for custom
+  // models trained by us, but required when doing inference with Unbabel models.
+  Expr cometNorm(Expr x, Expr binaryMask) const {
+    Expr output;
+    if(opt<bool>("comet-mix-norm", false)) {
+      registerParameterLazy(gamma, Shape({ 1 }), inits::ones());
+      int dimModel = x->shape()[-1];
+
+      // Convert type to fp32 for better accumulation. This is a no-op if things are already fp32.
+      Type origType = x->value_type();
+      x             = marian::cast(x,       Type::float32);
+      binaryMask    = marian::cast(binaryMask, Type::float32);
+      
+      x = x * binaryMask;
+      auto denom = (float)dimModel * sum(binaryMask, -2);
+      auto mu    = sum(sum(x, -1), -2) / denom; // sum over model and time
+      auto sigma = sum(sum(square(x - mu), -1), -2) / denom;
+
+      auto normed = (x - mu) / sqrt(sigma + 1e-12f);
+      output = marian::cast(gamma, Type::float32) * sum(normed * binaryMask, -2) / sum(binaryMask, -2);
+
+      // Undo conversion to fp32 if not originally fp32 (most likely fp16 then)
+      output = marian::cast(output, origType);
+    } else {
+      // average over time dimension
+      output = sum(x * binaryMask, -2) / sum(binaryMask, -2);
+    }
+
+    return output;
+  };
+
+public:
   Expr weights;
   Expr gamma;
 
@@ -19,57 +53,24 @@ struct CometEncoder final : public nn::TransformerEncoder {
   Expr apply(Expr input, Expr mask) const override {
     auto output = marian::nn::swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
     
-    mask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-    auto binMask = mask;
-    mask = marian::nn::transposedLogMask(mask, opt<int>("transformer-heads"));
-  
+    auto binaryMask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
+    
     // apply positional embeddings to contextual input
     output = positionEmbedding->apply(output);
 
     // apply dropout or layer-norm to embeddings if required
     output = preprocessor->apply(output);
-
-    // This seems to be a mix of LayerNorm and BatchNorm and present in the original Unbabel code.
-    // It norms over time, not batch, also should be optimized. Seems safe to disable for custom
-    // models trained by us, but required when doing inference with Unbabel models.
-    auto cometNorm = [&, this](Expr x, Expr binMask) {
-      Expr output;
-      if(opt<bool>("comet-mix-norm", false)) {
-        registerParameterLazy(gamma, Shape({ 1 }), inits::ones());
-        int dimModel = x->shape()[-1];
-
-        // Convert type to fp32 for better accumulation. This is a no-op if things are already fp32.
-        Type origType = x->value_type();
-        x       = marian::cast(x,       Type::float32);
-        binMask = marian::cast(binMask, Type::float32);
-        
-        x = x * binMask;
-        auto denom = (float)dimModel * sum(binMask, -2);
-        auto mu    = sum(sum(x, -1), -2) / denom; // sum over model and time
-        auto sigma = sum(sum(square(x - mu), -1), -2) / denom;
-
-        auto normed = (x - mu) / sqrt(sigma + 1e-12f);
-        output = marian::cast(gamma, Type::float32) * sum(normed * binMask, -2) / sum(binMask, -2);
-
-        // Undo conversion to fp32 if not originally fp32 (most likely fp16 then)
-        output = marian::cast(output, origType);
-      } else {
-        // average over time dimension
-        output = sum(x * binMask, -2) / sum(binMask, -2);
-      }
-
-      return output;
-    };
+    auto logMask = maskProcessor->apply(output, binaryMask); // [beam depth=1, batch size * numHeads, max length, vector dim=1]
 
     std::vector<Expr> pooler;
     if(opt<bool>("comet-mix", false))
-      pooler.push_back(cometNorm(output, binMask));
+      pooler.push_back(cometNorm(output, binaryMask));
 
     // traverse the layers, use the same mask for each
     for(auto layer : *layers) {
-      output = layer->apply(output, mask);
+      output = layer->apply(output, logMask);
       if(opt<bool>("comet-mix", false))
-        pooler.push_back(cometNorm(output, binMask)); // [ batch, time, modelDim ]
+        pooler.push_back(cometNorm(output, binaryMask)); // [ batch, time, modelDim ]
     }
 
     if(opt<bool>("comet-mix", false)) {
@@ -78,7 +79,7 @@ struct CometEncoder final : public nn::TransformerEncoder {
       output = sum(weightsNorm * concatenate(pooler, /*axis=*/-2), -2); // [batch, 1, modelDim]
     } else {
       // just use last layer, average over time dim
-      output = cometNorm(output, binMask); // [batch, 1, modelDim]
+      output = cometNorm(output, binaryMask); // [batch, 1, modelDim]
     }
 
     return output;

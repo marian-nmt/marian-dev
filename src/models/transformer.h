@@ -118,6 +118,9 @@ public:
   }
 
   virtual Expr addSpecialEmbeddings(Expr input, int start = 0, Ptr<data::CorpusBatch> /*batch*/ = nullptr) const {
+    if(opt<bool>("transformer-disable-position-embeddings", false))
+      return input;
+      
     bool trainPosEmbeddings = opt<bool>("transformer-train-positions", false);
     return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }

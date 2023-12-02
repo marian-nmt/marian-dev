@@ -1,9 +1,14 @@
 #pragma once
 
 #include "graph/cached_expression.h"
+#include "layers_new/decoder.h"
 #include "layers_new/neuralnet.h"
 
 namespace marian {
+
+// specialized operator for faster logMask computation
+Expr logMask(Expr mask, int numHeads);
+
 namespace nn {
 
 // Abstract base class for attention mechanisms
@@ -41,15 +46,15 @@ public:
     // multiplicative attention with flattened softmax
     float scale = 1.0f / std::sqrt((float)dimKeys); // scaling to avoid extreme values due to matrix multiplication
     
-    // query, keys and values: [beam depth * batch size, num heads, length, head dim]
-    auto z = bdot(query, keys, false, true, scale); // [beam depth, batch size * num heads, max tgt length, max src length]
+    // query, keys and values: [dimBeam, dimBatch * numHeads, (dimQuery|dimKeys=dimValues), dimHead]
+    auto z = bdot(query, keys, false, true, scale); // [dimBeam, dimBatch * numHeads, dimQuery, dimKeys]
 
     // mask out garbage beyond end of sequences
     if(logMask)
       z = z + logMask;
 
     // take softmax along src sequence axis (-1)
-    auto weights = softmax(z); // [beam depth, batch size * num heads, max tgt length, max src length]
+    auto weights = softmax(z); // [dimBeam, dimBatch * numHeads, dimQuery, dimKeys]
     
 #if 0 // @TODO: make this work again
     if(saveAttentionWeights)
@@ -60,13 +65,14 @@ public:
     weights = attentionDropout->apply(weights);
 
     // apply attention weights to values
-    // weights: [beam depth, batch size * num heads, max tgt length, max src length]
-    // values:  [beam depth, batch size * num heads, src length, head dim]
-    auto output = bdot(weights, values);  // [beam depth, batch size * num heads, max tgt length, split vector dim]
+    // weights: [dimBeam, dimBatch * numHeads, dimQuery, dimKeys]
+    // values:  [dimBeam, dimBatch * numHeads,  dimKeys, dimHead]
+    auto output = bdot(weights, values);  // [dimBeam, dimBatch * numHeads, dimQuery, dimHead]
     return output;
   }
 };
 
+// Base class for multi-head attention
 template <class AttentionType> // Currently only used for MultiplicativeAttention
 class MultiHeadAttention : public AttentionType {
 protected:
@@ -110,7 +116,7 @@ public:
 
   virtual ~MultiHeadAttention() = default;
 
-private:
+protected:
   // join beam and batch dimension and split model dimension in to heads and head dimension. We also need to transpose to 
   // be able to do an efficient batched matmul.
   Expr splitHeads(Expr input) const {
@@ -141,6 +147,7 @@ private:
   }
 
 public:
+  // Apply the multi-head attention to the given query, keys and values
   virtual Expr apply(Expr query, Expr keys, Expr values, Expr mask) const override {
     auto qh = splitHeads(qProj->apply(query));
 
@@ -156,7 +163,7 @@ public:
       return splitHeads(vProj->apply(values)); 
     }, equal);
 
-    auto output = AttentionType::apply(qh, kh, vh, mask);
+    auto output  = AttentionType::apply(qh, kh, vh, mask);
 
     output = joinHeads(output);
     output = oProj->apply(output);
@@ -171,23 +178,51 @@ public:
   }
 };
 
-static Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options) {
-  // @TODO: currently this does nothing as it isn't set anywhere
-  std::string selfAttentionType = options->get<std::string>("transformer-encoder-attention", "default"); // currently only default
+// Base class for attention mask processors
+// Attention mask processors are used to process a given attention mask before it is used in an attention computation.
+struct AttentionMaskProcessor : public LayerWithOptions, public IBinaryLayer, public IBinaryDecoderLayer {
+  int numHeads{1};
 
-  // in the future we might add SingleHead or Additive or LSH-based as in Reformer
-  if(selfAttentionType == "default") {
-    int numHeads = options->get<int>("transformer-heads");
-    int modelDim = options->get<int>("transformer-dim-model", options->get<int>("dim-emb"));
+  AttentionMaskProcessor(Ptr<ExpressionGraph> graph,
+                         Ptr<Options> options)
+    : LayerWithOptions(graph, options), 
+      numHeads(opt<int>("transformer-heads", 1)) {}
 
-    float attentionDropoutProbability = options->get<float>("transformer-dropout-attention", 0.f);
+  virtual ~AttentionMaskProcessor() = default;
+  
+  virtual Expr apply(Expr /*query*/, Expr mask) const override {
+    if(!mask)
+      return nullptr;
 
-    return New<MultiHeadAttention<MultiplicativeAttention>>(graph, numHeads, modelDim, modelDim, attentionDropoutProbability);
+    // @TODO eventually remove this branch. For now we keep it for documentation purposes
+#if 0
+    // LayerAttention expects mask in a different layout
+    int dimBatch = mask->shape()[-3];
+    int dimKeys  = mask->shape()[-2];
+
+    mask = reshape(mask, {dimBatch, 1, 1, dimKeys}); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
+
+    float maskFactor = std::max(NumericLimits<float>(mask->value_type()).lowest / 2.f, -99999999.f); // to make sure we do not overflow for fp16
+    auto logMask = (1 - mask) * maskFactor;
+    logMask      = reshape(repeat(logMask, numHeads, -3), {1, dimBatch * numHeads, 1, dimKeys});
+    return logMask;
+#else
+    // shape of mask should be [1, dimBatch, dimKeys, 1]
+    // this does all the above work in one step
+    return marian::logMask(mask, numHeads); // [1, dimBatch * numHeads, 1, dimKeys]
+#endif
   }
-  else {
-    ABORT("Unknown transformer encoder attention type: {}", selfAttentionType);
+
+  virtual Expr apply(Expr query, Expr mask, Ptr<DecoderState> /*state*/) const override {
+    return apply(query, mask);
   }
-}
+};
+
+// Factory function to create attention layers from options
+Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options);
+
+// Factory function to create attention mask processors from options
+Ptr<AttentionMaskProcessor> attentionMaskProcessorFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options);
 
 } // namespace nn
 } // namespace marian

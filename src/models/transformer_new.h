@@ -1,10 +1,12 @@
 #pragma once
 
 #include "layers_new/transformer.h"
+#include "layers_new/alibi.h"
 
 #include "models/encoder.h"
 #include "models/decoder.h"
 #include "models/states.h"
+#include "models/model_base.h"
 #include "layers/constructors.h"
 
 namespace marian {
@@ -129,11 +131,11 @@ public:
       rnn::States startStates(DecoderBase::opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers
-      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
+      return NewDecoderState(DecoderBase::options_, startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
     }
     else {
       rnn::States startStates;
-      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/true);
+      return NewDecoderState(DecoderBase::options_, startStates, Logits(), encStates, batch, /*isBatchMajor=*/true);
     }
   }
 
@@ -148,6 +150,8 @@ public:
   }
 
   Ptr<DecoderState> step(Ptr<DecoderState> state) {
+    using db = DecoderBase;
+
     auto embeddings  = state->getTargetHistoryEmbeddings(); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
     auto decoderMask = state->getTargetMask();              // [max length, batch size, 1]  --this is a hypothesis
 
@@ -155,13 +159,11 @@ public:
 
     auto encoderContext = state->getEncoderStates()[0]->getContext(); // encoder output
     auto encoderMask    = state->getEncoderStates()[0]->getMask(); // note: may differ from Encoder self-attention mask in that additional positions are banned for cross-attention
-    
-    // Convert old style decoder state to new decoder state
-    size_t position = state->getPosition();
-    auto nnState = New<nn::DecoderStateList>(position);
-    for(auto& layerState : state->getStates())
-      nnState->as<nn::DecoderStateList>()->append(New<nn::DecoderStateItem>(layerState.cell, position));
 
+    // Convert old style decoder state to new decoder state
+    using namespace models;
+    usage modelUsage = (usage)db::opt<int>("usage", (int)usage::translation);
+    auto nnState = convertDecoderState(state, graph(), /*decoding=*/modelUsage == usage::translation);
     auto decoderContext = decoder->apply(embeddings, decoderMask, encoderContext, encoderMask, nnState);
 
     // final feed-forward layer (output)
@@ -177,10 +179,7 @@ public:
       decoderStates.push_back(rnn::State({ cellState, cellState }));
     }
     // return unnormalized(!) probabilities
-    auto nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), state->isBatchMajor());
-    nextState->setPosition(state->getPosition() + 1);
-
-    return nextState;
+    return state->next(decoderStates, logits);
   }
 
   // helper function for guided alignment

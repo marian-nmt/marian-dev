@@ -4,6 +4,7 @@
 #include "graph/expression_graph.h"
 #include "graph/expression_operators.h"
 #include "graph/node_initializers.h"
+#include "layers/loss.h"
 
 #include <type_traits>
 
@@ -117,6 +118,8 @@ private:
 protected:
   std::vector<NamedParameter> namedParameters_; // vector of all named parameters belonging to this specific layer (not recurisve)
   std::vector<NamedLayer<Layer>> namedLayers_;  // vector of all named sublayers for this specific layer (not recursive)
+
+  mutable std::vector<RationalLoss> auxiliaryLosses_;
 
   // Create a layer parameter with a full name composed of the path to this layer and localName
   Expr param(const std::string& localName, const Shape& shape, const Ptr<inits::NodeInitializer>& init) {
@@ -255,6 +258,7 @@ public:
     return marian::utils::join(path, "->");
   }
 
+  // Return a string with information about this layer and its sub-layers if includeChildren is true.
   std::string layerInfo(bool includeChildren=false) const {
     std::stringstream ss;
     std::function<void(const Layer*, int)> recurse;
@@ -301,11 +305,32 @@ public:
   }
 
   virtual void clear() override {
+    auxiliaryLosses_.clear();
     for(auto& lr : namedLayers())
       lr.second->clear();
   }
+
+  void addAuxiliaryLoss(const RationalLoss& loss) const {
+    auxiliaryLosses_.push_back(loss);
+  }
+
+  // Return all auxiliary losses for this layer and its sub-layers (descending recursively into sub-layers).
+  std::vector<RationalLoss> getAuxiliaryLosses(bool recurse = false) const {
+    if(recurse) {
+      std::vector<RationalLoss> losses;
+      for(auto layer : allLayers())
+        for(auto loss : layer->getAuxiliaryLosses(/*recurse=*/false))
+          losses.push_back(loss);
+      for(auto loss : auxiliaryLosses_)
+        losses.push_back(loss);
+      return losses;
+    } else {
+      return auxiliaryLosses_;
+    }
+  }
 };
 
+// Layer that holds a reference to a set of options. This is used to allow layers to access options
 class LayerWithOptions : public Layer {
 protected:
   Ptr<Options> options_;

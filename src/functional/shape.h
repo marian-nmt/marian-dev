@@ -76,13 +76,20 @@ struct ConstantShape {
         offset_(shape.offset_) {}
 
   template <size_t M>
-  HOST_DEVICE ConstantShape(const Array<int, M>& shape) {
+  ConstantShape(const Array<int, M>& shape) {
     ABORT_IF(M > N, "Recompile with CONST_SHAPE_DIMS >= {}", M);
 
-    std::copy(shape.begin(), shape.end(), shape_.begin() + N - M);
-    if(N - M)
-      std::fill_n(shape_.begin(), N - M, 1);
+    for(int i = 0; i < shape.size(); ++i)
+      shape_[N - M + i] = shape[i];
+    for(int i = 0; i < N - M; ++i)
+      shape_[i] = 1;
 
+    updateStrides();
+    updateElements();
+  }
+
+  HOST_DEVICE ConstantShape(const Array<int, N>& shape)
+  : shape_(shape) {
     updateStrides();
     updateElements();
   }

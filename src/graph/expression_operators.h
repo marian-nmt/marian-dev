@@ -303,9 +303,9 @@ Expr square(Expr a);
  */
 Expr abs(Expr a);
 
-// Expr pow(Expr a, Expr b);
-// Expr pow(float a, Expr b);
-// Expr pow(Expr a, float b);
+Expr pow(Expr a, Expr b);
+Expr pow(float a, Expr b);
+Expr pow(Expr a, float b);
 
 /**
  * Computes @f$\log(e^a + e^b)@f$.

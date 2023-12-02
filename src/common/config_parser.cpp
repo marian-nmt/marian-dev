@@ -320,6 +320,32 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--transformer-depth-scaling",
       "Scale down weight initialization in transformer layers by 1 / sqrt(depth)");
 
+  cli.add<std::string>("--transformer-attention-mask",
+      "Type of mask/bias in transformer attention: default, alibi",
+      "default");
+  cli.add<bool>("--transformer-alibi-shift",
+      "Use alibi-shifting with sync-points with --transformer-attention-mask alibi");
+  cli.add<std::string>("--separator-symbol",
+      "Generic separator symbol for different applications, i.e. for transformer-alibi-shift syncpoints, default is [eos] (currently only supported with raw spm models)",
+      "[eos]");
+  cli.add<bool>("--transformer-disable-position-embeddings",
+      "Do not add any position embeddings. Use e.g. with --transformer-attention-mask alibi");
+
+  cli.add<bool>("--transformer-alibi-trainable", 
+      "Make alibi slopes trainable, default slopes are constant");
+
+  // handy shortcut for the current best setup
+  cli.add<bool>("--alibi", 
+      "Use alibi settings for transformer, this is a shortcut for --transformer-attention-mask alibi --transformer-alibi-shift --transformer-disable-position-embeddings --separator-symbol [eos]");
+  cli.alias("alibi", "true", [](YAML::Node& config) {
+    // define current-best alibi settings
+    config["transformer-attention-mask"] = "alibi";
+    config["transformer-alibi-shift"] = true;
+    config["transformer-disable-position-embeddings"] = true;
+    config["separator-symbol"] = "[eos]";
+    config["transformer-alibi-trainable"] = true;
+  });
+
   cli.add<bool>("--transformer-no-bias",
       "Don't use any bias vectors in linear layers");
   cli.add<bool>("--transformer-no-affine",

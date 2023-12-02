@@ -49,7 +49,7 @@ public:
     options_->set("inference", true,
                   "shuffle", "none");
 
-    corpus_ = New<data::Corpus>(options_, true);
+    corpus_ = New<data::Corpus>(options_, /*translate=*/true);
 
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
     trgVocab_ = New<Vocab>(options_, vocabs.size() - 1);

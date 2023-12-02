@@ -43,6 +43,8 @@ struct TransformerPrePostProcessor final : public Layer, public IBinaryLayer {
       }
     }
   }
+
+  virtual ~TransformerPrePostProcessor() = default;
   
   Expr apply(Expr input, Expr previous = nullptr) const override {
     Expr output = input;
@@ -84,7 +86,6 @@ public:
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
 
-    // @TODO: factory to support different attention flavors?
     selfAttention = attentionFromOptions(graph, options);
     registerLayer(selfAttention);
 
@@ -95,10 +96,10 @@ public:
     registerLayer(postprocessor);
   }
 
-  Expr apply(Expr input, Expr mask = nullptr) const override {
-    auto output = preprocessor->apply(input);                          // optional preprocessing
-    output      = selfAttention->apply(output, output, output, mask);  // self attention, @TODO: make this a IBinaryLayer rather than IQuaternaryLayer
-    output      = postprocessor->apply(output, input);                 // optional postprocessing, optional skip connection
+  Expr apply(Expr input, Expr logMask = nullptr) const override {
+    auto output  = preprocessor->apply(input);                            // optional preprocessing
+    output       = selfAttention->apply(output, output, output, logMask); // self attention, @TODO: make this a IBinaryLayer rather than IQuaternaryLayer
+    output       = postprocessor->apply(output, input);                   // optional postprocessing, optional skip connection
     return output;
   }
 };
@@ -214,6 +215,7 @@ struct TransformerEncoderLayer final : public LayerWithOptions, public IBinaryLa
  */
 struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
   Ptr<PositionEmbeddingLayer> positionEmbedding;
+  Ptr<AttentionMaskProcessor> maskProcessor;
   Ptr<TransformerPrePostProcessor> preprocessor;
   Ptr<LayerList> layers;
   Ptr<TransformerPrePostProcessor> postprocessor;
@@ -222,8 +224,13 @@ struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
                      Ptr<Options> options)
     : LayerWithOptions(graph, options)
   {
-    positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
-    registerLayer(positionEmbedding);
+    if(!opt<bool>("transformer-disable-position-embeddings", false)) {
+      positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
+      registerLayer(positionEmbedding);
+    }
+
+    maskProcessor = attentionMaskProcessorFromOptions(graph, options);
+    registerLayer(maskProcessor);
 
     preprocessor = New<TransformerPrePostProcessor>(
       graph, 
@@ -271,24 +278,26 @@ struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
     // decoder state, Frank added information about batchMajor/timeMajor orientation. If we 
     // do that everywhere we can detect inconsistencies automatically. 
     // reorganize batch and timestep
-    auto output = swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
-    if(mask) {
-      mask = swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-      mask = transposedLogMask(mask, opt<int>("transformer-heads"));
-    }
+    auto output = swapTimeBatch(input); // [1, dimBatch, dimSrcWords, dimModel]
+    if(mask)
+      mask = swapTimeBatch(mask); // [1, dimBatch, dimSrcWords, 1]
 
     // apply positional embeddings to contextual input
-    output = positionEmbedding->apply(output);
+    if(positionEmbedding)
+      output = positionEmbedding->apply(output);
+    else
+      output = std::sqrt((float)output->shape()[-1]) * output;
 
     // handle for skip connection at top
     auto prevOutput = output;
 
     // apply dropout or layer-norm to embeddings if required
     output = preprocessor->apply(output);
+    auto logMask = maskProcessor->apply(output, mask);
 
     // traverse the layers, use the same mask for each
     for(auto layer : *layers)
-      output = layer->apply(output, mask);
+      output = layer->apply(output, logMask);
 
     // apply final postprocessor if required, e.g. final layer-norm for pre-norm or final skip connection
     output = postprocessor->apply(output, prevOutput);
@@ -327,7 +336,7 @@ public:
       opt<std::string>("transformer-preprocess", ""),  
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
-
+    
     // @TODO: factory to support different attention flavors?
     crossAttention = attentionFromOptions(graph, options);
     registerLayer(crossAttention);
@@ -339,15 +348,13 @@ public:
     registerLayer(postprocessor);
   }
 
-  Expr apply(Expr input, Expr context, Expr contextMask = nullptr) const override {
-    auto output = preprocessor->apply(input);                                   // optional preprocessing
-    output      = crossAttention->apply(output, context, context, contextMask); // cross attention, @TODO: make this a ITernaryLayer rather than IQuaternaryLayer
-    output      = postprocessor->apply(output, input);                          // optional postprocessing, optional skip connection
+  Expr apply(Expr input, Expr context, Expr logMask) const override {
+    auto output  = preprocessor->apply(input); // optional preprocessing
+    output       = crossAttention->apply(output, context, context, logMask); // cross attention, @TODO: make this a ITernaryLayer rather than IQuaternaryLayer
+    output       = postprocessor->apply(output, input);                      // optional postprocessing, optional skip connection
     return output;
   }
 };
-
-#if 1
 
 class TransformerAutoRegressiveBlock : public LayerWithOptions, public IBinaryDecoderLayer {
 public:
@@ -435,9 +442,9 @@ struct TransformerDecoderLayer final : public LayerWithOptions, public IQuaterna
     registerLayer(filterBlock);
   }
 
-  Expr apply(Expr input, Expr inputMask, Expr context, Expr contextMask, Ptr<DecoderState> state) const override {
+  Expr apply(Expr input, Expr inputMask, Expr context, Expr logMask, Ptr<DecoderState> state) const override {
     Expr output = autoRegressiveBlock->apply(input, inputMask, state);
-    output      = crossAttentionBlock->apply(output, context, contextMask);
+    output      = crossAttentionBlock->apply(output, context, logMask);
     output      = filterBlock->apply(output);
 
     checkpoint(output); // A full transformer block is a good point for gradient checkpointing (currently manual)    
@@ -453,6 +460,7 @@ struct TransformerDecoderLayer final : public LayerWithOptions, public IQuaterna
  */
 struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDecoderLayer {
   Ptr<PositionEmbeddingLayer> positionEmbedding;
+  Ptr<AttentionMaskProcessor> maskProcessor;
   Ptr<TransformerPrePostProcessor> preprocessor;
   Ptr<LayerList> layers;
   Ptr<TransformerPrePostProcessor> postprocessor;
@@ -461,8 +469,13 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
                      Ptr<Options> options)
     : LayerWithOptions(graph, options)
   {
-    positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
-    registerLayer(positionEmbedding);
+    if(!opt<bool>("transformer-disable-position-embeddings", false)) {
+      positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
+      registerLayer(positionEmbedding);
+    }
+
+    maskProcessor = attentionMaskProcessorFromOptions(graph, options);
+    registerLayer(maskProcessor);
 
     preprocessor = New<TransformerPrePostProcessor>(
       graph, 
@@ -527,22 +540,28 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
     // dimensions. This order is more natural for the transformer, but more difficult to handle
     // during beam search or when using RNNs. Hence the input/output transpositions here.
     Expr output = swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
-    context = swapTimeBatch(context); 
+    context = swapTimeBatch(context); // [dimBeam=1, dimBatch, dimSrcWords, dimModel]
+
+    // set current target token position during decoding or training. At training
+    // this should be 0. During translation the current length of the translation.
+    // Used for position embeddings and creating new decoder states.
+    int startPos = (int)state->getPosition();
 
     // @TODO: write function prepareMasks();
     // @TODO: create triangle mask here and combine with inputMask
     LOG_ONCE(info, "Don't forget the triangle mask if required!");
-    if(inputMask) {
-      inputMask = swapTimeBatch(inputMask);   // [beam depth=1, batch size, max length, vector dim=1]
-    }
-
-    if(contextMask) {
-      contextMask = swapTimeBatch(contextMask);    // [beam depth=1, max length, batch size, vector dim=1]
-      contextMask = transposedLogMask(contextMask, opt<int>("transformer-heads")); // [beam broadcast=1, batch size * num heads, max length broadcast=1, max length]
-    }
     
-    // apply positional embeddings to contextual input @TODO: remove need for conversion to int
-    output = positionEmbedding->apply(output, (int)state->getPosition());
+    if(inputMask)
+      inputMask = swapTimeBatch(inputMask); // [dimBeam=1, dimBatch, dimTrgWords, dimModel=1]
+
+    if(contextMask)
+      contextMask = swapTimeBatch(contextMask);  // [dimBeam=1, dimBatch, dimSrcWords, dimModel=1]
+  
+    // apply positional embeddings to contextual input
+    if(positionEmbedding)
+      output = positionEmbedding->apply(output, startPos);
+    else
+      output = std::sqrt((float)output->shape()[-1]) * output;
     
     // handle for skip connection at top
     auto prevOutput = output;
@@ -552,9 +571,12 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
 
     // get an iterator to per-layer states
     auto layerStateIt = state->as<nn::DecoderStateList>()->begin();
+    auto logMask = maskProcessor->apply(output, contextMask, *layerStateIt);
+
     // traverse the layers, use the same mask for each
-    for(auto layer : *layers)
-      output = layer->as<TransformerDecoderLayer>()->apply(output, inputMask, context, contextMask, /*in/out=*/*layerStateIt++);
+    for(auto layer : *layers) {
+      output = layer->as<TransformerDecoderLayer>()->apply(output, inputMask, context, logMask, /*in/out=*/*layerStateIt++);
+    }
 
     // apply final postprocessor if requred, e.g. final layer-norm for pre-norm or final skip connection
     output = postprocessor->apply(output, prevOutput);
@@ -570,7 +592,6 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
     return output;
   }
 };
-#endif
 
 } // namespace nn
 } // namespace marian

@@ -56,6 +56,24 @@ public:
                Ptr<data::CorpusBatch> batch,
                bool isBatchMajor = false)
       : states_(states), logProbs_(logProbs), encStates_(encStates), batch_(batch), isBatchMajor_(isBatchMajor) {}
+
+  // override to create derived decoder states
+  virtual Ptr<DecoderState> Create(const rnn::States& states,
+      Logits logProbs,
+      const std::vector<Ptr<EncoderState>>& encStates,
+      Ptr<data::CorpusBatch> batch,
+      bool isBatchMajor = false) const {
+    return New<DecoderState>(states, logProbs, encStates, batch, isBatchMajor);
+  }
+
+    // override to create derived decoder states
+  virtual Ptr<DecoderState> next(const rnn::States& states,
+                                 Logits logProbs) const {
+    auto state = Create(states, logProbs, encStates_, batch_, isBatchMajor_);
+    state->setPosition(getPosition() + 1);
+    return state;
+  }
+
   virtual ~DecoderState() {}
 
   // @TODO: Do we need all these to be virtual?
@@ -68,6 +86,7 @@ public:
   // @TODO: should this be a constructor? Then derived classes can call this without the New<> in the loop
   virtual Ptr<DecoderState> select(
       const std::vector<IndexType>& hypIndices,    // [beamIndex * activeBatchSize + batchIndex]
+      const Words& /*words*/, 
       const std::vector<IndexType>& batchIndices,  // [batchIndex]
       int beamSize) const {
     std::vector<Ptr<EncoderState>> newEncStates;
@@ -77,11 +96,11 @@ public:
       newEncStates.push_back(es->getContext()->shape()[-2] == batchIndices.size() ? es : es->select(batchIndices));
 
     // hypindices matches batchIndices in terms of batch dimension, so we only need hypIndices
-    auto selectedState = New<DecoderState>(states_.select(hypIndices, beamSize, /*isBatchMajor=*/isBatchMajor_),
-                                           logProbs_,
-                                           newEncStates,
-                                           batch_, 
-                                           isBatchMajor_);
+    auto selectedState = Create(states_.select(hypIndices, beamSize, /*isBatchMajor=*/isBatchMajor_),
+                                logProbs_,
+                                newEncStates,
+                                batch_, 
+                                isBatchMajor_);
 
     // Set positon of new state based on the target token position of current state
     selectedState->setPosition(getPosition());
@@ -97,7 +116,7 @@ public:
 
   virtual const Words& getTargetWords() const { return targetWords_; };
   virtual void setTargetWords(const Words& targetWords) { targetWords_ = targetWords; }
-
+  
   virtual Expr getTargetMask() const { return targetMask_; };
   virtual void setTargetMask(Expr targetMask) { targetMask_ = targetMask; }
 

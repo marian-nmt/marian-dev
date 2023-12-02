@@ -8,23 +8,6 @@ namespace nn {
 
 static inline Expr swapTimeBatch(Expr input) { return swapAxes(atleast_4d(input), -2, -3); }
 
-  // @TODO: this is an odd function to be here, this should rather be handled somewhere globally?
-  // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
-static inline Expr transposedLogMask(Expr mask, int dimHeads) {
-  if(!mask)
-    return nullptr;
-
-  // LayerAttention expects mask in a different layout
-  int dimBatch    = mask->shape()[-3];
-  int dimSrcWords = mask->shape()[-2];
-  mask = reshape(mask, {dimBatch, 1, 1, dimSrcWords}); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
-
-  float maskFactor = std::max(NumericLimits<float>(mask->value_type()).lowest / 2.f, -99999999.f); // to make sure we do not overflow for fp16
-  auto logMask = (1 - mask) * maskFactor;
-  logMask      = reshape(repeat(logMask, dimHeads, -3), {1, dimBatch * dimHeads, 1, dimSrcWords});
-  return logMask;
-}
-
 /**
  * A generic Activation function layer. Any unary Marian operator or function accepted by 
  * `std::function<Expr(Expr)>` can be turned into an activation function like this: 

@@ -68,10 +68,7 @@ struct BleurtEncoder final : public nn::TransformerEncoder {
 
   Expr apply(Expr input, Expr mask) const override {
     auto output = marian::nn::swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
-    
     mask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-    auto binMask = mask;
-    mask = marian::nn::transposedLogMask(mask, opt<int>("transformer-heads"));
   
     // apply positional embeddings to contextual input
     output = positionEmbedding->apply(output);

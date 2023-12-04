@@ -613,6 +613,129 @@ struct ReduceNodeOp : public UnaryNodeOp {
   }
 };
 
+class CumSumNodeOp : public UnaryNodeOp {
+private:
+  friend class SerializationHelpers;
+  int axis_;
+  bool reverse_;
+  bool exclusive_;
+  
+public:
+  CumSumNodeOp(Expr a, int axis, bool reverse, bool exclusive) 
+    : UnaryNodeOp(a), 
+      axis_(a->shape().axis(axis)), 
+      reverse_(reverse),
+      exclusive_(exclusive) 
+  {}
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+    return {NodeOp(CumSum(val_, child(0)->val(), reverse_, exclusive_))};
+  }
+
+  NodeOps backwardOps() override {
+    using namespace functional;
+    return {NodeOp(
+      // if we are here then we are done with adding gradients to adj_
+      // so we can canibalize it to compute the gradient of the input
+      // compute the cumsum of the adjoint
+      CumSum(adj_, adj_, !reverse_, exclusive_);
+      // add that cumsum to the gradient of the input
+      Add(_1, child(0)->grad(), adj_);
+    )};
+  }
+
+  const std::string type() override { return "cumsum"; }
+
+  const std::string color() override { return "orange"; }
+
+  virtual size_t hash() override {
+    if(!hash_) {
+      hash_ = NaryNodeOp::hash();
+      util::hash_combine(hash_, axis_);
+      util::hash_combine(hash_, reverse_);
+      util::hash_combine(hash_, exclusive_);
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<CumSumNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(axis_ != cnode->axis_)
+      return false;
+    if(reverse_ != cnode->reverse_)
+      return false;
+    if(exclusive_ != cnode->exclusive_)
+      return false;
+    return true;
+  }
+};
+
+class LogCumSumExpNodeOp : public UnaryNodeOp {
+private:
+  friend class SerializationHelpers;
+  int axis_;
+  bool reverse_;
+  bool exclusive_;
+  bool fast_;
+
+public:
+  LogCumSumExpNodeOp(Expr a, int axis, bool reverse, bool exclusive, bool fast=false)
+    : UnaryNodeOp(a), 
+      axis_(a->shape().axis(axis)), 
+      reverse_(reverse),
+      exclusive_(exclusive), 
+      fast_(fast)
+  {}
+
+  NodeOps forwardOps() override {
+    using namespace functional;
+    return {NodeOp(LogCumSumExp(val_, child(0)->val(), reverse_, exclusive_, fast_))};
+  }
+
+  NodeOps backwardOps() override {
+    using namespace functional;
+    ABORT("LogCumSumNodeOp::backwardOps() not implemented yet");
+    // return {NodeOp(LogCumSumExpGrad(child(0)->grad(), adj_, val_, child(0)->val()))};
+  }
+
+  const std::string type() override { return "logcumsumexp"; }
+
+  const std::string color() override { return "orange"; }
+
+  virtual size_t hash() override {
+    if(!hash_) {
+      hash_ = NaryNodeOp::hash();
+      util::hash_combine(hash_, axis_);
+      util::hash_combine(hash_, reverse_);
+      util::hash_combine(hash_, exclusive_);
+      util::hash_combine(hash_, fast_);
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<LogCumSumExpNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(axis_ != cnode->axis_)
+      return false;
+    if(reverse_ != cnode->reverse_)
+      return false;
+    if(exclusive_ != cnode->exclusive_)
+      return false;
+    if(fast_ != cnode->fast_)
+      return false;
+    return true;
+  }
+};
+
 struct LogNodeOp : public UnaryNodeOp {
   LogNodeOp(Expr a) : UnaryNodeOp(a) {}
 

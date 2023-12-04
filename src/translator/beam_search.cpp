@@ -79,7 +79,6 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
     if(pathScore == INVALID_PATH_SCORE) // (dummy slot or word that cannot be expanded by current factor)
       continue;
     
-    ABORT_IF(pathScore < INVALID_PATH_SCORE, "Actual pathScore ({}) is lower than INVALID_PATH_SCORE ({})??", pathScore, INVALID_PATH_SCORE); // This should not happen in valid situations. Currently the only smaller value would be -inf (effect of overflow in summation?)
     ABORT_IF(beamHypIdx >= beam.size(), "Out of bounds beamHypIdx??"); // effectively this is equivalent to ABORT_IF(beams[origBatchIdx].empty(), ...)
 
     // map wordIdx to word
@@ -450,19 +449,27 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, /*shortlist=*/ nullptr, hypIndices, maxBeamSize); // [maxBeamSize, 1, currentDimBatch, dimVocab]
         }
         // expand all hypotheses, [maxBeamSize, 1, currentDimBatch, 1] -> [maxBeamSize, 1, currentDimBatch, dimVocab]
-        if(i == 0)
-          stepScores = scorers_[i]->getWeight() * logProbs;
-        else
+        if(i == 0) {
+          stepScores =              scorers_[i]->getWeight() * logProbs;
+        } else {
           stepScores = stepScores + scorers_[i]->getWeight() * logProbs;
+        }
       }
+
+      // we cast (ensembled) scores to float32, as accumulated them into path scores; 
+      // also beneficial for sampling etc.
+      // @TODO:: consider doing this before ensembling
+      stepScores = cast(stepScores, Type::float32); 
 
       if(factorGroup == 0) {
         stepScores = distMod->force(stepScores, (int)t, (int)maxBeamSize, batchIndices);
-        stepScores = distMod->sample(stepScores);
+        stepScores = distMod->sample(stepScores, /*normalize=*/true);
       }
 
       // make beams continuous
-      auto expandedPathScores = prevPathScores + cast(stepScores, Type::float32); // will become [maxBeamSize, 1, currDimBatch, dimVocab]
+      auto expandedPathScores = prevPathScores + stepScores; // will become [maxBeamSize, 1, currDimBatch, dimVocab]
+
+      // this transpose is required for the combined top-k search below
       expandedPathScores = swapAxes(expandedPathScores, 0, 2); // -> [currentDimBatch, 1, maxBeamSize, dimVocab]
 
       // perform NN computation

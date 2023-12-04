@@ -607,9 +607,10 @@ class NumericLimits {
 private:
 
   template <typename MaxType> void setLimitsMax() {
-    max    = (ReturnType)std::numeric_limits<MaxType>::max();
-    min    = (ReturnType)std::numeric_limits<MaxType>::min();
-    lowest = (ReturnType)std::numeric_limits<MaxType>::lowest();
+    max      = (ReturnType)std::numeric_limits<MaxType>::max();
+    min      = (ReturnType)std::numeric_limits<MaxType>::min();
+    lowest   = (ReturnType)std::numeric_limits<MaxType>::lowest();
+    infinity = (ReturnType)std::numeric_limits<MaxType>::infinity();
   }
 
   template <typename RequestType>
@@ -635,6 +636,7 @@ public:
   ReturnType max;
   ReturnType min;
   ReturnType lowest;
+  ReturnType infinity;
 
   NumericLimits(Type type) {
     setLimits(type);

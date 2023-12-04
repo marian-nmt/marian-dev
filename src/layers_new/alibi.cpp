@@ -67,7 +67,7 @@ Expr AlibiDecoderState::getAlibiShift(Ptr<ExpressionGraph> graph, bool decoding)
     }
   } else {
     ABORT_IF(getBatch()->sets() != 2, 
-            "--transformer-alibi-shift=true currently only works with batch sets=2");
+             "--transformer-alibi-shift=true currently only works with batch sets=2");
     return getAlibiShiftFromBatch(graph);
   }
 }

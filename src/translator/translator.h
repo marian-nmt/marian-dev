@@ -125,12 +125,8 @@ public:
     if(options_->hasAndNotEmpty("output-sampling")) {
       if(options_->get<size_t>("beam-size") > 1)
         LOG(warn,
-            "[warning] Output sampling and beam search (beam-size > 1) are contradictory methods "
-            "and using them together is not recommended. Set beam-size to 1");
-      if(options_->get<std::vector<std::string>>("models").size() > 1)
-        LOG(warn,
-            "[warning] Output sampling and model ensembling are contradictory methods and using "
-            "them together is not recommended. Use a single model");
+            "[warning] Enabling output sampling and beam search together (--output-sampling [...] && --beam-size > 1) results in so-called stochastic beam-search. "
+            "Are you sure this is desired? For normal sampling, use --beam-size 1.");
     }
   }
 

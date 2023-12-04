@@ -346,6 +346,11 @@ static inline void Select(Tensor out, const Tensor in, const Tensor indices, int
 }
 
 DISPATCH7(TopK, marian::Tensor, marian::Tensor, Ptr<Allocator>, const marian::Tensor, int, int, bool);
+DISPATCH6(Sort, marian::Tensor, marian::Tensor, Ptr<Allocator>, const marian::Tensor, int, bool);
+
+DISPATCH4(CumSum, marian::Tensor, const marian::Tensor, bool, bool);
+DISPATCH4(CumProd, marian::Tensor, const marian::Tensor, bool, bool);
+DISPATCH5(LogCumSumExp, marian::Tensor, const marian::Tensor, bool, bool, bool);
 
 DISPATCH2(LSTMCellForward, marian::Tensor, std::vector<marian::Tensor>)
 DISPATCH2(LSTMOutputForward, marian::Tensor, std::vector<marian::Tensor>);

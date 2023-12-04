@@ -848,27 +848,30 @@ __global__ void gLogSoftmax(T* out,
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
+  // loop over blocks of rows
   for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+    int j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
     if(j < rows) {
-      T* so = out + j * cols;
-      const T* sp = in + j * cols;
+      T* so = out + j * cols;      // pointer to row output data
+      const T* sp = in + j * cols; // pointer to row input data
 
       // CUDA complains if type or size of shared memory changes, keep size constant.
       extern __shared__ uint8_t _sharedBytes[];
-      T* _share = (T*)_sharedBytes;
+      T* _share = (T*)_sharedBytes; 
       AccType* _shareAccType = (AccType*)_sharedBytes;
 
       T* _max = _share; // 16-bit is ok for max if applicable
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+        int id = tid + threadIdx.x; // threadIdx.x = column index within block of columns
         if(id < cols) {
           if(sp[id] > _max[threadIdx.x])
             _max[threadIdx.x] = sp[id];
         }
       }
       __syncthreads();
+
+      // max over columns within a column block via tree reduction
       int len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -889,14 +892,18 @@ __global__ void gLogSoftmax(T* out,
       _sum[threadIdx.x] = 0.0;
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
-        if(id < cols) {
-          T sm = sp[id] - max;
-          AccType ex = Ops<AccType>::exp(sm); // sum with AccType
-          so[id] = sm;
+        if(id < cols) {  
+          // @TODO: would it be faster to recompute it below? Also better numeric stability with float?
+          AccType sm = (AccType)sp[id] - (AccType)max; // subtract max for numeric stability
+          so[id] = (T)sm; // assign numerator to output
+
+          AccType ex = Ops<AccType>::exp(sm);
           _sum[threadIdx.x] += ex; // sum with AccType
         }
       }
       __syncthreads();
+
+      // now reduce over all columns within the block
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -906,6 +913,8 @@ __global__ void gLogSoftmax(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
+
+      // produce final output data
       AccType sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;

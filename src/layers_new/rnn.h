@@ -8,6 +8,7 @@ namespace nn {
 
 struct CellState {
   Expr recurrent;
+  size_t position = 0;
 };
 
 struct ICell {
@@ -43,7 +44,7 @@ public:
     
     Expr output = iProj->apply(input);
     Expr forget = fProj->apply(input);
-    
+
     return {output, forget};
   }
 
@@ -104,6 +105,7 @@ public:
       std::vector<Expr> stepInputs(inputs.size());
       std::transform(inputs.begin(), inputs.end(), stepInputs.begin(),
                      [i, dimTimeAxis](Expr e) { return slice(e, dimTimeAxis, i); });
+      cellState->position = state->getPosition() + i;
       auto stepMask = inputMask;
       if(stepMask)
          stepMask = slice(inputMask, dimTimeAxis, i);

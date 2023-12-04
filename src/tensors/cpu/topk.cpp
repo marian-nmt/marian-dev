@@ -50,5 +50,40 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> /*allocator*/, const Tens
   }
 }
 
+// CPU implementation of Marian sort operator for SortNodeOp
+void Sort(Tensor outVal, Tensor outInd, Ptr<Allocator> /*allocator*/, const Tensor in, int axis, bool descending) {
+  ABORT_IF(axis != in->shape().size() - 1, "Currently only works for last axis");
+  ABORT_IF(in->type() != Type::float32, "Input should have type {}", Type::float32);
+  ABORT_IF(outInd->type() != Type::uint32, "Output should be have type {}", Type::uint32);
+
+  int cols = in->shape()[axis];
+  int rows = in->shape().elements() / cols;
+
+  std::vector<IndexType> idxs(cols);
+  std::iota(idxs.begin(), idxs.end(), 0);
+
+  const float* inDataPtr = in->data<float>();
+  IndexType* outIndPtr   = outInd->data<IndexType>();
+  float* outValPtr       = outVal->data<float>();
+  for(int i = 0; i < rows; ++i) {
+    std::sort( 
+      idxs.begin(),
+      idxs.end(),
+      [&](int a, int b) { 
+        return descending ? inDataPtr[a] > inDataPtr[b] : inDataPtr[a] < inDataPtr[b]; 
+      }
+    );
+    
+    for(int j = 0; j < cols; j++) {
+      outIndPtr[j] = idxs[j];
+      outValPtr[j] = inDataPtr[idxs[j]];
+    }
+    
+    outIndPtr += cols;
+    outValPtr += cols;
+    inDataPtr += cols;
+  }
+}
+
 }
 }

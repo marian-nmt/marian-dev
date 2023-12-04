@@ -246,6 +246,11 @@ public:
                  int dimBeam = 1) {
     int dk = k->shape()[-1];
 
+    // to avoid mistakenly using the old transformer framework for new features
+    auto maskType = opt<std::string>("transformer-attention-mask", "default");
+    ABORT_IF(maskType != "default", 
+             "You specified --transformer-attention-mask={} which is not implemented for legacy Transformer", maskType  );
+
     // softmax over batched dot product of query and keys (applied over all
     // time steps and batch entries), also add mask for illegal connections
 

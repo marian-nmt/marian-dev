@@ -55,6 +55,7 @@ set(MARIAN_SOURCES
   tensors/backend.cpp
   tensors/rand.cpp
   tensors/tensor.cpp
+  tensors/cpu/cumsum.cpp
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
   tensors/cpu/topk.cpp
@@ -182,6 +183,7 @@ set_target_properties(marian PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY
 if(CUDA_FOUND)
   cuda_add_library(marian_cuda
     layers_new/alibi.cu
+    tensors/gpu/cumsum.cu
     tensors/gpu/device.cu
     tensors/gpu/hash.cu
     tensors/gpu/algorithm.cu

@@ -177,6 +177,28 @@ Expr2 argmin(Expr a, int axis) {
   return topk(a, 1, axis, /*descending=*/false);
 }
 
+Expr2 sort(Expr a, int axis, bool descending) {
+  // only supports sort along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1);                              // non-op if axes are the same
+  auto sortedVal = Expression<SortNodeOp>(a, /*axis=*/-1, descending); // axis=-1 is OK now as we swapped
+  auto sortedIdx = std::dynamic_pointer_cast<SortNodeOp>(sortedVal)->tupleView(); // get a view on the sorted values
+  return std::make_tuple(swapAxes(sortedVal, axis, -1), swapAxes(sortedIdx, axis, -1)); // non-op if axes are the same
+}
+
+Expr cumsum(Expr a, int axis, bool reverse, bool exclusive) {
+  // only supports sort along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1); // non-op if axes are the same
+  auto cumsums = Expression<CumSumNodeOp>(a, axis, reverse, exclusive);
+  return swapAxes(cumsums, axis, -1); // non-op if axes are the same
+}
+
+Expr logcumsumexp(Expr a, int axis, bool reverse, bool exclusive, bool fast) {
+  // only supports sort along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1); // non-op if axes are the same
+  auto logcumsums = Expression<LogCumSumExpNodeOp>(a, axis, reverse, exclusive, fast);
+  return swapAxes(logcumsums, axis, -1); // non-op if axes are the same
+}
+
 Expr maximum(Expr a, Expr b) {
   return Expression<MaximumNodeOp>(a, b);
 }

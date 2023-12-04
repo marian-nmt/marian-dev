@@ -165,6 +165,94 @@ public:
   }
 };
 
+// This is an implementation of sort, similar to the PyTorch node.
+// At the moment we only handle axis=-1 in here, but do transposes
+// in the actual operator to handle other axes (inefficiently).
+// The normal forward values here are the sorted values per axis,
+// the additional value from the TupleNode contains the integer
+// indices of the sorted values.
+struct SortNodeOp : public UnaryNodeOp, 
+                    public TupleNode { 
+private:
+  int axis_;        // on which axis
+  bool descending_; // sort-order, by default descending. PyTorch has a version without sorting, we always sort.
+
+public:
+  SortNodeOp(Expr a, int axis, bool descending = true) 
+  : UnaryNodeOp(a, a->shape()),
+    axis_{a->shape().axis(axis)}, 
+    descending_{descending} {
+    ABORT_IF(axis_ != shape().size() - 1, "Only implemented along last axis, you tried {}", axis_);
+  }
+
+  // imlementation of TupleNode-specific pure-virtual functions for allocation
+  void allocateTuple() override final {
+    graph()->getTensorAllocator()->allocate(tupleVal_, shape(), Type::uint32);
+  }
+
+  // we override the normal allocation to include the TupleNode allocation
+  void allocate() override {
+    UnaryNodeOp::allocate();
+    allocateTuple();
+  }
+
+  // implementation of TupleNode-specific pure-virtual functions for de-allocation
+  void freeTuple() override final {
+    if(graph()) {
+      if(tupleVal_) {
+        graph()->free(tupleVal_);
+        tupleVal_ = nullptr;
+      }
+    }
+  }
+
+  // we override the normal allocation to include the TupleNode de-allocation
+  void free() override {
+    UnaryNodeOp::free();
+    freeTuple();
+  }
+
+  // Create and return a TupleView to the additional forward value
+  virtual Expr tupleView() override final {
+    return Expression<TupleViewNodeOp>(this, shape(), Type::uint32);
+  }
+
+  void forward() override {
+    Sort(/*out*/val_, /*out: indices=*/tupleVal_, 
+         graph()->allocator(),
+         child(0)->val(), axis_, descending_);
+  }
+
+  void backward() override {
+    Insert</*add=*/true>(/*out*/child(0)->grad(), adj_, tupleVal_, axis_);
+  }
+
+  const std::string type() override { return "sort"; }
+
+  virtual size_t hash() override {
+    if(!hash_) {
+      hash_ = NaryNodeOp::hash();
+      util::hash_combine(hash_, axis_);
+      util::hash_combine(hash_, descending_);
+    }
+    return hash_;
+  }
+
+  virtual bool equal(Expr node) override {
+    if(!NaryNodeOp::equal(node))
+      return false;
+    auto cnode = std::dynamic_pointer_cast<SortNodeOp>(node);
+    if(!cnode)
+      return false;
+    if(axis_ != cnode->axis_)
+      return false;
+    if(descending_ != cnode->descending_)
+      return false;
+    return true;
+  }
+};
+
+
 // This node attaches multiple children to a parent node and allows 
 // to select one of them via a given index. This is mostly used to avoid
 // unattached nodes that might nevertheless get created based on some 

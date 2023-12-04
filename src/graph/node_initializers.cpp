@@ -226,6 +226,7 @@ Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
   return fromLambda([start](Tensor t) { SinusoidalPositionEmbeddings(t, start); }); 
 }
 
+// @TODO: this is rather inefficient also needs axis argument or something
 // computes the equivalent of Python's range()
 template <typename T>
 Ptr<NodeInitializer> range(T begin, T end, T step) {

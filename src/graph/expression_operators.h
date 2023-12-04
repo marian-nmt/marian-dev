@@ -405,6 +405,36 @@ Expr2 argmax(Expr a, int axis);
  */
 Expr2 argmin(Expr a, int axis);
 
+/**
+ * Sorts an expression along an axis.
+ * Sorts the elements of an expression along a specified @p axis.
+ * @param a         Expression to sort
+ * @param axis      Axis to sort along
+ * @param descending If true, sort in descending order. Otherwise, sort in ascending order.
+ *                  Default is true.
+ * @returns A sorted expression
+ */
+Expr2 sort(Expr a, int axis, bool descending = true);
+
+/**
+ * Cumulative sum of an expression along an axis.
+ * Computes the cumulative sum of an expression along a specified @p axis.
+ * @param a     Expression to cumsum
+ * @param axis  Axis to cumsum along
+ * @param exclusive If true, the first element is not included in the sum. Default is false.
+ * @returns     Cumulative sums of @p a along @p axis
+ */
+Expr cumsum(Expr a, int axis, bool reverse=false, bool exclusive = false);
+
+/**
+ * Logarithmic cumulative sum of an expression along an axis.
+ * Computes the logarithmic cumulative sum of an expression along a specified @p axis.
+ * @param a     Expression to cumsum
+ * @param axis  Axis to cumsum along
+ * @param exclusive If true, the first element is not included in the sum. Default is false.
+ * @returns     Logarithmic cumulative sums of @p a along @p axis
+*/
+Expr logcumsumexp(Expr a, int axis, bool reverse = false, bool exclusive = false, bool fast = false);
 
 /**
  * @addtogroup graph_ops_cmp Comparison

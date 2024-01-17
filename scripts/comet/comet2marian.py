@@ -14,7 +14,7 @@ from pathlib import Path
 # supported_comets = [m for m in available_metrics if 'qe' in m.lower()]
 supported_comets = [
     'wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da',
-    'wmt20-comet-da', 'wmt21-comet-da'
+    'wmt20-comet-da', 'wmt21-comet-da', 'Unbabel/wmt22-comet-da'
 ]
 log.basicConfig(level=log.INFO)
 
@@ -32,7 +32,7 @@ def load_from_huggingface(model_id):
     log.info(f"Loading transformer model from huggingface {model_id}")
     from transformers import AutoModel, AutoTokenizer
     try:
-        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False) 
+        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False)
         AutoTokenizer.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         return model.eval(), getattr(tokenizer, 'vocab_file', None)
@@ -53,7 +53,7 @@ def load_comet_model(model_path):
     log.info(f"Loading COMET model from checkpoint {model_path}")
     comet_model = load_from_checkpoint(model_path)
     comet_model.eval()
-    
+
     vocab_file = None
     try:
         pretrained_model = comet_model.hparams.get('pretrained_model')
@@ -106,6 +106,11 @@ config["transformer-postprocess-emb"] = "nd"
 config["bert-train-type-embeddings"] = False
 config["bert-type-vocab-size"] = 0
 config["comet-prepend-zero"] = True
+
+config["comet-mix"] = cometModel.hparams.get("layer") == "mix"
+config["comet-mix-norm"] = cometModel.hparams.get('layer_norm', False)
+config["comet-mix-transformation"] = cometModel.hparams.get("layer_transformation", "softmax");
+
 if not args.roberta:
     config["comet-final-sigmoid"] = args.add_sigmoid
     config["comet-pooler-ffn"] = [2048, 1024]
@@ -155,15 +160,15 @@ def extract(layer, nth, level):
 
         blockPrefix = f"{prefix}->encoder->layers->at({nth})->as<marian::nn::TransformerEncoderLayer>()->selfAttentionBlock"
 
-        # self-attention    
+        # self-attention
         # query transformation
         convert(pd, ["attention.self.query.weight"],       f"{blockPrefix}->selfAttention->qProj->weight")
         convert(pd, ["attention.self.query.bias"],         f"{blockPrefix}->selfAttention->qProj->bias", bias=True)
-        
+
         # key transformation
         convert(pd, ["attention.self.key.weight"],         f"{blockPrefix}->selfAttention->kProj->weight")
         convert(pd, ["attention.self.key.bias"],           f"{blockPrefix}->selfAttention->kProj->bias", bias=True)
-        
+
         # values transformation
         convert(pd, ["attention.self.value.weight"],       f"{blockPrefix}->selfAttention->vProj->weight")
         convert(pd, ["attention.self.value.bias"],         f"{blockPrefix}->selfAttention->vProj->bias", bias=True)
@@ -176,7 +181,7 @@ def extract(layer, nth, level):
         convert(pd, ["attention.output.LayerNorm.weight"], f"{blockPrefix}->postprocessor->norm->weight", bias=True)
         convert(pd, ["attention.output.LayerNorm.bias"],   f"{blockPrefix}->postprocessor->norm->bias", bias=True)
 
-        # ffn 
+        # ffn
         # first ffn layer
         blockPrefix = f"{prefix}->encoder->layers->at({nth})->as<marian::nn::TransformerEncoderLayer>()->filterBlock"
 
@@ -206,7 +211,7 @@ def extract(layer, nth, level):
         marianModel["Wemb"] = npWemb
 
         prefix = "CometEncoder"
-        
+
         # shift position embeddings so that we are back at 512 items and start at 0
         npPos = pd["position_embeddings.weight"].detach().numpy()
         npPos = npPos[2:, :].copy()
@@ -234,9 +239,6 @@ def extract(layer, nth, level):
         # gamma for weird batch/layer-norm step in pooler/encoder of COMET
         # @TODO: make optional
         marianModel["CometEncoder->encoder->gamma"] = pd["gamma"].detach().numpy().copy()
-        config["comet-mix"] = True
-        config["comet-mix-norm"] = True
-        
 
     elif name == "FeedForward":
         for n, p in layer.named_parameters():
@@ -262,7 +264,7 @@ def extract(layer, nth, level):
         convert(pd, ["ff.3.bias"],   f"{prefix}->layers->at(3)->as<marian::nn::Linear>()->bias", bias=True)
 
         convert(pd, ["ff.6.weight"], f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->weight")
-        convert(pd, ["ff.6.bias"],   f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->bias", bias=True)        
+        convert(pd, ["ff.6.bias"],   f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->bias", bias=True)
     else:
         recurse(layer, level + 1)
 

@@ -7,8 +7,8 @@
 #include "models/model_base.h"
 #include "models/states.h"
 
-// @TODO: this introduces functionality to use LASER in Marian for the filtering workflow or for use in MS-internal 
-// COSMOS server-farm. There is a lot of code duplication with Classifier and EncoderDecoder and this needs to be fixed. 
+// @TODO: this introduces functionality to use LASER in Marian for the filtering workflow or for use in MS-internal
+// COSMOS server-farm. There is a lot of code duplication with Classifier and EncoderDecoder and this needs to be fixed.
 // This will be done after the new layer system has been finished.
 
 namespace marian {
@@ -163,6 +163,7 @@ public:
     modelFeatures_.insert("comet-final-sigmoid");
     modelFeatures_.insert("comet-mix");
     modelFeatures_.insert("comet-mix-norm");
+    modelFeatures_.insert("comet-mix-transformation");
   }
 
   virtual Ptr<Options> getOptions() override { return options_; }

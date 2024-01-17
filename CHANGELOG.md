@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed compilation with clang 16.0.6
 
 ### Added
+- Added implementation of COMET-22 (reference-based) model and conversion
+- Added sparsemax operator (slow version)
 - Added sampling variants nucleus and epsilon, e.g. `--output-sampling nucleus 0.9` and `--output-sampling epsilon 0.02`, respectively.
 - Added ALIBI related options to new layer framework.
 - Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.

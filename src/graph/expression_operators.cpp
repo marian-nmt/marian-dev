@@ -102,8 +102,7 @@ Expr operator-(Expr a) {
   return Expression<NegNodeOp>(a);
 };
 
-Expr softmax(Expr a, int axis /*=-1*/)
-{
+Expr softmax(Expr a, int axis /*=-1*/) {
   // @TODO: move axis parameter down into the kernel
   if (axis != -1)
   {
@@ -127,6 +126,34 @@ Expr softmax(Expr a, Expr zeroOneMask, int axis /*=-1*/) {
 // @TODO: add mask
 Expr logsoftmax(Expr a) {
   return Expression<LogSoftmaxNodeOp>(a);
+}
+
+// based on https://proceedings.mlr.press/v48/martins16.pdf for k equal to full dimension.
+Expr sparsemax(Expr z, int axis/*=-1*/) {
+  // we currently assume that k == modelDim and that we apply the sparse max to the last dimension
+
+  auto graph = z->graph();
+
+  int dimk = z->shape()[axis]; // assuming axis==-1 for dimension comments
+  Type fType = z->value_type();
+
+  // cast to float32 for better precision
+  auto z32 = cast(z, Type::float32);                     // [dimBatch, dimTime, dimk]
+
+  const auto& [zSorted, zIndices] = sort(z32, /*axis=*/axis, /*descending=*/true);
+  auto zCumSum = cumsum(zSorted, /*axis=*/axis);            // [dimBatch, dimTime, dimk]
+
+  auto k       = graph->constant({dimk}, inits::range(1.f, (float)(dimk + 1)), Type::float32);
+  auto kMask   = gt(1.f + k * zSorted, zCumSum);                // [dimBatch, dimTime, dimk]
+  auto kMax    = max(kMask * k, /*axis=*/axis);                 // [dimBatch, dimTime, 1]
+  auto kMaxIdx = cast(kMax - 1.f, Type::uint32);                // [dimBatch, dimTime, 1]
+  auto zNum    = index_select(zCumSum, /*axis=*/axis, kMaxIdx); // [dimBatch, dimTime, 1]
+  auto tau     = (zNum - 1.f) / kMax;                           // [dimBatch, dimTime, 1]
+
+  auto zSparsemax = maximum(z32 - tau, 0.f);                    // [dimBatch, dimTime, dimk]
+
+  // cast back to original type
+  return cast(zSparsemax, fType);
 }
 
 /*********************************************************/
@@ -308,15 +335,15 @@ Expr operator/(float a, Expr b) {
 
 // @TODO: implement proper operators for all three:
 Expr pow(float a, Expr b) {
-  return exp(std::log(a) * b); 
+  return exp(std::log(a) * b);
 }
 
 Expr pow(Expr a, float b) {
-  return exp(log(a) * b); 
+  return exp(log(a) * b);
 }
 
 Expr pow(Expr a, Expr b) {
-  return exp(log(a) * b); 
+  return exp(log(a) * b);
 }
 
 /*********************************************************/

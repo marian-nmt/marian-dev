@@ -331,11 +331,11 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--transformer-disable-position-embeddings",
       "Do not add any position embeddings. Use e.g. with --transformer-attention-mask alibi");
 
-  cli.add<bool>("--transformer-alibi-trainable", 
+  cli.add<bool>("--transformer-alibi-trainable",
       "Make alibi slopes trainable, default slopes are constant");
 
   // handy shortcut for the current best setup
-  cli.add<bool>("--alibi", 
+  cli.add<bool>("--alibi",
       "Use alibi settings for transformer, this is a shortcut for --transformer-attention-mask alibi --transformer-alibi-shift --transformer-disable-position-embeddings --separator-symbol [eos]");
   cli.alias("alibi", "true", [](YAML::Node& config) {
     // define current-best alibi settings
@@ -361,9 +361,10 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   // Options specific for the "comet-qe" model type
   cli.add<bool>("--comet-final-sigmoid", "Add final sigmoid to COMET model");
   cli.add<bool>("--comet-stop-grad", "Do not propagate gradients through COMET model");
-  
+
   cli.add<bool>("--comet-mix", "Mix encoder layers to produce embedding");
   cli.add<bool>("--comet-mix-norm", "Normalize layers prior to mixing");
+  cli.add<std::string>("--comet-mix-transformation", "Which transformation to apply to layer mixing (softmax [default] or sparsemax)", "softmax");
   cli.add<float>("--comet-dropout", "Dropout for pooler layers", 0.1f);
   cli.add<float>("--comet-mixup", "Alpha parameter for Beta distribution for mixup", 0.0f);
   cli.add<bool>("--comet-mixup-reg", "Use original and mixed-up samples in training");
@@ -418,7 +419,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Do not create model checkpoints, only overwrite main model file with last checkpoint. "
       "Reduces disk usage");
   cli.add<bool>("--overwrite-checkpoint",
-      "When --overwrite=false (default) only model files get written at saving intervals (with iterations numbers). " 
+      "When --overwrite=false (default) only model files get written at saving intervals (with iterations numbers). "
       "Setting --overwrite-checkpoint=false also saves full checkpoints checkpoints with optimizer parameters, etc. "
       "Uses (a lot) more disk space.",
       true);
@@ -604,7 +605,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Dynamic cost scaling for mixed precision training: "
       "scaling factor, frequency, multiplier, minimum factor")
       ->implicit_val("8.f 10000 1.f 8.f");
-  
+
   cli.add<std::vector<std::string>>("--throw-on-divergence",
       "Throw exception if training diverges. Divergence is detected if the running average loss over arg1 steps "
       "is exceeded by the running average loss over arg2 steps (arg1 >> arg2) by arg3 standard deviations")
@@ -617,7 +618,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "If fp16 training diverges and throws try to continue training with fp32 precision");
   cli.alias("fp16-fallback-to-fp32", "true", [](YAML::Node& config) {
     // use default custom-fallbacks to handle DivergenceException for fp16
-    config["custom-fallbacks"] = std::vector<YAML::Node>({ 
+    config["custom-fallbacks"] = std::vector<YAML::Node>({
       YAML::Load("{fp16 : false, precision: [float32, float32], cost-scaling: []}")
      });
   });

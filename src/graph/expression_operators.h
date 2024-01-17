@@ -503,7 +503,7 @@ Expr bdot(Expr a,
           float scalar = 1.f);
 
 /**
- * bdot_legacy is an old implemetation of bdot without correct broadcasting on the batch dimensions, 
+ * bdot_legacy is an old implemetation of bdot without correct broadcasting on the batch dimensions,
  * to be removed once the behavior can be correctly replicated with normal bdot on 5 dimensions.
  */
 Expr bdot_legacy(Expr a,
@@ -739,7 +739,7 @@ Expr gather(Expr a, int axis, Expr indices);
  * @param a       The input expression
  * @param axis    The axis along which to index
  * @param indices The indices to be scattered
- * @param source  Expression with values to scatter. 
+ * @param source  Expression with values to scatter.
  * @returns       Scattered expression with the same shape as @p a now containing values from @p source in positions @p indices
  * @note @p source and @p indices must have the same rank
  * @note In this version @p source and @p indicies must have the same shape
@@ -930,6 +930,11 @@ Expr softmax(Expr a, Expr zeroOneMask, int axis = -1);
 Expr logsoftmax(Expr a);
 
 /**
+ * Compute a sparsemax along the last axis. Slow implementation but differentiable.
+*/
+Expr sparsemax(Expr a, int axis = -1);
+
+/**
  * Computes the cross-entropy loss.
  * @param labelSmoothingAlpha The amount of label smoothing @f$\alpha \in [0,1]@f$.
  * Default is no smoothing, @f$\alpha = 0 @f$.
@@ -966,9 +971,9 @@ Expr weighted_average(Expr in, Expr weights, int ax = 0);
 Expr layerNorm(Expr x, Expr gamma = nullptr, Expr beta = nullptr, float eps = 1e-9);
 
 /**
- * Applies RMS normalization over the last dimension. 
- * 
- * See: Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization. 
+ * Applies RMS normalization over the last dimension.
+ *
+ * See: Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization.
  * In Advances in Neural Information Processing Systems 32. Vancouver, Canada.
  * @f[
    \frac{x}{\sqrt{\frac{1}{N}\sum x^2 + \mathrm{eps}}} \times \gamma + \beta

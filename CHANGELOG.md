@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
 
 ### Changed
+- Refactoring of model loading, mmapping happens now opportunistically, --mmap-models for decoding forces mmap and croaks if not possible.
 - Removed --num-devices N option that wasn't really used by anyone (I assume).
 
 

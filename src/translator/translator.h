@@ -19,9 +19,6 @@
 #include "models/model_task.h"
 #include "translator/scorers.h"
 
-// currently for diagnostics only, will try to mmap files ending in *.bin suffix when enabled.
-#include "3rd_party/mio/mio.hpp"
-
 namespace marian {
 
 template <class Search>
@@ -36,9 +33,7 @@ private:
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
 
   size_t numDevices_;
-
-  std::vector<mio::mmap_source> model_mmaps_; // map
-  std::vector<std::vector<io::Item>> model_items_; // non-mmap
+  std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
 public:
   Translate(Ptr<Options> options)
@@ -70,20 +65,18 @@ public:
     scorers_.resize(numDevices_);
     graphs_.resize(numDevices_);
 
-    auto models = options->get<std::vector<std::string>>("models");
-    if(options_->get<bool>("model-mmap", false)) {
-      for(auto model : models) {
-        ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
-        LOG(info, "Loading model from {}", model);
-        model_mmaps_.push_back(mio::mmap_source(model));
-      }
-    }
-    else {
-      for(auto model : models) {
-        LOG(info, "Loading model from {}", model);
-        auto items = io::loadItems(model);
-        model_items_.push_back(std::move(items));
-      }
+    auto modelPaths = options->get<std::vector<std::string>>("models");
+
+    // We now opportunistically mmap the model files anyways, but to keep backward compatibility
+    // with the old --model-mmap option, we now croak if mmap is explicitly requested during decoding
+    // but not possible in the actual graph, e.g. if --model-mmap is specified but the model file is
+    // a npz-file or we decode on the GPU (will croak in different places).
+    bool mmap     = options_->get<bool>("model-mmap", false);
+    auto mmapMode = mmap ? io::MmapMode::RequiredMmap : io::MmapMode::OpportunisticMmap;
+
+    for(auto modelPath : modelPaths) {
+      LOG(info, "Loading model from {}", modelPath);
+      modelWeights_.push_back(New<io::ModelWeights>(modelPath, mmapMode));
     }
 
     size_t id = 0;
@@ -101,13 +94,7 @@ public:
         graph->reserveWorkspaceMB(options_->get<int>("workspace"));
         graphs_[id] = graph;
 
-        std::vector<Ptr<Scorer>> scorers;
-        if(options_->get<bool>("model-mmap", false)) {
-          scorers = createScorers(options_, model_mmaps_);
-        }
-        else {
-          scorers = createScorers(options_, model_items_);
-        }
+        std::vector<Ptr<Scorer>> scorers = createScorers(options_, modelWeights_);
 
         for(auto scorer : scorers) {
           scorer->init(graph);
@@ -242,6 +229,8 @@ private:
   Ptr<Vocab> trgVocab_;
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
 
+  std::vector<Ptr<io::ModelWeights>> modelFiles_;
+
   size_t numDevices_;
 
 public:
@@ -279,11 +268,9 @@ public:
     numDevices_ = devices.size();
 
     // preload models
-    std::vector<std::vector<io::Item>> model_items_;
     auto models = options->get<std::vector<std::string>>("models");
     for(auto model : models) {
-      auto items = io::loadItems(model);
-      model_items_.push_back(std::move(items));
+      modelFiles_.push_back(New<io::ModelWeights>(model));
     }
 
     // initialize scorers
@@ -301,7 +288,7 @@ public:
       graph->reserveWorkspaceMB(options_->get<int>("workspace"));
       graphs_.push_back(graph);
 
-      auto scorers = createScorers(options_, model_items_);
+      auto scorers = createScorers(options_, modelFiles_);
       for(auto scorer : scorers) {
         scorer->init(graph);
         if(shortlistGenerator_)

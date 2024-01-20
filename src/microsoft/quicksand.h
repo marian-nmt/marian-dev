@@ -13,6 +13,10 @@ using Ptr = std::shared_ptr<T>;
 
 class Options;
 
+namespace io {
+  class ModelWeights;
+}
+
 namespace quicksand {
 
 typedef uint32_t IndexType;
@@ -47,12 +51,11 @@ public:
 class IBeamSearchDecoder {
 protected:
   Ptr<Options> options_;
-  std::vector<const void*> ptrs_;
+  std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
 public:
   IBeamSearchDecoder(Ptr<Options> options,
-                     const std::vector<const void*>& ptrs)
-      : options_(options), ptrs_(ptrs) {}
+                     const std::vector<const void*>& ptrs);
 
   virtual ~IBeamSearchDecoder() {}
 

@@ -14,25 +14,25 @@ Ptr<DecoderBase> NewDecoderTransformer(Ptr<ExpressionGraph> graph, Ptr<Options> 
 
 class TransformerLegacy : public EncoderDecoder {
 public:
-  TransformerLegacy(Ptr<ExpressionGraph> graph, Ptr<Options> options) 
+  TransformerLegacy(Ptr<ExpressionGraph> graph, Ptr<Options> options)
    : EncoderDecoder(graph, options), nameMap_(createNameMap()) { }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::vector<io::Item>& items,
+            Ptr<io::ModelWeights> modelFile,
             bool markedReloaded = true) override {
 
-    for(auto it = items.begin(); it != items.end(); it++) {
-      auto pair = nameMap_.find(it->name);
+    for(auto& item : modelFile->items()) {
+      auto pair = nameMap_.find(item.name);
       if(pair != nameMap_.end()) {
-        LOG(debug, "Mapping parameter {} to {}", it->name, pair->second);
-        const_cast<io::Item&>(*it).name = pair->second;
+        LOG(debug, "Mapping parameter {} to {}", item.name, pair->second);
+        const_cast<io::Item&>(item).name = pair->second;
 
         // reduce shape of bias vectors from {1, dimModel} to {dimModel}
-        int dimModel = it->shape[-1];
-        if(it->shape == Shape({1, dimModel}))
-          const_cast<io::Item&>(*it).shape = Shape({dimModel});
+        int dimModel = item.shape[-1];
+        if(item.shape == Shape({1, dimModel}))
+          const_cast<io::Item&>(item).shape = Shape({dimModel});
       } else {
-        LOG(debug, "Could not find parameter {}", it->name);
+        LOG(debug, "Could not find parameter {}", item.name);
       }
     }
 
@@ -49,20 +49,12 @@ public:
       linear->transposed = false;
 
     // load items into the graph
-    graph->load(items);
-  }
-
-  void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
-            bool markReloaded = true) override {
-    LOG(info, "Loading model from {}", name);
-    auto items = io::loadItems(name);
-    load(graph, items, markReloaded);
+    graph->load(modelFile);
   }
 
 private:
   std::map<std::string, std::string> nameMap_;
-  
+
   std::map<std::string, std::string> createNameMap() {
     std::map<std::string, std::string> nameMap = {
       {"Wemb", "Wemb"},
@@ -125,13 +117,13 @@ private:
 
       // name maps for decoder SSRU
       nameMap[fmt::format("decoder_l{}_rnn_W", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->cell->iProj->weight", prefix, layerNo);
-      
+
       nameMap[fmt::format("decoder_l{}_rnn_Wf", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->cell->fProj->weight", prefix, layerNo);
       nameMap[fmt::format("decoder_l{}_rnn_bf", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->cell->fProj->bias", prefix, layerNo);
 
       nameMap[fmt::format("decoder_l{}_rnn_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->oProj->weight", prefix, layerNo);
       nameMap[fmt::format("decoder_l{}_rnn_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->oProj->bias", prefix, layerNo);
-      
+
       nameMap[fmt::format("decoder_l{}_rnn_ffn_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->postprocessor->norm->weight", prefix, layerNo);
       nameMap[fmt::format("decoder_l{}_rnn_ffn_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->postprocessor->norm->bias", prefix, layerNo);
 

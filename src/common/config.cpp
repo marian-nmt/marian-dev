@@ -170,15 +170,13 @@ void Config::save(const std::string& name) {
 }
 
 bool Config::loadModelParameters(const std::string& name) {
-  YAML::Node config;
-  io::getYamlFromModel(config, "special:model.yml", name);
+  auto config = New<io::ModelWeights>(name)->getYamlFromModel();
   override(config);
   return true;
 }
 
 bool Config::loadModelParameters(const void* ptr) {
-  YAML::Node config;
-  io::getYamlFromModel(config, "special:model.yml", ptr);
+  auto config = New<io::ModelWeights>(ptr)->getYamlFromModel();
   override(config);
   return true;
 }

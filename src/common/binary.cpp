@@ -19,7 +19,7 @@ struct Header {
   uint64_t dataLength;
 };
 
-// cast current void pointer to T pointer and move forward by num elements 
+// cast current void pointer to T pointer and move forward by num elements
 template <typename T>
 const T* get(const void*& current, uint64_t num = 1) {
   const T* ptr = (const T*)current;
@@ -48,9 +48,9 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
   // read in actual shape and data
   for(int i = 0; i < numHeaders; ++i) {
     uint64_t len = headers[i].shapeLength;
-    items[i].shape.resize(len); 
+    items[i].shape.resize(len);
     const int* arr = get<int>(current, len); // read shape
-    std::copy(arr, arr + len, items[i].shape.begin()); // copy to Item::shape 
+    std::copy(arr, arr + len, items[i].shape.begin()); // copy to Item::shape
   }
 
   // move by offset bytes, aligned to 256-bytes boundary
@@ -64,8 +64,8 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
       items[i].type = cpu::integer::getIntgemmType(Type::intgemm8);
     }
     if(items[i].mapped) { // memory-mapped, hence only set pointer
-      // @TOOD: verify this actually works for the hardware-specific ones like intgemm8avx2
-      ABORT_IF(items[i].type == Type::intgemm8 || items[i].type == Type::intgemm16, "mmap format not supported for hardware non-specific intgemm matrices");
+      if(items[i].type == Type::intgemm8 || items[i].type == Type::intgemm16)
+        throw MarianRuntimeException("mmap format not supported for hardware non-specific intgemm matrices", getCallStack(/*skipLevels=*/0));
       items[i].ptr = get<char>(current, headers[i].dataLength);
     } else { // reading into item data
       uint64_t len = headers[i].dataLength;
@@ -170,8 +170,8 @@ void saveItems(const std::string& fileName,
 
   // Write out all values
   for(const auto& item : items)
-    pos += out.write(item.data(), item.bytes.size()); // writes out data with padding, keeps 256-byte boundary. 
-                                                      // Amazingly this is binary-compatible with V1 and aligned and 
+    pos += out.write(item.data(), item.bytes.size()); // writes out data with padding, keeps 256-byte boundary.
+                                                      // Amazingly this is binary-compatible with V1 and aligned and
                                                       // non-aligned models can be read with the same procedure.
                                                       // No version-bump required. Gets 5-8% of speed back when mmapped.
 }

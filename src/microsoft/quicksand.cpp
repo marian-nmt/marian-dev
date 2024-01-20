@@ -7,6 +7,7 @@
 #include "mkl.h"
 #endif
 
+#include "common/io.h"
 #include "data/shortlist.h"
 #include "translator/beam_search.h"
 #include "translator/scorers.h"
@@ -53,6 +54,13 @@ public:
   Ptr<Vocab> getVocab() const { return pImpl_; }
 };
 
+IBeamSearchDecoder::IBeamSearchDecoder(Ptr<Options> options,
+                                       const std::vector<const void*>& ptrs)
+  : options_(options) {
+  for(auto ptr : ptrs)
+    modelWeights_.push_back(New<io::ModelWeights>(ptr));
+}
+
 class BeamSearchDecoder : public IBeamSearchDecoder {
 private:
   Ptr<ExpressionGraph> graph_;
@@ -62,7 +70,7 @@ private:
 
   std::vector<Ptr<Vocab>> vocabs_;
 
-  static inline std::unordered_map<std::string, YAML::Node> configCache_;
+  static inline std::unordered_map<size_t, YAML::Node> configCache_;
   static inline std::mutex configCacheMutex_;
 public:
   BeamSearchDecoder(Ptr<Options> options,
@@ -85,45 +93,31 @@ public:
     mkl_set_num_threads(options_->get<int>("mkl-threads", 1));
 #endif
 
-    std::vector<std::string> models
-        = options_->get<std::vector<std::string>>("model");
-
-    for(int i = 0; i < models.size(); ++i) {
+    for(int i = 0; i < modelWeights_.size(); ++i) {
       Ptr<Options> modelOpts = New<Options>();
 
       // serializing this YAML can be costly, so read from cache
       YAML::Node config;
-      auto cachedConfig = getConfigFromCache(models[i]);
+      auto cachedConfig = getConfigFromCache((size_t)modelWeights_[i]->data());
       if(cachedConfig != nullptr) {
         config = *cachedConfig;
       } else {
-        if(io::isBin(models[i]) && ptrs_[i] != nullptr)
-          io::getYamlFromModel(config, "special:model.yml", ptrs_[i]);
-        else
-          io::getYamlFromModel(config, "special:model.yml", models[i]);
-        writeConfigToCache(config, models[i]);
+        ABORT_IF(modelWeights_[i]->data() == nullptr, "Model pointer is null");
+        config = modelWeights_[i]->getYamlFromModel("special:model.yml");
+        writeConfigToCache(config, (size_t)modelWeights_[i]->data());
       }
 
       modelOpts->merge(options_);
       modelOpts->merge(config);
 
-      // serializing this to YAML is expensive. we only want to do this once 
-      // we can use whether we loaded the cache from config as a signal 
+      // serializing this to YAML is expensive. we only want to do this once
+      // we can use whether we loaded the cache from config as a signal
       if(cachedConfig == nullptr){
         std::cerr << modelOpts->asYamlString() << std::flush;
       }
 
       auto encdec = models::createModelFromOptions(modelOpts, models::usage::translation);
-
-      if(io::isBin(models[i]) && ptrs_[i] != nullptr) {
-        // if file ends in *.bin and has been mapped by QuickSAND
-        scorers_.push_back(New<ScorerWrapper>(
-          encdec, "F" + std::to_string(scorers_.size()), /*weight=*/1.0f, ptrs[i]));
-      } else {
-        // it's a *.npz file or has not been mapped by QuickSAND
-        scorers_.push_back(New<ScorerWrapper>(
-          encdec, "F" + std::to_string(scorers_.size()), /*weight=*/1.0f, models[i]));
-      }
+      scorers_.push_back(New<ScorerWrapper>(encdec, "F" + std::to_string(scorers_.size()), /*weight=*/1.0f, modelWeights_[i]));
     }
 
     for(auto scorer : scorers_) {
@@ -134,7 +128,7 @@ public:
     graph_->forward();
   }
 
-  YAML::Node* getConfigFromCache(std::string key){
+  YAML::Node* getConfigFromCache(size_t key){
     const std::lock_guard<std::mutex> lock(configCacheMutex_);
     bool inCache = configCache_.find(key) != configCache_.end();
     if (inCache) {
@@ -144,7 +138,7 @@ public:
       return nullptr;
     }
   }
-  void writeConfigToCache(YAML::Node config, std::string key) {
+  void writeConfigToCache(YAML::Node config, size_t key) {
     const std::lock_guard<std::mutex> lock(configCacheMutex_);
     configCache_[key] = config;
   }
@@ -154,7 +148,7 @@ public:
   QSNBestBatch decode(const QSBatch& qsBatch,
                       size_t maxLength,
                       const std::unordered_set<WordIndex>& shortlist) override {
-    
+
     std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
     ABORT_IF(lshOpts.size() == 2 && shortlist.size() > 0, "LSH and shortlist cannot be used at the same time");
@@ -168,7 +162,7 @@ public:
         shortListGen = New<data::LSHShortlistGenerator>(lshOpts[0], lshOpts[1], vocabs_[1]->lemmaSize(), /*abortIfDynamic=*/true);
       } else {
         shortListGen = New<data::FakeShortlistGenerator>(shortlist);
-      } 
+      }
       for(auto scorer : scorers_)
         scorer->setShortlistGenerator(shortListGen);
     }
@@ -297,15 +291,17 @@ DecoderCpuAvxVersion parseCpuAvxVersion(std::string name) {
 bool convertModel(std::string inputFile, std::string outputFile, int32_t targetPrec, int32_t lshNBits) {
   std::cerr << "Converting from: " << inputFile << ", to: " << outputFile << ", precision: " << targetPrec << std::endl;
 
-  YAML::Node config;
+  auto modelFile = New<marian::io::ModelWeights>(inputFile);
+
+  YAML::Node config = modelFile->getYamlFromModel();
   std::stringstream configStr;
-  marian::io::getYamlFromModel(config, "special:model.yml", inputFile);
+
   configStr << config;
 
   auto graph = New<ExpressionGraphPackable>();
   graph->setDevice(CPU0);
 
-  graph->load(inputFile);
+  graph->load(modelFile);
 
   // MJD: Note, this is a default settings which we might want to change or expose. Use this only with Polonium students.
   // The LSH will not be used by default even if it exists in the model. That has to be enabled in the decoder config.
@@ -329,8 +325,8 @@ bool convertModel(std::string inputFile, std::string outputFile, int32_t targetP
   }
 
   Type targetPrecType = (Type) targetPrec;
-  if (targetPrecType == Type::packed16 
-      || targetPrecType == Type::packed8avx2 
+  if (targetPrecType == Type::packed16
+      || targetPrecType == Type::packed8avx2
       || targetPrecType == Type::packed8avx512
       || (targetPrecType == Type::float32 && addLsh)) { // only allow non-conversion to float32 if we also use the LSH
     graph->packAndSave(outputFile, configStr.str(), targetPrecType);

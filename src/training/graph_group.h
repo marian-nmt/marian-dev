@@ -46,6 +46,7 @@ protected:
   std::vector<Ptr<models::ICriterionFunction>> models_; // [deviceIndex]
   std::vector<Ptr<OptimizerBase>> optimizerShards_;     // [deviceIndex]
 
+  Ptr<io::ModelWeights> modelWeights_; // handle for model weights, we keep this around to make sure weights are not deallocated while we are still using them
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
 
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
@@ -105,7 +106,7 @@ private:
 
   void saveCheckPoint(const std::string& modelFileName,
                       bool isFinal,
-                      bool doSaveOptimizerState, 
+                      bool doSaveOptimizerState,
                       const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
   void saveOptimizerState(const std::string& modelFileName,
@@ -117,7 +118,7 @@ public:
   void swapWithSmoothed();
 
   // This function replaces the current optimizer parameters with the smoothed version (provided smoothing is enabled).
-  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten. 
+  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten.
   void replaceWithSmoothed();
 
   bool isMainProcess() const { return mpi_->isMainProcess(); } // (we need this test a few times)

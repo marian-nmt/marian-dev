@@ -4,7 +4,6 @@
 
 #include "data/shortlist.h"
 #include "models/model_factory.h"
-#include "3rd_party/mio/mio.hpp"
 
 namespace marian {
 
@@ -72,47 +71,25 @@ public:
 class ScorerWrapper : public Scorer {
 private:
   Ptr<IEncoderDecoder> encdec_;
-  std::string fname_;
-  std::vector<io::Item> items_;
-  const void* ptr_;
+  Ptr<io::ModelWeights> modelWeights_;
 
 public:
   ScorerWrapper(Ptr<models::IModel> encdec,
                 const std::string& name,
                 float weight,
-                std::vector<io::Item>& items)
+                Ptr<io::ModelWeights> modelFile)
       : Scorer(name, weight),
         encdec_(std::static_pointer_cast<IEncoderDecoder>(encdec)),
-        items_(items),
-        ptr_{0} {}
-
-  ScorerWrapper(Ptr<models::IModel> encdec,
-                const std::string& name,
-                float weight,
-                const std::string& fname)
-      : Scorer(name, weight),
-        encdec_(std::static_pointer_cast<IEncoderDecoder>(encdec)),
-        fname_(fname),
-        ptr_{0} {}
-
-  ScorerWrapper(Ptr<models::IModel> encdec,
-                const std::string& name,
-                float weight,
-                const void* ptr)
-      : Scorer(name, weight),
-        encdec_(std::static_pointer_cast<IEncoderDecoder>(encdec)),
-        ptr_{ptr} {}
+        modelWeights_(modelFile)
+      {}
 
   virtual ~ScorerWrapper() {}
 
   virtual void init(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());
-    if(!items_.empty())
-      encdec_->load(graph, items_);
-    else if(ptr_)
-      encdec_->mmap(graph, ptr_);
-    else
-      encdec_->load(graph, fname_);
+    // @TODO: unify to a single call, this logic should happen in modelFile_
+    if(modelWeights_)
+      encdec_->load(graph, modelWeights_);
   }
 
   virtual void clear(Ptr<ExpressionGraph> graph) override {
@@ -154,26 +131,7 @@ public:
   }
 };
 
-Ptr<Scorer> scorerByType(const std::string& fname,
-                        float weight,
-                        std::vector<io::Item> items,
-                        Ptr<Options> options);
-
-Ptr<Scorer> scorerByType(const std::string& fname,
-                         float weight,
-                         const std::string& model,
-                         Ptr<Options> config);
-
-
 std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options);
-std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<std::vector<io::Item>> models);
-
-Ptr<Scorer> scorerByType(const std::string& fname,
-                         float weight,
-                         const void* ptr,
-                         Ptr<Options> config);
-
-std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<const void*>& ptrs);
-std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<mio::mmap_source>& mmaps);
+std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<Ptr<io::ModelWeights>>& models);
 
 }  // namespace marian

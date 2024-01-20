@@ -18,7 +18,7 @@ namespace marian {
 // This requires some more changes, but we temporarily do this just by name ("_W") of the weights.
 // And, this introduces a low level packed_gemm.h apis interact with high level graph class.
 // So, we make a subclass of ExpressionGraph and put those immature codes in this class.
-// We will improve this in the near future. 
+// We will improve this in the near future.
 class ExpressionGraphPackable : public ExpressionGraph {
 public:
   ExpressionGraphPackable()
@@ -165,7 +165,7 @@ public:
         Tensor tmp;
         allocator->allocate(tmp, val->shape(), val->type());
         cpu::Transpose10(tmp, val);
-  
+
         if(sizeOf(gemmElementType) == 1) { // is 8-bit Intgemm type
           float quantMult = cpu::integer::computeQuantMult<Type::intgemm8>(val);
 
@@ -233,7 +233,7 @@ public:
           }
           //Put the quantMult at the back of the tensor
           cpu::integer::getQuantMult<Type::intgemm16>(paramMat) = quantMult;
-          
+
         } else {
           ABORT("Incorrect Intgemm type size: {}", sizeOf(gemmElementType));
         }

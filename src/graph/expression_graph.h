@@ -676,7 +676,7 @@ public:
    * @param node a pointer to a expression node
    */
   Expr add(Expr node);
-  
+
   /**
    * Removes the node from the set of roots (will not be initialized during back propagation)
    * @param node a pointer to a expression node
@@ -742,50 +742,29 @@ public:
   /** Get the flag value whether the graph throws a NaN exception (true) or not */
   bool getThrowNaN() { return throwNaN_; }
 
-public:
-  /** Load model (mainly parameter objects) from array of io::Items */
-  void load(const std::vector<io::Item>& ioItems, bool markReloaded = true) {
-    setReloaded(false);
-    for(auto& item : ioItems) {
-      std::string pName = item.name;
-      // skip over special parameters starting with "special:"
-      if(pName.substr(0, 8) == "special:")
-        continue;
-
-      // if during loading the loaded type is of the same type class as the default element type, allow conversion;
-      // otherwise keep the loaded type. This is used when e.g. loading a float32 model as a float16 model as both
-      // have type class TypeClass::float_type.
-      auto loadElementType = isSameTypeClass(item.type, defaultElementType_) ? defaultElementType_ : item.type;
-      param(pName, item.shape, inits::fromItem(item), loadElementType, /*fixed=*/false);
-    }
-    if(markReloaded)
-      setReloaded(true);
-  }
-
-  /** Load model by filename */
-  void load(const std::string& name, bool markReloaded = true) {
-    LOG(info, "Loading model from {}", name);
-    auto items = io::loadItems(name);
-    load(items, markReloaded);
-  }
-
-  /** Load model from buffer (a file pointer) */
-  void load(const void* ptr, bool markReloaded = true) {
-    LOG(info, "Loading model from buffer at {}", ptr);
-    auto items = io::loadItems(ptr);
-    load(items, markReloaded);
-  }
 
   /**
    * Turn the model (given a file pointer) into a memory-mapped type
    * by converting all the parameter object to memory-mapped version, i.e., MappedParameters.
    */
-  void mmap(const void* ptr, bool markReloaded = true) {
-    ABORT_IF(backend_->getDeviceId().type != DeviceType::cpu || !inferenceOnly_,
-             "Memory mapping only supported for CPU inference mode");
+  void prepareMmap(Ptr<io::ModelWeights> modelFile) {
+    bool graphAllowsMmapping = backend_->getDeviceId().type == DeviceType::cpu && inferenceOnly_;
+    auto mmapMode = modelFile->mmapMode();
 
-    LOG(info, "Memory mapping model at {}", ptr);
-    auto items = io::mmapItems(ptr);
+    // don't do anything if we don't want to mmap regardless if the graph allows it
+    if(mmapMode == io::MmapMode::DontMmap)
+      return;
+
+    // silently ignore if we can't mmap and it's not required
+    if(!graphAllowsMmapping && mmapMode != io::MmapMode::RequiredMmap)
+      return;
+
+    // abort if we can't mmap and it's required
+    ABORT_IF(!graphAllowsMmapping && mmapMode == io::MmapMode::RequiredMmap,
+             "Memory mapping required but only supported for CPU inference graphs");
+
+    // if we got here, we mmap either opportunistically or by requirement
+    LOG_ONCE(info, "[memory] Memory mapping model parameters in graph");
 
     // Deal with default parameter set object that might not be a mapped object.
     // This gets assigned during ExpressionGraph::setDevice(...) and by default
@@ -803,7 +782,7 @@ public:
     }
 
     // pre-populate parameters by type
-    for(auto& item : items) {
+    for(auto& item : modelFile->items()) {
       auto it1 = paramsByElementType_.find(item.type);
       if(it1 == paramsByElementType_.end()) {
         auto params = New<MappedParameters>(item.type);
@@ -811,17 +790,39 @@ public:
         paramsByElementType_.insert({item.type, params});
       }
     }
-
-    load(items, markReloaded);
   }
 
 public:
+  /** Load model (mainly parameter objects) from a ModelWeights object */
+  void load(Ptr<io::ModelWeights> modelWeights, bool markReloaded = true) {
+    prepareMmap(modelWeights);
+
+    setReloaded(false);
+    for(auto& item : modelWeights->items()) {
+      std::string pName = item.name;
+      // skip over special parameters starting with "special:"
+      if(pName.substr(0, 8) == "special:")
+        continue;
+
+      // if during loading the loaded type is of the same type class as the default element type, allow conversion;
+      // otherwise keep the loaded type. This is used when e.g. loading a float32 model as a float16 model as both
+      // have type class TypeClass::float_type.
+      auto loadElementType = isSameTypeClass(item.type, defaultElementType_) ? defaultElementType_ : item.type;
+      param(pName, item.shape, inits::fromItem(item), loadElementType, /*fixed=*/false);
+    }
+    if(markReloaded)
+      setReloaded(true);
+  }
+
+
+public:
+
   /**
    * Convert all parameters into an array of io::Item elements, for saving.
    * @param ioItems an array of io::Item elements
    * @param saveElementType the element type for saving
    */
-  void save(std::vector<io::Item>& ioItems, Type saveElementType = Type::float32);
+  void getItems(std::vector<io::Item>& ioItems, Type saveElementType = Type::float32);
 
   /**
    * Save all parameters into a file (.npz or .bin).
@@ -831,7 +832,7 @@ public:
    */
   void save(const std::string& name, const std::string& meta = "", Type saveElementType = Type::float32) {
     std::vector<io::Item> ioItems;
-    save(ioItems, saveElementType);
+    getItems(ioItems, saveElementType);
     if(ioItems.empty()) {
       LOG(warn, "Item list is empty, skipping saving");
     } else {
@@ -840,6 +841,7 @@ public:
       io::saveItems(name, ioItems);
     }
   }
+
 };
 
 template <class T, typename... Args>

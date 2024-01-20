@@ -24,9 +24,9 @@ int main(int argc, char** argv) {
     cli->add<std::string>("--to,-t", "Output model", "model.bin");
     cli->add<std::string>("--export-as", "Kind of conversion: marian-bin or onnx-{encode,decoder-step,decoder-init,decoder-stop}", "marian-bin");
     cli->add<std::string>("--gemm-type,-g", "GEMM Type to be used: float32, packed16, packed8avx2, packed8avx512, "
-                          "intgemm8, intgemm8ssse3, intgemm8avx2, intgemm8avx512, intgemm16, intgemm16sse2, intgemm16avx2, intgemm16avx512", 
+                          "intgemm8, intgemm8ssse3, intgemm8avx2, intgemm8avx512, intgemm16, intgemm16sse2, intgemm16avx2, intgemm16avx512",
                           "float32");
-    cli->add<std::vector<std::string>>("--add-lsh", 
+    cli->add<std::vector<std::string>>("--add-lsh",
                                        "Encode output matrix and optional rotation matrix into model file. "
                                        "arg1: number of bits in LSH encoding, arg2: name of output weights matrix")->implicit_val("1024 Wemb");
     cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export");
@@ -69,21 +69,23 @@ int main(int argc, char** argv) {
     if(lshParams.size() > 1)
       lshOutputWeights = lshParams[1];
   }
-  
+
   // We accept any type here and will later croak during packAndSave if the type cannot be used for conversion
   Type saveGemmType = typeFromString(options->get<std::string>("gemm-type", "float32"));
 
   LOG(info, "Outputting {}, precision: {}", modelTo, saveGemmType);
 
-  YAML::Node config;
+
+  auto modelFile = New<io::ModelWeights>(modelFrom, io::MmapMode::DontMmap);
+  YAML::Node config = modelFile->getYamlFromModel();
   std::stringstream configStr;
-  marian::io::getYamlFromModel(config, "special:model.yml", modelFrom);
+
   configStr << config;
 
   if (exportAs == "marian-bin") {
     auto graph = New<ExpressionGraphPackable>();
     graph->setDevice(CPU0);
-    graph->load(modelFrom);
+    graph->load(modelFile);
 
     std::vector<lsh::ParamConvInfo> toBeLSHed;
     if(addLsh) {

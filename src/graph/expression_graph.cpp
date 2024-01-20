@@ -15,7 +15,7 @@ void ExpressionGraph::setDevice(DeviceId deviceId, Ptr<Device> device) {
     auto params = New<Parameters>(defaultElementType_);
     params->init(backend_);
     paramsByElementType_[defaultElementType_] = params;
-    
+
     if(device)
       tensors_ = New<Tensors>(backend_, device);
     else
@@ -285,7 +285,7 @@ void ExpressionGraph::checkNaN(Tensor t, bool& isNaN, bool& isInf) {
   IsNaN(t, allocator(), isNaN, isInf);
 }
 
-void ExpressionGraph::save(std::vector<io::Item>& ioItems, Type saveElementType) {
+void ExpressionGraph::getItems(std::vector<io::Item>& ioItems, Type saveElementType) {
   // sorted by type in std::map
   for(auto kvParams : paramsByElementType_) {
     // sorted by name in std::map

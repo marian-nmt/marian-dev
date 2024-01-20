@@ -25,7 +25,7 @@ public:
   Rescorer(Ptr<Options> options)
       : builder_(models::createCriterionFunctionFromOptions(options, models::usage::scoring)) {}
 
-  void load(Ptr<ExpressionGraph> graph, const std::string& modelFile) {
+  void load(Ptr<ExpressionGraph> graph, Ptr<io::ModelWeights> modelFile) {
     builder_->load(graph, modelFile);
   }
 
@@ -46,6 +46,7 @@ private:
   Ptr<CorpusBase> corpus_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
+  Ptr<io::ModelWeights> modelFile_;
 
 public:
   Rescore(Ptr<Options> options) : options_(options) {
@@ -77,7 +78,8 @@ public:
       graphs_.push_back(graph);
     }
 
-    auto modelFile = options_->get<std::string>("model");
+    auto modelPath = options_->get<std::string>("model");
+    modelFile_ = New<io::ModelWeights>(modelPath);
 
     models_.resize(graphs_.size());
     ThreadPool pool(graphs_.size(), graphs_.size());
@@ -85,7 +87,7 @@ public:
       pool.enqueue(
           [=](size_t j) {
             models_[j] = New<Model>(options_);
-            models_[j]->load(graphs_[j], modelFile);
+            models_[j]->load(graphs_[j], modelFile_);
           },
           i);
     }

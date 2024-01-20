@@ -36,7 +36,7 @@ public:
   }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::vector<io::Item>& items,
+            Ptr<io::ModelWeights> modelFile,
             bool /*markedReloaded*/ = true) override {
     std::map<std::string, std::string> nameMap
         = {{"decoder_U", "decoder_cell1_U"},
@@ -89,41 +89,51 @@ public:
     if(opt<bool>("tied-embeddings-src") || opt<bool>("tied-embeddings-all"))
       nameMap["Wemb"] = "Wemb";
 
-    auto ioItems = items;
-    // map names and remove a dummy matrices
-    for(auto it = ioItems.begin(); it != ioItems.end();) {
-      // for backwards compatibility, turn one-dimensional vector into two dimensional matrix with first dimension being 1 and second dimension of the original size
-      // @TODO: consider dropping support for Nematus models
-      if(it->shape.size() == 1) {
-        int dim = it->shape[-1];
-        it->shape.resize(2);
-        it->shape.set(0, 1);
-        it->shape.set(1, dim);
-      }
+    // we will modify the items directly, so memory mapping etc. should just work
+    // This should never be done, but we need to be compatible with Amun/Nematus for now.
+    auto& ioItems = modelFile->items();
 
-      if(it->name == "decoder_c_tt") {
-        it = ioItems.erase(it);
-      } else if(it->name == "uidx") {
-        it = ioItems.erase(it);
-      } else if(it->name == "history_errs") {
-        it = ioItems.erase(it);
-      } else {
-        auto pair = nameMap.find(it->name);
-        if(pair != nameMap.end())
-          it->name = pair->second;
-        it++;
+    // @TODO: get rid of all this eventually
+    { // scope for lock_guard
+      // this is needed during loading since we modify the content of modelFile->items() directly
+      // This is quite ugly but this is legacy code anyway.
+      std::mutex mutex;
+      std::lock_guard<std::mutex> lock(mutex);
+
+      // only modify the first time.
+      bool modify = false;
+      for(auto& item : ioItems)
+        if(item.name == "decoder_c_tt") // still there, hence this is the first time.
+          modify = true;
+
+      if(modify) {
+        // map names and remove a dummy matrices
+        for(auto it = ioItems.begin(); it != ioItems.end();) {
+          // for backwards compatibility, turn one-dimensional vector into two dimensional matrix with first dimension being 1 and second dimension of the original size
+          // @TODO: consider dropping support for Nematus models
+          if(it->shape.size() == 1) {
+            int dim = it->shape[-1];
+            it->shape.resize(2);
+            it->shape.set(0, 1);
+            it->shape.set(1, dim);
+          }
+
+          if(it->name == "decoder_c_tt") {
+            it = ioItems.erase(it);
+          } else if(it->name == "uidx") {
+            it = ioItems.erase(it);
+          } else if(it->name == "history_errs") {
+            it = ioItems.erase(it);
+          } else {
+            auto pair = nameMap.find(it->name);
+            if(pair != nameMap.end())
+              it->name = pair->second;
+            it++;
+          }
+        }
       }
     }
-    // load items into the graph
-    graph->load(ioItems);
-  }
-
-  void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
-            bool /*markReloaded*/ = true) override {
-    LOG(info, "Loading model from {}", name);
-    auto ioItems = io::loadItems(name);
-    load(graph, ioItems);
+    graph->load(modelFile);
   }
 
   void save(Ptr<ExpressionGraph> graph,
@@ -179,7 +189,7 @@ public:
 
     // get parameters from the graph to items
     std::vector<io::Item> ioItems;
-    graph->save(ioItems);
+    graph->getItems(ioItems);
     // replace names to be compatible with Nematus
     for(auto& item : ioItems) {
       auto newItemName = nameMap.find(item.name);

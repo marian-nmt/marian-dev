@@ -13,26 +13,6 @@ class IEncoderDecoder : public models::IModel {
 public:
   virtual ~IEncoderDecoder() {}
 
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::vector<io::Item>& items,
-                    bool markedReloaded = true) override 
-      = 0;
-
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override
-      = 0;
-
-  virtual void mmap(Ptr<ExpressionGraph> graph,
-                    const void* ptr,
-                    bool markedReloaded = true)
-      = 0;
-
-  virtual void save(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool saveTranslatorConfig = false) override
-      = 0;
-
   virtual void clear(Ptr<ExpressionGraph> graph) override = 0;
 
   virtual Logits build(Ptr<ExpressionGraph> graph,
@@ -62,7 +42,7 @@ public:
 
   virtual Ptr<data::Shortlist> getShortlist() = 0;
 
-  virtual data::SoftAlignment getAlignment() = 0; 
+  virtual data::SoftAlignment getAlignment() = 0;
 };
 
 class EncoderDecoder : public IEncoderDecoder, public LayerBase {
@@ -98,15 +78,7 @@ public:
   void push_back(Ptr<DecoderBase> decoder);
 
   virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::vector<io::Item>& items,
-                    bool markedReloaded = true) override;
-
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override;
-
-  virtual void mmap(Ptr<ExpressionGraph> graph,
-                    const void* ptr,
+                    Ptr<io::ModelWeights>,
                     bool markedReloaded = true) override;
 
   virtual void save(Ptr<ExpressionGraph> graph,

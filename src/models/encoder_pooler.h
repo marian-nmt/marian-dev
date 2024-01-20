@@ -25,26 +25,6 @@ class EncoderPoolerBase : public models::IModel {
 public:
   virtual ~EncoderPoolerBase() {}
 
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::vector<io::Item>& items,
-                    bool markedReloaded = true) override
-      = 0;
-
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override
-      = 0;
-
-  virtual void mmap(Ptr<ExpressionGraph> graph,
-                    const void* ptr,
-                    bool markedReloaded = true)
-      = 0;
-
-  virtual void save(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool saveTranslatorConfig = false) override
-      = 0;
-
   virtual void clear(Ptr<ExpressionGraph> graph) override = 0;
 
   virtual std::vector<Expr> apply(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>, bool) = 0;
@@ -175,21 +155,9 @@ public:
   void push_back(Ptr<PoolerBase> pooler) { poolers_.push_back(pooler); }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::vector<io::Item>& items,
+            Ptr<io::ModelWeights> modelFile,
             bool markedReloaded) override {
-    graph->load(items, markedReloaded && !opt<bool>("ignore-model-config", false));
-  }
-
-  void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
-            bool markedReloaded) override {
-    graph->load(name, markedReloaded && !opt<bool>("ignore-model-config", false));
-  }
-
-  void mmap(Ptr<ExpressionGraph> graph,
-            const void* ptr,
-            bool markedReloaded) override {
-    graph->mmap(ptr, markedReloaded && !opt<bool>("ignore-model-config", false));
+    graph->load(modelFile, markedReloaded && !opt<bool>("ignore-model-config", false));
   }
 
   void save(Ptr<ExpressionGraph> graph,

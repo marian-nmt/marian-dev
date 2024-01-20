@@ -1,11 +1,14 @@
 #include "common/io.h"
 
 #include "3rd_party/cnpy/cnpy.h"
+#include "common/definitions.h"
 #include "common/shape.h"
 #include "common/types.h"
 
 #include "common/binary.h"
 #include "common/io_item.h"
+
+#include "training/communicator.h"
 
 namespace marian {
 namespace io {
@@ -20,78 +23,73 @@ bool isBin(const std::string& fileName) {
          && fileName.substr(fileName.length() - 4) == ".bin";
 }
 
-void getYamlFromNpz(YAML::Node& yaml,
-                    const std::string& varName,
-                    const std::string& fileName) {
-  auto item = cnpy::npz_load(fileName, varName);
-  if(item->size() > 0)
-    yaml = YAML::Load(item->data());
+ModelWeights::FileType ModelWeights::getFileType(const std::string& fileName) {
+  if(isNpz(fileName))
+    return FileType::isNpz;
+  else if(isBin(fileName))
+    return FileType::isBin;
+  else
+    ABORT("Unknown file format for file {}", fileName);
 }
 
-void getYamlFromBin(YAML::Node& yaml,
-                    const std::string& varName,
-                    const std::string& fileName) {
-  auto item = binary::getItem(fileName, varName);
-  if(item.size() > 0)
-    yaml = YAML::Load(item.data());
+std::vector<Item>& ModelWeights::items() {
+  load();
+  return items_;
 }
 
-void getYamlFromModel(YAML::Node& yaml,
-                      const std::string& varName,
-                      const std::string& fileName) {
-  if(io::isNpz(fileName)) {
-    io::getYamlFromNpz(yaml, varName, fileName);
-  } else if(io::isBin(fileName)) {
-    io::getYamlFromBin(yaml, varName, fileName);
-  } else {
-    ABORT("Unknown model file format for file {}", fileName);
+const std::vector<Item>& ModelWeights::items() const {
+  const_cast<ModelWeights&>(*this).load();
+  return items_;
+}
+
+const void* ModelWeights::data() const {
+  const_cast<ModelWeights&>(*this).load();
+  switch (fileType_) {
+    case FileType::isNpz:
+      return nullptr;
+    case FileType::isBin:
+      return mmap_->data();
+    case FileType::isBuf:
+      return ptr_;
+    case FileType::isDummy:
+      ABORT("Cannot get data from dummy model");
+    default:
+      ABORT("Unknown file type");
   }
 }
 
-void getYamlFromModel(YAML::Node& yaml,
-                      const std::string& varName,
-                      const void* ptr) {
-  auto item = binary::getItem(ptr, varName);
-  if(item.size() > 0)
-    yaml = YAML::Load(item.data());
+size_t ModelWeights::size() const {
+  const_cast<ModelWeights&>(*this).load();
+  switch (fileType_) {
+    case FileType::isNpz:
+      return 0;
+    case FileType::isBin:
+      return mmap_->size();
+    case FileType::isBuf:
+      ABORT("Cannot get size of buffer");
+    case FileType::isDummy:
+      ABORT("Cannot get size from dummy model");
+    default:
+      ABORT("Unknown file type");
+  }
 }
 
+// @TODO: bring back fast peeking into the file to get config
 // Load YAML from item
-void getYamlFromModel(YAML::Node& yaml,
-                      const std::string& varName,
-                      const std::vector<Item>& items) {
-    for(auto& item : items) {
-      if(item.name == varName) {
-        yaml = YAML::Load(item.data());
-        return;
-      }
+YAML::Node ModelWeights::getYamlFromModel(const std::string& varName) const {
+  const_cast<ModelWeights&>(*this).load();
+  for(auto& item : items_) {
+    if(item.name == varName) {
+      return YAML::Load(item.data());
     }
-}
-
-void addMetaToItems(const std::string& meta,
-                    const std::string& varName,
-                    std::vector<io::Item>& items) {
-  Item item;
-  item.name = varName;
-
-  // increase size by 1 to add \0
-  item.shape = Shape({(int)meta.size() + 1});
-
-  item.bytes.resize(item.shape.elements());
-  std::copy(meta.begin(), meta.end(), item.bytes.begin());
-  // set string terminator
-  item.bytes.back() = '\0';
-
-  item.type = Type::int8;
-
-  items.push_back(item);
+  }
+  return YAML::Node();
 }
 
 void loadItemsFromNpz(const std::string& fileName, std::vector<Item>& items) {
   auto numpy = cnpy::npz_load(fileName);
   for(auto it : numpy) {
-    ABORT_IF(
-        it.second->fortran_order, "Numpy item '{}' is not stored in row-major order", it.first);
+    ABORT_IF(it.second->fortran_order, "Numpy item '{}' is not stored in row-major order", it.first);
 
     Shape shape;
     shape.resize(it.second->shape.size());
@@ -122,7 +120,7 @@ void loadItemsFromNpz(const std::string& fileName, std::vector<Item>& items) {
   }
 }
 
-std::vector<Item> loadItems(const std::string& fileName) {
+std::vector<Item> ModelWeights::loadItems(const std::string& fileName) {
   std::vector<Item> items;
   if(isNpz(fileName)) {
     loadItemsFromNpz(fileName, items);
@@ -135,16 +133,61 @@ std::vector<Item> loadItems(const std::string& fileName) {
   return items;
 }
 
-std::vector<Item> loadItems(const void* ptr) {
-  std::vector<Item> items;
-  binary::loadItems(ptr, items, false);
-  return items;
-}
-
-std::vector<Item> mmapItems(const void* ptr) {
+std::vector<Item> ModelWeights::mmapItems(const void* ptr) {
   std::vector<Item> items;
   binary::loadItems(ptr, items, true);
   return items;
+}
+
+void ModelWeights::load() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if(loaded_)
+    return;
+
+  switch (fileType_) {
+    case FileType::isNpz:
+      loadItemsFromNpz(fileName_, items_);
+      break;
+    case FileType::isBin:
+      if(mmapMode_ == MmapMode::DontMmap) {
+        binary::loadItems(fileName_, items_);
+      } else {
+        try {
+          mmap_.reset(new mio::mmap_source(fileName_));
+          binary::loadItems(mmap_->data(), items_, /*mapped=*/true);
+        } catch(const MarianRuntimeException& e) {
+          if(mmapMode_ == MmapMode::RequiredMmap)
+            ABORT("Could not memory-map file '{}': {}", fileName_, e.what());
+          else
+            LOG(warn, "[warning] Could not memory-map file '{}' ({}), falling back to reading from disk", fileName_, e.what());
+          mmapMode_ = MmapMode::DontMmap;
+          binary::loadItems(fileName_, items_);
+        }
+      }
+      break;
+    case FileType::isBuf:
+      binary::loadItems(ptr_, items_, /*mapped=*/mmapMode_ != MmapMode::DontMmap);
+      break;
+    case FileType::isDummy:
+      ABORT("Cannot load from dummy model");
+    default:
+      ABORT("Unknown file type");
+  }
+
+  loaded_ = true;
+}
+
+void ModelWeights::loadAndSync(Ptr<IMPIWrapper> mpi) {
+  ABORT_IF(!mpi, "MPI wrapper is null");
+  ABORT_IF(mmapMode_ != MmapMode::DontMmap, "Mmapping not allowed");
+
+  if(mpi->isMainProcess())
+    load();
+
+  mpi->bCast(fileName_);
+  mpi->bCast(&fileType_, 1, mpi->getDataType((size_t*)&fileType_));
+  mpi->bCast(&loaded_,   1, mpi->getDataType(&loaded_));
+  mpi->bCast(items_);
 }
 
 // @TODO: make cnpy and our wrapper talk to each other in terms of types
@@ -167,10 +210,29 @@ void saveItemsNpz(const std::string& fileName, const std::vector<Item>& items) {
     else if(item.type == Type::uint32)  type = cnpy::map_type(typeid(uint32_t));
     else if(item.type == Type::uint64)  type = cnpy::map_type(typeid(uint64_t));
     else ABORT("Other types ({}) not supported", item.type);
-      
+
     npzItems.emplace_back(item.name, item.bytes, shape, type, sizeOf(item.type));
   }
   cnpy::npz_save(fileName, npzItems);
+}
+
+void addMetaToItems(const std::string& meta,
+                    const std::string& varName,
+                    std::vector<io::Item>& items) {
+  Item item;
+  item.name = varName;
+
+  // increase size by 1 to add \0
+  item.shape = Shape({(int)meta.size() + 1});
+
+  item.bytes.resize(item.shape.elements());
+  std::copy(meta.begin(), meta.end(), item.bytes.begin());
+  // set string terminator
+  item.bytes.back() = '\0';
+
+  item.type = Type::int8;
+
+  items.push_back(item);
 }
 
 void saveItems(const std::string& fileName, const std::vector<Item>& items) {

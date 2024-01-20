@@ -10,10 +10,10 @@ namespace marian {
 namespace models {
 
 enum struct usage {
-  raw, 
-  training, 
-  scoring, 
-  translation, 
+  raw,
+  training,
+  scoring,
+  translation,
   embedding,   // used for laser and other models to produce embedding vectors
   evaluating   // evaluating is a special mode for neural metrics, different from (probabilistic) scoring
 };
@@ -30,12 +30,7 @@ namespace models {
 class IModel {
 public:
   virtual void load(Ptr<ExpressionGraph>,
-                    const std::string&,
-                    bool markReloaded = true)
-      = 0;
-
-  virtual void load(Ptr<ExpressionGraph>,
-                    const std::vector<io::Item>&,
+                    Ptr<io::ModelWeights>,
                     bool markReloaded = true)
       = 0;
 
@@ -59,12 +54,7 @@ public:
   virtual ~ICriterionFunction() {}
 
   virtual void load(Ptr<ExpressionGraph>,
-                    const std::string&,
-                    bool markReloaded = true)
-      = 0;
-
-  virtual void load(Ptr<ExpressionGraph>,
-                    const std::vector<io::Item>&,
+                    Ptr<io::ModelWeights>,
                     bool markReloaded = true)
       = 0;
 

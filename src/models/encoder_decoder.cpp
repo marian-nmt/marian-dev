@@ -73,7 +73,7 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
 
   modelFeatures_.insert("transformer-no-bias");
   modelFeatures_.insert("transformer-no-affine");
-  
+
   modelFeatures_.insert("transformer-disable-position-embeddings");
   modelFeatures_.insert("transformer-attention-mask");
   modelFeatures_.insert("transformer-alibi-shift");
@@ -159,21 +159,9 @@ std::string EncoderDecoder::getModelParametersAsString() {
 }
 
 void EncoderDecoder::load(Ptr<ExpressionGraph> graph,
-                          const std::vector<io::Item>& items,
+                          Ptr<io::ModelWeights> modelFile,
                           bool markedReloaded) {
-  graph->load(items, markedReloaded && !opt<bool>("ignore-model-config", false));
-}
-
-void EncoderDecoder::load(Ptr<ExpressionGraph> graph,
-                          const std::string& name,
-                          bool markedReloaded) {
-  graph->load(name, markedReloaded && !opt<bool>("ignore-model-config", false));
-}
-
-void EncoderDecoder::mmap(Ptr<ExpressionGraph> graph,
-                          const void* ptr,
-                          bool markedReloaded) {
-  graph->mmap(ptr, markedReloaded && !opt<bool>("ignore-model-config", false));
+  graph->load(modelFile, markedReloaded && !opt<bool>("ignore-model-config", false));
 }
 
 void EncoderDecoder::save(Ptr<ExpressionGraph> graph,
@@ -237,7 +225,7 @@ Ptr<DecoderState> EncoderDecoder::step(Ptr<ExpressionGraph> graph,
   // Fill state with embeddings based on last prediction
   decoders_[0]->embeddingsFromPrediction(graph, state, words, (int)batchIndices.size(), beamSize);
   auto nextState = decoders_[0]->step(graph, state);
-  
+
   return nextState;
 }
 

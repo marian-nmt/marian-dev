@@ -218,16 +218,10 @@ public:
   Ptr<IModel> getModel() { return model_; }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::vector<io::Item>& items,
+            Ptr<io::ModelWeights> modelFile,
             bool markedReloaded) override {
-    model_->load(graph, items, markedReloaded);
+    model_->load(graph, modelFile, markedReloaded);
   }
-
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override {
-    model_->load(graph, name, markedReloaded);
-  };
 
   virtual void save(Ptr<ExpressionGraph> graph,
                     const std::string& name,
@@ -270,16 +264,10 @@ public:
   Ptr<IModel> getModel() { return model_; }
 
   virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::vector<io::Item>& items,
+                    Ptr<io::ModelWeights> modelFile,
                     bool markReloaded = true) override {
-    model_->load(graph, items, markReloaded);
+    model_->load(graph, modelFile, markReloaded);
   }
-
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override {
-    model_->load(graph, name, markedReloaded);
-  };
 
   virtual void save(Ptr<ExpressionGraph> graph,
                     const std::string& name,
@@ -322,22 +310,10 @@ public:
   Stepwise(Ptr<IEncoderDecoder> encdec, Ptr<ILogProbStep> cost) : encdec_(encdec), cost_(cost) {}
 
   virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::vector<io::Item>& items,
+                    Ptr<io::ModelWeights> modelFile,
                     bool markedReloaded = true) override {
-    encdec_->load(graph, items, markedReloaded);
+    encdec_->load(graph, modelFile, markedReloaded);
   }
-
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override {
-    encdec_->load(graph, name, markedReloaded);
-  }
-
-  virtual void mmap(Ptr<ExpressionGraph> graph,
-                    const void* ptr,
-                    bool markedReloaded = true) override {
-    encdec_->mmap(graph, ptr, markedReloaded);
-  };
 
   virtual void save(Ptr<ExpressionGraph> graph,
                     const std::string& name,

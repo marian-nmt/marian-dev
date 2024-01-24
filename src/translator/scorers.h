@@ -77,17 +77,16 @@ public:
   ScorerWrapper(Ptr<models::IModel> encdec,
                 const std::string& name,
                 float weight,
-                Ptr<io::ModelWeights> modelFile)
+                Ptr<io::ModelWeights> modelWeights)
       : Scorer(name, weight),
         encdec_(std::static_pointer_cast<IEncoderDecoder>(encdec)),
-        modelWeights_(modelFile)
+        modelWeights_(modelWeights)
       {}
 
   virtual ~ScorerWrapper() {}
 
   virtual void init(Ptr<ExpressionGraph> graph) override {
     graph->switchParams(getName());
-    // @TODO: unify to a single call, this logic should happen in modelFile_
     if(modelWeights_)
       encdec_->load(graph, modelWeights_);
   }

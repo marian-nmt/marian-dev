@@ -249,6 +249,10 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Possible values: sequence, class, alignment, weight. "
       "You need to provide one type per input file (if --train-sets) or per TSV field (if --tsv).",
       {});
+  cli.add<bool>("--input-join-fields", 
+      "Join input fields (from files or TSV) into a single sequence "
+      "(mostly used single-encoder models like BLEURT and COMET-KIWI)", 
+      false);
   cli.add<bool>("--best-deep",
       "Use Edinburgh deep RNN configuration (s2s)");
   cli.add<bool>("--tied-embeddings",
@@ -364,6 +368,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
 
   cli.add<bool>("--comet-mix", "Mix encoder layers to produce embedding");
   cli.add<bool>("--comet-mix-norm", "Normalize layers prior to mixing");
+  cli.add<std::string>("--comet-pool", "Pooling operation over time dimension (avg, cls, max)", "avg");
   cli.add<std::string>("--comet-mix-transformation", "Which transformation to apply to layer mixing (softmax [default] or sparsemax)", "softmax");
   cli.add<float>("--comet-dropout", "Dropout for pooler layers", 0.1f);
   cli.add<float>("--comet-mixup", "Alpha parameter for Beta distribution for mixup", 0.0f);
@@ -371,6 +376,7 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<float>("--comet-augment-bad", "Fraction of bad examples added via shuffling for class/label 0.f", 0.0f);
   cli.add<std::vector<int>>("--comet-pooler-ffn", "Hidden sizes for comet pooler", {2048, 1024});
   cli.add<bool>("--comet-prepend-zero", "Add a start symbol to batch entries");
+  cli.add<bool>("--comet-use-separator", "Add a sentence separator to batch entries when joining source, target and mt", false);
 
 #ifdef CUDNN
   cli.add<int>("--char-stride",

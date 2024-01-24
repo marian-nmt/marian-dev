@@ -10,37 +10,46 @@ namespace models {
 
 class CometEncoder final : public nn::TransformerEncoder {
 private:
+  Expr cometPool(Expr x, Expr binaryMask) const {
+    auto poolType = opt<std::string>("comet-pool", "avg");
+    if(poolType == "avg")
+      return sum(x * binaryMask, /*axis=*/-2) / sum(binaryMask, /*axis=*/-2);
+    else if(poolType == "max")
+      return max(x + marian::log(binaryMask), /*axis=*/-2);
+    else if(poolType == "cls")
+      return slice(x, /*axis=*/-2, 0);
+    else
+      ABORT("Unknown pool type {}", poolType);
+  }
+
   // This seems to be a mix of LayerNorm and BatchNorm and present in the original Unbabel code.
   // It norms over time, not batch, also should be optimized. Seems safe to disable for custom
   // models trained by us, but required when doing inference with Unbabel models.
   Expr cometNorm(Expr x, Expr binaryMask) const {
-    Expr output;
+    Expr output = x;
 
     if(opt<bool>("comet-mix-norm", false)) {
-      registerParameterLazy(gamma, Shape({ 1 }), inits::ones());
-      int dimModel = x->shape()[-1];
+      int dimModel = output->shape()[-1];
 
       // Convert type to fp32 for better accumulation. This is a no-op if things are already fp32.
-      Type origType = x->value_type();
-      x             = marian::cast(x,       Type::float32);
-      binaryMask    = marian::cast(binaryMask, Type::float32);
+      Type origType     = output->value_type();
+      auto output32     = marian::cast(output,    Type::float32);
+      auto binaryMask32 = marian::cast(binaryMask, Type::float32);
 
-      x = x * binaryMask;
-      auto denom = (float)dimModel * sum(binaryMask, -2);
-      auto mu    = sum(sum(x, -1), -2) / denom; // sum over model and time
-      auto sigma = sum(sum(square(x - mu), -1), -2) / denom;
+      output32 = output32 * binaryMask32;
+      auto denom = (float)dimModel * sum(binaryMask32, -2);
+      auto mu    = sum(sum(output32, -1), -2) / denom; // sum over model and time
+      auto sigma = sum(sum(square(output32 - mu), -1), -2) / denom;
 
-      auto normed = (x - mu) / sqrt(sigma + 1e-12f);
-      output = marian::cast(gamma, Type::float32) * sum(normed * binaryMask, -2) / sum(binaryMask, -2);
+      auto normed = (output32 - mu) / sqrt(sigma + 1e-12f);
+      output = marian::cast(normed, origType);
+    }
 
-      // Undo conversion to fp32 if not originally fp32 (most likely fp16 then)
-      output = marian::cast(output, origType);
-    } else if(opt<bool>("comet-mix", false)) {
-      // average over time dimension
+    output = cometPool(output, binaryMask);
+
+    if(opt<bool>("comet-mix", false)) {
       registerParameterLazy(gamma, Shape({ 1 }), inits::ones());
-      output = gamma * sum(x * binaryMask, -2) / sum(binaryMask, -2);
-    } else {
-      output = sum(x * binaryMask, -2) / sum(binaryMask, -2);
+      output = gamma * output;
     }
 
     return output;
@@ -55,40 +64,36 @@ public:
     : TransformerEncoder(graph, options) {}
 
   Expr apply(Expr input, Expr mask) const override {
-    auto output = marian::nn::swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
 
-    auto binaryMask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-
-    // apply positional embeddings to contextual input
-    output = positionEmbedding->apply(output);
-
-    // apply dropout or layer-norm to embeddings if required
-    output = preprocessor->apply(output);
-    auto logMask = maskProcessor->apply(output, binaryMask); // [beam depth=1, batch size * numHeads, max length, vector dim=1]
-
-    std::vector<Expr> pooler;
-    if(opt<bool>("comet-mix", false))
-      pooler.push_back(cometNorm(output, binaryMask));
-
-    // traverse the layers, use the same mask for each
-    for(auto layer : *layers) {
-      output = layer->apply(output, logMask);
-      if(opt<bool>("comet-mix", false))
-        pooler.push_back(cometNorm(output, binaryMask)); // [ batch, time, modelDim ]
+    auto binaryMask = marian::nn::swapTimeBatch(mask);
+    if(opt<bool>("comet-mix", false)) {
+      // we collect hidden states from the base class encoder
+      TransformerEncoder::keepHiddenStates  = true;
+      // to save memory we can already pool/norm the hidden states before storing them
+      TransformerEncoder::hiddenTransformFn = [this, binaryMask](Expr x) {
+        return cometNorm(x, binaryMask);
+      };
     }
 
+    // execute to populate hidden states
+    // the actual output is not used, because we use the collected hidden states instead
+    auto unused = TransformerEncoder::apply(input, mask);
+
+    Expr output;
     if(opt<bool>("comet-mix", false)) {
       registerParameterLazy(weights, Shape({ opt<int>("enc-depth") + 1 }), inits::zeros());
-      // comet22 has a sparsemax here
+      // comet22/comet-kiwi has a sparsemax here
       auto normFn = opt<std::string>("comet-mix-transformation", "softmax");
       auto weightsNorm = (normFn == "sparsemax") ? sparsemax(weights) : softmax(weights);
       weightsNorm = reshape(weightsNorm, {weights->shape()[-1], 1});
-      output = sum(weightsNorm * concatenate(pooler, /*axis=*/-2), -2); // [batch, 1, modelDim]
+      output = sum(weightsNorm * concatenate(hiddenStates, /*axis=*/-2), -2); // [batch, 1, modelDim]
     } else {
       // just use last layer, average over time dim
       output = cometNorm(output, binaryMask); // [batch, 1, modelDim]
     }
 
+    // attach the unused output to the graph to avoid dangling nodes, this is a no-op.
+    output = choose({output, unused}, 0);
     return output;
   }
 };
@@ -147,7 +152,7 @@ struct CometBatchEncoder final : public nn::LayerWithOptions,
   }
 
   virtual void clear() override {
-    Layer::clear();
+    LayerWithOptions::clear();
   }
 };
 
@@ -282,8 +287,9 @@ public:
     ABORT_IF(usage == models::usage::embedding, "Wrong pooler for embedding??");
 
     auto modelType = LayerWithOptions::opt<std::string>("type");
-    ABORT_IF(modelType == "comet-qe" && encoderStates.size() != 2, "Pooler expects exactly two encoder states for comet-qe");
-    ABORT_IF(modelType == "comet"    && encoderStates.size() != 3, "Pooler expects exactly three encoder states for comet");
+    ABORT_IF(modelType == "comet-qe"      && encoderStates.size() != 2, "Pooler expects exactly two encoder states for comet-qe");
+    ABORT_IF(modelType == "comet"         && encoderStates.size() != 3, "Pooler expects exactly three encoder states for comet");
+    ABORT_IF(modelType == "comet-unified" && encoderStates.size() != 1, "Pooler expects exactly one encoder state for comet-unified");
 
     if(modelType == "comet-qe") {
       auto src = encoderStates[0]->getContext();
@@ -363,6 +369,19 @@ public:
       if(usage == models::usage::evaluating) {
         auto emb  = concatenate({mt, ref, prodRef, diffRef, prodSrc, diffSrc}, /*axis=*/-1); // [batch, 1, model]
         output = layers->apply(emb);
+        int dimBatch = output->shape()[-3];
+        output = reshape(output, {dimBatch, 1, 1});
+        return { output };
+      } else {
+        // Currently no training for COMET with reference @TODO: add training
+        ABORT("Usage other than 'evaluating' not implemented");
+      }
+    } else if(modelType == "comet-unified") {
+      auto emb = encoderStates[0]->getContext();
+      Expr output;
+      if(usage == models::usage::evaluating) {
+        output = layers->apply(emb);
+        output = minimum(output, 1.f); // comet-kiwi/XL/XXL clamp at 1.f
         int dimBatch = output->shape()[-3];
         output = reshape(output, {dimBatch, 1, 1});
         return { output };

@@ -56,15 +56,15 @@ public:
    * @brief Returns whether this Tuple was altered or augmented from what
    * was provided to Marian in input.
    */
-  bool isAltered() const { 
-    return altered_; 
+  bool isAltered() const {
+    return altered_;
   }
 
   /**
    * @brief Mark that this Tuple was internally altered or augmented by Marian
    */
-  void markAltered() { 
-    altered_ = true; 
+  void markAltered() {
+    altered_ = true;
   }
 
   /**
@@ -79,7 +79,7 @@ public:
    *
    * @param words A vector of word indices.
    */
-  void appendToBack(const Words& words) { 
+  void appendToBack(const Words& words) {
     if(tuple_.empty()) {
       tuple_.push_back(words);
     } else {
@@ -155,11 +155,11 @@ public:
    * @brief Creates an empty tuple with no associated future.
    */
   SentenceTuple() {}
-  
-  SentenceTuple(const SentenceTupleImpl& tupImpl) 
+
+  SentenceTuple(const SentenceTupleImpl& tupImpl)
     : impl_(std::make_shared<SentenceTupleImpl>(tupImpl)) {}
 
-  SentenceTuple(std::future<SentenceTupleImpl>&& fImpl) 
+  SentenceTuple(std::future<SentenceTupleImpl>&& fImpl)
     : fImpl_(new std::future<SentenceTupleImpl>(std::move(fImpl))) {}
 
   SentenceTupleImpl& get() const {
@@ -466,7 +466,7 @@ public:
 
     if(options->get("guided-alignment", std::string("none")) != "none") {
       // @TODO: if > 1 encoder, verify that all encoders have the same sentence lengths
-      
+
       std::vector<data::WordAlignment> alignment;
       for(size_t k = 0; k < batchSize; ++k) {
         data::WordAlignment perSentence;
@@ -658,12 +658,14 @@ protected:
   bool rightLeft_{false};
   bool prependZero_{false};
 
+  bool joinFields_{false};      // if true when given a TSV file or multiple inputs, join them together into a single sentence tuple, 
+                                // the already present </s> separator will demark the fields (mostly used for BLEURT and COMET-KIWI)
+  bool insertSeparator_{false}; // when joining fields with joinFields_, additionally use this separator (mostly used for COMET-KIWI)
+
   bool tsv_{false};  // true if the input is a single file with tab-separated values
   size_t tsvNumInputFields_{0};  // number of fields from the TSV input that are associated
                                   // with vocabs, i.e. excluding fields with alignment or
                                   // weights, only if --tsv
-
-  bool joinFields_{false}; // if true when given a TSV file or multiple inputs, join them together with a specified separator.
 
   /**
    * @brief Determine the number of fields from the TSV input that are associated with

@@ -66,6 +66,7 @@ public:
   Expr apply(Expr input, Expr mask) const override {
 
     auto binaryMask = marian::nn::swapTimeBatch(mask);
+
     if(opt<bool>("comet-mix", false)) {
       // we collect hidden states from the base class encoder
       TransformerEncoder::keepHiddenStates  = true;
@@ -75,9 +76,8 @@ public:
       };
     }
 
-    // execute to populate hidden states
-    // the actual output is not used, because we use the collected hidden states instead
-    auto unused = TransformerEncoder::apply(input, mask);
+    // execute to populate hidden states and compute top output layer
+    auto hiddenTop = TransformerEncoder::apply(input, mask); // [time, batch, modelDim] (because the last state is being transposed again)
 
     Expr output;
     if(opt<bool>("comet-mix", false)) {
@@ -86,14 +86,20 @@ public:
       auto normFn = opt<std::string>("comet-mix-transformation", "softmax");
       auto weightsNorm = (normFn == "sparsemax") ? sparsemax(weights) : softmax(weights);
       weightsNorm = reshape(weightsNorm, {weights->shape()[-1], 1});
+
       output = sum(weightsNorm * concatenate(hiddenStates, /*axis=*/-2), -2); // [batch, 1, modelDim]
+
+      // since we use the hidden states from the encoder and not the top layer, we need to
+      // attach the unused output to the graph to avoid dangling nodes, this is a no-op.
+      output = choose({output, hiddenTop}, 0);
     } else {
+      // @TODO: get rid of this
+      // undo the time-batch swap
+      hiddenTop = marian::nn::swapTimeBatch(hiddenTop); // [batch, time, modelDim]
       // just use last layer, average over time dim
-      output = cometNorm(output, binaryMask); // [batch, 1, modelDim]
+      output = cometNorm(hiddenTop, binaryMask); // [batch, 1, modelDim]
     }
 
-    // attach the unused output to the graph to avoid dangling nodes, this is a no-op.
-    output = choose({output, unused}, 0);
     return output;
   }
 };

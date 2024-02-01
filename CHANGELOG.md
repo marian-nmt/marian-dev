@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Fixed lost node in mt-detect metrics
 - Fixed BLEURT logmask computation
 - Fixed wrong paramter name for norm in new layer framework
 - Fixed unit test for LayerNorm

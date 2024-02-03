@@ -63,4 +63,29 @@ public:
   virtual void WriteAverage();
 };
 
+
+// collects vectors and hold them in memory
+class BufferedVectorCollector : public VectorCollector {
+
+private:
+  std::vector<std::vector<float>> buffer;
+
+protected:
+  virtual void WriteVector(const std::vector<float>& vec) override;
+
+public:
+  BufferedVectorCollector(bool binary=false, size_t width=DEFAULT_WIDTH) 
+  : VectorCollector(binary, width) {}
+  
+  BufferedVectorCollector(std::string outFile, bool binary=false, size_t width=DEFAULT_WIDTH)
+  : VectorCollector(outFile, binary, width) {}
+
+  auto getBuffer() -> decltype(buffer) {
+    return buffer;
+  }
+
+  virtual ~BufferedVectorCollector() {}
+
+};
+
 }  // namespace marian

@@ -13,7 +13,13 @@ void TextIterator::increment() {
 }
 
 bool TextIterator::equal(TextIterator const& other) const {
-  return this->pos_ == other.pos_ || (!this->tup_.valid() && !other.tup_.valid());
+  // two iterators are equal if any of the following is true: 
+  // 1. both are invalid (null ptrs)
+  // 2. both at the end of the stream (empty tuples as record, regardless of pos_) 
+  // 3. both are at the same position
+  return (!this->tup_.valid() && !other.tup_.valid()) ||
+    (this->tup_.valid() && other.tup_.valid() && this->tup_.empty() && other.tup_.empty()) ||
+    this->pos_ == other.pos_;
 }
 
 const SentenceTuple& TextIterator::dereference() const {
@@ -38,30 +44,18 @@ TextInput::TextInput(std::vector<std::string> inputs,
 SentenceTuple TextInput::next() {
   // get index of the current sentence
   size_t curId = pos_++;
-
-  // fill up the sentence tuple with source and/or target sentences
-  SentenceTupleImpl tup(curId);
+  // read next row, i.e. vector<string> from files
+  // if any file is empty, we are done
+  std::vector<std::string> row;
   for(size_t i = 0; i < files_.size(); ++i) {
     std::string line;
     if(io::getline(*files_[i], line)) {
-      Words words = vocabs_[i]->encode(line, /*addEOS=*/true, /*inference=*/inference_);
-      if(this->maxLengthCrop_ && words.size() > this->maxLength_) {
-        words.resize(maxLength_);
-        words.back() = vocabs_.back()->getEosId();  // note: this will not work with class-labels
-      }
-
-      ABORT_IF(words.empty(),   "No words (not even EOS) found in string??");
-      ABORT_IF(tup.size() != i, "Previous tuple elements are missing.");
-      tup.pushBack(words);
+      row.push_back(line);
+    } else {
+      return SentenceTupleImpl(); // return an empty tuple if above test does not pass();
     }
   }
-
-  if(tup.size() == files_.size()) // check if each input file provided an example
-    return SentenceTuple(tup);
-  else if(tup.size() == 0) // if no file provided examples we are done
-    return SentenceTupleImpl(); // return an empty tuple if above test does not pass();
-  else // neither all nor none => we have at least on missing entry
-    ABORT("There are missing entries in the text tuples.");
+  return encode(row, curId);
 }
 
 }  // namespace data

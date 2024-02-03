@@ -115,6 +115,7 @@ jobs:
           -DCOMPILE_CPU=${{ matrix.cpu }} \
           -DCOMPILE_CUDA=${{ matrix.gpu }} \
           -DCOMPILE_EXAMPLES=${{ matrix.examples }} \
+          -DUSE_TCMALLOC=OFF \
           -DCOMPILE_SERVER=on \
           -DCOMPILE_TESTS=${{ matrix.unit_tests }} \
           -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-${{ matrix.cuda }} \
@@ -143,3 +144,13 @@ jobs:
         ./marian-server --version
         ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
+
+    - name: Install PyMarian
+      working-directory: build
+      env:
+        CUDA_VERSION: ${{ matrix.cuda }}
+      run: |
+        python3 -m pip install --upgrade pip setuptools wheel pytest
+        CMAKE_ARGS="" python3 -m pip install -v .
+        python3 -m pymarian -v
+        MARIAN_QUIET=YES python3 -m pytest -vs src/python/tests

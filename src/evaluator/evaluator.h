@@ -47,7 +47,7 @@ template <class Model>
 class Evaluate : public ModelTask {
 private:
   Ptr<Options> options_;
-  Ptr<CorpusBase> corpus_;
+
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
   Ptr<io::ModelWeights> modelFile_;
@@ -57,8 +57,12 @@ public:
     options_ = options_->with("inference", true,
                               "shuffle", "none");
 
-    corpus_ = New<Corpus>(options_);
-    corpus_->prepare();
+    /* Number of embeddings parameter is determined at runtime based on the given vocabulary file.
+      In addtiion, this parameter has to be set before initializing the model object.
+      Corpus initializer is the one that sets the number of embeddings into options_ object.
+      However, we do not need to use corpus object here, so we just create a dummy corpus object.
+    */
+    Ptr<CorpusBase> corpus = New<Corpus>(options_);
 
     auto devices = Config::getDevices(options_);
 
@@ -94,11 +98,19 @@ public:
     LOG(info, "Evaluating");
     timer::Timer timer;
 
-    auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus_, options_);
+    Ptr<CorpusBase> corpus = New<Corpus>(options_);
+    corpus->prepare();
+    auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus, options_);
     batchGenerator->prepare();
 
     Ptr<VectorCollector> output = VectorCollector::Create(options_);
-
+    run(batchGenerator, output);
+    LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
+  }
+  
+  template <typename T>
+  void run(Ptr<BatchGenerator<T>> batchGenerator,  Ptr<VectorCollector> collector) {
+  
     size_t batchId = 0;
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
@@ -137,14 +149,13 @@ public:
               auto beg = i * numScores;
               auto end = (i + 1) * numScores;
               std::vector<float> sentVector(sentVectors.begin() + beg, sentVectors.begin() + end);
-              output->Write((long)batch->getSentenceIds()[i], sentVector);
+              collector->Write((long)batch->getSentenceIds()[i], sentVector);
           }
         };
 
         pool.enqueue(task, batchId++);
       }
     }
-    LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
   }
 
 };

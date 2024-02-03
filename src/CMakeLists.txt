@@ -4,6 +4,7 @@ include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
+
 if(USE_SENTENCEPIECE)
   include_directories(3rd_party/sentencepiece/third_party/protobuf-lite)
 endif(USE_SENTENCEPIECE)
@@ -260,11 +261,11 @@ if (NOT COMPILE_LIBRARY_ONLY)
   endif(COMPILE_SERVER)
 
   foreach(exec ${EXECUTABLES})
-    target_link_libraries(${exec} marian)
-    if(CUDA_FOUND)
-      target_link_libraries(${exec} marian_cuda)
-    endif(CUDA_FOUND)
-    set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+  target_link_libraries(${exec} marian)
+  if(CUDA_FOUND)
+    target_link_libraries(${exec} marian_cuda)
+  endif(CUDA_FOUND)
+  set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   endforeach(exec)
 endif(NOT COMPILE_LIBRARY_ONLY)
 
@@ -282,9 +283,33 @@ endif(COMPILE_EXAMPLES)
 
 if(GENERATE_MARIAN_INSTALL_TARGETS)
   # Install the marian library if given a "make install" target
-  include(GNUInstallDirs)                 # This defines default values for installation directories (all platforms even if named GNU)
+  include(GNUInstallDirs) # This defines default values for installation directories (all platforms even if named GNU)
   install(TARGETS marian
     EXPORT marian-targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 endif(GENERATE_MARIAN_INSTALL_TARGETS)
+
+
+if(PYMARIAN)
+  if(NOT PYTHON_EXECUTABLE)
+    set(PYTHON_EXECUTABLE python)   # default to python in the environment
+  endif()
+
+  include_directories(3rd_party/pybind11/include)
+  add_subdirectory(3rd_party/pybind11)
+
+  pybind11_add_module(_pymarian MODULE python/binding/bind.cpp)
+  target_link_libraries(_pymarian PUBLIC marian)
+  if(CUDA_FOUND)
+    target_link_libraries(_pymarian PUBLIC marian_cuda)
+  endif(CUDA_FOUND)
+  install(TARGETS _pymarian DESTINATION .)
+
+  # build pymarian wheel
+  add_custom_target(pymarian ALL 
+    ${CMAKE_COMMAND} -E env "CMAKE_BINARY_DIR=${PROJECT_BINARY_DIR}" "CMAKE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+    "${PYTHON_EXECUTABLE}" -m pip wheel -v --no-input ${PROJECT_SOURCE_DIR}/src/python -w "${PROJECT_BINARY_DIR}"
+    DEPENDS _pymarian 
+    VERBATIM COMMENT "Building pymarian wheel")
+endif(PYMARIAN)

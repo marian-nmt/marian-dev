@@ -229,12 +229,16 @@ private:
   Ptr<Vocab> trgVocab_;
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
 
-  std::vector<Ptr<io::ModelWeights>> modelFiles_;
+  std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
   size_t numDevices_;
+  std::vector<std::vector<io::Item>> model_items_; // non-mmap
 
 public:
   virtual ~TranslateService() {}
+
+  TranslateService(const std::string& cliString)
+    : TranslateService(parseOptions(cliString, cli::mode::translation, /*validate=*/true)) {}
 
   TranslateService(Ptr<Options> options)
     : options_(options->clone()) {
@@ -255,7 +259,7 @@ public:
     trgVocab_->load(vocabPaths.back());
     auto srcVocab = srcVocabs_.front();
 
-    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn");
+    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
 
     // load lexical shortlist
@@ -267,47 +271,74 @@ public:
     auto devices = Config::getDevices(options_);
     numDevices_ = devices.size();
 
+    ThreadPool threadPool(numDevices_, numDevices_);
+    scorers_.resize(numDevices_);
+    graphs_.resize(numDevices_);
+
+    bool mmap     = options_->get<bool>("model-mmap", false);
+    auto mmapMode = mmap ? io::MmapMode::RequiredMmap : io::MmapMode::OpportunisticMmap;
+
     // preload models
-    auto models = options->get<std::vector<std::string>>("models");
-    for(auto model : models) {
-      modelFiles_.push_back(New<io::ModelWeights>(model));
-    }
+    auto modelPaths = options->get<std::vector<std::string>>("models");
+    for(auto modelPath : modelPaths)
+      modelWeights_.push_back(New<io::ModelWeights>(modelPath, mmapMode));
 
     // initialize scorers
+    size_t id = 0;
     for(auto device : devices) {
-      auto graph = New<ExpressionGraph>(true);
+      auto task = [&](DeviceId device, size_t id) {
+        auto graph = New<ExpressionGraph>(true);
 
-      auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
-      graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
-      graph->setDevice(device);
-      if (device.type == DeviceType::cpu) {
-        graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
-        graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
-        graph->getBackend()->setQuantizeRange(options_->get<float>("quantize-range"));
-      }
-      graph->reserveWorkspaceMB(options_->get<int>("workspace"));
-      graphs_.push_back(graph);
+        auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
+        graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
+        graph->setDevice(device);
+        if (device.type == DeviceType::cpu) {
+          graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
+          graph->getBackend()->setGemmType(options_->get<std::string>("gemm-type"));
+          graph->getBackend()->setQuantizeRange(options_->get<float>("quantize-range"));
+        }
+        graph->reserveWorkspaceMB(options_->get<int>("workspace"));
+        graphs_[id] = graph;
 
-      auto scorers = createScorers(options_, modelFiles_);
-      for(auto scorer : scorers) {
-        scorer->init(graph);
-        if(shortlistGenerator_)
-          scorer->setShortlistGenerator(shortlistGenerator_);
-      }
-      scorers_.push_back(scorers);
+        auto scorers = createScorers(options_, modelWeights_);
+        for(auto scorer : scorers) {
+          scorer->init(graph);
+          if(shortlistGenerator_)
+            scorer->setShortlistGenerator(shortlistGenerator_);
+        }
+
+        scorers_[id] = scorers;
+        graph->forward();
+      };
+
+      threadPool.enqueue(task, device, id++);
     }
   }
 
-  std::string run(const std::string& input) override {
-    // split tab-separated input into fields if necessary
-    auto inputs = options_->get<bool>("tsv", false)
-                      ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
-                      : std::vector<std::string>({input});
-    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
-    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_, nullptr, /*runAsync=*/false);
+  std::vector<std::string> run(const std::vector<std::string>& inputs, const std::string& yamlOverridesStr="") override {
+      auto input = utils::join(inputs, "\n");
+      auto translations = run(input, yamlOverridesStr);
+      return utils::split(translations, "\n", /*keepEmpty=*/true);
+  }
 
-    auto collector = New<StringCollector>(options_->get<bool>("quiet-translation", false));
-    auto printer = New<OutputPrinter>(options_, trgVocab_);
+  std::string run(const std::string& input, const std::string& yamlOverridesStr="") override {
+    YAML::Node configOverrides = YAML::Load(yamlOverridesStr);
+
+    auto currentOptions = New<Options>(options_->clone());
+    if (!configOverrides.IsNull()) {
+      LOG(info,  "Overriding options:\n {}", configOverrides);
+      currentOptions->merge(configOverrides, /*overwrite=*/true);
+    }
+
+    // split tab-separated input into fields if necessary
+    auto inputs = currentOptions->get<bool>("tsv", false)
+                      ? convertTsvToLists(input, currentOptions->get<size_t>("tsv-fields", 1))
+                      : std::vector<std::string>({input});
+    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, currentOptions);
+    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, currentOptions, nullptr, /*runAsync=*/false);
+
+    auto collector = New<StringCollector>(currentOptions->get<bool>("quiet-translation", false));
+    auto printer = New<OutputPrinter>(currentOptions, trgVocab_);
     size_t batchId = 0;
 
     batchGenerator.prepare();
@@ -325,7 +356,7 @@ public:
             scorers = scorers_[id % numDevices_];
           }
 
-          auto search = New<Search>(options_, scorers, trgVocab_);
+          auto search = New<Search>(currentOptions, scorers, trgVocab_);
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
@@ -341,7 +372,7 @@ public:
       }
     }
 
-    auto translations = collector->collect(options_->get<bool>("n-best"));
+    auto translations = collector->collect(currentOptions->get<bool>("n-best"));
     return utils::join(translations, "\n");
   }
 

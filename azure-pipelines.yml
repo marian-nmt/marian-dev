@@ -193,6 +193,7 @@ stages:
           -DUSE_NCCL="FALSE" ^
           -DUSE_SENTENCEPIECE="TRUE" ^
           -DUSE_STATIC_LIBS="TRUE"
+
       displayName: Configure CMake
       env:
         # Set envvars so that CMake can find the installed packages
@@ -322,6 +323,10 @@ stages:
       displayName: Install CUDA
       condition: eq(variables.gpu, true)
 
+    # Some preinstalled versions of pip are bad for pymarian; see https://github.com/pypa/setuptools/issues/3269
+    - bash: python3 -m pip install pip -U 
+      displayName: Upgrade pip
+
     - bash: |
         mkdir -p build
         cd build
@@ -336,7 +341,11 @@ stages:
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=$(static) \
           -DBoost_ARCHITECTURE=-x64 \
-          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-$(cuda)
+          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-$(cuda) \
+          -DUSE_TCMALLOC=off \
+          -DPYMARIAN=ON \
+          -DPYTHON_EXECUTABLE=python3
+
       displayName: Configure CMake
 
     # Clean build/src/ to safe disk space on Azure-hosted VMs and stay below the 10GB limit
@@ -360,6 +369,11 @@ stages:
         ./spm_encode --version
       displayName: Print versions
       workingDirectory: build
+
+    - bash: |
+        python3 -m pip install build/pymarian-*.whl
+        python3 -m pymarian -v
+      displayName: Build Pymarian
 
   ######################################################################
   - job: BuildMacOS
@@ -393,6 +407,7 @@ stages:
           -DUSE_FBGEMM=on \
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=off
+
       displayName: Configure CMake
 
     - bash: make -j2
@@ -453,7 +468,10 @@ stages:
           -DCOMPILE_CUDA=off \
           -DGENERATE_MARIAN_INSTALL_TARGETS=on \
           -DUSE_FBGEMM=on \
-          -DUSE_SENTENCEPIECE=on
+          -DUSE_SENTENCEPIECE=on \
+          -DPYMARIAN=on \
+          -DPYTHON_EXECUTABLE=python3
+
       displayName: Configure CMake
 
     - bash: make -j3 install
@@ -467,6 +485,11 @@ stages:
         ls -lah *
       displayName: Check targets
       workingDirectory: install
+
+    - bash: |
+        python3 -m pip install build/pymarian-*.whl
+        python3 -m pymarian -v
+      displayName: Build Pymarian
 
 
 # Marian is built in the same job where the regression tests are run to make sure that executables

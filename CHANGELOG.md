@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed compilation with clang 16.0.6
 
 ### Added
+- Added `pymarian`: python bindings based on pybind11
 - Added implementation of COMET-KIWI
 - Added implementation of xCOMET-XL/XXL regressor parts (MQM interpolation missing for now)
 - Added implementation of COMET-22 (reference-based) model and conversion

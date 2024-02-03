@@ -27,7 +27,7 @@ private:
 };
 
 class TextInput : public DatasetBase<SentenceTuple, TextIterator, CorpusBatch> {
-private:
+protected:
   std::vector<UPtr<std::istringstream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
 
@@ -92,6 +92,24 @@ public:
   }
 
   void prepare() override {}
+
+  SentenceTuple encode(std::vector<std::string>& row, size_t id) {
+    ABORT_IF(row.size() != vocabs_.size(), "Number of fields does not match number of vocabs");
+    // fill up the sentence tuple with source and/or target sentences
+    SentenceTupleImpl tup(id);
+    for(size_t i = 0; i < row.size(); ++i) {
+      std::string field = row[i];
+      Words words = vocabs_[i]->encode(field, /*addEOS=*/true, /*inference=*/inference_);
+      if(this->maxLengthCrop_ && words.size() > this->maxLength_) {
+        words.resize(maxLength_);
+        words.back() = vocabs_.back()->getEosId();  // note: this will not work with class-labels
+      }
+      ABORT_IF(words.empty(), "No words (not even EOS) found in the input text. ID: " + std::to_string(id));
+      tup.pushBack(words);
+    }
+    return SentenceTuple(tup);
+  }
+
 };
 }  // namespace data
 }  // namespace marian

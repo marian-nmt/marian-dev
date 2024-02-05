@@ -26,13 +26,13 @@ namespace pymarian {
 
   /**
    * Wrapper for Marian Evaluator.
-   * 
+   *
    * This class is a wrapper for the Marian Evaluator class.
    * It is used to run the evaluator on a given input.
-   * 
+   *
    **/
   class EvaluatorPyWrapper {
-    
+
   private:
     Ptr<marian::Options> options_;
     Ptr<Evaluator> evaluator_;
@@ -46,10 +46,10 @@ namespace pymarian {
     EvaluatorPyWrapper(const std::string& cliString){
       options_ = parseOptions(cliString, cli::mode::evaluating, true)
       ->with("inference", true, "shuffle", "none");
-      evaluator_= New<Evaluator>(options_);
+      evaluator_ = New<Evaluator>(options_);
       vocabs_ = loadVocabs(options_);
     }
- 
+
     /**
      * @brief Load the vocabularies from the given paths
      * @param options - the options object
@@ -69,7 +69,7 @@ namespace pymarian {
 
     /**
      * Given a table of strings (i.e., rows x columns), concatenate each column into a single string.
-     * 
+     *
      * @param data - table of strings : rows x columns
      * @return List of strings, one string for each column, concatenated across rows.
     */
@@ -92,12 +92,12 @@ namespace pymarian {
     }
 
     /**
-     * Run the evaluator on the given input. 
+     * Run the evaluator on the given input.
      * Input is transformed as (in memory) files by concatenating columns.
-     * 
+     *
      * @param inputs - table of strings : rows x columns
      * @return table of floats : rows x columns
-     * 
+     *
     */
     auto run(const StrVectors& inputs) -> FloatVectors {
       StrVector columnFiles = concatColumns(inputs);
@@ -112,6 +112,10 @@ namespace pymarian {
       evaluator_->run(batchGenerator, collector);
       FloatVectors outputs = collector->getBuffer();
       return outputs;
+    }
+
+    auto getModelConfig() -> std::string {
+      return evaluator_->getModelConfig();
     }
 
   };

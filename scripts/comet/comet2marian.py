@@ -13,9 +13,11 @@ from pathlib import Path
 # from comet.models import available_metrics
 # supported_comets = [m for m in available_metrics if 'qe' in m.lower()]
 supported_comets = [
-    'wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da',
-    'wmt20-comet-da', 'wmt21-comet-da', 'Unbabel/wmt22-comet-da', 'Unbabel/wmt22-cometkiwi-da',
-    'Unbabel/XCOMET-XL', 'Unbabel/XCOMET-XXL'
+    'wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt20-comet-da',
+    'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da', 'wmt21-comet-da',
+    'Unbabel/wmt22-comet-da', 'Unbabel/wmt22-cometkiwi-da',
+    'Unbabel/XCOMET-XL', 'Unbabel/XCOMET-XXL',
+    'Unbabel/wmt23-cometkiwi-da-xl', 'Unbabel/wmt23-cometkiwi-da-xxl'
 ]
 log.basicConfig(level=log.INFO)
 
@@ -87,18 +89,22 @@ marianModel = dict()
 config = dict()
 
 model_type = type(cometModel).__name__
+print("COMET model params:", cometModel.hparams, file=sys.stderr)
+
+# are we using the xml-roberta-xl or xml-roberta-xxl model?
+isXlmXL = any(pre in cometModel.hparams.get("pretrained_model") for pre in ["xlm-roberta-xl", "xlm-roberta-xxl"])
+
 if model_type == "RegressionMetric":
     config["type"] = "comet"
 elif model_type == "ReferencelessRegression":
     config["type"] = "comet-qe"
 elif model_type == "XLMRobertaModel":
     config["type"] = "comet-qe"
-elif model_type == "UnifiedMetric" or model_type == "XCOMETMetric":
+elif model_type == "UnifiedMetric" or isXlmXL:
     config["type"] = "comet-unified"
     config["input-join-fields"] = True
     config["separator-symbol"] = "</s>"
     config["comet-use-separator"] = True
-    config["comet-pool"] = "cls"
 else:
     raise Exception(f'Unknown type of model {model_type}')
 
@@ -109,7 +115,7 @@ config["transformer-ffn-activation"] = "gelu" # figure this out dynamically
 config["transformer-train-position-embeddings"] = True
 
 # Roberta-XXL (hence XCOMET-XXL) has pre-norm
-if model_type == "XCOMETMetric":  # @TODO: make this depend on RobertaXL/XXL rather than model_type
+if isXlmXL:
     config["transformer-preprocess"] = "n"
     config["transformer-postprocess"] = "da"
     config["transformer-postprocess-emb"] = ""
@@ -123,15 +129,16 @@ config["bert-train-type-embeddings"] = False
 config["bert-type-vocab-size"] = 0
 config["comet-prepend-zero"] = True
 
-print(cometModel.hparams)
-
+config["comet-pool"] = cometModel.hparams.get("pool", "cls")
 config["comet-mix"] = cometModel.hparams.get("layer") == "mix"
 config["comet-mix-norm"] = cometModel.hparams.get('layer_norm', False)
 config["comet-mix-transformation"] = cometModel.hparams.get("layer_transformation", "softmax");
 
-# they have a bug in their code that makes this always true
-if model_type == "UnifiedMetric" or model_type == "XCOMETMetric":
+# there are several issues in their code that make the following always true regardless of values in hparams
+# that was hard to find out
+if model_type == "UnifiedMetric" or isXlmXL:
     config["comet-mix-transformation"] = "softmax"
+    config["comet-pool"] = "cls"
 
 if not args.roberta:
     config["comet-final-sigmoid"] = args.add_sigmoid
@@ -206,7 +213,7 @@ def extract(layer, nth, level):
         convert(pd, ["attention.output.dense.bias"],       f"{blockPrefix}->selfAttention->oProj->bias", bias=True)
 
         # self-attention layer-norm
-        if model_type == "XCOMETMetric": # @TODO: make this depend on RobertaXL/XXL rather than model_type
+        if isXlmXL:
             convert(pd, ["attention.self_attn_layer_norm.weight"], f"{blockPrefix}->preprocessor->norm->weight", bias=True)
             convert(pd, ["attention.self_attn_layer_norm.bias"],   f"{blockPrefix}->preprocessor->norm->bias", bias=True)
         else:
@@ -224,7 +231,7 @@ def extract(layer, nth, level):
         convert(pd, ["output.dense.bias"],                 f"{blockPrefix}->layers->at(3)->as<marian::nn::Linear>()->bias", bias=True)
 
         # ffn layer-norm
-        if model_type == "XCOMETMetric": # @TODO: make this depend on RobertaXL/XXL rather than model_type
+        if isXlmXL:
             convert(pd, ["LayerNorm.weight"], f"{blockPrefix}->preprocessor->norm->weight", bias=True)
             convert(pd, ["LayerNorm.bias"],   f"{blockPrefix}->preprocessor->norm->bias", bias=True)
         else:
@@ -267,7 +274,7 @@ def extract(layer, nth, level):
         prefix = "CometEncoder"
 
         # post-embedding layer normalization
-        if model_type == "XCOMETMetric": # @TODO: make this depend on RobertaXL/XXL rather than model_type
+        if isXlmXL:
             convert(pd, ["encoder.LayerNorm.weight"], f"{prefix}->encoder->postprocessor->norm->weight", bias=True)
             convert(pd, ["encoder.LayerNorm.bias"],   f"{prefix}->encoder->postprocessor->norm->bias", bias=True)
         else:
@@ -309,7 +316,6 @@ def extract(layer, nth, level):
         # 3-layer FFN network that computes COMET regression
         prefix = "CometQEPooler"
 
-        # @TODO: make final sigmoid optional
         convert(pd, ["ff.0.weight"], f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->weight")
         convert(pd, ["ff.0.bias"],   f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->bias", bias=True)
 

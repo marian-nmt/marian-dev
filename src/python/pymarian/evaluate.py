@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 import threading
+import yaml
+
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Union
 
@@ -138,7 +140,11 @@ def pymarian_evaluate(
         raise ImportError('pymarian is not installed. Please install it and rerun')
 
     log.info(f'Marian CLI::\n\t{cmd_line}')
+
     evaluator = Evaluator(cmd_line)
+    config = yaml.safe_load(evaluator.get_model_config())
+    log.info(f'Model config: {config}')
+
     assert average in ('skip', 'append', 'only')
     lines = (line.rstrip('\n').split('\t') for line in input_lines)
 

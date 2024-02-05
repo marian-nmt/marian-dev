@@ -13,9 +13,9 @@ void TextIterator::increment() {
 }
 
 bool TextIterator::equal(TextIterator const& other) const {
-  // two iterators are equal if any of the following is true: 
+  // two iterators are equal if any of the following is true:
   // 1. both are invalid (null ptrs)
-  // 2. both at the end of the stream (empty tuples as record, regardless of pos_) 
+  // 2. both at the end of the stream (empty tuples as record, regardless of pos_)
   // 3. both are at the same position
   return (!this->tup_.valid() && !other.tup_.valid()) ||
     (this->tup_.valid() && other.tup_.valid() && this->tup_.empty() && other.tup_.empty()) ||
@@ -32,7 +32,12 @@ TextInput::TextInput(std::vector<std::string> inputs,
     : DatasetBase(inputs, options),
       vocabs_(vocabs),
       maxLength_(options_->get<size_t>("max-length")),
-      maxLengthCrop_(options_->get<bool>("max-length-crop")) {
+      maxLengthCrop_(options_->get<bool>("max-length-crop")),
+      rightLeft_(options_->get<bool>("right-left")),
+      prependZero_(options_->get<bool>("comet-prepend-zero", false)),
+      joinFields_(options_->get<bool>("input-join-fields", false)),
+      insertSeparator_(options_->get<bool>("comet-use-separator", false))
+ {
   // Note: inputs are automatically stored in the inherited variable named paths_, but these are
   // texts not paths!
   for(const auto& text : paths_)

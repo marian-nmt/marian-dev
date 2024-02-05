@@ -30,7 +30,8 @@ classifiers = [
 
 dependencies = [
   "tqdm",
-  "requests"
+  "requests",
+  "pyyaml"
 ]
 
 [project.scripts]
@@ -56,7 +57,7 @@ target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
 include = 'src/python/.*\.pyi?$'
 skip-string-normalization = true
 
-# black doesn't sort imports. So we use isort for that. See discussion https://github.com/psf/black/issues/333 
+# black doesn't sort imports. So we use isort for that. See discussion https://github.com/psf/black/issues/333
 [tool.isort]
 profile = "black"
 src_paths = ["src/python"]

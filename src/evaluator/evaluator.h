@@ -50,7 +50,7 @@ private:
 
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
-  Ptr<io::ModelWeights> modelFile_;
+  Ptr<io::ModelWeights> modelWeights_;
 
 public:
   Evaluate(Ptr<Options> options) : options_(options) {
@@ -69,7 +69,7 @@ public:
     auto modelPath = options_->get<std::string>("model");
     LOG(info, "Loading model from {}", modelPath);
 
-    modelFile_ = New<io::ModelWeights>(modelPath);
+    modelWeights_ = New<io::ModelWeights>(modelPath);
 
     graphs_.resize(devices.size());
     models_.resize(devices.size());
@@ -85,7 +85,7 @@ public:
             graph->reserveWorkspaceMB(options_->get<int>("workspace"));
 
             auto model = New<Model>(options_);
-            model->load(graph, modelFile_);
+            model->load(graph, modelWeights_);
 
             models_[j] = model;
             graphs_[j] = graph;
@@ -107,10 +107,10 @@ public:
     run(batchGenerator, output);
     LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
   }
-  
+
   template <typename T>
   void run(Ptr<BatchGenerator<T>> batchGenerator,  Ptr<VectorCollector> collector) {
-  
+
     size_t batchId = 0;
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
@@ -156,6 +156,13 @@ public:
         pool.enqueue(task, batchId++);
       }
     }
+  }
+
+  std::string getModelConfig() {
+    ABORT_IF(!modelWeights_, "Model weights are not loaded");
+    YAML::Emitter outYaml;
+    cli::OutputYaml(modelWeights_->getYamlFromModel(), outYaml);
+    return outYaml.c_str();
   }
 
 };

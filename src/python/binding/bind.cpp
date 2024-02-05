@@ -1,6 +1,6 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
-// if your IDE/vscode complains about missing paths 
+// if your IDE/vscode complains about missing paths
 // pybind11 can be found by "python -m pybind11 --includes"; you may need to add both pybind11 and Python.h
 #include "embedder.hpp"
 #include "evaluator.hpp"
@@ -17,7 +17,7 @@ using namespace pymarian;
 PYBIND11_MODULE(_pymarian, m) {
     m.doc() = "Marian C++ API bindings via pybind11";
 
-    /** TODOS 
+    /** TODOS
      *  1. API to check if gpu available: cuda_is_available() -> bool
      *  2. API to check number of gpus:: cuda_device_count() -> int
     */
@@ -31,6 +31,7 @@ PYBIND11_MODULE(_pymarian, m) {
     py::class_<EvaluatorPyWrapper>(m, "Evaluator")
         .def(py::init<std::string>())
         .def("evaluate", py::overload_cast<const StrVectors&>(&EvaluatorPyWrapper::run))
+        .def("get_model_config", py::overload_cast<>(&EvaluatorPyWrapper::getModelConfig))
         ;
 
     py::class_<PyTrainer>(m, "Trainer")

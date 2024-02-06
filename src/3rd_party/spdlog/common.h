@@ -17,7 +17,7 @@
 #include <locale>
 #endif
 
-#include "spdlog/details/null_mutex.h"
+#include <spdlog/details/null_mutex.h>
 
 //visual studio does not support noexcept yet
 #ifndef _MSC_VER

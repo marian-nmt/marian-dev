@@ -7,9 +7,9 @@
 
 #if defined(__linux__) || defined(__APPLE__)
 
-#include "spdlog/sinks/sink.h"
-#include "spdlog/common.h"
-#include "spdlog/details/log_msg.h"
+#include <spdlog/sinks/sink.h>
+#include <spdlog/common.h>
+#include <spdlog/details/log_msg.h>
 
 #include <array>
 #include <string>

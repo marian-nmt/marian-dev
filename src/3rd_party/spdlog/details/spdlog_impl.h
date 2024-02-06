@@ -8,12 +8,12 @@
 //
 // Global registry functions
 //
-#include "spdlog/spdlog.h"
-#include "spdlog/details/registry.h"
-#include "spdlog/sinks/file_sinks.h"
-#include "spdlog/sinks/stdout_sinks.h"
-#include "spdlog/sinks/syslog_sink.h"
-#include "spdlog/sinks/ansicolor_sink.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/details/registry.h>
+#include <spdlog/sinks/file_sinks.h>
+#include <spdlog/sinks/stdout_sinks.h>
+#include <spdlog/sinks/syslog_sink.h>
+#include <spdlog/sinks/ansicolor_sink.h>
 
 #include <chrono>
 #include <functional>

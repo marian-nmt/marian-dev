@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "spdlog/logger.h"
+#include <spdlog/logger.h>
 
 #include <memory>
 #include <string>

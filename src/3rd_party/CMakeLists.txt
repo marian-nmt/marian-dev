@@ -9,11 +9,14 @@ add_subdirectory(./faiss)
 include_directories(./faiss)
 
 if(COMPILE_CPU)
+  # intgemm is not ARM-compatible.  do not build it if we are on ARM
   if(NOT GENERATE_MARIAN_INSTALL_TARGETS AND NOT ARM)
     set(INTGEMM_DONT_BUILD_TESTS ON CACHE BOOL "Disable intgemm tests")
     add_subdirectory(./intgemm)
   endif()
 
+  # the default codepath does not use ruy so there is no need to add these directories 
+  # to the build unless it is explicitly enabled. RUY is intended mostly for ARM support
   if(USE_RUY_SGEMM)
     set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE BOOL " " FORCE)
     set(CPUINFO_BUILD_BENCHMARKS OFF CACHE BOOL " " FORCE)

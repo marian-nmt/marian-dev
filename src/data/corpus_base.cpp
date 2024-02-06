@@ -434,22 +434,34 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
     auto prependedWord = Word::fromWordIndex(0);
     words.insert(words.begin(), prependedWord);
   }
-
-  if(maxLengthCrop_ && words.size() > maxLength_) {
-    words.resize(maxLength_);
+  
+  // if fields are joined and the current sentence is not the first one, we need to make sure that
+  // the current sentence is not longer than the maximum length minus the length of the previous sentence
+  // (minus 1 for the separator <eos> token)
+  size_t localMaxLength = maxLength_;
+  if(joinFields_ && !tup.empty())
+    localMaxLength = std::max(1, (int)maxLength_ - (int)tup.back().size());
+    
+  // if the current sentence is longer than the maximum length, we need to crop it
+  if(maxLengthCrop_ && words.size() > localMaxLength) {
+    words.resize(localMaxLength);
     if(addEOS_[batchIndex])
       words.back() = vocabs_[batchIndex]->getEosId();
   }
 
+  // if true, the words are reversed
   if(rightLeft_)
     std::reverse(words.begin(), words.end() - 1);
 
   // if true, the numeric indices get joined with the previous sentence, <eos> acts as a separator here
-  // @TODO: make this cleaner.
-  if(joinFields_)
-    tup.appendToBack(words);
-  else
+  if(joinFields_) {
+    size_t currLength = tup.empty() ? 0 : tup.back().size();
+    // if the current sentence would exceed the maximum length we don't add any more fields
+    if(currLength + words.size() < maxLength_)
+      tup.appendToBack(words);
+  } else {
     tup.pushBack(words);
+  }
 }
 
 void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,

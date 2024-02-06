@@ -568,7 +568,8 @@ SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Optio
       metric_(metric),
       computeChrF_(metric == "chrf"),
       useWordIds_(metric == "bleu-segmented"),
-      quiet_(options_->get<bool>("quiet-translation")) {
+      quiet_(options_->get<bool>("quiet-translation")),
+      quiet_sample_(options_->get<bool>("quiet-validation", false)) {
 
   ABORT_IF(computeChrF_ && useWordIds_, "Cannot compute ChrF on word ids"); // should not really happen, but let's check.
 
@@ -582,7 +583,7 @@ SacreBleuValidator::SacreBleuValidator(std::vector<Ptr<Vocab>> vocabs, Ptr<Optio
 }
 
 float SacreBleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& graphs,
-                              Ptr<const TrainingState> state) {
+                                   Ptr<const TrainingState> state) {
   using namespace data;
 
   // Generate batches
@@ -735,9 +736,11 @@ void SacreBleuValidator::updateStats(std::vector<float>& stats,
     ref.push_back(w);
   }
 
-  LOG_VALID_ONCE(info, "First sentence's tokens as scored:");
-  LOG_VALID_ONCE(info, "  Hyp: {}", utils::join(decode(cand, /*addEOS=*/false)));
-  LOG_VALID_ONCE(info, "  Ref: {}", utils::join(decode(ref,  /*addEOS=*/false)));
+  if(!quiet_sample_) {
+    LOG_VALID_ONCE(info, "First sentence's tokens as scored:");
+    LOG_VALID_ONCE(info, "  Hyp: {}", utils::join(decode(cand, /*addEOS=*/false)));
+    LOG_VALID_ONCE(info, "  Ref: {}", utils::join(decode(ref,  /*addEOS=*/false)));
+  }
 
   if(useWordIds_)
     updateStats(stats, cand, ref);

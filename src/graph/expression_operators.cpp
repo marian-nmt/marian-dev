@@ -362,27 +362,9 @@ Expr flatten_2d(Expr a) {
   return Expression<ReshapeNodeOp>(a, shape);
 }
 
+// Stop gradients from flowing back through this node
 Expr stopGradient(Expr a) {
-#if 0 
-  // This is a different implementation which is more reliable than the original, 
-  // but it introduces a full copy which hogs memory. Keeping it around for now
-  // to decide later which one to use.
-
-  auto fwd = [](Expr output, const std::vector<Expr> inputs) {
-    CopyCast(output->val(), inputs[0]->val());
-  };
-
-  auto bwd = [](Expr output, const std::vector<Expr> inputs) {
-    /*Dummy*/
-  };
-
-  return lambda({a}, a->shape(), a->value_type(), fwd, bwd, (size_t)&fwd);
-#else
-  // implemented as a dummy reshape that is not trainable
-  auto res = Expression<ReshapeNodeOp>(a, a->shape());
-  res->setTrainable(false);
-  return res;
-#endif
+  return Expression<StopGradientNodeOp>(a);
 }
 
 Expr choose(std::vector<Expr> nodes, size_t index) {

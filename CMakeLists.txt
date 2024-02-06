@@ -113,8 +113,13 @@ if(ARM)
   endif(MSVC)
 endif(ARM)
 
-#if(SDK_NAME EQUAL "iphoneos" OR SDK_NAME EQUAL "iphonesimulator")
-#endif(SDK_NAME)
+########
+# pThreads: consider it as EXT_LIBS for a more portable binary
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
+set(EXT_LIBS ${EXT_LIBS} Threads::Threads)
+########
 
 ###############################################################################
 # Set compilation flags
@@ -297,6 +302,12 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
+
+  # set -march for all builds except iOS cross compilation
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
+    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
+  endif()
 endif(MSVC)
 
 # with gcc 7.0 and above we need to mark fallthrough in switch case statements

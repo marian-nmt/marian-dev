@@ -3,10 +3,10 @@
 #include "layers_new/alibi.h"
 
 namespace marian {
-namespace nn { 
+namespace nn {
 
 // Factory function to create attention layers from options
-Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options) {
+Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options, bool enableCache) {
   // @TODO: currently this does nothing as it isn't set anywhere
   std::string selfAttentionType = options->get<std::string>("transformer-encoder-attention", "default"); // currently only default
 
@@ -17,7 +17,7 @@ Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options
 
     float attentionDropoutProbability = options->get<float>("transformer-dropout-attention", 0.f);
 
-    return New<MultiHeadAttention<MultiplicativeAttention>>(graph, numHeads, modelDim, modelDim, attentionDropoutProbability);
+    return New<MultiHeadAttention>(graph, numHeads, modelDim, modelDim, attentionDropoutProbability, enableCache);
   }
   else {
     ABORT("Unknown transformer encoder attention type: {}", selfAttentionType);
@@ -25,15 +25,42 @@ Ptr<AttentionLayer> attentionFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options
 }
 
 // Factory function to create attention mask processors from options
-Ptr<AttentionMaskProcessor> attentionMaskProcessorFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options) {
+Ptr<MaskProcessor> maskProcessorFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options) {
   // currently only default or alibi
-  std::string processorType = options->get<std::string>("transformer-attention-mask", "default"); 
+  std::string processorType = options->get<std::string>("transformer-attention-mask", "default");
   if(processorType == "default") {
     return New<AttentionMaskProcessor>(graph, options);
   } else if(processorType == "alibi") {
     return New<AlibiAttentionMaskProcessor>(graph, options);
   } else {
     ABORT("Unknown transformer attention mask processor type: {}", processorType);
+  }
+}
+
+Ptr<DecoderMaskProcessor> selfMaskProcessorFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options) {
+  auto autoRegType = options->get<std::string>("transformer-decoder-autoreg", "self-attention");
+  if(autoRegType == "rnn") {
+    // creates a dummy processor that returns an unprocessed mask
+    return New<DummyDecoderMaskProcessor>(graph, options);
+  } else if(autoRegType == "self-attention") {
+    // here we will return modified log masks for self-attention
+    std::string processorType = options->get<std::string>("transformer-attention-mask", "default");
+    if(processorType == "alibi") {
+      return New<AlibiDecoderAttentionMaskProcessor>(graph, options, /*addCausalMask=*/true);
+    } else {
+      return New<DecoderAttentionMaskProcessor>(graph, options, /*addCausalMask=*/true);
+    }
+  } else {
+    ABORT("Unknown transformer decoder autoregressive type: {}", autoRegType);
+  }
+}
+
+Ptr<DecoderMaskProcessor> contextDecoderMaskProcessorFromOptions(Ptr<ExpressionGraph> graph, Ptr<Options> options) {
+  std::string processorType = options->get<std::string>("transformer-attention-mask", "default");
+  if(processorType == "alibi") {
+    return New<AlibiDecoderAttentionMaskProcessor>(graph, options, /*addCausalMask=*/false);
+  } else {
+    return New<DecoderAttentionMaskProcessor>(graph, options, /*addCausalMask=*/false);
   }
 }
 
@@ -49,28 +76,27 @@ private:
     // see the reshape below in the logMask function
     int dimBatch = mask->shape()[-4];
     int dimKeys  = mask->shape()[-1];
-    return { dimBatch, numHeads, 1, dimKeys };
+    return { dimBatch, numHeads,       1, dimKeys };
   }
 
 public:
   LogMaskNode(Expr mask, int numHeads)
-  : UnaryNodeOp(mask, newShape(mask, numHeads)), numHeads_(numHeads)
+  : UnaryNodeOp(mask, newShape(mask, numHeads)),
+    numHeads_(numHeads)
   {}
 
   NodeOps forwardOps() override {
-    float lowest = NumericLimits<float>(value_type()).lowest;
-    float maskFactor = std::max(lowest / 2.f, -99999999.f); // to make sure we do not overflow for fp16
-    
-    using namespace functional;
     // compared to the multi-operation code this does conversion and broadcasting in one step
-    return { NodeOp(Element(_1 = (1.f - _2) * maskFactor, val_, child(0)->val())) }; 
+    using namespace functional;
+    return { NodeOp(Element(_1 = log(_2), val_, child(0)->val())) };
   }
 
   NodeOps backwardOps() override {
-    float lowest = NumericLimits<float>(value_type()).lowest;
-    float maskFactor = std::max(lowest / 2.f, -99999999.f); // to make sure we do not overflow for fp16
+    if(!trainable())
+      return { };
+
     using namespace functional;
-    return { NodeOp(Add(-maskFactor * _1, child(0)->grad(), adj_)) };
+    return { NodeOp(Add(_1 / _2, child(0)->grad(), adj_, child(0)->val())) };
   }
 
   virtual size_t hash() override {
@@ -93,13 +119,27 @@ public:
   const std::string type() override { return "log-mask"; }
 };
 
-Expr logMask(Expr mask, int numHeads) {
+Expr logMask(Expr mask, int numHeads, bool addCausalMask) {
   // incoming mask has shape [1, dimBatch, dimKeys, 1]
   int dimBatch = mask->shape()[-3];
   int dimKeys  = mask->shape()[-2];
   mask = reshape(mask, {dimBatch, 1, 1, dimKeys});
   auto logMask = Expression<LogMaskNode>(mask, numHeads); // [dimBatch, numHeads, 1, dimKeys]
-  return reshape(logMask, {1, dimBatch * numHeads, 1, dimKeys});
+  logMask = reshape(logMask, {1, dimBatch * numHeads, 1, dimKeys});
+
+  // @TODO: this is needlessly slow, integrate with the above in special kernel
+  if(addCausalMask) {
+    // add causal mask to logMask
+    std::vector<float> vMask(dimKeys * dimKeys, 0.f);
+    for(int i = 0; i < dimKeys; ++i)
+      for(int j = i + 1; j < dimKeys; ++j)
+        vMask[i * dimKeys + j] = -std::numeric_limits<float>::infinity();
+
+    auto triangle = mask->graph()->constant({1, 1, dimKeys, dimKeys}, inits::fromVector(vMask));
+    logMask = minimum(logMask, triangle); // [1, dimBatch * numHeads, dimKeys, dimKeys]
+  }
+
+  return logMask;
 }
 
 }  // namespace marian

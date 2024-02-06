@@ -503,7 +503,7 @@ struct ReduceNodeOp : public UnaryNodeOp {
       : UnaryNodeOp(a, newShape(a, axis)), opCode_(opCode)
   {
     reducedDim_ = a->shape()[axis]; // e.g. used in mean()
-    ABORT_IF(reducedDim_ != a->shape().elements() / shape().elements(), 
+    ABORT_IF(reducedDim_ != a->shape().elements() / shape().elements(),
              "Bug in determining reducedDim {} != {}",
              reducedDim_,
              a->shape().elements() / shape().elements());
@@ -619,13 +619,13 @@ private:
   int axis_;
   bool reverse_;
   bool exclusive_;
-  
+
 public:
-  CumSumNodeOp(Expr a, int axis, bool reverse, bool exclusive) 
-    : UnaryNodeOp(a), 
-      axis_(a->shape().axis(axis)), 
+  CumSumNodeOp(Expr a, int axis, bool reverse, bool exclusive)
+    : UnaryNodeOp(a),
+      axis_(a->shape().axis(axis)),
       reverse_(reverse),
-      exclusive_(exclusive) 
+      exclusive_(exclusive)
   {}
 
   NodeOps forwardOps() override {
@@ -685,10 +685,10 @@ private:
 
 public:
   LogCumSumExpNodeOp(Expr a, int axis, bool reverse, bool exclusive, bool fast=false)
-    : UnaryNodeOp(a), 
-      axis_(a->shape().axis(axis)), 
+    : UnaryNodeOp(a),
+      axis_(a->shape().axis(axis)),
       reverse_(reverse),
-      exclusive_(exclusive), 
+      exclusive_(exclusive),
       fast_(fast)
   {}
 
@@ -1019,10 +1019,10 @@ class CallbackNodeOp : public ReshapeNodeOp {
 private:
   typedef std::function<void(Expr)> LambdaNodeCallback;
   std::unique_ptr<LambdaNodeCallback> callback_;
-  
+
 public:
   CallbackNodeOp(Expr node, LambdaNodeCallback callback)
-  : ReshapeNodeOp(node, node->shape()), 
+  : ReshapeNodeOp(node, node->shape()),
     callback_(new LambdaNodeCallback(callback)) {
   }
 
@@ -1053,10 +1053,10 @@ public:
 class DropoutReluInplaceNodeOp : public ReshapeNodeOp {
 private:
   Expr mask_;
-  
+
 public:
   DropoutReluInplaceNodeOp(Expr node, Expr mask = nullptr)
-  : ReshapeNodeOp(node, node->shape()), 
+  : ReshapeNodeOp(node, node->shape()),
     mask_(mask) {}
 
   void forward() override {
@@ -1312,7 +1312,7 @@ struct ShiftNodeOp : public UnaryNodeOp {
     if(!cnode)
       return false;
     if(shift_ != cnode->shift_)
-      return false;    
+      return false;
     if(padValue_ != cnode->padValue_)
       return false;
     return true;

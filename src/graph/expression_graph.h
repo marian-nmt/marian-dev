@@ -799,6 +799,8 @@ public:
 
     setReloaded(false);
     for(auto& item : modelWeights->items()) {
+      auto lockGuard = modelWeights->scopedLockGuard();
+
       std::string pName = item.name;
       // skip over special parameters starting with "special:"
       if(pName.substr(0, 8) == "special:")

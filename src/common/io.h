@@ -9,6 +9,7 @@
 #include "common/definitions.h"
 #include "common/io_item.h"
 
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -32,8 +33,6 @@ bool isBin(const std::string& fileName);
 
 class ModelWeights {
 private:
-  std::mutex mutex_;
-
   std::string fileName_;
   const void* ptr_{nullptr};
 
@@ -48,14 +47,17 @@ private:
   std::vector<Item> items_;
   std::unique_ptr<mio::mmap_source> mmap_;
 
+  mutable std::mutex mutex_;
+  bool locking_{true}; // if true, the mutex will be locked when accessing the data, see scopedLockGuard()
+
   std::vector<Item> loadItems(const std::string& fileName);
   std::vector<Item> mmapItems(const void* ptr);
 
   void load();
 
 public:
-  ModelWeights(const std::string& fileName, MmapMode mmapMode = MmapMode::OpportunisticMmap)
-  : fileName_(fileName), fileType_(getFileType(fileName)), mmapMode_(mmapMode) {
+  ModelWeights(const std::string& fileName, MmapMode mmapMode = MmapMode::OpportunisticMmap, bool locking = true)
+  : fileName_(fileName), fileType_(getFileType(fileName)), mmapMode_(mmapMode), locking_(locking) {
 
     // NPZ files cannot be memory-mapped, so we switch opportunistic mmap off, but keep any other mmap mode
     if(fileType_ == FileType::isNpz && mmapMode_ == MmapMode::OpportunisticMmap)
@@ -65,11 +67,11 @@ public:
     ABORT_IF(fileType_ == FileType::isNpz && mmapMode_ != MmapMode::DontMmap, "NPZ files cannot be memory-mapped");
   }
 
-  ModelWeights(const void* ptr, MmapMode mmapMode = MmapMode::RequiredMmap)
-  : ptr_(ptr), fileType_(FileType::isBuf), mmapMode_(mmapMode) {}
+  ModelWeights(const void* ptr, MmapMode mmapMode = MmapMode::RequiredMmap, bool locking = true)
+  : ptr_(ptr), fileType_(FileType::isBuf), mmapMode_(mmapMode), locking_(locking) {}
 
-  ModelWeights()
-  : fileType_(FileType::isDummy), mmapMode_{MmapMode::DontMmap} {}
+  ModelWeights(bool locking = true)
+  : fileType_(FileType::isDummy), mmapMode_{MmapMode::DontMmap}, locking_(locking) {}
 
   ModelWeights(const ModelWeights&&) = delete;
   ModelWeights(const ModelWeights&) = delete;
@@ -84,6 +86,11 @@ public:
   size_t size() const;
 
   YAML::Node getYamlFromModel(const std::string& varName = "special:model.yml") const;
+
+  // If locking is set to false, the returned unique_ptr will be empty and no lock will be acquired.
+  // Otherwise the returned unique_ptr will contain a lock guard that will be released when the unique_ptr
+  // goes out of scope. So we have an optional scoped lock guard.
+  std::unique_ptr<std::lock_guard<std::mutex>> scopedLockGuard() const;
 
   void loadAndSync(Ptr<IMPIWrapper> mpi);
 };

@@ -56,7 +56,7 @@ Expr AlibiDecoderState::getAlibiShift(Ptr<ExpressionGraph> graph, bool decoding)
     std::vector<float> shift;
     for(const auto& [trgPos, srcPos, batchIdx] : syncPoints_)
       shift.push_back((float)(srcPos - trgPos));
-    
+
     if(!shift.empty()) {
       int dimBeam  = lastBeam_;
       ABORT_IF(dimBeam == 0, "dimBeam is 0??");
@@ -66,7 +66,7 @@ Expr AlibiDecoderState::getAlibiShift(Ptr<ExpressionGraph> graph, bool decoding)
       return nullptr;
     }
   } else {
-    ABORT_IF(getBatch()->sets() != 2, 
+    ABORT_IF(getBatch()->sets() != 2,
              "--transformer-alibi-shift=true currently only works with batch sets=2");
     return getAlibiShiftFromBatch(graph);
   }
@@ -93,7 +93,7 @@ Expr AlibiDecoderState::getAlibiShiftFromBatch(Ptr<ExpressionGraph> graph) const
   int dimBatch = (int)targetBatch->batchSize();
   int dimSrc   = (int)sourceBatch->batchWidth();
   int dimTrg   = (int)targetBatch->batchWidth();
-  
+
   for(int batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
     int trgPos = -1, srcPos = -1;
     for(int i = 0; i < dimTrg; ++i) {
@@ -148,7 +148,7 @@ std::vector<AlibiDecoderState::SyncCoord> AlibiDecoderState::computeSyncPoints(
   // If the current symbol is a sync symbol, the sync point target coordinate is updated to the current position
   // and the source coordinate is updated to the next sync symbol in the source sentence.
   for(int i = 0; i < hypIndices.size(); ++i) {
-    SyncCoord pos = syncPoints_.empty() 
+    SyncCoord pos = syncPoints_.empty()
       ? SyncCoord({-1, -1, (int)batchIndices[i % dimBatch]}) // no sync points yet, initialize with -1 position and current batch index
       : syncPoints_[hypIndices[i]];                          // carry over the sync point from the previous state at first
     auto& [trgPos, srcPos, batchIdx] = pos;
@@ -168,7 +168,7 @@ std::vector<AlibiDecoderState::SyncCoord> AlibiDecoderState::computeSyncPoints(
   }
 
   return nextSyncPoints;
-} 
+}
 
 
 Ptr<DecoderState> NewDecoderState(Ptr<Options> options,
@@ -185,16 +185,22 @@ Ptr<DecoderState> NewDecoderState(Ptr<Options> options,
   }
 }
 
-Ptr<nn::DecoderState> convertDecoderState(Ptr<DecoderState> state, 
-                                          Ptr<ExpressionGraph> graph, 
+Ptr<nn::DecoderState> convertDecoderState(Ptr<DecoderState> state,
+                                          Ptr<ExpressionGraph> graph,
                                           bool decoding) {
   Expr shift;
   auto alibiState = std::dynamic_pointer_cast<AlibiDecoderState>(state);
   if(alibiState)
     shift = alibiState->getAlibiShift(graph, decoding);
 
-  size_t position = state->getPosition();
-  auto nnState = New<nn::DecoderStateList>(position);
+  // @TODO: allow for 0 encoder states, i.e. a decoder-only model
+  ABORT_IF(state->getEncoderStates().size() != 1, "Only supports exactly one encoder state");
+
+  size_t position     = state->getPosition();
+  auto encoderContext = state->getEncoderStates()[0]->getContext();
+  auto encoderMask    = state->getEncoderStates()[0]->getMask();
+
+  auto nnState = New<nn::DecoderSeq2SeqState>(position, encoderContext, encoderMask);
   for(auto& layerState : state->getStates()) {
     if(alibiState) {
       nnState->append(New<nn::AlibiDecoderStateItem>(layerState.cell, shift, position));
@@ -208,97 +214,108 @@ Ptr<nn::DecoderState> convertDecoderState(Ptr<DecoderState> state,
 #ifdef CUDA_FOUND
 namespace gpu {
   template <class... Tensors>
-  void Alibi(int numHeads, int start, marian::Tensor out, Tensors... tensors);
+  void Alibi(int numHeads, int start, bool addCausalMask, marian::Tensor out, Tensors... tensors);
 }
 #endif
 
 namespace cpu {
   template <class... Tensors>
-  void Alibi(int numHeads, int start, marian::Tensor out, Tensors... tensors) { 
+  void Alibi(int numHeads, int start, bool addCausalMask, marian::Tensor out, Tensors... tensors) {
     ABORT("Not implemented");
   }
 }
 
 template <class... Tensors>
-void Alibi(int numHeads, int start, marian::Tensor out, Tensors... tensors) {
+void Alibi(int numHeads, int start, bool addCausalMask, marian::Tensor out, Tensors... tensors) {
 #ifdef CUDA_FOUND
   if(out->getBackend()->getDeviceId().type == DeviceType::gpu)
-    gpu::Alibi(numHeads, start, out, tensors...);
+    gpu::Alibi(numHeads, start, addCausalMask, out, tensors...);
   else
 #endif
-    cpu::Alibi(numHeads, start, out, tensors...);
+    cpu::Alibi(numHeads, start, addCausalMask, out, tensors...);
 }
 
 
 #ifdef CUDA_FOUND
 namespace gpu {
   template <class... Tensors>
-  void AlibiGrad(int numHeads, int start, marian::Tensor slopesGrad, marian::Tensor biasesGrad, Tensors... tensors);
+  void AlibiGrad(int numHeads, int start, bool addCausalMask, marian::Tensor slopesGrad, marian::Tensor biasesGrad, Tensors... tensors);
 }
 #endif
 
 namespace cpu {
   template <class... Tensors>
-  void AlibiGrad(int numHeads, int start, marian::Tensor slopesGrad, marian::Tensor biasesGrad, Tensors... tensors) { 
+  void AlibiGrad(int numHeads, int start, bool addCausalMask, marian::Tensor slopesGrad, marian::Tensor biasesGrad, Tensors... tensors) {
     ABORT("Not implemented");
   }
 }
 
 template <class... Tensors>
-void AlibiGrad(int numHeads, int start, marian::Tensor slopesGrad, marian::Tensor biasesGrad, Tensors... inputs) {
+void AlibiGrad(int numHeads, int start, bool addCausalMask, marian::Tensor slopesGrad, marian::Tensor biasesGrad, Tensors... inputs) {
 #ifdef CUDA_FOUND
   if(slopesGrad->getBackend()->getDeviceId().type == DeviceType::gpu)
-    gpu::AlibiGrad(numHeads, start, slopesGrad, biasesGrad, inputs...);
+    gpu::AlibiGrad(numHeads, start, addCausalMask, slopesGrad, biasesGrad, inputs...);
   else
 #endif
-    cpu::AlibiGrad(numHeads, start, slopesGrad, biasesGrad, inputs...);
+    cpu::AlibiGrad(numHeads, start, addCausalMask, slopesGrad, biasesGrad, inputs...);
 }
 
 class AlibiLogMaskNode : public NaryNodeOp {
 private:
   int numHeads_{8};
   int start_{0};
+  bool addCausalMask_{false};
 
-  Shape newShape(Expr mask, Expr query, int numHeads) {
+  Shape newShape(Expr mask, Expr query, int numHeads, bool addCausalMask) {
     int dimBeam  = query->shape()[-4];
     int dimBatch = query->shape()[-3];
     int dimQuery = query->shape()[-2];
     int dimKeys  = mask->shape()[-2];
 
+    ABORT_IF(addCausalMask && dimQuery != dimKeys, "Causal mask only works for square attention matrices");
+
     return { dimBeam, dimBatch * numHeads, dimQuery, dimKeys };
   }
 
 public:
-  AlibiLogMaskNode(const std::vector<Expr>& nodes, int numHeads, int start)
-  : NaryNodeOp(nodes, newShape(/*mask=*/nodes[0], /*query=*/nodes[1], numHeads), nodes[0]->value_type()), 
-    numHeads_(numHeads), start_{start}
+  AlibiLogMaskNode(const std::vector<Expr>& nodes, int numHeads, int start, bool addCausalMask)
+  : NaryNodeOp(nodes, newShape(/*mask=*/nodes[0], /*query=*/nodes[1], numHeads, addCausalMask), nodes[0]->value_type()),
+    numHeads_(numHeads), start_{start}, addCausalMask_{addCausalMask}
   {}
 
   void forward() override {
     Alibi(
-          numHeads_, 
+          numHeads_,
           start_,
-          val_, 
+          addCausalMask_,
+          val_,
           /*mask=*/  child(0)->val(),
-          /*slopes=*/child(2)->val(), 
-          /*biases=*/child(3)->val(), 
+          /*slopes=*/child(2)->val(),
+          /*biases=*/child(3)->val(),
           /*shift=*/ children().size() == 5 ? child(4)->val() : nullptr);
   }
 
   void backward() override {
     if(!trainable())
       return;
-    
+
+    if(!child(2)->trainable())
+      return;
+
+    if(!child(3)->trainable())
+      return;
+
     AlibiGrad(
-          numHeads_, 
+          numHeads_,
           start_,
+          addCausalMask_,
           // gradients
-          /*d_f/d_slopes=*/child(2)->grad(), 
-          /*d_f/d_biases=*/child(3)->grad(), 
+          /*d_f/d_slopes=*/child(2)->grad(),
+          /*d_f/d_biases=*/child(3)->grad(),
           // inputs
           /*mask=*/   child(0)->val(),
-          /*slopes=*/ child(2)->val(), 
-          /*biases=*/ child(3)->val(), 
+          /*slopes=*/ child(2)->val(),
+          /*biases=*/ child(3)->val(),
           /*shift=*/  children().size() == 5 ? child(4)->val() : nullptr,
           // adjoint
           /*d_J/d_f=*/adj_);
@@ -308,6 +325,7 @@ public:
     size_t seed = NaryNodeOp::hash();
     util::hash_combine(seed, numHeads_);
     util::hash_combine(seed, start_);
+    util::hash_combine(seed, addCausalMask_);
     return seed;
   }
 
@@ -321,18 +339,20 @@ public:
       return false;
     if(start_ != cnode->start_)
       return false;
+    if(addCausalMask_ != cnode->addCausalMask_)
+      return false;
     return true;
   }
 
   const std::string type() override { return "alibi-log-mask"; }
 };
 
-Expr alibiLogMask(Expr mask, Expr query, Expr slopes, Expr biases, Expr shift, int numHeads, int start) {
+Expr alibiLogMask(Expr mask, Expr query, Expr slopes, Expr biases, Expr shift, int numHeads, int start, bool addCausalMask) {
   std::vector<Expr> nodes = {mask, query, slopes, biases};
   if(shift)
     nodes.push_back(shift);
 
-  return Expression<AlibiLogMaskNode>(nodes, numHeads, start);
+  return Expression<AlibiLogMaskNode>(nodes, numHeads, start, addCausalMask);
 }
 
 

@@ -48,7 +48,6 @@ struct IClearable {
   virtual void clear() = 0;
 };
 
-
 // Helper macro to turn parameter C++ variable name into a string.
 #define registerParameter(paramArg, shape, init) \
 do { \
@@ -58,7 +57,7 @@ do { \
 } while(0);
 
 // Helper macro to turn parameter C++ variable name into a string.
-// This version is meant to be used in apply(...) functions for lazy parameter inits 
+// This version is meant to be used in apply(...) functions for lazy parameter inits
 // hence has to cast away constness.
 #define registerParameterLazy(paramArg, shape, init) \
 do { \
@@ -80,8 +79,8 @@ do { \
   } \
 } while(0);
 
-// Helper macro that adds the layer as a named sublayer to the parent layer and uses the given name. Different from above as 
-// the C++ variable name itself is not used a name string. 
+// Helper macro that adds the layer as a named sublayer to the parent layer and uses the given name. Different from above as
+// the C++ variable name itself is not used a name string.
 #define registerLayerWithName(layerArg, name) \
 do { \
   ABORT_IF(!layerArg, "Layer {} of type {} with name {} is not initialized", #layerArg, utils::cxxTypeName(layerArg), name); \
@@ -107,8 +106,8 @@ public:
 private:
   Weak<ExpressionGraph> graph_;
 
-  // Using naked pointer as a weak reference. Cannot use shared_ptr or weak_ptr 
-  // as registration happens in constructor of parent layer and shared_from_this() 
+  // Using naked pointer as a weak reference. Cannot use shared_ptr or weak_ptr
+  // as registration happens in constructor of parent layer and shared_from_this()
   // cannot be used before parent layer constructor exits.
   Layer* firstParent_{nullptr};
   std::string name_;
@@ -135,13 +134,13 @@ public:
 
   virtual ~Layer() = default;
 
-  Ptr<ExpressionGraph> graph() { 
+  Ptr<ExpressionGraph> graph() {
     auto graph = graph_.lock();
     ABORT_IF(!graph, "graph in layer {} expired?", path());
     return graph;
   }
 
-  const Ptr<ExpressionGraph> graph() const { 
+  const Ptr<ExpressionGraph> graph() const {
     auto graph = graph_.lock();
     ABORT_IF(!graph, "graph in layer {} expired?", path());
     return graph;
@@ -172,7 +171,7 @@ public:
   template <class LayerType>
   Ptr<LayerType> cast() {
     auto layerCast = as<LayerType>();
-    ABORT_IF(!layerCast, "Layer {} cannot be cast to requested type {}", 
+    ABORT_IF(!layerCast, "Layer {} cannot be cast to requested type {}",
              className(),
              utils::cxxTypeName<LayerType>());
     return layerCast;
@@ -182,7 +181,7 @@ public:
   Ptr<LayerType> cast() const {
     return const_cast<Layer*>(this)->cast<LayerType>();
   }
-  
+
   // Return all named parameters for this specific layer (not descending into sub-layers)
   std::vector<NamedParameter>& namedParameters() { return namedParameters_; }
   const std::vector<NamedParameter>& namedParameters() const { return namedParameters_; }
@@ -192,7 +191,7 @@ public:
   const std::vector<NamedLayer<Layer>>& namedLayers() const { return namedLayers_; }
 
   // Return all named sub-layers for this layer and its sub-layers (descending recursively into sub-layers).
-  // Can be used with layer type e.g. allNamedLayers<Linear>() to return only sub-layers of this type. 
+  // Can be used with layer type e.g. allNamedLayers<Linear>() to return only sub-layers of this type.
   // Returned layers will then have the given type and do not need to be cast anymore.
   template <class LayerType = Layer>
   std::vector<NamedLayer<LayerType>> allNamedLayers() {
@@ -201,7 +200,7 @@ public:
       auto castLayer = namedLayer.second->as<LayerType>();
       if(castLayer)
         layers.emplace_back(namedLayer.first, castLayer);
-      
+
       auto subLayers = namedLayer.second->allNamedLayers<LayerType>();
       layers.insert(layers.end(), subLayers.begin(), subLayers.end());
     }
@@ -213,8 +212,8 @@ public:
     return const_cast<Layer*>(this)->allNamedLayers<LayerType>();
   }
 
-  // Returns all sub-layers (only the layers, not the names) for this layer and its sub-layers (descending 
-  // recursively into sub-layers). Can be used with layer type e.g. allLayers<Linear>() to return only 
+  // Returns all sub-layers (only the layers, not the names) for this layer and its sub-layers (descending
+  // recursively into sub-layers). Can be used with layer type e.g. allLayers<Linear>() to return only
   // sub-layers of this type. Returned layers will then have the given type and do not need to be cast anymore.
   template <class LayerType = Layer>
   std::vector<Ptr<LayerType>> allLayers() {
@@ -230,18 +229,18 @@ public:
   }
 
   // Used by parent layers to set the name of a sub-layer.
-  // @TODO: make this private and only allow friend access from layers before merging with master. 
-  // Currently misused for top layer that has no parent layer that can set its name. 
+  // @TODO: make this private and only allow friend access from layers before merging with master.
+  // Currently misused for top layer that has no parent layer that can set its name.
   void setName(const std::string& name) { name_ = name; }
 
   const std::string& name() const { return name_; }
 
   // This sets the first parent of a sublayer (the layer a sublayer was first registered with).
-  // This is required to generate the correct path/name for layer parameters at saving time. 
-  void setFirstParent(Layer* parent) { 
+  // This is required to generate the correct path/name for layer parameters at saving time.
+  void setFirstParent(Layer* parent) {
     ABORT_IF(firstParent_ != nullptr, "Parent layer has already been set");
     ABORT_IF(parent == this, "Parent layer has to be different from child");
-    firstParent_ = parent; 
+    firstParent_ = parent;
   }
 
   // The parent layer of a sublayer is the first layer the sublayer has been registered with.
@@ -275,9 +274,9 @@ public:
     return ss.str();
   }
 
-  // Return Mode::eval or Mode::train. This is used to determine if training only layer-internal actions 
+  // Return Mode::eval or Mode::train. This is used to determine if training only layer-internal actions
   // like dropout should be run. This will not affect graph-internal gradient propagation unless somehow
-  // specified in a layer.  
+  // specified in a layer.
   Mode getMode() const {
   #if 1
     if(graph()->isInference()) {
@@ -355,10 +354,10 @@ public:
 /**
  * Wrapper to be used exclusively inside LayerList or other similar containers. This is allows to use the apply(...) functions
  * of a layer without having to cast to specific type (this is done internally based on the number of arguments). Inspired by
- * boost::any_type which allows to construct containers that hold various types. 
+ * boost::any_type which allows to construct containers that hold various types.
  * This should allow to use any layer and iterfaces will be added here as required.
  */
-class AnyLayer final : public IUnaryLayer, 
+class AnyLayer final : public IUnaryLayer,
                        public IBinaryLayer,
                        public ITernaryLayer,
                        public IQuaternaryLayer,
@@ -371,7 +370,7 @@ protected:
   // private/protected constructor, should only be created within listed classes with friendship
   AnyLayer(const Ptr<Layer>& layer)
     : layer_(layer) {}
-  
+
   friend class LayerList;
 
 public:
@@ -385,7 +384,7 @@ public:
   template <class LayerType>
   Ptr<LayerType> cast() const {
     auto layerCast = as<LayerType>();
-    ABORT_IF(!layerCast, "Layer {} cannot be cast to requested type {}", 
+    ABORT_IF(!layerCast, "Layer {} cannot be cast to requested type {}",
              layer_->className(),
              utils::cxxTypeName<LayerType>());
     return layerCast;
@@ -416,12 +415,12 @@ public:
   }
 };
 
-/** 
+/**
  * Holds sublayers in a list and performs correct registration of sublayers. Sublayers are indexed
  * and can be accessed like array elements, including iteration.
- * `LayerList` -- in contrast to `Sequential` -- does not provide `apply` functions. 
+ * `LayerList` -- in contrast to `Sequential` -- does not provide `apply` functions.
  * You have to define the execution order and information flow in code.
- * 
+ *
  * See TransformerEncoder for an example where we hold the transformer layer stack in a LayerList,
  * but define a custom apply function (due to masks being external information and shared between layers).
  */
@@ -433,7 +432,7 @@ protected:
   void recursiveAppend(Last last) {
     append(last);
   }
-  
+
   template <class First, class ...Rest>
   void recursiveAppend(First first, Rest ...rest) {
     append(first);
@@ -452,8 +451,8 @@ public:
 
   virtual ~LayerList() = default;
 
-  /** 
-   * This inserts an already existing sublayer from this or a different container which will result in 
+  /**
+   * This inserts an already existing sublayer from this or a different container which will result in
    * parameter sharing if there are parameters.
   ```
   auto layers = New<LayerList>(graph);
@@ -471,7 +470,7 @@ public:
     layers_.emplace_back(new AnyLayer(layer)); // not using New<...> because of missing friendship
   }
 
-  /** 
+  /**
    * Retrieve sublayer at index i
    */
   Ptr<AnyLayer> at(size_t i) const {
@@ -494,19 +493,19 @@ public:
   }
 };
 
-/** 
+/**
  * `Sequential` is a list of layers similar to `LayerList`, but does provide a set of `apply` functions.
  * These function assume that the first element in the container can be a unary, binary, ternary
  * or n-ary layer, but all subsequent layers have to be unary layers as they will consume the single
- * output of their preceding layer. Non-unary layers will fail to execute during runtime if they are 
+ * output of their preceding layer. Non-unary layers will fail to execute during runtime if they are
  * not the very first layer.
- * 
+ *
  * `Sequential` can be used to implement typical feed forward networks:
- * 
+ *
  ```
   using namespace marian::nn;
 
-  auto seq = New<Sequential>(graph, 
+  auto seq = New<Sequential>(graph,
     New<Linear>(graph, 100),
     New<ReLU>(graph),
     New<Dropout>(graph, 0.1f),
@@ -519,7 +518,7 @@ public:
  ```
  * For other application patterns use `LayerList` and implement them yourself by traversing the layers.
  */
-class Sequential : public LayerList, 
+class Sequential : public LayerList,
                    public IUnaryLayer,
                    public IBinaryLayer,
                    public ITernaryLayer,
@@ -567,7 +566,7 @@ private:
     for(int i = 1; i < layers_.size(); ++i)
       output = layers_[i]->apply(output);
     return output;
-  } 
+  }
 
 };
 

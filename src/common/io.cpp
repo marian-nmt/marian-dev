@@ -139,8 +139,18 @@ std::vector<Item> ModelWeights::mmapItems(const void* ptr) {
   return items;
 }
 
+std::unique_ptr<std::lock_guard<std::mutex>> ModelWeights::scopedLockGuard() const {
+  // @TODO: this should use std::optional, but as long as we use CUDA 10.x there may be
+  // random problems with std::optional and nvcc compilation
+  if(locking_)
+    return std::unique_ptr<std::lock_guard<std::mutex>>(new std::lock_guard<std::mutex>(mutex_));
+  else
+    return nullptr;
+}
+
 void ModelWeights::load() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  auto optionalLock = scopedLockGuard();
+
   if(loaded_)
     return;
 

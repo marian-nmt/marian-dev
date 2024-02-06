@@ -657,8 +657,7 @@ protected:
   bool maxLengthCrop_{false};
   bool rightLeft_{false};
   bool prependZero_{false};
-
-  bool joinFields_{false};      // if true when given a TSV file or multiple inputs, join them together into a single sentence tuple, 
+  bool joinFields_{false};      // if true when given a TSV file or multiple inputs, join them together into a single sentence tuple,
                                 // the already present </s> separator will demark the fields (mostly used for BLEURT and COMET-KIWI)
   bool insertSeparator_{false}; // when joining fields with joinFields_, additionally use this separator (mostly used for COMET-KIWI)
 

@@ -40,16 +40,16 @@ protected:
   std::vector<Expr> alignments_; // [max tgt len or 1][beam depth, max src length, batch size, 1]
 
   // @TODO: make this go away
-  template <typename T> 
-  T opt(const char* const key) const { Ptr<Options> options = options_; return options->get<T>(key); }  
+  template <typename T>
+  T opt(const char* const key) const { Ptr<Options> options = options_; return options->get<T>(key); }
 
-  template <typename T> 
-  T opt(const std::string& key) const { return opt<T>(key.c_str()); }  
+  template <typename T>
+  T opt(const std::string& key) const { return opt<T>(key.c_str()); }
 
-  template <typename T> 
+  template <typename T>
   T opt(const char* const key, const T& def) const { Ptr<Options> options = options_; return options->get<T>(key, def);  }
 
-  template <typename T> 
+  template <typename T>
   T opt(const std::string& key, const T& def) const { opt<T>(key.c_str(), def); }
 
 public:
@@ -120,7 +120,7 @@ public:
   virtual Expr addSpecialEmbeddings(Expr input, int start = 0, Ptr<data::CorpusBatch> /*batch*/ = nullptr) const {
     if(opt<bool>("transformer-disable-position-embeddings", false))
       return input;
-      
+
     bool trainPosEmbeddings = opt<bool>("transformer-train-positions", false);
     return addPositionalEmbeddings(input, start, trainPosEmbeddings);
   }
@@ -248,7 +248,7 @@ public:
 
     // to avoid mistakenly using the old transformer framework for new features
     auto maskType = opt<std::string>("transformer-attention-mask", "default");
-    ABORT_IF(maskType != "default", 
+    ABORT_IF(maskType != "default",
              "You specified --transformer-attention-mask={} which is not implemented for legacy Transformer", maskType  );
 
     // softmax over batched dot product of query and keys (applied over all
@@ -263,7 +263,7 @@ public:
 
     // take softmax along src sequence axis (-1)
     auto weights = softmax(z); // [-4: beam depth * batch size, -3: num heads, -2: max tgt length, -1: max src length]
-    
+
     if(saveAttentionWeights)
       collectOneHead(weights, dimBeam);
 
@@ -290,7 +290,7 @@ public:
     auto Wq = graph_->param(prefix + "_Wq", {dimModel, dimModel}, inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f));
     auto bq = graph_->param(prefix + "_bq", {       1, dimModel}, inits::zeros());
     auto qh = affine(q, Wq, bq);
-    
+
     qh = SplitHeads(qh, dimHeads); // [-4: beam depth * batch size, -3: num heads, -2: max length, -1: split vector dim]
 
     Expr kh;
@@ -313,8 +313,8 @@ public:
     }
 
     Expr vh;
-    if (cache 
-        && cache_.count(prefix + "_values") > 0 
+    if (cache
+        && cache_.count(prefix + "_values") > 0
         && cache_[prefix + "_values"]->shape().elements() == values->shape().elements()) {
       vh = cache_[prefix + "_values"];
     } else {
@@ -391,7 +391,7 @@ public:
 
     // multi-head self-attention over previous input
     output = MultiHead(prefix, dimModel, dimHeads, output, keys, values, mask, cache, saveAttentionWeights);
-    
+
     auto opsPost = opt<std::string>("transformer-postprocess");
     output = postProcess(prefix + "_Wo", opsPost, output, input, dropProb);
 
@@ -431,14 +431,14 @@ public:
       int decDimFfn = opt<int>("transformer-decoder-dim-ffn", 0);
       if(decDimFfn != 0)
         dimFfn = decDimFfn;
-      
+
       int decDepthFfn = opt<int>("transformer-decoder-ffn-depth", 0);
       if(decDepthFfn != 0)
-        depthFfn = decDepthFfn;      
+        depthFfn = decDepthFfn;
     }
-    
+
     ABORT_IF(depthFfn < 1, "Filter depth {} is smaller than 1", depthFfn);
-    
+
     float ffnDropProb = inference_ ? 0 : opt<float>("transformer-dropout-ffn");
     auto initFn = inits::glorotUniform(true, true, depthScaling_ ? 1.f / sqrtf((float)depth_) : 1.f);
 
@@ -588,7 +588,7 @@ public:
     auto embeddingLayer = getEmbeddingLayer(opt<bool>("ulr", false));
     std::tie(batchEmbeddings, batchMask) = embeddingLayer->apply((*batch)[batchIndex_]);
     batchEmbeddings = addSpecialEmbeddings(batchEmbeddings, /*start=*/0, batch);
-    
+
     // reorganize batch and timestep
     batchEmbeddings = atleast_nd(batchEmbeddings, 4); // [beam depth=1, max length, batch size, vector dim]
     batchMask       = atleast_nd(batchMask, 4);       // [beam depth=1, max length, batch size, vector dim=1]
@@ -623,7 +623,7 @@ public:
     }
 
     // this allows to run a final layernorm operation after going through the transformer layer stack.
-    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da)
     // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
     auto opsTop = opt<std::string>("transformer-postprocess-top", "");
     layer = postProcess(prefix_ + "_top", opsTop, layer, prevLayer, dropProb);
@@ -763,8 +763,8 @@ public:
 
       // This would happen if something goes wrong during batch pruning.
       ABORT_IF(encoderContext->shape()[-3] != dimBatch,
-               "Context and query batch dimension do not match {} != {}", 
-               encoderContext->shape()[-3], 
+               "Context and query batch dimension do not match {} != {}",
+               encoderContext->shape()[-3],
                dimBatch);
 
       // LayerAttention expects mask in a different layout
@@ -801,7 +801,7 @@ public:
       rnn::State prevDecoderState;
       if(prevDecoderStates.size() > 0)
         prevDecoderState = prevDecoderStates[i];
-      
+
       // self-attention
       std::string layerType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
       rnn::State decoderState;
@@ -871,7 +871,7 @@ public:
     }
 
     // This allows to run a final layernorm operation after going through the transformer layer stack.
-    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da) 
+    // By default the operations are empty, but with prenorm (--transformer-preprocess n --transformer-postprocess da)
     // it is recommended to normalize here. Can also be used to add a skip connection from the very bottom if requested.
     auto opsTop = opt<std::string>("transformer-postprocess-top", "");
     query = postProcess(prefix_ + "_top", opsTop, query, prevQuery, dropProb);
@@ -883,7 +883,7 @@ public:
     if(shortlist_)
       output_->setShortlist(shortlist_);
     auto logits = output_->applyAsLogits(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab or shortlist dim]
-    
+
     // return unormalized(!) probabilities
     Ptr<DecoderState> nextState;
     if (opt<std::string>("transformer-decoder-autoreg", "self-attention") == "rnn") {
@@ -906,9 +906,9 @@ public:
       output_->clear();
     cache_.clear();
     alignments_.clear();
-    perLayerRnn_.clear(); // this needs to be cleared between batches. 
-    // @TODO: figure out how to detect stale nodes i.e. nodes that are referenced, 
-    // but where underlying memory has been deallocated by dropping all tensors 
+    perLayerRnn_.clear(); // this needs to be cleared between batches.
+    // @TODO: figure out how to detect stale nodes i.e. nodes that are referenced,
+    // but where underlying memory has been deallocated by dropping all tensors
     // from a TensorAllocator object. This can happen during ExpressionGraph::clear()
   }
 };

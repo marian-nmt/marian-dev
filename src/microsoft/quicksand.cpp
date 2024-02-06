@@ -58,7 +58,7 @@ IBeamSearchDecoder::IBeamSearchDecoder(Ptr<Options> options,
                                        const std::vector<const void*>& ptrs)
   : options_(options) {
   for(auto ptr : ptrs)
-    modelWeights_.push_back(New<io::ModelWeights>(ptr));
+    modelWeights_.push_back(New<io::ModelWeights>(ptr, io::MmapMode::RequiredMmap, /*locking=*/false));
 }
 
 class BeamSearchDecoder : public IBeamSearchDecoder {

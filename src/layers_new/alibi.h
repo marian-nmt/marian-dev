@@ -7,6 +7,8 @@
 
 namespace marian {
 
+const int ALIBI_REFERENCE_HEADS = 8; // number of heads in the reference model
+
 // @TODO: this whole set of functions is currently somewhat akward in general, since we need to implement
 // old style and new style decoder state for this to work. We decoder with the old decoder framework, but
 // use the new style transformer layers. This will eventually be cleaned up.
@@ -70,12 +72,12 @@ Ptr<DecoderState> NewDecoderState(Ptr<Options> options,
                                   bool isBatchMajor = false);
 
 // convert an old-style decoder state to an (alibi) decoder state
-Ptr<nn::DecoderState> convertDecoderState(Ptr<DecoderState> state, 
-                                          Ptr<ExpressionGraph> graph, 
+Ptr<nn::DecoderState> convertDecoderState(Ptr<DecoderState> state,
+                                          Ptr<ExpressionGraph> graph,
                                           bool decoding=false);
 
 // efficient operator for ALIBI log mask with shift and optionally learnable parameters
-Expr alibiLogMask(Expr mask, Expr query, Expr shift, Expr slopes, Expr biases, int numHeads, int start);
+Expr alibiLogMask(Expr mask, Expr query, Expr shift, Expr slopes, Expr biases, int numHeads, int start, bool addCausalMask = false);
 
 namespace nn {
 
@@ -92,14 +94,16 @@ public:
   }
 };
 
-// Experimental implementation of the ALIBI attention mechanism (via masking) (https://arxiv.org/abs/2108.12409)
+/**
+ * Experimental implementation of the ALIBI attention mechanism (via masking) (https://arxiv.org/abs/2108.12409)
+ */
 class AlibiAttentionMaskProcessor : public AttentionMaskProcessor {
 public:
-  bool trainable{false};    // if true don't use learnable parameters
+  bool trainable{false}; // if true don't use learnable parameters
 
   Expr slopes;  // learnable per head ALIBI slopes
   Expr biases;  // learnable per head additive biases
-  
+
   using AttentionMaskProcessor::numHeads;
 
   AlibiAttentionMaskProcessor(Ptr<ExpressionGraph> graph,
@@ -110,87 +114,11 @@ public:
 
   virtual ~AlibiAttentionMaskProcessor() = default;
 
-private:  
-// @TODO: eventually to be removed. This computes ALIBI log masks with multiple operators, replaced with more efficient version below.
-// For now we keep this for documentation and experimentation puprposes.
-// The same functionality is implemented in `alibiLogMask` above via a special operator
-#if 0
-  const float ALIBI_REFERENCE_HEADS{8.f}; // number of reference heads that ALIBI slopes are computed for
-
-  // Compute the alibi mask for a given query and keys
-  Expr alibiMask(Expr query, int dimQuery, int dimKeys, Ptr<DecoderState> state) const {
-    int start = 0;
-    Expr shift = nullptr;
-
-    int dimBatch = query->shape()[-3];
-    int dimBeam  = query->shape()[-4];
-
-    if(state) {
-      start = (int)state->getPosition();
-      auto alibiState = std::dynamic_pointer_cast<AlibiDecoderStateItem>(state);
-      shift = alibiState ? alibiState->getShift() : nullptr; // [dimBeam, dimBatch, dimQuery, 1]
-    }
-    
-    // Create constant tensors of reflecting the query and key positions.
-    // When decoding, we start with the decoding state position for the query. The key positions are just the indices for the whole sequence.
-    Expr queryPositions = graph()->constant({1, 1, dimQuery, 1}, inits::range((float)start, (float)(start + dimQuery)));  // [1, 1, dimQuery, 1]
-    Expr keyPositions   = graph()->constant({1, 1, 1,  dimKeys}, inits::range(0.f, (float)dimKeys));                      // [1, 1, 1, dimKeys]
-    
-    // Create matrix of distances between positions, rows are distances of current query position vs all key positions.
-    // Layout is the same as the attention distance matrix where we compute rowwise softmaxes of similarities between
-    // each target word and all the source words
-    Expr alibiBiases = keyPositions - queryPositions; // [1, 1, dimQuery, dimKeys]
-
-    // apply the corrective shift if any sync-points are present
-    if(shift) {
-      alibiBiases = alibiBiases - shift;                                              // [dimBeam, dimBatch, dimQuery, dimKeys]
-      alibiBiases = reshape(alibiBiases, {dimBeam * dimBatch, 1, dimQuery, dimKeys}); // [dimBeam * dimBatch, 1, dimQuery, dimKeys]
-    }
-
-    Expr alibi = slopes * abs(alibiBiases + biases);  // [(dimBeam * dimBatch)|1, numHeads, dimQuery, dimKeys]
-    return alibi;
-  };
-
-  // Compute the log mask for a given query and combine with the alibi mask
-  Expr logMask(Expr query, Expr mask, Ptr<DecoderState> state) const {
-    ABORT_IF(!mask, "mask is expected!!");
-
-    // query: [dimBeam, dimBatch, dimQuery, dimModel] -> dimQuery == dimTrgWords
-    int dimBatch = query->shape()[-3];
-    int dimBeam  = query->shape()[-4];
-    
-    int dimQuery = query->shape()[-2];
-    int dimKeys  = mask->shape()[-2];
-    
-    // all this is bascially a copy of the normal attention mask computation, however we need to do some extra reshaping
-    // to make the alibi mask and the log mask broadcastable and then combine them via minimum
-
-    // Note, this is not a typical logMask with values 0 (don't mask) and -inf (mask). Rather we use +inf (or a large value) 
-    // and -inf and then compbine with the ALIBI mask via minimum. This way, we keep the original ALIBI values where the mask has
-    // +inf and have -inf for masking.
-     // largest useful value and making sure we do not overflow for fp16
-    float maskFactor = std::min(NumericLimits<float>(mask->value_type()).max / 2.f, 99999999.f);
-    // convert binary 0/1 mask to -1/1 mask and then muliply with inf, results in -inf/+inf mask.
-    auto logMask = (2.f * mask - 1.f) * maskFactor; // [1, dimBatch, dimKeys, 1]
-    logMask = reshape(logMask, {dimBatch, 1, 1, dimKeys});       // [dimBatch,                      1,        1, dimKeys]
-    
-
-    // make logMask broadcastable when decoding with beam search
-    logMask = repeat(logMask, /*repeats=*/dimBeam, /*axis=*/-4); // [dimBeam|1 * dimBatch,          1,        1, dimKeys]
-    
-    // make logMask and alibiBias broadcastable, then combine
-    auto alibiBias = alibiMask(query, dimQuery, dimKeys, state); // [(dimBeam * dimBatch)|1, numHeads, dimQuery, dimKeys]
-    logMask = minimum(logMask, alibiBias);                       // [dimBeam|1 * dimBatch,   numHeads, dimQuery, dimKeys]
-
-    // final reshape to match attention operation
-    logMask = reshape(logMask, {dimBeam, dimBatch * numHeads, dimQuery, dimKeys}); // [dimBeam|1, dimBatch * numHeads, dimQuery, dimKeys]
-    return logMask;
-  }
-#endif
+private:
 
   // Initialized the head-wise scaling factors from ALIBI (they are constant in the original paper,
   // we are making them optionally learnable here)
-  Ptr<inits::NodeInitializer> initSlopes(bool decoder = false) const {
+  Ptr<inits::NodeInitializer> initSlopes() const {
 // This is the original implementation of ALIBI slopes for LMs. We find our slopes and biases work better for Seq2seq models
 // Keep for now until we find a use, e.g. in LMs
 #if 0
@@ -200,67 +128,135 @@ private:
       // if there are more or less heads we scale back to 8 heads and interpolate.
       float exponent = (float)(i + 1) * (ALIBI_REFERENCE_HEADS / (float)numHeads);
 
-      // We multiply slopes with 2 for the symmetric mask to keep total probability mass the 
+      // We multiply slopes with 2 for the symmetric mask to keep total probability mass the
       // same as in the causal mask (we have two symmetric halves instead of just one causal half)
       mVec[i] = -2.f / std::pow(2.f, exponent);
       if(decoder)
         mVec[i] *= 0.5f;
     }
-    
+
     return inits::fromVector(mVec);
 #else
     // Magic numbers, for now don't ask.
-    std::vector<float> init;
-    if(decoder) {
-      return inits::fromValue(-0.1f);
-    } else {
-      init = { -2.00f, -1.00f, -0.50f, -0.25f, -0.05f, -0.05f, -0.05f, -0.05f };
-      init.resize(numHeads, -0.05f);
-      return inits::fromVector(init);
-    }
+    std::vector<float> init = { -2.00f, -1.00f, -0.50f, -0.25f, -0.05f, -0.05f, -0.05f, -0.05f };
+    init.resize(numHeads, -0.05f);
+    return inits::fromVector(init);
 #endif
   }
 
   // Head-wise biases for ALIBI, this does not occur in the paper, ignore the magic numbers
-  Ptr<inits::NodeInitializer> initBiases(bool decoder=false) const {
-    if(decoder) {
-      return inits::fromValue(0.3f);
-    } else {
-      std::vector<float> init({ 1.00f, -2.00f, 3.00f, -4.00f, 5.00f, -6.00f, 7.00f, -8.00f });
-      init.resize(numHeads, 0.f);
-      return inits::fromVector(init);
-    }
+  Ptr<inits::NodeInitializer> initBiases() const {
+    std::vector<float> init({ 1.00f, -2.00f, 3.00f, -4.00f, 5.00f, -6.00f, 7.00f, -8.00f });
+    init.resize(numHeads, 0.f);
+    return inits::fromVector(init);
   }
 
 public:
+
   // Apply the alibi mask to the given query and mask
   virtual Expr apply(Expr query, Expr mask) const override {
-    return apply(query, mask, /*state=*/nullptr);
-  }
-
-  // Apply the alibi mask to the given query and mask for decoder cross-attention
-  virtual Expr apply(Expr query, Expr mask, Ptr<DecoderState> state) const override {
-    bool decoder = state != nullptr;
-
     if(!trainable) {
-      const_cast<Expr&>(slopes) = graph()->constant({numHeads, 1, 1}, initSlopes(decoder));
-      const_cast<Expr&>(biases) = graph()->constant({numHeads, 1, 1}, initBiases(decoder));
+      const_cast<Expr&>(slopes) = graph()->constant({numHeads, 1, 1}, initSlopes());
+      const_cast<Expr&>(biases) = graph()->constant({numHeads, 1, 1}, initBiases());
     } else {
-      registerParameterLazy(slopes, Shape({numHeads, 1, 1}), initSlopes(decoder));
-      registerParameterLazy(biases, Shape({numHeads, 1, 1}), initBiases(decoder));
+      registerParameterLazy(slopes, Shape({numHeads, 1, 1}), initSlopes());
+      registerParameterLazy(biases, Shape({numHeads, 1, 1}), initBiases());
     }
 
     Expr shift = nullptr;
     int start = 0;
-    
-    if(state) {
-      start = (int)state->getPosition();
-      auto alibiState = std::dynamic_pointer_cast<AlibiDecoderStateItem>(state);
-      shift = alibiState ? alibiState->getShift() : nullptr; // [dimBeam, dimBatch, dimQuery, 1]
-    }
 
     auto alibiMask = alibiLogMask(mask, query, slopes, biases, shift, numHeads, start);
     return alibiMask;
+  }
+};
+
+/**
+ * Experimental implementation of the ALIBI attention mechanism for decoder layers
+ */
+class AlibiDecoderAttentionMaskProcessor : public DecoderAttentionMaskProcessor {
+public:
+  bool trainable{false}; // if true don't use learnable parameters
+
+  Expr slopes;  // learnable per head ALIBI slopes
+  Expr biases;  // learnable per head additive biases
+
+  using DecoderAttentionMaskProcessor::numHeads;
+
+  AlibiDecoderAttentionMaskProcessor(Ptr<ExpressionGraph> graph,
+                                     Ptr<Options> options,
+                                     bool addCausalMask = false)
+    : DecoderAttentionMaskProcessor(graph, options, addCausalMask),
+      trainable(options->get<bool>("transformer-alibi-trainable", false)) {}
+
+  virtual ~AlibiDecoderAttentionMaskProcessor() = default;
+
+private:
+  // Initialized the head-wise scaling factors from ALIBI (they are constant in the original paper,
+  // we are making them optionally learnable here)
+  Ptr<inits::NodeInitializer> initSlopes() const {
+    if(addCausalMask) {
+      std::vector<float> mVec(numHeads);
+      for(size_t i = 0; i < numHeads; ++i) {
+        // slopes in the paper go from 1/2^1 to 1/2^8 where 8 is the reference number of heads;
+        // if there are more or less heads we scale back to 8 heads and interpolate.
+        float exponent = (float)(i + 1) * (ALIBI_REFERENCE_HEADS / (float)numHeads);
+        mVec[i] = -1.f / std::pow(2.f, exponent);
+      }
+      return inits::fromVector(mVec);
+    } else {
+      return inits::fromValue(-0.1f); // Magic numbers, for now don't ask.
+    }
+  }
+
+  // Head-wise biases for ALIBI, this does not occur in the paper, ignore the magic numbers
+  Ptr<inits::NodeInitializer> initBiases() const {
+    if(addCausalMask) {
+      return inits::fromValue(0.0f);
+    } else {
+      return inits::fromValue(0.3f);
+    }
+  }
+
+public:
+  // Apply the alibi mask to the given query and mask for decoder cross-attention
+  virtual Expr apply(Expr query, Expr mask, Ptr<DecoderState> state) const override {
+    auto processMask = [this, query, state](Expr mask) {
+      if(!trainable) {
+        const_cast<Expr&>(slopes) = graph()->constant({numHeads, 1, 1}, initSlopes());
+        const_cast<Expr&>(biases) = graph()->constant({numHeads, 1, 1}, initBiases());
+      } else {
+        registerParameterLazy(slopes, Shape({numHeads, 1, 1}), initSlopes());
+        registerParameterLazy(biases, Shape({numHeads, 1, 1}), initBiases());
+      }
+
+      Expr shift = nullptr;
+      int start = 0;
+
+      if(state) {
+        start = (int)state->getPosition();
+        auto alibiState = std::dynamic_pointer_cast<AlibiDecoderStateItem>(state);
+        shift = alibiState ? alibiState->getShift() : nullptr; // [dimBeam, dimBatch, dimQuery, 1]
+      }
+
+      // @TODO: make sure that we never want to have a causal mask here if start > 0 (this should indicate decoding)
+      return alibiLogMask(mask, query, slopes, biases, shift, numHeads, start, addCausalMask && start == 0);
+    };
+
+    if(mask) {
+      // recompute the mask if input mask changes (different memory address), otherwise return cached version
+      auto equal = [](Expr a, Expr b) { return a == b; };
+      return cachedMask_->apply(mask, processMask, equal);
+    } else {
+      // @TODO: avoid this mask recreation for every layer
+      int dimBatch   = query->shape()[-3];
+      int dimKeys    = (int)state->getPosition() + 1;
+      mask = graph()->constant({1, dimBatch, dimKeys, 1}, inits::ones());
+
+      // recompute the ALIBI mask if shape changes, but still has to create the above temporary mask first
+      auto equal = [](Expr a, Expr b) { return a->shape() == b->shape(); };
+      return cachedMask_->apply(mask, processMask, equal);
+    }
   }
 };
 

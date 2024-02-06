@@ -479,8 +479,11 @@ if(NOT MSVC)
   list(APPEND CUDA_NVCC_FLAGS ${INTRINSICS_NVCC})
 else()
   # c++17 doesn't work with CUDA 10
-  # list(APPEND CUDA_NVCC_FLAGS -std=c++17; -Xcompiler "/std:c++17"; -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
-  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
+  if ((CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0"))
+    list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /std:c++17; -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
+  else()
+    list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /std:c++14; -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
+  endif()
 endif()
 
 list(REMOVE_DUPLICATES CUDA_NVCC_FLAGS)

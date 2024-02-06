@@ -11,7 +11,7 @@ namespace marian {
 namespace nn {
 
 // Interface: decoder state
-struct DecoderState : public IClassName, public std::enable_shared_from_this<DecoderState> {
+class DecoderState : public IClassName, public std::enable_shared_from_this<DecoderState> {
 protected:
   size_t position{0};
 
@@ -25,6 +25,10 @@ public:
 
   virtual size_t getPosition() {
     return position;
+  }
+
+  virtual void setPosition(size_t pos) {
+    this->position = pos;
   }
 
   // Dynamic cast to requested layer type. Will return nullptr if not possible
@@ -43,7 +47,7 @@ public:
   template <class StateType>
   Ptr<StateType> cast() {
     auto stateCast = as<StateType>();
-    ABORT_IF(!stateCast, "State {} cannot be cast to requested type {}", 
+    ABORT_IF(!stateCast, "State {} cannot be cast to requested type {}",
              className(),
              utils::cxxTypeName<StateType>());
     return stateCast;
@@ -57,10 +61,11 @@ public:
 
 class DecoderStateItem : public DecoderState {
 private:
-  Expr state_;
+  Expr state_; // state of the decoder at a given position, can be nullptr
 
 public:
   DecoderStateItem(Expr state, size_t position) : DecoderState(position), state_(state) {}
+  DecoderStateItem(size_t position) : DecoderState(position) {}
   virtual ~DecoderStateItem() = default;
 
   Expr get() { return state_; }
@@ -83,12 +88,18 @@ public:
     }
   }
 
+  void setPosition(size_t pos) override {
+    DecoderState::setPosition(pos);
+    for(auto& item : items_)
+      item->setPosition(pos);
+  }
+
   void append(Ptr<DecoderStateItem> item) {
     ABORT_IF(position != item->getPosition(), "DecoderStateList.position ({}) != DecoderStateItem.position ({}) ?", position, item->getPosition());
     items_.push_back(item);
   }
 
-  /** 
+  /**
    * Retrieve DecoderStateItem at index i
    */
   Ptr<DecoderStateItem> at(size_t i) const {
@@ -106,29 +117,52 @@ public:
   size_t size() const { return items_.size(); }
 };
 
+class EncoderContext {
+private:
+  Expr context_;
+  Expr contextMask_;
+
+public:
+  EncoderContext(Expr context, Expr contextMask)
+  : context_(context), contextMask_(contextMask) {}
+
+  virtual Expr getContext() const { return context_; }
+  virtual Expr getContextMask() const { return contextMask_; }
+};
+
+class DecoderSeq2SeqState : public DecoderStateList, public EncoderContext {
+public:
+  DecoderSeq2SeqState(size_t position, Expr context, Expr contextMask)
+  : DecoderStateList(position), EncoderContext(context, contextMask) {}
+};
 
 // Interface: Unary function
 struct IUnaryDecoderLayer {
+  virtual void initState(Ptr<DecoderState> /*state*/) const  = 0;
   virtual Expr apply(Expr /*input*/, Ptr<DecoderState> /*state*/) const = 0;
 };
 
 // Interface: Binary function
 struct IBinaryDecoderLayer {
+  virtual void initState(Ptr<DecoderState> /*state*/) const  = 0;
   virtual Expr apply(Expr, Expr, Ptr<DecoderState> /*state*/) const = 0;
 };
 
 // Interface: Ternary function
 struct ITernaryDecoderLayer {
+  virtual void initState(Ptr<DecoderState> /*state*/) const  = 0;
   virtual Expr apply(Expr, Expr, Expr, Ptr<DecoderState> /*state*/) const = 0;
 };
 
 // Interface: 4ary function
 struct IQuaternaryDecoderLayer {
+  virtual void initState(Ptr<DecoderState> /*state*/) const  = 0;
   virtual Expr apply(Expr, Expr, Expr, Expr, Ptr<DecoderState> /*state*/) const = 0;
 };
 
 // Interface: N-Ary function
 struct INaryLayerDecoderLayer {
+  virtual void initState(Ptr<DecoderState> /*state*/) const  = 0;
   virtual Expr apply(const std::vector<Expr>& /*inputs*/, Ptr<DecoderState> /*state*/) const = 0;
 };
 

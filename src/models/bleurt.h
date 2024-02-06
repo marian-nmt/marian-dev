@@ -70,8 +70,7 @@ struct BleurtEncoder final : public nn::TransformerEncoder {
     auto output = marian::nn::swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
 
     auto binaryMask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-    auto logMask = maskProcessor->apply(output, binaryMask); // [beam depth=1, batch size * numHeads, max length, vector dim=1]
-
+    
     // apply positional embeddings to contextual input
     output = positionEmbedding->apply(output);
 
@@ -83,7 +82,7 @@ struct BleurtEncoder final : public nn::TransformerEncoder {
 
     // traverse the layers, use the same mask for each
     for(auto layer : *layers)
-      output = layer->apply(output, logMask);
+      output = layer->apply(output, binaryMask);
 
     return output;
   }
@@ -97,7 +96,7 @@ struct BleurtBatchEncoder final : public nn::LayerWithOptions,
   Ptr<BleurtEncoder> encoder;
 
   BleurtBatchEncoder(Ptr<ExpressionGraph> graph,
-                    Ptr<Options> options)
+                     Ptr<Options> options)
     : LayerWithOptions(graph, options),
       EncoderBase(graph, options)
   {
@@ -155,7 +154,7 @@ struct BleurtBatchEncoder final : public nn::LayerWithOptions,
   }
 
   virtual void clear() override {
-    Layer::clear();
+    LayerWithOptions::clear();
   }
 };
 

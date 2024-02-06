@@ -95,10 +95,7 @@ public:
 
     // @TODO: get rid of all this eventually
     { // scope for lock_guard
-      // this is needed during loading since we modify the content of modelFile->items() directly
-      // This is quite ugly but this is legacy code anyway.
-      std::mutex mutex;
-      std::lock_guard<std::mutex> lock(mutex);
+      auto lockGuard = modelFile->scopedLockGuard();
 
       // only modify the first time.
       bool modify = false;

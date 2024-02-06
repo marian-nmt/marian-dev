@@ -15,7 +15,8 @@ __global__ void gAlibi(
   functional::Array<functional::Tensor<T>, 4> inputs,
   int numHeads,
   int start,
-  float maskFactor) {
+  float maskFactor,
+  bool addCausalMask) {
 
   constexpr size_t N = functional::Shape::size();
   functional::Array<int, N> oDims;
@@ -42,9 +43,9 @@ __global__ void gAlibi(
 
       int keyPos       = keyIdx;
       int queryPos     = queryIdx + start;
-      
+
       float relPos   = (float)keyPos - (float)queryPos;
-      
+
       if(shift.data() != nullptr)
         relPos -= (float)shift[{beamIdx, batchIdx, queryIdx, 0}];
 
@@ -53,7 +54,12 @@ __global__ void gAlibi(
       float alibi = slope * abs(relPos + bias);
 
       float binMask = (float)mask[{0, batchIdx, keyIdx, 0}];
-      float logMask = (2.f * binMask - 1.f) * maskFactor; // range (-maskFactor, maskFactor)
+      float logMask = binMask == 0 ? -maskFactor : maskFactor; // range (-maskFactor, maskFactor)
+
+      if(addCausalMask) {
+        float causalMask = keyPos > queryPos ? -maskFactor : maskFactor; // range (-maskFactor, maskFactor)
+        logMask          = min(logMask, causalMask); // range (-maskFactor, maskFactor) if any mask is set to -maskFactor then the result is -maskFactor
+      }
 
       out[index] = (T)min(logMask, alibi);
     }
@@ -61,25 +67,23 @@ __global__ void gAlibi(
 }
 
 template <class... Tensors>
-void Alibi(int numHeads, int start, Tensor out, Tensors... tensors) {
+void Alibi(int numHeads, int start, bool addCausalMask, Tensor out, Tensors... tensors) {
   cudaSetDevice(out->getDeviceId().no);
   int length = out->size();
 
   int threads = std::min(MAX_THREADS, length);
   int blocks = std::min(MAX_BLOCKS, length / threads + (length % threads != 0));
 
-  float largest = NumericLimits<float>(out->type()).max;
-  float maskFactor = std::min(largest / 2.f, 99999999.f); // to make sure we do not overflow for fp16
+  float maskFactor = std::numeric_limits<float>::infinity();
 
   constexpr size_t K = sizeof...(tensors);
-  
   if(out->type() == Type::float32) {
     functional::Array<functional::Tensor<float>, K> inputs = {tensors...};
-    gAlibi<float><<<blocks, threads>>>(out, inputs, numHeads, start, maskFactor);
+    gAlibi<float><<<blocks, threads>>>(out, inputs, numHeads, start, maskFactor, addCausalMask);
 #if COMPILE_FP16
   } else if(out->type() == Type::float16) {
     functional::Array<functional::Tensor<half>, K> inputs = {tensors...};
-    gAlibi<half><<<blocks, threads>>>(out, inputs, numHeads, start, maskFactor);
+    gAlibi<half><<<blocks, threads>>>(out, inputs, numHeads, start, maskFactor, addCausalMask);
 #endif
   } else {
     ABORT("Alibi for type {} not implemented", out->type());
@@ -87,7 +91,7 @@ void Alibi(int numHeads, int start, Tensor out, Tensors... tensors) {
 }
 
 // template specialization for h/cpp separation
-template void Alibi<marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor >(int, int, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor);
+template void Alibi<marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor >(int, int, bool, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor);
 
 template <typename T>
 __global__ void gAlibiGrad(
@@ -95,7 +99,8 @@ __global__ void gAlibiGrad(
   functional::Tensor<T> biasesGrad,
   functional::Array<functional::Tensor<T>, 5> inputs,
   int numHeads,
-  int start) {
+  int start,
+  bool addCausalMask) {
 
   const auto& mask   = inputs[0];
   const auto& slopes = inputs[1];
@@ -120,7 +125,7 @@ __global__ void gAlibiGrad(
 
   A5 dims5;
   const int HEAD_DIM = 2;
-  
+
   // compute single element derivate for slopes and biases
   auto dJ_dxy = [&](int headIdx, int colIdx) -> thrust::tuple<float, float> {
     // get the location for one head
@@ -130,7 +135,7 @@ __global__ void gAlibiGrad(
     dims5[HEAD_DIM] = headIdx;
     // get the index into the full tensor
     int index = fullShape5.index(dims5);
-    // get the value of the full adjoint 
+    // get the value of the full adjoint
     float vadj = (float)adj[index];
 
     // handle the rest
@@ -141,9 +146,9 @@ __global__ void gAlibiGrad(
 
     int keyPos    = keyIdx;
     int queryPos  = queryIdx + start;
-    
+
     float relPos   = (float)keyPos - (float)queryPos;
-    
+
     if(shift.data() != nullptr)
       relPos -= (float)shift[{beamIdx, batchIdx, queryIdx, 0}];
 
@@ -152,7 +157,12 @@ __global__ void gAlibiGrad(
     float binMask = (float)mask[{0, batchIdx, keyIdx, 0}];
 
     float signedAlibi = relPos + bias;
-    
+
+    if(addCausalMask) {
+      float causalMask = keyPos > queryPos ? 0.f : 1.f;
+      binMask = binMask * causalMask;
+    }
+
     // compute derivative of slope
     float dslope = binMask * abs(signedAlibi) * vadj;
 
@@ -168,7 +178,7 @@ __global__ void gAlibiGrad(
 
     return { dslope, dbias };
   };
-  
+
   for(int bid = 0; bid < numHeads; bid += gridDim.x) {
     int headIdx = bid + blockIdx.x;
     if(headIdx < numHeads) {
@@ -215,7 +225,7 @@ __global__ void gAlibiGrad(
 }
 
 template <typename T, class... Tensors>
-void TypedAlibiGrad(int numHeads, int start, Tensor slopesGrad, Tensor biasesGrad, Tensors... tensors) {
+void TypedAlibiGrad(int numHeads, int start, bool addCausalMask, Tensor slopesGrad, Tensor biasesGrad, Tensors... tensors) {
   cudaSetDevice(slopesGrad->getDeviceId().no);
 
   constexpr size_t K = sizeof...(tensors);
@@ -223,22 +233,22 @@ void TypedAlibiGrad(int numHeads, int start, Tensor slopesGrad, Tensor biasesGra
 
   const auto& adj = inputs[K - 1]; // last one is adjoint and full broadcast shape
   int total = adj.size();
-  
+
   // we will reduce over each head
   int blocks  = std::min(MAX_BLOCKS,  numHeads);
   int threads = std::min(MAX_THREADS, total / numHeads);
   int shared  = sizeof(float) * threads * 2; // Use float32 as accumulation type, we accumulate slopes and biases
 
-  gAlibiGrad<T><<<blocks, threads, shared>>>(slopesGrad, biasesGrad, inputs, numHeads, start);
+  gAlibiGrad<T><<<blocks, threads, shared>>>(slopesGrad, biasesGrad, inputs, numHeads, start, addCausalMask);
 }
 
 template <class... Tensors>
-void AlibiGrad(int numHeads, int start, Tensor slopesGrad, Tensor biasesGrad, Tensors... tensors) {  
+void AlibiGrad(int numHeads, int start, bool addCausalMask, Tensor slopesGrad, Tensor biasesGrad, Tensors... tensors) {
   if(slopesGrad->type() == Type::float32) {
-    TypedAlibiGrad<float>(numHeads, start, slopesGrad, biasesGrad, tensors...);
+    TypedAlibiGrad<float>(numHeads, start, addCausalMask, slopesGrad, biasesGrad, tensors...);
 #if COMPILE_FP16
   } else if(slopesGrad->type() == Type::float16) {
-    TypedAlibiGrad<half>(numHeads, start, slopesGrad, biasesGrad, tensors...);
+    TypedAlibiGrad<half>(numHeads, start, addCausalMask, slopesGrad, biasesGrad, tensors...);
 #endif
   } else {
     ABORT("AlibiGrad for type {} not implemented", slopesGrad->type());
@@ -246,6 +256,6 @@ void AlibiGrad(int numHeads, int start, Tensor slopesGrad, Tensor biasesGrad, Te
 }
 
 // template specialization for h/cpp separation
-template void AlibiGrad<marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor>(int, int, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor);
+template void AlibiGrad<marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor>(int, int, bool, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor, marian::Tensor);
 }
 }

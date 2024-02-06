@@ -141,8 +141,10 @@ public:
       if(joinFields_) {
         size_t currLength = tup.empty() ? 0 : tup.back().size();
         // if the current sentence would exceed the maximum length we don't add any more fields
-        if(currLength + words.size() < maxLength_)
+        if(currLength + words.size() <= maxLength_)
           tup.appendToBack(words);
+
+        ABORT_IF(tup.empty(), "This should have content if we got here??");
       } else {
         tup.pushBack(words);
       }

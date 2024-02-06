@@ -247,6 +247,7 @@ stages:
           gcc: 9
           unit_tests: true
           examples: false
+          pymarian: true
           static: true
         # Ubuntu GPU-only build
         "GPU-only":
@@ -258,6 +259,7 @@ stages:
           gcc: 9
           unit_tests: false
           examples: false
+          pymarian: true
           static: false
         ################################################################
         # Ubuntu 22.04 supports CUDA 11+
@@ -271,20 +273,23 @@ stages:
           gpu: true
           cuda: 11.7
           gcc: 11
-          unit_tests: false # disable unit tests to minimize compilation time
-          examples: false   # disable examples to minimize compilation time
+          unit_tests: true
+          examples: true
+          pymarian: true
           static: false
         ################################################################
         # Ubuntu 20.04 supports CUDA 11+
         "20.04 CUDA 11.1 gcc-9":
           image: ubuntu-20.04
-          boost: true
+          boost: false
           cpu: true
           gpu: true
           cuda: 11.1
           gcc: 9
-          unit_tests: true
-          examples: true
+          # static cause large binaries so we turn off tests and examples
+          unit_tests: false
+          examples: false
+          pymarian: false
           static: true
         ################################################################
         # Ubuntu 16.04 is no longer available on Azure-hosted machines
@@ -324,8 +329,9 @@ stages:
       condition: eq(variables.gpu, true)
 
     # Some preinstalled versions of pip are bad for pymarian; see https://github.com/pypa/setuptools/issues/3269
-    - bash: python3 -m pip install pip -U 
+    - bash: python3 -m pip install pip -U
       displayName: Upgrade pip
+      condition: eq(variables.pymarian, true)
 
     - bash: |
         mkdir -p build
@@ -334,6 +340,12 @@ stages:
         cmake .. \
           -DCOMPILE_CPU=$(cpu) \
           -DCOMPILE_CUDA=$(gpu) \
+          -DCOMPILE_MAXWELL=$(gpu) \
+          -DCOMPILE_PASCAL=$(gpu) \
+          -DCOMPILE_VOLTA=$(gpu) \
+          -DCOMPILE_AMPERE=OFF \
+          -DCOMPILE_AMPERE_RTX=OFF \
+          -DCOMPILE_TURING=OFF \
           -DCOMPILE_EXAMPLES=$(examples) \
           -DCOMPILE_SERVER=$(boost) \
           -DCOMPILE_TESTS=$(unit_tests) \
@@ -343,7 +355,7 @@ stages:
           -DBoost_ARCHITECTURE=-x64 \
           -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-$(cuda) \
           -DUSE_TCMALLOC=off \
-          -DPYMARIAN=ON \
+          -DPYMARIAN=$(pymarian) \
           -DPYTHON_EXECUTABLE=python3
 
       displayName: Configure CMake
@@ -374,6 +386,7 @@ stages:
         python3 -m pip install build/pymarian-*.whl
         python3 -m pymarian -v
       displayName: Build Pymarian
+      condition: eq(variables.pymarian, true)
 
   ######################################################################
   - job: BuildMacOS

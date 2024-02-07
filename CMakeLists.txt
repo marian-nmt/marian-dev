@@ -88,8 +88,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" )
   list(APPEND ALL_WARNINGS -Wno-shorten-64-to-32;)
 endif()
 
-# ARM support
+# ARM support: currently ONLY armv8. armv8 includes NEON by default
+# we do not currently have good support for automatic architecture detection, including for cross-compilation
+# this is planned for future PRs
 if(ARM)
+
   # Apple by default has Apple Accelerate. Otherwise fallback to RUY for GEMM
   if(APPLE)
     message(STATUS "Using Apple Accelerate SGEMM")
@@ -100,12 +103,11 @@ if(ARM)
     option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
   endif(APPLE)
 
-  # Define that we are using ARM
+  # Define that we are using ARM as required by simd_utils. See their README for info
   add_compile_definitions(ARM FMA SSE)
   # Some warnings as errors. I don't feel comfortable about the strict aliasing.
   set(ARM_WARNINGS "-fno-strict-aliasing -Wno-comment")
 
-  # @TODO this assumes ArmV8. We should also look at armv7
   if(MSVC)
     add_compile_options(/flax-vector-conversions)
   else(MSVC)

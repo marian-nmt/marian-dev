@@ -3,6 +3,7 @@
 This script converts Unbabel COMET-QE models to Marian weight file.
 """
 
+import sys
 import argparse
 import logging as log
 import numpy as np
@@ -105,6 +106,7 @@ elif model_type == "UnifiedMetric" or isXlmXL:
     config["input-join-fields"] = True
     config["separator-symbol"] = "</s>"
     config["comet-use-separator"] = True
+    config["input-reorder"] = [1, 0, 2] # reorder input fields from [src, mt, ref] to [mt, src, ref] for comet-kiwi etc.
 else:
     raise Exception(f'Unknown type of model {model_type}')
 

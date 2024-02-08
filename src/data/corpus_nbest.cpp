@@ -33,6 +33,8 @@ std::string lineFromNbest(const std::string& line) {
 }
 
 SentenceTuple CorpusNBest::next() {
+  ABORT_IF(!inputPermutation_.empty(), "Input permutation not supported for n-best lists");
+
   bool cont = true;
   while(cont) {
     // get index of the current sentence

@@ -15,7 +15,8 @@ class DatasetBase {
 protected:
   std::vector<std::string> paths_;
   Ptr<Options> options_;
-
+  std::vector<size_t> inputPermutation_; // if not empty, this is used to reorder input fields/batches i.e. [1,0] swaps the first two fields
+                                         // currently this is used for comet-kiwi-style metrics where the mt output is the first field
   // Data processing may differ in training/inference settings
   bool inference_{false};
 
@@ -28,7 +29,8 @@ public:
   DatasetBase(std::vector<std::string> paths, Ptr<Options> options)
       : paths_(paths),
         options_(options),
-        inference_(options != nullptr ? options->get<bool>("inference", false) : false) {}
+        inputPermutation_(options->get<std::vector<size_t>>("input-reorder", {})),
+        inference_(options->get<bool>("inference", false)) {}
 
   DatasetBase(Ptr<Options> options) : DatasetBase({}, options) {}
 

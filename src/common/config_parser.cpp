@@ -249,6 +249,11 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Possible values: sequence, class, alignment, weight. "
       "You need to provide one type per input file (if --train-sets) or per TSV field (if --tsv).",
       {});
+  cli.add<std::vector<size_t>>("--input-reorder",
+      "Reorder input data to this order according to this permutation. If empty no reordering is done. "
+      "If non-empty, you need to provide one type per input file (if --train-sets) or per TSV field (if --tsv). "
+      "Usually, there should be no need to provide these on the command line, the model should have them saved.",
+      {});
   cli.add<bool>("--input-join-fields", 
       "Join input fields (from files or TSV) into a single sequence "
       "(mostly used single-encoder models like BLEURT and COMET-KIWI)", 

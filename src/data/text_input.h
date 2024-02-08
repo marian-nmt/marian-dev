@@ -100,15 +100,24 @@ public:
 
   void prepare() override {}
 
-  SentenceTuple encode(std::vector<std::string>& row, size_t id) {
-    ABORT_IF(row.size() != vocabs_.size(), "Number of fields does not match number of vocabs");
+  SentenceTuple encode(std::vector<std::string>& fields, size_t id) {
+    ABORT_IF(fields.size() != vocabs_.size(), "Number of fields does not match number of vocabs");
+    
     // fill up the sentence tuple with source and/or target sentences
     SentenceTupleImpl tup(id);
 
+    ABORT_IF(inputPermutation_.size() != 0 && inputPermutation_.size() < fields.size(),
+             "Input permutation given, but not for every input field??");
+
     // copied and adapted from corpus.cpp - @TODO: refactor or unify code between Corpus and TextInput
-    for(size_t batchIndex = 0; batchIndex < row.size(); ++batchIndex) {
-      std::string& field = row[batchIndex];
-      Words words = vocabs_[batchIndex]->encode(field, /*addEOS =*/true, inference_);
+    for(size_t batchIndex = 0; batchIndex < fields.size(); ++batchIndex) {
+      size_t permutedBatchIndex = batchIndex;
+      if(inputPermutation_.size() > 0)
+        permutedBatchIndex = inputPermutation_[batchIndex];
+
+      std::string& field = fields[permutedBatchIndex];
+
+      Words words = vocabs_[permutedBatchIndex]->encode(field, /*addEOS =*/true, inference_);
       ABORT_IF(words.empty(), "Empty input sequences are presently untested");
 
       // This handles adding starts symbols for COMET (<s>) and BERT/BLEURT ([CLS])
@@ -118,7 +127,7 @@ public:
 
       bool prependSep = insertSeparator_ && joinFields_ && batchIndex > 0;
       if(prependSep)
-        words.insert(words.begin(), vocabs_[batchIndex]->getSepId());
+        words.insert(words.begin(), vocabs_[permutedBatchIndex]->getSepId());
 
       // if fields are joined and the current sentence is not the first one, we need to make sure that
       // the current sentence is not longer than the maximum length minus the length of the previous sentence
@@ -130,7 +139,7 @@ public:
       // if the current sentence is longer than the maximum length, we need to crop it
       if(maxLengthCrop_ && words.size() > localMaxLength) {
         words.resize(localMaxLength);
-        words.back() = vocabs_[batchIndex]->getEosId();
+        words.back() = vocabs_[permutedBatchIndex]->getEosId();
       }
 
       // if true, the words are reversed

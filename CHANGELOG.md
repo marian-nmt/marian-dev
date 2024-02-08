@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed compilation with clang 16.0.6
 
 ### Added
+- Added `--input-reorder pos1 pos2` option to re-ordering inputs internally when reading in batches. This is mostly a model property.
 - Added `pymarian`: python bindings based on pybind11
 - Added implementation of COMET-KIWI
 - Added implementation of xCOMET-XL/XXL regressor parts (MQM interpolation missing for now)

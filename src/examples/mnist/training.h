@@ -22,7 +22,7 @@ public:
 
     // Prepare data set
     auto paths = options_->get<std::vector<std::string>>("train-sets");
-    auto dataset = New<data::MNISTData>(paths);
+    auto dataset = New<data::MNISTData>(paths, std::vector<Ptr<Vocab>>{}, options_);
     auto batchGenerator = New<BatchGenerator<data::MNISTData>>(dataset, options_, nullptr);
 
     // Prepare scheduler with validators

@@ -430,12 +430,14 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
 
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
 
+  bool isFirst = tup.empty();
+
   // This handles adding starts symbols for COMET (<s>) and BERT/BLEURT ([CLS])
-  bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && batchIndex == 0));
+  bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && isFirst));
   if(prepend && inputTypes[batchIndex] == "sequence")
     words.insert(words.begin(), Word::fromWordIndex(0));
 
-  bool prependSep = insertSeparator_ && joinFields_ && batchIndex > 0;
+  bool prependSep = insertSeparator_ && joinFields_ && !isFirst;
   if(prependSep && inputTypes[batchIndex] == "sequence")
     words.insert(words.begin(), vocabs_[batchIndex]->getSepId());
 

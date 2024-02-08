@@ -199,9 +199,12 @@ public:
 
     // get vocab index and probability for force-decoded tokens for the current time step
     Expr forceIndices = slice(forceBatch_, /*axis=*/-3, pos);   // [1, 1, dimBatch, 1]
-    Expr forceVals = gather(scores, /*axis=*/-1, forceIndices); // [1, 1, dimBatch, 1]
 
-    // create dummy indices and values for beam entries other then the force-decoded value. This is required to ensure that the beam
+    // select scores from first beam entry for force-decoding
+    Expr b1stScores = slice(scores, /*axis=*/-4, 0); // [1, 1, dimBatch, dimVocab]
+    Expr forceVals  = gather(b1stScores, /*axis=*/-1, forceIndices); // [1, 1, dimBatch, 1]
+
+    // create dummy indices and values for beam entries other than the force-decoded value. This is required to ensure that the beam
     // does not collapse for hyps outside the forced hyps and can still do full beam-search once we finish force-decoding for a batch
     // entry. We initialize randomly (they are not going to be used anyway due to very low prob) and shift by 1 to have 0 at first postion.
     int dimVocab = scores->shape()[-1];      
@@ -212,13 +215,13 @@ public:
     Expr dummyVals    = shift(graph->constant({1, 1, 1, beamSize}, inits::uniform(invalidPathScore_, invalidPathScore_ / 2.f)), {0, 0, 0, 1}, 0.f);
 
     // here we add the force-decoded entries back into the zeroed positions
-    dummyIndices = cast(cast(dummyIndices, Type::float32) + cast(forceIndices, Type::float32), Type::uint32);
-    dummyVals    = dummyVals + forceVals;
+    dummyIndices = cast(cast(dummyIndices, Type::float32) + cast(forceIndices, Type::float32), Type::uint32); // [1, 1, dimBatch, dimBeam]
+    dummyVals    = dummyVals + forceVals; // [1, 1, dimBatch, dimBeam] 
 
-    // create a tensor of the same size as the original logits, initialize with invalidPathScore and then scatter the force-decoded and 
-    // dummy values into the correct positions.
-    Expr forcedScores = constant_like(scores, inits::fromValue(invalidPathScore_));
-    forcedScores = scatter(forcedScores, -1, dummyIndices, dummyVals);
+    // create a tensor of the same size as the original logits from the first beam entry, initialize with invalidPathScore and then scatter 
+    // the force-decoded and dummy values into the correct positions.
+    Expr forcedScores = constant_like(b1stScores, inits::fromValue(invalidPathScore_)); // [1, 1, dimBatch, dimVocab]
+    forcedScores = scatter(forcedScores, -1, dummyIndices, dummyVals); // [1, 1, dimBatch, dimVocab]
 
     // for entries that have finished force-decoding (the batch has eosId as vocab id) use the original logits for the whole batch entry
     // via interpolating by a selector. In marian eosId is used for padding, so this works everywhere and eos for unfinished hyps means

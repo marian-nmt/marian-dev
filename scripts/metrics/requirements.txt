@@ -1,0 +1,8 @@
+# assume it downloads the correct pytorch
+unbabel-comet==2.2.1
+sacrebleu
+# this is the original bleurt; used for comparing scores
+git+https://github.com/google-research/bleurt.git
+# this is the pytorch version of bleurt; used in blert2marian
+git+https://github.com/lucadiliello/bleurt-pytorch.git
+huggingface_hub[cli]   # required for login to hf to authenticate private models

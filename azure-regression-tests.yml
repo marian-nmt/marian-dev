@@ -42,7 +42,7 @@ stages:
         sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
         sudo update-alternatives --set python3 /usr/bin/python3.8
         sudo apt-get install -y python3-pip
-        python3 -m pip install --upgrade Cython
+        python3 -m pip install --upgrade Cython pip
       displayName: Clean and install packages
 
     # Collect details about CPU and GPU.
@@ -105,7 +105,8 @@ stages:
           -DCOMPILE_SERVER=on \
           -DCOMPILE_TESTS=on \
           -DCOMPILE_MAXWELL=on -DCOMPILE_PASCAL=off -DCOMPILE_VOLTA=off -DCOMPILE_TURING=off -DCOMPILE_AMPERE=off -DCOMPILE_AMPERE_RTX=off \
-          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-11.1
+          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-11.1 \
+          -DPYMARIAN=on -DUSE_TCMALLOC=off -DPYTHON_EXECUTABLE=python3
       displayName: Configure CMake
 
     - bash: make -j5
@@ -140,6 +141,14 @@ stages:
         7z a -tzip ../regression-tests-ci-public_linux-x64-static_cuda_m60.zip @listing.txt
       displayName: Collect outputs
       workingDirectory: regression-tests
+
+    - bash: |
+        python3 -m pip install build/pymarian-*.whl
+        python3 -m pymarian -v
+        python3 -m pip install pytest
+        python3 -m pytest src/python/tests/regression
+      displayName: Pymarian Install and Test
+
 
     - publish: regression-tests-ci-public_linux-x64-static_cuda_m60.zip
       artifact: regression-tests-ci-public_linux-x64-static_cuda_m60

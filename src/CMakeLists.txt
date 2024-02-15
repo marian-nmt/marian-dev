@@ -307,9 +307,9 @@ if(PYMARIAN)
   install(TARGETS _pymarian DESTINATION .)
 
   # build pymarian wheel
-  add_custom_target(pymarian ALL 
+  add_custom_target(pymarian ALL
     ${CMAKE_COMMAND} -E env "CMAKE_BINARY_DIR=${PROJECT_BINARY_DIR}" "CMAKE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
     "${PYTHON_EXECUTABLE}" -m pip wheel -v --no-input ${PROJECT_SOURCE_DIR}/src/python -w "${PROJECT_BINARY_DIR}"
-    DEPENDS _pymarian 
+    DEPENDS _pymarian
     VERBATIM COMMENT "Building pymarian wheel")
 endif(PYMARIAN)

@@ -4,23 +4,22 @@ import urllib.request
 from pathlib import Path
 
 from pymarian import Trainer
-from pymarian.utils import get_known_model
 
 QUIET = False
 
-TMP_DATA_DIR = Path.home() / 'tmp' / 'marian-tests'
 DATA_URL = "https://textmt.blob.core.windows.net/www/data/marian-tests-data.tgz"
+DATA_DIR = Path(__file__).parent.parent / 'data' / 'marian-tests-data'
 
 
 def setup():
-    ok_file = TMP_DATA_DIR / '_OK'
-    if not TMP_DATA_DIR.exists() or not ok_file.exists():
-        TMP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    ok_file = DATA_DIR / '.downloaded'
+    if not ok_file.exists():
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         print("Downloading data package...")
         with urllib.request.urlopen(DATA_URL) as response:
             with tarfile.open(fileobj=response, mode="r|gz") as tar:
-                tar.extractall(path=TMP_DATA_DIR)
+                tar.extractall(path=DATA_DIR.parent)
         ok_file.touch()
         print("Done.")
 
@@ -29,11 +28,10 @@ setup()
 
 
 def test_train_comet_qe():
-    data_dir = TMP_DATA_DIR / 'marian-tests-data/deu-eng'
+    data_dir = DATA_DIR / 'deu-eng'
     vocab_file = data_dir / 'vocab.8k.spm'
     classe_file = data_dir / 'classes4f.txt'
     train_file = data_dir / 'sample.5k.chrfoid-deu-eng.tsv'
-    # pretrained_model, vocab_file = get_known_model("chrfoid-wmt23")
     assert classe_file.exists()
     assert vocab_file.exists()
     assert train_file.exists()
@@ -88,7 +86,7 @@ def test_train_comet_qe():
 
 
 def test_train_transformer_nmt():
-    data_dir = TMP_DATA_DIR / 'marian-tests-data/deu-eng'
+    data_dir = DATA_DIR / 'deu-eng'
     vocab_file = data_dir / 'vocab.8k.spm'
     train_prefix = str(data_dir / 'sample.5k')
     src_lang = "deu"

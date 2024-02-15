@@ -57,6 +57,7 @@ config["bert-train-type-embeddings"] = True
 config["bert-type-vocab-size"] = 2
 config["comet-prepend-zero"] = True
 config["input-join-fields"] = True
+config["input-reorder"] = [1, 0] # bleurt expects ref < hyp order while embedding, we are providing hyp < ref, hence the reordering
 config["version"] = "bleurt2marian.py conversion"
 config["enc-depth"] = 0
 

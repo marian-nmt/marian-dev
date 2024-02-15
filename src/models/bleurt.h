@@ -70,7 +70,7 @@ struct BleurtEncoder final : public nn::TransformerEncoder {
     auto output = marian::nn::swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
 
     auto binaryMask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-    
+
     // apply positional embeddings to contextual input
     output = positionEmbedding->apply(output);
 
@@ -194,7 +194,6 @@ public:
     auto modelType = LayerWithOptions::opt<std::string>("type");
 
     auto emb = slice(encoderStates[0]->getContext(), -2, 0);
-    emb = marian::cast(emb, Type::float32);
 
     Expr output;
     if(LayerWithOptions::opt<int>("usage") == (int)models::usage::evaluating) {

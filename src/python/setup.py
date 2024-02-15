@@ -1,10 +1,10 @@
 import os
-import platform
 import shutil
 import sys
-
+import sysconfig
 from pathlib import Path
-from setuptools import setup, find_namespace_packages, Distribution
+
+from setuptools import Distribution, find_namespace_packages, setup
 
 """
 This script expects _pymarian.*.so to be present in $CMAKE_BINARY_DIR
@@ -17,12 +17,9 @@ DEF_CMAKE_BINARY_DIR = (Path(__file__).parent / '../../build').resolve()
 CMAKE_BINARY_DIR = os.getenv("CMAKE_BINARY_DIR", DEF_CMAKE_BINARY_DIR)
 print("\t>>>CMAKE_BINARY_DIR is ", CMAKE_BINARY_DIR)
 
-if platform.system() == 'Windows':
-    NATIVE_EXT_GLOB = '_pymarian.*.pyd'
-elif platform.system() == 'Darwin':
-    NATIVE_EXT_GLOB = '_pymarian.*.dylib'
-else:
-    NATIVE_EXT_GLOB = '_pymarian.*.so'
+EXT_SUFFIX = sysconfig.get_config_var('EXT_SUFFIX')  # See also: python -m sysconfig | grep -i EXT_SUFFIX
+assert EXT_SUFFIX, "EXT_SUFFIX not found in sysconfig"
+NATIVE_EXT_NAME = '_pymarian' + EXT_SUFFIX
 
 
 def get_version(cuda_version=None) -> str:
@@ -59,24 +56,27 @@ def get_version(cuda_version=None) -> str:
 
 def get_native_ext() -> Path:
 
-    native_exts = list(Path(CMAKE_BINARY_DIR).glob(f'src/{NATIVE_EXT_GLOB}'))
-    if not native_exts:
-        raise Exception(
-            f'No native extension found; Looked at {CMAKE_BINARY_DIR}/src/{NATIVE_EXT_GLOB}. \
-            Please run cmake build first with -DPYMARIAN=ON or set CMAKE_BINARY_DIR to the build dir'
-        )
-    elif len(native_exts) >= 2:
-        raise Exception(f'Only one native extension expected, but found: {native_exts}')
-
-    native_ext = native_exts[0]
+    native_ext = Path(CMAKE_BINARY_DIR) / 'src' / NATIVE_EXT_NAME
+    if not native_ext.exists():
+        msg = f"No native extension found at {native_ext}.\n \
+        Please run cmake build with -DPYMARIAN=ON or set CMAKE_BINARY_DIR to the existing build dir."
+        other_exts = list(Path(CMAKE_BINARY_DIR).glob("src/_pymarian.*." + NATIVE_EXT_NAME.split(".")[-1]))
+        if other_exts:
+            msg += f"\nOther extension(s) found: {other_exts} but they are not compatible with this platform ({EXT_SUFFIX})."
+        raise RuntimeError(msg)
     # Pip does not allow inclusion of files from parent dir our outside of package context (for security reasons).
     # So, we copy the native extension to the package directory
     native_ext_local = Path(__file__).parent / native_ext.name
-    print(f"\t>>>Found native extension at: {native_ext}")
-    print(f"\t   >>>Making it available under scope at: {native_ext_local}")
-    if native_ext_local.exists():
-        native_ext_local.unlink()
+    print(f"\t>>>Found the fresh native extension at: {native_ext}")
+    print(f"\t>>>Making it available under the package scope at: {native_ext_local}")
     shutil.copy(native_ext, native_ext_local)
+
+    # remove incomaptible .so files from prior builds (if any)
+    for old_file in Path(__file__).parent.glob("_pymarian.*"):
+        if old_file.resolve() == native_ext_local.resolve():
+            continue
+        print(f"\t>>>Removing old file: {old_file}")
+        old_file.unlink()
     return native_ext_local
 
 

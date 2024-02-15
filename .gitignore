@@ -69,3 +69,7 @@ examples/mnist/*ubyte
 *.whl
 *.egg-info
 src/python/pymarian/_version.py
+src/python/tests/data
+__pycache__
+.pytest_cache
+

@@ -1,12 +1,11 @@
 import sys
 import time
 
+import pymarian
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from sacremoses import MosesPunctNormalizer, MosesTokenizer
 from sentence_splitter import SentenceSplitter
-
-import pymarian
 
 
 class Example(QWidget):

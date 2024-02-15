@@ -7,10 +7,6 @@
 ## Install
 
 ```bash
-# get source code
-git clone https://github.com/marian-nmt/marian-dev
-cd marian-dev 
-
 # build marian with -DPYMARIAN=on option to create a pymarian wheel
 cmake . -Bbuild -DCOMPILE_CUDA=off -DPYMARIAN=on -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j       # -j option parallelizes build on all cpu cores
@@ -59,42 +55,50 @@ for score in scores:
 . `pymarian-qtdemo` : GUI App demo powered by QT 
 
 
-### `pymarian-evaluate` 
+### `pymarian-eval` 
 
 ```bash
-$ pymarian-evaluate -h
-usage: pymarian-evaluate [-h] [-m MODEL] [--stdin] [-t MT_FILE] [-s SRC_FILE] [-r REF_FILE] [-o OUT] [-a {skip,append,only}] [-w WIDTH] [--debug] [--mini-batch MINI_BATCH] [-d [DEVICES ...] | -c
-                         CPU_THREADS] [-ws WORKSPACE] [--backend {subprocess,pymarian}]
+$ pymarian-eval -h 
+usage: pymarian-eval [-h] [-m MODEL] [-v VOCAB] [-l {comet-qe,bleurt,comet}] [-V] [-] [-t MT_FILE] [-s SRC_FILE] [-r REF_FILE] [-f FIELD [FIELD ...]] [-o OUT] [-a {skip,append,only}] [-w WIDTH] [--debug] [--fp16] [--mini-batch MINI_BATCH] [-d [DEVICES ...] | -c
+                     CPU_THREADS] [-ws WORKSPACE] [-pc]
 
 options:
   -h, --help            show this help message and exit
   -m MODEL, --model MODEL
-                        Model name, or path. Known models=['cometoid22-wmt21', 'cometoid22-wmt22', 'cometoid22-wmt23', 'chrfoid-wmt23', 'comet20-da-qe', 'bleurt20', 'comet20-da'] (default:
-                        cometoid22-wmt22)
-  --stdin               Read input from stdin. TSV file with following format: QE metrics: "src<tab>mt", Comet with ref: "src<tab>ref<tab>; or BLEURT: "ref<tab>mt" (default: False)
+                        Model name, or path. Known models: bleurt-20, wmt20-comet-da, wmt20-comet-qe-da, wmt20-comet-qe-da-v2, wmt21-comet-da, wmt21-comet-qe-da, wmt21-comet-qe-mqm, wmt22-comet-da, wmt22-cometkiwi-da, xcomet-xl, xcomet-xxL (default: wmt22-cometkiwi-da)
+  -v VOCAB, --vocab VOCAB
+                        Vocabulary file (default: None)
+  -l {comet-qe,bleurt,comet}, --like {comet-qe,bleurt,comet}
+                        Model type. Required if --model is a local file (auto inferred for known models) (default: None)
+  -V, --version         show program's version number and exit
+  -, --stdin            Read input from stdin. TSV file with following format: QE metrics: "src<tab>mt", Ref based metrics ref: "src<tab>mt<tab>ref" or "mt<tab>ref" (default: False)
   -t MT_FILE, --mt MT_FILE
-                        MT output file. Ignored when --stdin. (default: None)
+                        MT output file. Ignored when --stdin (default: None)
   -s SRC_FILE, --src SRC_FILE
                         Source file. Ignored when --stdin (default: None)
   -r REF_FILE, --ref REF_FILE
                         Ref file. Ignored when --stdin (default: None)
-  -o OUT, --out OUT     output file. Default stdout (default: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>)
+  -f FIELD [FIELD ...], --fields FIELD [FIELD ...]
+                        Input fields, an ordered sequence of {src, mt, ref} (default: ['src', 'mt', 'ref'])
+  -o OUT, --out OUT     output file (default: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>)
   -a {skip,append,only}, --average {skip,append,only}
-                        Average segment scores to produce system score. skip=do not output average (default; segment scores only); append=append average at the end; only=output the average only
-                        (i.e system score only) (default: skip)
+                        Average segment scores to produce system score. skip=do not output average (default; segment scores only); append=append average at the end; only=output the average only (i.e. system score only) (default: skip)
   -w WIDTH, --width WIDTH
                         Output score width (default: 4)
-  --debug               Verbose output (default: False)
+  --debug               Debug or verbose mode (default: False)
+  --fp16                Enable FP16 mode (default: False)
   --mini-batch MINI_BATCH
                         Mini-batch size (default: 16)
   -d [DEVICES ...], --devices [DEVICES ...]
                         GPU device IDs (default: None)
   -c CPU_THREADS, --cpu-threads CPU_THREADS
-                        Use CPU threads. 0=use gpu device 0 (default: None)
+                        Use CPU threads. 0=use GPU device 0 (default: None)
   -ws WORKSPACE, --workspace WORKSPACE
                         Workspace memory (default: 8000)
-  --backend {subprocess,pymarian}
-                        Marian backend interface. subprocess looks for marian binary in PATH. pymarian is a pybind wrapper (default: pymarian)
+  -pc, --print-cmd      Print marian evaluate command and exit (default: False)
+
+More info at https://github.com/marian-nmt/marian-dev. This CLI is loaded from .../python3.10/site-packages/pymarian/eval.py (version: 1.12.25)
+
 ```
 
 **Performance Tuning Tips**:
@@ -104,33 +108,6 @@ options:
 * To see full logs from marian, set `--debug`
 
 
-*Example Usage*
-```bash
-# download sample dataset
-langs=en-ru
-prefix=tmp.$langs
-teset=wmt21/systems
-sysname=Online-B
-sacrebleu -t $teset -l $langs --echo src > $prefix.src
-sacrebleu -t $teset -l $langs --echo ref > $prefix.ref
-sacrebleu -t $teset -l $langs --echo $sysname > $prefix.mt
-
-# chrfoid
-paste $prefix.{src,mt} | head | pymarian-evaluate --stdin -m chrfoid-wmt23 
-
-# cometoid22-wmt{21,22,23}
-paste $prefix.{src,mt} | head | pymarian-evaluate --stdin -m cometoid22-wmt22
-
-# bleurt20
-paste $prefix.{ref,mt} | head | pymarian-evaluate --stdin  -m bleurt20 --debug
-
-# FIXME: comet20-da-qe and comet20-da appear to be broken 
-# comet20-da-qe
-paste $prefix.{src,mt} | head | pymarian-evaluate --stdin -m comet20-da-qe
-# comet20-da
-paste $prefix.{src,mt,ref} | pymarian-evaluate  -m comet20-da 
-
-```
 
 ### `pymarian-mtapi`
 
@@ -156,23 +133,32 @@ curl $URL --header "Content-Type: application/json" --request POST --data '[{"te
 pymarian-qtdemo
 ```
 
+## Code Formatting
+
+```bash
+
+pip install black isort
+isort .
+black .
+cd src/python
+```
+
 ## Run Tests
 
 ```bash
 # install pytest if necessary
-python -m pip install pytest 
+python -m pip install pytest
 
 # run tests in quiet mode
-python -m pytest src/python/tests/
+python -m pytest src/python/tests/regression
 
 # or, add -s to see STDOUT/STDERR from tests
-python -m pytest -s src/python/tests/
+python -m pytest -s src/python/tests/regression
 
 ```
 
-
 ## Known issues
-   
+
 1. In conda or mamba environment, if you see  `.../miniconda3/envs/<envname>/bin/../lib/libstdc++.so.6: version 'GLIBCXX_3.4.30' not found` error,
     install libstdcxx-ng
 

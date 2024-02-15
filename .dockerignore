@@ -1,0 +1,7 @@
+/regression-tests
+/build*
+/.pytest_cache
+/.vscode
+/dist
+/doc
+.history*

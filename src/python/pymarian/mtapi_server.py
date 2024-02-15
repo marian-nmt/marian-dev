@@ -9,11 +9,10 @@ import json
 import logging as log
 from typing import List
 
+import pymarian
 from flask import Flask, request
 from sacremoses import MosesPunctNormalizer
 from sentence_splitter import SentenceSplitter
-
-import pymarian
 
 log.basicConfig(level=log.INFO)
 

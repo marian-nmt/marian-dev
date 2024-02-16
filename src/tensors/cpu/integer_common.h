@@ -5,7 +5,7 @@
 #include "tensors/cpu/aligned.h"
 #include "common/io_item.h"
 
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
 #include "3rd_party/intgemm/intgemm/intgemm.h"
 #else
 namespace intgemm {
@@ -31,10 +31,12 @@ namespace intgemm {
 }
 #endif
 
+#ifndef ARM
 #include <emmintrin.h>
 #include <immintrin.h>
 #include <tmmintrin.h>
 #include <xmmintrin.h>
+#endif
 #include <cassert>
 #include <cstddef>
 
@@ -98,7 +100,7 @@ template <> struct intgemm_<Type::intgemm16avx512> {
 
 template <Type vtype>
 static inline float& getQuantMult(marian::Tensor val) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
   ABORT_IF(!isIntgemm(val->type()), "getQuantMult does not work for type {}", val->type());
   typedef typename intgemm_<vtype>::type Integer;
   return *(reinterpret_cast<float*>(val->data<Integer>() + val->shape().elements()));
@@ -109,7 +111,7 @@ static inline float& getQuantMult(marian::Tensor val) {
 }
 
 static inline Type getIntgemmType(Type vtype) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
   if (vtype == Type::intgemm8) {
     if (intgemm::kCPU == intgemm::CPUType::AVX512VNNI) {
       return Type::intgemm8avx512vnni;
@@ -142,7 +144,7 @@ static inline Type getIntgemmType(Type vtype) {
 }
 
 static inline bool passOrAbort(Type vtype) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
   if (vtype == Type::intgemm8 || vtype == Type::intgemm16) {
     return true;
   } else if (vtype == Type::intgemm16sse2) {
@@ -166,7 +168,7 @@ static inline bool passOrAbort(Type vtype) {
 
 template <Type vtype>
 static inline float computeQuantMult(marian::Tensor val) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
   if(sizeOf(vtype) == 1)
     return 127.0f / intgemm::MaxAbsolute(val->data(), val->data() + val->shape().elements());
   else if(sizeOf(vtype) == 2)
@@ -186,7 +188,7 @@ void AddBias(marian::Tensor C, const marian::Tensor Bias);
 // in our binary format. Then we copy the quantizationMultiplier information at the end
 template<Type vtype>
 void prepareAndTransposeB(io::Item& item, const char * input) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
     typedef typename intgemm_<vtype>::type Integer;
     Integer * output_tensor = reinterpret_cast<Integer *>(&(*item.bytes.begin()));
     // Sometimes we will end up with misaligned intput (and output) so we can't use them directly.

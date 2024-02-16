@@ -19,7 +19,9 @@
 
 #include <faiss/Index.h>
 #ifdef __APPLE__
+#ifndef ARM
 #include <x86intrin.h>
+#endif
 #endif
 
 

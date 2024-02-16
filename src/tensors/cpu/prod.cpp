@@ -7,14 +7,6 @@
 #include "tensors/tensor.h"
 #include "tensors/tensor_allocator.h"
 
-#if MKL_FOUND
-#include <mkl.h>
-#else
-#if BLAS_FOUND
-#include <cblas.h>
-#endif
-#endif
-
 #include "integer_common.h"
 #include "prod_blas.h"
 

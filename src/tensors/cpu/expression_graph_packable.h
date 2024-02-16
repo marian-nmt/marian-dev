@@ -152,7 +152,7 @@ public:
 #endif
       } else if (isIntgemm(gemmElementType) &&
       (pName.find("_W") == pName.length() - 3 || pName.find("_W") == pName.length() - 2 /* || pName.find("Wemb") != std::string::npos*/)) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
         using cpu::integer::cols;
         using cpu::integer::rows;
         auto allocator = New<TensorAllocator>(getBackend());

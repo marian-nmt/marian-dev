@@ -20,6 +20,8 @@
 using namespace faiss;
 
 #ifdef ARM
+// we use various AVX/SSE instructions in this file
+// simd_utils translates these into ARM/NEON compatible instructions
 #include "3rd_party/simd_utils/simd_utils.h"
 #endif
 

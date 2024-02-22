@@ -33,3 +33,17 @@ def test_ende():
     translator = Translator(**args)
     hyp = translator.translate("Hello. Good morning.")
     assert hyp == "Hallo , Guten Morgen ."
+
+
+def test_ende_force_decode():
+
+    model_file = str(DATA_DIR / 'model.base.npz')
+    vocab_file = str(DATA_DIR / 'en-de.spm')
+    args = BASE_ARGS | dict(models=model_file, vocabs=[vocab_file, vocab_file], quiet=True)
+    translator = Translator(**args)
+    hyp = translator.translate("Hello. Good morning.")
+    assert hyp == "Hallo , Guten Morgen ."
+
+    force_decode_config = dict(force_decode=True, tsv=True, tsv_fields=2)
+    hyp = translator.translate("Hello. Good morning.\tIsch", **force_decode_config)
+    assert hyp == "Isch am Guten Morgen ."

@@ -227,6 +227,7 @@ private:
 
   std::vector<Ptr<Vocab>> srcVocabs_;
   Ptr<Vocab> trgVocab_;
+  std::vector<Ptr<Vocab>> allVocabs_;
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
 
   std::vector<Ptr<io::ModelWeights>> modelWeights_;
@@ -257,6 +258,8 @@ public:
     trgVocab_ = New<Vocab>(options_, vocabPaths.size() - 1);
     trgVocab_->load(vocabPaths.back());
     auto srcVocab = srcVocabs_.front();
+    allVocabs_.insert(allVocabs_.end(), srcVocabs_.begin(), srcVocabs_.end());
+    allVocabs_.emplace_back(trgVocab_);
 
     std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
@@ -333,7 +336,11 @@ public:
     auto inputs = currentOptions->get<bool>("tsv", false)
                       ? convertTsvToLists(input, currentOptions->get<size_t>("tsv-fields", 1))
                       : std::vector<std::string>({input});
-    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, currentOptions);
+    // when force-decode is set, include trgVocab_ , otherwise use srcVocabs_ only
+    // for CLI, force-decode is implemented in data/corpus_base.cpp
+    auto forceDecoding = currentOptions->get<bool>("force-decode", false);
+
+    auto corpus_ = New<data::TextInput>(inputs, forceDecoding ? allVocabs_ : srcVocabs_, currentOptions);
     data::BatchGenerator<data::TextInput> batchGenerator(corpus_, currentOptions, nullptr, /*runAsync=*/false);
 
     auto collector = New<StringCollector>(currentOptions->get<bool>("quiet-translation", false));

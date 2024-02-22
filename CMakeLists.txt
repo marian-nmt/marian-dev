@@ -6,6 +6,7 @@ if (POLICY CMP0074)
 endif ()
 
 project(marian CXX C)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
@@ -82,6 +83,48 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
+# iOS support
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+  set(ARM ON)
+  # need to ignore this warning for Xcode to be happy
+  list(APPEND ALL_WARNINGS -Wno-shorten-64-to-32;)
+endif()
+
+# ARM support: currently ONLY armv8. armv8 includes NEON by default
+# we do not currently have good support for automatic architecture detection, including for cross-compilation
+# this is planned for future PRs
+if(ARM)
+
+  # Apple by default has Apple Accelerate. Otherwise fallback to RUY for GEMM
+  if(APPLE)
+    message(STATUS "Using Apple Accelerate SGEMM")
+    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" OFF)
+  else(APPLE)
+    message(STATUS "Using Ruy SGEMM")
+    set(EXT_LIBS ${EXT_LIBS} ruy)
+    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
+  endif(APPLE)
+
+  # Define that we are using ARM as required by simd_utils. See their README for info
+  add_compile_definitions(ARM FMA SSE)
+  # Some warnings as errors. I don't feel comfortable about the strict aliasing.
+  set(ARM_WARNINGS "-fno-strict-aliasing -Wno-comment")
+
+  if(MSVC)
+    add_compile_options(/flax-vector-conversions)
+  else(MSVC)
+    add_compile_options(-flax-vector-conversions)
+  endif(MSVC)
+endif(ARM)
+
+########
+# pThreads: consider it as EXT_LIBS for a more portable binary
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
+set(EXT_LIBS ${EXT_LIBS} Threads::Threads)
+########
+
 ###############################################################################
 # Set compilation flags
 if(MSVC)
@@ -141,13 +184,16 @@ else(MSVC)
   set(INTRINSICS "")
   list(APPEND INTRINSICS_NVCC)
 
-  option(COMPILE_SSE2   "Compile CPU code with SSE2 support"   ON)
-  option(COMPILE_SSE3   "Compile CPU code with SSE3 support"   ON)
-  option(COMPILE_SSE4_1 "Compile CPU code with SSE4.1 support" ON)
-  option(COMPILE_SSE4_2 "Compile CPU code with SSE4.2 support" ON)
-  option(COMPILE_AVX    "Compile CPU code with AVX support"    ON)
-  option(COMPILE_AVX2   "Compile CPU code with AVX2 support"   ON)
-  option(COMPILE_AVX512 "Compile CPU code with AVX512 support" ON)
+  if(NOT ARM)
+    # none of these options are available on ARM
+    option(COMPILE_SSE2   "Compile CPU code with SSE2 support"   ON)
+    option(COMPILE_SSE3   "Compile CPU code with SSE3 support"   ON)
+    option(COMPILE_SSE4_1 "Compile CPU code with SSE4.1 support" ON)
+    option(COMPILE_SSE4_2 "Compile CPU code with SSE4.2 support" ON)
+    option(COMPILE_AVX    "Compile CPU code with AVX support"    ON)
+    option(COMPILE_AVX2   "Compile CPU code with AVX2 support"   ON)
+    option(COMPILE_AVX512 "Compile CPU code with AVX512 support" ON)
+  endif(NOT ARM)
 
   if(BUILD_ARCH STREQUAL "native")
     message(STATUS "Building with -march=native and intrinsics will be chosen automatically by the compiler to match the current machine.")
@@ -223,7 +269,7 @@ else(MSVC)
     # Clang-10.0.0 complains when CUDA is newer than 10.1
     set(CLANG_IGNORE_UNKNOWN_CUDA "-Wno-unknown-warning-option -Wno-unknown-cuda-version")
   endif()
-  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA}")
+  set(DISABLE_GLOBALLY "-Wno-unused-result ${CLANG_IGNORE_UNKNOWN_CUDA} ${ARM_WARNINGS}")
 
   # These are used in src/CMakeLists.txt on a per-target basis
   list(APPEND ALL_WARNINGS -Wall; -Werror; -Wextra; -Wno-unused-result; -Wno-deprecated;
@@ -242,7 +288,7 @@ else(MSVC)
     set(CMAKE_RDYNAMIC_FLAG "-rdynamic")
   endif(CMAKE_COMPILER_IS_GNUCC)
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++17 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_CXX_FLAGS                 "-std=c++17 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
@@ -252,7 +298,7 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} -march=${BUILD_ARCH} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
@@ -260,6 +306,12 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
+
+  # set -march for all builds except iOS cross compilation
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
+    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
+  endif()
 endif(MSVC)
 
 # with gcc 7.0 and above we need to mark fallthrough in switch case statements
@@ -521,7 +573,7 @@ endif()
 ###############################################################################
 # Find BLAS library
 if(COMPILE_CPU)
-  if(NOT GENERATE_MARIAN_INSTALL_TARGETS)
+  if(NOT GENERATE_MARIAN_INSTALL_TARGETS AND NOT ARM)
     set(EXT_LIBS ${EXT_LIBS} intgemm) # Enable intgemm when compiling CPU
     add_definitions(-DCOMPILE_CPU=1)
   endif()

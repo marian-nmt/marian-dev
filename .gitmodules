@@ -20,6 +20,12 @@
 [submodule "src/3rd_party/simple-websocket-server"]
 	path = src/3rd_party/simple-websocket-server
 	url = https://github.com/marian-nmt/Simple-WebSocket-Server
+[submodule "src/3rd_party/ruy"]
+	path = src/3rd_party/ruy
+	url = https://github.com/marian-nmt/ruy.git
+[submodule "src/3rd_party/simd_utils"]
+	path = src/3rd_party/simd_utils
+	url = https://github.com/marian-nmt/simd_utils.git
 [submodule "src/3rd_party/pybind11"]
 	path = src/3rd_party/pybind11
 	url = https://github.com/pybind/pybind11.git

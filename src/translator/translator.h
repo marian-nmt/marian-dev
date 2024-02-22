@@ -232,7 +232,6 @@ private:
   std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
   size_t numDevices_;
-  std::vector<std::vector<io::Item>> model_items_; // non-mmap
 
 public:
   virtual ~TranslateService() {}

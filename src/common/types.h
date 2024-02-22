@@ -17,7 +17,11 @@
 #include <type_traits>
 
 #ifndef __CUDACC__ // NVCC is very unreliable when it comes to CPU intrinsics, we hide them completely from NVCC-compiled code
-#include <immintrin.h>
+  #ifndef ARM
+    #include <immintrin.h>
+  #else
+    #include "3rd_party/simd_utils/simd_utils.h"
+  #endif
 #endif
 
 #ifdef __CUDACC__ // nvcc is compiling this code

@@ -9,7 +9,7 @@ namespace marian {
 namespace cpu {
 namespace integer {
 
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
 /*
  * Prepare an activation matrix into intgemm8/16 format. For now the activation matrix is just quantized.
  * Expr input: The input tensor
@@ -45,7 +45,7 @@ static inline Expr prepareA(Expr a) {
  */
 template<Type vtype>
 static inline Expr affineOrDotTyped(Expr a, Expr bQuant, Expr bias, bool transA, bool /*transB*/, float scale) {
-#if COMPILE_CPU
+#if COMPILE_CPU && !defined(ARM)
   ABORT_IF(!isFloat(a->value_type()), "Intgemm expects type of A to be float32 not {}", a->value_type());
   ABORT_IF(!isIntgemm(bQuant->value_type()), "Intgemm expects type of B to be a variant of intgemm not {}", bQuant->value_type());
 

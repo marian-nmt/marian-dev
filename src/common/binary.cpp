@@ -109,7 +109,7 @@ void loadItems(const std::string& fileName, std::vector<io::Item>& items) {
 
 io::Item getItem(const void* current, const std::string& varName) {
   std::vector<io::Item> items;
-  loadItems(current, items);
+  loadItems(current, items, /*mapped=*/true);
 
   for(auto& item : items)
     if(item.name == varName)

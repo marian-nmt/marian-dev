@@ -2,16 +2,16 @@
 #include "tensors/tensor_allocator.h"
 #include "tensors/tensor_operators.h"
 
-#include <emmintrin.h>
-#include <immintrin.h>
-#include <tmmintrin.h>
-#include <xmmintrin.h>
 #include <cassert>
 #include <cstddef>
 #include <unordered_map>
 //#include <chrono>
 
 #if USE_FBGEMM
+#include <emmintrin.h>
+#include <immintrin.h>
+#include <tmmintrin.h>
+#include <xmmintrin.h>
 #ifdef _MSC_VER
 #pragma warning(disable: 4505) // 'fbgemmAlignedAlloc' in fbgemm.h: unreferenced local function has been removed (missing 'static inline')
 #pragma warning(disable: 4251) // 'fbgemm::CompressedSparseColumn::colptr_': class 'std::vector<int,std::allocator<_Ty>>' needs to have dll-interface to be used by clients of class 'fbgemm::CompressedSparseColumn'

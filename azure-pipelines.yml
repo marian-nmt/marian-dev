@@ -68,7 +68,7 @@ variables:
   - name: MKL_DIR
     value: "$(Build.SourcesDirectory)/mkl"
   - name: MKL_URL
-    value: "https://data.statmt.org/romang/marian-regression-tests/ci/mkl-2020.1-windows-static.zip"
+    value: "https://mariandev.blob.core.windows.net/public/ci/mkl-2020.1-windows-static.zip"
   - name: VCPKG_COMMIT
     value: 2023.11.20
   - name: VCPKG_DIR

@@ -2,14 +2,14 @@
 #pragma warning(disable: 4505) // warning C4505: '__float2half_rz': unreferenced local function has been removed (missing 'static inline')
 #endif
 
-#include <cublas_v2.h>
-#include <cusparse.h>
-
 // clang-format off
 #include "tensors/gpu/prod.h"
 #include "tensors/gpu/backend.h"
 #include "tensors/gpu/cuda_helpers.h"
+#include "tensors/gpu/cusparse_include.h"
 // clang-format on
+
+#include <cublas_v2.h>
 
 // what a nightmare
 #if CUDA_VERSION >= 11000

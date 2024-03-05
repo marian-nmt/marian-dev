@@ -3,12 +3,13 @@
 #endif
 
 #include <cublas_v2.h>
-#include <cusparse.h>
 
 // clang-format off
 #include "tensors/gpu/prod.h"
 #include "tensors/gpu/backend.h"
 #include "tensors/gpu/cuda_helpers.h"
+#include "tensors/gpu/cusparse_include.h"
+
 // clang-format on
 
 namespace marian {
@@ -16,7 +17,7 @@ namespace gpu {
 
 // primary template for specialization with different element and compute types
 template <typename ElementType>
-struct TypedSparseGemm { 
+struct TypedSparseGemm {
 
 static cudaDataType getCudaDataType(const float*) { return CUDA_R_32F; };
 static cudaDataType getCudaDataType(const half*)  { return CUDA_R_16F; };
@@ -36,7 +37,7 @@ static void CSRProdSwapped(marian::Tensor C,
   // interpret tensor dimensions as matrix dimensions
   const auto& shapeC = C->shape();
   const auto& shapeD = D->shape();
-  
+
   auto colsC = shapeC[-1];
   auto rowsC = shapeC.elements() / colsC;
 
@@ -47,7 +48,7 @@ static void CSRProdSwapped(marian::Tensor C,
   auto colsS = rowsD;
 
   auto denseOrder = CUSPARSE_ORDER_COL;
-  auto algorithm  = CUSPARSE_SPMM_ALG_DEFAULT; 
+  auto algorithm  = CUSPARSE_SPMM_ALG_DEFAULT;
 
   std::cerr << shapeC << std::endl;
   std::cerr << shapeD << std::endl;
@@ -60,7 +61,7 @@ static void CSRProdSwapped(marian::Tensor C,
   auto numOffsets = S_offsets->shape().elements() - 1; // -1 since last value is length
   ABORT_IF(numOffsets != rowsS, "Unexpected number of rows in CSR argument");
   ABORT_IF(S_values->shape() != S_indices->shape(), "CSR values and indices must have the same size");
-  
+
   ElementType alpha = 1.0;
 
   cusparseSpMatDescr_t descS;
@@ -71,19 +72,19 @@ static void CSRProdSwapped(marian::Tensor C,
                                    S_offsets->data<IndexType>(),
                                    S_indices->data<IndexType>(),
                                    S_values ->data<ElementType>(),
-                                   CUSPARSE_INDEX_32I, 
+                                   CUSPARSE_INDEX_32I,
                                    CUSPARSE_INDEX_32I,
                                    CUSPARSE_INDEX_BASE_ZERO,
                                    getCudaDataType(S_values->data<ElementType>())));
   CUSPARSE_CHECK(cusparseCreateDnMat(&descD,
-                                     rowsD, colsD, /*ld=*/colsD, 
-                                     D->data<ElementType>(), 
-                                     getCudaDataType(D->data<ElementType>()), 
+                                     rowsD, colsD, /*ld=*/colsD,
+                                     D->data<ElementType>(),
+                                     getCudaDataType(D->data<ElementType>()),
                                      denseOrder));
   CUSPARSE_CHECK(cusparseCreateDnMat(&descC,
                                      rowsC, colsC, /*ld=*/colsC,
-                                     C->data<ElementType>(), 
-                                     getCudaDataType(C->data<ElementType>()), 
+                                     C->data<ElementType>(),
+                                     getCudaDataType(C->data<ElementType>()),
                                      denseOrder));
 
   size_t bufferSize = 0;
@@ -136,7 +137,7 @@ static void CSRProd(marian::Tensor C,
   // interpret tensor dimensions as matrix dimensions
   const auto& shapeC = C->shape();
   const auto& shapeD = D->shape();
-  
+
   auto colsC = shapeC[-1];
   auto rowsC = shapeC.elements() / colsC;
 
@@ -147,7 +148,7 @@ static void CSRProd(marian::Tensor C,
   auto colsS = rowsD;
 
   auto denseOrder = CUSPARSE_ORDER_ROW;
-  auto algorithm  = CUSPARSE_SPMM_CSR_ALG2; 
+  auto algorithm  = CUSPARSE_SPMM_CSR_ALG2;
 
   if(transS)
     std::swap(rowsS, colsS);
@@ -157,7 +158,7 @@ static void CSRProd(marian::Tensor C,
   auto numOffsets = S_offsets->shape().elements() - 1; // -1 since last value is length
   ABORT_IF(numOffsets != rowsS, "Unexpected number of rows in CSR argument");
   ABORT_IF(S_values->shape() != S_indices->shape(), "CSR values and indices must have the same size");
-  
+
   ElementType alpha = 1.0;
 
   cusparseSpMatDescr_t descS;
@@ -168,19 +169,19 @@ static void CSRProd(marian::Tensor C,
                                    S_offsets->data<IndexType>(),
                                    S_indices->data<IndexType>(),
                                    S_values ->data<ElementType>(),
-                                   CUSPARSE_INDEX_32I, 
+                                   CUSPARSE_INDEX_32I,
                                    CUSPARSE_INDEX_32I,
                                    CUSPARSE_INDEX_BASE_ZERO,
                                    getCudaDataType(S_values->data<ElementType>())));
   CUSPARSE_CHECK(cusparseCreateDnMat(&descD,
-                                     rowsD, colsD, /*ld=*/colsD, 
-                                     D->data<ElementType>(), 
-                                     getCudaDataType(D->data<ElementType>()), 
+                                     rowsD, colsD, /*ld=*/colsD,
+                                     D->data<ElementType>(),
+                                     getCudaDataType(D->data<ElementType>()),
                                      denseOrder));
   CUSPARSE_CHECK(cusparseCreateDnMat(&descC,
                                      rowsC, colsC, /*ld=*/colsC,
-                                     C->data<ElementType>(), 
-                                     getCudaDataType(C->data<ElementType>()), 
+                                     C->data<ElementType>(),
+                                     getCudaDataType(C->data<ElementType>()),
                                      denseOrder));
 
   size_t bufferSize = 0;

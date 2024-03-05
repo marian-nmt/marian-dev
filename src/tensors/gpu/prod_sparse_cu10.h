@@ -1,10 +1,11 @@
 #include <cublas_v2.h>
-#include <cusparse.h>
 
 // clang-format off
 #include "tensors/gpu/prod.h"
 #include "tensors/gpu/backend.h"
 #include "tensors/gpu/cuda_helpers.h"
+#include "tensors/gpu/cusparse_include.h"
+
 // clang-format on
 
 namespace marian {

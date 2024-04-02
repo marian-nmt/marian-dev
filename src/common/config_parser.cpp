@@ -254,9 +254,9 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "If non-empty, you need to provide one type per input file (if --train-sets) or per TSV field (if --tsv). "
       "Usually, there should be no need to provide these on the command line, the model should have them saved.",
       {});
-  cli.add<bool>("--input-join-fields", 
+  cli.add<bool>("--input-join-fields",
       "Join input fields (from files or TSV) into a single sequence "
-      "(mostly used single-encoder models like BLEURT and COMET-KIWI)", 
+      "(mostly used single-encoder models like BLEURT and COMET-KIWI)",
       false);
   cli.add<bool>("--best-deep",
       "Use Edinburgh deep RNN configuration (s2s)");
@@ -436,6 +436,8 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       true);
   cli.add<bool>("--no-reload",
       "Do not load existing model specified in --model arg");
+  cli.add<bool>("--no-optimizer-reload",
+      "Do not load existing optimizer state from checkpoint specified in --model arg");
   cli.add<std::vector<std::string>>("--train-sets,-t",
       "Paths to training corpora: source target");
   cli.add<std::vector<std::string>>("--vocabs,-v",
@@ -650,7 +652,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--check-gradient-nan",
       "Skip parameter update in case of NaNs in gradient");
   cli.add<bool>("--normalize-gradient",
-      "Normalize gradient by multiplying with no. devices / total labels (not recommended and to be removed in the future)");
+      "Normalize gradient by dividing with efficient batch size");
+  cli.add<bool>("--normalize-gradient-by-ratio",
+      "Normalize gradient by scaling with efficient batch size divided by running average batch size");
 
   cli.add<std::vector<std::string>>("--train-embedder-rank",
       "Override model configuration and train a embedding similarity ranker with the model encoder, "

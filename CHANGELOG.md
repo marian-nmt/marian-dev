@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ### Added
+- Added `--normalize-gradient-by-ratio` to mildly adapt gradient magnitude if effective batch size diverges from running average effective batch size.
+- Added `--no-optimizer-reload` to skip optimizer state loading during continued training or fallback.
 - Added `pymarian-eval`, CLI for scoring metrics
 - Added `--input-reorder pos1 pos2` option to re-ordering inputs internally when reading in batches. This is mostly a model property.
 - Added `pymarian`: python bindings based on pybind11

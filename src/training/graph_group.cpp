@@ -8,6 +8,10 @@ GraphGroup::GraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     devices_(Config::getDevices(options, mpi->myMPIRank(), mpi->numMPIProcesses())),
     shardingMode_(getShardingMode(options_, mpi)),
     mbRoundUp_(options_->get<bool>("mini-batch-round-up", true)) {
+
+  normalizeGradient_ = options_->get<bool>("normalize-gradient", false);
+  normalizeGradientByAverageRatio_ = options_->get<bool>("normalize-gradient-by-ratio", false);
+
   if(options_->hasAndNotEmpty("cost-scaling")) {
     auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
 
@@ -234,14 +238,23 @@ float GraphGroup::executeAndCollectNorm(const std::function<float(size_t, size_t
  * - normalize the gradient by the number of words in a batch if requested (turning ce-sum in to ce-mean). @TODO: once fp16 stability issues are proven to not be caused by this, remove.
  * - re-scale the gradient based on a dynamic running average of gradient norms
  */
-float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords) {
+float GraphGroup::computeNormalizationFactor(float gNorm, size_t effectiveBatchSize) {
   float normalizationFactor = 1.f;
 
   if(costScaling_)
     normalizationFactor *= costScalingFactor_;
 
-  if(options_->get<bool>("normalize-gradient"))
-    normalizationFactor *= updateTrgWords;
+  if(normalizeGradient_)
+    normalizationFactor *= effectiveBatchSize;
+
+  if(normalizeGradientByAverageRatio_) {
+    // keep track of average effective batch size
+    updateAverageEffectiveBatchSize(effectiveBatchSize);
+    // this slightly adapts the gradient magnitude if the batch size changes drastically,
+    // in practice this will only matter if we grow the batch in larger steps. In that case
+    // the gradient magnitude is reduced until after a couple of updates that goes back to ~1.
+    normalizationFactor *= effectiveBatchSize / getAverageEffectiveBatchSize();
+  }
 
   if(!isFinite(gNorm)) // we are checking the sanity of the gradient elsewhere
     return normalizationFactor;
@@ -253,7 +266,7 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
 
     // Normalize gradient norm w.r.t. number of labels in batch for statistics,
     // there should be no gradient normalization before this point, @TODO: check this
-    gNorm = gNorm / updateTrgWords;
+    gNorm = gNorm / effectiveBatchSize;
 
     size_t window; float gNormAvgTransform, gNormVarTransform, gNormTransform, gNormAvg;
     if(dynamicGradientScalingUseLogs_) {
@@ -368,8 +381,13 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
         models_[i++]->load(graph, modelWeights_, markReloaded);
       }
 
-      // try to restore everything from checkpoint now
-      loadOptimizerState(modelFileName, scatterFn);
+      bool noOptimizerReload = options_->get<bool>("no-optimizer-reload", false);
+      if(noOptimizerReload) {
+        LOG(info, "--no-optimizer-reload is specified, we are skipping optimizer state restoration");
+      } else {
+        // try to restore everything from checkpoint now
+        loadOptimizerState(modelFileName, scatterFn);
+      }
 
       // @TODO: run another graph->forward() to allocate the weights from the checkpoint?
       // then we might not need to keep modelWeights_ around.
@@ -673,15 +691,27 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
 }
 
 void GraphGroup::setTypicalTrgBatchWords(size_t typicalTrgBatchWords) { // needed for dynamic MB scaling
-  typicalTrgBatchWords_ = (double)typicalTrgBatchWords;
+  typicalTrgBatchWords_ = (float)typicalTrgBatchWords;
 }
 
-double GraphGroup::getTypicalTrgBatchWords() {
+float GraphGroup::getTypicalTrgBatchWords() {
   return typicalTrgBatchWords_;
 }
 
 void GraphGroup::updateAverageTrgBatchWords(size_t trgBatchWords) {
-  typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * (double)trgBatchWords; // record a running average of the batch size, factors are chosen empirically.
+  typicalTrgBatchWords_ = 0.99f * typicalTrgBatchWords_ + 0.01f * (float)trgBatchWords; // record a running average of the batch size, factors are chosen empirically.
+}
+
+float GraphGroup::getAverageEffectiveBatchSize() {
+  return averageEffectiveBatchSize_;
+}
+
+void GraphGroup::updateAverageEffectiveBatchSize(size_t effectiveBatchSize) {
+  if(averageEffectiveBatchSize_ == 0)
+    averageEffectiveBatchSize_ = (float)effectiveBatchSize;
+
+  // record a running average of the effective batch size
+  averageEffectiveBatchSize_ = 0.9f * averageEffectiveBatchSize_ + 0.1f * (float)effectiveBatchSize;
 }
 
 size_t GraphGroup::numberOfInputFiles() {

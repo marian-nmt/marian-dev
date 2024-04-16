@@ -48,6 +48,9 @@ public:
   VocabWrapper(Ptr<Vocab> vocab) : pImpl_(vocab) {}
   virtual ~VocabWrapper() {}
   WordIndex encode(const std::string& word) const override { return (*pImpl_)[word].toWordIndex(); }
+  WordIndex getEosId() const override { return pImpl_->getEosId().toWordIndex(); };
+  WordIndex getUnkId() const override { return pImpl_->getUnkId().toWordIndex(); };
+
   std::string decode(WordIndex id) const override { return (*pImpl_)[Word::fromWordIndex(id)]; }
   size_t size() const override { return pImpl_->size(); }
   void transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const override { pImpl_->transcodeToShortlistInPlace(ptr, num); }
@@ -145,10 +148,9 @@ public:
 
   void setWorkspace(uint8_t* data, size_t size) override { device_->set(data, size); }
 
-  QSNBestBatch decode(const QSBatch& qsBatch,
+  QSNBestBatch decode(const std::vector<QSBatch>& qsBatches,
                       size_t maxLength,
                       const std::unordered_set<WordIndex>& shortlist) override {
-
     std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
     ABORT_IF(lshOpts.size() == 2 && shortlist.size() > 0, "LSH and shortlist cannot be used at the same time");
@@ -167,24 +169,30 @@ public:
         scorer->setShortlistGenerator(shortListGen);
     }
 
-    // form source batch, by interleaving the words over sentences in the batch, and setting the mask
-    size_t batchSize = qsBatch.size();
-    auto subBatch = New<data::SubBatch>(batchSize, maxLength, vocabs_[0]);
-    for(size_t i = 0; i < maxLength; ++i) {
-      for(size_t j = 0; j < batchSize; ++j) {
-        const auto& sent = qsBatch[j];
-        if(i < sent.size()) {
-          size_t idx = i * batchSize + j;
-          subBatch->data()[idx] = marian::Word::fromWordIndex(sent[i]);
-          subBatch->mask()[idx] = 1;
+    ABORT_IF(qsBatches.empty(), "No input batch provided");
+
+    auto createSubBatch = [maxLength](const QSBatch& qsBatch, Ptr<Vocab> vocab) {
+      size_t batchSize = qsBatch.size();
+      auto subBatch = New<data::SubBatch>(batchSize, qsBatch.front().size(), vocab);
+      for(size_t i = 0; i < maxLength; ++i) {
+        for(size_t j = 0; j < batchSize; ++j) {
+          const auto& sent = qsBatch[j];
+          if(i < sent.size()) {
+            size_t idx = i * batchSize + j;
+            subBatch->data()[idx] = marian::Word::fromWordIndex(sent[i]);
+            subBatch->mask()[idx] = 1;
+          }
         }
       }
-    }
-    auto tgtSubBatch = New<data::SubBatch>(batchSize, 0, vocabs_[1]); // only holds a vocab, but data is dummy
-    std::vector<Ptr<data::SubBatch>> subBatches{ subBatch, tgtSubBatch };
-    std::vector<size_t> sentIds(batchSize, 0);
+      return subBatch;
+    };
 
+    auto srcSubBatch = createSubBatch(qsBatches[0], vocabs_[0]);
+    auto tgtSubBatch = createSubBatch(qsBatches[1], vocabs_[1]);
+
+    std::vector<Ptr<data::SubBatch>> subBatches{ srcSubBatch, tgtSubBatch };
     auto batch = New<data::CorpusBatch>(subBatches);
+    std::vector<size_t> sentIds(batch->size(), 0);
     batch->setSentenceIds(sentIds);
 
     // decode

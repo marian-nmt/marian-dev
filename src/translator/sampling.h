@@ -10,7 +10,7 @@ namespace sampling {
 
 // Prune logits via top-k pruning
 Expr topkPruning(Expr scores, int k, bool normalize = false) {
-  Expr val, idx; 
+  Expr val, idx;
 
   // note, for around k>200 topk is slower on the GPU than sorting and then selecting the top-k values
   std::tie(val, idx) = topk(scores, k, /*axis=*/-1, /*descending=*/true);
@@ -24,14 +24,14 @@ Expr topkPruning(Expr scores, int k, bool normalize = false) {
 
 // Prune logits via nucleus pruning
 Expr nucleusPruning(Expr scores, float threshold, bool normalize = false) {
-  // normalization would make sense here since we compare against a meaningful threshold and 
+  // normalization would make sense here since we compare against a meaningful threshold and
   // we don't know what other manipulations have been done to the logits before, but
   // leaving it to the user for now. We do set it to true in beam_search.cpp
   if(normalize)
     scores = logsoftmax(scores); // renormalize via logsoftmax
 
   // sort scores in descending order, this way we can use the cumulative sum to find the nucleus
-  Expr val, idx; 
+  Expr val, idx;
   std::tie(val, idx) = sort(scores, /*axis=*/-1, /*descending=*/true);
 
   // logcumsumexp because we have logprobs, exclusive because we keep at least the first element
@@ -51,11 +51,11 @@ Expr nucleusPruning(Expr scores, float threshold, bool normalize = false) {
 
 // Prune logits via epsilon pruning
 Expr epsilonPruning(Expr scores, float epsilon, bool normalize = false) {
-  // normalization would make sense here since we compare against a meaningful threshold and 
+  // normalization would make sense here since we compare against a meaningful threshold and
   // we don't know what other manipulations have been done to the logits before
   if(normalize)
     scores = logsoftmax(scores); // renormalize via logsoftmax
-  
+
   // make sure the epsilon is not larger than the largest value in the scores
   // otherwise we will mask out all values
   // equivalent to union of top-1 and log(epsilon)
@@ -81,7 +81,10 @@ Expr gumbelMaxTrick(Expr scores, float temperature) {
 
 class DistModifier {
 private:
+  Ptr<ExpressionGraph> graph_;
   Ptr<Options> options_;
+  Ptr<data::Shortlist> shortlist_;
+
   bool forceDecode_{false};
 
   bool sampling_{false};
@@ -91,12 +94,38 @@ private:
   float invalidPathScore_;
 
   Expr forceBatch_;
-  
+
+  void lazyCreateForceBatch() {
+    if(!forceBatch_) {
+      // turn the batch into a cached tensor that lives in the computation graph
+      std::vector<WordIndex> forceWords;
+      for(auto& word : batch_->back()->data())
+        forceWords.push_back(word.toWordIndex());
+      int dimTime  = (int)batch_->back()->batchWidth();
+      int dimBatch = (int)batch_->back()->batchSize();
+      forceBatch_ = graph_->constant({1, dimTime, dimBatch, 1}, inits::fromVector(forceWords), Type::uint32); // [1, dimTime, dimBatch, 1]
+    }
+  }
+
 public:
-  DistModifier(Ptr<Options> options, Ptr<data::CorpusBatch> batch, float invalidPathScore) :
-    options_(options), forceDecode_(options_->get<bool>("force-decode", false)),
-    batch_(batch), invalidPathScore_(invalidPathScore) {
-    
+  DistModifier(Ptr<ExpressionGraph> graph, Ptr<Options> options, Ptr<data::CorpusBatch> batch, float invalidPathScore, Ptr<data::Shortlist> shortlist = nullptr) :
+    graph_(graph),
+    options_(options),
+    shortlist_(shortlist),
+    forceDecode_(options_->get<bool>("force-decode", false)),
+    batch_(batch),
+    invalidPathScore_(invalidPathScore) {
+
+    // if we are force-decoding with a short list we need to set the forced token ids early
+    if(shortlist_ && forceDecode_) {
+      lazyCreateForceBatch();
+      auto lsh = std::dynamic_pointer_cast<data::LSHShortlist>(shortlist_);
+      ABORT_IF(!lsh, "Force-decoding not supported with shortlists other than LSH");
+      ABORT_IF(!forceBatch_, "forceBatch_ is undefined??");
+      Expr forceIndices = slice(forceBatch_, /*axis=*/-3, 0);   // [1, 1, dimBatch, 1]
+      lsh->setForcedIndices(forceIndices);
+    }
+
     if(options_->hasAndNotEmpty("output-sampling")) {
       sampling_ = true;
       auto samplingOpts = options_->get<std::vector<std::string>>("output-sampling", {});
@@ -108,8 +137,8 @@ public:
       } else if(samplingMethod == "1") { // for backcompat with boolean values
         sampling_ = true;
         samplingMethod = "full";
-      } 
-      
+      }
+
       if(samplingMethod == "full") {
         float temperature = 1.f;
         if(samplingOpts.size() > 1)
@@ -171,34 +200,37 @@ public:
 
   Expr force(Expr scores, int pos, int beamSize, std::vector<IndexType>& batchIndices) {
     // we check the last field of the batch for force-decoding content
+
     int dimTime = (int)batch_->back()->batchWidth();
-    if(!forceDecode_ || pos >= dimTime) // nothing to force-decode, just return original scores
+    if(!forceDecode_ || pos >= dimTime) { // nothing to force-decode, just return original scores
       return scores;
+    }
 
     LOG_ONCE(info, "Force-decoding with given prefixes");
-    // if we get here, then we have to do force-decoding. We do this by "softly" modifying the scores and passing the 
+    // if we get here, then we have to do force-decoding. We do this by "softly" modifying the scores and passing the
     // result to the normal top-k/beam search. "Softly" here means we add masking terms rather than making hard selections
     // which preserves the original tensor layout.
-    // This allows for beam-search and batched force-decoding with different length prefixes in a batch 
+    // This allows for beam-search and batched force-decoding with different length prefixes in a batch
     // (way harder to do with actual index manipulation). We then return modified (masked) probabilities to the beam-search
     // which then continues as normal on the modified distribution.
 
-    if(!forceBatch_) {
-      // turn the batch into a cached tensor that lives in the computation graph
-      std::vector<WordIndex> forceWords;
-      for(auto& word : batch_->back()->data())
-        forceWords.push_back(word.toWordIndex());
-  
-      int dimBatch = (int)batch_->back()->batchSize();
-      forceBatch_ = scores->graph()->constant({1, dimTime, dimBatch, 1}, inits::fromVector(forceWords), Type::uint32); // [1, dimTime, dimBatch, 1]
-    }
+    lazyCreateForceBatch();
 
+    ABORT_IF(!forceBatch_, "forceBatch_ is undefined??");
     // if we remove batch entries during decoding (finished decoding) then adjust here
     if(forceBatch_->shape()[-2] != batchIndices.size())
       forceBatch_ = index_select(forceBatch_, -2, batchIndices);
 
     // get vocab index and probability for force-decoded tokens for the current time step
     Expr forceIndices = slice(forceBatch_, /*axis=*/-3, pos);   // [1, 1, dimBatch, 1]
+
+    if(shortlist_) {
+      auto lsh = std::dynamic_pointer_cast<data::LSHShortlist>(shortlist_);
+      ABORT_IF(!lsh, "Force-decoding not supported with shortlists other than LSH");
+      // only get location for first beam slot, the other slots don't matter since we overwrite them later.
+      lsh->setForcedIndices(forceIndices);
+      forceIndices = lsh->tryForwardMap(forceIndices); // [1, 1, dimBatch, 1]
+    }
 
     // select scores from first beam entry for force-decoding
     Expr b1stScores = slice(scores, /*axis=*/-4, 0); // [1, 1, dimBatch, dimVocab]
@@ -207,18 +239,26 @@ public:
     // create dummy indices and values for beam entries other than the force-decoded value. This is required to ensure that the beam
     // does not collapse for hyps outside the forced hyps and can still do full beam-search once we finish force-decoding for a batch
     // entry. We initialize randomly (they are not going to be used anyway due to very low prob) and shift by 1 to have 0 at first postion.
-    int dimVocab = scores->shape()[-1];      
+    int dimVocab = scores->shape()[-1];
     auto graph = scores->graph();
-    // we start at 256 to skip over suppressed special words in SentencePiece @TODO: this should be somehow inferred.
-    Expr dummyIndices = shift(graph->constant({1, 1, 1, beamSize}, inits::uniform(256.f, (float)dimVocab)), {0, 0, 0, 1}, 0.f);
-    // we use a range of invalidPathScore_ to invalidPathScore_ / 2 to make sure that the probabilities stay low, but larger than invalidPathScore_ itself.
-    Expr dummyVals    = shift(graph->constant({1, 1, 1, beamSize}, inits::uniform(invalidPathScore_, invalidPathScore_ / 2.f)), {0, 0, 0, 1}, 0.f);
+
+    std::vector<IndexType> dummyIndicesVec(beamSize, 0);
+    std::vector<float> dummyValsVec(beamSize, 0.f);
+    for(int i = 1; i < beamSize; ++i) {
+      // we use dimVocab - i - 1 to make sure that the dummy indices are different from the force-decoded index (last vocab indices)
+      dummyIndicesVec[i] = dimVocab - i - 1;
+      // we use invalidPathScore_ / (2.f + i) to make sure that the dummy values are very low and decrease with beam position
+      dummyValsVec[i] = invalidPathScore_ / (2.f + i);
+    }
+
+    Expr dummyIndices = graph->constant({1, 1, 1, beamSize}, inits::fromVector(dummyIndicesVec), Type::uint32);
+    Expr dummyVals    = graph->constant({1, 1, 1, beamSize}, inits::fromVector(dummyValsVec));
 
     // here we add the force-decoded entries back into the zeroed positions
-    dummyIndices = cast(cast(dummyIndices, Type::float32) + cast(forceIndices, Type::float32), Type::uint32); // [1, 1, dimBatch, dimBeam]
-    dummyVals    = dummyVals + forceVals; // [1, 1, dimBatch, dimBeam] 
+    dummyIndices = cast(maximum(cast(dummyIndices, Type::float32), cast(forceIndices, Type::float32)), Type::uint32); // [1, 1, dimBatch, dimBeam]
+    dummyVals    = dummyVals + forceVals; // [1, 1, dimBatch, dimBeam]
 
-    // create a tensor of the same size as the original logits from the first beam entry, initialize with invalidPathScore and then scatter 
+    // create a tensor of the same size as the original logits from the first beam entry, initialize with invalidPathScore and then scatter
     // the force-decoded and dummy values into the correct positions.
     Expr forcedScores = constant_like(b1stScores, inits::fromValue(invalidPathScore_)); // [1, 1, dimBatch, dimVocab]
     forcedScores = scatter(forcedScores, -1, dummyIndices, dummyVals); // [1, 1, dimBatch, dimVocab]

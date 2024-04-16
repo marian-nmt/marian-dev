@@ -26,26 +26,26 @@ class Shortlist {
 protected:
   std::vector<WordIndex> indices_;    // // [packed shortlist index] -> word index, used to select columns from output embeddings
   Expr indicesExpr_;    // cache an expression that contains the short list indices
+  Expr forcedIndicesExpr_;
 
   Expr cachedShortWt_;  // short-listed version, cached (cleared by clear())
   Expr cachedShortb_;   // these match the current value of shortlist_
   Expr cachedShortLemmaEt_;
   bool initialized_; // used by batch-level shortlist. Only initialize with 1st call then skip all subsequent calls for same batch
-  
+
   void createCachedTensors(Expr weights,
                            bool isLegacyUntransposedW,
                            Expr b,
-                           Expr lemmaEt,
-                           int k);
+                           Expr lemmaEt);
 public:
   static constexpr WordIndex npos{std::numeric_limits<WordIndex>::max()}; // used to identify invalid shortlist entries similar to std::string::npos
 
   Shortlist(const std::vector<WordIndex>& indices);
   virtual ~Shortlist();
-  
+
   virtual bool isDynamic() const { return false; }
   virtual WordIndex reverseMap(int beamIdx, int batchIdx, int idx) const;
-  virtual WordIndex tryForwardMap(WordIndex wIdx) const;
+  virtual WordIndex tryForwardMap(WordIndex wIdx, int batchIdx=0) const;
 
   virtual void filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt);
   virtual Expr getIndicesExpr() const;
@@ -72,7 +72,7 @@ public:
 // https://arxiv.org/pdf/1903.03129.pdf      https://arxiv.org/pdf/1806.00588.pdf
 class LSHShortlist: public Shortlist {
 private:
-  int k_; // number of candidates returned from each input 
+  int k_; // number of candidates returned from each input
   int nbits_; // length of hash
   size_t lemmaSize_; // vocab size
   bool abortIfDynamic_; // if true disallow dynamic allocation for encoded weights and rotation matrix (only allow use of pre-allocated parameters)
@@ -83,8 +83,8 @@ private:
   void createCachedTensors(Expr weights,
                            bool isLegacyUntransposedW,
                            Expr b,
-                           Expr lemmaEt,
-                           int k);
+                           Expr lemmaEt);
+  virtual WordIndex tryForwardMap(WordIndex wIdx, int batchIdx=0) const override;
 
 public:
   LSHShortlist(int k, int nbits, size_t lemmaSize, bool abortIfDynamic = false);
@@ -94,7 +94,9 @@ public:
 
   virtual void filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) override;
   virtual Expr getIndicesExpr() const override;
+  virtual void setForcedIndices(Expr forcedIndices);
 
+  virtual Expr tryForwardMap(Expr indices) const;
 };
 
 class LSHShortlistGenerator : public ShortlistGenerator {
@@ -349,7 +351,7 @@ public:
 };
 
 /*
-Legacy binary shortlist for Microsoft-internal use. 
+Legacy binary shortlist for Microsoft-internal use.
 */
 class QuicksandShortlistGenerator : public ShortlistGenerator {
 private:
@@ -371,7 +373,7 @@ private:
   const int32_t* sourceOffsets_{nullptr};
   int32_t numShortlistIds_{0};
   const uint8_t* sourceToShortlistIds_{nullptr};
-  
+
 public:
   QuicksandShortlistGenerator(Ptr<Options> options,
                               Ptr<const Vocab> srcVocab,
@@ -384,7 +386,7 @@ public:
 };
 
 /*
-Shortlist factory to create correct type of shortlist. Currently assumes everything is a text shortlist 
+Shortlist factory to create correct type of shortlist. Currently assumes everything is a text shortlist
 unless the extension is *.bin for which the Microsoft legacy binary shortlist is used.
 */
 Ptr<ShortlistGenerator> createShortlistGenerator(Ptr<Options> options,

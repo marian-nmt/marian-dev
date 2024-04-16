@@ -54,8 +54,10 @@ Ptr<DecoderState> AlibiDecoderState::select(
 Expr AlibiDecoderState::getAlibiShift(Ptr<ExpressionGraph> graph, bool decoding) const {
   if(decoding) {
     std::vector<float> shift;
-    for(const auto& [trgPos, srcPos, batchIdx] : syncPoints_)
+    for(const auto& [trgPos, srcPos, batchIdx] : syncPoints_) {
+      (void)batchIdx; // unused
       shift.push_back((float)(srcPos - trgPos));
+    }
 
     if(!shift.empty()) {
       int dimBeam  = lastBeam_;

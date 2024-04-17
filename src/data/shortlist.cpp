@@ -107,33 +107,27 @@ void LSHShortlist::setForcedIndices(Expr forcedIndices) {
 
 void LSHShortlist::filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) {
   auto topk = lsh::search(input, weights, k_, nbits_, (int)lemmaSize_, abortIfDynamic_); // [beam, batch, k]
-
-  bool addForced = forcedIndicesExpr_ != nullptr;
-  if(addForced) {
-    topk = callback(topk,
-                    [this](Expr node) {
-                      int dimBeam = node->shape()[-3];
-                      int dimBatch = node->shape()[-2];
-                      for(int batchIdx = 0; batchIdx < dimBatch; batchIdx++) {
-                        for(int beamIdx = 0; beamIdx < dimBeam; beamIdx++) {
-                          IndexType* begin = node->val()->data<IndexType>() + beamIdx * dimBatch * k_ + batchIdx * k_;
-                          IndexType* end   = begin + k_;
-                          IndexType val    = forcedIndicesExpr_->val()->data<IndexType>()[batchIdx];
-                          auto pos         = std::lower_bound(begin, end, val);
-                          if(pos != end)
-                            *pos = val;
-                          else
-                            *(end-1) = val;
-                        }
-                      }
-                      // we will correctly overwrite the indices used for reverse mapping in the next call back
-
-                      setForcedIndices(nullptr); // mark as done for this step
-                    });
-  }
-
   indicesExpr_ = callback(topk,
                           [this](Expr node) {
+                            if(forcedIndicesExpr_) {
+                              // if a forced index is set, we need to overwrite the relevant topk index with the forced index
+                              int dimBeam = node->shape()[-3];
+                              int dimBatch = node->shape()[-2];
+                              for(int batchIdx = 0; batchIdx < dimBatch; batchIdx++) {
+                                for(int beamIdx = 0; beamIdx < dimBeam; beamIdx++) {
+                                  IndexType* begin = node->val()->data<IndexType>() + beamIdx * dimBatch * k_ + batchIdx * k_;
+                                  IndexType* end   = begin + k_;
+                                  IndexType val    = forcedIndicesExpr_->val()->data<IndexType>()[batchIdx];
+                                  auto pos         = std::lower_bound(begin, end, val);
+                                  if(pos != end)
+                                    *pos = val;
+                                  else
+                                    *(end-1) = val;
+                                }
+                              }
+                              // we will correctly overwrite the indices used for reverse mapping in the next call back
+                              setForcedIndices(nullptr);
+                            }
                             node->val()->get(indices_); // set the value of the field indices_ whenever the graph traverses this node
                           });
 

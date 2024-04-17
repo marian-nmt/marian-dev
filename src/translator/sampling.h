@@ -116,6 +116,8 @@ public:
     batch_(batch),
     invalidPathScore_(invalidPathScore) {
 
+    forceDecode_ = forceDecode_ && batch->sets() > 1; // force-decoding if we have multiple sets in the batch
+
     // if we are force-decoding with a short list we need to set the forced token ids early
     if(shortlist_ && forceDecode_) {
       lazyCreateForceBatch();
@@ -217,13 +219,18 @@ public:
     lazyCreateForceBatch();
 
     ABORT_IF(!forceBatch_, "forceBatch_ is undefined??");
+
+    auto factoredVocab = batch_->front()->vocab()->tryAs<FactoredVocab>();
+    ABORT_IF(factoredVocab, "Factored vocabularies are not supported for force-decoding");
+
     // if we remove batch entries during decoding (finished decoding) then adjust here
     if(forceBatch_->shape()[-2] != batchIndices.size())
       forceBatch_ = index_select(forceBatch_, -2, batchIndices);
 
     // get vocab index and probability for force-decoded tokens for the current time step
-    Expr forceIndices = slice(forceBatch_, /*axis=*/-3, pos);   // [1, 1, dimBatch, 1]
+    Expr posIndices = slice(forceBatch_, /*axis=*/-3, pos);   // [1, 1, dimBatch, 1]
 
+    Expr forceIndices = posIndices;
     if(shortlist_) {
       auto lsh = std::dynamic_pointer_cast<data::LSHShortlist>(shortlist_);
       ABORT_IF(!lsh, "Force-decoding not supported with shortlists other than LSH");
@@ -267,7 +274,7 @@ public:
     // via interpolating by a selector. In marian eosId is used for padding, so this works everywhere and eos for unfinished hyps means
     // free decoding or sampling.
     WordIndex eosId = batch_->back()->vocab()->getEosId().toWordIndex();
-    auto interpol = eq(cast(forceIndices, scores->value_type()), (float)eosId);
+    auto interpol = eq(cast(posIndices, scores->value_type()), (float)eosId);
     return interpol * scores + (1.f - interpol) * forcedScores;
   }
 

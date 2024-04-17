@@ -169,7 +169,8 @@ public:
         scorer->setShortlistGenerator(shortListGen);
     }
 
-    ABORT_IF(qsBatches.empty(), "No input batch provided");
+    ABORT_IF(qsBatches.empty(),    "No input batch provided");
+    ABORT_IF(qsBatches.size() > 2, "More than two sub-batches provided");
 
     auto createSubBatch = [maxLength](const QSBatch& qsBatch, Ptr<Vocab> vocab) {
       size_t batchSize = qsBatch.size();
@@ -188,9 +189,12 @@ public:
     };
 
     auto srcSubBatch = createSubBatch(qsBatches[0], vocabs_[0]);
-    auto tgtSubBatch = createSubBatch(qsBatches[1], vocabs_[1]);
+    std::vector<Ptr<data::SubBatch>> subBatches{ srcSubBatch };
+    if(qsBatches.size() == 2) {
+      auto tgtSubBatch = createSubBatch(qsBatches[1], vocabs_[1]);
+      subBatches.push_back(tgtSubBatch);
+    }
 
-    std::vector<Ptr<data::SubBatch>> subBatches{ srcSubBatch, tgtSubBatch };
     auto batch = New<data::CorpusBatch>(subBatches);
     std::vector<size_t> sentIds(batch->size(), 0);
     batch->setSentenceIds(sentIds);

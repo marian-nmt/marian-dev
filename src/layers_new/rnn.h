@@ -132,7 +132,6 @@ public:
     }
 
     state->as<nn::DecoderStateItem>()->set(cellState->recurrent);
-    state->setPosition(cellState->position);
 
     // during decoding again, this is a no-op
     Expr output = swapTimeBatch(concatenate(outputs, dimTimeAxis));

@@ -310,8 +310,16 @@ struct AttentionMaskProcessor : public MaskProcessor {
     if(!mask)
       return nullptr;
 
-    // shape of mask should be [1, dimBatch, dimKeys, 1]
-    return marian::logMask(mask, numHeads, /*addCausalMask=*/false); // [1, dimBatch * numHeads, 1, dimKeys]
+    // shape of input `mask` should be [1, dimBatch, dimKeys, 1]
+    // output shape will be // [1, dimBatch * numHeads, 1, dimKeys] if addCausalMask is false
+    // or [1, dimBatch * numHeads, dimKeys, dimKeys] if addCausalMask is true
+    auto processMask = [this](Expr mask) { return marian::logMask(mask, numHeads, /*addCausalMask=*/false); };
+
+    // recompute the mask if input mask changes (different memory address), otherwise return cached version
+    auto equal       = [](Expr a, Expr b) { return a == b; };
+
+    // recompute the mask if the shape changes, otherwise return cached version
+    return cachedMask_->apply(mask, processMask, equal);
   }
 };
 

@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Fixed ALiBI states and caching in new layer framework
 - Throw exception when forcing with FS vocabs
 - Fixed force-decoding with LSH
 - Fixed force-decoding for beam-size > 1

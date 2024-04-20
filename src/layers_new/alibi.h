@@ -155,19 +155,25 @@ public:
 
   // Apply the alibi mask to the given query and mask
   virtual Expr apply(Expr query, Expr mask) const override {
-    if(!trainable) {
-      const_cast<Expr&>(slopes) = graph()->constant({numHeads, 1, 1}, initSlopes());
-      const_cast<Expr&>(biases) = graph()->constant({numHeads, 1, 1}, initBiases());
-    } else {
-      registerParameterLazy(slopes, Shape({numHeads, 1, 1}), initSlopes());
-      registerParameterLazy(biases, Shape({numHeads, 1, 1}), initBiases());
-    }
 
-    Expr shift = nullptr;
-    int start = 0;
+    auto processMask = [this, query](Expr mask) {
+      if(!trainable) {
+        const_cast<Expr&>(slopes) = graph()->constant({numHeads, 1, 1}, initSlopes());
+        const_cast<Expr&>(biases) = graph()->constant({numHeads, 1, 1}, initBiases());
+      } else {
+        registerParameterLazy(slopes, Shape({numHeads, 1, 1}), initSlopes());
+        registerParameterLazy(biases, Shape({numHeads, 1, 1}), initBiases());
+      }
 
-    auto alibiMask = alibiLogMask(mask, query, slopes, biases, shift, numHeads, start);
-    return alibiMask;
+      Expr shift = nullptr;
+      int start = 0;
+      auto alibiMask = alibiLogMask(mask, query, slopes, biases, shift, numHeads, start);
+      return alibiMask;
+    };
+
+    // recompute the mask if input mask changes (different memory address), otherwise return cached version
+    auto equal = [](Expr a, Expr b) { return a == b; };
+    return cachedMask_->apply(mask, processMask, equal);
   }
 };
 

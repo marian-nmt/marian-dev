@@ -108,48 +108,48 @@ private:
     prefix = "TransformerBatchDecoder";
     for(int layerNo = 0; layerNo < opt<int>("dec-depth"); ++layerNo) {
       // name maps for decoder self-attention blocks
-      nameMap[fmt::format("decoder_l{}_self_Wq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->qProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_self_bq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->qProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_Wq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->qProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_bq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->qProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_self_Wk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->kProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_self_bk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->kProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_Wk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->kProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_bk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->kProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_self_Wv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->vProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_self_bv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->vProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_Wv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->vProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_bv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->vProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_self_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->oProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_self_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->selfAttention->oProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->oProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->selfAttention->oProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_self_Wo_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->postprocessor->norm->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_self_Wo_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->postprocessor->norm->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_Wo_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->postprocessor->norm->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_self_Wo_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->postprocessor->norm->bias", prefix, layerNo);
 
       // name maps for decoder SSRU
-      nameMap[fmt::format("decoder_l{}_rnn_W", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->cell->iProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_W", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->rnn->cell->iProj->weight", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_rnn_Wf", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->cell->fProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_rnn_bf", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->cell->fProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_Wf", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->rnn->cell->fProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_bf", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->rnn->cell->fProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_rnn_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->oProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_rnn_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->rnn->oProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->rnn->oProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->rnn->oProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_rnn_ffn_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->postprocessor->norm->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_rnn_ffn_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->autoRegressiveBlock->postprocessor->norm->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_ffn_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->postprocessor->norm->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_rnn_ffn_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->autoRegressiveBlock->postprocessor->norm->bias", prefix, layerNo);
 
       // name maps for decoder cross-attention blocks
-      nameMap[fmt::format("decoder_l{}_context_Wq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->qProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_context_bq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->qProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_Wq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->qProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_bq", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->qProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_context_Wk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->kProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_context_bk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->kProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_Wk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->kProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_bk", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->kProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_context_Wv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->vProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_context_bv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->vProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_Wv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->vProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_bv", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->vProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_context_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->oProj->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_context_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->crossAttention->oProj->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_Wo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->oProj->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_bo", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->crossAttention->oProj->bias", prefix, layerNo);
 
-      nameMap[fmt::format("decoder_l{}_context_Wo_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->postprocessor->norm->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_context_Wo_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->crossAttentionBlock->postprocessor->norm->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_Wo_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->postprocessor->norm->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_context_Wo_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->crossAttentionBlock->postprocessor->norm->bias", prefix, layerNo);
 
       // name maps for decoder FFN blocks
       int mult = 3;
@@ -160,11 +160,11 @@ private:
           mult = 1;
           layerType = "LinearReluDropout";
         }
-        nameMap[fmt::format("decoder_l{}_ffn_W{}", layerNo + 1, ffnLayerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->filterBlock->layers->at({})->as<marian::nn::{}>()->weight", prefix, layerNo, mult * ffnLayerNo, layerType);
-        nameMap[fmt::format("decoder_l{}_ffn_b{}", layerNo + 1, ffnLayerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->filterBlock->layers->at({})->as<marian::nn::{}>()->bias", prefix, layerNo, mult * ffnLayerNo, layerType);
+        nameMap[fmt::format("decoder_l{}_ffn_W{}", layerNo + 1, ffnLayerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->filterBlock->layers->at({})->as<marian::nn::{}>()->weight", prefix, layerNo, mult * ffnLayerNo, layerType);
+        nameMap[fmt::format("decoder_l{}_ffn_b{}", layerNo + 1, ffnLayerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->filterBlock->layers->at({})->as<marian::nn::{}>()->bias", prefix, layerNo, mult * ffnLayerNo, layerType);
       }
-      nameMap[fmt::format("decoder_l{}_ffn_ffn_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->filterBlock->postprocessor->norm->weight", prefix, layerNo);
-      nameMap[fmt::format("decoder_l{}_ffn_ffn_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayer>()->filterBlock->postprocessor->norm->bias", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_ffn_ffn_ln_scale", layerNo + 1)] = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->filterBlock->postprocessor->norm->weight", prefix, layerNo);
+      nameMap[fmt::format("decoder_l{}_ffn_ffn_ln_bias", layerNo + 1)]  = fmt::format("{}->decoder->layers->at({})->as<marian::nn::TransformerDecoderLayerWithCrossAttention>()->filterBlock->postprocessor->norm->bias", prefix, layerNo);
     }
 
     return nameMap;

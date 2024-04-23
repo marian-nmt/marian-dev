@@ -303,7 +303,7 @@ DecoderCpuAvxVersion parseCpuAvxVersion(std::string name) {
 bool convertModel(std::string inputFile, std::string outputFile, int32_t targetPrec, int32_t lshNBits) {
   std::cerr << "Converting from: " << inputFile << ", to: " << outputFile << ", precision: " << targetPrec << std::endl;
 
-  auto modelFile = New<marian::io::ModelWeights>(inputFile);
+  auto modelFile = New<marian::io::ModelWeights>(inputFile, marian::io::MmapMode::DontMmap);
 
   YAML::Node config = modelFile->getYamlFromModel();
   std::stringstream configStr;

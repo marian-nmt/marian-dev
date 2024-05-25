@@ -306,7 +306,7 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # set -march for all builds except iOS cross compilation
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
   endif()

@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
 # Custom CMake options
+option(COMPILE_ANDROID, "Conmpile Android version" OFF)
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
@@ -719,3 +720,7 @@ if(DOXYGEN_FOUND)
   )
 endif(DOXYGEN_FOUND)
 endif(USE_DOXYGEN)
+
+if(COMPILE_ANDROID)
+    set(EXT_LIBS ${EXT_LIBS} ${log-lib})
+endif(COMPILE_ANDROID)

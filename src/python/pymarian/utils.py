@@ -6,13 +6,14 @@
 import logging as log
 import shutil
 from pathlib import Path
-from typing import List, Tuple
+from typing import Tuple
 
 import portalocker
 import requests
 
 from .defaults import Defaults
 from .pypdl import Downloader
+from huggingface_hub import hf_hub_download
 
 log.basicConfig(level=log.INFO)
 
@@ -40,15 +41,22 @@ def get_model_path(model_name, progress_bar: bool = PROGRESS_BAR) -> Path:
     If necessary, this function downloads checkpoint to a local cache directory.
 
     :param model_name: model name
+    :param progress_bar: show progress bar while downloading
     :return: checkpoint path
     """
     validate_id(model_name)
-    chkpt_url = f'{Defaults.BASE_URL}/{model_name}/model.{model_name}.bin'
+    hf_repo_id = Defaults.KNOWN_METRICS.get(model_name, [None, None])[1]
+    if hf_repo_id:
+        # TODO: support progress bar switch
+        chkpt_local = hf_hub_download(repo_id=hf_repo_id, filename="checkpoints/marian.model.bin",
+                                      cache_dir=Defaults.CACHE_PATH)
+        chkpt_local = Path(chkpt_local)
+    else:
+        chkpt_url = f'{Defaults.BASE_URL}/{model_name}/model.{model_name}.bin'
+        local_dir = Defaults.CACHE_PATH / model_name
+        chkpt_local = local_dir / f'model.{model_name}.bin'
 
-    local_dir = Defaults.CACHE_PATH / model_name
-    chkpt_local = local_dir / f'model.{model_name}.bin'
-
-    maybe_download_file(chkpt_url, chkpt_local)
+        maybe_download_file(chkpt_url, chkpt_local, progress_bar=progress_bar)
     assert chkpt_local.exists(), f'Checkpoint file {chkpt_local} does not exist'
     return chkpt_local
 
@@ -61,12 +69,27 @@ def get_vocab_path(model_name, progress_bar: bool = PROGRESS_BAR) -> Tuple[Path,
     :param progress_bar: show progress bar while downloading
     :return: checkpoint path, vocabulary path
     """
-    validate_id(model_name)
-    local_dir = Defaults.CACHE_PATH / model_name
-    vocab_local = local_dir / 'vocab.spm'
+    hf_repo_id = Defaults.KNOWN_METRICS.get(model_name, [None, None])[1]
+    if hf_repo_id:
+        filename = "vocab.spm"
+        if 'comet' in hf_repo_id.lower():
+            hf_repo_id = Defaults.COMET_VOCAB_REPO
+            filename = "sentencepiece.bpe.model"
+        # TODO: support progress bar switch
+        vocab_local = hf_hub_download(repo_id=hf_repo_id, filename=filename, cache_dir=Defaults.CACHE_PATH)
+        vocab_local = Path(vocab_local)
+        if vocab_local.suffix != ".spm": # marian requires .spm extension
+            vocab_spm = vocab_local.with_suffix(".spm")
+            if not vocab_spm.exists():
+                vocab_spm.symlink_to(Path(vocab_local.name), target_is_directory=False)
+            vocab_local = vocab_spm
+    else:
+        validate_id(model_name)
+        local_dir = Defaults.CACHE_PATH / model_name
+        vocab_local = local_dir / 'vocab.spm'
 
-    vocab_url = f'{Defaults.BASE_URL}/{model_name}/vocab.spm'
-    maybe_download_file(vocab_url, vocab_local, progress_bar=progress_bar)
+        vocab_url = f'{Defaults.BASE_URL}/{model_name}/vocab.spm'
+        maybe_download_file(vocab_url, vocab_local, progress_bar=progress_bar)
     assert vocab_local.exists(), f'Vocabulary file {vocab_local} does not exist'
     return vocab_local
 

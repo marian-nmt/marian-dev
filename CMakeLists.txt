@@ -123,6 +123,12 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 set(EXT_LIBS ${EXT_LIBS} Threads::Threads)
+
+# disable tcmalloc if pymarian=on
+if(USE_TCMALLOC AND PYMARIAN)
+  message(WARNING "TCMalloc can cause segfaults with some python libraries. Hence disabling TCMalloc for a robust pymarian build.")
+  set(USE_TCMALLOC off)
+endif()
 ########
 
 ###############################################################################

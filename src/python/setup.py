@@ -71,12 +71,15 @@ def get_native_ext() -> Path:
     print(f"\t>>>Making it available under the package scope at: {native_ext_local}")
     shutil.copy(native_ext, native_ext_local)
 
-    # remove incomaptible .so files from prior builds (if any)
-    for old_file in Path(__file__).parent.glob("_pymarian.*"):
-        if old_file.resolve() == native_ext_local.resolve():
-            continue
-        print(f"\t>>>Removing old file: {old_file}")
-        old_file.unlink()
+    # wheel builder adds all *.so files into *.whl making the wheel bloated; so we remove them
+    remove_old_files = True
+    if remove_old_files:
+        # remove incomaptible .so files from prior builds (if any)
+        for old_file in Path(__file__).parent.glob("_pymarian.*"):
+            if old_file.resolve() == native_ext_local.resolve():
+                continue
+            print(f"\t>>>INFO:: Removing incompatible extension: {old_file}")
+            old_file.unlink()
     return native_ext_local
 
 
@@ -97,6 +100,6 @@ setup(
     package_dir={"pymarian": "pymarian"},
     packages=find_namespace_packages(where=".", exclude=["tests", "binding"]),
     include_package_data=True,
-    package_data={"": [str(native_ext)]},
+    package_data={"pymarian": [str(native_ext)]},
     distclass=BinaryDistribution,
 )

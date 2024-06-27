@@ -33,6 +33,7 @@ dependencies = [
   "pyyaml",
   "tqdm",
   "requests",
+  "huggingface-hub==0.23.1",
 ]
 
 [project.scripts]
@@ -49,8 +50,6 @@ demos = [
   "sentence-splitter@git+https://github.com/mediacloud/sentence-splitter",
 ]
 
-[tool.setuptools]
-include-package-data = true
 
 [tool.black]
 line-length = 110

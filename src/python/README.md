@@ -13,7 +13,7 @@ cmake --build build -j       # -j option parallelizes build on all cpu cores
 python -m pip install build/pymarian-*.whl
 ```
 
-Since the above commands uses `python` executable in the PATH to determine Python version to compile marian native extension, make sure to have the desired `python` executable in your environment _before_ invoking these commands.
+The above commands use `python` executable in the PATH to determine Python version for compiling marian native extension. Make sure to have the desired `python` executable in your environment _before_ invoking these cmake commands.
 
 ## Python API
 
@@ -96,6 +96,7 @@ options:
   -ws WORKSPACE, --workspace WORKSPACE
                         Workspace memory (default: 8000)
   -pc, --print-cmd      Print marian evaluate command and exit (default: False)
+  --cache CACHE         Cache directory for storing models (default: $HOME/.cache/marian/metric)
 
 More info at https://github.com/marian-nmt/marian-dev. This CLI is loaded from .../python3.10/site-packages/pymarian/eval.py (version: 1.12.25)
 
@@ -156,6 +157,71 @@ python -m pytest src/python/tests/regression
 python -m pytest -s src/python/tests/regression
 
 ```
+
+## Release Instructions
+
+### Building Pymarian for Multiple Python Versions
+
+Our CMake scripts detects `python3.*` available in PATH and builds pymarian for each.
+To support a specific version of python, make the `python3.x` executable available in PATH prior to running cmake.
+This can be achieved by (without conflicts) using `conda` or `mamba`.
+
+
+```bash
+# setup mamba if not already; Note: you may use conda as well
+which mamba || {
+   name=Miniforge3-$(uname)-$(uname -m).sh
+   wget "https://github.com/conda-forge/miniforge/releases/latest/download/$name" \
+      && bash $name -b -p ~/mambaforge && ~/mambaforge/bin/mamba init bash && rm $name
+}
+
+# create environment for each version
+versions="$(echo 3.{12,11,10,9,8,7})"
+for version in $versions; do
+   echo "python $version"
+   mamba env list | grep -q "^py${version}" || mamba create -q -y -n py${version} python=${version}
+done
+
+# stack all environments
+for version in $versions; do mamba activate py${version} --stack; done
+# check if all python versions are available
+for version in $versions; do which python$version; done
+
+
+# Build as usual
+cmake . -B build -DCOMPILE_CUDA=off -DPYMARIAN=on
+cmake --build build -j
+ls build/pymarian*.whl
+```
+
+### Upload to PyPI
+```bash
+twine upload -r testpypi build/*.whl
+
+twine upload -r pypi build/*.whl
+```
+
+__Initial Setup:__ create `~/.pypirc` with following:
+
+```ini
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+repository: https://upload.pypi.org/legacy/
+username:__token__
+password:<token>
+
+[testpypi]
+repository: https://test.pypi.org/legacy/
+username:__token__
+password:<token>
+```
+Obtain token from https://pypi.org/manage/account/ 
+
+
 
 ## Known issues
 

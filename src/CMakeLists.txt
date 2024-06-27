@@ -292,24 +292,35 @@ endif(GENERATE_MARIAN_INSTALL_TARGETS)
 
 
 if(PYMARIAN)
-  if(NOT PYTHON_EXECUTABLE)
-    set(PYTHON_EXECUTABLE python)   # default to python in the environment
-  endif()
-
+  # python libs which use different version of tcmalloc (e.g. pandas) can cause segfaults, so we disable it
   include_directories(3rd_party/pybind11/include)
   add_subdirectory(3rd_party/pybind11)
+  include(PythonModules)
+  # print all python versions
+  message(STATUS "Going to look for these Python versions: ${PYTHON_VERSIONS}")
+  add_custom_target(_pymarian)
+  foreach(PYTHON_VERSION ${PYTHON_VERSIONS})  # defined in PythonModules.cmake
+      py_add_module(_pymarian_${PYTHON_VERSION} python/binding/bind.cpp PYTHON_VERSION ${PYTHON_VERSION} PYTHON_MODULE _pymarian)
+      target_link_libraries(_pymarian_${PYTHON_VERSION} PUBLIC marian ${EXT_LIBS})
+      if(CUDA_FOUND)
+        target_link_libraries(_pymarian_${PYTHON_VERSION} PUBLIC marian_cuda)
+      endif(CUDA_FOUND)
+      add_dependencies(_pymarian _pymarian_${PYTHON_VERSION})
+  endforeach()
 
-  pybind11_add_module(_pymarian MODULE python/binding/bind.cpp)
-  target_link_libraries(_pymarian PUBLIC marian)
-  if(CUDA_FOUND)
-    target_link_libraries(_pymarian PUBLIC marian_cuda)
-  endif(CUDA_FOUND)
-  install(TARGETS _pymarian DESTINATION .)
+  # ==== make .whl files  ====
+  # IMPORTANT: do not parallelize the wheel builds; they conflict on a few directories (e.g. *.egg-info)
+  set(LAST_PYMARIAN_TGT "")
+  foreach(PYTHON_VERSION ${PYTHON_VERSIONS})
+    add_custom_target(
+      pymarian_${PYTHON_VERSION} ALL
+      COMMAND ${PYTHON_${PYTHON_VERSION}_EXECUTABLE} -m pip install --upgrade pip build
+      COMMAND ${CMAKE_COMMAND} -E env "CMAKE_BINARY_DIR=${PROJECT_BINARY_DIR}" "CMAKE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+              ${PYTHON_${PYTHON_VERSION}_EXECUTABLE} -m build --wheel ${PROJECT_SOURCE_DIR}/src/python -o "${PROJECT_BINARY_DIR}"
+      DEPENDS _pymarian_${PYTHON_VERSION} ${LAST_PYMARIAN_TGT}
+      VERBATIM COMMENT "===Building pymarian wheel for python${PYTHON_VERSION}==="
+    )
+    set(LAST_PYMARIAN_TGT pymarian_${PYTHON_VERSION})
+  endforeach(PYTHON_VERSION)
 
-  # build pymarian wheel
-  add_custom_target(pymarian ALL
-    ${CMAKE_COMMAND} -E env "CMAKE_BINARY_DIR=${PROJECT_BINARY_DIR}" "CMAKE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-    "${PYTHON_EXECUTABLE}" -m pip wheel -v --no-input ${PROJECT_SOURCE_DIR}/src/python -w "${PROJECT_BINARY_DIR}"
-    DEPENDS _pymarian
-    VERBATIM COMMENT "Building pymarian wheel")
 endif(PYMARIAN)

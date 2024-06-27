@@ -25,7 +25,7 @@ def parse_args():
         f'This CLI is loaded from {__file__} (version: {__version__})',
     )
 
-    known_metrics = ', '.join(Defaults.KNOWN_METRICS)
+    known_metrics = ', '.join(Defaults.KNOWN_METRICS.keys())
     parser.add_argument(
         '-m',
         '--model',
@@ -89,6 +89,7 @@ def parse_args():
     parser.add_argument(
         '-pc', '--print-cmd', action="store_true", help="Print marian evaluate command and exit"
     )
+    parser.add_argument('--cache', help='Cache directory for storing models', type=Path, default=Defaults.CACHE_PATH)
 
     args = parser.parse_args()
     return vars(args)
@@ -197,6 +198,7 @@ def main(**args):
         log.debug(args)
     else:
         args['quiet'] = ''
+    Defaults.CACHE_PATH = args.pop('cache')
 
     model_id = args.pop('model')
     model_path = Path(model_id)
@@ -221,7 +223,7 @@ def main(**args):
             model_path = get_model_path(model_id)
             if not vocab_path:  # if vocab is not given, resolve it from cache
                 vocab_path = get_vocab_path(model_id)
-            args['like'] = Defaults.KNOWN_METRICS.get(model_id, Defaults.DEF_MODEL_TYPE)
+            args['like'] = Defaults.KNOWN_METRICS.get(model_id, [Defaults.DEF_MODEL_TYPE])[0]
         except ValueError as e:
             raise ValueError(f'Invalid model ID: {model_id}') from e
 

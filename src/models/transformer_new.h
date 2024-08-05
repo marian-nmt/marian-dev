@@ -1,21 +1,23 @@
 #pragma once
 
 #include "layers_new/transformer.h"
+#include "layers_new/alibi.h"
 
 #include "models/encoder.h"
 #include "models/decoder.h"
 #include "models/states.h"
+#include "models/model_base.h"
 #include "layers/constructors.h"
 
 namespace marian {
 
 // Wrapper for backwards compatibility that uses current encoder/decoder framework
-struct TransformerBatchEncoder : public nn::LayerWithOptions, 
+struct TransformerBatchEncoder : public nn::LayerWithOptions,
                                  public nn::IEmbeddingLayer,  // TransformerBatchEncoder is an IEmbeddingLayer that produces contextual embeddings
                                  public EncoderBase {         // @TODO: should all encoders be IEmbeddingLayer?
   Ptr<nn::TransformerEncoder> encoder;
 
-  TransformerBatchEncoder(Ptr<ExpressionGraph> graph, 
+  TransformerBatchEncoder(Ptr<ExpressionGraph> graph,
                           Ptr<Options> options)
     : LayerWithOptions(graph, options),
       EncoderBase(graph, options)
@@ -53,10 +55,10 @@ struct TransformerBatchEncoder : public nn::LayerWithOptions,
     EncoderBase::graph_ = graph;
     setGraph(graph);
     // This makes sure that the graph passed into the model during construction and now evaluation are identical.
-    // A good check to have for catching weird situations early. 
+    // A good check to have for catching weird situations early.
     ABORT_IF(this->graph() != graph, "Graph used for construction and graph parameter do not match");
 #endif
-    
+
     const auto& [batchEmbedding, batchMask] = apply((*batch)[batchIndex_]);
     return New<EncoderState>(batchEmbedding, batchMask, batch);
   }
@@ -67,11 +69,11 @@ struct TransformerBatchEncoder : public nn::LayerWithOptions,
 };
 
 // Wrapper for backwards compatibility that uses current encoder/decoder framework
-class TransformerBatchDecoder : public nn::LayerWithOptions, 
+class TransformerBatchDecoder : public nn::LayerWithOptions,
                                 public DecoderBase {
 
   Ptr<nn::TransformerDecoder> decoder;
-  Ptr<mlp::Output> output_; 
+  Ptr<mlp::Output> output_;
 
   void lazyCreateOutputLayer()
   {
@@ -99,9 +101,9 @@ class TransformerBatchDecoder : public nn::LayerWithOptions,
   }
 
 public:
-  TransformerBatchDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options) 
+  TransformerBatchDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   : LayerWithOptions(graph, options), DecoderBase(graph, options) {
-    
+
     decoder = New<nn::TransformerDecoder>(graph, options);
     registerLayer(decoder);
 
@@ -116,7 +118,7 @@ public:
     DecoderBase::graph_ = graph;
     setGraph(graph);
     // This makes sure that the graph passed into the model during construction and now evaluation are identical.
-    // A good check to have for catching weird situations early. 
+    // A good check to have for catching weird situations early.
     ABORT_IF(this->graph() != graph, "Graph used for construction and graph parameter do not match");
 #endif
 
@@ -125,15 +127,16 @@ public:
       int dimBatch = (int)batch->size();
       int dim = DecoderBase::opt<int>("dim-emb");
 
+      // @TODO: use the actual initState function of the new state
       auto start = graph->constant({1, 1, dimBatch, dim}, inits::zeros());
       rnn::States startStates(DecoderBase::opt<size_t>("dec-depth"), {start, start});
 
       // don't use TransformerState for RNN layers
-      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
+      return NewDecoderState(DecoderBase::options_, startStates, Logits(), encStates, batch, /*isBatchMajor=*/false);
     }
     else {
-      rnn::States startStates;
-      return New<DecoderState>(startStates, Logits(), encStates, batch, /*isBatchMajor=*/true);
+      rnn::States startStates(DecoderBase::opt<size_t>("dec-depth"), {nullptr, nullptr});
+      return NewDecoderState(DecoderBase::options_, startStates, Logits(), encStates, batch, /*isBatchMajor=*/true);
     }
   }
 
@@ -148,27 +151,24 @@ public:
   }
 
   Ptr<DecoderState> step(Ptr<DecoderState> state) {
+    using db = DecoderBase;
+
     auto embeddings  = state->getTargetHistoryEmbeddings(); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vector dim]
     auto decoderMask = state->getTargetMask();              // [max length, batch size, 1]  --this is a hypothesis
 
     //************************************************************************//
 
-    auto encoderContext = state->getEncoderStates()[0]->getContext(); // encoder output
-    auto encoderMask    = state->getEncoderStates()[0]->getMask(); // note: may differ from Encoder self-attention mask in that additional positions are banned for cross-attention
-    
     // Convert old style decoder state to new decoder state
-    size_t position = state->getPosition();
-    auto nnState = New<nn::DecoderStateList>(position);
-    for(auto& layerState : state->getStates())
-      nnState->as<nn::DecoderStateList>()->append(New<nn::DecoderStateItem>(layerState.cell, position));
-
-    auto decoderContext = decoder->apply(embeddings, decoderMask, encoderContext, encoderMask, nnState);
+    using namespace models;
+    usage modelUsage = (usage)db::opt<int>("usage", (int)usage::translation);
+    auto nnState = convertDecoderState(state, graph(), /*decoding=*/modelUsage == usage::translation);
+    auto decoderContext = decoder->apply(embeddings, decoderMask, nnState);
 
     // final feed-forward layer (output)
     if(shortlist_)
       output_->setShortlist(shortlist_);
     auto logits = output_->applyAsLogits(decoderContext); // [-4: beam depth=1, -3: max length, -2: batch size, -1: vocab or shortlist dim]
-    
+
     // Convert new style decoder state to old decoder state
     // @TODO: This is such a mess!
     rnn::States decoderStates;
@@ -177,17 +177,13 @@ public:
       decoderStates.push_back(rnn::State({ cellState, cellState }));
     }
     // return unnormalized(!) probabilities
-    auto nextState = New<DecoderState>(decoderStates, logits, state->getEncoderStates(), state->getBatch(), state->isBatchMajor());
-    nextState->setPosition(state->getPosition() + 1);
-
-    return nextState;
+    return state->next(decoderStates, logits);
   }
 
   // helper function for guided alignment
   // @TODO: const vector<> seems wrong. Either make it non-const or a const& (more efficient but dangerous)
   virtual const std::vector<Expr> getAlignments(int /*i*/ = 0) override {
-    ABORT("Not implemented");
-    return {};
+    return decoder->getAlignments();
   }
 
   virtual void clear() override {
@@ -204,13 +200,13 @@ public:
 static void testme() {
   using namespace marian;
   using namespace nn;
-  
+
   auto options = New<Options>(
-    "enc-depth", 12, 
-    "transformer-heads", 8, 
-    "dim-emb", 512, 
+    "enc-depth", 12,
+    "transformer-heads", 8,
+    "dim-emb", 512,
     "transformer-ffn-depth", 2,
-    "transformer-dim-ffn",   2048, 
+    "transformer-dim-ffn",   2048,
     "transformer-dropout",   0.1,
     "transformer-dropout-attention", 0.0,
     "transformer-postprocess", "dan",
@@ -231,13 +227,13 @@ static void testme() {
   auto encoder = New<TransformerEncoder>(graph, options);
   encoder->setName("TransformerEncoder");
   encoder->setEvalMode();
-  
+
   auto context = encoder->apply(input, mask);
 
   std::cerr << encoder->layerInfo(/*includeChildren=*/true) << std::endl;
 
   debug(context);
-  
+
   graph->forward();
   graph->save("test.npz");
 }

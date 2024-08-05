@@ -60,9 +60,10 @@ CorpusBase::CorpusBase(const std::vector<std::string>& paths,
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
       prependZero_(options_->get<bool>("comet-prepend-zero", false)),
+      joinFields_(options_->get<bool>("input-join-fields", false)),
+      insertSeparator_(options_->get<bool>("comet-use-separator", false)),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumInputFields_(getNumberOfTSVInputFields(options)),
-      joinFields_(options_->get<bool>("input-join-fields", false)) {
+      tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
   // TODO: support passing only one vocab file if we have fully-tied embeddings
   if(tsv_) {
     ABORT_IF(tsvNumInputFields_ != vocabs_.size(),
@@ -87,9 +88,10 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
       rightLeft_(options_->get<bool>("right-left")),
       prependZero_(options_->get<bool>("comet-prepend-zero", false)),
+      joinFields_(options_->get<bool>("input-join-fields", false)),
+      insertSeparator_(options_->get<bool>("comet-use-separator", false)),
       tsv_(options_->get<bool>("tsv", false)),
-      tsvNumInputFields_(getNumberOfTSVInputFields(options)),
-      joinFields_(options_->get<bool>("input-join-fields", false)) {
+      tsvNumInputFields_(getNumberOfTSVInputFields(options)) {
   bool training = !translate;
 
   if(training)
@@ -355,13 +357,13 @@ CorpusBase::CorpusBase(Ptr<Options> options, bool translate, size_t seed)
     // when force-decoding we want the last vocab to be part of the batch,
     // hence we do not drop it from the input batch.
     bool forceDecoding = options_->get<bool>("force-decode", false);
-    size_t shift = !forceDecoding ? 1 : 0;
+    size_t shift = forceDecoding ? 0 : 1;
 
     for(size_t i = 0; i + shift < numVocs; ++i) {
       Ptr<Vocab> vocab = New<Vocab>(options_, i);
       vocabDims[i] = (int) vocab->load(vocabPaths[i], maxVocabs[i]);
       vocabs_.emplace_back(vocab);
-    } 
+    }
 
     // TODO: As above, this is not nice as it modifies the option object and needs to expose the changes
     // outside the corpus as models need to know about the vocabulary size; extract the vocab
@@ -428,20 +430,24 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
 
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {}); // empty list by default
 
+  bool isFirst = tup.empty();
+
   // This handles adding starts symbols for COMET (<s>) and BERT/BLEURT ([CLS])
-  bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && batchIndex == 0));
-  if(prepend && inputTypes[batchIndex] == "sequence") {
-    auto prependedWord = Word::fromWordIndex(0);
-    words.insert(words.begin(), prependedWord);
-  }
-  
+  bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && isFirst));
+  if(prepend && inputTypes[batchIndex] == "sequence")
+    words.insert(words.begin(), Word::fromWordIndex(0));
+
+  bool prependSep = insertSeparator_ && joinFields_ && !isFirst;
+  if(prependSep && inputTypes[batchIndex] == "sequence")
+    words.insert(words.begin(), vocabs_[batchIndex]->getSepId());
+
   // if fields are joined and the current sentence is not the first one, we need to make sure that
   // the current sentence is not longer than the maximum length minus the length of the previous sentence
-  // (minus 1 for the separator <eos> token)
+  // (minus 1 for the separator <eos> token or 2 if we also add a separator <sep> token)
   size_t localMaxLength = maxLength_;
   if(joinFields_ && !tup.empty())
-    localMaxLength = std::max(1, (int)maxLength_ - (int)tup.back().size());
-    
+    localMaxLength = std::max(1 + (int)prependSep, (int)maxLength_ - (int)tup.back().size());
+
   // if the current sentence is longer than the maximum length, we need to crop it
   if(maxLengthCrop_ && words.size() > localMaxLength) {
     words.resize(localMaxLength);
@@ -457,8 +463,10 @@ void CorpusBase::addWordsToSentenceTuple(const std::string& line,
   if(joinFields_) {
     size_t currLength = tup.empty() ? 0 : tup.back().size();
     // if the current sentence would exceed the maximum length we don't add any more fields
-    if(currLength + words.size() < maxLength_)
+    if(currLength + words.size() <= maxLength_)
       tup.appendToBack(words);
+
+    ABORT_IF(tup.empty(), "This should have content if we got here??");
   } else {
     tup.pushBack(words);
   }
@@ -472,7 +480,7 @@ void CorpusBase::addAlignmentToSentenceTuple(const std::string& line,
   size_t srcEosPos = tup[0].size() - 1;
   size_t tgtEosPos = tup[1].size() - 1;
 
-  auto align = WordAlignment(line, srcEosPos, tgtEosPos);  
+  auto align = WordAlignment(line, srcEosPos, tgtEosPos);
   tup.setAlignment(align);
 }
 
@@ -497,10 +505,10 @@ void CorpusBase::addWeightsToSentenceTuple(const std::string& line, SentenceTupl
 void CorpusBase::addAlignmentsToBatch(Ptr<CorpusBatch> batch,
                                       const std::vector<Sample>& batchVector) {
   std::vector<WordAlignment> aligns;
-  
+
   int dimBatch = (int)batch->getSentenceIds().size();
   aligns.reserve(dimBatch);
-  
+
   for(int b = 0; b < dimBatch; ++b) {
     // If the batch vector is altered within marian by, for example, case augmentation,
     // the guided alignments we received for this tuple cease to be valid.

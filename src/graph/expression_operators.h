@@ -303,9 +303,9 @@ Expr square(Expr a);
  */
 Expr abs(Expr a);
 
-// Expr pow(Expr a, Expr b);
-// Expr pow(float a, Expr b);
-// Expr pow(Expr a, float b);
+Expr pow(Expr a, Expr b);
+Expr pow(float a, Expr b);
+Expr pow(Expr a, float b);
 
 /**
  * Computes @f$\log(e^a + e^b)@f$.
@@ -405,6 +405,36 @@ Expr2 argmax(Expr a, int axis);
  */
 Expr2 argmin(Expr a, int axis);
 
+/**
+ * Sorts an expression along an axis.
+ * Sorts the elements of an expression along a specified @p axis.
+ * @param a         Expression to sort
+ * @param axis      Axis to sort along
+ * @param descending If true, sort in descending order. Otherwise, sort in ascending order.
+ *                  Default is true.
+ * @returns A sorted expression
+ */
+Expr2 sort(Expr a, int axis, bool descending = true);
+
+/**
+ * Cumulative sum of an expression along an axis.
+ * Computes the cumulative sum of an expression along a specified @p axis.
+ * @param a     Expression to cumsum
+ * @param axis  Axis to cumsum along
+ * @param exclusive If true, the first element is not included in the sum. Default is false.
+ * @returns     Cumulative sums of @p a along @p axis
+ */
+Expr cumsum(Expr a, int axis, bool reverse=false, bool exclusive = false);
+
+/**
+ * Logarithmic cumulative sum of an expression along an axis.
+ * Computes the logarithmic cumulative sum of an expression along a specified @p axis.
+ * @param a     Expression to cumsum
+ * @param axis  Axis to cumsum along
+ * @param exclusive If true, the first element is not included in the sum. Default is false.
+ * @returns     Logarithmic cumulative sums of @p a along @p axis
+*/
+Expr logcumsumexp(Expr a, int axis, bool reverse = false, bool exclusive = false, bool fast = false);
 
 /**
  * @addtogroup graph_ops_cmp Comparison
@@ -473,7 +503,7 @@ Expr bdot(Expr a,
           float scalar = 1.f);
 
 /**
- * bdot_legacy is an old implemetation of bdot without correct broadcasting on the batch dimensions, 
+ * bdot_legacy is an old implemetation of bdot without correct broadcasting on the batch dimensions,
  * to be removed once the behavior can be correctly replicated with normal bdot on 5 dimensions.
  */
 Expr bdot_legacy(Expr a,
@@ -709,7 +739,7 @@ Expr gather(Expr a, int axis, Expr indices);
  * @param a       The input expression
  * @param axis    The axis along which to index
  * @param indices The indices to be scattered
- * @param source  Expression with values to scatter. 
+ * @param source  Expression with values to scatter.
  * @returns       Scattered expression with the same shape as @p a now containing values from @p source in positions @p indices
  * @note @p source and @p indices must have the same rank
  * @note In this version @p source and @p indicies must have the same shape
@@ -900,6 +930,11 @@ Expr softmax(Expr a, Expr zeroOneMask, int axis = -1);
 Expr logsoftmax(Expr a);
 
 /**
+ * Compute a sparsemax along the last axis. Slow implementation but differentiable.
+*/
+Expr sparsemax(Expr a, int axis = -1);
+
+/**
  * Computes the cross-entropy loss.
  * @param labelSmoothingAlpha The amount of label smoothing @f$\alpha \in [0,1]@f$.
  * Default is no smoothing, @f$\alpha = 0 @f$.
@@ -936,9 +971,9 @@ Expr weighted_average(Expr in, Expr weights, int ax = 0);
 Expr layerNorm(Expr x, Expr gamma = nullptr, Expr beta = nullptr, float eps = 1e-9);
 
 /**
- * Applies RMS normalization over the last dimension. 
- * 
- * See: Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization. 
+ * Applies RMS normalization over the last dimension.
+ *
+ * See: Biao Zhang; Rico Sennrich (2019). Root Mean Square Layer Normalization.
  * In Advances in Neural Information Processing Systems 32. Vancouver, Canada.
  * @f[
    \frac{x}{\sqrt{\frac{1}{N}\sum x^2 + \mathrm{eps}}} \times \gamma + \beta

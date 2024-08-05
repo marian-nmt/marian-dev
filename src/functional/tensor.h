@@ -70,7 +70,8 @@ struct View {
   HOST_DEVICE View(T* ptr, const ConstantShape<D>& shape)
       : data_(ptr), shape_(shape) {}
 
-  HOST View(marian::Tensor t) : data_(t->data<T>()), shape_(adapt<T>(t->shape())) {}
+  HOST View(marian::Tensor t) 
+    : data_(t ? t->data<T>() : nullptr), shape_(t ? adapt<T>(t->shape()) : adapt<T>(marian::Shape({0, 0, 0, 0}))) {}
 
   HOST_DEVICE_INLINE T& operator[](size_t i) {
      return data_[shape_.index((int)i)];

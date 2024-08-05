@@ -1054,6 +1054,9 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     auto ridx4  = get<1>(rtopk4);
     auto gval4  = gather(a, -2, ridx4);
 
+    const auto& [valDesc, indDesc] = sort(a, /*axis=*/-1, /*descending=*/true);
+    const auto& [valAsc,  indAsc]  = sort(a, /*axis=*/-1, /*descending=*/false);
+
     graph->forward();
 
     CHECK(rval1 != gval1);
@@ -1095,6 +1098,36 @@ void tests(DeviceType device, Type floatType = Type::float32) {
 
     gval4->val()->get(values);
     CHECK( values == vval4 );
+
+    std::vector<T> vvalDesc = { 0.3333,   0,      -0.2,
+                                4.5,      0,      -0.3,
+                                101.45,   5.2,   -10.0,
+                                1.05e-5,  0,    -100.05 };
+    valDesc->val()->get(values);
+    CHECK( values == vvalDesc );
+
+    std::vector<IndexType> vindDesc = { 1, 0, 2, 
+                                        2, 1, 0, 
+                                        2, 0, 1, 
+                                        2, 1, 0 };
+    std::vector<IndexType> testVindDesc;
+    indDesc->val()->get(testVindDesc);
+    CHECK( testVindDesc == vindDesc );
+
+    std::vector<T> vvalAsc = { -0.2,      0,      0.3333,
+                               -0.3,      0,      4.5,
+                               -10.0,     5.2,   101.45,
+                               -100.05,   0,      1.05e-5 };
+    valAsc->val()->get(values);
+    CHECK( values == vvalAsc );
+
+    std::vector<IndexType> vindAsc = { 2, 0, 1, 
+                                       0, 1, 2,
+                                       1, 0, 2,
+                                       0, 1, 2 };
+    std::vector<IndexType> testVindAsc;
+    indAsc->val()->get(testVindAsc);
+    CHECK( testVindAsc == vindAsc );
   }
 
   SECTION("cross entropy with label smoothing vs logsoftmax with gather") {
@@ -1141,6 +1174,73 @@ void tests(DeviceType device, Type floatType = Type::float32) {
     CHECK( std::equal(values.begin(), values.end(),
                       values2.begin(), floatApprox2) );
   }
+
+  SECTION("Scan operations") {
+    std::vector<T> input = {
+      -0.1, -1.2, -0.4,
+       1.2,  2.3, -3.4,
+      -2.2,  1.0, -1.2
+    };
+
+    auto x = graph->constant({3, 3}, inits::fromVector(input));
+    auto a = logcumsumexp(x, /*axis=*/-1);
+    auto b = logcumsumexp(x, /*axis=*/-2, /*reverse=*/false, /*exclusive=*/true);
+
+    auto c = cumsum(x, /*axis=*/-1, /*reverse=*/false, /*exclusive=*/true);
+    auto d = cumsum(x, /*axis=*/-2, /*reverse=*/true);
+    
+    graph->forward();
+
+    CHECK(a->shape() == Shape({3, 3}));
+    CHECK(b->shape() == Shape({3, 3}));
+
+    std::vector<T> aValues = {
+      -0.1000, 0.1875, 0.6294, 
+       1.1992, 2.5859, 2.5879, 
+      -2.1992, 1.0400, 1.1416
+    };
+
+    T negInf = -std::numeric_limits<T>::infinity();
+    std::vector<T> bValues = {
+     negInf, negInf, negInf, 
+     -0.1f, -1.2f, -0.4f, 
+     1.44101f, 2.32975f, -0.35141f, 
+    };
+
+    a->val()->get(values);
+    b->val()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      aValues.begin(), floatApprox2) );
+
+    CHECK( std::equal(values2.begin(), values2.end(),
+                      bValues.begin(), floatApprox2) );
+
+    CHECK(c->shape() == Shape({3, 3}));
+    CHECK(d->shape() == Shape({3, 3}));
+
+    std::vector<T> cValues = {
+      0, -0.1000, -1.3000,  
+      0,  1.2000,  3.5000,  
+      0, -2.2000, -1.2000, 
+    };
+
+    std::vector<T> dValues = {
+      -1.1, 2.1, -5.0,
+      -1.0, 3.3, -4.6,
+      -2.2, 1.0, -1.2
+    };
+
+    c->val()->get(values);
+    d->val()->get(values2);
+
+    CHECK( std::equal(values.begin(), values.end(),
+                      cValues.begin(), floatApprox2) );
+
+    CHECK( std::equal(values2.begin(), values2.end(),
+                      dValues.begin(), floatApprox2) );
+  }
+
 }
 
 #ifdef CUDA_FOUND

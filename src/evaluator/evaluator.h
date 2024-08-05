@@ -29,12 +29,8 @@ public:
   Evaluator(Ptr<Options> options)
     : model_(createModelFromOptions(options, models::usage::evaluating)) {}
 
-  void load(Ptr<ExpressionGraph> graph, const std::vector<io::Item>& items) {
-    model_->load(graph, items);
-  }
-
-  void load(Ptr<ExpressionGraph> graph, const std::string& fileName) {
-    model_->load(graph, fileName);
+  void load(Ptr<ExpressionGraph> graph, Ptr<io::ModelWeights> modelFile) {
+    model_->load(graph, modelFile);
   }
 
   Expr build(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
@@ -51,24 +47,29 @@ template <class Model>
 class Evaluate : public ModelTask {
 private:
   Ptr<Options> options_;
-  Ptr<CorpusBase> corpus_;
+
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
-  std::vector<marian::io::Item> ioItems_;
+  Ptr<io::ModelWeights> modelWeights_;
 
 public:
   Evaluate(Ptr<Options> options) : options_(options) {
-    options_ = options_->with("inference", true, 
+    options_ = options_->with("inference", true,
                               "shuffle", "none");
 
-    corpus_ = New<Corpus>(options_);
-    corpus_->prepare();
+    /* Number of embeddings parameter is determined at runtime based on the given vocabulary file.
+      In addtiion, this parameter has to be set before initializing the model object.
+      Corpus initializer is the one that sets the number of embeddings into options_ object.
+      However, we do not need to use corpus object here, so we just create a dummy corpus object.
+    */
+    Ptr<CorpusBase> corpus = New<Corpus>(options_);
 
     auto devices = Config::getDevices(options_);
 
     auto modelPath = options_->get<std::string>("model");
     LOG(info, "Loading model from {}", modelPath);
-    ioItems_ = io::loadItems(modelPath);
+
+    modelWeights_ = New<io::ModelWeights>(modelPath);
 
     graphs_.resize(devices.size());
     models_.resize(devices.size());
@@ -79,15 +80,15 @@ public:
           [=](size_t j) {
             auto graph     = New<ExpressionGraph>(true);
             auto precison  = options_->get<std::vector<std::string>>("precision", {"float32"});
-            graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph   
-            graph->setDevice(devices[j]);        
+            graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
+            graph->setDevice(devices[j]);
             graph->reserveWorkspaceMB(options_->get<int>("workspace"));
-          
+
             auto model = New<Model>(options_);
-            model->load(graph, ioItems_);
+            model->load(graph, modelWeights_);
 
             models_[j] = model;
-            graphs_[j] = graph; 
+            graphs_[j] = graph;
           },
           i);
     }
@@ -96,16 +97,24 @@ public:
   void run() override {
     LOG(info, "Evaluating");
     timer::Timer timer;
-    
-    auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus_, options_);
+
+    Ptr<CorpusBase> corpus = New<Corpus>(options_);
+    corpus->prepare();
+    auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus, options_);
     batchGenerator->prepare();
 
     Ptr<VectorCollector> output = VectorCollector::Create(options_);
+    run(batchGenerator, output);
+    LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
+  }
+
+  template <typename T>
+  void run(Ptr<BatchGenerator<T>> batchGenerator,  Ptr<VectorCollector> collector) {
 
     size_t batchId = 0;
     {
       ThreadPool pool(graphs_.size(), graphs_.size());
-      
+
       for(auto batch : *batchGenerator) {
         auto task = [=](size_t id) {
           thread_local Ptr<ExpressionGraph> graph;
@@ -132,7 +141,7 @@ public:
           } else {
             ABORT("Unknown value type {}", scores->value_type());
           }
-          
+
           // collect embedding vector per sentence.
           // if we compute similarities this is only one similarity per sentence pair.
           for(size_t i = 0; i < batch->size(); ++i) {
@@ -140,14 +149,20 @@ public:
               auto beg = i * numScores;
               auto end = (i + 1) * numScores;
               std::vector<float> sentVector(sentVectors.begin() + beg, sentVectors.begin() + end);
-              output->Write((long)batch->getSentenceIds()[i], sentVector);
+              collector->Write((long)batch->getSentenceIds()[i], sentVector);
           }
         };
 
         pool.enqueue(task, batchId++);
       }
     }
-    LOG(info, "Total time: {:.5f}s wall", timer.elapsed());
+  }
+
+  std::string getModelConfig() {
+    ABORT_IF(!modelWeights_, "Model weights are not loaded");
+    YAML::Emitter outYaml;
+    cli::OutputYaml(modelWeights_->getYamlFromModel(), outYaml);
+    return outYaml.c_str();
   }
 
 };

@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 - Fixed compilation with clang 16.0.6
-- Added Threads::Threads to EXT_LIBS
-
+- Added Threads::Threads to `EXT_LIBS`
+- Updates to pymarian: building for multiple python versions; disabling tcmalloc; hosting gated COMETs on HuggingFace
 
 ### Added
+- Added `--normalize-gradient-by-ratio` to mildly adapt gradient magnitude if effective batch size diverges from running average effective batch size.
+- Added `--no-optimizer-reload` to skip optimizer state loading during continued training or fallback.
+- Added `pymarian-eval`, CLI for scoring metrics
+- Added `--input-reorder pos1 pos2` option to re-ordering inputs internally when reading in batches. This is mostly a model property.
+- Added `pymarian`: python bindings based on pybind11
+- Added implementation of COMET-KIWI
+- Added implementation of xCOMET-XL/XXL regressor parts (MQM interpolation missing for now)
+- Added implementation of COMET-22 (reference-based) model and conversion
+- Added sparsemax operator (slow version)
+- Added sampling variants nucleus and epsilon, e.g. `--output-sampling nucleus 0.9` and `--output-sampling epsilon 0.02`, respectively.
+- Added ALIBI related options to new layer framework.
 - Added `--no-spm-encode` option, allowing the model to use vocabulary IDs directly to train/decode.
 - Added MSE and MAE costs to COMET-QE training.
 - Added augmentation of shuffled examples to COMET-QE training via `--comet-augment-bad`.
@@ -29,6 +40,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Do not mmap files for conversion via Quicksand API
+- Fixed ALiBI states and caching in new layer framework
+- Throw exception when forcing with FS vocabs
+- Fixed force-decoding with LSH
+- Fixed force-decoding for beam-size > 1
+- Fixed lost node in mt-detect metrics
+- Fixed BLEURT logmask computation
 - Fixed wrong paramter name for norm in new layer framework
 - Fixed unit test for LayerNorm
 - Only collect batch statistics during mini-batch-fit up to actual max-length.
@@ -37,6 +55,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
 
 ### Changed
+- Refactoring of model loading, mmapping happens now opportunistically, --mmap-models for decoding forces mmap and croaks if not possible.
 - Removed --num-devices N option that wasn't really used by anyone (I assume).
 
 

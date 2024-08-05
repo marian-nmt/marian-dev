@@ -36,7 +36,7 @@ namespace models {
 Ptr<EncoderBase> EncoderFactory::construct(Ptr<ExpressionGraph> graph) {
   if(options_->get<std::string>("type") == "s2s")
     return New<EncoderS2S>(graph, options_);
-  
+
   if(options_->get<std::string>("type") == "laser" || options_->get<std::string>("type") == "laser-sim")
     return New<EncoderLaser>(graph, options_);
 
@@ -134,12 +134,16 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
   Ptr<ExpressionGraph> graph = nullptr; // graph unknown at this stage
   // clang-format off
 
-  if(type == "comet-qe" || type == "comet") {
-    if(type == "comet") {
-      ABORT_IF(use == usage::training, "Usage {} is not supported for model of type {}", (int)use, type); 
-      ABORT_IF(use == usage::scoring, "Usage {} is not supported for model of type {}", (int)use, type); 
+  if(type == "comet-qe" || type == "comet" || type == "comet-unified") {
+    if(type == "comet" || type == "comet-unified") {
+      ABORT_IF(use == usage::training, "Usage {} is not supported for model of type {}", (int)use, type);
+      ABORT_IF(use == usage::scoring, "Usage {} is not supported for model of type {}", (int)use, type);
     }
-    
+
+    if(type == "comet-unified") {
+      LOG_ONCE(warn, "Warning: For xCOMET-XL/XXL - this is currently only an implementation of the regressor part and does not include the interpolation with MQM scores");
+    }
+
     auto inputTypes = options->get<std::vector<std::string>>("input-types");
     ABORT_IF(inputTypes.empty(),
       "Required option --input-types for COMET-QE not set. "
@@ -149,7 +153,7 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     int shift = 0;
     if(inputTypes[0] == "class")
       shift = 1;
-    
+
     auto newOptions = options->with("usage", use);
     auto res = New<EncoderPooler>(newOptions);
 
@@ -160,24 +164,35 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     switch(use) {
       case usage::embedding:  numEncoders = 1; addEmbeddingPooler = true; break;
       case usage::raw:
-      case usage::evaluating:   
+      case usage::evaluating:
       case usage::scoring:
-      case usage::training:   numEncoders = (type == "comet-qe") ? 2 : 3; addMetricPooler = true; break;
-      default: ABORT("Usage {} is not supported for model of type {}", (int)use, type); 
+      case usage::training:
+        if(type == "comet-qe")
+          numEncoders = 2;
+        else if(type == "comet")
+          numEncoders = 3;
+        else if(type == "comet-unified")
+          numEncoders = 1;
+        else
+          ABORT("Unknown model type {}", type);
+
+        addMetricPooler = true;
+        break;
+      default: ABORT("Usage {} is not supported for model of type {}", (int)use, type);
     }
-  
+
     for(size_t i = 0; i < numEncoders; i++) {
       auto enc = New<CometBatchEncoder>(graph, newOptions->with("type", "transformer", "index", i + shift));
       enc->setName("CometEncoder"); // parameters will be shared
       res->push_back(enc);
     }
-    
+
     if(addEmbeddingPooler) {
       auto pooler = New<CometEmbeddingPooler>(graph, newOptions);
-      pooler->setName("CometEmbeddingPooler"); 
+      pooler->setName("CometEmbeddingPooler");
       res->push_back(pooler);
     }
-    
+
     if(addMetricPooler) {
       auto pooler = New<CometMetricPooler>(graph, newOptions);
       pooler->setName("CometQEPooler"); // @TODO: change name for different models
@@ -188,8 +203,8 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
   }
 
   if(type == "bleurt") {
-    ABORT_IF(use != usage::evaluating, "Usage other than 'evaluating' is not supported for model of type {}", type); 
-    
+    ABORT_IF(use != usage::evaluating, "Usage other than 'evaluating' is not supported for model of type {}", type);
+
     auto newOptions = options->with("usage", use);
     auto res = New<EncoderPooler>(newOptions);
 
@@ -202,11 +217,11 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     int shift = 0;
     if(inputTypes[0] == "class")
       shift = 1;
-    
+
     auto enc = New<BleurtBatchEncoder>(graph, newOptions->with("type", "transformer", "index", 0 + shift));
     enc->setName("BleurtEncoder");
     res->push_back(enc);
-          
+
     auto pooler = New<BleurtPooler>(graph, newOptions);
     pooler->setName("BleurtPooler");
     res->push_back(pooler);
@@ -236,8 +251,8 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
                                  "input-types", std::vector<std::string>({"sequence"}),
                                  "dim-vocabs", std::vector<int>(1, dimVocab));
     }
-    
-    auto res = New<EncoderPooler>(newOptions);      
+
+    auto res = New<EncoderPooler>(newOptions);
     if(options->get<bool>("compute-similarity", false)) {
       res->push_back(models::encoder(newOptions->with("index", 0)).construct(graph));
       res->push_back(models::encoder(newOptions->with("index", 1)).construct(graph));
@@ -270,15 +285,15 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
   else if(type == "transformer-new") {
     auto newOptions = options->with("usage", use);
     auto res = New<EncoderDecoder>(graph, newOptions);
-    
+
     auto enc = New<TransformerBatchEncoder>(graph, newOptions->with("type", "transformer"));
     enc->setName("TransformerBatchEncoder");
     res->push_back(enc);
-    
+
     auto dec = New<TransformerBatchDecoder>(graph, newOptions->with("type", "transformer"));
     dec->setName("TransformerBatchDecoder");
     res->push_back(dec);
-    
+
     return res;
   }
 
@@ -287,15 +302,15 @@ Ptr<IModel> createBaseModelByType(std::string type, usage use, Ptr<Options> opti
     if(tflavor && std::strcmp(tflavor, "experimental") == 0) {
       auto newOptions = options->with("usage", use);
       auto res = New<TransformerLegacy>(graph, newOptions);
-      
+
       auto enc = New<TransformerBatchEncoder>(graph, newOptions->with("type", "transformer"));
       enc->setName("TransformerBatchEncoder");
       res->push_back(enc);
-      
+
       auto dec = New<TransformerBatchDecoder>(graph, newOptions->with("type", "transformer"));
       dec->setName("TransformerBatchDecoder");
       res->push_back(dec);
-      
+
       return res;
     } else {
       auto newOptions = options->with("usage", use);

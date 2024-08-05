@@ -1,4 +1,4 @@
-# Config files from CMake
+.history*
 src/common/project_version.h
 src/common/git_revision.h
 src/common/build_info.cpp
@@ -48,6 +48,8 @@ pingme.txt
 # CMake files
 build
 build-*
+# pymarian wheels
+dist/
 
 # Examples
 examples/*/*.gz
@@ -62,3 +64,12 @@ examples/mnist/*ubyte
 
 .vs
 .vscode
+
+# Python : pymarian
+*.whl
+*.egg-info
+src/python/pymarian/_version.py
+src/python/tests/data
+__pycache__
+.pytest_cache
+

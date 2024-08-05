@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools >= 61.0", "pip >= 23.0"]   #NOTE: we had troubles with pip v22; it set name as UNKNOWN
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# where = ["."]  # ["."] by default
+include = ["pymarian*"]  # ["*"] by default
+# exclude = ["pymarian.tests*"]  # empty by default
+namespaces = true  # true by default
+
+
+[project]
+name = "pymarian"
+dynamic = ["version"]   # see [tool.setuptools.dynamic] below
+description = "Pymarian"
+readme = "README.md"
+authors = [
+  { name = "Marian Developers", email = "noreply@email.com" },
+]
+requires-python = ">=3.7"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+  "portalocker",
+  "pyyaml",
+  "tqdm",
+  "requests",
+  "huggingface-hub==0.23.1",
+]
+
+[project.scripts]
+pymarian-eval = "pymarian.eval:main"
+pymarian-qtdemo = "pymarian.qtdemo:main"
+pymarian-mtapi = "pymarian.mtapi_server:main"
+
+[project.optional-dependencies]
+test = ["pytest"]
+demos = [
+  "flask",
+  "sacremoses",
+  "pyqt5",
+  "sentence-splitter@git+https://github.com/mediacloud/sentence-splitter",
+]
+
+
+[tool.black]
+line-length = 110
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
+include = '.*\.pyi?$'
+skip-string-normalization = true
+
+# black doesn't sort imports. So we use isort for that. See discussion https://github.com/psf/black/issues/333
+[tool.isort]
+profile = "black"
+src_paths = ["src/python"]
+# isort  --check --diff src/python/

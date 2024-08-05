@@ -45,20 +45,20 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
     // They can be between 0 and (vocabSize * nBestBeamSize * batchSize)-1.
     // (beamHypIdx refers to the GPU tensors, *not* the beams[] array; they are not the same in case of purging)
     const auto  key = nBestKeys[i];
-    
+
     // decompose key into individual indices (batchIdx, beamHypIdx, wordIdx)
     const auto beamHypIdx      = (key / vocabSize) % nBestBeamSize;
     const auto currentBatchIdx = (key / vocabSize) / nBestBeamSize;
     const auto origBatchIdx    = reverseBatchIdxMap.empty() ? currentBatchIdx : reverseBatchIdxMap[currentBatchIdx]; // map currentBatchIdx back into original position within starting maximal batch size, required to find correct beam
     bool dropHyp = !dropBatchEntries.empty() && dropBatchEntries[origBatchIdx] && factorGroup == 0;
-    
+
     WordIndex wordIdx;
     if(dropHyp) { // if we force=drop the hypothesis, assign EOS, otherwise the expected word id.
       if(factoredVocab) { // when using factoredVocab, extract the EOS lemma index from the word id, we predicting factors one by one here, hence lemma only
         std::vector<size_t> eosFactors;
         factoredVocab->word2factors(factoredVocab->getEosId(), eosFactors);
         wordIdx = (WordIndex)eosFactors[0];
-      } else { // without factoredVocab lemma index and word index are the same. Safe cruising. 
+      } else { // without factoredVocab lemma index and word index are the same. Safe cruising.
         wordIdx = trgVocab_->getEosId().toWordIndex();
       }
     } else { // we are not dropping anything, just assign the normal index
@@ -66,9 +66,9 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
     }
 
     // @TODO: We currently assign a log probability of 0 to all beam entries of the dropped batch entry, instead it might be a good idea to use
-    // the per Hyp pathScore without the current expansion (a bit hard to obtain). 
-    // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better. 
-    // For the empty hyp this would naturally result in 0, too. 
+    // the per Hyp pathScore without the current expansion (a bit hard to obtain).
+    // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better.
+    // For the empty hyp this would naturally result in 0, too.
     const float pathScore = dropHyp ? 0.f : nBestPathScores[i]; // 0 (Prob = 1, maximum score) if dropped or expanded path score for (batchIdx, beamHypIdx, word)
 
     const auto& beam = beams[origBatchIdx];
@@ -78,8 +78,7 @@ Beams BeamSearch::toHyps(const std::vector<unsigned int>& nBestKeys, // [current
       continue;
     if(pathScore == INVALID_PATH_SCORE) // (dummy slot or word that cannot be expanded by current factor)
       continue;
-    
-    ABORT_IF(pathScore < INVALID_PATH_SCORE, "Actual pathScore ({}) is lower than INVALID_PATH_SCORE ({})??", pathScore, INVALID_PATH_SCORE); // This should not happen in valid situations. Currently the only smaller value would be -inf (effect of overflow in summation?)
+
     ABORT_IF(beamHypIdx >= beam.size(), "Out of bounds beamHypIdx??"); // effectively this is equivalent to ABORT_IF(beams[origBatchIdx].empty(), ...)
 
     // map wordIdx to word
@@ -299,23 +298,23 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
   Expr suppressedWordIndices;
   bool suppressUnk     = !options_->get<bool>("allow-unk", false);
   bool suppressSpecial = !options_->get<bool>("allow-special", false);
+
+  auto shortlist = scorers_[0]->getShortlist(); // first shortlist is generally ok, @TODO: make sure they are the same across scorers?
   if (suppressUnk || suppressSpecial) { // do we need to suppress unk or special?
     std::vector<WordIndex> suppressed = trgVocab_->suppressedIndices(suppressUnk, suppressSpecial);
-
-    auto shortlist = scorers_[0]->getShortlist(); // first shortlist is generally ok, @TODO: make sure they are the same across scorers?
     if(shortlist) // check if suppressed words are allowed by the shortlist, if not, remove
-      suppressed.erase(std::remove_if(suppressed.begin(), 
-                                      suppressed.end(), 
-                                      [&](WordIndex i) { 
+      suppressed.erase(std::remove_if(suppressed.begin(),
+                                      suppressed.end(),
+                                      [&](WordIndex i) {
                                         return shortlist->tryForwardMap(i) == data::Shortlist::npos;
                                       }),
                        suppressed.end());
-    
+
     if(!suppressed.empty())
       suppressedWordIndices = graph->indices(suppressed);
   }
 
-  auto distMod = New<DistModifier>(options_, batch, INVALID_PATH_SCORE);
+  auto distMod = New<DistModifier>(graph, options_, batch, INVALID_PATH_SCORE, shortlist);
 
   // the decoding process updates the following state information in each output time step:
   //  - beams: array [origDimBatch] of array [maxBeamSize] of Hypothesis
@@ -358,7 +357,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
 
       bool anyCanExpand = false; // stays false if all hyps are invalid factor expansions
       if(t == 0 && factorGroup == 0) { // no scores yet
-        prevPathScores = graph->constant({1, 1, 1, 1}, inits::fromValue(0));
+        prevPathScores = graph->constant({1, 1, 1, 1}, inits::fromValue(0), Type::float32);
         anyCanExpand = true;
 
         // at the beginning all batch entries are used
@@ -407,7 +406,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
         }
         if(factorGroup == 0)
           currentDimBatch = (IndexType) batchIndices.size(); // keep batch size constant for all factor groups in a time step
-        prevPathScores = graph->constant({(int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores));
+        prevPathScores = graph->constant({(int)maxBeamSize, 1, (int)currentDimBatch, 1}, inits::fromVector(prevScores), Type::float32);
       }
       if (!anyCanExpand) // all words cannot expand this factor: skip
         continue;
@@ -433,8 +432,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           if (numFactorGroups == 1) { // @TODO: this branch can go away
             logProbs = states[i]->getLogProbs().getLogits(); // [maxBeamSize, 1, currentDimBatch, dimVocab]
           } else {
-            auto shortlist = scorers_[i]->getShortlist();
-            logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, shortlist); // [maxBeamSize, 1, currentDimBatch, dimVocab]
+            logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, scorers_[i]->getShortlist()); // [maxBeamSize, 1, currentDimBatch, dimVocab]
           }
         }
         else {
@@ -450,19 +448,27 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
           logProbs = states[i]->getLogProbs().getFactoredLogits(factorGroup, /*shortlist=*/ nullptr, hypIndices, maxBeamSize); // [maxBeamSize, 1, currentDimBatch, dimVocab]
         }
         // expand all hypotheses, [maxBeamSize, 1, currentDimBatch, 1] -> [maxBeamSize, 1, currentDimBatch, dimVocab]
-        if(i == 0)
-          stepScores = scorers_[i]->getWeight() * logProbs;
-        else
+        if(i == 0) {
+          stepScores =              scorers_[i]->getWeight() * logProbs;
+        } else {
           stepScores = stepScores + scorers_[i]->getWeight() * logProbs;
+        }
       }
+
+      // we cast (ensembled) scores to float32, as accumulated them into path scores;
+      // also beneficial for sampling etc.
+      // @TODO:: consider doing this before ensembling
+      stepScores = cast(stepScores, Type::float32);
 
       if(factorGroup == 0) {
         stepScores = distMod->force(stepScores, (int)t, (int)maxBeamSize, batchIndices);
-        stepScores = distMod->sample(stepScores);
+        stepScores = distMod->sample(stepScores, /*normalize=*/true);
       }
 
       // make beams continuous
       auto expandedPathScores = prevPathScores + stepScores; // will become [maxBeamSize, 1, currDimBatch, dimVocab]
+
+      // this transpose is required for the combined top-k search below
       expandedPathScores = swapAxes(expandedPathScores, 0, 2); // -> [currentDimBatch, 1, maxBeamSize, dimVocab]
 
       // perform NN computation
@@ -475,7 +481,7 @@ Histories BeamSearch::search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> 
       // suppress specific symbols if not at right positions
       // @TODO: move this to DistributionModifier
       if(suppressedWordIndices && factorGroup == 0)
-        suppressWords(expandedPathScores, suppressedWordIndices);
+        suppressWords(expandedPathScores, suppressedWordIndices); // @TODO: this is probably not working correctly for LSH short list
 
       //**********************************************************************
       // perform beam search

@@ -8,9 +8,11 @@ namespace nn {
 
 struct CellState {
   Expr recurrent;
+  size_t position = 0;
 };
 
 struct ICell {
+  virtual void initState(Ptr<CellState> state) const = 0;
   virtual std::vector<Expr> applyToInput(Expr input) const = 0;
   virtual Expr applyToState(const std::vector<Expr>& inputs, Expr mask, Ptr<CellState> state) const = 0;
 };
@@ -35,15 +37,20 @@ public:
     registerLayer(dropout);
   }
 
+  virtual void initState(Ptr<CellState> state) const override {
+    state->recurrent = graph()->constant({1, 1, 1, dimState}, inits::zeros());
+    state->position = 0;
+  }
+
   std::vector<Expr> applyToInput(Expr input) const override {
     int dimModel = input->shape()[-1];
     ABORT_IF(dimModel != dimState, "Model dimension {} has to match state dimension {}", dimModel, dimState);
 
     input = dropout->apply(input);
-    
+
     Expr output = iProj->apply(input);
     Expr forget = fProj->apply(input);
-    
+
     return {output, forget};
   }
 
@@ -72,7 +79,7 @@ public:
   Ptr<Cell> cell;
   Ptr<Linear> oProj;
 
-  RNN(Ptr<ExpressionGraph> graph, int dimState, bool outputProjection = false) 
+  RNN(Ptr<ExpressionGraph> graph, int dimState, bool outputProjection = false)
   : Layer(graph) {
     cell = New<Cell>(graph, dimState);
     registerLayer(cell);
@@ -81,6 +88,14 @@ public:
       oProj = New<Linear>(graph, dimState);
       registerLayer(oProj);
     }
+  }
+
+  virtual void initState(Ptr<DecoderState> state) const override {
+    ABORT("Remove this abort once this is actually used in the decoder");
+    auto cellState = New<CellState>();
+    cell->initState(/*in/out=*/cellState);
+    state->as<nn::DecoderStateItem>()->set(cellState->recurrent);
+    state->setPosition(cellState->position);
   }
 
   virtual Expr apply(Expr input, Expr inputMask = nullptr) const override {
@@ -92,28 +107,33 @@ public:
     auto cellState = New<CellState>();
     cellState->recurrent = state->as<nn::DecoderStateItem>()->get();
 
+    // during decoding time is of dimension 1, so this is a no-op (reshape in fact)
     input = swapTimeBatch(input); // [beam, time, batch, dim]
     if(inputMask)
+      // same here
       inputMask = swapTimeBatch(inputMask);
     int dimTimeAxis = -3;
-    
+
     std::vector<Expr> inputs = cell->applyToInput(input);
 
+    // @TODO: this could be implemented as a special kernel/operator
     std::vector<Expr> outputs;
     for(int i = 0; i < input->shape()[dimTimeAxis]; ++i) {
       std::vector<Expr> stepInputs(inputs.size());
       std::transform(inputs.begin(), inputs.end(), stepInputs.begin(),
                      [i, dimTimeAxis](Expr e) { return slice(e, dimTimeAxis, i); });
+      cellState->position = state->getPosition() + i;
       auto stepMask = inputMask;
       if(stepMask)
          stepMask = slice(inputMask, dimTimeAxis, i);
-      
+
       Expr output = cell->applyToState(stepInputs, stepMask, /*in/out=*/cellState);
       outputs.push_back(output);
     }
 
     state->as<nn::DecoderStateItem>()->set(cellState->recurrent);
-    
+
+    // during decoding again, this is a no-op
     Expr output = swapTimeBatch(concatenate(outputs, dimTimeAxis));
     if(oProj)
       output = oProj->apply(output);

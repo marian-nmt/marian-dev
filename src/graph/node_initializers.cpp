@@ -36,7 +36,7 @@ class LambdaInitConvert : public NodeInitializer {
   private:
     std::function<void(Tensor)> lambda_;
     Type intermediateType_; // is used for the creation of a temporary intermediate tensor on which the lambda actually operates.
-                            // This tensor is then automatically cast and copied to the type of the actual tensor. 
+                            // This tensor is then automatically cast and copied to the type of the actual tensor.
 
   public:
     LambdaInitConvert(std::function<void(Tensor)>&& lambda,
@@ -195,25 +195,24 @@ Ptr<NodeInitializer> fromWord2vec(const std::string& file,
 
 Ptr<NodeInitializer> fromItem(const io::Item& item) {
   if(item.mapped) {
-    return fromLambda([item](Tensor tensor) {
-      // @TODO: implement other types, for now croak loudly.
-      ABORT_IF(tensor->getBackend()->getDeviceId().type != DeviceType::cpu,
-               "Memory mapping only works for CPU tensors");
-      ABORT_IF(tensor->type() != item.type,
-               "Tensor type ({}) and type for mapping ({}) do not match",
-               tensor->type(),
-               item.type);
-      ABORT_IF(tensor->shape() != item.shape,
-               "Tensor shape ({}) and shape of mapped item ({}) do not match",
-               tensor->shape(),
-               item.shape);
-      auto mp = MemoryPiece::New((uint8_t*)item.ptr, item.size()); // @TODO: this is not properly aligned now
-      tensor->reset(mp);
-    });
+    return fromLambda([&item](Tensor tensor) {
+      if(tensor->getBackend()->getDeviceId().type != DeviceType::cpu) {
+        tensor->set(item);
+      } else {
+        ABORT_IF(tensor->type() != item.type,
+                "Tensor type ({}) and type for mapping ({}) do not match",
+                tensor->type(),
+                item.type);
+        ABORT_IF(tensor->shape() != item.shape,
+                "Tensor shape ({}) and shape of mapped item ({}) do not match",
+                tensor->shape(),
+                item.shape);
+        auto mp = MemoryPiece::New((uint8_t*)item.ptr, item.size()); // @TODO: this is not properly aligned now
+        tensor->reset(mp);
+      }
+    }, item.type);
   } else {
-    return fromLambda(
-      [item](Tensor tensor) { tensor->set(item); },
-      item.type);
+    return fromLambda([&item](Tensor tensor) { tensor->set(item); }, item.type);
   }
 }
 
@@ -223,9 +222,10 @@ Ptr<NodeInitializer> fromTensor(Tensor externalTensor) {
 
 // Computes Google's sinusoidal position embeddings
 Ptr<NodeInitializer> sinusoidalPositionEmbeddings(int start) {
-  return fromLambda([start](Tensor t) { SinusoidalPositionEmbeddings(t, start); }); 
+  return fromLambda([start](Tensor t) { SinusoidalPositionEmbeddings(t, start); });
 }
 
+// @TODO: this is rather inefficient also needs axis argument or something
 // computes the equivalent of Python's range()
 template <typename T>
 Ptr<NodeInitializer> range(T begin, T end, T step) {

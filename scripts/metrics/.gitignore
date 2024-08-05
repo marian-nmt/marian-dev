@@ -1,2 +1,4 @@
-bins/
+/bins
 tmp.*
+/workspace
+/marian-metric

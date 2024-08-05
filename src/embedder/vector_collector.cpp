@@ -109,6 +109,10 @@ Ptr<VectorCollector> VectorCollector::Create(Ptr<Options> options) {
   return collector;
 }
 
+void BufferedVectorCollector::WriteVector(const std::vector<float>& vec) {
+  buffer.push_back(vec);
+}
+
 const size_t VectorCollector::DEFAULT_WIDTH = 4;
 
 }  // namespace marian

@@ -3,6 +3,8 @@
 #include "common/filesystem.h"
 #include "common/version.h"
 
+#include "models/transformer_new.h"
+
 namespace marian {
 
 EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
@@ -71,6 +73,12 @@ EncoderDecoder::EncoderDecoder(Ptr<ExpressionGraph> graph, Ptr<Options> options)
 
   modelFeatures_.insert("transformer-no-bias");
   modelFeatures_.insert("transformer-no-affine");
+
+  modelFeatures_.insert("transformer-disable-position-embeddings");
+  modelFeatures_.insert("transformer-attention-mask");
+  modelFeatures_.insert("transformer-alibi-shift");
+  modelFeatures_.insert("transformer-alibi-trainable");
+  modelFeatures_.insert("separator-symbol");
 }
 
 std::vector<Ptr<EncoderBase>>& EncoderDecoder::getEncoders() {
@@ -151,21 +159,9 @@ std::string EncoderDecoder::getModelParametersAsString() {
 }
 
 void EncoderDecoder::load(Ptr<ExpressionGraph> graph,
-                          const std::vector<io::Item>& items,
+                          Ptr<io::ModelWeights> modelFile,
                           bool markedReloaded) {
-  graph->load(items, markedReloaded && !opt<bool>("ignore-model-config", false));
-}
-
-void EncoderDecoder::load(Ptr<ExpressionGraph> graph,
-                          const std::string& name,
-                          bool markedReloaded) {
-  graph->load(name, markedReloaded && !opt<bool>("ignore-model-config", false));
-}
-
-void EncoderDecoder::mmap(Ptr<ExpressionGraph> graph,
-                          const void* ptr,
-                          bool markedReloaded) {
-  graph->mmap(ptr, markedReloaded && !opt<bool>("ignore-model-config", false));
+  graph->load(modelFile, markedReloaded && !opt<bool>("ignore-model-config", false));
 }
 
 void EncoderDecoder::save(Ptr<ExpressionGraph> graph,
@@ -183,10 +179,22 @@ void EncoderDecoder::save(Ptr<ExpressionGraph> graph,
 void EncoderDecoder::clear(Ptr<ExpressionGraph> graph) {
   graph->clear();
 
-  for(auto& enc : encoders_)
+  for(auto& enc : encoders_) {
     enc->clear();
-  for(auto& dec : decoders_)
+    // this cast looks redundant, but TransformerBatchEncoder has two base clases with clear()
+    // so we need to cast here and call explicitly. Should be removed once we switch to the new
+    // layer framework everywhere.
+    auto encNew = std::dynamic_pointer_cast<TransformerBatchEncoder>(enc);
+    if(encNew)
+      encNew->clear();
+  }
+  for(auto& dec : decoders_) {
     dec->clear();
+    // Same as above, but TransformerBatchDecoder
+    auto decNew = std::dynamic_pointer_cast<TransformerBatchDecoder>(dec);
+    if(decNew)
+      decNew->clear();
+  }
 }
 
 Ptr<DecoderState> EncoderDecoder::startState(Ptr<ExpressionGraph> graph,
@@ -210,13 +218,14 @@ Ptr<DecoderState> EncoderDecoder::step(Ptr<ExpressionGraph> graph,
                                        const Words& words,                         // [beamIndex * activeBatchSize + batchIndex]
                                        const std::vector<IndexType>& batchIndices, // [batchIndex]
                                        int beamSize) {
+
   // create updated state that reflects reordering and dropping of hypotheses
-  state = hypIndices.empty() ? state : state->select(hypIndices, batchIndices, beamSize);
+  state = hypIndices.empty() ? state : state->select(hypIndices, words, batchIndices, beamSize);
 
   // Fill state with embeddings based on last prediction
-  decoders_[0]->embeddingsFromPrediction(graph, state, words, (int) batchIndices.size(), beamSize);
+  decoders_[0]->embeddingsFromPrediction(graph, state, words, (int)batchIndices.size(), beamSize);
   auto nextState = decoders_[0]->step(graph, state);
-  
+
   return nextState;
 }
 

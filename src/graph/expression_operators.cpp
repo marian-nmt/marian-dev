@@ -102,8 +102,7 @@ Expr operator-(Expr a) {
   return Expression<NegNodeOp>(a);
 };
 
-Expr softmax(Expr a, int axis /*=-1*/)
-{
+Expr softmax(Expr a, int axis /*=-1*/) {
   // @TODO: move axis parameter down into the kernel
   if (axis != -1)
   {
@@ -127,6 +126,34 @@ Expr softmax(Expr a, Expr zeroOneMask, int axis /*=-1*/) {
 // @TODO: add mask
 Expr logsoftmax(Expr a) {
   return Expression<LogSoftmaxNodeOp>(a);
+}
+
+// based on https://proceedings.mlr.press/v48/martins16.pdf for k equal to full dimension.
+Expr sparsemax(Expr z, int axis/*=-1*/) {
+  // we currently assume that k == modelDim and that we apply the sparse max to the last dimension
+
+  auto graph = z->graph();
+
+  int dimk = z->shape()[axis]; // assuming axis==-1 for dimension comments
+  Type fType = z->value_type();
+
+  // cast to float32 for better precision
+  auto z32 = cast(z, Type::float32);                     // [dimBatch, dimTime, dimk]
+
+  const auto& [zSorted, zIndices] = sort(z32, /*axis=*/axis, /*descending=*/true);
+  auto zCumSum = cumsum(zSorted, /*axis=*/axis);            // [dimBatch, dimTime, dimk]
+
+  auto k       = graph->constant({dimk}, inits::range(1.f, (float)(dimk + 1)), Type::float32);
+  auto kMask   = gt(1.f + k * zSorted, zCumSum);                // [dimBatch, dimTime, dimk]
+  auto kMax    = max(kMask * k, /*axis=*/axis);                 // [dimBatch, dimTime, 1]
+  auto kMaxIdx = cast(kMax - 1.f, Type::uint32);                // [dimBatch, dimTime, 1]
+  auto zNum    = index_select(zCumSum, /*axis=*/axis, kMaxIdx); // [dimBatch, dimTime, 1]
+  auto tau     = (zNum - 1.f) / kMax;                           // [dimBatch, dimTime, 1]
+
+  auto zSparsemax = maximum(z32 - tau, 0.f);                    // [dimBatch, dimTime, dimk]
+
+  // cast back to original type
+  return cast(zSparsemax, fType);
 }
 
 /*********************************************************/
@@ -177,13 +204,35 @@ Expr2 argmin(Expr a, int axis) {
   return topk(a, 1, axis, /*descending=*/false);
 }
 
+Expr2 sort(Expr a, int axis, bool descending) {
+  // only supports sort along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1);                              // non-op if axes are the same
+  auto sortedVal = Expression<SortNodeOp>(a, /*axis=*/-1, descending); // axis=-1 is OK now as we swapped
+  auto sortedIdx = std::dynamic_pointer_cast<SortNodeOp>(sortedVal)->tupleView(); // get a view on the sorted values
+  return std::make_tuple(swapAxes(sortedVal, axis, -1), swapAxes(sortedIdx, axis, -1)); // non-op if axes are the same
+}
+
+Expr cumsum(Expr a, int axis, bool reverse, bool exclusive) {
+  // only supports sort along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1); // non-op if axes are the same
+  auto cumsums = Expression<CumSumNodeOp>(a, axis, reverse, exclusive);
+  return swapAxes(cumsums, axis, -1); // non-op if axes are the same
+}
+
+Expr logcumsumexp(Expr a, int axis, bool reverse, bool exclusive, bool fast) {
+  // only supports sort along last dimension, hence transpose if required
+  a = swapAxes(a, axis, -1); // non-op if axes are the same
+  auto logcumsums = Expression<LogCumSumExpNodeOp>(a, axis, reverse, exclusive, fast);
+  return swapAxes(logcumsums, axis, -1); // non-op if axes are the same
+}
+
 Expr maximum(Expr a, Expr b) {
   return Expression<MaximumNodeOp>(a, b);
 }
 
 // @TODO: implement version without constant
 Expr maximum(float a, Expr b) {
-  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  auto aExpr = b->graph()->constant({1}, inits::fromValue(a), b->value_type());
   return Expression<MaximumNodeOp>(aExpr, b);
 }
 
@@ -197,7 +246,7 @@ Expr minimum(Expr a, Expr b) {
 
 // @TODO: implement version without constant
 Expr minimum(float a, Expr b) {
-  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  auto aExpr = b->graph()->constant({1}, inits::fromValue(a), b->value_type());
   return Expression<MinimumNodeOp>(aExpr, b);
 }
 
@@ -216,19 +265,19 @@ Expr ge(Expr a, Expr b) { return Expression<CmpNodeOp>(a, b, -1,  true); }
 Expr ne(Expr a, Expr b) { return Expression<CmpNodeOp>(a, b,  0,  true); }
 Expr le(Expr a, Expr b) { return Expression<CmpNodeOp>(a, b,  1,  true); }
 
-Expr lt(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({}, inits::fromValue(a), b->value_type()), b, -1, false); }
-Expr eq(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({}, inits::fromValue(a), b->value_type()), b,  0, false); }
-Expr gt(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({}, inits::fromValue(a), b->value_type()), b,  1, false); }
-Expr ge(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({}, inits::fromValue(a), b->value_type()), b, -1,  true); }
-Expr ne(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({}, inits::fromValue(a), b->value_type()), b,  0,  true); }
-Expr le(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({}, inits::fromValue(a), b->value_type()), b,  1,  true); }
+Expr lt(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({1}, inits::fromValue(a), b->value_type()), b, -1, false); }
+Expr eq(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({1}, inits::fromValue(a), b->value_type()), b,  0, false); }
+Expr gt(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({1}, inits::fromValue(a), b->value_type()), b,  1, false); }
+Expr ge(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({1}, inits::fromValue(a), b->value_type()), b, -1,  true); }
+Expr ne(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({1}, inits::fromValue(a), b->value_type()), b,  0,  true); }
+Expr le(float a, Expr b) { return Expression<CmpNodeOp>(b->graph()->constant({1}, inits::fromValue(a), b->value_type()), b,  1,  true); }
 
-Expr lt(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({}, inits::fromValue(b), a->value_type()), -1, false); }
-Expr eq(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({}, inits::fromValue(b), a->value_type()),  0, false); }
-Expr gt(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({}, inits::fromValue(b), a->value_type()),  1, false); }
-Expr ge(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({}, inits::fromValue(b), a->value_type()), -1,  true); }
-Expr ne(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({}, inits::fromValue(b), a->value_type()),  0,  true); }
-Expr le(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({}, inits::fromValue(b), a->value_type()),  1,  true); }
+Expr lt(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({1}, inits::fromValue(b), a->value_type()), -1, false); }
+Expr eq(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({1}, inits::fromValue(b), a->value_type()),  0, false); }
+Expr gt(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({1}, inits::fromValue(b), a->value_type()),  1, false); }
+Expr ge(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({1}, inits::fromValue(b), a->value_type()), -1,  true); }
+Expr ne(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({1}, inits::fromValue(b), a->value_type()),  0,  true); }
+Expr le(Expr a, float b) { return Expression<CmpNodeOp>(a, a->graph()->constant({1}, inits::fromValue(b), a->value_type()),  1,  true); }
 
 /*********************************************************/
 
@@ -280,23 +329,22 @@ Expr operator/(Expr a, float b) {
 
 // TODO: efficient version of this without constant()
 Expr operator/(float a, Expr b) {
-  auto aExpr = b->graph()->constant({}, inits::fromValue(a));
+  auto aExpr = b->graph()->constant({1}, inits::fromValue(a), b->value_type());
   return aExpr / b;
 }
 
-// Expr pow(float a, Expr b) {
-//  return Expression<Scalar1PowNodeOp>(a, b);
-//
-//}
-//
-// Expr pow(Expr a, float b) {
-//  return Expression<Scalar2PowNodeOp>(a, b);
-//
-//}
-//
-// Expr pow(Expr a, Expr b) {
-//  return Expression<PowNodeOp>(a, b);
-//}
+// @TODO: implement proper operators for all three:
+Expr pow(float a, Expr b) {
+  return exp(std::log(a) * b);
+}
+
+Expr pow(Expr a, float b) {
+  return exp(log(a) * b);
+}
+
+Expr pow(Expr a, Expr b) {
+  return exp(log(a) * b);
+}
 
 /*********************************************************/
 

@@ -8,6 +8,10 @@ GraphGroup::GraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     devices_(Config::getDevices(options, mpi->myMPIRank(), mpi->numMPIProcesses())),
     shardingMode_(getShardingMode(options_, mpi)),
     mbRoundUp_(options_->get<bool>("mini-batch-round-up", true)) {
+
+  normalizeGradient_ = options_->get<bool>("normalize-gradient", false);
+  normalizeGradientByAverageRatio_ = options_->get<bool>("normalize-gradient-by-ratio", false);
+
   if(options_->hasAndNotEmpty("cost-scaling")) {
     auto vcs = options_->get<std::vector<std::string>>("cost-scaling");
 
@@ -16,7 +20,7 @@ GraphGroup::GraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
     if(vcs.size() > 1) costScalingFreq_          = std::stoul(vcs[1]);
     if(vcs.size() > 2) costScalingMultiplier_    = std::stof( vcs[2]);
     if(vcs.size() > 3) costScalingFactorMinimum_ = std::stof( vcs[3]);
-    
+
     LOG_ONCE(info,
              "Training with cost scaling - factor: {}, frequency: {}, multiplier: {}, minimum: {}",
              costScalingFactor_,
@@ -69,7 +73,7 @@ GraphGroup::GraphGroup(Ptr<Options> options, Ptr<IMPIWrapper> mpi)
 void GraphGroup::initGraphsAndOpts() {
   for(auto device : devices_) {
     auto graph = New<ExpressionGraph>();
-    
+
     // @TODO: validate precisions in config
     auto precisions = options_->get<std::vector<std::string>>("precision");
     Type parameterType = typeFromString(precisions[0]);
@@ -81,7 +85,7 @@ void GraphGroup::initGraphsAndOpts() {
       graph->setThrowNaN(true);
 
     graph->setDevice(device);
-    
+
     graph->reserveWorkspaceMB(options_->get<int>("workspace"));
 
     graphs_.push_back(graph);
@@ -156,7 +160,7 @@ void GraphGroup::decreaseCostScaleFactor() {
     return;
 
   nanSeen_++;
-  
+
   size_t total = nanSeen_ + noNanSeen_;
 
   // do not reduce cost-scaling factor below minimum
@@ -177,15 +181,15 @@ void GraphGroup::decreaseCostScaleFactor() {
 
 float GraphGroup::checkNanOrNorm(size_t i, size_t begin, size_t end) {
   auto curGrad = graphs_[i]->params()->grads()->subtensor(begin, end-begin);
-  
+
   // If costScaling_ then check for NaN values if the costScalingFactor_ is larger than
-  // the minimum. If a NaN value is seen we exit here and will reduce the factor next and 
-  // this skips an update. 
-  // If costScalingFactor_ is already at the minimum, prune the NaN values away. This replaces 
+  // the minimum. If a NaN value is seen we exit here and will reduce the factor next and
+  // this skips an update.
+  // If costScalingFactor_ is already at the minimum, prune the NaN values away. This replaces
   // NaNs with 0. Updates are not skipped any more.
   // Regardless of NaNs, we clip +/-inf to the largest corresponding values for the gradient value type.
-  // This changes the gradient but seems to be quite stable. In effect, for fp16 this is equivalent 
-  // to gradient clipping at (65504.f / costScalingFactor_) which in most cases is still large. 
+  // This changes the gradient but seems to be quite stable. In effect, for fp16 this is equivalent
+  // to gradient clipping at (65504.f / costScalingFactor_) which in most cases is still large.
   if(costScaling_ || checkGradientNan_) {
     bool pruneNaN = !checkGradientNan_ && costScalingFactor_ == costScalingFactorMinimum_;
     bool clipInf  = !checkGradientNan_;
@@ -206,7 +210,7 @@ float GraphGroup::checkNanOrNorm(size_t i, size_t begin, size_t end) {
     auto gNorm = L2Norm(curGrad, graphs_[i]->allocator());
     if(isFinite(gNorm) && gNorm > 0.0)
       return gNorm;
-    else 
+    else
       return std::numeric_limits<float>::quiet_NaN();
   }
 
@@ -218,10 +222,10 @@ float GraphGroup::executeAndCollectNorm(const std::function<float(size_t, size_t
   if(mpi_) { // accumulate gradientNorm from subprocesses
     auto gradNormSquared = gradNorm * gradNorm; // undo sqrt
     mpi_->allReduce(&gradNormSquared, &gradNormSquared, 1, MPI_FLOAT, MPI_SUM); // sum all
-    
+
     if(shardingMode_ == ShardingMode::local) // we already have the correct norm on one device, but we also need to check for NaN
       gradNormSquared /= (float)mpi_->numMPIProcesses();
-    
+
     gradNorm = std::sqrt(gradNormSquared); // redo sqrt
   }
   return gradNorm;
@@ -234,27 +238,36 @@ float GraphGroup::executeAndCollectNorm(const std::function<float(size_t, size_t
  * - normalize the gradient by the number of words in a batch if requested (turning ce-sum in to ce-mean). @TODO: once fp16 stability issues are proven to not be caused by this, remove.
  * - re-scale the gradient based on a dynamic running average of gradient norms
  */
-float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords) {
+float GraphGroup::computeNormalizationFactor(float gNorm, size_t effectiveBatchSize) {
   float normalizationFactor = 1.f;
 
   if(costScaling_)
     normalizationFactor *= costScalingFactor_;
 
-  if(options_->get<bool>("normalize-gradient"))
-    normalizationFactor *= updateTrgWords;
+  if(normalizeGradient_)
+    normalizationFactor *= effectiveBatchSize;
+
+  if(normalizeGradientByAverageRatio_) {
+    // keep track of average effective batch size
+    updateAverageEffectiveBatchSize(effectiveBatchSize);
+    // this slightly adapts the gradient magnitude if the batch size changes drastically,
+    // in practice this will only matter if we grow the batch in larger steps. In that case
+    // the gradient magnitude is reduced until after a couple of updates that goes back to ~1.
+    normalizationFactor *= effectiveBatchSize / getAverageEffectiveBatchSize();
+  }
 
   if(!isFinite(gNorm)) // we are checking the sanity of the gradient elsewhere
     return normalizationFactor;
-  
+
   if(dynamicGradientScaling_) {
     // make gradient norm invariant to changes in costScalingFactor_, luckily norm(c * g) = c * norm(g)
     if(costScaling_)
       gNorm = gNorm / costScalingFactor_;
-    
-    // Normalize gradient norm w.r.t. number of labels in batch for statistics, 
+
+    // Normalize gradient norm w.r.t. number of labels in batch for statistics,
     // there should be no gradient normalization before this point, @TODO: check this
-    gNorm = gNorm / updateTrgWords; 
-    
+    gNorm = gNorm / effectiveBatchSize;
+
     size_t window; float gNormAvgTransform, gNormVarTransform, gNormTransform, gNormAvg;
     if(dynamicGradientScalingUseLogs_) {
       // tracking the log of the gradient norms rather than the gradient norms itself results in a larger standard deviation as the actual
@@ -265,9 +278,9 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
     } else {
       std::tie(window, gNormAvgTransform, gNormVarTransform) = scheduler_->getGradientNormStats();
       gNormTransform = gNorm;              // we are not using logs, so we can just use the normal gradient norm
-      gNormAvg       = gNormAvgTransform;  // we are getting the actual running average of gradient norms, no transformation needed.  
+      gNormAvg       = gNormAvgTransform;  // we are getting the actual running average of gradient norms, no transformation needed.
     }
-    
+
     auto deltaTransform    = gNormTransform - gNormAvgTransform; // compute the difference between the current transformer gradient norm and the running average.
     auto gNormStdTransform = std::sqrt(gNormVarTransform);       // compute STD for the running average of (log) gradient norms.
 
@@ -283,7 +296,7 @@ float GraphGroup::computeNormalizationFactor(float gNorm, size_t updateTrgWords)
         LOG(debug, "log gradient norms: {} :: {:.4f} - {:.4f} = {:.4f} > {:.4f} * {:.4f} - scaling gradient by {:.4f}",
             dynamicGradientScalingUseLogs_, gNormTransform, gNormAvgTransform, deltaTransform, dynamicGradientScalingFactorWithFadeout, gNormStdTransform, gNormAvg / gNorm);
 
-      normalizationFactor *= gNorm / gNormAvg; // since we later do gradient / normalizationFactor this divides by norm and multiplies by the average, rescaling to the average. 
+      normalizationFactor *= gNorm / gNormAvg; // since we later do gradient / normalizationFactor this divides by norm and multiplies by the average, rescaling to the average.
     }
   }
 
@@ -322,7 +335,7 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
     std::string modelFileName = options_->get<std::string>("model");
     bool foundModel = false;
 
-    // these are structures that get fill in the main process and then broadcasted to other MPI
+    // these are structures that get filled in the main process and then broadcasted to other MPI processes
     std::vector<io::Item> items;
     bool markReloaded = true;
 
@@ -330,15 +343,19 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
       if(filesystem::exists(modelFileName)) {
         LOG(info, "Loading model from {}", modelFileName);
         foundModel    = true;
-        items         = io::loadItems(modelFileName);
+        modelWeights_ = New<io::ModelWeights>(modelFileName, io::MmapMode::DontMmap);
         markReloaded  = true;
       } else if(options_->hasAndNotEmpty("pretrained-model")) {
         std::string pretrainedModelFileName = options_->get<std::string>("pretrained-model");
         LOG(info, "[training] Initializing model weights with pre-trained model {}", pretrainedModelFileName);
         foundModel    = true;
-        items         = io::loadItems(pretrainedModelFileName);
+        modelWeights_ = New<io::ModelWeights>(pretrainedModelFileName, io::MmapMode::DontMmap);
         markReloaded  = false;
       }
+    } else {
+      // Initialize with dummy and set correct file name in main process.
+      // If we are running only one process this will always be correctly initialized above.
+      modelWeights_ = New<io::ModelWeights>();
     }
 
     // if a model file exists, the main process will find it and propagate this information to other MPI nodes
@@ -349,27 +366,36 @@ void GraphGroup::load(const OptimizerBase::ScatterStateFunc& scatterFn) {
       // continue with checkpoint loading
       if(mpi_) {
         // broadcast model information to other processes
-        mpi_->bCast(items);
+        modelWeights_->loadAndSync(mpi_);
         mpi_->bCast(&markReloaded, 1, mpi_->getDataType(&markReloaded));
       }
 
       // handles MPI
       if(scheduler_)
         scheduler_->load(modelFileName);
-      
-      // we just load it N times from disk (it'll be in disk cache after the first)
-      // this also allocates memory correctly when calling forward() inside restoreOptimizerState
-      size_t i = 0;
-      for(auto graph : graphs_)
-        models_[i++]->load(graph, items, markReloaded);
 
-      // try to restore everything from checkpoint now
-      loadOptimizerState(modelFileName, scatterFn);
+      // We just load it N times but it'll be in read into modelWeights after the first time.
+      // This also allocates memory correctly when calling forward() inside restoreOptimizerState
+      size_t i = 0;
+      for(auto graph : graphs_) {
+        models_[i++]->load(graph, modelWeights_, markReloaded);
+      }
+
+      bool noOptimizerReload = options_->get<bool>("no-optimizer-reload", false);
+      if(noOptimizerReload) {
+        LOG(info, "--no-optimizer-reload is specified, we are skipping optimizer state restoration");
+      } else {
+        // try to restore everything from checkpoint now
+        loadOptimizerState(modelFileName, scatterFn);
+      }
+
+      // @TODO: run another graph->forward() to allocate the weights from the checkpoint?
+      // then we might not need to keep modelWeights_ around.
     }
   }
 }
 
-bool GraphGroup::loadOptimizerState(const std::string& modelFileName, 
+bool GraphGroup::loadOptimizerState(const std::string& modelFileName,
                                     const OptimizerBase::ScatterStateFunc& scatterFn) {
   /*
   if model checkpoint is available:
@@ -383,22 +409,20 @@ bool GraphGroup::loadOptimizerState(const std::string& modelFileName,
   bool foundCheckpoint = filesystem::exists(checkpointName);
   if(mpi_)
     mpi_->bCast(&foundCheckpoint, 1, mpi_->getDataType(&foundCheckpoint));
-  
+
   // all nodes will either continue or exit
   if(!foundCheckpoint) {
     LOG(warn, "No checkpoint found, parameters reloaded from last inference model");
     return false; // failed to restore
   }
 
-  std::vector<marian::io::Item> items;
+  auto checkpoint = New<io::ModelWeights>(checkpointName, io::MmapMode::DontMmap);
+
   // make sure all nodes receive the same checkpoint data from the main process.
-  if(mpi_) { // only the main process loads the checkpoint and the rest receives a copy
-    if(isMainProcess())
-      items = io::loadItems(checkpointName);
-    mpi_->bCast(items);
-  } else { // not doing MPI, so just load the checkpoint from disk
-    items = io::loadItems(checkpointName);
-  }
+  if(mpi_) // only the main process loads the checkpoint and the rest receives a copy
+    checkpoint->loadAndSync(mpi_);
+
+  auto& items = checkpoint->items();
 
   // @TODO: probably we want to have the list of DeviceIds as an attribute
   std::vector<Ptr<Backend>> backends;
@@ -438,7 +462,7 @@ bool GraphGroup::loadOptimizerState(const std::string& modelFileName,
 
 void GraphGroup::saveOptimizerState(const std::string& modelFileName,
                                     const OptimizerBase::GatherStateFunc& gatherFn) {
-  // @TODO: change to .checkpoint.npz, would break backwards compat                                  
+  // @TODO: change to .checkpoint.npz, would break backwards compat
   std::string checkpointName = modelFileName + ".optimizer.npz";
 
   std::vector<io::Item> items;
@@ -446,7 +470,7 @@ void GraphGroup::saveOptimizerState(const std::string& modelFileName,
                             optimizerShards_,
                             gatherFn,
                             isMainProcess());
-                            
+
   if(isMainProcess()) { // only main process does the actual saving
     auto found = std::find_if(items.begin(), items.end(),
       [](const io::Item& item) { return item.name == "master_parameters"; });
@@ -461,7 +485,6 @@ void GraphGroup::saveOptimizerState(const std::string& modelFileName,
       items.push_back(masterParameters);
     }
 
-    
     LOG(info, "[training] Saving training checkpoint to {} and {}", modelFileName, checkpointName);
     io::saveItems(checkpointName, items);
   }
@@ -469,7 +492,7 @@ void GraphGroup::saveOptimizerState(const std::string& modelFileName,
 
 void GraphGroup::saveCheckPoint(const std::string& modelFileName,
                                 bool isFinal,
-                                bool doSaveOptimizerState, 
+                                bool doSaveOptimizerState,
                                 const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn) {
   barrier(); // (for better grouping of log messages)
   // bring the smoothed model in
@@ -525,10 +548,10 @@ void GraphGroup::swapWithSmoothed() {
   };
   comm_->foreach(swap);
   comm_->allGatherParams();
-  
+
   if(shardingMode_ == ShardingMode::local)
     comm_->broadcastParams();
-    
+
   barrier();
 }
 
@@ -543,10 +566,10 @@ void GraphGroup::replaceWithSmoothed() {
   };
   comm_->foreach(replace);
   comm_->allGatherParams();
-  
+
   if(shardingMode_ == ShardingMode::local)
     comm_->broadcastParams();
-    
+
   barrier();
 }
 
@@ -587,7 +610,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
   size_t step = options_->get<size_t>("mini-batch-fit-step");
 
   size_t maxLength = options_->get<size_t>("max-length");
-  
+
   // this should be only one class label per line on input, hence restricting length to 1
   std::vector<size_t> localMaxes(numFiles, maxLength);
   auto inputTypes = options_->get<std::vector<std::string>>("input-types", {});
@@ -623,7 +646,7 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
   // Do a binary search for maxmimum batch size that fits into given workspace memory
   // for a tested sentence length.
   // We round the maxLength to the next larger step to avoid a situation where we do not
-  // collect batch statistics for maximum length between steps. However, we do not exceed 
+  // collect batch statistics for maximum length between steps. However, we do not exceed
   // the actual maxLength even if the rounded value is larger.
   size_t maxLengthRounded = (size_t)(std::ceil(maxLength / (float)step) * step);
   for(size_t i = step; i <= maxLengthRounded; i += step) {
@@ -668,15 +691,27 @@ Ptr<data::BatchStats> GraphGroup::collectStats(Ptr<ExpressionGraph> graph,
 }
 
 void GraphGroup::setTypicalTrgBatchWords(size_t typicalTrgBatchWords) { // needed for dynamic MB scaling
-  typicalTrgBatchWords_ = (double)typicalTrgBatchWords;
+  typicalTrgBatchWords_ = (float)typicalTrgBatchWords;
 }
 
-double GraphGroup::getTypicalTrgBatchWords() {
+float GraphGroup::getTypicalTrgBatchWords() {
   return typicalTrgBatchWords_;
 }
 
 void GraphGroup::updateAverageTrgBatchWords(size_t trgBatchWords) {
-  typicalTrgBatchWords_ = 0.99 * typicalTrgBatchWords_ + 0.01 * (double)trgBatchWords; // record a running average of the batch size, factors are chosen empirically.
+  typicalTrgBatchWords_ = 0.99f * typicalTrgBatchWords_ + 0.01f * (float)trgBatchWords; // record a running average of the batch size, factors are chosen empirically.
+}
+
+float GraphGroup::getAverageEffectiveBatchSize() {
+  return averageEffectiveBatchSize_;
+}
+
+void GraphGroup::updateAverageEffectiveBatchSize(size_t effectiveBatchSize) {
+  if(averageEffectiveBatchSize_ == 0)
+    averageEffectiveBatchSize_ = (float)effectiveBatchSize;
+
+  // record a running average of the effective batch size
+  averageEffectiveBatchSize_ = 0.9f * averageEffectiveBatchSize_ + 0.1f * (float)effectiveBatchSize;
 }
 
 size_t GraphGroup::numberOfInputFiles() {

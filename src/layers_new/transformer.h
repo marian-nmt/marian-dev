@@ -16,7 +16,8 @@ namespace nn {
  * Currently these are usually dropout, layer normalization and skip connections.
  * A transformer block will usually apply one of them.
  */
-struct TransformerPrePostProcessor final : public Layer, public IBinaryLayer {
+class TransformerPrePostProcessor final : public Layer, public IBinaryLayer {
+public:
   Ptr<Dropout> dropout;
   Ptr<Norm> norm;
   std::string actionDesc;
@@ -24,7 +25,7 @@ struct TransformerPrePostProcessor final : public Layer, public IBinaryLayer {
   TransformerPrePostProcessor(Ptr<ExpressionGraph> graph,
                               const std::string& actionDesc,
                               float dropoutProbablity)
-    : Layer(graph), 
+    : Layer(graph),
       actionDesc(actionDesc)
   {
     for(char a : actionDesc) {
@@ -43,11 +44,13 @@ struct TransformerPrePostProcessor final : public Layer, public IBinaryLayer {
       }
     }
   }
-  
+
+  virtual ~TransformerPrePostProcessor() = default;
+
   Expr apply(Expr input, Expr previous = nullptr) const override {
     Expr output = input;
     for(char action : actionDesc) {
-      if(action == 'd') 
+      if(action == 'd')
         output = dropout->apply(output);
       else if(action == 'a' && previous)
         output = output + previous;
@@ -62,70 +65,80 @@ struct TransformerPrePostProcessor final : public Layer, public IBinaryLayer {
   }
 };
 
-/** 
- * This is a typical transformer self-attention block. The default configuration will
+/**
+ * This is a transformer self-attention block without state. The default configuration will
  * use a multi-head multiplicative self-attention layer, followed by dropout, the skip
  * connection and layer normalization (dan) in the post-processor. The pre-processor does
- * nothing in the default configuration.
+ * nothing in the default configuration. See TransformerDecoderSelfAttentionBlock for a
+ * version that can be used in the decoder with state.
  */
 class TransformerSelfAttentionBlock final : public LayerWithOptions, public IBinaryLayer {
 public:
   Ptr<TransformerPrePostProcessor> preprocessor;
+  Ptr<MaskProcessor> selfMaskProcessor;
   Ptr<AttentionLayer> selfAttention;
   Ptr<TransformerPrePostProcessor> postprocessor;
 
-  TransformerSelfAttentionBlock(Ptr<ExpressionGraph> graph, 
-                                Ptr<Options> options)
-    : LayerWithOptions(graph, options)
+  TransformerSelfAttentionBlock(Ptr<ExpressionGraph> graph,
+                                Ptr<Options> options,
+                                Ptr<MaskProcessor> selfMaskProcessorInit = nullptr)
+    : LayerWithOptions(graph, options),
+      selfMaskProcessor(selfMaskProcessorInit)
   {
     preprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-preprocess", ""),  
+      graph,
+      opt<std::string>("transformer-preprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
 
-    // @TODO: factory to support different attention flavors?
+    if(!selfMaskProcessor) {
+      selfMaskProcessor = maskProcessorFromOptions(graph, options);
+      registerLayer(selfMaskProcessor);
+    }
+
     selfAttention = attentionFromOptions(graph, options);
     registerLayer(selfAttention);
 
     postprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess", ""), 
+      graph,
+      opt<std::string>("transformer-postprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(postprocessor);
   }
 
-  Expr apply(Expr input, Expr mask = nullptr) const override {
-    auto output = preprocessor->apply(input);                          // optional preprocessing
-    output      = selfAttention->apply(output, output, output, mask);  // self attention, @TODO: make this a IBinaryLayer rather than IQuaternaryLayer
-    output      = postprocessor->apply(output, input);                 // optional postprocessing, optional skip connection
+  Expr apply(Expr input, Expr inputMask = nullptr) const override {
+    auto output  = preprocessor->apply(input);                            // optional preprocessing
+    auto logMask = selfMaskProcessor->apply(output, inputMask);           // mask out attention to padding symbols
+    output       = selfAttention->apply(output, output, output, logMask); // self attention, @TODO: make this a IBinaryLayer rather than IQuaternaryLayer
+    output       = postprocessor->apply(output, input);                   // optional postprocessing, optional skip connection
     return output;
   }
 };
 
-/** 
+/**
  * This is a typical transformer filter (1-dimensional convolution) block. The default configuration will
- * use scale up to a larger dimension, apply a ReLU activation and scale down again, followed by dropout, 
+ * use scale up to a larger dimension, apply a ReLU activation and scale down again, followed by dropout,
  * the skip connection and layer normalization (dan) in the post-processor. The pre-processor does
  * nothing in the default configuration.
  */
-struct TransformerFilterBlock final : public LayerWithOptions, public IUnaryLayer {
+class TransformerFilterBlock final : public LayerWithOptions, public IUnaryLayer {
+public:
   Ptr<TransformerPrePostProcessor> preprocessor;
   Ptr<Sequential> layers;
   Ptr<TransformerPrePostProcessor> postprocessor;
   bool isDecoder{false};
-  
-  TransformerFilterBlock(Ptr<ExpressionGraph> graph, 
+
+  TransformerFilterBlock(Ptr<ExpressionGraph> graph,
                          Ptr<Options> options,
                          bool isDecoder = false)
     : LayerWithOptions(graph, options), isDecoder(isDecoder)
   {
     preprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-preprocess", ""),  
+      graph,
+      opt<std::string>("transformer-preprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
-    
+
     int modelDim = opt<int>("transformer-dim-model", opt<int>("dim-emb"));
     int ffnDim   = opt<int>("transformer-dim-ffn");
     if(isDecoder && opt<int>("transformer-decoder-dim-ffn") != 0)
@@ -143,7 +156,7 @@ struct TransformerFilterBlock final : public LayerWithOptions, public IUnaryLaye
     // assemble filter of given depth
     layers = New<Sequential>(graph);
     registerLayer(layers);
-      
+
     if(actName == "relu") {
       layers->append(New<LinearReluDropout>(graph, ffnDim, ffnDropoutProbability));
     } else {
@@ -163,7 +176,7 @@ struct TransformerFilterBlock final : public LayerWithOptions, public IUnaryLaye
     layers->append(New<Linear>(graph, modelDim));
 
     postprocessor = New<TransformerPrePostProcessor>(
-      graph, 
+      graph,
       opt<std::string>("transformer-postprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(postprocessor);
@@ -177,21 +190,23 @@ struct TransformerFilterBlock final : public LayerWithOptions, public IUnaryLaye
   }
 };
 
-/** 
+/**
  * A full transformer encoder layer consists of a self-attention block followed by
  * a filter block. Skip connections etc. are handled inside the blocks, see above.
  */
-struct TransformerEncoderLayer final : public LayerWithOptions, public IBinaryLayer {
+class TransformerEncoderLayer final : public LayerWithOptions, public IBinaryLayer {
+public:
   Ptr<TransformerSelfAttentionBlock> selfAttentionBlock;
   Ptr<TransformerFilterBlock> filterBlock;
 
-  TransformerEncoderLayer(Ptr<ExpressionGraph> graph, 
-                          Ptr<Options> options)
+  TransformerEncoderLayer(Ptr<ExpressionGraph> graph,
+                          Ptr<Options> options,
+                          Ptr<MaskProcessor> selfMaskProcessorInit = nullptr)
     : LayerWithOptions(graph, options)
   {
-    selfAttentionBlock = New<TransformerSelfAttentionBlock>(graph, options);
+    selfAttentionBlock = New<TransformerSelfAttentionBlock>(graph, options, selfMaskProcessorInit);
     registerLayer(selfAttentionBlock);
-    
+
     filterBlock = New<TransformerFilterBlock>(graph, options);
     registerLayer(filterBlock);
   }
@@ -199,86 +214,103 @@ struct TransformerEncoderLayer final : public LayerWithOptions, public IBinaryLa
   Expr apply(Expr input, Expr mask = nullptr) const override {
     Expr output = selfAttentionBlock->apply(input, mask);
     output      = filterBlock->apply(output);
-    
+
     checkpoint(output); // A full transformer block is a good point for gradient checkpointing (currently manual)
-    
+
     return output;
   }
 };
 
 /**
- * A full transformer encoder stack. Before applying multiple transformer layers (depth of the encoder), we 
+ * A full transformer encoder stack. Before applying multiple transformer layers (depth of the encoder), we
  * add positional embeddings and apply post-processing actions to the combined embeddings. Due to backward-compatiblity
- * with RNN models and for easier beam-search we transpose batch and time dimensions on input and output. 
+ * with RNN models and for easier beam-search we transpose batch and time dimensions on input and output.
  * @TODO: get rid of these transposes.
  */
-struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
+class TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
+public:
   Ptr<PositionEmbeddingLayer> positionEmbedding;
   Ptr<TransformerPrePostProcessor> preprocessor;
   Ptr<LayerList> layers;
   Ptr<TransformerPrePostProcessor> postprocessor;
 
-  TransformerEncoder(Ptr<ExpressionGraph> graph, 
+protected: // @TODO: should this be public?
+   // collect hidden states as we step through the layers
+  mutable bool keepHiddenStates{false};
+  mutable std::vector<Expr> hiddenStates;
+  // apply this function to hidden states before collecting them
+  mutable std::function<Expr(Expr)> hiddenTransformFn = [](Expr x) { return x; };
+
+public:
+  TransformerEncoder(Ptr<ExpressionGraph> graph,
                      Ptr<Options> options)
-    : LayerWithOptions(graph, options)
-  {
-    positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
-    registerLayer(positionEmbedding);
+    : LayerWithOptions(graph, options) {
+    if(!opt<bool>("transformer-disable-position-embeddings", false)) {
+      positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
+      registerLayer(positionEmbedding);
+    }
 
     preprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess-emb", ""),  
+      graph,
+      opt<std::string>("transformer-postprocess-emb", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
 
     layers = New<LayerList>(graph);
     registerLayer(layers);
+
+    Ptr<MaskProcessor> selfMaskProcessor; // this will be initialized in the first encoder layer
     for(int i = 0; i < opt<int>("enc-depth"); ++i) {
-      auto transformerEncoderLayer = New<TransformerEncoderLayer>(graph, options);
-      // example of changing linear layer init functions burried deep in the model 
+      auto transformerEncoderLayer = New<TransformerEncoderLayer>(graph, options, selfMaskProcessor);
+      layers->append(transformerEncoderLayer);
+
+      if(!selfMaskProcessor)
+        selfMaskProcessor = transformerEncoderLayer->selfAttentionBlock->selfMaskProcessor;
+
+      // example of changing linear layer init functions burried deep in the model
       if(opt<bool>("transformer-depth-scaling", false))
         for(auto linear : transformerEncoderLayer->allLayers<Linear>())
           linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
-      
+
       if(opt<bool>("transformer-no-bias", false))
         for(auto linear : transformerEncoderLayer->allLayers<Linear>())
           linear->useBias = false;
-      
+
       if(opt<bool>("transformer-no-affine", false)) {
         for(auto norm : transformerEncoderLayer->allLayers<Norm>()) {
           norm->useScale = false;
           norm->useBias  = false;
         }
       }
-      layers->append(transformerEncoderLayer);
     }
 
     postprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess-top", ""),  
+      graph,
+      opt<std::string>("transformer-postprocess-top", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(postprocessor);
   }
 
   virtual ~TransformerEncoder() = default;
 
-  Expr apply(Expr input, Expr mask = nullptr) const override {
+  Expr apply(Expr input, Expr inputMask = nullptr) const override {
     // first and last operations (see at the bottom of this function) switch the time and batch
     // dimensions. This order is more natural for the transformer, but more difficult to handle
     // during beam search or when using RNNs. Hence the input/output transpositions here.
 
-    // @TODO: still worth to review this whole transpose business across the tool. In the 
-    // decoder state, Frank added information about batchMajor/timeMajor orientation. If we 
-    // do that everywhere we can detect inconsistencies automatically. 
+    // @TODO: still worth to review this whole transpose business across the tool. In the
+    // decoder state, Frank added information about batchMajor/timeMajor orientation. If we
+    // do that everywhere we can detect inconsistencies automatically.
     // reorganize batch and timestep
-    auto output = swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
-    if(mask) {
-      mask = swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-      mask = transposedLogMask(mask, opt<int>("transformer-heads"));
-    }
+    auto output = swapTimeBatch(input); // [1, dimBatch, dimSrcWords, dimModel]
+    if(inputMask)
+      inputMask = swapTimeBatch(inputMask); // [1, dimBatch, dimSrcWords, 1]
 
     // apply positional embeddings to contextual input
-    output = positionEmbedding->apply(output);
+    if(positionEmbedding)
+      output = positionEmbedding->apply(output);
+    else
+      output = std::sqrt((float)output->shape()[-1]) * output;
 
     // handle for skip connection at top
     auto prevOutput = output;
@@ -287,11 +319,16 @@ struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
     output = preprocessor->apply(output);
 
     // traverse the layers, use the same mask for each
-    for(auto layer : *layers)
-      output = layer->apply(output, mask);
+    for(auto layer : *layers) {
+      if(keepHiddenStates) // note, with pre-norm, the hidden states will not be normed here.
+        hiddenStates.push_back(hiddenTransformFn(output));
+      output = layer->apply(output, inputMask);
+    }
 
     // apply final postprocessor if required, e.g. final layer-norm for pre-norm or final skip connection
     output = postprocessor->apply(output, prevOutput);
+    if(keepHiddenStates)
+      hiddenStates.push_back(hiddenTransformFn(output));
 
     // restore organization of batch and time steps. This is currently required
     // to make RNN-based decoders and beam search work with this. We are looking
@@ -304,91 +341,179 @@ struct TransformerEncoder : public LayerWithOptions, public IBinaryLayer {
     output = swapTimeBatch(output); // [beam depth=1, max length, batch size, vector dim]
     return output;
   }
+
+  virtual void clear() override {
+    LayerWithOptions::clear();
+    hiddenStates.clear();
+  }
 };
 
-/** 
+/**
  * This is a typical transformer cross-attention block. The default configuration will
  * use a multi-head multiplicative cross-attention layer, followed by dropout, the skip
  * connection and layer normalization (dan) in the post-processor. The pre-processor does
  * nothing in the default configuration.
  */
-class TransformerCrossAttentionBlock final : public LayerWithOptions, public ITernaryLayer {
+class TransformerDecoderCrossAttentionBlock final : public LayerWithOptions, public ITernaryDecoderLayer {
 public:
   Ptr<TransformerPrePostProcessor> preprocessor;
+  Ptr<DecoderMaskProcessor> contextMaskProcessor;
   Ptr<AttentionLayer> crossAttention;
   Ptr<TransformerPrePostProcessor> postprocessor;
 
-  TransformerCrossAttentionBlock(Ptr<ExpressionGraph> graph, 
-                                 Ptr<Options> options)
-    : LayerWithOptions(graph, options)
+  TransformerDecoderCrossAttentionBlock(Ptr<ExpressionGraph> graph,
+                                        Ptr<Options> options,
+                                        Ptr<DecoderMaskProcessor> contextMaskProcessorInit = nullptr)
+    : LayerWithOptions(graph, options),
+      contextMaskProcessor(contextMaskProcessorInit)
   {
     preprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-preprocess", ""),  
+      graph,
+      opt<std::string>("transformer-preprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
 
+    if(!contextMaskProcessor) {
+      contextMaskProcessor = contextDecoderMaskProcessorFromOptions(graph, options);
+      registerLayer(contextMaskProcessor);
+    }
+
     // @TODO: factory to support different attention flavors?
-    crossAttention = attentionFromOptions(graph, options);
+    // for cross-attention, we cache the projected keys and values since they come from
+    // the encoder and are static during decoding unless the batch size changes.
+    crossAttention = attentionFromOptions(graph, options, /*enableCache=*/true);
     registerLayer(crossAttention);
 
     postprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess", ""), 
+      graph,
+      opt<std::string>("transformer-postprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(postprocessor);
   }
 
-  Expr apply(Expr input, Expr context, Expr contextMask = nullptr) const override {
-    auto output = preprocessor->apply(input);                                   // optional preprocessing
-    output      = crossAttention->apply(output, context, context, contextMask); // cross attention, @TODO: make this a ITernaryLayer rather than IQuaternaryLayer
-    output      = postprocessor->apply(output, input);                          // optional postprocessing, optional skip connection
+  void initState(Ptr<DecoderState> state) const override {}
+
+  Expr apply(Expr input, Expr context, Expr contextMask, Ptr<DecoderState> state) const override {
+    auto output  = preprocessor->apply(input); // optional preprocessing
+    auto logMask = contextMaskProcessor->apply(output, contextMask, state);
+    output       = crossAttention->apply(output, context, context, logMask); // cross attention, @TODO: make this a ITernaryLayer rather than IQuaternaryLayer
+    output       = postprocessor->apply(output, input);                      // optional postprocessing, optional skip connection
     return output;
   }
 };
 
-#if 1
-
-class TransformerAutoRegressiveBlock : public LayerWithOptions, public IBinaryDecoderLayer {
-public:
-  TransformerAutoRegressiveBlock(Ptr<ExpressionGraph> graph, 
-                                 Ptr<Options> options)
-    : LayerWithOptions(graph, options) {}
-  
-  virtual ~TransformerAutoRegressiveBlock() = default;
-
-  using IBinaryDecoderLayer::apply;
-};
-
-/** 
- * This is a transformer RNN block. 
+/**
+ * Base class for transformer auto-regressive blocks. These are blocks that can be used in the decoder
+ * and that take the previous step's output as input. Currently this is either a self-attention block
+ * or an RNN block.
  */
-class TransformerRNNBlock final : public TransformerAutoRegressiveBlock {
+class TransformerDecoderAutoRegressiveBlock : public LayerWithOptions, public IBinaryDecoderLayer {
 public:
   Ptr<TransformerPrePostProcessor> preprocessor;
-  Ptr<RNN<SSRU>> rnn;
+  Ptr<DecoderMaskProcessor> selfMaskProcessor;
   Ptr<TransformerPrePostProcessor> postprocessor;
 
-  TransformerRNNBlock(Ptr<ExpressionGraph> graph, 
-                      Ptr<Options> options)
-    : TransformerAutoRegressiveBlock(graph, options)
+  TransformerDecoderAutoRegressiveBlock(Ptr<ExpressionGraph> graph,
+                                        Ptr<Options> options,
+                                        Ptr<DecoderMaskProcessor> selfMaskProcessorInit = nullptr)
+    : LayerWithOptions(graph, options),
+      selfMaskProcessor(selfMaskProcessorInit)
   {
     preprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-preprocess", ""),  
+      graph,
+      opt<std::string>("transformer-preprocess", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
 
+    if(!selfMaskProcessor) {
+      selfMaskProcessor = selfMaskProcessorFromOptions(graph, options);
+      registerLayer(selfMaskProcessor);
+    }
+
+    postprocessor = New<TransformerPrePostProcessor>(
+      graph,
+      opt<std::string>("transformer-postprocess", ""),
+      opt<float>("transformer-dropout", 0.f));
+    registerLayer(postprocessor);
+  }
+
+  virtual ~TransformerDecoderAutoRegressiveBlock() = default;
+
+  using IBinaryDecoderLayer::initState;
+  using IBinaryDecoderLayer::apply;
+};
+
+/**
+ * This is a typical transformer self-attention block. The default configuration will
+ * use a multi-head multiplicative self-attention layer, followed by dropout, the skip
+ * connection and layer normalization (dan) in the post-processor. The pre-processor does
+ * nothing in the default configuration.
+ */
+class TransformerDecoderSelfAttentionBlock final : public TransformerDecoderAutoRegressiveBlock {
+public:
+  Ptr<AttentionLayer> selfAttention;
+
+  using TransformerDecoderAutoRegressiveBlock::preprocessor;
+  using TransformerDecoderAutoRegressiveBlock::selfMaskProcessor;
+  using TransformerDecoderAutoRegressiveBlock::postprocessor;
+
+  TransformerDecoderSelfAttentionBlock(Ptr<ExpressionGraph> graph,
+                                       Ptr<Options> options,
+                                       Ptr<DecoderMaskProcessor> selfMaskProcessorInit = nullptr)
+    : TransformerDecoderAutoRegressiveBlock(graph, options, selfMaskProcessorInit)
+  {
+    // no caching of keys and values for self-attention since they change at each step
+    selfAttention = attentionFromOptions(graph, options, /*enableCache=*/false);
+    registerLayer(selfAttention);
+  }
+
+  void initState(Ptr<DecoderState> state) const override {
+    state->setPosition(0);
+  }
+
+  Expr apply(Expr input, Expr inputMask, Ptr<DecoderState> state) const override {
+    auto output = preprocessor->apply(input);           // optional preprocessing
+
+    // Here we extend the state with the keys and values from the previous step.
+    auto query      = output;
+    auto keysValues = output;
+    if(state->getPosition() > 0) {
+      auto kvHistory = state->as<DecoderStateItem>()->get(); // [dimBeam, dimBatch, dimHistory, dimModel]
+      keysValues     = concatenate({kvHistory, keysValues}, /*axis=*/-2); // [dimBeam, dimBatch, dimHistory + 1, dimModel]
+    }
+    state->as<DecoderStateItem>()->set(keysValues);
+
+    auto logMask = selfMaskProcessor->apply(query, inputMask, state);
+    output       = selfAttention->apply(query, keysValues, keysValues, logMask);
+    output       = postprocessor->apply(output, input);  // optional postprocessing, optional skip connection
+    return output;
+  }
+};
+
+/**
+ * This is a transformer RNN block that can be used as a replacement for the self-attention
+ * block in the decoder.
+ */
+class TransformerDecoderRNNBlock final : public TransformerDecoderAutoRegressiveBlock {
+public:
+  Ptr<RNN<SSRU>> rnn; // @TODO: support other RNN types like LSTM or GRU
+
+  using TransformerDecoderAutoRegressiveBlock::preprocessor;
+  using TransformerDecoderAutoRegressiveBlock::postprocessor;
+
+  TransformerDecoderRNNBlock(Ptr<ExpressionGraph> graph,
+                             Ptr<Options> options,
+                             Ptr<DecoderMaskProcessor> selfMaskProcessorInit = nullptr)
+    : TransformerDecoderAutoRegressiveBlock(graph, options, selfMaskProcessorInit)
+  {
     // @TODO: factory to support different attention flavors?
     int modelDim = opt<int>("transformer-dim-model", opt<int>("dim-emb"));
     rnn = New<RNN<SSRU>>(graph, modelDim, opt<bool>("transformer-rnn-projection", false));
     registerLayer(rnn);
+  }
 
-    postprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess", ""), 
-      opt<float>("transformer-dropout", 0.f));
-    registerLayer(postprocessor);
+  void initState(Ptr<DecoderState> state) const override {
+    rnn->as<IBinaryDecoderLayer>()->initState(state);
   }
 
   Expr apply(Expr input, Expr inputMask, Ptr<DecoderState> state) const override {
@@ -399,76 +524,126 @@ public:
   }
 };
 
-/** 
- * A full transformer decoder layer consists of a self-attention block followed by
- * cross-attention block and a filter block. Skip connections etc. are handled inside 
- * the blocks, see above.
- * 
- * For the self-attention block we need a special mask, usually a triangle mask that
- * prohibits to look into the future. 
- * @TODO: should the triangle mask be constructed locally here? Would make sense, but expensive 
- * for many layers. 
+/**
+ * A full transformer (LM) decoder layer consists of a self-attention block followed by
+ * a filter block. Skip connections etc. are handled inside the blocks, see above.
  */
-struct TransformerDecoderLayer final : public LayerWithOptions, public IQuaternaryDecoderLayer {
-  Ptr<TransformerAutoRegressiveBlock> autoRegressiveBlock;
-  Ptr<TransformerCrossAttentionBlock> crossAttentionBlock;
+class TransformerDecoderLayer : public LayerWithOptions, public IBinaryDecoderLayer {
+public:
+  Ptr<TransformerDecoderAutoRegressiveBlock> autoRegressiveBlock;
   Ptr<TransformerFilterBlock> filterBlock;
 
-  TransformerDecoderLayer(Ptr<ExpressionGraph> graph, 
-                          Ptr<Options> options)
+  TransformerDecoderLayer(Ptr<ExpressionGraph> graph,
+                          Ptr<Options> options,
+                          Ptr<DecoderMaskProcessor> selfMaskProcessorInit = nullptr)
     : LayerWithOptions(graph, options)
   {
     auto autoRegressionType = opt<std::string>("transformer-decoder-autoreg", "self-attention");
     if(autoRegressionType == "self-attention") {
-      ABORT("Auto-regression block type {} not yet implemented", autoRegressionType);
+      autoRegressiveBlock = New<TransformerDecoderSelfAttentionBlock>(graph, options, selfMaskProcessorInit);
     } else if(autoRegressionType == "rnn") {
-      autoRegressiveBlock = New<TransformerRNNBlock>(graph, options);
+      autoRegressiveBlock = New<TransformerDecoderRNNBlock>(graph, options, selfMaskProcessorInit);
     } else {
       ABORT("Unknown auto-regression block type {}", autoRegressionType);
     }
     registerLayer(autoRegressiveBlock);
-  
-    crossAttentionBlock = New<TransformerCrossAttentionBlock>(graph, options);
-    registerLayer(crossAttentionBlock);
-    
+
     filterBlock = New<TransformerFilterBlock>(graph, options, /*isDecoder=*/true);
     registerLayer(filterBlock);
   }
 
-  Expr apply(Expr input, Expr inputMask, Expr context, Expr contextMask, Ptr<DecoderState> state) const override {
+  void initState(Ptr<DecoderState> state) const override {
+    autoRegressiveBlock->as<IBinaryDecoderLayer>()->initState(state);
+  }
+
+  Expr apply(Expr input, Expr inputMask, Ptr<DecoderState> state) const override {
     Expr output = autoRegressiveBlock->apply(input, inputMask, state);
-    output      = crossAttentionBlock->apply(output, context, contextMask);
     output      = filterBlock->apply(output);
 
-    checkpoint(output); // A full transformer block is a good point for gradient checkpointing (currently manual)    
+    checkpoint(output); // A full transformer block is a good point for gradient checkpointing (currently manual)
     return output;
   }
 };
 
 /**
- * A full transformer decoder stack. Before applying multiple transformer layers (depth of the decoder), we 
+ * A transformer (S2S) decoder layer consists of a self-attention block followed by
+ * cross-attention block and a filter block. Skip connections etc. are handled inside
+ * the blocks. We inherit from TransformerDecoderLayer and add the cross-attention block.
+ * * @TODO: get rid of IQuaternaryDecoderLayer and use IBinaryDecoderLayer instead
+ */
+class TransformerDecoderLayerWithCrossAttention : public TransformerDecoderLayer, public IQuaternaryDecoderLayer {
+public:
+  Ptr<TransformerDecoderCrossAttentionBlock> crossAttentionBlock;
+  using TransformerDecoderLayer::autoRegressiveBlock;
+  using TransformerDecoderLayer::filterBlock;
+
+  TransformerDecoderLayerWithCrossAttention(Ptr<ExpressionGraph> graph,
+                                            Ptr<Options> options,
+                                            Ptr<DecoderMaskProcessor> selfMaskProcessorInit = nullptr,
+                                            Ptr<DecoderMaskProcessor> contextMaskProcessorInit = nullptr)
+    : TransformerDecoderLayer(graph, options, selfMaskProcessorInit)
+  {
+    crossAttentionBlock = New<TransformerDecoderCrossAttentionBlock>(graph, options, contextMaskProcessorInit);
+    registerLayer(crossAttentionBlock);
+  }
+
+  void initState(Ptr<DecoderState> state) const override {
+    TransformerDecoderLayer::initState(state);
+  }
+
+  Expr apply(Expr input, Expr inputMask, Expr context, Expr contextMask, Ptr<DecoderState> state) const override {
+    Expr output  = autoRegressiveBlock->apply(input, inputMask, state);
+    output       = crossAttentionBlock->apply(output, context, contextMask, state);
+    output       = filterBlock->apply(output);
+
+    checkpoint(output); // A full transformer block is a good point for gradient checkpointing (currently manual)
+    return output;
+  }
+
+private:
+  // @TODO: once we have correct decoder states we can change the interface to IBinaryDecoderLayer and remove this
+  // this is a dummy implementation to satisfy the interface, it should never be called
+  Expr apply(Expr input, Expr inputMask, Ptr<DecoderState> state) const override {
+    ABORT("This should never be called");
+  }
+};
+
+/**
+ * A full transformer decoder stack. Before applying multiple transformer layers (depth of the decoder), we
  * add positional embeddings and apply post-processing actions to the combined embeddings. Due to backward-compatiblity
- * with RNN models and for easier beam-search we transpose batch and time dimensions on input and output. 
+ * with RNN models and for easier beam-search we transpose batch and time dimensions on input and output.
  * @TODO: get rid of these transposes.
  */
-struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDecoderLayer {
+class TransformerDecoder final : public LayerWithOptions, public IBinaryDecoderLayer {
+private:
+  Ptr<AttentionCollector> attentionCollector_;
+
+public:
   Ptr<PositionEmbeddingLayer> positionEmbedding;
   Ptr<TransformerPrePostProcessor> preprocessor;
-  Ptr<LayerList> layers;
   Ptr<TransformerPrePostProcessor> postprocessor;
-  
-  TransformerDecoder(Ptr<ExpressionGraph> graph, 
+  Ptr<LayerList> layers;
+
+  TransformerDecoder(Ptr<ExpressionGraph> graph,
                      Ptr<Options> options)
     : LayerWithOptions(graph, options)
   {
-    positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
-    registerLayer(positionEmbedding);
+    if(!opt<bool>("transformer-disable-position-embeddings", false)) {
+      positionEmbedding = positionEmbeddingFromOptions(graph, options, /*positionAxis=*/-2);
+      registerLayer(positionEmbedding);
+    }
 
     preprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess-emb", ""),  
+      graph,
+      opt<std::string>("transformer-postprocess-emb", ""),
       opt<float>("transformer-dropout", 0.f));
     registerLayer(preprocessor);
+
+    postprocessor = New<TransformerPrePostProcessor>(
+      graph,
+      opt<std::string>("transformer-postprocess-top", ""),
+      opt<float>("transformer-dropout", 0.f));
+    registerLayer(postprocessor);
 
     size_t decDepth = opt<size_t>("dec-depth");
     std::vector<size_t> tiedLayers = opt<std::vector<size_t>>("transformer-tied-layers", std::vector<size_t>());
@@ -482,23 +657,40 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
 
     layers = New<LayerList>(graph);
     registerLayer(layers);
+
+    Ptr<DecoderMaskProcessor> selfMaskProcessor;    // this will be initialized in the first decoder layer
+    Ptr<DecoderMaskProcessor> contextMaskProcessor; // this will be initialized in the first decoder layer
     for(size_t i = 0; i < decDepth; ++i) {
       if(tiedLayers.empty() || tiedLayers[i] == i) { // not tied or tied to itself, so needs to be created first
-        auto transformerDecoderLayer = New<TransformerDecoderLayer>(graph, options);
+        auto transformerDecoderLayer = New<TransformerDecoderLayerWithCrossAttention>(graph, options, selfMaskProcessor, contextMaskProcessor);
         layers->append(transformerDecoderLayer);
+
+        if(!selfMaskProcessor)
+          selfMaskProcessor    = transformerDecoderLayer->autoRegressiveBlock->selfMaskProcessor;
+        if(!contextMaskProcessor)
+          contextMaskProcessor = transformerDecoderLayer->crossAttentionBlock->contextMaskProcessor;
+
       } else {
         ABORT_IF(tiedLayers[i] > i, "Cannot tie to layer above this layer??");
         layers->append(layers->at(tiedLayers[i])); // repeat layer to tie weights
       }
 
-      auto currentLayer = layers->at(i)->as<TransformerDecoderLayer>();
-      // example of changing linear layer init functions burried deep in the model 
+      auto currentLayer = layers->at(i)->as<TransformerDecoderLayerWithCrossAttention>();
+
+      // example of changing linear layer init functions burried deep in the model
       if(opt<bool>("transformer-depth-scaling", false)) {
-        auto autoRegLayer = currentLayer->autoRegressiveBlock->as<TransformerRNNBlock>();
-        autoRegLayer->rnn->oProj->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
+        auto autoRegLayerRNN = currentLayer->autoRegressiveBlock->as<TransformerDecoderRNNBlock>();
+        if(autoRegLayerRNN)
+          autoRegLayerRNN->rnn->oProj->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
+
+        auto autoRegLayerSA = currentLayer->autoRegressiveBlock->as<TransformerDecoderSelfAttentionBlock>();
+        if(autoRegLayerSA)
+          for(auto linear : autoRegLayerSA->allLayers<Linear>())
+            linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
 
         for(auto linear : currentLayer->crossAttentionBlock->allLayers<Linear>())
           linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
+
         for(auto linear : currentLayer->filterBlock->allLayers<Linear>())
           linear->init = inits::glorotUniform(true, true, /*scale=*/ 1.f / std::sqrt((float)i + 1));
       }
@@ -506,44 +698,71 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
       if(opt<bool>("transformer-no-bias", false))
         for(auto linear : currentLayer->allLayers<Linear>())
           linear->useBias = false;
-      
+
       if(opt<bool>("transformer-no-affine", false)) {
         for(auto norm : currentLayer->allLayers<Norm>()) {
           norm->useScale = false;
           norm->useBias = false;
         }
       }
-    }
 
-    postprocessor = New<TransformerPrePostProcessor>(
-      graph, 
-      opt<std::string>("transformer-postprocess-top", ""),  
-      opt<float>("transformer-dropout", 0.f));
-    registerLayer(postprocessor);
+      if(opt<std::string>("guided-alignment", "none") != "none" || options_->hasAndNotEmpty("alignment")) {
+        std::string gaStr = opt<std::string>("transformer-guided-alignment-layer", "last");
+
+        size_t attLayer = decDepth - 1;
+        if(gaStr != "last")
+          attLayer = std::stoull(gaStr) - 1;
+
+        ABORT_IF(attLayer >= decDepth, "Chosen layer for guided attention ({}) larger than number of layers ({})", attLayer + 1, decDepth);
+
+        if(i == attLayer) {
+          attentionCollector_ = currentLayer->crossAttentionBlock->crossAttention->as<nn::AttentionCollector>();
+          attentionCollector_->saveAttentionWeights = true;              // @TODO: ugly
+          attentionCollector_->numHeads = opt<int>("transformer-heads"); // @TODO: ugly
+        }
+      }
+    }
   }
 
-  Expr apply(Expr input, Expr inputMask, Expr context, Expr contextMask, Ptr<DecoderState> state) const override {
+  void initState(Ptr<DecoderState> state) const override {
+    ABORT("Remove this abort once this is actually used in the decoder");
+    size_t positiion = 0;
+    state->setPosition(positiion);
+    for(auto layer : *layers) {
+      Ptr<DecoderStateItem> layerState = New<DecoderStateItem>(positiion);
+      layer->as<TransformerDecoderLayer>()->initState(layerState);
+      state->as<DecoderStateList>()->append(layerState);
+    }
+  }
+
+  Expr apply(Expr input, Expr inputMask, Ptr<DecoderState> state) const override {
     // first and last operations (see at the bottom of this function) switch the time and batch
     // dimensions. This order is more natural for the transformer, but more difficult to handle
     // during beam search or when using RNNs. Hence the input/output transpositions here.
     Expr output = swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
-    context = swapTimeBatch(context); 
 
-    // @TODO: write function prepareMasks();
-    // @TODO: create triangle mask here and combine with inputMask
-    LOG_ONCE(info, "Don't forget the triangle mask if required!");
-    if(inputMask) {
-      inputMask = swapTimeBatch(inputMask);   // [beam depth=1, batch size, max length, vector dim=1]
-    }
+    // set current target token position during decoding or training. At training
+    // this should be 0. During translation the current length of the translation.
+    // Used for position embeddings and creating new decoder states.
+    int startPos = (int)state->getPosition();
 
-    if(contextMask) {
-      contextMask = swapTimeBatch(contextMask);    // [beam depth=1, max length, batch size, vector dim=1]
-      contextMask = transposedLogMask(contextMask, opt<int>("transformer-heads")); // [beam broadcast=1, batch size * num heads, max length broadcast=1, max length]
-    }
-    
-    // apply positional embeddings to contextual input @TODO: remove need for conversion to int
-    output = positionEmbedding->apply(output, (int)state->getPosition());
-    
+    if(inputMask)
+      inputMask = swapTimeBatch(inputMask); // [dimBeam=1, dimBatch, dimTrgWords, dimModel=1]
+
+    Expr context     = state->as<EncoderContext>()->getContext();
+    Expr contextMask = state->as<EncoderContext>()->getContextMask();
+
+    // @TODO: get rid of this
+    context = swapTimeBatch(context); // [dimBeam=1, dimBatch, dimSrcWords, dimModel]
+    if(contextMask)
+      contextMask = swapTimeBatch(contextMask);  // [dimBeam=1, dimBatch, dimSrcWords, dimModel=1]
+
+    // apply positional embeddings to contextual input
+    if(positionEmbedding)
+      output = positionEmbedding->apply(output, startPos);
+    else
+      output = std::sqrt((float)output->shape()[-1]) * output;
+
     // handle for skip connection at top
     auto prevOutput = output;
 
@@ -553,8 +772,11 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
     // get an iterator to per-layer states
     auto layerStateIt = state->as<nn::DecoderStateList>()->begin();
     // traverse the layers, use the same mask for each
-    for(auto layer : *layers)
-      output = layer->as<TransformerDecoderLayer>()->apply(output, inputMask, context, contextMask, /*in/out=*/*layerStateIt++);
+    for(auto layer : *layers) {
+      // @TODO: can we put logmask computation inside this layer? Then we can reduce the number of arguments here
+      // and use only the decoder state to provide context and mask.
+      output = layer->as<TransformerDecoderLayerWithCrossAttention>()->apply(output, inputMask, context, contextMask, /*in/out=*/*layerStateIt++);
+    }
 
     // apply final postprocessor if requred, e.g. final layer-norm for pre-norm or final skip connection
     output = postprocessor->apply(output, prevOutput);
@@ -569,8 +791,19 @@ struct TransformerDecoder final : public LayerWithOptions, public IQuaternaryDec
     output = swapTimeBatch(output); // [beam depth=1, max length, batch size, vector dim]
     return output;
   }
+
+  std::vector<Expr> getAlignments() {
+    if(attentionCollector_)
+      return attentionCollector_->getAlignments();
+    else
+      return {};
+  }
+
+  virtual void clear() override {
+    LayerWithOptions::clear();
+  }
+
 };
-#endif
 
 } // namespace nn
 } // namespace marian

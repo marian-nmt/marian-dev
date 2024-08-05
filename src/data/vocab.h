@@ -73,6 +73,9 @@ public:
   // return UNK symbol id
   Word getUnkId() const;
 
+  // return generic separator symbol id
+  Word getSepId() const;
+
   // return a set of Word ids that should be suppressed based on the underlying vocabulary implementation.
   // Arguments mosty likely provided based on outside options like --allow-unk etc.
   std::vector<Word> suppressedIds(bool suppressUnk = true, bool suppressSpecial = true) const;

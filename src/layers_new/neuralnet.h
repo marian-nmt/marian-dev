@@ -8,33 +8,16 @@ namespace nn {
 
 static inline Expr swapTimeBatch(Expr input) { return swapAxes(atleast_4d(input), -2, -3); }
 
-  // @TODO: this is an odd function to be here, this should rather be handled somewhere globally?
-  // convert multiplicative 1/0 mask to additive 0/-inf log mask, and transpose to match result of bdot() op in Attention()
-static inline Expr transposedLogMask(Expr mask, int dimHeads) {
-  if(!mask)
-    return nullptr;
-
-  // LayerAttention expects mask in a different layout
-  int dimBatch    = mask->shape()[-3];
-  int dimSrcWords = mask->shape()[-2];
-  mask = reshape(mask, {dimBatch, 1, 1, dimSrcWords}); // [batch size, num heads broadcast=1, max length broadcast=1, max length]
-
-  float maskFactor = std::max(NumericLimits<float>(mask->value_type()).lowest / 2.f, -99999999.f); // to make sure we do not overflow for fp16
-  auto logMask = (1 - mask) * maskFactor;
-  logMask      = reshape(repeat(logMask, dimHeads, -3), {1, dimBatch * dimHeads, 1, dimSrcWords});
-  return logMask;
-}
-
 /**
- * A generic Activation function layer. Any unary Marian operator or function accepted by 
- * `std::function<Expr(Expr)>` can be turned into an activation function like this: 
+ * A generic Activation function layer. Any unary Marian operator or function accepted by
+ * `std::function<Expr(Expr)>` can be turned into an activation function like this:
  ```
  auto reluLayer = New<Activation>(graph, (Expr(*)(Expr))relu)
  ```
- * The function pointer cast may be required to disambiguate the operator name if operators 
- * of the same name but with a different sets of parameters exist, otherwise it can be dropped 
+ * The function pointer cast may be required to disambiguate the operator name if operators
+ * of the same name but with a different sets of parameters exist, otherwise it can be dropped
  * or replaced with a more readable lambda function.
- * 
+ *
  * `Activation` will also accept lambdas for more complex activations:
  ```
  // a reasonably accurate approximation of GELU
@@ -47,11 +30,11 @@ private:
 
 public:
   Activation(Ptr<ExpressionGraph> graph,
-             const std::function<Expr(Expr)>& actFn) 
+             const std::function<Expr(Expr)>& actFn)
     : Layer(graph), actFn(actFn) {}
 
   virtual ~Activation() = default;
-  
+
   Expr apply(Expr x) const override {
     return actFn(x);
   }
@@ -85,7 +68,7 @@ struct Swish final : public Activation {
 // Factory for activation function layers from name as string.
 Ptr<Activation> activationLayerByName(Ptr<ExpressionGraph> graph, const std::string& actName);
 
-// Applies a linear transformation to the incoming data: y = xA^T + b 
+// Applies a linear transformation to the incoming data: y = xA^T + b
 struct Linear : public Layer, public IUnaryLayer {
   Expr weight;
   Expr bias;
@@ -96,7 +79,7 @@ struct Linear : public Layer, public IUnaryLayer {
   Ptr<inits::NodeInitializer> init;
 
   // Typical constructor that can take an initializer function
-  Linear(Ptr<ExpressionGraph> graph, 
+  Linear(Ptr<ExpressionGraph> graph,
          int dimOut,
          bool useBias = true,
          bool transposed = false,
@@ -125,38 +108,30 @@ struct Linear : public Layer, public IUnaryLayer {
     } else {
       registerParameterLazy(weight, Shape({ dimIn, dimOut }), init);
     }
-    
+
     if(useBias) {
       registerParameterLazy(bias, Shape({ dimOut }), inits::zeros());
     }
 
-    Type outputType = x->value_type();
     if(useBias)
-      return marian::affine(x, 
-                            marian::cast(weight, outputType), 
-                            marian::cast(bias, outputType), 
-                            /*transA=*/false, 
-                            /*transB=*/transposed);
+      return marian::affine(x, weight, bias, /*transA=*/false, /*transB=*/transposed);
     else
-      return marian::dot(x, 
-                         marian::cast(weight, outputType), 
-                         /*transA=*/false, 
-                         /*transB=*/transposed);
+      return marian::dot(x, weight, /*transA=*/false, /*transB=*/transposed);
   }
 };
 
 struct Dropout final : public Layer, public IUnaryLayer {
   float dropoutProbability;
   Shape::Axes dropoutAxes{{-2, -1}};
-  
-  Dropout(Ptr<ExpressionGraph> graph, 
+
+  Dropout(Ptr<ExpressionGraph> graph,
           float dropoutProbability,
-          const Shape::Axes& dropoutAxes) 
+          const Shape::Axes& dropoutAxes)
     : Layer(graph), dropoutProbability(dropoutProbability), dropoutAxes(dropoutAxes)
   {}
 
-  Dropout(Ptr<ExpressionGraph> graph, 
-          float dropoutProbability) 
+  Dropout(Ptr<ExpressionGraph> graph,
+          float dropoutProbability)
     : Layer(graph), dropoutProbability(dropoutProbability)
   {}
 
@@ -187,24 +162,24 @@ struct LinearReluDropout final : public Linear {
   Shape::Axes dropoutAxes{{-2, -1}};
 
   // Typical constructor that can take an initializer function
-  LinearReluDropout(Ptr<ExpressionGraph> graph, 
+  LinearReluDropout(Ptr<ExpressionGraph> graph,
                     int dimOut,
                     float dropoutProbability,
                     bool useBias = true,
                     bool transposed = false,
                     Ptr<inits::NodeInitializer> init = inits::glorotUniform())
-    : Linear(graph, dimOut, useBias, transposed, init),  
+    : Linear(graph, dimOut, useBias, transposed, init),
       dropoutProbability(dropoutProbability) {}
 
   // Typical constructor that can take an initializer function
-  LinearReluDropout(Ptr<ExpressionGraph> graph, 
+  LinearReluDropout(Ptr<ExpressionGraph> graph,
                     int dimOut,
                     float dropoutProbability,
                     const Shape::Axes& dropoutAxes,
                     bool useBias = true,
                     bool transposed = false,
                     Ptr<inits::NodeInitializer> init = inits::glorotUniform())
-    : Linear(graph, dimOut, useBias, transposed, init),  
+    : Linear(graph, dimOut, useBias, transposed, init),
       dropoutProbability(dropoutProbability), dropoutAxes(dropoutAxes) {}
 
   Expr apply(Expr x) const override {
@@ -216,7 +191,7 @@ struct LinearReluDropout final : public Linear {
     } else {
       registerParameterLazy(weight, Shape({ dimIn, dimOut }), init);
     }
-    
+
     if(useBias) {
       registerParameterLazy(bias, Shape({ dimOut }), inits::zeros());
     }
@@ -240,21 +215,21 @@ struct LinearReluDropout final : public Linear {
 struct Norm : public Layer, public IUnaryLayer {
   Expr weight{nullptr}; // = scale
   Expr bias{nullptr};
-  
+
   bool useScale{true};
   bool useBias{true};
   bool elementwise{true};
   float eps{1e-5f};
 
-  Norm(Ptr<ExpressionGraph> graph, 
-       bool useScale = true, 
-       bool useBias = true, 
-       bool elementwise = true, 
+  Norm(Ptr<ExpressionGraph> graph,
+       bool useScale = true,
+       bool useBias = true,
+       bool elementwise = true,
        float eps = 1e-5f)
-    : Layer(graph), 
-      useScale(useScale), 
-      useBias(useBias), 
-      elementwise(elementwise), 
+    : Layer(graph),
+      useScale(useScale),
+      useBias(useBias),
+      elementwise(elementwise),
       eps(eps) {}
 
   virtual Expr getScale(int dimModel) const {
@@ -281,7 +256,7 @@ struct Norm : public Layer, public IUnaryLayer {
 };
 
 struct LayerNorm : public Norm {
-  LayerNorm(Ptr<ExpressionGraph> graph, 
+  LayerNorm(Ptr<ExpressionGraph> graph,
             bool useScale = true,
             bool useBias = true,
             bool elementwise = true,
@@ -298,9 +273,9 @@ struct LayerNorm : public Norm {
 };
 
 struct RMSNorm : public Norm {
-  RMSNorm(Ptr<ExpressionGraph> graph, 
-          bool useScale = true, 
-          bool useBias = true, 
+  RMSNorm(Ptr<ExpressionGraph> graph,
+          bool useScale = true,
+          bool useBias = true,
           bool elementwise = true,
           float eps = 1e-5f)
    : Norm(graph, useScale, useBias, elementwise, eps)

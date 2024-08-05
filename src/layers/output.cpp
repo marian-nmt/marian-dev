@@ -92,7 +92,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
   };
 
   auto affineShortlist = [this](Expr x, Expr W, Expr b, bool transA, bool transB) {
-    /*    
+    /*
     std::cerr << "affineShortlist.x=" << x->shape() << std::endl;
     std::cerr << "affineShortlist.W=" << W->shape() << std::endl;
     if (b) std::cerr << "affineShortlist.b=" << b->shape() << std::endl;
@@ -114,7 +114,7 @@ Logits Output::applyAsLogits(Expr input) /*override final*/ {
     else {
       // original shortlist. W always has 1 for beam & batch
       ret = dot(x, W, transA, transB);
-    } 
+    }
 
     //std::cerr << "ret.x=" << ret->shape() << std::endl;
     return ret;

@@ -18,9 +18,9 @@ private:
   const bool PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
 
   static float chooseInvalidPathScore(Ptr<Options> options) {
-    auto prec = options->get<std::vector<std::string>>("precision", {"float32"});
-    auto computeType = typeFromString(prec[0]);
-    return NumericLimits<float>(computeType).lowest;
+    // We are now using float32 for accumulation along path scores, so we can just use float32 for the invalid scores
+    // Division by 2 to stay away from -inf. Here lowest / 2.f is bascially a magic number that marks finished beams.
+    return NumericLimits<float>(Type::float32).lowest / 2.f;
   }
 
 public:

@@ -13,6 +13,10 @@ using Ptr = std::shared_ptr<T>;
 
 class Options;
 
+namespace io {
+  class ModelWeights;
+}
+
 namespace quicksand {
 
 typedef uint32_t IndexType;
@@ -40,6 +44,8 @@ class IVocabWrapper {
 public:
   virtual WordIndex encode(const std::string& word) const = 0;
   virtual std::string decode(WordIndex id) const = 0;
+  virtual WordIndex getEosId() const = 0;
+  virtual WordIndex getUnkId() const = 0;
   virtual size_t size() const = 0;
   virtual void transcodeToShortlistInPlace(WordIndex* ptr, size_t num) const = 0;
 };
@@ -47,16 +53,15 @@ public:
 class IBeamSearchDecoder {
 protected:
   Ptr<Options> options_;
-  std::vector<const void*> ptrs_;
+  std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
 public:
   IBeamSearchDecoder(Ptr<Options> options,
-                     const std::vector<const void*>& ptrs)
-      : options_(options), ptrs_(ptrs) {}
+                     const std::vector<const void*>& ptrs);
 
   virtual ~IBeamSearchDecoder() {}
 
-  virtual QSNBestBatch decode(const QSBatch& qsBatch,
+  virtual QSNBestBatch decode(const std::vector<QSBatch>& qsBatches,
                               size_t maxLength,
                               const std::unordered_set<WordIndex>& shortlist)
       = 0;

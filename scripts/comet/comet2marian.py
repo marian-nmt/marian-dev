@@ -3,6 +3,7 @@
 This script converts Unbabel COMET-QE models to Marian weight file.
 """
 
+import sys
 import argparse
 import logging as log
 import numpy as np
@@ -13,8 +14,11 @@ from pathlib import Path
 # from comet.models import available_metrics
 # supported_comets = [m for m in available_metrics if 'qe' in m.lower()]
 supported_comets = [
-    'wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da',
-    'wmt20-comet-da', 'wmt21-comet-da'
+    'wmt20-comet-qe-da', 'wmt20-comet-qe-da-v2', 'wmt20-comet-da',
+    'wmt21-comet-qe-mqm', 'wmt21-comet-qe-da', 'wmt21-comet-da',
+    'Unbabel/wmt22-comet-da', 'Unbabel/wmt22-cometkiwi-da',
+    'Unbabel/XCOMET-XL', 'Unbabel/XCOMET-XXL',
+    'Unbabel/wmt23-cometkiwi-da-xl', 'Unbabel/wmt23-cometkiwi-da-xxl'
 ]
 log.basicConfig(level=log.INFO)
 
@@ -32,7 +36,7 @@ def load_from_huggingface(model_id):
     log.info(f"Loading transformer model from huggingface {model_id}")
     from transformers import AutoModel, AutoTokenizer
     try:
-        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False) 
+        model = AutoModel.from_pretrained(model_id, add_pooling_layer=False)
         AutoTokenizer.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         return model.eval(), getattr(tokenizer, 'vocab_file', None)
@@ -53,7 +57,7 @@ def load_comet_model(model_path):
     log.info(f"Loading COMET model from checkpoint {model_path}")
     comet_model = load_from_checkpoint(model_path)
     comet_model.eval()
-    
+
     vocab_file = None
     try:
         pretrained_model = comet_model.hparams.get('pretrained_model')
@@ -86,12 +90,23 @@ marianModel = dict()
 config = dict()
 
 model_type = type(cometModel).__name__
+print("COMET model params:", cometModel.hparams, file=sys.stderr)
+
+# are we using the xml-roberta-xl or xml-roberta-xxl model?
+isXlmXL = any(pre in cometModel.hparams.get("pretrained_model") for pre in ["xlm-roberta-xl", "xlm-roberta-xxl"])
+
 if model_type == "RegressionMetric":
     config["type"] = "comet"
 elif model_type == "ReferencelessRegression":
     config["type"] = "comet-qe"
 elif model_type == "XLMRobertaModel":
     config["type"] = "comet-qe"
+elif model_type == "UnifiedMetric" or isXlmXL:
+    config["type"] = "comet-unified"
+    config["input-join-fields"] = True
+    config["separator-symbol"] = "</s>"
+    config["comet-use-separator"] = True
+    config["input-reorder"] = [1, 0, 2] # reorder input fields from [src, mt, ref] to [mt, src, ref] for comet-kiwi etc.
 else:
     raise Exception(f'Unknown type of model {model_type}')
 
@@ -100,12 +115,33 @@ config["tied-embeddings-src"] = False
 config["transformer-ffn-depth"] = 2
 config["transformer-ffn-activation"] = "gelu" # figure this out dynamically
 config["transformer-train-position-embeddings"] = True
-config["transformer-preprocess"] = ""
-config["transformer-postprocess"] = "dan"
-config["transformer-postprocess-emb"] = "nd"
+
+# Roberta-XXL (hence XCOMET-XXL) has pre-norm
+if isXlmXL:
+    config["transformer-preprocess"] = "n"
+    config["transformer-postprocess"] = "da"
+    config["transformer-postprocess-emb"] = ""
+    config["transformer-postprocess-top"] = "n"
+else:
+    config["transformer-preprocess"] = ""
+    config["transformer-postprocess"] = "dan"
+    config["transformer-postprocess-emb"] = "nd"
+
 config["bert-train-type-embeddings"] = False
 config["bert-type-vocab-size"] = 0
 config["comet-prepend-zero"] = True
+
+config["comet-pool"] = cometModel.hparams.get("pool", "cls")
+config["comet-mix"] = cometModel.hparams.get("layer") == "mix"
+config["comet-mix-norm"] = cometModel.hparams.get('layer_norm', False)
+config["comet-mix-transformation"] = cometModel.hparams.get("layer_transformation", "softmax");
+
+# there are several issues in their code that make the following always true regardless of values in hparams
+# that was hard to find out
+if model_type == "UnifiedMetric" or isXlmXL:
+    config["comet-mix-transformation"] = "softmax"
+    config["comet-pool"] = "cls"
+
 if not args.roberta:
     config["comet-final-sigmoid"] = args.add_sigmoid
     config["comet-pooler-ffn"] = [2048, 1024]
@@ -127,26 +163,32 @@ def yaml2np(config):
     return npDesc
 
 def convert(pd, srcs, trg, transpose=True, bias=False):
-    if len(srcs) == 1:
-        for src in srcs:
-            num = pd[src].detach().numpy()
-            if bias:
-                marianModel[trg] = num.copy()
-            else:
-                if transpose:
-                    marianModel[trg] = np.transpose(num).copy()
-                else:
-                    marianModel[trg] = num
-    else: # path that joins matrices together for fused self-attention
-        nums = [pd[src].detach().numpy() for src in srcs]
+    # make sure exactly one element of list srcs exists in dictionary pd
+    found = sum([src in pd for src in srcs])
+    assert found == 1, f"Found {found} of {srcs} in {pd}"
+
+    for src in srcs:
+        if src not in pd:
+            continue
+        num = pd[src].detach().numpy()
         if bias:
-            nums = [np.transpose(num) for num in nums]
-        marianModel[trg] = np.stack(nums, axis=0).copy()
+            marianModel[trg] = num.copy()
+        else:
+            if transpose:
+                marianModel[trg] = np.transpose(num).copy()
+            else:
+                marianModel[trg] = num
+
+
+def match(regex, string):
+    import re
+    return re.search(regex, string) is not None
 
 def extract(layer, nth, level):
     name = type(layer).__name__
     print("  " * level, nth, name)
-    if "RobertaLayer" in name:
+
+    if match(r"Roberta(XL+)?Layer", name):
         pd = dict(layer.named_parameters())
         for n in pd:
             print("  " * (level + 1), n, pd[n].shape)
@@ -155,15 +197,15 @@ def extract(layer, nth, level):
 
         blockPrefix = f"{prefix}->encoder->layers->at({nth})->as<marian::nn::TransformerEncoderLayer>()->selfAttentionBlock"
 
-        # self-attention    
+        # self-attention
         # query transformation
         convert(pd, ["attention.self.query.weight"],       f"{blockPrefix}->selfAttention->qProj->weight")
         convert(pd, ["attention.self.query.bias"],         f"{blockPrefix}->selfAttention->qProj->bias", bias=True)
-        
+
         # key transformation
         convert(pd, ["attention.self.key.weight"],         f"{blockPrefix}->selfAttention->kProj->weight")
         convert(pd, ["attention.self.key.bias"],           f"{blockPrefix}->selfAttention->kProj->bias", bias=True)
-        
+
         # values transformation
         convert(pd, ["attention.self.value.weight"],       f"{blockPrefix}->selfAttention->vProj->weight")
         convert(pd, ["attention.self.value.bias"],         f"{blockPrefix}->selfAttention->vProj->bias", bias=True)
@@ -173,10 +215,14 @@ def extract(layer, nth, level):
         convert(pd, ["attention.output.dense.bias"],       f"{blockPrefix}->selfAttention->oProj->bias", bias=True)
 
         # self-attention layer-norm
-        convert(pd, ["attention.output.LayerNorm.weight"], f"{blockPrefix}->postprocessor->norm->weight", bias=True)
-        convert(pd, ["attention.output.LayerNorm.bias"],   f"{blockPrefix}->postprocessor->norm->bias", bias=True)
+        if isXlmXL:
+            convert(pd, ["attention.self_attn_layer_norm.weight"], f"{blockPrefix}->preprocessor->norm->weight", bias=True)
+            convert(pd, ["attention.self_attn_layer_norm.bias"],   f"{blockPrefix}->preprocessor->norm->bias", bias=True)
+        else:
+            convert(pd, ["attention.output.LayerNorm.weight"], f"{blockPrefix}->postprocessor->norm->weight", bias=True)
+            convert(pd, ["attention.output.LayerNorm.bias"],   f"{blockPrefix}->postprocessor->norm->bias", bias=True)
 
-        # ffn 
+        # ffn
         # first ffn layer
         blockPrefix = f"{prefix}->encoder->layers->at({nth})->as<marian::nn::TransformerEncoderLayer>()->filterBlock"
 
@@ -185,15 +231,20 @@ def extract(layer, nth, level):
         # second ffn layer
         convert(pd, ["output.dense.weight"],               f"{blockPrefix}->layers->at(3)->as<marian::nn::Linear>()->weight")
         convert(pd, ["output.dense.bias"],                 f"{blockPrefix}->layers->at(3)->as<marian::nn::Linear>()->bias", bias=True)
+
         # ffn layer-norm
-        convert(pd, ["output.LayerNorm.weight"],           f"{blockPrefix}->postprocessor->norm->weight", bias=True)
-        convert(pd, ["output.LayerNorm.bias"],             f"{blockPrefix}->postprocessor->norm->bias", bias=True)
+        if isXlmXL:
+            convert(pd, ["LayerNorm.weight"], f"{blockPrefix}->preprocessor->norm->weight", bias=True)
+            convert(pd, ["LayerNorm.bias"],   f"{blockPrefix}->preprocessor->norm->bias", bias=True)
+        else:
+            convert(pd, ["output.LayerNorm.weight"], f"{blockPrefix}->postprocessor->norm->weight", bias=True)
+            convert(pd, ["output.LayerNorm.bias"],   f"{blockPrefix}->postprocessor->norm->bias", bias=True)
 
         config["transformer-dim-ffn"] = pd["intermediate.dense.bias"].shape[-1]
         config["transformer-heads"] = layer.attention.self.num_attention_heads
         config["enc-depth"] += 1
 
-    elif "RobertaEmbeddings" in name:
+    elif match(r"Roberta(XL+)?Embeddings", name):
         for n, p in layer.named_parameters():
             print("  " * (level + 1), n, p.shape)
         pd = dict(layer.named_parameters())
@@ -203,22 +254,38 @@ def extract(layer, nth, level):
         npWemb = npWembTemp[1:-1, :].copy()
         npWemb[0, :] = npWembTemp[0, :]
         npWemb[2, :] = npWembTemp[2, :]
+
+        # XCOMET-XXL has some additional tokens (why?), we truncate it back to normal size
+        npWemb = npWemb[0:250000, :].copy()
+
         marianModel["Wemb"] = npWemb
 
         prefix = "CometEncoder"
-        
+
         # shift position embeddings so that we are back at 512 items and start at 0
         npPos = pd["position_embeddings.weight"].detach().numpy()
         npPos = npPos[2:, :].copy()
         marianModel[f"{prefix}->encoder->positionEmbedding->embeddings"] = npPos
 
-        # post-embedding layer normalization
-        convert(pd, ["LayerNorm.weight"], f"{prefix}->encoder->preprocessor->norm->weight", bias=True)
-        convert(pd, ["LayerNorm.bias"],   f"{prefix}->encoder->preprocessor->norm->bias", bias=True)
-
         config["dim-emb"]    =   npWemb.shape[1]
         config["dim-vocabs"] = [ npWemb.shape[0] ]
         config["max-length"] = npPos.shape[0]
+
+    elif match(r"Roberta(XL+)?Model", name):
+        pd = dict(layer.named_parameters())
+        prefix = "CometEncoder"
+
+        # post-embedding layer normalization
+        if isXlmXL:
+            convert(pd, ["encoder.LayerNorm.weight"], f"{prefix}->encoder->postprocessor->norm->weight", bias=True)
+            convert(pd, ["encoder.LayerNorm.bias"],   f"{prefix}->encoder->postprocessor->norm->bias", bias=True)
+        else:
+            convert(pd, ["embeddings.LayerNorm.weight"], f"{prefix}->encoder->preprocessor->norm->weight", bias=True)
+            convert(pd, ["embeddings.LayerNorm.bias"],   f"{prefix}->encoder->preprocessor->norm->bias", bias=True)
+
+        # on this level we actually keep recursing
+        recurse(layer, level + 1)
+
 
     elif name == "LayerwiseAttention":
         for n, p in layer.named_parameters():
@@ -227,16 +294,13 @@ def extract(layer, nth, level):
 
         # mix layers
         weights = []
-        for i in range(25):
+        for i in range(config["enc-depth"] + 1):
             weights.append(pd[f"scalar_parameters.{i}"].detach().numpy())
         marianModel["CometEncoder->encoder->weights"] = np.concatenate(weights).copy()
 
         # gamma for weird batch/layer-norm step in pooler/encoder of COMET
         # @TODO: make optional
         marianModel["CometEncoder->encoder->gamma"] = pd["gamma"].detach().numpy().copy()
-        config["comet-mix"] = True
-        config["comet-mix-norm"] = True
-        
 
     elif name == "FeedForward":
         for n, p in layer.named_parameters():
@@ -254,7 +318,6 @@ def extract(layer, nth, level):
         # 3-layer FFN network that computes COMET regression
         prefix = "CometQEPooler"
 
-        # @TODO: make final sigmoid optional
         convert(pd, ["ff.0.weight"], f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->weight")
         convert(pd, ["ff.0.bias"],   f"{prefix}->layers->at(0)->as<marian::nn::Linear>()->bias", bias=True)
 
@@ -262,7 +325,7 @@ def extract(layer, nth, level):
         convert(pd, ["ff.3.bias"],   f"{prefix}->layers->at(3)->as<marian::nn::Linear>()->bias", bias=True)
 
         convert(pd, ["ff.6.weight"], f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->weight")
-        convert(pd, ["ff.6.bias"],   f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->bias", bias=True)        
+        convert(pd, ["ff.6.bias"],   f"{prefix}->layers->at(6)->as<marian::nn::Linear>()->bias", bias=True)
     else:
         recurse(layer, level + 1)
 

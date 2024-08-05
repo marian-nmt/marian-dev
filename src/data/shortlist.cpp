@@ -8,7 +8,7 @@
 namespace marian {
 namespace data {
 
-// cast current void pointer to T pointer and move forward by num elements 
+// cast current void pointer to T pointer and move forward by num elements
 template <typename T>
 const T* get(const void*& current, size_t num = 1) {
   const T* ptr = (const T*)current;
@@ -18,19 +18,22 @@ const T* get(const void*& current, size_t num = 1) {
 
 //////////////////////////////////////////////////////////////////////////////////////
 Shortlist::Shortlist(const std::vector<WordIndex>& indices)
-  : indices_(indices), 
+  : indices_(indices),
     initialized_(false) {}
 
 Shortlist::~Shortlist() {}
 
-WordIndex Shortlist::reverseMap(int /*beamIdx*/, int /*batchIdx*/, int idx) const { return indices_[idx]; }
+WordIndex Shortlist::reverseMap(int /*beamIdx*/, int /*batchIdx*/, int idx) const {
+  return indices_[idx];
+}
 
-WordIndex Shortlist::tryForwardMap(WordIndex wIdx) const {
+WordIndex Shortlist::tryForwardMap(WordIndex wIdx, int /*batchIdx*/) const {
   auto first = std::lower_bound(indices_.begin(), indices_.end(), wIdx);
-  if(first != indices_.end() && *first == wIdx)         // check if element not less than wIdx has been found and if equal to wIdx
+  if(first != indices_.end() && *first == wIdx) {        // check if element not less than wIdx has been found and if equal to wIdx
     return (int)std::distance(indices_.begin(), first); // return coordinate if found
-  else
+  } else {
     return npos;                                        // return npos if not found, @TODO: replace with std::optional once we switch to C++17?
+  }
 }
 
 void Shortlist::filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) {
@@ -46,7 +49,7 @@ void Shortlist::filter(Expr input, Expr weights, bool isLegacyUntransposedW, Exp
   Shape kShape({k});
   indicesExpr_ = lambda({input, weights}, kShape, Type::uint32, forward);
 
-  createCachedTensors(weights, isLegacyUntransposedW, b, lemmaEt, k);
+  createCachedTensors(weights, isLegacyUntransposedW, b, lemmaEt);
   initialized_ = true;
 }
 
@@ -59,8 +62,7 @@ Expr Shortlist::getIndicesExpr() const {
 void Shortlist::createCachedTensors(Expr weights,
                           bool isLegacyUntransposedW,
                           Expr b,
-                          Expr lemmaEt,
-                          int k) {
+                          Expr lemmaEt) {
   ABORT_IF(isLegacyUntransposedW, "Legacy untranspose W not yet tested");
   cachedShortWt_ = index_select(weights, isLegacyUntransposedW ? -1 : 0, indicesExpr_);
   cachedShortWt_ = reshape(cachedShortWt_, {1, 1, cachedShortWt_->shape()[0], cachedShortWt_->shape()[1]});
@@ -70,6 +72,7 @@ void Shortlist::createCachedTensors(Expr weights,
   }
 
   if (lemmaEt) {
+    int k = indicesExpr_->shape()[-1];
     cachedShortLemmaEt_ = index_select(lemmaEt, -1, indicesExpr_);
     cachedShortLemmaEt_ = reshape(cachedShortLemmaEt_, {1, 1, cachedShortLemmaEt_->shape()[0], k});
   }
@@ -78,60 +81,115 @@ void Shortlist::createCachedTensors(Expr weights,
 ///////////////////////////////////////////////////////////////////////////////////
 
 LSHShortlist::LSHShortlist(int k, int nbits, size_t lemmaSize, bool abortIfDynamic)
-: Shortlist(std::vector<WordIndex>()), 
+: Shortlist(std::vector<WordIndex>()),
   k_(k), nbits_(nbits), lemmaSize_(lemmaSize), abortIfDynamic_(abortIfDynamic) {
 }
 
 WordIndex LSHShortlist::reverseMap(int beamIdx, int batchIdx, int idx) const {
-  //int currBeamSize = indicesExpr_->shape()[0];
   int currBatchSize = indicesExpr_->shape()[1];
   idx = (k_ * currBatchSize * beamIdx) + (k_ * batchIdx) + idx;
   assert(idx < indices_.size());
-  return indices_[idx]; 
+  return indices_[idx];
 }
 
 Expr LSHShortlist::getIndicesExpr() const {
   return indicesExpr_;
 }
 
+void LSHShortlist::setForcedIndices(Expr forcedIndices) {
+  if(forcedIndices) {
+    int dimBatch = forcedIndices->shape()[-2];
+    forcedIndicesExpr_ = reshape(forcedIndices, {1, dimBatch, 1});
+  } else {
+    forcedIndicesExpr_ = nullptr;
+  }
+}
+
 void LSHShortlist::filter(Expr input, Expr weights, bool isLegacyUntransposedW, Expr b, Expr lemmaEt) {
-  indicesExpr_ = callback(lsh::search(input, weights, k_, nbits_, (int)lemmaSize_, abortIfDynamic_),
-                          [this](Expr node) { 
+  auto topk = lsh::search(input, weights, k_, nbits_, (int)lemmaSize_, abortIfDynamic_); // [beam, batch, k]
+  indicesExpr_ = callback(topk,
+                          [this](Expr node) {
+                            if(forcedIndicesExpr_) {
+                              // if a forced index is set, we need to overwrite the relevant topk index with the forced index
+                              int dimBeam = node->shape()[-3];
+                              int dimBatch = node->shape()[-2];
+                              for(int batchIdx = 0; batchIdx < dimBatch; batchIdx++) {
+                                for(int beamIdx = 0; beamIdx < dimBeam; beamIdx++) {
+                                  IndexType* begin = node->val()->data<IndexType>() + beamIdx * dimBatch * k_ + batchIdx * k_;
+                                  IndexType* end   = begin + k_;
+                                  IndexType val    = forcedIndicesExpr_->val()->data<IndexType>()[batchIdx];
+                                  auto pos         = std::lower_bound(begin, end, val);
+                                  if(pos != end)
+                                    *pos = val;
+                                  else
+                                    *(end-1) = val;
+                                }
+                              }
+                              // we will correctly overwrite the indices used for reverse mapping in the next call back
+                              setForcedIndices(nullptr);
+                            }
                             node->val()->get(indices_); // set the value of the field indices_ whenever the graph traverses this node
                           });
 
-  createCachedTensors(weights, isLegacyUntransposedW, b, lemmaEt, k_);
+  createCachedTensors(weights, isLegacyUntransposedW, b, lemmaEt);
+}
+
+WordIndex LSHShortlist::tryForwardMap(WordIndex wIdx, int batchIdx) const {
+  if(!indicesExpr_ || indices_.empty())
+    return npos;
+
+  int dimBatch = indicesExpr_->shape()[-2];
+  int beamIdx = 0;
+
+  IndexType* begin = indicesExpr_->val()->data<IndexType>() + beamIdx * dimBatch * k_ + batchIdx * k_;
+  IndexType* end   = begin + k_;
+
+  auto pos = std::lower_bound(begin, end, wIdx);
+  if(pos != end)
+    return (int)std::distance(begin, pos);
+   else
+    return npos;
+}
+
+Expr LSHShortlist::tryForwardMap(Expr indices) const {
+  auto forward = [this](Expr out, const std::vector<Expr>& inputs) {
+    ABORT_IF(out->val()->getDeviceId().type != DeviceType::cpu, "LSHShortlist::tryForwardMap(Expr) is only implemented for CPU");
+    for(int batchIdx = 0; batchIdx < out->shape().elements(); batchIdx++)
+      out->val()->data<IndexType>()[batchIdx] = LSHShortlist::tryForwardMap(inputs[0]->val()->data<IndexType>()[batchIdx], batchIdx);
+  };
+
+  return lambda({indices}, indices->shape(), Type::uint32, forward);
 }
 
 void LSHShortlist::createCachedTensors(Expr weights,
                                        bool isLegacyUntransposedW,
                                        Expr b,
-                                       Expr lemmaEt,
-                                       int k) {
+                                       Expr lemmaEt) {
   int currBeamSize = indicesExpr_->shape()[0];
   int batchSize = indicesExpr_->shape()[1];
   ABORT_IF(isLegacyUntransposedW, "Legacy untranspose W not yet tested");
 
+  int kPrime = indicesExpr_->shape()[-1];
   Expr indicesExprFlatten = reshape(indicesExpr_, {indicesExpr_->shape().elements()});
 
   cachedShortWt_ = index_select(weights, isLegacyUntransposedW ? -1 : 0, indicesExprFlatten);
-  cachedShortWt_ = reshape(cachedShortWt_, {currBeamSize, batchSize, k, cachedShortWt_->shape()[1]});
+  cachedShortWt_ = reshape(cachedShortWt_, {currBeamSize, batchSize, kPrime, cachedShortWt_->shape()[1]});
 
   if (b) {
     ABORT("Bias not supported with LSH");
     cachedShortb_ = index_select(b, -1, indicesExprFlatten);
-    cachedShortb_ = reshape(cachedShortb_, {currBeamSize, batchSize, k, cachedShortb_->shape()[0]}); // not tested
+    cachedShortb_ = reshape(cachedShortb_, {currBeamSize, batchSize, kPrime, cachedShortb_->shape()[0]}); // not tested
   }
 
   if (lemmaEt) {
     int dim = lemmaEt->shape()[0];
     cachedShortLemmaEt_ = index_select(lemmaEt, -1, indicesExprFlatten);
-    cachedShortLemmaEt_ = reshape(cachedShortLemmaEt_, {dim, currBeamSize, batchSize, k});
+    cachedShortLemmaEt_ = reshape(cachedShortLemmaEt_, {dim, currBeamSize, batchSize, kPrime});
     cachedShortLemmaEt_ = transpose(cachedShortLemmaEt_, {1, 2, 0, 3});
   }
 }
 
-LSHShortlistGenerator::LSHShortlistGenerator(int k, int nbits, size_t lemmaSize, bool abortIfDynamic) 
+LSHShortlistGenerator::LSHShortlistGenerator(int k, int nbits, size_t lemmaSize, bool abortIfDynamic)
   : k_(k), nbits_(nbits), lemmaSize_(lemmaSize), abortIfDynamic_(abortIfDynamic) {
 }
 
@@ -165,7 +223,7 @@ QuicksandShortlistGenerator::QuicksandShortlistGenerator(Ptr<Options> options,
 
   mmap_ = mio::mmap_source(fname); // memory-map the binary file once
   const void* current = mmap_.data(); // pointer iterator over binary file
-  
+
   // compare magic number in binary file to make sure we are reading the right thing
   const int32_t MAGIC_NUMBER = 1234567890;
   int32_t header_magic_number = *get<int32_t>(current);
@@ -173,7 +231,7 @@ QuicksandShortlistGenerator::QuicksandShortlistGenerator(Ptr<Options> options,
 
   auto config = marian::quicksand::ParameterTree::FromBinaryReader(current);
   use16bit_ = config->GetBoolReq("use_16_bit");
-  
+
   LOG(info, "[data] Mapping Quicksand shortlist from {}", fname);
 
   idSize_ = sizeof(int32_t);
@@ -189,12 +247,12 @@ QuicksandShortlistGenerator::QuicksandShortlistGenerator(Ptr<Options> options,
   sourceOffsets_        =  get<int32_t>(current, numSourceIds_);
   numShortlistIds_      = *get<int32_t>(current);
   sourceToShortlistIds_ =  get<uint8_t>(current, idSize_ * numShortlistIds_);
-  
+
   // display parameters
-  LOG(info, 
+  LOG(info,
       "[data] Quicksand shortlist has {} source ids, {} default ids and {} shortlist ids",
-      numSourceIds_, 
-      numDefaultIds_, 
+      numSourceIds_,
+      numDefaultIds_,
       numShortlistIds_);
 }
 
@@ -225,12 +283,12 @@ Ptr<Shortlist> QuicksandShortlistGenerator::generate(Ptr<data::CorpusBatch> batc
       curShortlistIt->first  = curShortlistIds;
       curShortlistIt->second = length;
       curShortlistIt++;
-      
+
       if (length > maxLength)
         maxLength = length;
     }
   }
-        
+
   // collect the actual shortlist mappings
   for (int32_t i = 0; i < maxLength && indexSet.size() < maxShortlistSize; i++) {
     for (int32_t j = 0; j < curShortlists.size() && indexSet.size() < maxShortlistSize; j++) {
@@ -273,7 +331,7 @@ Ptr<ShortlistGenerator> createShortlistGenerator(Ptr<Options> options,
     size_t lemmaSize = trgVocab->lemmaSize();
     return New<LSHShortlistGenerator>(lshOpts[0], lshOpts[1], lemmaSize, /*abortIfDynamic=*/false);
   }
-  else {                                                   
+  else {
     std::vector<std::string> vals = options->get<std::vector<std::string>>("shortlist");
     ABORT_IF(vals.empty(), "No path to shortlist given");
     std::string fname = vals[0];

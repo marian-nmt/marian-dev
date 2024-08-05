@@ -13,7 +13,7 @@
 namespace marian {
 
 // These function declarations are repeated as template specialization with variadic template arguments does not seem to work.
-// Here I am just creating version for 1, 2, and 3 arguments. To be extended if required.
+// Here I am just creating version for 1, 2, 3 and 4 arguments. To be extended if required.
 template <typename T, typename AccType, class Functor, class AggFunctor>
 void AggregateAll(Ptr<Allocator> allocator,
                   Functor functor, 
@@ -43,6 +43,18 @@ void AggregateAll(Ptr<Allocator> allocator,
                   const Tensor in1, 
                   const Tensor in2, 
                   const Tensor in3);
+
+template <typename T, typename AccType, class Functor, class AggFunctor>
+void AggregateAll(Ptr<Allocator> allocator,
+                  Functor functor, 
+                  AccType aggInit,
+                  AggFunctor aggFunctor,
+                  AccType scale,
+                  Tensor out, 
+                  const Tensor in1, 
+                  const Tensor in2, 
+                  const Tensor in3,
+                  const Tensor in4);
 
 // Aggregates all values into a single tensor and returns the value of that tensor as a float
 // This does a GPU to CPU memory copy via TensorBase::scalar().

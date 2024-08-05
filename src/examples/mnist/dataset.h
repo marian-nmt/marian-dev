@@ -139,8 +139,8 @@ private:
 
 public:
   MNISTData(std::vector<std::string> paths,
-            std::vector<Ptr<Vocab>> /*vocabs*/ = {},
-            Ptr<Options> options = nullptr)
+            std::vector<Ptr<Vocab>> /*vocabs*/,
+            Ptr<Options> options)
       : Dataset(paths, options), IMAGE_MAGIC_NUMBER(2051), LABEL_MAGIC_NUMBER(2049) {
     loadData();
   }

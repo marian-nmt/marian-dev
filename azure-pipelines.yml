@@ -8,10 +8,26 @@
 
 parameters:
 # Allow skipping the entire 'Build' stage
-- name: runBuilds
-  displayName: Run builds? Uncheck to run regression tests only.
+- name: disableAllBuilds
+  displayName: Disable all builds and run regression tests only
   type: boolean
-  default: true
+  default: false
+- name: disableAllTests
+  displayName: Do not run regression tests
+  type: boolean
+  default: false
+- name: disableLinux
+  displayName: Disable Linux builds
+  type: boolean
+  default: false
+- name: disableMacOS
+  displayName: Disable MacOS builds
+  type: boolean
+  default: false
+- name: disableWindows
+  displayName: Disable Windows builds
+  type: boolean
+  default: false
 
 # Warning: the current branch policies disable the automatic triggering to
 # minimize VM usage!
@@ -52,9 +68,9 @@ variables:
   - name: MKL_DIR
     value: "$(Build.SourcesDirectory)/mkl"
   - name: MKL_URL
-    value: "https://data.statmt.org/romang/marian-regression-tests/ci/mkl-2020.1-windows-static.zip"
+    value: "https://mariandev.blob.core.windows.net/public/ci/mkl-2020.1-windows-static.zip"
   - name: VCPKG_COMMIT
-    value: 2022.03.10
+    value: 2023.11.20
   - name: VCPKG_DIR
     value: "$(Build.SourcesDirectory)/vcpkg"
   - name: VCPKG_PACKAGES
@@ -73,7 +89,7 @@ stages:
   ######################################################################
   - job: BuildWindows
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableWindows }}, false) )
     displayName: Windows
 
     strategy:
@@ -177,6 +193,7 @@ stages:
           -DUSE_NCCL="FALSE" ^
           -DUSE_SENTENCEPIECE="TRUE" ^
           -DUSE_STATIC_LIBS="TRUE"
+
       displayName: Configure CMake
       env:
         # Set envvars so that CMake can find the installed packages
@@ -210,7 +227,7 @@ stages:
   ######################################################################
   - job: BuildUbuntu
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableLinux }}, false) )
     displayName: Ubuntu
     timeoutInMinutes: 120
 
@@ -230,6 +247,7 @@ stages:
           gcc: 9
           unit_tests: true
           examples: false
+          pymarian: true
           static: true
         # Ubuntu GPU-only build
         "GPU-only":
@@ -241,6 +259,7 @@ stages:
           gcc: 9
           unit_tests: false
           examples: false
+          pymarian: true
           static: false
         ################################################################
         # Ubuntu 22.04 supports CUDA 11+
@@ -254,20 +273,23 @@ stages:
           gpu: true
           cuda: 11.7
           gcc: 11
-          unit_tests: false # disable unit tests to minimize compilation time
-          examples: false   # disable examples to minimize compilation time
+          unit_tests: true
+          examples: true
+          pymarian: true
           static: false
         ################################################################
         # Ubuntu 20.04 supports CUDA 11+
         "20.04 CUDA 11.1 gcc-9":
           image: ubuntu-20.04
-          boost: true
+          boost: false
           cpu: true
           gpu: true
           cuda: 11.1
           gcc: 9
-          unit_tests: true
-          examples: true
+          # static cause large binaries so we turn off tests and examples
+          unit_tests: false
+          examples: false
+          pymarian: false
           static: true
         ################################################################
         # Ubuntu 16.04 is no longer available on Azure-hosted machines
@@ -306,6 +328,11 @@ stages:
       displayName: Install CUDA
       condition: eq(variables.gpu, true)
 
+    # Some preinstalled versions of pip are bad for pymarian; see https://github.com/pypa/setuptools/issues/3269
+    - bash: python3 -m pip install pip -U
+      displayName: Upgrade pip
+      condition: eq(variables.pymarian, true)
+
     - bash: |
         mkdir -p build
         cd build
@@ -313,6 +340,12 @@ stages:
         cmake .. \
           -DCOMPILE_CPU=$(cpu) \
           -DCOMPILE_CUDA=$(gpu) \
+          -DCOMPILE_MAXWELL=$(gpu) \
+          -DCOMPILE_PASCAL=$(gpu) \
+          -DCOMPILE_VOLTA=$(gpu) \
+          -DCOMPILE_AMPERE=OFF \
+          -DCOMPILE_AMPERE_RTX=OFF \
+          -DCOMPILE_TURING=OFF \
           -DCOMPILE_EXAMPLES=$(examples) \
           -DCOMPILE_SERVER=$(boost) \
           -DCOMPILE_TESTS=$(unit_tests) \
@@ -320,7 +353,11 @@ stages:
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=$(static) \
           -DBoost_ARCHITECTURE=-x64 \
-          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-$(cuda)
+          -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-$(cuda) \
+          -DUSE_TCMALLOC=off \
+          -DPYMARIAN=$(pymarian) \
+          -DPYTHON_EXECUTABLE=python3
+
       displayName: Configure CMake
 
     # Clean build/src/ to safe disk space on Azure-hosted VMs and stay below the 10GB limit
@@ -345,10 +382,16 @@ stages:
       displayName: Print versions
       workingDirectory: build
 
+    - bash: |
+        python3 -m pip install build/pymarian-*.whl
+        python3 -m pymarian -v
+      displayName: Build Pymarian
+      condition: eq(variables.pymarian, true)
+
   ######################################################################
   - job: BuildMacOS
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableMacOS }}, false) )
     displayName: macOS CPU clang
 
     pool:
@@ -377,6 +420,7 @@ stages:
           -DUSE_FBGEMM=on \
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=off
+
       displayName: Configure CMake
 
     - bash: make -j2
@@ -398,7 +442,7 @@ stages:
   ######################################################################
   - job: BuildInstall
     cancelTimeoutInMinutes: 1
-    condition: eq(${{ parameters.runBuilds }}, true)
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableLinux }}, false) )
     displayName: Linux CPU library install
 
     pool:
@@ -437,7 +481,10 @@ stages:
           -DCOMPILE_CUDA=off \
           -DGENERATE_MARIAN_INSTALL_TARGETS=on \
           -DUSE_FBGEMM=on \
-          -DUSE_SENTENCEPIECE=on
+          -DUSE_SENTENCEPIECE=on \
+          -DPYMARIAN=on \
+          -DPYTHON_EXECUTABLE=python3
+
       displayName: Configure CMake
 
     - bash: make -j3 install
@@ -452,6 +499,11 @@ stages:
       displayName: Check targets
       workingDirectory: install
 
+    - bash: |
+        python3 -m pip install build/pymarian-*.whl
+        python3 -m pymarian -v
+      displayName: Build Pymarian
+
 
 # Marian is built in the same job where the regression tests are run to make sure that executables
 # are compiled and run on a machine with the same CPU architecture, which is required for
@@ -462,6 +514,7 @@ stages:
   ######################################################################
   - job: TestWindows
     cancelTimeoutInMinutes: 1
+    condition: eq(${{ parameters.disableAllTests }}, false)
     displayName: Windows CPU+FBGEMM
 
     pool:
@@ -588,6 +641,7 @@ stages:
   ######################################################################
   - job: TestLinux
     cancelTimeoutInMinutes: 1
+    condition: eq(${{ parameters.disableAllTests }}, false)
     displayName: Linux CPU+FBGEMM
 
     pool:

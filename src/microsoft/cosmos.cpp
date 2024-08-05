@@ -20,7 +20,7 @@ public:
   EmbedderModel(Ptr<Options> options)
     : model_(createModelFromOptions(options, models::usage::embedding)) {}
 
-  void load(Ptr<ExpressionGraph> graph, const std::string& modelFile) {
+  void load(Ptr<ExpressionGraph> graph, Ptr<io::ModelWeights> modelFile) {
     model_->load(graph, modelFile);
   }
 
@@ -36,21 +36,22 @@ namespace cosmos {
 const size_t MAX_BATCH_SIZE =  32;
 const size_t MAX_LENGTH     = 256;
 
-/** 
+/**
  * Single CPU-core implementation of an Embedder/Similiarity scorer. Turns sets of '\n' strings
  * into parallel batches and either outputs embedding vectors or similarity scores.
  */
 class Embedder {
-private: 
+private:
   Ptr<Options> options_;
   Ptr<ExpressionGraph> graph_;
   Ptr<Vocab> vocab_;
 
   Ptr<EmbedderModel> model_;
-  
+  Ptr<io::ModelWeights> modelFile_;
+
 public:
   Embedder(const std::string& modelPath, const std::string& vocabPath, bool computeSimilarity = false) {
-    options_ = New<Options>("inference", true, 
+    options_ = New<Options>("inference", true,
                             "shuffle", "none",
                             "mini-batch", MAX_BATCH_SIZE,
                             "maxi-batch", 100,
@@ -59,7 +60,7 @@ public:
                             "max-length-crop", true,
                             "compute-similarity", computeSimilarity,
                             "vocabs", std::vector<std::string>(computeSimilarity ? 2 : 1, vocabPath));
-  
+
     vocab_ = New<Vocab>(options_, 0);
     vocab_->load(vocabPath, 0);
 
@@ -67,20 +68,20 @@ public:
     graph_->setDevice(CPU0);
     graph_->reserveWorkspaceMB(512);
 
-    YAML::Node config;
-    io::getYamlFromModel(config, "special:model.yml", modelPath);
-    
+    modelFile_ = New<io::ModelWeights>(modelPath);
+    YAML::Node config = modelFile_->getYamlFromModel();
+
     Ptr<Options> modelOpts = New<Options>();
     modelOpts->merge(options_);
     modelOpts->merge(config);
 
     model_ = New<EmbedderModel>(modelOpts);
-    model_->load(graph_, modelPath);
+    model_->load(graph_, modelFile_);
   }
 
   // Compute embedding vectors for a batch of sentences
   std::vector<std::vector<float>> embed(const std::string& input) {
-    auto text = New<data::TextInput>(std::vector<std::string>({input}), 
+    auto text = New<data::TextInput>(std::vector<std::string>({input}),
                                      std::vector<Ptr<Vocab>>({vocab_}),
                                      options_);
     // we set runAsync=false as we are throwing exceptions instead of aborts. Exceptions and threading do not mix well.
@@ -102,7 +103,7 @@ public:
         auto batchIdx = batch->getSentenceIds()[i];
         if(output.size() <= batchIdx)
           output.resize(batchIdx + 1);
-        
+
         int embSize = embeddings->shape()[-1];
         size_t beg = i * embSize;
         size_t end = (i + 1) * embSize;
@@ -116,7 +117,7 @@ public:
 
   // Compute cosine similarity scores for a two batches of corresponding sentences
   std::vector<float> similarity(const std::string& input1, const std::string& input2) {
-    auto text = New<data::TextInput>(std::vector<std::string>({input1, input2}), 
+    auto text = New<data::TextInput>(std::vector<std::string>({input1, input2}),
                                      std::vector<Ptr<Vocab>>({vocab_, vocab_}),
                                      options_);
     // we set runAsync=false as we are throwing exceptions instead of aborts. Exceptions and threading do not mix well.

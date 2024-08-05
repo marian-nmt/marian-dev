@@ -30,7 +30,7 @@ public:
   Embedder(Ptr<Options> options)
     : model_(createModelFromOptions(options, models::usage::embedding)) {}
 
-  void load(Ptr<ExpressionGraph> graph, const std::string& modelFile) {
+  void load(Ptr<ExpressionGraph> graph, Ptr<io::ModelWeights> modelFile) {
     model_->load(graph, modelFile);
   }
 
@@ -51,11 +51,12 @@ private:
   Ptr<CorpusBase> corpus_;
   std::vector<Ptr<ExpressionGraph>> graphs_;
   std::vector<Ptr<Model>> models_;
+  Ptr<io::ModelWeights> modelFile_;
 
 public:
   Embed(Ptr<Options> options) : options_(options) {
-    
-    options_ = options_->with("inference", true, 
+
+    options_ = options_->with("inference", true,
                               "shuffle", "none");
 
     // if a similarity is computed then double the input types and vocabs for
@@ -87,7 +88,8 @@ public:
       graphs_.push_back(graph);
     }
 
-    auto modelFile = options_->get<std::string>("model");
+    auto modelPath = options_->get<std::string>("model");
+    modelFile_ = New<io::ModelWeights>(modelPath);
 
     models_.resize(graphs_.size());
     ThreadPool pool(graphs_.size(), graphs_.size());
@@ -95,7 +97,7 @@ public:
       pool.enqueue(
           [=](size_t j) {
             models_[j] = New<Model>(options_);
-            models_[j]->load(graphs_[j], modelFile);
+            models_[j]->load(graphs_[j], modelFile_);
           },
           i);
     }
@@ -104,7 +106,7 @@ public:
   void run() override {
     LOG(info, "Embedding");
     timer::Timer timer;
-    
+
     auto batchGenerator = New<BatchGenerator<CorpusBase>>(corpus_, options_);
     batchGenerator->prepare();
 
@@ -140,7 +142,7 @@ public:
           } else {
             ABORT("Unknown embedding type {}", embeddings->value_type());
           }
-          
+
           // collect embedding vector per sentence.
           // if we compute similarities this is only one similarity per sentence pair.
           for(size_t i = 0; i < batch->size(); ++i) {

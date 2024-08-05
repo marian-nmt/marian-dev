@@ -17,7 +17,7 @@ namespace marian {
 */
 class ShapeSizeException : public std::runtime_error {
 public:
-  ShapeSizeException(size_t available, size_t asked) 
+  ShapeSizeException(size_t available, size_t asked)
   : std::runtime_error(fmt::format("Expanded shape size {} exceeds numeric capcacity {}", asked, available))
   {}
 };

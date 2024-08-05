@@ -4,6 +4,7 @@ include_directories(.)
 include_directories(3rd_party)
 include_directories(3rd_party/SQLiteCpp/include)
 include_directories(3rd_party/sentencepiece)
+
 if(USE_SENTENCEPIECE)
   include_directories(3rd_party/sentencepiece/third_party/protobuf-lite)
 endif(USE_SENTENCEPIECE)
@@ -55,6 +56,7 @@ set(MARIAN_SOURCES
   tensors/backend.cpp
   tensors/rand.cpp
   tensors/tensor.cpp
+  tensors/cpu/cumsum.cpp
   tensors/cpu/device.cpp
   tensors/cpu/prod.cpp
   tensors/cpu/topk.cpp
@@ -82,6 +84,8 @@ set(MARIAN_SOURCES
   layers/lsh.cpp
 
   layers_new/neuralnet.cpp
+  layers_new/alibi.cpp
+  layers_new/attention.cpp
 
   rnn/cells.cpp
   rnn/attention.cpp
@@ -179,6 +183,8 @@ set_target_properties(marian PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY
 
 if(CUDA_FOUND)
   cuda_add_library(marian_cuda
+    layers_new/alibi.cu
+    tensors/gpu/cumsum.cu
     tensors/gpu/device.cu
     tensors/gpu/hash.cu
     tensors/gpu/algorithm.cu
@@ -255,11 +261,11 @@ if (NOT COMPILE_LIBRARY_ONLY)
   endif(COMPILE_SERVER)
 
   foreach(exec ${EXECUTABLES})
-    target_link_libraries(${exec} marian)
-    if(CUDA_FOUND)
-      target_link_libraries(${exec} marian_cuda)
-    endif(CUDA_FOUND)
-    set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+  target_link_libraries(${exec} marian)
+  if(CUDA_FOUND)
+    target_link_libraries(${exec} marian_cuda)
+  endif(CUDA_FOUND)
+  set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   endforeach(exec)
 endif(NOT COMPILE_LIBRARY_ONLY)
 
@@ -277,9 +283,44 @@ endif(COMPILE_EXAMPLES)
 
 if(GENERATE_MARIAN_INSTALL_TARGETS)
   # Install the marian library if given a "make install" target
-  include(GNUInstallDirs)                 # This defines default values for installation directories (all platforms even if named GNU)
+  include(GNUInstallDirs) # This defines default values for installation directories (all platforms even if named GNU)
   install(TARGETS marian
     EXPORT marian-targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 endif(GENERATE_MARIAN_INSTALL_TARGETS)
+
+
+if(PYMARIAN)
+  # python libs which use different version of tcmalloc (e.g. pandas) can cause segfaults, so we disable it
+  include_directories(3rd_party/pybind11/include)
+  add_subdirectory(3rd_party/pybind11)
+  include(PythonModules)
+  # print all python versions
+  message(STATUS "Going to look for these Python versions: ${PYTHON_VERSIONS}")
+  add_custom_target(_pymarian)
+  foreach(PYTHON_VERSION ${PYTHON_VERSIONS})  # defined in PythonModules.cmake
+      py_add_module(_pymarian_${PYTHON_VERSION} python/binding/bind.cpp PYTHON_VERSION ${PYTHON_VERSION} PYTHON_MODULE _pymarian)
+      target_link_libraries(_pymarian_${PYTHON_VERSION} PUBLIC marian ${EXT_LIBS})
+      if(CUDA_FOUND)
+        target_link_libraries(_pymarian_${PYTHON_VERSION} PUBLIC marian_cuda)
+      endif(CUDA_FOUND)
+      add_dependencies(_pymarian _pymarian_${PYTHON_VERSION})
+  endforeach()
+
+  # ==== make .whl files  ====
+  # IMPORTANT: do not parallelize the wheel builds; they conflict on a few directories (e.g. *.egg-info)
+  set(LAST_PYMARIAN_TGT "")
+  foreach(PYTHON_VERSION ${PYTHON_VERSIONS})
+    add_custom_target(
+      pymarian_${PYTHON_VERSION} ALL
+      COMMAND ${PYTHON_${PYTHON_VERSION}_EXECUTABLE} -m pip install --upgrade pip build
+      COMMAND ${CMAKE_COMMAND} -E env "CMAKE_BINARY_DIR=${PROJECT_BINARY_DIR}" "CMAKE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+              ${PYTHON_${PYTHON_VERSION}_EXECUTABLE} -m build --wheel ${PROJECT_SOURCE_DIR}/src/python -o "${PROJECT_BINARY_DIR}"
+      DEPENDS _pymarian_${PYTHON_VERSION} ${LAST_PYMARIAN_TGT}
+      VERBATIM COMMENT "===Building pymarian wheel for python${PYTHON_VERSION}==="
+    )
+    set(LAST_PYMARIAN_TGT pymarian_${PYTHON_VERSION})
+  endforeach(PYTHON_VERSION)
+
+endif(PYMARIAN)

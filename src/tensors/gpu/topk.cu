@@ -3,6 +3,13 @@
 #include "tensors/allocator.h"
 
 #include <cuda.h>
+#include <thrust/device_ptr.h>
+#include <thrust/functional.h>
+#include <thrust/sort.h>
+
+#if CUDA_VERSION >= 11000
+#include <cub/cub.cuh>
+#endif
 
 // GPU implementation of proper Marian top-k operator for TopkNodeOp
 // This file contains a lot of code-duplicaton with src/translator/nth_element.cu
@@ -14,7 +21,6 @@ namespace marian {
 namespace gpu {  
 
 const int MAX_BINS   = 500;
-const int BLOCK_SIZE = 512;
 
 #define UNROLL_MAXARG_LOOP(n, max)                    \
   if(tid < (n) && tid + (n) < (max)) {                \
@@ -35,7 +41,7 @@ __global__ void gMaxElement(IndexType* binIndices, // out: top-k positions
                             bool descending)       // This will be the largest possible value if the order is reversed (i.e. we look for the minimum).
 {
   extern __shared__ float sharedValues[];
-  __shared__ IndexType sharedIndices[BLOCK_SIZE];
+  __shared__ IndexType sharedIndices[MAX_THREADS];
 
   // id of current thread within block
   int tid = threadIdx.x;
@@ -147,7 +153,7 @@ __global__ void gMaxElementUpdate(IndexType* binIndices, // memory for bin indic
                                   bool descending)
 {
   extern __shared__ float sharedValues[];
-  __shared__ int    sharedIndices[BLOCK_SIZE];
+  __shared__ int    sharedIndices[MAX_THREADS];
   __shared__ float  bestBinCost;
   __shared__ int    bestBinCostIdx;
 
@@ -332,7 +338,7 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
 
   float minimal = NumericLimits<float>(in->type()).lowest; // lowest if looking for max
 
-  const int numBlocks = std::min(MAX_BINS, int(cols / (2 * BLOCK_SIZE)) + int(cols % (2 * BLOCK_SIZE) != 0));
+  const int numBlocks = std::min(MAX_BINS, int(cols / (2 * MAX_THREADS)) + int(cols % (2 * MAX_THREADS) != 0));
   auto tempMemInd = allocator->alloc<IndexType>(rows * numBlocks);
 
   MemoryPiece::PtrType tempMemVal;
@@ -340,14 +346,14 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
     tempMemVal = allocator->alloc<float>(rows * numBlocks);
     // first find the maximum value per row and block and save indices and values to temporary memory
     gMaxElement<<<numBlocks, // blocks
-                  BLOCK_SIZE, // threads
-                  BLOCK_SIZE * sizeof(float), // shared memory size
+                  MAX_THREADS, // threads
+                  MAX_THREADS * sizeof(float), // shared memory size
                   /* stream_ */ 0>>>(
       tempMemInd->data<IndexType>(), tempMemVal->data<float>(),
       in->data<float>(), rows, cols, minimal, descending);
     gMaxElementUpdate<<<rows,       // blocks ... seems we can have up to 2^31-1 of these, so we are safe?
-                        BLOCK_SIZE, // threads
-                        BLOCK_SIZE * sizeof(float),  // shared memory size
+                        MAX_THREADS, // threads
+                        MAX_THREADS * sizeof(float),  // shared memory size
                         /* stream_ */ 0>>>(
       tempMemInd->data<IndexType>(), tempMemVal->data<float>(), 
       outInd->data<IndexType>(), outVal->data<float>(), 
@@ -357,14 +363,14 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
     tempMemVal = allocator->alloc<__half>(rows * numBlocks);
     // first find the maximum value per row and block and save indices and values to temporary memory
     gMaxElement<<<numBlocks, // blocks
-                  BLOCK_SIZE, // threads
-                  BLOCK_SIZE * sizeof(float), // shared memory size
+                  MAX_THREADS, // threads
+                  MAX_THREADS * sizeof(float), // shared memory size
                   /* stream_ */ 0>>>(
       tempMemInd->data<IndexType>(), tempMemVal->data<__half>(),
       in->data<__half>(), rows, cols, minimal, descending);
     gMaxElementUpdate<<<rows,       // blocks ... seems we can have up to 2^31-1 of these, so we are safe?
-                        BLOCK_SIZE, // threads
-                        BLOCK_SIZE * sizeof(float),  // shared memory size
+                        MAX_THREADS, // threads
+                        MAX_THREADS * sizeof(float),  // shared memory size
                         /* stream_ */ 0>>>(
       tempMemInd->data<IndexType>(), tempMemVal->data<__half>(), 
       outInd->data<IndexType>(), outVal->data<__half>(), 
@@ -378,5 +384,139 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
   allocator->free(tempMemVal);
 }
 
+// this function uses cub::DeviceSegmentedRadixSort::SortPairs to sort each row separately
+template <typename T>
+void TypedSortCUB(Ptr<Allocator> allocator, Tensor outVal, Tensor outInd, const Tensor in, bool descending) {
+#if CUDA_VERSION >= 11000
+  int cols = in->shape()[-1];
+  int rows = in->shape().elements() / cols;
+
+  const T* inValData    = in->data<T>();
+  T* outValData         = outVal->data<T>();
+  IndexType* outIndData = outInd->data<IndexType>();
+
+  // create indices for the input tensor, i.e. [0, 1, 2, ..., cols] per row using single thrust transform
+  // CUB doesn't seem to have a transform operation, so let's use thrust. They seem to be compatible anyway.
+  thrust::transform(thrust::device, 
+                    thrust::counting_iterator<int>(0), 
+                    thrust::counting_iterator<int>(rows * cols), 
+                    outIndData, 
+                    [=] HOST_DEVICE (int i) { return i % cols; });
+
+  // create row iterator, this iterates through the indices of row start offsets, e.g. [0, cols, 2*cols, ...]
+  // this is used to partition the input tensor into rows when sorting with the segmented sort
+  auto rowEndOp        = [cols] HOST_DEVICE (int i) { return i * cols; };
+  using TransformOp    = decltype(rowEndOp);
+  using CountingIt     = cub::CountingInputIterator<int>;
+  using RowPartitionIt = cub::TransformInputIterator<int, TransformOp, CountingIt>;
+  RowPartitionIt rowPartitionIt(CountingIt(0), rowEndOp);
+
+  auto cubSortbyKey = [=](void* storage, size_t& storageSize, bool descending) {
+    using cubSort = cub::DeviceSegmentedRadixSort;
+    if(descending)
+      cubSort::SortPairsDescending(storage, storageSize,
+                                  inValData, outValData,
+                                  outIndData, outIndData,
+                                  /*total=*/rows * cols,
+                                  /*segments=*/rows,
+                                  rowPartitionIt, rowPartitionIt + 1);
+    else
+      cubSort::SortPairs(storage, storageSize,
+                         inValData, outValData,
+                         outIndData, outIndData,
+                         /*total=*/rows * cols,
+                         /*segments=*/rows,
+                         rowPartitionIt, rowPartitionIt + 1);
+  };
+
+  // Important lesson: before I used my own allocation and deallocation of temporary memory, this
+  // was actually slower than the thrust version. Again, mixing computation and cudaMalloc is a bad idea.
+  // @TODO: review other kernels to make sure I don't use cudaMalloc directly anywhere.
+
+  // Determine temporary device storage requirements, this doesn't sort anything
+  size_t tempStorageBytes = 0;
+  cubSortbyKey(nullptr, /*out=*/tempStorageBytes, descending);
+  // Allocate temporary storage
+  auto tempStorage = allocator->alloc(tempStorageBytes);
+  // Run sorting operation
+  cubSortbyKey(tempStorage->data(), tempStorageBytes, descending);
+  // free temporary storage
+  allocator->free(tempStorage);
+#else
+  ABORT("CUB sort requires CUDA 11.0 or higher");
+#endif
 }
+
+// the same as above but using thrust::sort_by_key instead of cub::DeviceSegmentedRadixSort::SortPairs;
+// used for CUDA < 11.0, slower than cub::DeviceSegmentedRadixSort::SortPairs
+template <typename T>
+void TypedSortThrust(Tensor outVal, Tensor outInd, const Tensor in, bool descending) {
+  int cols = in->shape()[-1];
+  int rows = in->shape().elements() / cols;
+
+  // use thrust device_ptr to wrap raw pointers
+  thrust::device_ptr<const T> inVal(in->data<T>());
+  thrust::device_ptr<T> outValData(outVal->data<T>());
+  thrust::device_ptr<IndexType> outIndData(outInd->data<IndexType>());
+
+  // lambda that sorts a row
+  auto sortRow = [=] (int rowIdx) {
+        // currently use default stream
+    cudaStream_t stream = 0;
+    auto exec = thrust::cuda::par.on(stream);
+
+    auto outValRow = outValData + rowIdx * cols; // pointer to row in output value tensor
+    auto outIndRow = outIndData + rowIdx * cols; // pointer to row in output index tensor
+    // sort the indices and values according to the values in the output tensor and using the stream
+    if(descending)
+      thrust::sort_by_key(exec, outValRow, outValRow + cols, outIndRow, thrust::greater<T>());
+    else
+      thrust::sort_by_key(exec, outValRow, outValRow + cols, outIndRow, thrust::less<T>());
+  };
+
+  // copy input tensor to output tensor
+  thrust::copy(thrust::device, inVal, inVal + rows * cols, outValData);
+
+  // create indices for the input tensor, i.e. [0, 1, 2, ..., cols] per row using single thrust transform
+  thrust::transform(thrust::device, 
+                    thrust::counting_iterator<int>(0), 
+                    thrust::counting_iterator<int>(rows * cols), 
+                    outIndData, 
+                    [=] HOST_DEVICE (int i) { return i % cols; });
+  
+  // sort each row of the input tensor separately
+  // couldn't find a way to do this with thrust::for_each that wasn't hilariously slow
+  for(int i = 0; i < rows; ++i)
+    sortRow(i);
 }
+
+template <typename T>
+void TypedSort(Ptr<Allocator> allocator, Tensor outVal, Tensor outInd, const Tensor in, bool descending) {
+#if CUDA_VERSION < 11000
+    // CUDA_VERSION < 11000 doesn't include <cub/cub.cuh> and hence cub::DeviceSegmentedRadixSort::SortPairs
+    // we use thrust::sort_by_key instead which is slower
+    TypedSortThrust<T>(outVal, outInd, in, descending);
+#else
+    TypedSortCUB<T>(allocator, outVal, outInd, in, descending);
+#endif
+}
+
+void Sort(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor in, int axis, bool descending) {
+  ABORT_IF(axis != in->shape().size() - 1, "Currently only works for last axis");
+  ABORT_IF(!isFloat(in->type()),           "Input should be float type and not {}", in->type());
+  ABORT_IF(outInd->type() != Type::uint32, "Output should have type {}", Type::uint32);
+  ABORT_IF(outVal->type() != in->type(),   "Output should have type {}", in->type());
+
+  if(in->type() == Type::float32) {
+    TypedSort<float>(allocator, outVal, outInd, in, descending);
+#if COMPILE_FP16
+  } else if(in->type() == Type::float16) {
+    TypedSort<__half>(allocator, outVal, outInd, in, descending);
+#endif
+  } else {
+    ABORT("Sort not implemented for type {}", in->type());
+  }
+}
+
+} // namespace gpu
+} // namespace marian

@@ -12,11 +12,11 @@ class BleurtTypeEmbeddingLayer : public nn::LayerWithOptions {
 public:
   Expr embeddings;
 
-  BleurtTypeEmbeddingLayer(Ptr<ExpressionGraph> graph, Ptr<Options> options) 
+  BleurtTypeEmbeddingLayer(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   : LayerWithOptions(graph, options) {}
 
   virtual ~BleurtTypeEmbeddingLayer() = default;
-  
+
   Expr apply(Ptr<data::SubBatch> subBatch) const {
     int dimEmb   = opt<int>("dim-emb");
     int dimTypes = opt<int>("bert-type-vocab-size", 2);
@@ -27,7 +27,7 @@ public:
 
     const auto& words = subBatch->data();
     const auto vocab = subBatch->vocab();
-    
+
     // Get word id of special symbols
     Word sepId   = vocab->getEosId();
 
@@ -55,10 +55,10 @@ public:
 struct BleurtEncoder final : public nn::TransformerEncoder {
   Ptr<nn::Linear> eProj;
 
-  BleurtEncoder(Ptr<ExpressionGraph> graph, 
-               Ptr<Options> options) 
+  BleurtEncoder(Ptr<ExpressionGraph> graph,
+               Ptr<Options> options)
     : TransformerEncoder(graph, options) {
-    
+
     eProj = New<nn::Linear>(graph, opt<int>("transformer-dim-model"));
     registerLayer(eProj);
 
@@ -68,37 +68,35 @@ struct BleurtEncoder final : public nn::TransformerEncoder {
 
   Expr apply(Expr input, Expr mask) const override {
     auto output = marian::nn::swapTimeBatch(input); // [beam depth=1, batch size, max length, vector dim]
-    
-    mask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
-    auto binMask = mask;
-    mask = marian::nn::transposedLogMask(mask, opt<int>("transformer-heads"));
-  
+
+    auto binaryMask = marian::nn::swapTimeBatch(mask);   // [beam depth=1, batch size, max length, vector dim=1]
+
     // apply positional embeddings to contextual input
     output = positionEmbedding->apply(output);
 
     // apply dropout or layer-norm to embeddings if required
     output = preprocessor->apply(output);
-    
+
     // scale from 256 to 1152
     output = eProj->apply(output);
-    
+
     // traverse the layers, use the same mask for each
     for(auto layer : *layers)
-      output = layer->apply(output, mask); 
+      output = layer->apply(output, binaryMask);
 
     return output;
   }
 };
 
 // Wrapper for backwards compatibility that uses current encoder/decoder framework
-struct BleurtBatchEncoder final : public nn::LayerWithOptions, 
+struct BleurtBatchEncoder final : public nn::LayerWithOptions,
                                   public nn::IEmbeddingLayer,  // TransformerBatchEncoder is an IEmbeddingLayer that produces contextual embeddings
                                   public EncoderBase {         // @TODO: should all encoders be IEmbeddingLayer?
   Ptr<BleurtTypeEmbeddingLayer> typeEmbedding;
   Ptr<BleurtEncoder> encoder;
-  
-  BleurtBatchEncoder(Ptr<ExpressionGraph> graph, 
-                    Ptr<Options> options)
+
+  BleurtBatchEncoder(Ptr<ExpressionGraph> graph,
+                     Ptr<Options> options)
     : LayerWithOptions(graph, options),
       EncoderBase(graph, options)
   {
@@ -113,7 +111,7 @@ struct BleurtBatchEncoder final : public nn::LayerWithOptions,
   virtual std::tuple<Expr/*embeddings*/, Expr/*mask*/> apply(Ptr<data::SubBatch> subBatch) const override {
     auto embeddingLayer = getEmbeddingLayer(EncoderBase::opt<bool>("ulr", false));
     const auto& [batchEmbeddings, batchMask] = embeddingLayer->apply(subBatch);
-    
+
 #if 1
     auto typeEmbeddings = typeEmbedding->apply(subBatch);
     auto embeddings = batchEmbeddings + typeEmbeddings;
@@ -145,22 +143,22 @@ struct BleurtBatchEncoder final : public nn::LayerWithOptions,
     EncoderBase::graph_ = graph;
     setGraph(graph);
     // This makes sure that the graph passed into the model during construction and now evaluation are identical.
-    // A good check to have for catching weird situations early. 
+    // A good check to have for catching weird situations early.
     ABORT_IF(this->graph() != graph, "Graph used for construction and graph parameter do not match");
 #endif
 
     // @TODO: this needs to convert to a BERT-batch
-    
+
     const auto& [batchEmbedding, batchMask] = apply((*batch)[batchIndex_]);
     return New<EncoderState>(batchEmbedding, batchMask, batch);
   }
 
   virtual void clear() override {
-    Layer::clear();
+    LayerWithOptions::clear();
   }
 };
 
-class BleurtPooler final : public nn::LayerWithOptions, 
+class BleurtPooler final : public nn::LayerWithOptions,
                            public PoolerBase {
 private:
   Ptr<nn::Sequential> layers;
@@ -170,7 +168,7 @@ public:
   BleurtPooler(Ptr<ExpressionGraph> graph, Ptr<Options> options)
   : LayerWithOptions(graph, options),
     PoolerBase(graph, options) {
-    
+
     float dropoutProb = 0.f;
     layers = New<nn::Sequential>(
       graph,
@@ -179,7 +177,7 @@ public:
       New<nn::Dropout>(graph, dropoutProb),
       New<nn::Linear>(graph, 1)
     );
-    
+
     registerLayer(layers);
   }
 
@@ -189,15 +187,14 @@ public:
     PoolerBase::graph_ = graph;
     setGraph(graph);
     // This makes sure that the graph passed into the model during construction and now evaluation are identical.
-    // A good check to have for catching weird situations early. 
+    // A good check to have for catching weird situations early.
     ABORT_IF(this->graph() != graph, "Graph used for construction and graph parameter do not match");
 #endif
 
     auto modelType = LayerWithOptions::opt<std::string>("type");
-    
+
     auto emb = slice(encoderStates[0]->getContext(), -2, 0);
-    emb = marian::cast(emb, Type::float32);
-    
+
     Expr output;
     if(LayerWithOptions::opt<int>("usage") == (int)models::usage::evaluating) {
       output = layers->apply(emb);
@@ -205,7 +202,7 @@ public:
       output = reshape(output, {dimBatch, 1, 1});
       return { output };
     } else {
-      ABORT("Usage other than evaluating not implemented");  
+      ABORT("Usage other than evaluating not implemented");
     }
   }
 

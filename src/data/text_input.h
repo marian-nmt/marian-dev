@@ -27,7 +27,7 @@ private:
 };
 
 class TextInput : public DatasetBase<SentenceTuple, TextIterator, CorpusBatch> {
-private:
+protected:
   std::vector<UPtr<std::istringstream>> files_;
   std::vector<Ptr<Vocab>> vocabs_;
 
@@ -35,6 +35,13 @@ private:
 
   size_t maxLength_{0};
   bool maxLengthCrop_{false};
+  bool rightLeft_{false};
+
+  // copied from corpus.h - TODO: refactor or unify code between Corpus and TextInput
+  bool prependZero_{false};
+  bool joinFields_{false};      // if true when given a TSV file or multiple inputs, join them together into a single sentence tuple,
+                                // the already present </s> separator will demark the fields (mostly used for BLEURT and COMET-KIWI)
+  bool insertSeparator_{false}; // when joining fields with joinFields_, additionally use this separator (mostly used for COMET-KIWI)
 
 public:
   TextInput(std::vector<std::string> inputs, std::vector<Ptr<Vocab>> vocabs, Ptr<Options> options);
@@ -92,6 +99,68 @@ public:
   }
 
   void prepare() override {}
+
+  SentenceTuple encode(std::vector<std::string>& fields, size_t id) {
+    ABORT_IF(fields.size() != vocabs_.size(), "Number of fields does not match number of vocabs");
+    
+    // fill up the sentence tuple with source and/or target sentences
+    SentenceTupleImpl tup(id);
+
+    ABORT_IF(inputPermutation_.size() != 0 && inputPermutation_.size() < fields.size(),
+             "Input permutation given, but not for every input field??");
+
+    // copied and adapted from corpus.cpp - @TODO: refactor or unify code between Corpus and TextInput
+    for(size_t batchIndex = 0; batchIndex < fields.size(); ++batchIndex) {
+      size_t permutedBatchIndex = batchIndex;
+      if(inputPermutation_.size() > 0)
+        permutedBatchIndex = inputPermutation_[batchIndex];
+
+      std::string& field = fields[permutedBatchIndex];
+
+      Words words = vocabs_[permutedBatchIndex]->encode(field, /*addEOS =*/true, inference_);
+      ABORT_IF(words.empty(), "Empty input sequences are presently untested");
+
+      // This handles adding starts symbols for COMET (<s>) and BERT/BLEURT ([CLS])
+      bool prepend = prependZero_ && (!joinFields_ || (joinFields_ && batchIndex == 0));
+      if(prepend)
+        words.insert(words.begin(), Word::fromWordIndex(0));
+
+      bool prependSep = insertSeparator_ && joinFields_ && batchIndex > 0;
+      if(prependSep)
+        words.insert(words.begin(), vocabs_[permutedBatchIndex]->getSepId());
+
+      // if fields are joined and the current sentence is not the first one, we need to make sure that
+      // the current sentence is not longer than the maximum length minus the length of the previous sentence
+      // (minus 1 for the separator <eos> token or 2 if we also add a separator <sep> token)
+      size_t localMaxLength = maxLength_;
+      if(joinFields_ && !tup.empty())
+        localMaxLength = std::max(1 + (int)prependSep, (int)maxLength_ - (int)tup.back().size());
+
+      // if the current sentence is longer than the maximum length, we need to crop it
+      if(maxLengthCrop_ && words.size() > localMaxLength) {
+        words.resize(localMaxLength);
+        words.back() = vocabs_[permutedBatchIndex]->getEosId();
+      }
+
+      // if true, the words are reversed
+      if(rightLeft_)
+        std::reverse(words.begin(), words.end() - 1);
+
+      // if true, the numeric indices get joined with the previous sentence, <eos> acts as a separator here
+      if(joinFields_) {
+        size_t currLength = tup.empty() ? 0 : tup.back().size();
+        // if the current sentence would exceed the maximum length we don't add any more fields
+        if(currLength + words.size() <= maxLength_)
+          tup.appendToBack(words);
+
+        ABORT_IF(tup.empty(), "This should have content if we got here??");
+      } else {
+        tup.pushBack(words);
+      }
+    }
+    return SentenceTuple(tup);
+  }
+
 };
 }  // namespace data
 }  // namespace marian

@@ -17,27 +17,27 @@ class LambdaNodeOp : public NaryNodeOp {
 private:
   typedef const std::vector<Expr>& Inputs;
   typedef std::function<void(Expr, Inputs)> LambdaNodeFunctor;
-  
+
   std::unique_ptr<LambdaNodeFunctor> forward_;
   std::unique_ptr<LambdaNodeFunctor> backward_;
-  
+
   size_t externalHash_;
 
 public:
-  LambdaNodeOp(Inputs inputs, Shape shape, Type type, 
-               LambdaNodeFunctor forward, 
+  LambdaNodeOp(Inputs inputs, Shape shape, Type type,
+               LambdaNodeFunctor forward,
                size_t externalHash = 0)
-  : NaryNodeOp(inputs, shape, type), 
+  : NaryNodeOp(inputs, shape, type),
     forward_(new LambdaNodeFunctor(forward)),
     externalHash_(externalHash) {
     Node::trainable_ = !!backward_;
   }
 
-  LambdaNodeOp(Inputs inputs, Shape shape, Type type, 
+  LambdaNodeOp(Inputs inputs, Shape shape, Type type,
                LambdaNodeFunctor forward,
-               LambdaNodeFunctor backward, 
-               size_t externalHash = 0) 
-  : NaryNodeOp(inputs, shape, type), 
+               LambdaNodeFunctor backward,
+               size_t externalHash = 0)
+  : NaryNodeOp(inputs, shape, type),
     forward_(new LambdaNodeFunctor(forward)),
     backward_(new LambdaNodeFunctor(backward)),
     externalHash_(externalHash) {
@@ -130,7 +130,7 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
-    
+
     auto isParameter = [](Expr p) {
       return std::dynamic_pointer_cast<ParamNode>(p) != nullptr;
     };
@@ -276,7 +276,7 @@ public:
 
   NodeOps forwardOps() override {
     using namespace functional;
-    
+
     return {
       NodeOp(Affine(val_,
                     graph()->allocator(),
@@ -431,8 +431,8 @@ private:
   float scalar_;
 
 public:
-  AffineWithReluNodeOp(Expr a, 
-                       Expr b, 
+  AffineWithReluNodeOp(Expr a,
+                       Expr b,
                        Expr bias)
       : NaryNodeOp({a, b, bias}, newShape(a, b, false, false)),
         transA_(false),
@@ -465,7 +465,7 @@ public:
   NodeOps forwardOps() override {
     ABORT_IF(!graph()->isInference(),
              "AffineWithReluNodeOp currently only supported for inference");
-    
+
     return {
       NodeOp(Affine(val_,
                     graph()->allocator(),
@@ -541,12 +541,12 @@ public:
     ABORT_IF(shapeA[-1] != shapeB[-2],
              "Batched matrix product requires inner dimensions to match in {}{} * {}{}",
              std::string(shapeA), transA, std::string(shapeB), transB);
-    
+
     // create shapes for batch dimensions only
     auto shapeBatchA = shapeA;
     shapeBatchA.set(-1, 1);
     shapeBatchA.set(-2, 1);
-    
+
     auto shapeBatchB = shapeB;
     shapeBatchB.set(-1, 1);
     shapeBatchB.set(-2, 1);
@@ -557,7 +557,7 @@ public:
     // set non-batch dimensions in output
     shapeOut.set(-2, shapeA[-2]);
     shapeOut.set(-1, shapeB[-1]);
-    
+
     return shapeOut;
   }
 
@@ -579,7 +579,7 @@ public:
     // df/dB += alpha * dot(op(A).T, D)
     // beta set to 1.0 in gemm, C = alpha * dot(op(A), op(B)) + beta * C
     // to sum gradients from different graph parts
-    
+
     if(!transA_ && transB_) {
       return {NodeOp(ProdBatched(child(0)->grad(),
                                  graph()->allocator(),
@@ -705,7 +705,7 @@ public:
       shapeB.set(-2, b->shape()[-1]);
       shapeB.set(-1, b->shape()[-2]);
     }
-  
+
     Shape outShape = shapeA;
     outShape.set(-1, shapeB[-1]);
     ABORT_IF(shapeA[-1] != shapeB[-2],
@@ -1101,7 +1101,7 @@ struct ScatterNodeOp : public NaryNodeOp {
     auto backwardForVal = [this]() {
       auto allocator = graph()->allocator();
 
-      // create temporary tensor of child(0)->grad().shape() == adj_.shape() 
+      // create temporary tensor of child(0)->grad().shape() == adj_.shape()
       // copy adj_ to temporary
       auto grad = child(0)->grad();
       auto tempGradMem = allocator->alloc(grad->memory()->size());
@@ -1116,7 +1116,7 @@ struct ScatterNodeOp : public NaryNodeOp {
 
       // insert tensor of zeros into temporary
       Insert</*add=*/false>(tempGrad, /*source=*/tempZero, /*indices*/child(1)->val(), axis_);
-      
+
       // add temporary do child(0)->grad()
       Add(functional::_1, grad, tempGrad);
 
@@ -1127,8 +1127,8 @@ struct ScatterNodeOp : public NaryNodeOp {
 
     return {
       // val - add gradients every where else to gradient of "a"
-      NodeOp(backwardForVal()), 
-      
+      NodeOp(backwardForVal()),
+
       NodeOp(/*no gradient*/[](){}), // indices
 
       // add gradients on indices to gradient of "source"
@@ -1647,7 +1647,7 @@ public:
     return {NodeOp(
         RMSNormalization(val_,
                          child(0)->val(),
-                         child(1)->val(),
+                         (children_.size() >= 2) ? child(1)->val() : nullptr,
                          (children_.size() == 3) ? child(2)->val() : nullptr,
                          eps_))};
   }
@@ -1658,12 +1658,12 @@ public:
       RMSNormalizationGrad(
         graph()->allocator(),
         child(0)->grad(),
-        child(1)->grad(),
+        (children_.size() >= 2) ? child(1)->grad() : nullptr,
         (children_.size() == 3) ? child(2)->grad() : nullptr,
         adj_,
         val_,
         child(0)->val(),
-        child(1)->val(),
+        (children_.size() >= 2) ? child(1)->val() : nullptr,
         (children_.size() == 3) ? child(2)->val() : nullptr,
         eps_))};
   }
@@ -1692,23 +1692,40 @@ private:
   float eps_;
 };
 
-
+// @TODO: rewriting this fixes a bug for this one node. There should be exactly one
+// NodeOp per gradient tensor many other nodes have that bug and need to be fixed.
+// This will only manifest if the first op is not trainable, then gradients for the
+// other nodes might get skipped despite being trainable.
 struct HighwayNodeOp : public NaryNodeOp {
-  HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes) {}
+  HighwayNodeOp(const std::vector<Expr>& nodes) : NaryNodeOp(nodes, Shape::broadcast(nodes)) {}
 
   NodeOps forwardOps() override {
-    return {NodeOp(HighwayForward(
-        val_, child(0)->val(), child(1)->val(), child(2)->val()))};
+    using namespace functional;
+    auto alpha = sigmoid(_4);
+    auto fwd = _1 = alpha * _2 + (1.f - alpha) * _3;
+
+    return {
+      NodeOp(Element(fwd, val_, child(0)->val(), child(1)->val(), child(2)->val()))
+    };
   }
 
   NodeOps backwardOps() override {
-    return {NodeOp(HighwayBackward(child(0)->grad(),
-                                   child(1)->grad(),
-                                   child(2)->grad(),
-                                   child(0)->val(),
-                                   child(1)->val(),
-                                   child(2)->val(),
-                                   adj_))};
+    using namespace functional;
+
+    auto alpha = sigmoid(_1);
+    auto bwd1  = alpha * _2;
+    auto bwd2  = (1.f - alpha) * _2;
+    auto bwd3  = alpha * (1.f - alpha) * _2 * (_3 - _4);
+
+    auto& in1  = child(0)->val();
+    auto& in2  = child(1)->val();
+    auto& gate = child(2)->val();
+
+    return {
+      NodeOp(Add(bwd1, child(0)->grad(), gate, adj_)),
+      NodeOp(Add(bwd2, child(1)->grad(), gate, adj_)),
+      NodeOp(Add(bwd3, child(2)->grad(), gate, adj_, in1, in2))
+    };
   }
 
   const std::string type() override { return "highway"; }

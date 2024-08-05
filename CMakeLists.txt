@@ -30,9 +30,11 @@ option(USE_MKL "Compile with MKL support" ON)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
+option(USE_TCMALLOC "Use TCMALLOC if available" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
 option(DETERMINISTIC "Try to make training results as deterministic as possible (e.g. for testing)" OFF)
+option(PYMARIAN "Build Pymarian package which is based on pybind11" OFF)
 
 # fbgemm and sentencepiece are both defined with "non-local" installation targets (the source projects don't define them,
 # so we define them in src\3rd_party\CMakeLists.txt), but that isn't supported until CMake 3.12. Prior to CMake 3.12,
@@ -121,6 +123,12 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 set(EXT_LIBS ${EXT_LIBS} Threads::Threads)
+
+# disable tcmalloc if pymarian=on
+if(USE_TCMALLOC AND PYMARIAN)
+  message(WARNING "TCMalloc can cause segfaults with some python libraries. Hence disabling TCMalloc for a robust pymarian build.")
+  set(USE_TCMALLOC off)
+endif()
 ########
 
 ###############################################################################
@@ -148,7 +156,7 @@ if(MSVC)
   set(INTRINSICS "/arch:AVX2")
   # set(INTRINSICS "/arch:AVX512")
   # /bigobj is necessary for expression_operators.cpp. See https://stackoverflow.com/questions/15110580/penalty-of-the-msvs-compiler-flag-bigobj
-  set(CMAKE_CXX_FLAGS           "/EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS /bigobj ${DISABLE_GLOBALLY}")
+  set(CMAKE_CXX_FLAGS           "/permissive- /EHsc /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /D_CRT_NONSTDC_NO_WARNINGS /D_CRT_SECURE_NO_WARNINGS /bigobj ${DISABLE_GLOBALLY}")
   set(CMAKE_CXX_FLAGS_RELEASE   "${CMAKE_CXX_FLAGS} /MT /O2 ${INTRINSICS} /Zi /MP /GL /DNDEBUG")
   set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS} /MTd /Od /Ob0 ${INTRINSICS} /RTC1 /Zi /D_DEBUG")
 
@@ -286,8 +294,8 @@ else(MSVC)
     set(CMAKE_RDYNAMIC_FLAG "-rdynamic")
   endif(CMAKE_COMPILER_IS_GNUCC)
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++11 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
-  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_CXX_FLAGS                 "-std=c++17 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS_RELEASE}")
@@ -297,7 +305,7 @@ else(MSVC)
 
   # these need to be set separately
   set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
-  set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO  "${CMAKE_C_FLAGS_RELEASE}")
@@ -399,6 +407,7 @@ if(CUDA_FOUND)
     LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
   endif()
 
+  message(STATUS "CUDA_VERSION=${CUDA_VERSION}; CUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}")
   if(COMPILE_KEPLER)
     message(STATUS "Compiling code for Kepler GPUs")
     LIST(APPEND COMPUTE -gencode=arch=compute_35,code=sm_35;) # Tesla K40 and above
@@ -464,7 +473,7 @@ if(CUDA_FOUND)
     if ((CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0"))
       find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 NO_DEFAULT_PATH)
       if(NOT CUDA_cublasLt_LIBRARY)
-        message(FATAL_ERROR "cuBLASLt library not found")
+        message(FATAL_ERROR "cuBLASLt library not found. -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}")
       endif()
       set(EXT_LIBS ${EXT_LIBS} ${CUDA_cublasLt_LIBRARY})
       set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_cublasLt_LIBRARY})
@@ -518,16 +527,21 @@ endif(COMPILE_CUDA)
 
 # TODO: make compatible with older CUDA versions
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O0; -g; --use_fast_math; ${COMPUTE})
+  list(APPEND CUDA_NVCC_FLAGS --extended-lambda; --default-stream per-thread; -O0; -g; --use_fast_math; ${COMPUTE})
 else(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread; -O3; -g; --use_fast_math; ${COMPUTE})
+  list(APPEND CUDA_NVCC_FLAGS --extended-lambda; --default-stream per-thread; -O3; -g; --use_fast_math; ${COMPUTE})
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(NOT MSVC)
   # @TODO: add warnings here too
-  list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++11; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
+  list(APPEND CUDA_NVCC_FLAGS -ccbin ${CMAKE_C_COMPILER}; -std=c++17; -Xcompiler\ -fPIC; -Xcompiler\ -Wno-unused-result; -Xcompiler\ -Wno-deprecated; -Xcompiler\ -Wno-pragmas; -Xcompiler\ -Wno-unused-value; -Xcompiler\ -Werror;)
   list(APPEND CUDA_NVCC_FLAGS ${INTRINSICS_NVCC})
 else()
-  list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
+  # c++17 doesn't work with CUDA 10
+  if ((CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0"))
+    list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /std:c++17; -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
+  else()
+    list(APPEND CUDA_NVCC_FLAGS -Xcompiler\ /std:c++14; -Xcompiler\ /FS; -Xcompiler\ /MT$<$<CONFIG:Debug>:d>; )
+  endif()
 endif()
 
 list(REMOVE_DUPLICATES CUDA_NVCC_FLAGS)
@@ -543,20 +557,22 @@ if(USE_STATIC_LIBS)
 endif()
 
 ###############################################################################
-# Find Tcmalloc_minimal 
+# Find Tcmalloc_minimal
 # re-used from sentencepiece
-if(NOT WIN32)
-  if(USE_STATIC_LIBS)
-    find_library(TCMALLOC_LIB NAMES libtcmalloc_minimal.a)
-  else()
-    find_library(TCMALLOC_LIB NAMES tcmalloc_minimal)
-  endif()
-  if (TCMALLOC_LIB)
-    message(STATUS "Found TCMalloc: ${TCMALLOC_LIB}")
-    set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES})
-    add_definitions(-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free)
-  else()
-    message(STATUS "Not Found TCMalloc: ${TCMALLOC_LIB}")
+if(USE_TCMALLOC)
+  if(NOT WIN32)
+    if(USE_STATIC_LIBS)
+      find_library(TCMALLOC_LIB NAMES libtcmalloc_minimal.a)
+    else()
+      find_library(TCMALLOC_LIB NAMES tcmalloc_minimal)
+    endif()
+    if (TCMALLOC_LIB)
+      message(STATUS "Found TCMalloc: ${TCMALLOC_LIB}")
+      set(EXT_LIBS ${EXT_LIBS} ${Tcmalloc_LIBRARIES})
+      add_definitions(-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free)
+    else()
+      message(STATUS "Not Found TCMalloc: ${TCMALLOC_LIB}")
+    endif()
   endif()
 endif()
 

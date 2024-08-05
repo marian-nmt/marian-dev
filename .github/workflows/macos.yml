@@ -49,5 +49,11 @@ jobs:
         ./marian --version
         ./marian-decoder --version
         ./marian-scorer --version
-        ./spm_encode --version
         ls -hlv $(find . -maxdepth 1 -type f -perm +ugo+x \( -name "marian*" -o -name "spm*" \))
+
+    - name: Install PyMarian
+      run: |
+        python3 -m pip install --upgrade pip setuptools wheel pytest
+        CMAKE_ARGS="" python3 -m pip install -v .
+        python3 -m pymarian -v
+        MARIAN_QUIET=YES python3 -m pytest -vs src/python/tests

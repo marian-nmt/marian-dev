@@ -19,9 +19,6 @@
 #include "models/model_task.h"
 #include "translator/scorers.h"
 
-// currently for diagnostics only, will try to mmap files ending in *.bin suffix when enabled.
-#include "3rd_party/mio/mio.hpp"
-
 namespace marian {
 
 template <class Search>
@@ -36,9 +33,7 @@ private:
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
 
   size_t numDevices_;
-
-  std::vector<mio::mmap_source> model_mmaps_; // map
-  std::vector<std::vector<io::Item>> model_items_; // non-mmap
+  std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
 public:
   Translate(Ptr<Options> options)
@@ -49,7 +44,7 @@ public:
     options_->set("inference", true,
                   "shuffle", "none");
 
-    corpus_ = New<data::Corpus>(options_, true);
+    corpus_ = New<data::Corpus>(options_, /*translate=*/true);
 
     auto vocabs = options_->get<std::vector<std::string>>("vocabs");
     trgVocab_ = New<Vocab>(options_, vocabs.size() - 1);
@@ -70,20 +65,18 @@ public:
     scorers_.resize(numDevices_);
     graphs_.resize(numDevices_);
 
-    auto models = options->get<std::vector<std::string>>("models");
-    if(options_->get<bool>("model-mmap", false)) {
-      for(auto model : models) {
-        ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
-        LOG(info, "Loading model from {}", model);
-        model_mmaps_.push_back(mio::mmap_source(model));
-      }
-    }
-    else {
-      for(auto model : models) {
-        LOG(info, "Loading model from {}", model);
-        auto items = io::loadItems(model);
-        model_items_.push_back(std::move(items));
-      }
+    auto modelPaths = options->get<std::vector<std::string>>("models");
+
+    // We now opportunistically mmap the model files anyways, but to keep backward compatibility
+    // with the old --model-mmap option, we now croak if mmap is explicitly requested during decoding
+    // but not possible in the actual graph, e.g. if --model-mmap is specified but the model file is
+    // a npz-file or we decode on the GPU (will croak in different places).
+    bool mmap     = options_->get<bool>("model-mmap", false);
+    auto mmapMode = mmap ? io::MmapMode::RequiredMmap : io::MmapMode::OpportunisticMmap;
+
+    for(auto modelPath : modelPaths) {
+      LOG(info, "Loading model from {}", modelPath);
+      modelWeights_.push_back(New<io::ModelWeights>(modelPath, mmapMode));
     }
 
     size_t id = 0;
@@ -101,13 +94,7 @@ public:
         graph->reserveWorkspaceMB(options_->get<int>("workspace"));
         graphs_[id] = graph;
 
-        std::vector<Ptr<Scorer>> scorers;
-        if(options_->get<bool>("model-mmap", false)) {
-          scorers = createScorers(options_, model_mmaps_);
-        }
-        else {
-          scorers = createScorers(options_, model_items_);
-        }
+        std::vector<Ptr<Scorer>> scorers = createScorers(options_, modelWeights_);
 
         for(auto scorer : scorers) {
           scorer->init(graph);
@@ -125,12 +112,8 @@ public:
     if(options_->hasAndNotEmpty("output-sampling")) {
       if(options_->get<size_t>("beam-size") > 1)
         LOG(warn,
-            "[warning] Output sampling and beam search (beam-size > 1) are contradictory methods "
-            "and using them together is not recommended. Set beam-size to 1");
-      if(options_->get<std::vector<std::string>>("models").size() > 1)
-        LOG(warn,
-            "[warning] Output sampling and model ensembling are contradictory methods and using "
-            "them together is not recommended. Use a single model");
+            "[warning] Enabling output sampling and beam search together (--output-sampling [...] && --beam-size > 1) results in so-called stochastic beam-search. "
+            "Are you sure this is desired? For normal sampling, use --beam-size 1.");
     }
   }
 
@@ -244,7 +227,10 @@ private:
 
   std::vector<Ptr<Vocab>> srcVocabs_;
   Ptr<Vocab> trgVocab_;
+  std::vector<Ptr<Vocab>> allVocabs_;
   Ptr<const data::ShortlistGenerator> shortlistGenerator_;
+
+  std::vector<Ptr<io::ModelWeights>> modelWeights_;
 
   size_t numDevices_;
 
@@ -253,6 +239,9 @@ private:
 
 public:
   virtual ~TranslateService() {}
+
+  TranslateService(const std::string& cliString)
+    : TranslateService(parseOptions(cliString, cli::mode::translation, /*validate=*/true)) {}
 
   TranslateService(Ptr<Options> options)
     : options_(options->clone()) {
@@ -272,8 +261,10 @@ public:
     trgVocab_ = New<Vocab>(options_, vocabPaths.size() - 1);
     trgVocab_->load(vocabPaths.back());
     auto srcVocab = srcVocabs_.front();
+    allVocabs_.insert(allVocabs_.end(), srcVocabs_.begin(), srcVocabs_.end());
+    allVocabs_.emplace_back(trgVocab_);
 
-    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn");
+    std::vector<int> lshOpts = options_->get<std::vector<int>>("output-approx-knn", {});
     ABORT_IF(lshOpts.size() != 0 && lshOpts.size() != 2, "--output-approx-knn takes 2 parameters");
 
     // load lexical shortlist
@@ -288,31 +279,23 @@ public:
     ThreadPool threadPool(numDevices_, numDevices_);
     scorers_.resize(numDevices_);
     graphs_.resize(numDevices_);
-    
+
+    bool mmap     = options_->get<bool>("model-mmap", false);
+    auto mmapMode = mmap ? io::MmapMode::RequiredMmap : io::MmapMode::OpportunisticMmap;
+
     // preload models
-    auto models = options->get<std::vector<std::string>>("models");
-    if(options_->get<bool>("model-mmap", false)) {
-      for(auto model : models) {
-        ABORT_IF(!io::isBin(model), "Non-binarized models cannot be mmapped");
-        LOG(info, "Loading model from {}", model);
-        model_mmaps_.push_back(mio::mmap_source(model));
-      }
-    }
-    else {
-      for(auto model : models) {
-        LOG(info, "Loading model from {}", model);
-        auto items = io::loadItems(model);
-        model_items_.push_back(std::move(items));
-      }
-    }
+    auto modelPaths = options->get<std::vector<std::string>>("models");
+    for(auto modelPath : modelPaths)
+      modelWeights_.push_back(New<io::ModelWeights>(modelPath, mmapMode));
 
     // initialize scorers
     size_t id = 0;
     for(auto device : devices) {
       auto task = [&](DeviceId device, size_t id) {
         auto graph = New<ExpressionGraph>(true);
-        auto prec = options_->get<std::vector<std::string>>("precision", {"float32"});
-        graph->setDefaultElementType(typeFromString(prec[0]));
+
+        auto precison = options_->get<std::vector<std::string>>("precision", {"float32"});
+        graph->setDefaultElementType(typeFromString(precison[0])); // only use first type, used for parameter type in graph
         graph->setDevice(device);
         if (device.type == DeviceType::cpu) {
           graph->getBackend()->setOptimized(options_->get<bool>("optimize"));
@@ -322,14 +305,7 @@ public:
         graph->reserveWorkspaceMB(options_->get<int>("workspace"));
         graphs_[id] = graph;
 
-        std::vector<Ptr<Scorer>> scorers;
-        if(options_->get<bool>("model-mmap", false)) {
-          scorers = createScorers(options_, model_mmaps_);
-        }
-        else {
-          scorers = createScorers(options_, model_items_);
-        }
-
+        auto scorers = createScorers(options_, modelWeights_);
         for(auto scorer : scorers) {
           scorer->init(graph);
           if(shortlistGenerator_)
@@ -344,16 +320,34 @@ public:
     }
   }
 
-  std::string run(const std::string& input) override {
-    // split tab-separated input into fields if necessary
-    auto inputs = options_->get<bool>("tsv", false)
-                      ? convertTsvToLists(input, options_->get<size_t>("tsv-fields", 1))
-                      : std::vector<std::string>({input});
-    auto corpus_ = New<data::TextInput>(inputs, srcVocabs_, options_);
-    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, options_, nullptr, /*runAsync=*/false);
+  std::vector<std::string> run(const std::vector<std::string>& inputs, const std::string& yamlOverridesStr="") override {
+      auto input = utils::join(inputs, "\n");
+      auto translations = run(input, yamlOverridesStr);
+      return utils::split(translations, "\n", /*keepEmpty=*/true);
+  }
 
-    auto collector = New<StringCollector>(options_->get<bool>("quiet-translation", false));
-    auto printer = New<OutputPrinter>(options_, trgVocab_);
+  std::string run(const std::string& input, const std::string& yamlOverridesStr="") override {
+    YAML::Node configOverrides = YAML::Load(yamlOverridesStr);
+
+    auto currentOptions = New<Options>(options_->clone());
+    if (!configOverrides.IsNull()) {
+      LOG(info,  "Overriding options:\n {}", configOverrides);
+      currentOptions->merge(configOverrides, /*overwrite=*/true);
+    }
+
+    // split tab-separated input into fields if necessary
+    auto inputs = currentOptions->get<bool>("tsv", false)
+                      ? convertTsvToLists(input, currentOptions->get<size_t>("tsv-fields", 1))
+                      : std::vector<std::string>({input});
+    // when force-decode is set, include trgVocab_ , otherwise use srcVocabs_ only
+    // for CLI, force-decode is implemented in data/corpus_base.cpp
+    auto forceDecoding = currentOptions->get<bool>("force-decode", false);
+
+    auto corpus_ = New<data::TextInput>(inputs, forceDecoding ? allVocabs_ : srcVocabs_, currentOptions);
+    data::BatchGenerator<data::TextInput> batchGenerator(corpus_, currentOptions, nullptr, /*runAsync=*/false);
+
+    auto collector = New<StringCollector>(currentOptions->get<bool>("quiet-translation", false));
+    auto printer = New<OutputPrinter>(currentOptions, trgVocab_);
     size_t batchId = 0;
 
     batchGenerator.prepare();
@@ -371,7 +365,7 @@ public:
             scorers = scorers_[id % numDevices_];
           }
 
-          auto search = New<Search>(options_, scorers, trgVocab_);
+          auto search = New<Search>(currentOptions, scorers, trgVocab_);
           auto histories = search->search(graph, batch);
 
           for(auto history : histories) {
@@ -387,7 +381,7 @@ public:
       }
     }
 
-    auto translations = collector->collect(options_->get<bool>("n-best"));
+    auto translations = collector->collect(currentOptions->get<bool>("n-best"));
     return utils::join(translations, "\n");
   }
 

@@ -116,6 +116,9 @@ SentenceTuple Corpus::next() {
         fields.swap(tmpFields);
       }
 
+      ABORT_IF(inputPermutation_.size() != 0 && inputPermutation_.size() < fields.size(),
+               "Input permutation given, but not for every input field??");
+
       // fill up the sentence tuple with sentences from all input files
       SentenceTupleImpl tup(curId);
       size_t shift = 0;
@@ -125,12 +128,16 @@ SentenceTuple Corpus::next() {
         if(i == alignFileIdx_ || i == weightFileIdx_) {
           ++shift;
         } else {
-          size_t vocabId = i - shift;
+          size_t permutedIndex = i;
+          if(!inputPermutation_.empty())
+            permutedIndex = inputPermutation_[i];
+
+          size_t vocabId = permutedIndex - shift;
           bool altered;
-          preprocessLine(fields[i], vocabId, curId, /*out=*/altered);
+          preprocessLine(fields[permutedIndex], vocabId, curId, /*out=*/altered);
           if(altered)
             tup.markAltered();
-          addWordsToSentenceTuple(fields[i], vocabId, tup);
+          addWordsToSentenceTuple(fields[permutedIndex], vocabId, tup);
         }
       }
       // weights are added last to the sentence tuple, because this runs a validation that needs

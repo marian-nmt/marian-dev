@@ -249,6 +249,15 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
       "Possible values: sequence, class, alignment, weight. "
       "You need to provide one type per input file (if --train-sets) or per TSV field (if --tsv).",
       {});
+  cli.add<std::vector<size_t>>("--input-reorder",
+      "Reorder input data to this order according to this permutation. If empty no reordering is done. "
+      "If non-empty, you need to provide one type per input file (if --train-sets) or per TSV field (if --tsv). "
+      "Usually, there should be no need to provide these on the command line, the model should have them saved.",
+      {});
+  cli.add<bool>("--input-join-fields",
+      "Join input fields (from files or TSV) into a single sequence "
+      "(mostly used single-encoder models like BLEURT and COMET-KIWI)",
+      false);
   cli.add<bool>("--best-deep",
       "Use Edinburgh deep RNN configuration (s2s)");
   cli.add<bool>("--tied-embeddings",
@@ -320,6 +329,32 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   cli.add<bool>("--transformer-depth-scaling",
       "Scale down weight initialization in transformer layers by 1 / sqrt(depth)");
 
+  cli.add<std::string>("--transformer-attention-mask",
+      "Type of mask/bias in transformer attention: default, alibi",
+      "default");
+  cli.add<bool>("--transformer-alibi-shift",
+      "Use alibi-shifting with sync-points with --transformer-attention-mask alibi");
+  cli.add<std::string>("--separator-symbol",
+      "Generic separator symbol for different applications, i.e. for transformer-alibi-shift syncpoints, default is [eos] (currently only supported with raw spm models)",
+      "[eos]");
+  cli.add<bool>("--transformer-disable-position-embeddings",
+      "Do not add any position embeddings. Use e.g. with --transformer-attention-mask alibi");
+
+  cli.add<bool>("--transformer-alibi-trainable",
+      "Make alibi slopes trainable, default slopes are constant");
+
+  // handy shortcut for the current best setup
+  cli.add<bool>("--alibi",
+      "Use alibi settings for transformer, this is a shortcut for --transformer-attention-mask alibi --transformer-alibi-shift --transformer-disable-position-embeddings --separator-symbol [eos]");
+  cli.alias("alibi", "true", [](YAML::Node& config) {
+    // define current-best alibi settings
+    config["transformer-attention-mask"] = "alibi";
+    config["transformer-alibi-shift"] = true;
+    config["transformer-disable-position-embeddings"] = true;
+    config["separator-symbol"] = "[eos]";
+    config["transformer-alibi-trainable"] = true;
+  });
+
   cli.add<bool>("--transformer-no-bias",
       "Don't use any bias vectors in linear layers");
   cli.add<bool>("--transformer-no-affine",
@@ -335,15 +370,18 @@ void ConfigParser::addOptionsModel(cli::CLIWrapper& cli) {
   // Options specific for the "comet-qe" model type
   cli.add<bool>("--comet-final-sigmoid", "Add final sigmoid to COMET model");
   cli.add<bool>("--comet-stop-grad", "Do not propagate gradients through COMET model");
-  
+
   cli.add<bool>("--comet-mix", "Mix encoder layers to produce embedding");
   cli.add<bool>("--comet-mix-norm", "Normalize layers prior to mixing");
+  cli.add<std::string>("--comet-pool", "Pooling operation over time dimension (avg, cls, max)", "avg");
+  cli.add<std::string>("--comet-mix-transformation", "Which transformation to apply to layer mixing (softmax [default] or sparsemax)", "softmax");
   cli.add<float>("--comet-dropout", "Dropout for pooler layers", 0.1f);
   cli.add<float>("--comet-mixup", "Alpha parameter for Beta distribution for mixup", 0.0f);
   cli.add<bool>("--comet-mixup-reg", "Use original and mixed-up samples in training");
   cli.add<float>("--comet-augment-bad", "Fraction of bad examples added via shuffling for class/label 0.f", 0.0f);
   cli.add<std::vector<int>>("--comet-pooler-ffn", "Hidden sizes for comet pooler", {2048, 1024});
   cli.add<bool>("--comet-prepend-zero", "Add a start symbol to batch entries");
+  cli.add<bool>("--comet-use-separator", "Add a sentence separator to batch entries when joining source, target and mt", false);
 
 #ifdef CUDNN
   cli.add<int>("--char-stride",
@@ -392,12 +430,14 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Do not create model checkpoints, only overwrite main model file with last checkpoint. "
       "Reduces disk usage");
   cli.add<bool>("--overwrite-checkpoint",
-      "When --overwrite=false (default) only model files get written at saving intervals (with iterations numbers). " 
+      "When --overwrite=false (default) only model files get written at saving intervals (with iterations numbers). "
       "Setting --overwrite-checkpoint=false also saves full checkpoints checkpoints with optimizer parameters, etc. "
       "Uses (a lot) more disk space.",
       true);
   cli.add<bool>("--no-reload",
       "Do not load existing model specified in --model arg");
+  cli.add<bool>("--no-optimizer-reload",
+      "Do not load existing optimizer state from checkpoint specified in --model arg");
   cli.add<std::vector<std::string>>("--train-sets,-t",
       "Paths to training corpora: source target");
   cli.add<std::vector<std::string>>("--vocabs,-v",
@@ -578,7 +618,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "Dynamic cost scaling for mixed precision training: "
       "scaling factor, frequency, multiplier, minimum factor")
       ->implicit_val("8.f 10000 1.f 8.f");
-  
+
   cli.add<std::vector<std::string>>("--throw-on-divergence",
       "Throw exception if training diverges. Divergence is detected if the running average loss over arg1 steps "
       "is exceeded by the running average loss over arg2 steps (arg1 >> arg2) by arg3 standard deviations")
@@ -591,7 +631,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "If fp16 training diverges and throws try to continue training with fp32 precision");
   cli.alias("fp16-fallback-to-fp32", "true", [](YAML::Node& config) {
     // use default custom-fallbacks to handle DivergenceException for fp16
-    config["custom-fallbacks"] = std::vector<YAML::Node>({ 
+    config["custom-fallbacks"] = std::vector<YAML::Node>({
       YAML::Load("{fp16 : false, precision: [float32, float32], cost-scaling: []}")
      });
   });
@@ -612,7 +652,9 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
   cli.add<bool>("--check-gradient-nan",
       "Skip parameter update in case of NaNs in gradient");
   cli.add<bool>("--normalize-gradient",
-      "Normalize gradient by multiplying with no. devices / total labels (not recommended and to be removed in the future)");
+      "Normalize gradient by dividing with efficient batch size");
+  cli.add<bool>("--normalize-gradient-by-ratio",
+      "Normalize gradient by scaling with efficient batch size divided by running average batch size");
 
   cli.add<std::vector<std::string>>("--train-embedder-rank",
       "Override model configuration and train a embedding similarity ranker with the model encoder, "

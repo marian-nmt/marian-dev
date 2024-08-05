@@ -26,43 +26,52 @@ public:
   }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::vector<io::Item>& items,
+            Ptr<io::ModelWeights> modelFile,
             bool /*markReloaded*/ = true) override {
-    auto ioItems = items;
-    // map names and remove a dummy matrix 'decoder_c_tt' from items to avoid creating isolated node
-    for(auto it = ioItems.begin(); it != ioItems.end();) {
-      // for backwards compatibility, turn one-dimensional vector into two dimensional matrix with first dimension being 1 and second dimension of the original size
-      // @TODO: consider dropping support for Nematus models
-      if(it->shape.size() == 1) {
-        int dim = it->shape[-1];
-        it->shape.resize(2);
-        it->shape.set(0, 1);
-        it->shape.set(1, dim);
-      }
 
-      if(it->name == "decoder_c_tt") {
-        it = ioItems.erase(it);
-      } else if(it->name == "uidx") {
-        it = ioItems.erase(it);
-      } else if(it->name == "history_errs") {
-        it = ioItems.erase(it);
-      } else {
-        auto pair = nameMap_.find(it->name);
-        if(pair != nameMap_.end())
-          it->name = pair->second;
-        it++;
+    // we will modify the items directly, so memory mapping etc. should just work
+    // This should never be done, but we need to be compatible with Amun/Nematus for now.
+    auto& ioItems = modelFile->items();
+
+    // @TODO: get rid of all this eventually
+    { // scope for lock_guard
+      auto lockGuard = modelFile->scopedLockGuard();
+
+      // only modify the first time.
+      bool modify = false;
+      for(auto& item : ioItems)
+        if(item.name == "decoder_c_tt") // still there, hence this is the first time.
+          modify = true;
+
+      if(modify) {
+        // map names and remove a dummy matrix 'decoder_c_tt' from items to avoid creating isolated node
+        for(auto it = ioItems.begin(); it != ioItems.end();) {
+          // for backwards compatibility, turn one-dimensional vector into two dimensional matrix with first dimension being 1 and second dimension of the original size
+          // @TODO: consider dropping support for Nematus models
+          if(it->shape.size() == 1) {
+            int dim = it->shape[-1];
+            it->shape.resize(2);
+            it->shape.set(0, 1);
+            it->shape.set(1, dim);
+          }
+
+          if(it->name == "decoder_c_tt") {
+            it = ioItems.erase(it);
+          } else if(it->name == "uidx") {
+            it = ioItems.erase(it);
+          } else if(it->name == "history_errs") {
+            it = ioItems.erase(it);
+          } else {
+            auto pair = nameMap_.find(it->name);
+            if(pair != nameMap_.end())
+              it->name = pair->second;
+            it++;
+          }
+        }
       }
     }
-    // load items into the graph
-    graph->load(ioItems);
-  }
 
-  void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
-            bool /*markReloaded*/ = true) override {
-    LOG(info, "Loading model from {}", name);
-    auto ioItems = io::loadItems(name);
-    load(graph, ioItems);
+    graph->load(modelFile);
   }
 
   void save(Ptr<ExpressionGraph> graph,
@@ -77,7 +86,7 @@ public:
 
     // get parameters from the graph to items
     std::vector<io::Item> ioItems;
-    graph->save(ioItems);
+    graph->getItems(ioItems);
     // replace names to be compatible with Nematus
     for(auto& item : ioItems) {
       auto newItemName = nameMapRev_.find(item.name);

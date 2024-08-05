@@ -3,12 +3,13 @@
 #include "common/config.h"
 #include "tensors/backend.h"  // note: this is one folder up
 #include "tensors/gpu/cuda_helpers.h"
+#include "tensors/gpu/cusparse_include.h"
 #include "common/logging.h"
 
 #include <cublas_v2.h>
 #include <cuda.h>
 #include <curand.h>
-#include <cusparse.h>
+
 
 namespace marian {
 namespace gpu {

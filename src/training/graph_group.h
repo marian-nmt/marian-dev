@@ -46,10 +46,12 @@ protected:
   std::vector<Ptr<models::ICriterionFunction>> models_; // [deviceIndex]
   std::vector<Ptr<OptimizerBase>> optimizerShards_;     // [deviceIndex]
 
+  Ptr<io::ModelWeights> modelWeights_; // handle for model weights, we keep this around to make sure weights are not deallocated while we are still using them
   Ptr<Scheduler> scheduler_; // scheduler that keeps track of how much has been processed
 
   bool finalized_{false};    // 'true' if training has completed (further updates are no longer allowed)
-  double typicalTrgBatchWords_{0}; // for dynamic batch sizing: typical batch size in words
+  float typicalTrgBatchWords_{0}; // for dynamic batch sizing: typical batch size in words
+  float averageEffectiveBatchSize_{0}; // record average effective batch size
   bool mbRoundUp_{true}; // round up batches for more efficient training but can make batch size less stable, disable with --mini-batch-round-up=false
 
   bool costScaling_{false};
@@ -62,6 +64,9 @@ protected:
   size_t nanSeen_{0};
 
   bool checkGradientNan_{false};
+
+  bool normalizeGradient_{false};
+  bool normalizeGradientByAverageRatio_{true};
 
   bool dynamicGradientScaling_{false};
   float dynamicGradientScalingFactor_{2.f};
@@ -105,7 +110,7 @@ private:
 
   void saveCheckPoint(const std::string& modelFileName,
                       bool isFinal,
-                      bool doSaveOptimizerState, 
+                      bool doSaveOptimizerState,
                       const OptimizerBase::GatherStateFunc& gatherOptimizerStateFn);
 
   void saveOptimizerState(const std::string& modelFileName,
@@ -117,7 +122,7 @@ public:
   void swapWithSmoothed();
 
   // This function replaces the current optimizer parameters with the smoothed version (provided smoothing is enabled).
-  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten. 
+  // This is different from swapping (swapping twice restores original state) as the original parameters get overwritten.
   void replaceWithSmoothed();
 
   bool isMainProcess() const { return mpi_->isMainProcess(); } // (we need this test a few times)
@@ -132,7 +137,7 @@ public:
   float checkNanOrNorm(size_t i, size_t begin, size_t end);
   float executeAndCollectNorm(const std::function<float(size_t, size_t, size_t)>& task);
 
-  float computeNormalizationFactor(float gNorm, size_t updateTrgWords);
+  float computeNormalizationFactor(float gNorm, size_t effectiveBatchSize);
 
   /**
    * Determine maximal batch size that can fit into the given workspace
@@ -151,9 +156,14 @@ public:
 
   virtual Ptr<data::BatchStats> collectStats(const std::vector<Ptr<Vocab>>& vocabs) = 0;
 
+  // used to estimate the number of words in a batch and figure out statistics for batch growing etc.
   void setTypicalTrgBatchWords(size_t typicalTrgBatchWords);
-  double getTypicalTrgBatchWords();
+  float getTypicalTrgBatchWords();
   void updateAverageTrgBatchWords(size_t trgBatchWords);
+
+  // similar to above but counts the number of labels including delayed updates. This is used for gradient normalization.
+  float getAverageEffectiveBatchSize();
+  void updateAverageEffectiveBatchSize(size_t effectiveBatchSize);
 };
 
 }  // namespace marian

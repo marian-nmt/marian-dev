@@ -127,14 +127,14 @@ __global__ void gSanitizeGradient(T* in, int length,
   }
 }
 
-// This function is meant to clean gradients, i.e. clip infinities and prune NaNs if required. 
-// If all NaNs and Infs have been removed we return `true` for indicating a sane gradient. 
-// If `clipInf` is set, infinities are replaced with the maximum/minimum non-inf value for the tensor. 
+// This function is meant to clean gradients, i.e. clip infinities and prune NaNs if required.
+// If all NaNs and Infs have been removed we return `true` for indicating a sane gradient.
+// If `clipInf` is set, infinities are replaced with the maximum/minimum non-inf value for the tensor.
 // In that case infinities do not result in a bad gradient, since they get clipped.
-// If `pruneNaN` is set, NaNs are replaced with 0. Since NaNs get removed now they do not result 
+// If `pruneNaN` is set, NaNs are replaced with 0. Since NaNs get removed now they do not result
 // in a bad gradient.
-// If NaNs or infinities are detected but not removed (either because of `pruneNaN=false` or `clipInf=false`), 
-// we return `false` indicating a bad gradient. 
+// If NaNs or infinities are detected but not removed (either because of `pruneNaN=false` or `clipInf=false`),
+// we return `false` indicating a bad gradient.
 bool SanitizeGradient(marian::Tensor in, Ptr<Allocator> allocator, bool pruneNaN, bool clipInf) {
   cudaSetDevice(in->getDeviceId().no);
 
@@ -180,7 +180,7 @@ __global__ void gCopyCastTo(To* out, const From* in, int length) {
     if(index < length) {
       if(add)
         out[index] += (To)in[index];
-      else 
+      else
         out[index]  = (To)in[index];
     }
   }
@@ -702,7 +702,7 @@ __global__ void gSoftmax(T* out,
 
       // determine max (used below to improve numeric stability)
       T* _max = _share;
-      
+
       // @TODO: what's going on here with fp16?
       _max[threadIdx.x] = -CUDA_FLT_MAX;  // mask
       // find max over column indices that have the same relative column index (=threadIdx.x) across all blocks of columns
@@ -848,11 +848,12 @@ __global__ void gLogSoftmax(T* out,
   int rows = outShape.elements() / outShape.back();
   int cols = outShape.back();
 
+  // loop over blocks of rows
   for(int bid = 0; bid < rows; bid += gridDim.x) {
-    int j = bid + blockIdx.x;
+    int j = bid + blockIdx.x; // blockIdx.x - row index (within block of rows)
     if(j < rows) {
-      T* so = out + j * cols;
-      const T* sp = in + j * cols;
+      T* so = out + j * cols;      // pointer to row output data
+      const T* sp = in + j * cols; // pointer to row input data
 
       // CUDA complains if type or size of shared memory changes, keep size constant.
       extern __shared__ uint8_t _sharedBytes[];
@@ -862,13 +863,15 @@ __global__ void gLogSoftmax(T* out,
       T* _max = _share; // 16-bit is ok for max if applicable
       _max[threadIdx.x] = sp[threadIdx.x];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
-        int id = tid + threadIdx.x;
+        int id = tid + threadIdx.x; // threadIdx.x = column index within block of columns
         if(id < cols) {
           if(sp[id] > _max[threadIdx.x])
             _max[threadIdx.x] = sp[id];
         }
       }
       __syncthreads();
+
+      // max over columns within a column block via tree reduction
       int len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -890,13 +893,17 @@ __global__ void gLogSoftmax(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          T sm = sp[id] - max;
-          AccType ex = Ops<AccType>::exp(sm); // sum with AccType
-          so[id] = sm;
+          // @TODO: would it be faster to recompute it below? Also better numeric stability with float?
+          AccType sm = (AccType)sp[id] - (AccType)max; // subtract max for numeric stability
+          so[id] = (T)sm; // assign numerator to output
+
+          AccType ex = Ops<AccType>::exp(sm);
           _sum[threadIdx.x] += ex; // sum with AccType
         }
       }
       __syncthreads();
+
+      // now reduce over all columns within the block
       len = blockDim.x;
       while(len != 1) {
         __syncthreads();
@@ -906,6 +913,8 @@ __global__ void gLogSoftmax(T* out,
         len = (len + 1) >> 1;
       }
       __syncthreads();
+
+      // produce final output data
       AccType sum = _sum[0];
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
@@ -1318,7 +1327,7 @@ __global__ void gSelect(T* out,
     if(index < length) {
       outShape.dims(index, dims);
       int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
-      dims[axis] = (int)d_indices[idxIndex];    
+      dims[axis] = (int)d_indices[idxIndex];
       int inIndex = inShape.index(dims);
       if(add)
         out[index] += in[inIndex];
@@ -1344,12 +1353,12 @@ __global__ void gInsert(T* out,
     if(index < length) {
       inShape.dims(index, dims);
       int idxIndex = idxShape.bindex(dims); // broadcast index into indices tensor
-      dims[axis] = (int)d_indices[idxIndex];    
+      dims[axis] = (int)d_indices[idxIndex];
       int outIndex = outShape.index(dims);
       if(add)
         out[outIndex] += in[index]; // this is probably wrong, atomicAdd?
       else
-        out[outIndex] = in[index];     
+        out[outIndex] = in[index];
     }
   }
 }
@@ -1376,7 +1385,7 @@ void Select(Tensor out,
                                       in->data<float>(),
                                       in->shape(),
                                       axisGPU,
-                                      indices->data<IndexType>(), 
+                                      indices->data<IndexType>(),
                                       indices->shape());
 #if COMPILE_FP16
   } else if (out->type() == Type::float16) {
@@ -1394,7 +1403,7 @@ void Select(Tensor out,
                                       in->data<IndexType>(),
                                       in->shape(),
                                       axisGPU,
-                                      indices->data<IndexType>(), 
+                                      indices->data<IndexType>(),
                                       indices->shape());
   } else {
     ABORT("Select not implemented for type {}", out->type());
@@ -1631,7 +1640,7 @@ void GRUFastBackward(Ptr<Allocator> allocator,
   int blocks = std::min(MAX_BLOCKS, rows);
   int threads = std::min(MAX_THREADS, cols);
 
-  Tensor tempGradBias, tempOnes; 
+  Tensor tempGradBias, tempOnes;
   MemoryPiece::PtrType tempGradBiasMemory, tempOnesMemory;
   if(outputs[3]) {
     Shape memShape = {rows, outputs[3]->shape()[-1]};
@@ -1683,7 +1692,7 @@ void GRUFastBackward(Ptr<Allocator> allocator,
 
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
   // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
-  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type.
   // This preserves precision with larger batches where all batch entries reduce into a single vector.
   // See also AffineNodeOp where we do the same for biases
   if(outputs[3]) {
@@ -1908,7 +1917,7 @@ void CrossEntropyPickBackward(Tensor out, Tensor adj, Tensor a, Tensor indices, 
   }
 }
 
-// computes the L2Norm of tensor and returns value as flaot on the CPU, 
+// computes the L2Norm of tensor and returns value as flaot on the CPU,
 // this is mostly used for diagnostic purposes and gradient clipping
 float L2Norm(Tensor in, Ptr<Allocator> allocator) { // @TODO: reverse order of arguments
   cudaSetDevice(in->getDeviceId().no);
@@ -1987,7 +1996,7 @@ void Att(Tensor out, Tensor va, Tensor context, Tensor state) {
   size_t batchDim        = context->shape()[-2];
   size_t contextWordsDim = context->shape()[-3];
 
-  int blocks = std::min(MAX_BLOCKS, (int)totalRows);   
+  int blocks = std::min(MAX_BLOCKS, (int)totalRows);
   int threads = std::min(MAX_THREADS, (int)modelDim);
   int shared = sizeof(float) * threads;
 
@@ -2307,11 +2316,11 @@ __global__ void gLayerNormalizationGrad(T* gradX,
           AccType lv     = (xv - mean) / sigma;
 
           AccType gradLv = N * adjv - lv * sum_adj_l[0] - sum_adj[0];
-          gradLv        /= N * sigma; 
+          gradLv        /= N * sigma;
 
           AccType gradXv = gammav * gradLv;
 
-          // Keep LN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf. 
+          // Keep LN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf.
           // @TODO: to be fixed and removed.
           AccType sign = functional::Ops<AccType>::sgn(gradXv);
           AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option? or better: make obsolete.
@@ -2396,7 +2405,7 @@ void LayerNormalizationGrad(Ptr<Allocator> allocator,
 
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
   // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
-  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type.
   // This preserves precision with larger batches where all batch entries reduce into a single vector.
   // See also AffineNodeOp where we do the same for biases
   if(gradGamma)
@@ -2453,7 +2462,7 @@ __global__ void gRMSNormalization(T* out,
       for(int tid = 0; tid < cols; tid += blockDim.x) {
         int id = tid + threadIdx.x;
         if(id < cols) {
-          AccType gammav  = (AccType)gamma[id];
+          AccType gammav  = gamma ? (AccType)gamma[id] : (AccType)1.f;
           AccType xv      = (AccType)xRow[id];
           AccType betav   = beta ? (AccType)beta[id] : (AccType)0.f;
           AccType rmsNorm = xv / rms;
@@ -2483,7 +2492,7 @@ void RMSNormalization(Tensor out,
   if(out->type() == Type::float32) {
     gRMSNormalization<float, float><<<blocks, threads, shared>>>(out->data<float>(),
                                                                  in->data<float>(),
-                                                                 gamma->data<float>(),
+                                                                 gamma ? gamma->data<float>() : nullptr,
                                                                  beta ? beta->data<float>() : nullptr,
                                                                  rows,
                                                                  cols,
@@ -2492,7 +2501,7 @@ void RMSNormalization(Tensor out,
   } else if (out->type() == Type::float16) {
     gRMSNormalization<half, float><<<blocks, threads, shared>>>(out->data<half>(),
                                                                 in->data<half>(),
-                                                                gamma->data<half>(),
+                                                                gamma ? gamma->data<half>() : nullptr,
                                                                 beta ? beta->data<half>() : nullptr,
                                                                 rows,
                                                                 cols,
@@ -2538,7 +2547,7 @@ __global__ void gRMSNormalizationGrad(T* gradX,
           AccType xv     = xRow[id];
           AccType yv     = yRow[id];
           AccType betav  = beta ? (AccType)beta[id] : (AccType)0.f;
-          AccType gammav = (AccType)gamma[id];
+          AccType gammav = gamma ? (AccType)gamma[id] : (AccType)1.f;
           AccType adjv   = adjRow[id];
           AccType rv     = (yv - betav) / gammav; // go back to RMSNorm(x) from scaled and shifted version for accumulation
 
@@ -2571,16 +2580,16 @@ __global__ void gRMSNormalizationGrad(T* gradX,
         if(id < cols) {
 
           AccType xv      = xRow[id];
-          AccType gammav  = (AccType)gamma[id];
+          AccType gammav  = gamma ? (AccType)gamma[id] : (AccType)1.f;
           AccType adjv    = adjRow[id];
           AccType rmsNorm = xv / rms;
 
           AccType gradNorm = N * adjv - rmsNorm * sum_adj_r[0];
-          gradNorm        /= N * rms; 
+          gradNorm        /= N * rms;
 
           AccType gradXv = gammav * gradNorm;
 
-          // Keep RMSN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf. 
+          // Keep RMSN gradient between [-1000, 1000] for TensorOps, this currently used for making values fit into fp16. This wil also clip inf.
           // @TODO: to be fixed and removed.
           AccType sign = functional::Ops<AccType>::sgn(gradXv);
           AccType cutoff = (AccType)1000.f; // @TODO: expose this somehow as an option? or better: make obsolete.
@@ -2592,10 +2601,12 @@ __global__ void gRMSNormalizationGrad(T* gradX,
           T* gradXRow      = gradX     + j * cols;
           gradXRow[id]    += (T)(gradXv);
 
-          T* gradGammaRow  = gradGamma + j * cols;
-          // assignment is correct here as this gets summed up
-          // in the next kernel via matrix product
-          gradGammaRow[id] = (T)(adjv * rmsNorm);
+          if(gamma) {
+            T* gradGammaRow  = gradGamma + j * cols;
+            // assignment is correct here as this gets summed up
+            // in the next kernel via matrix product
+            gradGammaRow[id] = (T)(adjv * rmsNorm);
+          }
         }
       }
     }
@@ -2620,24 +2631,32 @@ void RMSNormalizationGrad(Ptr<Allocator> allocator,
   int threads = std::min(MAX_THREADS, cols);
   int blocks = std::min(MAX_BLOCKS, rows);
 
-  auto tempGradGammaMemory = allocator->alloc(adj->memory()->size());
-  Tensor tempGradGamma = TensorBase::New(tempGradGammaMemory, adj->shape(), adj->type(), adj->getBackend());
-  tempGradGamma->set(0.f);
+  MemoryPiece::PtrType tempGradGammaMemory;
+  Tensor tempGradGamma;
+  if(gamma) {
+    tempGradGammaMemory = allocator->alloc(adj->memory()->size());
+    tempGradGamma = TensorBase::New(tempGradGammaMemory, adj->shape(), adj->type(), adj->getBackend());
+    tempGradGamma->set(0.f);
+  }
 
-  auto tempOnesMemory = allocator->alloc(rows * sizeOf(adj->type()));
-  Tensor tempOnes = TensorBase::New(tempOnesMemory, Shape({1, rows}), adj->type(), adj->getBackend());
-  tempOnes->set(1.f);
+  MemoryPiece::PtrType tempOnesMemory;
+  Tensor tempOnes;
+  if(gamma || beta) {
+    tempOnesMemory = allocator->alloc(rows * sizeOf(adj->type()));
+    tempOnes = TensorBase::New(tempOnesMemory, Shape({1, rows}), adj->type(), adj->getBackend());
+    tempOnes->set(1.f);
+  }
 
   if(gradX->type() == Type::float32) {
     int shared = sizeof(float) * threads * 2;
     gRMSNormalizationGrad<float, float><<<blocks, threads, shared>>>(
       gradX->data<float>(),
-      tempGradGamma->data<float>(),
+      gamma ? tempGradGamma->data<float>() : nullptr,
       adj->data<float>(),
       y->data<float>(),
       x->data<float>(),
-      gamma->data<float>(),
-      (beta) ? beta->data<float>() : nullptr,
+      gamma ? gamma->data<float>() : nullptr,
+      beta ? beta->data<float>() : nullptr,
       rows,
       cols,
       eps);
@@ -2647,12 +2666,12 @@ void RMSNormalizationGrad(Ptr<Allocator> allocator,
     int shared = sizeof(float) * threads * 2;
     gRMSNormalizationGrad<half, float><<<blocks, threads, shared>>>(
       gradX->data<half>(),
-      tempGradGamma->data<half>(),
+      gamma ? tempGradGamma->data<half>() : nullptr,
       adj->data<half>(),
       y->data<half>(),
       x->data<half>(),
-      gamma->data<half>(),
-      (beta) ? beta->data<half>() : nullptr,
+      gamma ? gamma->data<half>() : nullptr,
+      beta ? beta->data<half>() : nullptr,
       rows,
       cols,
       eps);
@@ -2663,16 +2682,20 @@ void RMSNormalizationGrad(Ptr<Allocator> allocator,
 
   // We use this go get rid of the atomicAdd and perform a reduce of the gradients afterwards.
   // This is much faster for fp16 which seems to have a broken atomicAdd implementation.
-  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type. 
+  // We reduce bias gradients with a matrix multiply, but use a 32-bit compute type.
   // This preserves precision with larger batches where all batch entries reduce into a single vector.
   // See also AffineNodeOp where we do the same for biases
-  gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
+  if(gamma) {
+    gpu::Prod(gradGamma, tempOnes, tempGradGamma, false, false, 1, 1, Type::float32); // beta set to one to add
+    allocator->free(tempGradGammaMemory);
+  }
 
-  if(gradBeta) // dC/dbeta = adj - inverse broadcasting (reduction)
+  if(beta) { // dC/dbeta = adj - inverse broadcasting (reduction)
     gpu::Prod(gradBeta, tempOnes, adj, false, false, 1, 1, Type::float32); // beta set to one to add
+  }
 
-  allocator->free(tempGradGammaMemory);
-  allocator->free(tempOnesMemory);
+  if(tempOnes)
+    allocator->free(tempOnesMemory);
 }
 
 
@@ -3217,8 +3240,7 @@ __global__ void gHighwayBackward(T* out1,
       T sigma = functional::Ops<T>::sigmoid(t[index]);
       out1[index] = sigma * adj[index];
       out2[index] = ((T)1.f - sigma) * adj[index];
-      outt[index]
-          = sigma * ((T)1.f - sigma) * (in1[index] - in2[index]) * adj[index];
+      outt[index] = sigma * ((T)1.f - sigma) * (in1[index] - in2[index]) * adj[index];
     }
   }
 }
@@ -3413,16 +3435,16 @@ __global__ void Float2Bit(const float *in, uint32_t *out, int batch, int dim, in
   int batchIdx = blockIdx.x;
   const float *inBatchOffset = in + batchIdx * dim;
   uint32_t *outBatchOffset = out + batchIdx * outDim;
-  
+
   int outDimIdx = threadIdx.x;
   while (outDimIdx < outDim) {
     const float *inDimOffset = inBatchOffset + outDimIdx * 32;
     uint32_t &outDimOffset = outBatchOffset[outDimIdx];
     uint32_t outVal = 0;
     uint32_t mask = 1;
-    
+
     for (int bitIdx = 0; bitIdx < 32; ++bitIdx) {
-      if (inDimOffset[bitIdx] >= 0) 
+      if (inDimOffset[bitIdx] >= 0)
         outVal |= mask;
 
         mask <<= 1;
@@ -3450,12 +3472,12 @@ void Float2Bit(marian::Tensor output, const marian::Tensor input)
 //////////////////////////////////////////////////////////////////////////////////////////
 // Calc hamming distance between input and weight hash. Return sorted indices and counts accoding to counting sort algo
 // https://www.geeksforgeeks.org/counting-sort/
-__global__ void HammmingAndSort(const uint32_t *weightHash, 
+__global__ void HammmingAndSort(const uint32_t *weightHash,
                       const uint32_t *inputHash,
                       uint16_t *hamming,
-                      uint32_t *outCounts, 
-                      uint32_t *outIdx, 
-                      uint32_t kBest, uint16_t minVal, uint16_t maxVal, uint16_t range, 
+                      uint32_t *outCounts,
+                      uint32_t *outIdx,
+                      uint32_t kBest, uint16_t minVal, uint16_t maxVal, uint16_t range,
                       int hashDim, int dim, int batch)
 {
   extern __shared__ uint32_t sharedCounts[];
@@ -3463,8 +3485,8 @@ __global__ void HammmingAndSort(const uint32_t *weightHash,
   int batchIdx = blockIdx.x;
 
   uint32_t *stopVal = sharedCounts + range;
-  uint16_t *hammingBatchOffset = hamming 
-                              ? hamming + batchIdx * dim 
+  uint16_t *hammingBatchOffset = hamming
+                              ? hamming + batchIdx * dim
                               : (uint16_t*) (sharedCounts + range);
 
   uint32_t *outCountsBatchOffset = outCounts ? outCounts + batchIdx * kBest : nullptr;
@@ -3542,7 +3564,7 @@ __global__ void HammmingAndSort(const uint32_t *weightHash,
     uint32_t countIdx = val - minVal;
     assert(countIdx < range);
     uint32_t &outIdx = sharedCounts[countIdx];
-    
+
     if (outIdx != NPP_MAX_32U) {
       uint32_t prevOutIdx;
 // Not supported in Maxwells or older
@@ -3568,10 +3590,10 @@ __global__ void HammmingAndSort(const uint32_t *weightHash,
 // Calc hamming distance between input and weight hash. Return sorted indices and counts accoding to counting sort algo
 // https://www.geeksforgeeks.org/counting-sort/
 void HammmingAndSort(marian::Tensor outIdx, marian::Tensor outCounts,
-                  const marian::Tensor weightHash, 
+                  const marian::Tensor weightHash,
                   const marian::Tensor inputHash,
-                  uint32_t kBest, uint16_t minVal, uint16_t maxVal, 
-                  marian::Ptr<marian::Allocator> &alloc, 
+                  uint32_t kBest, uint16_t minVal, uint16_t maxVal,
+                  marian::Ptr<marian::Allocator> &alloc,
                   marian::Ptr<marian::Backend> &backend)
 {
   size_t SHARED_MEM_SIZE = 48000;
@@ -3591,7 +3613,7 @@ void HammmingAndSort(marian::Tensor outIdx, marian::Tensor outCounts,
   size_t mem = range * sizeof(uint32_t) // counts
               + sizeof(uint32_t)    // stopval
               + dim * sizeof(uint16_t); // hamming;
-  
+
   marian::Tensor hamming;
   if (mem > SHARED_MEM_SIZE) {
     // shared memory too small. Write haming distance to global mem instead
@@ -3605,12 +3627,12 @@ void HammmingAndSort(marian::Tensor outIdx, marian::Tensor outCounts,
   }
 
   HammmingAndSort<<<inputBatch, 256, mem>>>
-              (weightHash->data<uint32_t>(), 
+              (weightHash->data<uint32_t>(),
               inputHash->data<uint32_t>(),
               hamming ? hamming->data<uint16_t>() : nullptr,
               outCounts ? outCounts->data<uint32_t>() : nullptr,
               outIdx ? outIdx->data<uint32_t>() : nullptr,
-              kBest, minVal, maxVal, range, 
+              kBest, minVal, maxVal, range,
               hashDim, dim, inputBatch);
   CUDA_CHECK(cudaGetLastError());
 

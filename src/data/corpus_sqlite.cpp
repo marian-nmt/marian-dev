@@ -106,6 +106,8 @@ void CorpusSQLite::fillSQLite() {
 }
 
 SentenceTuple CorpusSQLite::next() {
+  ABORT_IF(!inputPermutation_.empty(), "Input permutation not supported for sqlite corpus");
+
   while(select_->executeStep()) {
     // fill up the sentence tuple with sentences from all input files
     size_t curId = select_->getColumn(0).getInt();

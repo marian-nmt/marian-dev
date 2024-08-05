@@ -21,25 +21,9 @@ class EncoderClassifierBase : public models::IModel {
 public:
   virtual ~EncoderClassifierBase() {}
 
-  virtual void load(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool markedReloaded = true) override
-      = 0;
-
-  virtual void mmap(Ptr<ExpressionGraph> graph,
-                    const void* ptr,
-                    bool markedReloaded = true)
-      = 0;
-
-  virtual void save(Ptr<ExpressionGraph> graph,
-                    const std::string& name,
-                    bool saveTranslatorConfig = false) override
-      = 0;
-
   virtual void clear(Ptr<ExpressionGraph> graph) override = 0;
 
   virtual std::vector<Ptr<ClassifierState>> apply(Ptr<ExpressionGraph>, Ptr<data::CorpusBatch>, bool) = 0;
-
 
   virtual Logits build(Ptr<ExpressionGraph> graph,
                        Ptr<data::Batch> batch,
@@ -154,21 +138,9 @@ public:
   void push_back(Ptr<ClassifierBase> classifier) { classifiers_.push_back(classifier); }
 
   void load(Ptr<ExpressionGraph> graph,
-            const std::vector<io::Item>& items,
+            Ptr<io::ModelWeights> modelFile,
             bool markedReloaded) override {
-    graph->load(items, markedReloaded && !opt<bool>("ignore-model-config", false));
-  }
-
-  void load(Ptr<ExpressionGraph> graph,
-            const std::string& name,
-            bool markedReloaded) override {
-    graph->load(name, markedReloaded && !opt<bool>("ignore-model-config", false));
-  }
-
-  void mmap(Ptr<ExpressionGraph> graph,
-            const void* ptr,
-            bool markedReloaded) override {
-    graph->mmap(ptr, markedReloaded && !opt<bool>("ignore-model-config", false));
+    graph->load(modelFile, markedReloaded && !opt<bool>("ignore-model-config", false));
   }
 
   void save(Ptr<ExpressionGraph> graph,

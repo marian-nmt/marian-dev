@@ -5,7 +5,7 @@ namespace marian {
 
 Ptr<Scorer> scorerByType(const std::string& fname,
                          float weight,
-                         std::vector<io::Item> items,
+                         Ptr<io::ModelWeights> modelFile,
                          Ptr<Options> options) {
   options->set("inference", true);
   std::string type = options->get<std::string>("type");
@@ -22,48 +22,25 @@ Ptr<Scorer> scorerByType(const std::string& fname,
 
   LOG(info, "Loading scorer of type {} as feature {}", type, fname);
 
-  return New<ScorerWrapper>(encdec, fname, weight, items);
+  return New<ScorerWrapper>(encdec, fname, weight, modelFile);
 }
 
-Ptr<Scorer> scorerByType(const std::string& fname,
-                         float weight,
-                         const void* ptr,
-                         Ptr<Options> options) {
-  options->set("inference", true);
-  std::string type = options->get<std::string>("type");
-
-  // @TODO: solve this better
-  if(type == "lm" && options->has("input")) {
-    size_t index = options->get<std::vector<std::string>>("input").size();
-    options->set("index", index);
-  }
-
-  bool skipCost = options->get<bool>("skip-cost");
-  auto encdec = models::createModelFromOptions(
-      options, skipCost ? models::usage::raw : models::usage::translation);
-
-  LOG(info, "Loading scorer of type {} as feature {}", type, fname);
-
-  return New<ScorerWrapper>(encdec, fname, weight, ptr);
-}
-
-std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<std::vector<io::Item>> models) {
+std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<Ptr<io::ModelWeights>>& modelFiles) {
   std::vector<Ptr<Scorer>> scorers;
 
-  std::vector<float> weights(models.size(), 1.f);
+  std::vector<float> weights(modelFiles.size(), 1.f);
   if(options->hasAndNotEmpty("weights"))
     weights = options->get<std::vector<float>>("weights");
 
   bool isPrevRightLeft = false;  // if the previous model was a right-to-left model
   size_t i = 0;
-  for(auto items : models) {
+  for(auto modelFile : modelFiles) {
     std::string fname = "F" + std::to_string(i);
 
     // load options specific for the scorer
     auto modelOptions = options->clone();
     if(!options->get<bool>("ignore-model-config")) {
-      YAML::Node modelYaml;
-      io::getYamlFromModel(modelYaml, "special:model.yml", items);
+      YAML::Node modelYaml = modelFile->getYamlFromModel("special:model.yml");
       if(!modelYaml.IsNull()) {
         LOG(info, "Loaded model config");
         modelOptions->merge(modelYaml, true);
@@ -74,7 +51,7 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<s
     }
 
     // l2r and r2l cannot be used in the same ensemble
-    if(models.size() > 1 && modelOptions->has("right-left")) {
+    if(modelFiles.size() > 1 && modelOptions->has("right-left")) {
       if(i == 0) {
         isPrevRightLeft = modelOptions->get<bool>("right-left");
       } else {
@@ -85,7 +62,7 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<s
       }
     }
 
-    scorers.push_back(scorerByType(fname, weights[i], items, modelOptions));
+    scorers.push_back(scorerByType(fname, weights[i], modelFile, modelOptions));
     i++;
   }
 
@@ -93,55 +70,14 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<s
 }
 
 std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options) {
-  std::vector<std::vector<io::Item>> model_items;
+  std::vector<Ptr<io::ModelWeights>> modelFiles;
   auto models = options->get<std::vector<std::string>>("models");
   for(auto model : models) {
-    auto items = io::loadItems(model);
-    model_items.push_back(std::move(items));
+    auto modelFile = New<io::ModelWeights>(model);
+    modelFiles.push_back(modelFile);
   }
 
-  return createScorers(options, model_items);
-}
-
-std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<const void*>& ptrs) {
-  std::vector<Ptr<Scorer>> scorers;
-
-  std::vector<float> weights(ptrs.size(), 1.f);
-  if(options->hasAndNotEmpty("weights"))
-    weights = options->get<std::vector<float>>("weights");
-
-  size_t i = 0;
-  for(auto ptr : ptrs) {
-    std::string fname = "F" + std::to_string(i);
-
-    // load options specific for the scorer
-    auto modelOptions = options->clone();
-    if(!options->get<bool>("ignore-model-config")) {
-      YAML::Node modelYaml;
-      io::getYamlFromModel(modelYaml, "special:model.yml", ptr);
-      if(!modelYaml.IsNull()) {
-        LOG(info, "Loaded model config");
-        modelOptions->merge(modelYaml, true);
-      }
-      else {
-        LOG(warn, "No model settings found in model file");
-      }
-    }
-
-    scorers.push_back(scorerByType(fname, weights[i], ptr, modelOptions));
-    i++;
-  }
-
-  return scorers;
-}
-
-std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<mio::mmap_source>& mmaps) {
-  std::vector<const void*> ptrs;
-  for(const auto& mmap : mmaps) {
-    ABORT_IF(!mmap.is_mapped(), "Memory mapping did not succeed");
-    ptrs.push_back(mmap.data());
-  }
-  return createScorers(options, ptrs);
+  return createScorers(options, modelFiles);
 }
 
 }  // namespace marian

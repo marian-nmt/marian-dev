@@ -14,8 +14,9 @@ private:
   std::mt19937 engine_;
 
 public:
-  StdlibRandomGenerator(size_t seed)
-  : RandomGenerator(seed), engine_((unsigned int)seed) {}
+  StdlibRandomGenerator(size_t seed, DeviceId deviceId)
+  : RandomGenerator(seed, deviceId),
+    engine_((unsigned int)RandomGenerator::seed()) {}
 
   virtual void uniform(Tensor tensor, float a, float b) override;
   virtual void normal(Tensor, float mean, float stddev) override;
@@ -68,7 +69,7 @@ void StdlibRandomGenerator::normal(Tensor tensor, float mean, float stddev) {
 #ifdef CUDA_FOUND
 
 CurandRandomGenerator::CurandRandomGenerator(size_t seed, DeviceId deviceId)
-: RandomGenerator(seed), deviceId_(deviceId) {
+: RandomGenerator(seed, deviceId), deviceId_(deviceId) {
     if(deviceId_.type == DeviceType::gpu) {
       cudaSetDevice((int)deviceId_.no);
       CURAND_CHECK(curandCreateGenerator(&generator_, CURAND_RNG_PSEUDO_DEFAULT));
@@ -76,7 +77,7 @@ CurandRandomGenerator::CurandRandomGenerator(size_t seed, DeviceId deviceId)
     else {
       CURAND_CHECK(curandCreateGeneratorHost(&generator_, CURAND_RNG_PSEUDO_DEFAULT));
     }
-    CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(generator_, seed_));
+    CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(generator_, RandomGenerator::seed()));
 }
 
 CurandRandomGenerator::~CurandRandomGenerator() {
@@ -112,9 +113,7 @@ Ptr<RandomGenerator> createRandomGenerator(size_t seed, DeviceId deviceId) {
 #ifdef CUDA_FOUND
     return New<CurandRandomGenerator>(seed, deviceId);
 #else
-    ABORT_IF(deviceId.type != DeviceType::cpu,
-             "StdlibRandomGenerator can only be used for CPU tensors");
-    return New<StdlibRandomGenerator>(seed);
+    return New<StdlibRandomGenerator>(seed, deviceId);
 #endif
 }
 

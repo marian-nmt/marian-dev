@@ -354,11 +354,12 @@ float TranslationValidator::validate(const std::vector<Ptr<ExpressionGraph>>& gr
 
   // Create scorer
   auto model = options_->get<std::string>("model");
+  auto modelFile = New<io::ModelWeights>(model);
 
   std::vector<Ptr<Scorer>> scorers;
   for(auto graph : graphs) {
     auto builder = models::createModelFromOptions(options_, models::usage::translation);
-    Ptr<Scorer> scorer = New<ScorerWrapper>(builder, "", 1.0f, model);
+    Ptr<Scorer> scorer = New<ScorerWrapper>(builder, "", 1.0f, modelFile);
     scorers.push_back(scorer);  // @TODO: should this be done in the contructor?
   }
 
@@ -591,6 +592,7 @@ float SacreBleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& grap
 
   // Create scorer
   auto model = options_->get<std::string>("model");
+  auto modelFile = New<io::ModelWeights>(model);
 
   // @TODO: check if required - Temporary options for translation
   auto mopts = New<Options>();
@@ -600,7 +602,7 @@ float SacreBleuValidator::validate(const std::vector<Ptr<ExpressionGraph>>& grap
   std::vector<Ptr<Scorer>> scorers;
   for(auto graph : graphs) {
     auto builder = models::createModelFromOptions(options_, models::usage::translation);
-    Ptr<Scorer> scorer = New<ScorerWrapper>(builder, "", 1.0f, model);
+    Ptr<Scorer> scorer = New<ScorerWrapper>(builder, "", 1.0f, modelFile);
     scorers.push_back(scorer);
   }
 

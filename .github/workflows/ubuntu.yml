@@ -40,7 +40,7 @@ jobs:
             cpu: false
             gpu: true
             unit_tests: false
-            examples: true
+            examples: false
           # Ubuntu 22.04 supports CUDA 11.7
           # Unit tests and examples are not compiled to save disk space
           - name: "Ubuntu 22.04 CUDA 11.7 gcc-11"

@@ -135,3 +135,4 @@ jobs:
         .\marian-scorer.exe --version
         dir *.exe
       shell: cmd
+

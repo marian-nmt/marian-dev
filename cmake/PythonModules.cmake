@@ -34,10 +34,8 @@ macro(py_exec)
     endif()
 endmacro()
 
-set(PYBIND11_NOPYTHON On)
-# this wont work if pybind11 is git submodule
-#find_package(pybind11 REQUIRED)
-
+# NOTE: this property must be set before including pybind11
+# set(PYBIND11_NOPYTHON On)
 ## =====================
 set(PYTHON_SEARCH_VERSIONS 3.7 3.8 3.9 3.10 3.11 3.12 3.13)
 set(PYTHON_DISABLE_VERSIONS "" CACHE STRING "")

@@ -33,7 +33,7 @@ dependencies = [
   "pyyaml",
   "tqdm",
   "requests",
-  "huggingface-hub==0.23.1",
+  "huggingface-hub",
 ]
 
 [project.scripts]

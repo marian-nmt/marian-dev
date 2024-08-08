@@ -50,6 +50,9 @@ build
 build-*
 # pymarian wheels
 dist/
+tmp
+tmp-*
+tmp.*
 
 # Examples
 examples/*/*.gz

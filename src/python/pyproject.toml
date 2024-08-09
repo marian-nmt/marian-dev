@@ -47,7 +47,7 @@ demos = [
   "flask",
   "sacremoses",
   "pyqt5",
-  "sentence-splitter@git+https://github.com/mediacloud/sentence-splitter",
+#  "sentence-splitter@git+https://github.com/mediacloud/sentence-splitter",
 ]
 
 

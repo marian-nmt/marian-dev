@@ -38,25 +38,51 @@
 #include "marian_conv.cpp"
 #undef main
 
+#include <string>
+#include <map>
+#include <tuple>
 #include "3rd_party/ExceptionWithCallStack.h"
+#include "3rd_party/spdlog/details/format.h"
 
 int main(int argc, char** argv) {
   using namespace marian;
+  using MainFunc = int(*)(int, char**);
+  std::map<std::string, std::tuple<MainFunc, std::string>> subcmds = {
+    {"train", {&mainTrainer, "Train a model (default)"}},
+    {"decode", {&mainDecoder, "Decode or translate text"}},
+    {"score", {&mainScorer, "Score translations"}},
+    {"embed", {&mainEmbedder, "Embed text"}},
+    {"evaluate", {&mainEvaluator, "Run Evaluator metric"}},
+    {"vocab", {&mainVocab, "Create vocabulary"}},
+    {"convert", {&mainConv, "Convert model file format"}}
+  };
+  // no arguments, or the first arg is "?"", print help message
+   if (argc == 1 || (argc == 2 && (std::string(argv[1]) == "?") )) {
+    std::cout << "Usage: " << argv[0] << " COMMAND [ARGS]" << std::endl;
+    std::cout << "Commands:" << std::endl;
+    for (auto&& [name, val] : subcmds) {
+      std::cerr << fmt::format("{:10}    : {}\n", name, std::get<1>(val));
+    }
+    return 0;
+  }
 
-  if(argc > 1 && argv[1][0] != '-') {
+  if (argc > 1 && argv[1][0] != '-') {
     std::string cmd = argv[1];
     argc--;
     argv[1] = argv[0];
     argv++;
-    if(cmd == "train")           return mainTrainer(argc, argv);
-    else if(cmd == "decode")     return mainDecoder(argc, argv);
-    else if (cmd == "score")     return mainScorer(argc, argv);
-    else if (cmd == "embed")     return mainEmbedder(argc, argv);
-    else if (cmd == "evaluate")  return mainEvaluator(argc, argv);
-    else if (cmd == "vocab")     return mainVocab(argc, argv);
-    else if (cmd == "convert")   return mainConv(argc, argv);
-    std::cerr << "Command must be train, decode, score, embed, vocab, or convert." << std::endl;
-    exit(1);
-  } else
+    if (subcmds.count(cmd) > 0) {
+      auto [func, desc] = subcmds[cmd];
+      return func(argc, argv);
+    }
+    else {
+      std::cerr << "Unknown command: " << cmd << ". Known commands are:" << std::endl;
+      for (auto&& [name, val] : subcmds) {
+        std::cerr << fmt::format("{:10}    : {}\n", name, std::get<1>(val));
+      }
+      return 1;
+    }
+  }
+  else
     return mainTrainer(argc, argv);
 }

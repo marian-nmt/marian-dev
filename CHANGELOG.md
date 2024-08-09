@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed compilation with clang 16.0.6
 - Added Threads::Threads to `EXT_LIBS`
 - Updates to pymarian: building for multiple python versions; disabling tcmalloc; hosting gated COMETs on HuggingFace
+- Add "pymarian" CLI, a proxy to "marian" binary, but made available in PATH after "pip install pymarian"
 
 ### Added
 - Added `--normalize-gradient-by-ratio` to mildly adapt gradient magnitude if effective batch size diverges from running average effective batch size.

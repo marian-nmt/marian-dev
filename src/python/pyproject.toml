@@ -37,6 +37,7 @@ dependencies = [
 ]
 
 [project.scripts]
+pymarian = "pymarian:main"
 pymarian-eval = "pymarian.eval:main"
 pymarian-qtdemo = "pymarian.qtdemo:main"
 pymarian-mtapi = "pymarian.mtapi_server:main"

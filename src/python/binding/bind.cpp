@@ -1,3 +1,5 @@
+#define PYBIND11_DETAILED_ERROR_MESSAGES
+
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 // if your IDE/vscode complains about missing paths
@@ -6,13 +8,30 @@
 #include "evaluator.hpp"
 #include "trainer.hpp"
 #include "translator.hpp"
-
-
-#define PYBIND11_DETAILED_ERROR_MESSAGES
+#include "command/marian_main.cpp"
 
 namespace py = pybind11;
 using namespace pymarian;
 
+/**
+ * @brief Wrapper function to call Marian main entry point from Python
+ *
+ * Calls Marian main entry point from Python.
+ * It converts args from a vector of strings (Python-ic API) to char* (C API)
+ *  before passsing on to the main function.
+ * @param args vector of strings
+ * @return int return code
+ */
+int main_wrap(std::vector<std::string> args) {
+    // Convert vector of strings to vector of char*
+    std::vector<char*> argv;
+    argv.push_back(const_cast<char*>("pymarian"));
+    for (auto& arg : args) {
+        argv.push_back(const_cast<char*>(arg.c_str()));
+    }
+    argv.push_back(nullptr);
+    return main(argv.size() - 1, argv.data());
+}
 
 PYBIND11_MODULE(_pymarian, m) {
     m.doc() = "Marian C++ API bindings via pybind11";
@@ -43,6 +62,8 @@ PYBIND11_MODULE(_pymarian, m) {
         .def(py::init<std::string>())
         .def("embed", py::overload_cast<>(&PyEmbedder::embed))
         ;
+
+    m.def("main", &main_wrap, "Marian main entry point");
 
 }
 

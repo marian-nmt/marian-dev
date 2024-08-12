@@ -11,9 +11,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: "Pymarian=YES"
-            pymarian: true
-          - name: "Pymarian=NO"
+          - name: "pymarian=false"
             pymarian: false
     name: "MacOS CPU-only ${{ matrix.name }}"
     runs-on: macos-12

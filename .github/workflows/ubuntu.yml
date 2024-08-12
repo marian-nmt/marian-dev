@@ -157,11 +157,10 @@ jobs:
       env:
         CUDA_VERSION: ${{ matrix.cuda }}
       run: |
-        ls -lh pymarian*.whl
+        echo "Built wheels:" && ls -lh pymarian*.whl
         pytag=$(python3 -c 'import sys; x,y=sys.version_info[:2]; print(f"cp{x}{y}-{sys.platform}")')
         whl=$(echo pymarian*${pytag}*.whl)
-        echo "Chosen wheel: $pytag :: $whl"
-        ls -lh $whl
+        echo "Chosen wheel: $pytag :: $whl" && ls -lh $whl
         python3 -m pip install --upgrade pip pytest
         python3 -m pip install -v $whl
         python3 -m pymarian -v

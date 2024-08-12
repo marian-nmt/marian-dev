@@ -20,10 +20,12 @@ jobs:
           - name: "Windows CPU-only"
             cuda: ""
             gpu: false
+            pymarian: false
           # Windows CPU+GPU build
           - name: "Windows CPU+CUDA"
             cuda: "10.2"
             gpu: true
+            pymarian: false
 
     runs-on: windows-2019
     name: ${{ matrix.name }}
@@ -86,6 +88,7 @@ jobs:
           -DUSE_MPI="FALSE"
           -DUSE_NCCL="FALSE"
           -DUSE_SENTENCEPIECE="TRUE"
+          -DPYMARIAN="${{ matrix.pymarian }}"
           -DUSE_STATIC_LIBS="TRUE"'
         cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
         cmakeListsTxtPath: ${{ github.workspace }}/CMakeLists.txt
@@ -116,6 +119,7 @@ jobs:
           -DUSE_MPI="FALSE"
           -DUSE_NCCL="FALSE"
           -DUSE_SENTENCEPIECE="TRUE"
+          -DPYMARIAN="${{ matrix.pymarian }}"
           -DUSE_STATIC_LIBS="TRUE"'
         cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
         cmakeListsTxtPath: ${{ github.workspace }}/CMakeLists.txt
@@ -138,12 +142,20 @@ jobs:
       shell: cmd
 
     - name: Install PyMarian
-      working-directory: src/python
+      if: matrix.pymarian == true
+      working-directory: build/
       run: |
-        python3 -m pip install --upgrade pip setuptools wheel pytest
-        python3 -m pip install -v .
+        echo "Built wheels:"
+        ls pymarian*.whl
+        $pytag = python3 -c 'import sys; x,y=sys.version_info[:2]; print(f"cp{x}{y}-{sys.platform}")'
+        $whl = ls pymarian*$pytag*.whl
+        echo "Chosen wheel: $pytag :: $whl"
+        ls $whl
+        python3 -m pip install --upgrade pip pytest
+        python3 -m pip install -v $whl
         python3 -m pymarian -v
-        python3 -m pytest -vs src/python/tests
+        pymarian-eval --version
+        pymarian --version
       env:
         CUDA_VERSION: ${{ matrix.cuda }}
-      shell: cmd
+      shell: powershell

@@ -21,6 +21,7 @@ jobs:
             gpu: false
             unit_tests: true
             examples: false
+            pymarian: true
           # Using Clang compiler
           - name: "Ubuntu CPU-only clang-14"
             os: ubuntu-22.04
@@ -31,6 +32,7 @@ jobs:
             gpu: false
             unit_tests: true
             examples: false
+            pymarian: true
           # Ubuntu GPU-only build
           - name: "Ubuntu GPU-only"
             os: ubuntu-20.04
@@ -41,6 +43,7 @@ jobs:
             gpu: true
             unit_tests: false
             examples: true
+            pymarian: true
           # Ubuntu 22.04 supports CUDA 11.7
           # Unit tests and examples are not compiled to save disk space
           - name: "Ubuntu 22.04 CUDA 11.7 gcc-11"
@@ -52,6 +55,7 @@ jobs:
             gpu: true
             unit_tests: false
             examples: false
+            pymarian: true
           # Ubuntu 20.04 supports CUDA 11+
           # Unit tests and examples are not compiled to save disk space
           - name: "Ubuntu 20.04 CUDA 11.1 gcc-9"
@@ -63,6 +67,7 @@ jobs:
             gpu: true
             unit_tests: false
             examples: false
+            pymarian: true
           # Ubuntu 18.04 supports CUDA 10.1+
           # But it will soon be removed from GitHub workflows
           # Ubuntu 16.04 supports CUDA 8+
@@ -123,6 +128,7 @@ jobs:
           -DUSE_FBGEMM=${{ matrix.cpu }} \
           -DUSE_SENTENCEPIECE=on \
           -DUSE_STATIC_LIBS=on \
+          -DPYMARIAN=${{ matrix.pymarian }} \
 
     - name: Compile
       working-directory: build
@@ -146,11 +152,18 @@ jobs:
         ls -hlv $(find . -maxdepth 1 -type f -executable \( -name "marian*" -o -name "spm*" \))
 
     - name: Install PyMarian
+      if: matrix.pymarian == true
       working-directory: build
       env:
         CUDA_VERSION: ${{ matrix.cuda }}
       run: |
-        python3 -m pip install --upgrade pip setuptools wheel pytest
-        CMAKE_ARGS="" python3 -m pip install -v .
+        ls -lh pymarian*.whl
+        pytag=$(python3 -c 'import sys; x,y=sys.version_info[:2]; print(f"cp{x}{y}-{sys.platform}")')
+        whl=$(echo pymarian*${pytag}*.whl)
+        echo "Chosen wheel: $pytag :: $whl"
+        ls -lh $whl
+        python3 -m pip install --upgrade pip pytest
+        python3 -m pip install -v $whl
         python3 -m pymarian -v
-        MARIAN_QUIET=YES python3 -m pytest -vs src/python/tests
+        pymarian-eval --version
+        pymarian --version

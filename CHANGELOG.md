@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Convert an FDIV to an FMUL in a hot loop in CPU tensor operation.
 - Fixed compilation with clang 16.0.6
 - Added Threads::Threads to `EXT_LIBS`
 - Updates to pymarian: building for multiple python versions; disabling tcmalloc; hosting gated COMETs on HuggingFace

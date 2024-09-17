@@ -1110,11 +1110,11 @@ void LayerNormalizationImpl(float* out,
       sqSum += ex * ex;
     }
 
-    float sigma = std::sqrt(sqSum / cols + eps);
+    float invSigma = 1.0/std::sqrt(sqSum / cols + eps);
 
     #pragma omp simd
     for(int i = 0; i < cols; ++i) {
-      float t = alpha[alphaStride * i] * ((sp[i] - mean) / sigma);
+      float t = alpha[alphaStride * i] * ((sp[i] - mean) * invSigma);
       if(hasBeta)
         t += beta[betaStride * i];
 
@@ -1295,11 +1295,11 @@ void RMSNormalizationImpl(float* out,
       sqSum += sp[i] * sp[i];
     }
 
-    float rms = std::sqrt(sqSum / cols + eps);
+    float invRms = 1.0/std::sqrt(sqSum / cols + eps);
 
     #pragma omp simd
     for(int i = 0; i < cols; ++i) {
-      float t = alpha[alphaStride * i] * (sp[i] / rms);
+      float t = alpha[alphaStride * i] * (sp[i] * invRms);
       if(hasBeta)
         t += beta[betaStride * i];
 

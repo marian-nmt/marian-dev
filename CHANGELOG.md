@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Removed --num-devices N option that wasn't really used by anyone (I assume).
 
 
+### Added
+- Optimised special case for nth_element when decoding with beam size of 1.
+
 ## [1.12.0] - 2023-02-20
 
 ### Added

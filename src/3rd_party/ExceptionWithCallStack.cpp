@@ -144,7 +144,9 @@ static void CollectCallStack(size_t skipLevels, bool makeFunctionNamesStandOut, 
 {
     write("\n[CALL STACK]\n");
 
-#ifdef _WIN32
+#ifdef __ANDROID__
+    write("\nCall stack not implemented for Android target\n");
+#elif _WIN32
     static const int MAX_CALLERS = 62;
     static const unsigned short MAX_CALL_STACK_DEPTH = 20;
 

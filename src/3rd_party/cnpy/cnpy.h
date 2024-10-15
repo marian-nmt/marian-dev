@@ -273,7 +273,9 @@ namespace cnpy {
     void npz_save(std::string zipname, const std::vector<NpzItem>& items)
     {
         auto tmpname = zipname + "$$"; // TODO: add thread id or something
+#ifndef __ANDROID__
         unlink(tmpname.c_str()); // when saving to HDFS, we cannot overwrite an existing file
+#endif
         FILE* fp = fopen(tmpname.c_str(),"wb");
         if (!fp)
             throw std::runtime_error("npz_save: error opening file for writing: " + tmpname);
@@ -370,7 +372,9 @@ namespace cnpy {
 
         if (bad)
         {
+#ifndef __ANDROID__
             unlink(tmpname.c_str());
+#endif
             throw std::runtime_error("npz_save: error saving to file: " + zipname);
         }
     }

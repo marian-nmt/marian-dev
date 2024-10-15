@@ -3168,6 +3168,7 @@ Path Path::global_programs_dir()
 ///
 /// \see dglob() fnmatch()
 ///
+#ifndef __ANDROID__
 std::vector<Path> Path::glob(const std::string& pattern, int flags /* = 0 */)
 {
 #if defined(_PATHIE_UNIX)
@@ -3241,6 +3242,7 @@ std::vector<Path> Path::glob(const std::string& pattern, int flags /* = 0 */)
 #endif
   flags; // make compiler happy
 }
+#endif
 
 ///@}
 
@@ -3300,10 +3302,12 @@ bool Path::fnmatch(const std::string& pattern, int flags /* = 0 */) const
  *
  * \see glob() fnmatch()
  */
+#ifndef __ANDROID__
 std::vector<Path> Path::dglob(const std::string& pattern, int flags /* = 0 */) const
 {
   return glob(m_path + "/" + pattern, flags);
 }
+#endif
 
 /**
  * Appends a /, then the new component, and

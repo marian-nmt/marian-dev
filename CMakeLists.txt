@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 
 # Custom CMake options
+option(COMPILE_ANDROID, "Compile Android version" OFF)
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
@@ -314,7 +315,7 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # set -march for all builds except iOS cross compilation
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" )
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
   endif()
@@ -735,3 +736,7 @@ if(DOXYGEN_FOUND)
   )
 endif(DOXYGEN_FOUND)
 endif(USE_DOXYGEN)
+
+if(COMPILE_ANDROID)
+    set(EXT_LIBS ${EXT_LIBS} ${log-lib})
+endif(COMPILE_ANDROID)

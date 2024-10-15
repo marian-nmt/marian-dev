@@ -111,6 +111,9 @@ std::wstring Pathie::utf8_to_utf16(std::string str)
  */
 std::string Pathie::convert_encodings(const char* from_encoding, const char* to_encoding, const std::string& string)
 {
+#ifdef __ANDROID__
+  return string;
+#else
   size_t input_length = string.length();
 
   // We need a C string working copy that isn’t const
@@ -173,6 +176,7 @@ std::string Pathie::convert_encodings(const char* from_encoding, const char* to_
   free(outbuf);
 
   return result;
+#endif
 }
 
 /**
@@ -182,7 +186,7 @@ std::string Pathie::utf8_to_filename(const std::string& utf8)
 {
   bool fs_encoding_is_utf8 = false;
   char* fsencoding = NULL;
-#if defined(__APPLE__) || defined(PATHIE_ASSUME_UTF8_ON_UNIX)
+#if defined(__APPLE__) || defined(PATHIE_ASSUME_UTF8_ON_UNIX) || defined(__ANDROID__)
   fs_encoding_is_utf8 = true;
 #else
   fsencoding = nl_langinfo(CODESET);
@@ -206,7 +210,7 @@ std::string Pathie::filename_to_utf8(const std::string& native_filename)
 {
   bool fs_encoding_is_utf8 = false;
   char* fsencoding = NULL;
-#if defined(__APPLE__) || defined(PATHIE_ASSUME_UTF8_ON_UNIX)
+#if defined(__APPLE__) || defined(PATHIE_ASSUME_UTF8_ON_UNIX) || defined(__ANDROID__)
   fs_encoding_is_utf8 = true;
 #else
   fsencoding = nl_langinfo(CODESET);

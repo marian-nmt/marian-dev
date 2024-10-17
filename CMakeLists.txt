@@ -91,6 +91,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" )
   list(APPEND ALL_WARNINGS -Wno-shorten-64-to-32;)
 endif()
 
+# Android support
+if(COMPILE_ANDROID)
+  set(ARM ON)
+endif()
+
 # ARM support: currently ONLY armv8. armv8 includes NEON by default
 # we do not currently have good support for automatic architecture detection, including for cross-compilation
 # this is planned for future PRs
@@ -613,6 +618,15 @@ if(COMPILE_CPU)
           set(EXT_LIBS ${EXT_LIBS} ${BLAS_LIBRARIES} ${CBLAS_LIBRARIES})
           add_definitions(-DBLAS_FOUND=1)
         endif(CBLAS_FOUND)
+      else(BLAS_FOUND)
+        # try OpenBLAS but via user specified paths -- this is helpful for out of source builds with
+        # custom install locations
+        if(OpenBLAS_LIBRARIES AND OpenBLAS_INCLUDE_DIRS)
+          message(STATUS "Found OpenBLAS: ${OpenBLAS_INCLUDE_DIRS} ${OpenBLAS_LIBRARIES}")
+          include_directories(${OpenBLAS_INCLUDE_DIRS})
+          set(EXT_LIBS ${EXT_LIBS} ${OpenBLAS_LIBRARIES})
+          add_definitions(-DBLAS_FOUND=1)
+        endif(OpenBLAS_LIBRARIES AND OpenBLAS_INCLUDE_DIRS)
       endif(BLAS_FOUND)
     endif(MKL_FOUND)
   endif(USE_APPLE_ACCELERATE)

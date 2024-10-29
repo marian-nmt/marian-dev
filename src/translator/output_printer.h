@@ -15,7 +15,7 @@ class OutputPrinter {
 public:
   OutputPrinter(Ptr<const Options> options, Ptr<const Vocab> vocab)
       : vocab_(vocab),
-        reverse_(options->get<bool>("right-left")),
+        reverse_(options->get<bool>("right-left", false)),
         nbest_(options->get<bool>("n-best", false)
                    ? options->get<size_t>("beam-size")
                    : 0),

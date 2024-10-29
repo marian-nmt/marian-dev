@@ -33,7 +33,7 @@ TextInput::TextInput(std::vector<std::string> inputs,
       vocabs_(vocabs),
       maxLength_(options_->get<size_t>("max-length")),
       maxLengthCrop_(options_->get<bool>("max-length-crop")),
-      rightLeft_(options_->get<bool>("right-left")),
+      rightLeft_(options_->get<bool>("right-left", false)),
       prependZero_(options_->get<bool>("comet-prepend-zero", false)),
       joinFields_(options_->get<bool>("input-join-fields", false)),
       insertSeparator_(options_->get<bool>("comet-use-separator", false))

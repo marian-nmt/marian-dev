@@ -53,12 +53,12 @@ std::vector<Ptr<Scorer>> createScorers(Ptr<Options> options, const std::vector<P
     // l2r and r2l cannot be used in the same ensemble
     if(modelFiles.size() > 1 && modelOptions->has("right-left")) {
       if(i == 0) {
-        isPrevRightLeft = modelOptions->get<bool>("right-left");
+        isPrevRightLeft = modelOptions->get<bool>("right-left", false);
       } else {
         // abort as soon as there are two consecutive models with opposite directions
-        ABORT_IF(isPrevRightLeft != modelOptions->get<bool>("right-left"),
+        ABORT_IF(isPrevRightLeft != modelOptions->get<bool>("right-left", false),
                  "Left-to-right and right-to-left models cannot be used together in ensembles");
-        isPrevRightLeft = modelOptions->get<bool>("right-left");
+        isPrevRightLeft = modelOptions->get<bool>("right-left", false);
       }
     }
 

@@ -68,8 +68,7 @@ variables:
   - name: MKL_DIR
     value: "$(Build.SourcesDirectory)/mkl"
   - name: MKL_URL
-    # TODO: host this package elsewhere
-    value: "https://data.statmt.org/romang/marian-regression-tests/ci/mkl-2020.1-windows-static.zip"
+    value: "https://mariandev.blob.core.windows.net/public/ci/mkl-2020.1-windows-static.zip"
   - name: VCPKG_COMMIT
     value: 2023.11.20
   - name: VCPKG_DIR
@@ -111,13 +110,29 @@ stages:
     - checkout: self
       submodules: true
 
+    - script: |
+        set -v
+        df -h
+        docker rmi -f $(docker images -aq)
+        sudo rm -rf /usr/local/lib/android
+        df -h
+      displayName: Free-up disk space
+
     - pwsh: .\scripts\ci\install_cuda_windows.ps1 "$(cuda_version)"
       displayName: Install CUDA
       condition: eq(variables.cuda, true)
 
-    - pwsh: |
-        C:\msys64\usr\bin\wget.exe -nv $(MKL_URL) -O mkl.zip
-        Expand-Archive -Force mkl.zip $(MKL_DIR)
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'marian-wif'
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          $Env:AZCOPY_AUTO_LOGIN_TYPE="AZCLI"
+          $Env:AZCOPY_TENANT_ID = $env:tenantId
+          azcopy copy $(MKL_URL) mkl.zip
+          Expand-Archive -Force mkl.zip $(MKL_DIR)
+        addSpnToEnvironment: true
       displayName: Download MKL
 
     ## Cache for Boost
@@ -302,6 +317,14 @@ stages:
     - checkout: self
       submodules: true
 
+    - script: |
+        set -v
+        df -h
+        docker rmi -f $(docker images -aq)
+        sudo rm -rf /usr/local/lib/android
+        df -h
+      displayName: Free-up disk space
+
     # The following packages are already installed on Azure-hosted runners: build-essential openssl libssl-dev
     # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
     # Note that installation of libunwind-dev is a bug fix for ubuntu-22.04 images on Azure/GitHub-hosted machines
@@ -396,11 +419,19 @@ stages:
     displayName: macOS CPU clang
 
     pool:
-      vmImage: macos-12
+      vmImage: macos-13
 
     steps:
     - checkout: self
       submodules: true
+
+    - script: |
+        set -v
+        df -h
+        docker rmi -f $(docker images -aq)
+        sudo rm -rf /usr/local/lib/android
+        df -h
+      displayName: Free-up disk space
 
     - bash: brew install boost openblas openssl protobuf
       displayName: Install packages
@@ -452,6 +483,14 @@ stages:
     steps:
     - checkout: self
       submodules: true
+
+    - script: |
+        set -v
+        df -h
+        docker rmi -f $(docker images -aq)
+        sudo rm -rf /usr/local/lib/android
+        df -h
+      displayName: Free-up disk space
 
     # The following packages are already installed on Azure-hosted runners: build-essential openssl libssl-dev
     # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
@@ -526,9 +565,25 @@ stages:
     - checkout: self
       submodules: true
 
-    - pwsh: |
-        C:\msys64\usr\bin\wget.exe -nv $(MKL_URL) -O mkl.zip
-        Expand-Archive -Force mkl.zip $(MKL_DIR)
+    - script: |
+        set -v
+        df -h
+        docker rmi -f $(docker images -aq)
+        sudo rm -rf /usr/local/lib/android
+        df -h
+      displayName: Free-up disk space
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'marian-wif'
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          $Env:AZCOPY_AUTO_LOGIN_TYPE="AZCLI"
+          $Env:AZCOPY_TENANT_ID = $env:tenantId
+          azcopy copy $(MKL_URL) mkl.zip
+          Expand-Archive -Force mkl.zip $(MKL_DIR)
+        addSpnToEnvironment: true
       displayName: Download MKL
 
     # Cache for vcpkg packages
@@ -590,15 +645,6 @@ stages:
       displayName: Compile
       workingDirectory: marian-dev/build
 
-    ## Publish an artifact with Marian executables. Disabled because it is not portable due to
-    ## fbgemm and not needed at the moment
-    #- pwsh: Compress-Archive -Path marian*.exe spm_*.exe -DestinationPath $(Build.SourcesDirectory)/marian-dev-ci_windows-x64_cpu.zip
-      #displayName: Prepare binaries
-      #workingDirectory: marian-dev/build
-    #- publish: marian-dev-ci_windows-x64_cpu.zip
-      #artifact: marian-dev-ci_windows-x64_cpu
-      #displayName: Publish binaries
-
     # Running regression tests
     # Due to multiple checkouts this will be commonly cloned into D:\a\1\s\marian-prod-tests
     - checkout: git://Marian/marian-prod-tests
@@ -609,15 +655,21 @@ stages:
       displayName: Machine statistics
       workingDirectory: marian-prod-tests
 
-    # The current SAS token will expire on 12/31/2023 and a new one will need to be set in Marian > Pipelines > Library
-    - bash: |
-        cd models
-        bash download-models.sh
-        ls
-      displayName: Prepare tests
-      env:
-        AZURE_STORAGE_SAS_TOKEN: $(marian-prod-tests-blob-sas-token)
-      workingDirectory: marian-prod-tests
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'marian-wif'
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          # Configure azcopy to auto-login using the current az cli credentials
+          # + Explicitly set AZCOPY_TENANT_ID to the ARM tenant ID so azcopy auto login works correctly.
+          $Env:AZCOPY_AUTO_LOGIN_TYPE="AZCLI"
+          $Env:AZCOPY_TENANT_ID = $env:tenantId
+          cd marian-prod-tests/models
+          bash ./download-models.sh
+          dir
+        addSpnToEnvironment: true
+      displayName: Download models
 
     # Avoid using $(Build.SourcesDirectory) in bash tasks because on Windows pools it uses '\'
     # instead of '/', which often breaks the job
@@ -636,7 +688,9 @@ stages:
       workingDirectory: marian-prod-tests
 
     - publish: regression-tests-ci_windows-x64_cpu.zip
-      artifact: regression-tests-ci_windows-x64_cpu
+      # A job attempt is added to the artifact name as a workaround to not
+      # allowing to overwrite artifacts when the pipeline reruns
+      artifact: regression-tests-ci_windows-x64_cpu_$(System.JobAttempt)
       displayName: Publish outputs
 
   ######################################################################
@@ -652,6 +706,14 @@ stages:
     # Due to multiple checkouts this will be commonly cloned into D:\a\1\s\marian-dev
     - checkout: self
       submodules: true
+
+    - script: |
+        set -v
+        df -h
+        docker rmi -f $(docker images -aq)
+        sudo rm -rf /usr/local/lib/android
+        df -h
+      displayName: Free-up disk space
 
     # The following packages are already installed on Azure-hosted runners: build-essential openssl libssl-dev
     # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
@@ -692,15 +754,6 @@ stages:
       displayName: Compile
       workingDirectory: marian-dev/build
 
-    ## Publish an artifact with Marian executables. Disabled because it is not portable due to
-    ## fbgemm and not needed at the moment
-    #- bash: zip $(Build.SourcesDirectory)/marian-dev-ci_linux-x64-static_cpu.zip marian* spm_*
-      #displayName: Prepare binaries
-      #workingDirectory: marian-dev/build
-    #- publish: marian-dev-ci_linux-x64-static_cpu.zip
-      #artifact: marian-dev-ci_linux-x64-static_cpu
-      #displayName: Publish binaries
-
     # Running regression tests
     # Due to multiple checkouts this will be commonly cloned into D:\a\1\s\marian-prod-tests
     - checkout: git://Marian/marian-prod-tests
@@ -716,15 +769,21 @@ stages:
       displayName: Machine statistics
       workingDirectory: marian-prod-tests
 
-    # The current SAS token will expire on 12/31/2023 and a new one will need to be set in Marian > Pipelines > Library
-    - bash: |
-        cd models
-        bash download-models.sh
-        ls
-      displayName: Prepare tests
-      env:
-        AZURE_STORAGE_SAS_TOKEN: $(marian-prod-tests-blob-sas-token)
-      workingDirectory: marian-prod-tests
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'marian-wif'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          # Configure azcopy to auto-login using the current az cli credentials
+          # + Explicitly set AZCOPY_TENANT_ID to the ARM tenant ID so azcopy auto login works correctly.
+          export AZCOPY_AUTO_LOGIN_TYPE="AZCLI"
+          export AZCOPY_TENANT_ID=$tenantId
+          cd marian-prod-tests/models
+          bash ./download-models.sh
+          ls *
+        addSpnToEnvironment: true
+      displayName: Download models
 
     - bash: MARIAN=../marian-dev/build bash ./run_mrt.sh '#cpu' '#basics' '#devops'
       continueOnError: true
@@ -741,5 +800,7 @@ stages:
       workingDirectory: marian-prod-tests
 
     - publish: regression-tests-ci_linux-x64-static_cpu.zip
-      artifact: regression-tests-ci_linux-x64-static_cpu
+      # A job attempt is added to the artifact name as a workaround to not
+      # allowing to overwrite artifacts when the pipeline reruns
+      artifact: regression-tests-ci_linux-x64-static_cpu_$(System.JobAttempt)
       displayName: Publish outputs

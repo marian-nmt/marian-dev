@@ -64,6 +64,7 @@ set(MARIAN_SOURCES
   tensors/cpu/integer_common.cpp
   tensors/cpu/fbgemm/packed_gemm.cpp
   tensors/gpu/gpu_info.cpp
+  tensors/cpu/mjdgemm/mjdgemm.cpp
 
   graph/expression_graph.cpp
   graph/expression_operators.cpp
@@ -136,8 +137,45 @@ set(MARIAN_SOURCES
 )
 
 add_library(marian STATIC ${MARIAN_SOURCES})
-
 target_compile_options(marian PRIVATE ${ALL_WARNINGS})
+
+set(MJDGEMM_OBJECTS "")
+
+# set compile options for mjdgemm instruction sets
+if(ARM)
+  set(MJD_INTINSICS_FLAGS_NEON -march=armv8-a+simd)
+
+  add_library(mjdgemm_neon OBJECT tensors/cpu/mjdgemm/mjdgemm_neon.cpp)
+  target_compile_options(mjdgemm_neon PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_NEON})
+
+  set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:mjdgemm_neon>)
+else()
+  if(MSVC)
+    set(MJD_INTINSICS_FLAGS_SSE4_2 "")
+    set(MJD_INTINSICS_FLAGS_AVX2 ${MJD_INTINSICS_FLAGS_SSE4_2} /arch:AVX /arch:AVX2)
+    set(MJD_INTINSICS_FLAGS_AVX512 ${MJD_INTINSICS_FLAGS_AVX2} /arch:AVX512)
+  else()
+  set(MJD_INTINSICS_FLAGS_SSE4_2 -msse2 -msse3 -mssse3 -msse4.1 -msse4.2)
+    set(MJD_INTINSICS_FLAGS_AVX2 ${MJD_INTINSICS_FLAGS_SSE4_2} -mavx -mavx2 -mfma)
+    set(MJD_INTINSICS_FLAGS_AVX512 ${MJD_INTINSICS_FLAGS_AVX2} -mavx512f -mavx512bw -mavx512vnni)
+  endif()
+
+  add_library(mjdgemm_sse4_2 OBJECT tensors/cpu/mjdgemm/mjdgemm_sse4_2.cpp)
+  target_compile_options(mjdgemm_sse4_2 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_SSE4_2})
+
+  add_library(mjdgemm_avx2 OBJECT tensors/cpu/mjdgemm/mjdgemm_avx2.cpp)
+  target_compile_options(mjdgemm_avx2 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_AVX2})
+
+  add_library(mjdgemm_avx512 OBJECT tensors/cpu/mjdgemm/mjdgemm_avx512.cpp)
+  target_compile_options(mjdgemm_avx512 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_AVX512})
+
+  set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:mjdgemm_sse4_2> $<TARGET_OBJECTS:mjdgemm_avx2> $<TARGET_OBJECTS:mjdgemm_avx512>)
+endif(ARM)
+
+# add the mjdgemm objects to the marian library if MJDGEMM_OBJECTS is not empty
+if(NOT MJDGEMM_OBJECTS STREQUAL "")
+  target_sources(marian PRIVATE ${MJDGEMM_OBJECTS})
+endif()
 
 # Generate git_revision.h to reflect current git revision information
 # [https://stackoverflow.com/questions/1435953/how-can-i-pass-git-sha1-to-compiler-as-definition-using-cmake]

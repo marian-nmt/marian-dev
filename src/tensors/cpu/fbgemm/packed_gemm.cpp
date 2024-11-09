@@ -1,11 +1,38 @@
 #include "packed_gemm.h"
 #include "tensors/tensor_allocator.h"
 #include "tensors/tensor_operators.h"
+#include "tensors/cpu/integer_common.h"
+
+#include "tensors/cpu/mjdgemm/mjdgemm.h"
 
 #include <cassert>
 #include <cstddef>
 #include <unordered_map>
 //#include <chrono>
+
+
+namespace marian {
+namespace cpu {
+namespace variant { // Variants of GEMM implementations
+
+void mjdgemmPacked8Fallback(Type packType,
+                            marian::Tensor C,
+                            const marian::Tensor A,
+                            const marian::Tensor B,
+                            const marian::Tensor bias,
+                            const size_t m,
+                            const size_t n,
+                            const size_t k,
+                            const int transA,
+                            const int transB) {
+  ABORT_IF(packType != Type::packed8avx512, "Only avx512 packed matrix format is supported, not {}", packType);
+  ABORT_IF(transA || transB, "Transposition is currently not supported");
+  mjdgemm::gemmInt8Packed(A->data(), B->data<int8_t>(), bias ? bias->data() : nullptr, C->data(), (int)m, (int)n, (int)k);
+}
+
+} // namespace variant
+} // namespace cpu
+} // namespace marian
 
 #if USE_FBGEMM
 #include <emmintrin.h>
@@ -71,7 +98,7 @@ static thread_local PackedGemmMatrixFP16 packedPlaceholder(1, 1, 1, 1, 1, 1, 1, 
 // Copied code from fbgemm. It's padding required from some kernel in FBGEMM
 // Verbatim - 'required by sw pipelined kernels'
 // https://github.com/marian-nmt/FBGEMM/blob/master/include/fbgemm/FbgemmFP16.h#L109
-const int PACK16_PADDING = 1024;  
+const int PACK16_PADDING = 1024;
 
 // This is a memory space to store auxiliary variables for FBGEMM (e.g. block row, block column, kernel_ncol_blocks and etc.)
 const int PACK16_SPECIALMEM = 256;
@@ -91,7 +118,7 @@ inline float clip(float value, float min, float max) {
 // will be removed, when FBGEMM api is changed
 // blocked row-major format address arithmetic
 //
-// Returns the memory address in the packed (block formatted) matrix array of a specific element 
+// Returns the memory address in the packed (block formatted) matrix array of a specific element
 // indexed by the original non-packed array.
 //
 // @param r_ row index in the original matrix
@@ -338,7 +365,7 @@ void fbgemmPacked16Pack(marian::Tensor out,
 // quantRangeStdDevs: the range to be quantized for the original float data in multiples standard deviation
 //                    the default value is 0.0f which means min/max quantization
 //                    only a half range of normal int8 which is [-64, 63] used to avoid overflow
-//                    during the accumulation in VPMADDUBSW instruction 
+//                    during the accumulation in VPMADDUBSW instruction
 //                    https://intel.github.io/mkl-dnn/dev_guide_int8_computations.html
 //                    (e.g. 3.f means the original tensor is quantized
 //                    from [mean - 3.f * standard deviation, mean + 3.f * standard deviation] to [-64, 63])
@@ -433,7 +460,7 @@ void fbgemmPacked8Pack(marian::Tensor out,
 
   // 4. packing
   const fbgemm::BlockingFactors* params = getBlockingFactors(packType);
-  
+
   PackBMatrix<int8_t> packedBN(
       transpose ? matrix_op_t::Transpose : matrix_op_t::NoTranspose,
       nrow, ncol, quantized, transpose ? nrow : ncol, packedBuf, 1, params);
@@ -529,7 +556,7 @@ void fbgemmPacked16Gemm(marian::Tensor C,
 
 // GEMM operation on the packed B matrix in 8 bit integers
 // C: output matrix
-// A: A matrix
+// A: A matrix (float)
 // B: B matrix (packed)
 // m: the number of rows in A and C
 // n: the number of columns in B and C
@@ -540,15 +567,31 @@ void fbgemmPacked8Gemm(Type packType,
                        marian::Tensor C,
                        const marian::Tensor A,
                        const marian::Tensor B,
+                       const marian::Tensor bias,
                        const size_t m,
                        const size_t n,
                        const size_t k,
                        const int transA,
                        const int transB) {
+
   const fbgemm::BlockingFactors* params = getBlockingFactors(packType);
 
   // Check if the packed format matches with the available AVX instruction set in the machine
-  const bool avx512Support = fbgemmHasAvx512Support();
+  static const bool avx512Support = fbgemmHasAvx512Support();
+  static const bool avx2Support   = fbgemmHasAvx2Support();
+
+  if(packType == Type::packed8avx2 && !avx2Support) {
+    ABORT("FBGEMM doesn't allow to use packed8avx2 packing order on non-AVX2 CPUs");
+  }
+
+  // for older CPUs or forced mjdgemm, use the mjdgemm fallback
+  static const bool forceMjdgemm = mjdgemm::forceMjdgemm();
+  if(forceMjdgemm || (packType == Type::packed8avx512 && (!avx512Support || !avx2Support))) {
+    mjdgemmPacked8Fallback(packType, C, A, B, bias, m, n, k, transA, transB);
+    return;
+  }
+
+  // continue old behavior here:
   if((packType == Type::packed8avx2 && avx512Support)
      || (packType == Type::packed8avx512 && !avx512Support)) {
     ABORT("FBGEMM doesn't allow to use {} packing order on {} CPUs",
@@ -564,6 +607,7 @@ void fbgemmPacked8Gemm(Type packType,
   // AVX based find min/max
   FindMinMax(dataA, &minA, &maxA, elemA);
 
+  // MJD: so we only compute one quant scale and zero point for the A matrix? But multiple for the paramter B?
   float quantScaleA = (maxA - minA) / 255;
   int32_t quantZeropointA = (int32_t)(255 - maxA / quantScaleA);
 
@@ -599,41 +643,47 @@ void fbgemmPacked8Gemm(Type packType,
   // retrieve B matrix
   int8_t* dataB = B->data<int8_t>();
 
-  // To avoid any repeated memory allocation and deallocation, make the scratch buffer variables static thread_local
-  // In a multi-threaded situation, heap access lock for the memory allocation/free could
-  // makes all the threads are blocked by each other. (heap contention)
-  static thread_local std::vector<float> quantScaleB;
-  if (quantScaleB.size() < n)
-    quantScaleB.resize(n);
-  memcpy(quantScaleB.data(), dataB + packSizeB, n * sizeof(float));
-
-  static thread_local std::vector<int32_t> quantZeropointB;
-  if (quantZeropointB.size() < n)
-    quantZeropointB.resize(n);
-  memcpy(quantZeropointB.data(), dataB + packSizeB + n * sizeof(float), n * sizeof(int32_t));
-
-  static thread_local std::vector<int32_t> colOffsetsB;
-  if (colOffsetsB.size() < n)
-    colOffsetsB.resize(n);
-  memcpy(colOffsetsB.data(), dataB + packSizeB + n * (sizeof(float) + sizeof(int32_t)), n * sizeof(int32_t));
+  // quantization parameters for B, access them from the end of the packed buffer
+  // there is n of quantScaleB, quantZeropointB and colOffsetsB, each
+  const float* quantScaleB       = (const float*)   (dataB + packSizeB);
+  const int32_t* quantZeropointB = (const int32_t*) (dataB + packSizeB + n * sizeof(float));
+  const int32_t* colOffsetsB     = (const int32_t*) (dataB + packSizeB + n * sizeof(float) + n * sizeof(int32_t));
 
   DoNothing<float, float> doNothingObj{};
   ReQuantizeForFloat<false, QuantizationGranularity::OUT_CHANNEL> outputProcObj(
       doNothingObj,
       quantScaleA,
-      quantScaleB.data(),
+      quantScaleB,
       quantZeropointA,
-      quantZeropointB.data(),
+      quantZeropointB,
       packA.getRowOffsetBuffer(),
-      colOffsetsB.data(),
+      colOffsetsB,
       nullptr,
       (std::uint32_t) n);
 
-  PackBMatrix<int8_t> repackedB(
-    transB ? matrix_op_t::Transpose : matrix_op_t::NoTranspose, (int32_t) k, (int32_t) n, dataB, (int32_t) (transB ? k : n), 1, params);
+  PackBMatrix<int8_t> repackedB(transB ? matrix_op_t::Transpose : matrix_op_t::NoTranspose, (int32_t) k, (int32_t) n, dataB, (int32_t) (transB ? k : n), 1, params);
 
   // gemm computation
   fbgemmPacked(packA, repackedB, C->data(), (int32_t*)C->data(), (int32_t) n, outputProcObj, 0, 1, params);
+
+  if(bias != nullptr)
+    marian::cpu::integer::AddBias(C, bias);
+}
+
+#else
+
+// if FBGEMM is not used, fallback to mjdgemm (incomplete implementation)
+void fbgemmPacked8Gemm(Type packType,
+                       marian::Tensor C,
+                       const marian::Tensor A,
+                       const marian::Tensor B,
+                       const marian::Tensor bias,
+                       const size_t m,
+                       const size_t n,
+                       const size_t k,
+                       const int transA,
+                       const int transB) {
+  mjdgemmPacked8Fallback(packType, C, A, B, bias, m, n, k, transA, transB);
 }
 
 #endif // USE_FBGEMM

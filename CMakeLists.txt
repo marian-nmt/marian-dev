@@ -1,9 +1,14 @@
-cmake_minimum_required(VERSION 3.5.1)
+cmake_minimum_required(VERSION 3.5)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 if (POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW) # CMake 3.12
 endif ()
+
+# Set the policy to suppress the deprecation warning
+if(POLICY CMP0153)
+  cmake_policy(SET CMP0153 NEW)
+endif()
 
 project(marian CXX C)
 
@@ -100,17 +105,6 @@ endif()
 # we do not currently have good support for automatic architecture detection, including for cross-compilation
 # this is planned for future PRs
 if(ARM)
-
-  # Apple by default has Apple Accelerate. Otherwise fallback to RUY for GEMM
-  if(APPLE)
-    message(STATUS "Using Apple Accelerate SGEMM")
-    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" OFF)
-  else(APPLE)
-    message(STATUS "Using Ruy SGEMM")
-    set(EXT_LIBS ${EXT_LIBS} ruy)
-    option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
-  endif(APPLE)
-
   # Define that we are using ARM as required by simd_utils. See their README for info
   add_compile_definitions(ARM FMA SSE)
   # Some warnings as errors. I don't feel comfortable about the strict aliasing.
@@ -262,12 +256,12 @@ else(MSVC)
     endif(COMPILE_AVX)
     if(COMPILE_AVX2)
       message(STATUS "AVX2 support requested")
-      set(INTRINSICS "${INTRINSICS} -mavx2")
+      set(INTRINSICS "${INTRINSICS} -mavx2 -mfma")
       list(APPEND INTRINSICS_NVCC -Xcompiler\ -mavx2)
     endif(COMPILE_AVX2)
     if(COMPILE_AVX512)
       message(STATUS "AVX512 support requested")
-      set(INTRINSICS "${INTRINSICS} -mavx512f")
+      set(INTRINSICS "${INTRINSICS} -mavx512f -mavx512bw -mavx512dq -mavx512vl -mavx512vnni")
       list(APPEND INTRINSICS_NVCC -Xcompiler\ -mavx512f)
     endif(COMPILE_AVX512)
   endif()
@@ -300,20 +294,27 @@ else(MSVC)
     set(CMAKE_RDYNAMIC_FLAG "-rdynamic")
   endif(CMAKE_COMPILER_IS_GNUCC)
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++17 -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
-  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
+  if(ARM)
+    # ARM does not support AVX2 or AVX512
+    set(M64_FLAG "")
+  else()
+    set(M64_FLAG "-m64")
+  endif()
+
+  set(CMAKE_CXX_FLAGS                 "-std=c++17 ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
-  set(CMAKE_CXX_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
+  set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "${CMAKE_CXX_FLAGS_RELEASE}")
   set(CMAKE_CXX_FLAGS_PROFILE         "${CMAKE_CXX_FLAGS_RELEASE} -pg")
   set(CMAKE_CXX_FLAGS_PROFGEN         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 "-pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
-  set(CMAKE_C_FLAGS_RELEASE         "-O3 -m64 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
+  set(CMAKE_C_FLAGS                 " ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
-  set(CMAKE_C_FLAGS_SLIM            "-O3 -m64 -funroll-loops -DNDEBUG")
+  set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO  "${CMAKE_C_FLAGS_RELEASE}")
   set(CMAKE_C_FLAGS_PROFILE         "${CMAKE_C_FLAGS_RELEASE} -pg")
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
@@ -626,6 +627,13 @@ if(COMPILE_CPU)
           include_directories(${OpenBLAS_INCLUDE_DIRS})
           set(EXT_LIBS ${EXT_LIBS} ${OpenBLAS_LIBRARIES})
           add_definitions(-DBLAS_FOUND=1)
+        elseif(ARM)
+          message(STATUS "No BLAS library found, falling back to Ruy SGEMM on ARM")
+          set(EXT_LIBS ${EXT_LIBS} ruy)
+          option(USE_RUY_SGEMM "Compile with Ruy SGEMM" ON)
+          add_definitions(-DUSE_RUY_SGEMM)
+        else(OpenBLAS_LIBRARIES AND OpenBLAS_INCLUDE_DIRS)
+          message(FATAL_ERROR "FATAL ERROR: No BLAS library found.")
         endif(OpenBLAS_LIBRARIES AND OpenBLAS_INCLUDE_DIRS)
       endif(BLAS_FOUND)
     endif(MKL_FOUND)

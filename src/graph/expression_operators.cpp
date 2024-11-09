@@ -603,14 +603,6 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
     } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
       return cpu::integer::affineOrDot(a, b, nullptr, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
-#if USE_FBGEMM
-      // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
-      // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
-      // It looks at the cpu register
-      // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
-      // and this cpu lookup is executed only once and the state is kept in FBGEMM.
-      if(fbgemm::fbgemmHasAvx2Support()) {
-        // This variant of dot product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
         return cpu::variant::dot(b->value_type(),
                                  a,
                                  b,
@@ -618,12 +610,6 @@ Expr dot(Expr a, Expr b, bool transA, bool transB, float scale) {
                                  transA,
                                  transB,
                                  scale);
-      } else {
-        ABORT("AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed GEMM");
-      }
-#else
-      ABORT("Packed GEMM is not available in this build");
-#endif  // USE_FBGEMM
     } else {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }
@@ -711,28 +697,14 @@ Expr affine(Expr a, Expr b, Expr bias, bool transA, bool transB, float scale) {
     } else if(isFloat(aElementType) && isIntgemm(bElementType)) {
       return cpu::integer::affineOrDot(a, b, bias, transA, transB, scale);
     } else if(isFloat(aElementType) && isPacked(bElementType)) {
-#if USE_FBGEMM
-      // 07/10/2019 - Use packed GEMM only if the cpu architecture supports AVX2
-      // one of the fbgemm's sub modules, cpuinfo (https://github.com/pytorch/cpuinfo).
-      // It looks at the cpu register
-      // (https://github.com/pytorch/cpuinfo/blob/master/src/x86/isa.c#L391),
-      // and this cpu lookup is executed only once and the state is kept in FBGEMM.
-      if(fbgemm::fbgemmHasAvx2Support()) {
-        // This variant of affine product can handle matrix multiplications with packed8 and packed16 weight matrix (B).
-        return cpu::variant::affine(b->value_type(),
-                                    a,
-                                    b,
-                                    b->shape(),
-                                    bias,
-                                    transA,
-                                    transB,
-                                    scale);
-      } else {
-        ABORT("AVX2 is not available. At least, AVX2 is needed to use fbgemm-based packed GEMM");
-      }
-#else
-      ABORT("Packed GEMM is not available in this build");
-#endif  // USE_FBGEMM
+      return cpu::variant::affine(b->value_type(),
+                                  a,
+                                  b,
+                                  b->shape(),
+                                  bias,
+                                  transA,
+                                  transB,
+                                  scale);
     } else {
       ABORT("Combination of types A: {} B: {} not supported", aElementType, bElementType);
     }

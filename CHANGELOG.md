@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Compilation om Android
+- `mjdgemm` as a FBGEMM replacement, also SSE4.2 support and ARM support for 8bit avx512-style packed FBGEMM matrices
+- Conpilation om Android
 - Added Threads::Threads to `EXT_LIBS`
 - Updates to pymarian: building for multiple python versions; disabling tcmalloc; hosting gated COMETs on HuggingFace
 - Added `--normalize-gradient-by-ratio` to mildly adapt gradient magnitude if effective batch size diverges from running average effective batch size.
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Various small fixes for ARM compilation
 - Fixed compilation with clang 16.0.6
 - Do not mmap files for conversion via Quicksand API
 - Fixed ALiBI states and caching in new layer framework

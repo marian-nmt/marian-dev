@@ -1,6 +1,6 @@
 # - Find CBLAS library
 #
-# This module finds an installed fortran library that implements the CBLAS 
+# This module finds an installed fortran library that implements the CBLAS
 # linear-algebra interface (see http://www.netlib.org/blas/), with CBLAS
 # interface.
 #
@@ -9,7 +9,7 @@
 #    is found
 #  CBLAS_LINKER_FLAGS - uncached list of required linker flags (excluding -l
 #    and -L).
-#  CBLAS_LIBRARIES - uncached list of libraries (using full path name) to 
+#  CBLAS_LIBRARIES - uncached list of libraries (using full path name) to
 #    link against to use CBLAS
 #  CBLAS_INCLUDE_DIR - path to includes
 #  CBLAS_INCLUDE_FILE - the file to be included to use CBLAS
@@ -22,13 +22,13 @@ INCLUDE(CheckIncludeFile)
 
 MACRO(CHECK_ALL_LIBRARIES LIBRARIES INCLUDE _prefix _name _flags _list _include _search_include)
   # This macro checks for the existence of the combination of fortran libraries
-  # given by _list.  If the combination is found, this macro checks (using the 
+  # given by _list.  If the combination is found, this macro checks (using the
   # Check_Fortran_Function_Exists macro) whether can link against that library
   # combination using the name of a routine given by _name using the linker
   # flags given by _flags.  If the combination of libraries is found and passes
   # the link test, LIBRARIES is set to the list of complete library paths that
   # have been found.  Otherwise, LIBRARIES is set to FALSE.
-  
+
   # N.B. _prefix is the prefix applied to the names of all cached variables that
   # are generated internally and marked advanced by this macro.
 
@@ -50,24 +50,34 @@ MACRO(CHECK_ALL_LIBRARIES LIBRARIES INCLUDE _prefix _name _flags _list _include 
 
     # did we find all the libraries in the _list until now?
     # (we stop at the first unfound one)
-    IF(_libraries_work)      
-      IF(APPLE) 
+    IF(_libraries_work)
+      IF(APPLE)
         FIND_LIBRARY(${_prefix}_${_library}_LIBRARY
           NAMES ${_library}
           PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64 /usr/local/opt/openblas/lib ENV
-          DYLD_LIBRARY_PATH 
+          DYLD_LIBRARY_PATH
+          )
+      ELSEIF(ARM)
+        FIND_LIBRARY(${_prefix}_${_library}_LIBRARY
+          NAMES ${_library}
+          PATHS /usr/lib/aarch64-linux-gnu /usr/local/lib/aarch64-linux-gnu ENV
+          LD_LIBRARY_PATH
           )
       ELSE(APPLE)
         FIND_LIBRARY(${_prefix}_${_library}_LIBRARY
           NAMES ${_library}
-          PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64 ENV 
-          LD_LIBRARY_PATH 
+          PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64 /usr/local/opt/openblas/lib ENV
+          LD_LIBRARY_PATH
           )
       ENDIF(APPLE)
       MARK_AS_ADVANCED(${_prefix}_${_library}_LIBRARY)
       IF(${_prefix}_${_library}_LIBRARY)
         GET_FILENAME_COMPONENT(_path ${${_prefix}_${_library}_LIBRARY} PATH)
+        message(${_path})
         LIST(APPEND _paths ${_path}/../include ${_path}/../../include)
+        IF(ARM)
+          LIST(APPEND _paths /usr/include/aarch64-linux-gnu)
+        ENDIF()
       ENDIF(${_prefix}_${_library}_LIBRARY)
       SET(${LIBRARIES} ${${LIBRARIES}} ${${_prefix}_${_library}_LIBRARY})
       SET(_libraries_work ${${_prefix}_${_library}_LIBRARY})
@@ -106,7 +116,7 @@ MACRO(CHECK_ALL_LIBRARIES LIBRARIES INCLUDE _prefix _name _flags _list _include 
     ENDIF(_libraries_work)
 
   ENDIF(_libraries_work)
-  
+
 
   IF(NOT _libraries_work)
     SET(${LIBRARIES} FALSE)

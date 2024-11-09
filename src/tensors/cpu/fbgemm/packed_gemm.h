@@ -97,7 +97,7 @@ void fbgemmPacked16Pack(marian::Tensor out,
 // quantRangeStdDevs: the range to be quantized for the original float data in multiples standard deviation
 //                    the default value is 0.0f which means min/max quantization
 //                    only a half range of normal int8 which is [-64, 63] used to avoid overflow
-//                    during the accumulation in VPMADDUBSW instruction 
+//                    during the accumulation in VPMADDUBSW instruction
 //                    https://intel.github.io/mkl-dnn/dev_guide_int8_computations.html
 //                    (e.g. 3.f means the original tensor is quantized
 //                    from [mean - 3.f * standard deviation, mean + 3.f * standard deviation] to [-64, 63])
@@ -114,6 +114,7 @@ void fbgemmPacked8Pack(marian::Tensor out,
 // C: output matrix
 // A: A matrix
 // B: B matrix (packed)
+// bias: bias matrix
 // m: the number of rows in A and C
 // n: the number of columns in B and C
 // transA: transpose of A matrix
@@ -130,6 +131,7 @@ void fbgemmPacked16Gemm(marian::Tensor C,
 // C: output matrix
 // A: A matrix
 // B: B matrix (packed)
+// bias: bias matrix
 // m: the number of rows in A and C
 // n: the number of columns in B and C
 // k: the number of columns in A and rows in B
@@ -139,11 +141,15 @@ void fbgemmPacked8Gemm(Type packType,
                        marian::Tensor C,
                        const marian::Tensor A,
                        const marian::Tensor B,
+                       const marian::Tensor bias,
                        const size_t m,
                        const size_t n,
                        const size_t k,
                        const int transA = 0,
                        const int transB = 0);
+
+void fbgemmPacked8Unpack(marian::Tensor out,
+                         const marian::Tensor in);
 
 }  // namespace variant
 }  // namespace cpu

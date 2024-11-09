@@ -2,7 +2,6 @@
 
 #include "graph/node.h"
 #include "packed_gemm.h"
-#include "tensors/cpu/integer_common.h"
 
 #if USE_FBGEMM
 #ifdef __GNUC__
@@ -348,36 +347,17 @@ public:
   }
 
   NodeOps forwardOps() override {
-    NodeOps nodeOps;
-#if USE_FBGEMM
-    // Do addBias only if it has a bias term
-    if (children().size() > 2) {
-      nodeOps = { NodeOp(fbgemmPacked8Gemm(elementType_,
-                                           val_,
-                                           child(0)->val(),
-                                           child(1)->val(),
-                                           m_,
-                                           n_,
-                                           k_,
-                                           transA_,
-                                           transB_);
-                       marian::cpu::integer::AddBias(val_, child(2)->val())) };
-    } else {
-      nodeOps = { NodeOp(fbgemmPacked8Gemm(elementType_,
-                                           val_,
-                                           child(0)->val(),
-                                           child(1)->val(),
-                                           m_,
-                                           n_,
-                                           k_,
-                                           transA_,
-                                           transB_)) };
-    }
-#else // USE_FBGEMM
-    ABORT("FbgemmPacked8AffineNodeOp can only be used with FBGEMM enabled.");
-#endif  // USE_FBGEMM
-
-    return nodeOps;
+    return { NodeOp(fbgemmPacked8Gemm(elementType_,
+                                      val_,
+                                      child(0)->val(),
+                                      child(1)->val(),
+                                      children().size() > 2 ? child(2)->val() : nullptr, // pass only if it has a bias
+                                      m_,
+                                      n_,
+                                      k_,
+                                      transA_,
+                                      transB_);
+    )};
   }
 
   NodeOps backwardOps() override {

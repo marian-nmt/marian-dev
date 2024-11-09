@@ -68,6 +68,8 @@ add_library(SQLiteCpp OBJECT ${SQLITECPP_SRC} ${SQLITECPP_INC} sqlite3)
 
 if (UNIX AND (CMAKE_COMPILER_IS_GNUCXX OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang"))
     set_target_properties(SQLiteCpp PROPERTIES COMPILE_FLAGS "-fPIC")
+    # Disable the specific warning for sqlite3.c
+    set_source_files_properties(sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "-Wno-return-local-addr")
 endif (UNIX AND (CMAKE_COMPILER_IS_GNUCXX OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang"))
 
 

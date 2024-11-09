@@ -2,7 +2,7 @@
 # the project is compiled.
 
 IF(CMAKE_SYSTEM_NAME MATCHES "Linux")
-   EXEC_PROGRAM(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
+   execute_process(COMMAND cat /proc/cpuinfo OUTPUT_VARIABLE CPUINFO)
 
    STRING(REGEX REPLACE "^.*(sse2).*$" "\\1" SSE_THERE "${CPUINFO}")
    STRING(COMPARE EQUAL "sse2" "${SSE_THERE}" SSE2_TRUE)
@@ -74,7 +74,7 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Linux")
    ENDIF (AVX512_TRUE)
 
 ELSEIF(CMAKE_SYSTEM_NAME MATCHES "Darwin")
-   EXEC_PROGRAM("/usr/sbin/sysctl -n machdep.cpu.features machdep.cpu.leaf7_features" OUTPUT_VARIABLE CPUINFO)
+   execute_process(COMMAND /usr/sbin/sysctl -n machdep.cpu.features machdep.cpu.leaf7_features OUTPUT_VARIABLE CPUINFO)
 
    STRING(REGEX REPLACE "^.*[^S](SSE2).*$" "\\1" SSE_THERE "${CPUINFO}")
    STRING(COMPARE EQUAL "SSE2" "${SSE_THERE}" SSE2_TRUE)

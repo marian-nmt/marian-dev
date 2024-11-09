@@ -22,7 +22,7 @@ void Prod(marian::Tensor C,
           bool transB,
           float beta,
           float scalar) {
-#if BLAS_FOUND
+#if BLAS_FOUND || USE_RUY_SGEMM
   float alpha = scalar;
 
   int m = A->shape().elements() / A->shape()[-1];
@@ -82,7 +82,7 @@ void ProdBatched(marian::Tensor C,
                  bool transB,
                  float beta,
                  float scalar) {
-#if BLAS_FOUND
+#if BLAS_FOUND || USE_RUY_SGEMM
   float alpha = scalar;
 
   // determine meta-shape of bdot operation. Essentially treat the last two dimensions as single elements
@@ -238,7 +238,7 @@ void ProdBatchedLegacy(marian::Tensor C,
                        bool transB,
                        float beta,
                        float scalar) {
-#if BLAS_FOUND
+#if BLAS_FOUND || USE_RUY_SGEMM
   float alpha = scalar;
 
   size_t batchA = A->shape().elements() / (A->shape()[-1] * A->shape()[-2]);

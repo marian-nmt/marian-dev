@@ -22,6 +22,14 @@ void AddBias(marian::Tensor C, const marian::Tensor Bias) {
       __m512 yi = _mm512_add_ps(ai, bi);
       _mm512_storeu_ps(y + j * n + i, yi);
     }
+#elif __AVX2__
+    int n8 = n & ~7;
+    for(; i < n8; i += 8) {
+      __m256 ai = _mm256_loadu_ps(x + j * n + i);
+      __m256 bi = _mm256_loadu_ps(bias + i);
+      __m256 yi = _mm256_add_ps(ai, bi);
+      _mm256_storeu_ps(y + j * n + i, yi);
+    }
 #else
     int n4 = (n / 4) * 4;
     for(; i < n4; i += 4) {

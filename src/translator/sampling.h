@@ -249,11 +249,13 @@ public:
     int dimVocab = scores->shape()[-1];
     auto graph = scores->graph();
 
+    ABORT_IF(beamSize > dimVocab / 2, "Beam size {} is larger than vocab size {} / 2", beamSize, dimVocab);
+
     std::vector<IndexType> dummyIndicesVec(beamSize, 0);
     std::vector<float> dummyValsVec(beamSize, 0.f);
     for(int i = 1; i < beamSize; ++i) {
-      // we use dimVocab - i - 1 to make sure that the dummy indices are different from the force-decoded index (last vocab indices)
-      dummyIndicesVec[i] = dimVocab - i - 1;
+      // we use i as the dummy index to make sure that the dummy values are unique
+      dummyIndicesVec[i] = i;
       // we use invalidPathScore_ / (2.f + i) to make sure that the dummy values are very low and decrease with beam position
       dummyValsVec[i] = invalidPathScore_ / (2.f + i);
     }
@@ -261,8 +263,18 @@ public:
     Expr dummyIndices = graph->constant({1, 1, 1, beamSize}, inits::fromVector(dummyIndicesVec), Type::uint32);
     Expr dummyVals    = graph->constant({1, 1, 1, beamSize}, inits::fromVector(dummyValsVec));
 
+    auto stupidMod = [](Expr a, float b) {
+      return a - cast(cast(a / b, Type::uint32), Type::float32) * b;
+    };
+
     // here we add the force-decoded entries back into the zeroed positions
-    dummyIndices = cast(maximum(cast(dummyIndices, Type::float32), cast(forceIndices, Type::float32)), Type::uint32); // [1, 1, dimBatch, dimBeam]
+    auto dummyFp = cast(dummyIndices, Type::float32); // [1, 1, 1, beamSize]
+    auto forceFp = cast(forceIndices, Type::float32); // [1, 1, dimBatch, 1]
+
+    // add dummy values and modulate by vocab size to make sure that the dummy values are unique
+    auto cfp = stupidMod(dummyFp + forceFp, (float)dimVocab); // [1, 1, dimBatch, beamSize]
+
+    dummyIndices = cast(cfp, Type::uint32); // [1, 1, dimBatch, dimBeam]
     dummyVals    = dummyVals + forceVals; // [1, 1, dimBatch, dimBeam]
 
     // create a tensor of the same size as the original logits from the first beam entry, initialize with invalidPathScore and then scatter
@@ -274,7 +286,7 @@ public:
     // via interpolating by a selector. In marian eosId is used for padding, so this works everywhere and eos for unfinished hyps means
     // free decoding or sampling.
     WordIndex eosId = batch_->back()->vocab()->getEosId().toWordIndex();
-    auto interpol = eq(cast(posIndices, scores->value_type()), (float)eosId);
+    auto interpol = eq(cast(forceIndices, scores->value_type()), (float)eosId);
     return interpol * scores + (1.f - interpol) * forcedScores;
   }
 

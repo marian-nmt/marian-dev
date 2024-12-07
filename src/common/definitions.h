@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/blas_initializer.h"
 #include "common/logging.h"
 #include "common/shape.h"
 #include "common/intrusive_ptr.h"

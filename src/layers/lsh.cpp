@@ -1,8 +1,9 @@
 #include "common/timer.h"
 #include "common/utils.h"
 #include "layers/lsh.h"
-#include "layers/lsh_impl.h"
 #include "tensors/tensor_operators.h"
+#include "tensors/cpu/cpu_info.h"
+#include "tensors/cpu/mjdgemm/mjdgemm.h"
 
 #if _MSC_VER
 #include "3rd_party/faiss/Index.h"
@@ -31,7 +32,7 @@ void fillRandomRotationMatrix(Tensor output, Ptr<Allocator> allocator) {
   // Then we do not need to use this seed at all
   rrot.init(5); // currently set to 5 following the default from FAISS, this could be any number really.
 
-  // The faiss random rotation matrix is column major, hence we create a temporary tensor, 
+  // The faiss random rotation matrix is column major, hence we create a temporary tensor,
   // copy the rotation matrix into it and transpose to output.
   Shape tempShape = {nBits, nRows};
   auto memory = allocator->alloc(requiredBytes(tempShape, output->type()));
@@ -70,9 +71,14 @@ void encodeWithRotation(Tensor output, Tensor input, Tensor rotation, Ptr<Alloca
   if(rotation) {
     int nBitsRot = rotation->shape()[-1];
     Shape tempShape = {nRows, nBitsRot};
-    memory = allocator->alloc(requiredBytes(tempShape, rotation->type()));
-    tempInput = TensorBase::New(memory, tempShape, rotation->type(), rotation->getBackend());
-    Prod(tempInput, input, rotation, false, false, 0.f, 1.f);
+    memory = allocator->alloc(requiredBytes(tempShape, input->type()));
+    tempInput = TensorBase::New(memory, tempShape, input->type(), input->getBackend());
+    if(rotation->type() == Type::packed8avx512) {
+      using namespace marian::cpu::mjdgemm;
+      gemmInt8Packed(input->data(), rotation->data<int8_t>(), nullptr, tempInput->data(), nRows, nBitsRot, nBits);
+    } else {
+      Prod(tempInput, input, rotation, false, false, 0.f, 1.f);
+    }
   }
   encode(output, tempInput);
 
@@ -93,11 +99,11 @@ Expr encode(Expr input, Expr rotation) {
 
   // Use the address of the first lambda function as an immutable hash. Making it static and const makes sure
   // that this hash value will not change. Next pass the hash into the lambda functor were it will be used
-  // to identify this unique operation. Marian's ExpressionGraph can automatically memoize and identify nodes 
-  // that operate only on immutable nodes (parameters) and have the same hash. This way we make sure that the 
-  // codes node won't actually get recomputed throughout ExpressionGraph lifetime. `codes` will be reused 
+  // to identify this unique operation. Marian's ExpressionGraph can automatically memoize and identify nodes
+  // that operate only on immutable nodes (parameters) and have the same hash. This way we make sure that the
+  // codes node won't actually get recomputed throughout ExpressionGraph lifetime. `codes` will be reused
   // and the body of the lambda will not be called again. This does however build one index per graph.
-  static const size_t encodeHash = (size_t)&encodeFwd; 
+  static const size_t encodeHash = (size_t)&encodeFwd;
 
   Shape encodedShape = input->shape();
 
@@ -115,7 +121,7 @@ Expr rotator(Expr weights, int inDim, int nBits) {
     fillRandomRotationMatrix(out->val(), out->graph()->allocator());
   };
 
-  static const size_t rotatorHash = (size_t)&rotator; 
+  static const size_t rotatorHash = (size_t)&rotator;
   return lambda({weights}, {inDim, nBits}, Type::float32, rotator, rotatorHash);
 }
 
@@ -125,7 +131,7 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
 
   int currBeamSize = encodedQuery->shape()[0];
   int batchSize    = encodedQuery->shape()[2];
-  
+
   auto search = [=](Expr out, const std::vector<Expr>& inputs) {
     Expr encodedQuery   = inputs[0];
     Expr encodedWeights = inputs[1];
@@ -133,7 +139,7 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
     if (encodedQuery->val()->getDeviceId().type == DeviceType::cpu) {
       int bytesPerVector = encodedWeights->shape()[-1];
       int wRows = encodedWeights->shape().elements() / bytesPerVector;
-      
+
       // we use this with Factored Segmenter to skip the factor embeddings at the end
       if(firstNRows != 0)
         wRows = firstNRows;
@@ -146,7 +152,7 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
       uint8_t* qCodes = encodedQuery->val()->data<uint8_t>();
       uint8_t* wCodes = encodedWeights->val()->data<uint8_t>();
 
-      // use actual faiss code for performing the hamming search. 
+      // use actual faiss code for performing the hamming search.
       std::vector<int> distances(qRows * dimK);
       std::vector<faiss::Index::idx_t> ids(qRows * dimK);
       faiss::int_maxheap_array_t res = {(size_t)qRows, (size_t)dimK, ids.data(), distances.data()};
@@ -155,7 +161,7 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
       // Copy int64_t indices to Marian index type and sort by increasing index value per hypothesis.
       // The sorting is required as we later do a binary search on those values for reverse look-up.
       uint32_t* outData = out->val()->data<uint32_t>();
-      
+
       int numHypos = out->shape().elements() / dimK;
       for (size_t hypoIdx = 0; hypoIdx < numHypos; ++hypoIdx) {
         size_t startIdx = dimK * hypoIdx;
@@ -167,8 +173,8 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
       }
 #else // this is using the new code for search, other parts of the code, like conversion are fine.
       IndexType* outData = out->val()->data<IndexType>();
-      auto gather = [outData, dimK](IndexType rowId, IndexType k, IndexType kthColId, DistType /*dist*/) { 
-        outData[rowId * dimK + k] = kthColId; 
+      auto gather = [outData, dimK](IndexType rowId, IndexType k, IndexType kthColId, DistType /*dist*/) {
+        outData[rowId * dimK + k] = kthColId;
       };
 
       Parameters params;
@@ -200,7 +206,7 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
 
       marian::gpu::HammmingAndSort(out->val(), outCounts,
                   encodedWeights->val(), encodedQuery->val(),
-                  dimK, 0, numHash, 
+                  dimK, 0, numHash,
                   alloc, backend);
 #endif
     }
@@ -212,7 +218,7 @@ Expr searchEncoded(Expr encodedQuery, Expr encodedWeights, int dimK, int firstNR
 
 Expr search(Expr query, Expr weights, int k, int nBits, int firstNRows, bool abortIfDynamic) {
   int dim = weights->shape()[-1];
-  
+
   Expr rotMat = nullptr;
   if(dim != nBits) {
     rotMat = weights->graph()->get("lsh_output_rotation");
@@ -233,7 +239,7 @@ Expr search(Expr query, Expr weights, int k, int nBits, int firstNRows, bool abo
     LOG_ONCE(info, "Creating ad-hoc code matrix with shape {}", Shape({weights->shape()[-2], lsh::bytesPerVector(nBits)}));
     encodedWeights = encode(weights, rotMat);
   }
-  
+
   return searchEncoded(encode(query, rotMat), encodedWeights, k, firstNRows);
 }
 
@@ -253,7 +259,7 @@ Ptr<inits::NodeInitializer> randomRotation() {
 void addDummyParameters(Ptr<ExpressionGraph> graph, ParamConvInfo paramInfo) {
   auto weights = graph->get(paramInfo.name);
   int nBitsRot = paramInfo.nBits;
-  
+
   ABORT_IF(!weights, "Trying to encode non-existing weights matrix {}??", paramInfo.name);
 
   int nBits = weights->shape()[-1];
@@ -268,7 +274,7 @@ void addDummyParameters(Ptr<ExpressionGraph> graph, ParamConvInfo paramInfo) {
     rotation = graph->param(paramInfo.rotationName, {nBits, nBitsRot}, inits::dummy(), Type::float32);
     nBits = nBitsRot;
   }
-  
+
   int bytesPerVector = lsh::bytesPerVector(nBits);
   LOG(info, "Adding LSH encoded weights {} with shape {}", paramInfo.codesName, Shape({nRows, bytesPerVector}));
   auto codes = graph->param(paramInfo.codesName, {nRows, bytesPerVector}, inits::dummy(), Type::uint8);

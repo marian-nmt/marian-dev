@@ -8,15 +8,32 @@
 /**
  * In this file we bascially take the faiss::IndexLSH and pick it apart so that the individual steps
  * can be implemented as Marian inference operators. We can encode the inputs and weights into their
- * bitwise equivalents, apply the hashing rotation (if required), and perform the actual search. 
- * 
- * This also allows to create parameters that get dumped into the model weight file. This is currently 
+ * bitwise equivalents, apply the hashing rotation (if required), and perform the actual search.
+ *
+ * This also allows to create parameters that get dumped into the model weight file. This is currently
  * a bit hacky (see marian-conv), but once this is done the model can memory-map the LSH with existing
  * mechanisms and no additional memory is consumed to build the index or rotation matrix.
  */
 
 namespace marian {
 namespace lsh {
+
+  typedef uint32_t DistType;
+  typedef uint64_t ChunkType;
+
+  struct Parameters {
+    int k;
+    uint8_t* queryRows;
+    int numQueryRows;
+    uint8_t* codeRows;
+    int numCodeRows;
+    int bytesPerVector;
+  };
+
+  typedef std::function<void(IndexType, IndexType, IndexType, DistType)> GatherFn;
+
+  void hammingTopK(const Parameters& parameters, const GatherFn& gather);
+
   // encodes an input as a bit vector, with optional rotation
   Expr encode(Expr input, Expr rotator = nullptr);
 
@@ -29,7 +46,7 @@ namespace lsh {
 
   // same as above, but performs encoding on the fly
   Expr search(Expr query, Expr weights, int k, int nbits, int firstNRows = 0, bool abortIfDynamic = false);
-  
+
   // struct for parameter conversion used in marian-conv
   struct ParamConvInfo {
     std::string name;
@@ -38,7 +55,7 @@ namespace lsh {
     int nBits;
     bool transpose;
 
-    ParamConvInfo(const std::string& name, const std::string& codesName, const std::string& rotationName, int nBits, bool transpose = false) 
+    ParamConvInfo(const std::string& name, const std::string& codesName, const std::string& rotationName, int nBits, bool transpose = false)
      : name(name), codesName(codesName), rotationName(rotationName), nBits(nBits), transpose(transpose) {}
   };
 

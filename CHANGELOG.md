@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Faster ARM64 matmul in `mjdgemm` using `vdotq_s32` instrinsics
 - `mjdgemm` as a FBGEMM replacement, also SSE4.2 support and ARM support for 8bit avx512-style packed FBGEMM matrices
 - Conpilation om Android
 - Added Threads::Threads to `EXT_LIBS`
@@ -59,6 +60,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
 
 ### Changed
+- Globally set mkl_set_num_threads(1)
 - Refactoring of model loading, mmapping happens now opportunistically, --mmap-models for decoding forces mmap and croaks if not possible.
 - Removed --num-devices N option that wasn't really used by anyone (I assume).
 

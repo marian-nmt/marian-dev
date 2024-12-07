@@ -15,6 +15,7 @@ include_directories(${CMAKE_BINARY_DIR}/local/include)
 
 set(MARIAN_SOURCES
   common/aliases.cpp
+  common/blas_initializer.cpp
   common/fastopt.cpp
   common/version.cpp
   common/utils.cpp
@@ -83,6 +84,7 @@ set(MARIAN_SOURCES
   layers/output.cpp
   layers/logits.cpp
   layers/lsh.cpp
+  layers/lsh_generic.cpp
 
   layers_new/neuralnet.cpp
   layers_new/alibi.cpp
@@ -143,33 +145,33 @@ set(MJDGEMM_OBJECTS "")
 
 # set compile options for mjdgemm instruction sets
 if(ARM)
-  set(MJD_INTINSICS_FLAGS_NEON -march=armv8-a+simd)
+  set(MJD_INTINSICS_FLAGS_NEON -march=armv8.2-a+simd+dotprod)
 
-  add_library(mjdgemm_neon OBJECT tensors/cpu/mjdgemm/mjdgemm_neon.cpp)
-  target_compile_options(mjdgemm_neon PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_NEON})
+  add_library(marian_neon OBJECT tensors/cpu/mjdgemm/mjdgemm_neon.cpp layers/lsh_neon.cpp)
+  target_compile_options(marian_neon PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_NEON})
 
-  set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:mjdgemm_neon>)
+  set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:marian_neon>)
 else()
   if(MSVC)
     set(MJD_INTINSICS_FLAGS_SSE4_2 "")
     set(MJD_INTINSICS_FLAGS_AVX2 ${MJD_INTINSICS_FLAGS_SSE4_2} /arch:AVX /arch:AVX2)
     set(MJD_INTINSICS_FLAGS_AVX512 ${MJD_INTINSICS_FLAGS_AVX2} /arch:AVX512)
   else()
-  set(MJD_INTINSICS_FLAGS_SSE4_2 -msse2 -msse3 -mssse3 -msse4.1 -msse4.2)
+    set(MJD_INTINSICS_FLAGS_SSE4_2 -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpopcnt)
     set(MJD_INTINSICS_FLAGS_AVX2 ${MJD_INTINSICS_FLAGS_SSE4_2} -mavx -mavx2 -mfma)
-    set(MJD_INTINSICS_FLAGS_AVX512 ${MJD_INTINSICS_FLAGS_AVX2} -mavx512f -mavx512bw -mavx512vnni)
+    set(MJD_INTINSICS_FLAGS_AVX512 ${MJD_INTINSICS_FLAGS_AVX2} -mavx512f -mavx512bw -mavx512vnni -mavx512vpopcntdq)
   endif()
 
-  add_library(mjdgemm_sse4_2 OBJECT tensors/cpu/mjdgemm/mjdgemm_sse4_2.cpp)
-  target_compile_options(mjdgemm_sse4_2 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_SSE4_2})
+  add_library(marian_sse4_2 OBJECT tensors/cpu/mjdgemm/mjdgemm_sse4_2.cpp)
+  target_compile_options(marian_sse4_2 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_SSE4_2})
 
-  add_library(mjdgemm_avx2 OBJECT tensors/cpu/mjdgemm/mjdgemm_avx2.cpp)
-  target_compile_options(mjdgemm_avx2 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_AVX2})
+  add_library(marian_avx2 OBJECT tensors/cpu/mjdgemm/mjdgemm_avx2.cpp)
+  target_compile_options(marian_avx2 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_AVX2})
 
-  add_library(mjdgemm_avx512 OBJECT tensors/cpu/mjdgemm/mjdgemm_avx512.cpp)
-  target_compile_options(mjdgemm_avx512 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_AVX512})
+  add_library(marian_avx512 OBJECT tensors/cpu/mjdgemm/mjdgemm_avx512.cpp layers/lsh_avx512popcnt.cpp)
+  target_compile_options(marian_avx512 PRIVATE ${ALL_WARNINGS} ${MJD_INTINSICS_FLAGS_AVX512})
 
-  set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:mjdgemm_sse4_2> $<TARGET_OBJECTS:mjdgemm_avx2> $<TARGET_OBJECTS:mjdgemm_avx512>)
+  set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:marian_sse4_2> $<TARGET_OBJECTS:marian_avx2> $<TARGET_OBJECTS:marian_avx512>)
 endif(ARM)
 
 # add the mjdgemm objects to the marian library if MJDGEMM_OBJECTS is not empty

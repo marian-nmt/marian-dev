@@ -27,11 +27,8 @@ void gemmInt8Packed(const float* A, const int8_t* B, const float* bias, float* C
   static_assert(K % KCB == 0);
   static_assert(N % NCB == 0);
 
-  // Initialize C to zero
-  std::memset(C, 0, M * N * sizeof(float));
-
   // aligned memory for quantized A
-  alignas(VLEN * sizeof(int32_t)) uint8_t aQuant[MCB * KCB];
+  alignas(VLEN * sizeof(int32_t)) thread_local uint8_t aQuant[MCB * KCB]; // 56 x 256 bytes ~ 14 KB - scratch space for quantized A
 
   const uint8_t* aPtrs[MCB];
   float*         cPtrs[MCB];
@@ -50,6 +47,8 @@ void gemmInt8Packed(const float* A, const int8_t* B, const float* bias, float* C
     }
 
     for(int innerBlockStart = 0; innerBlockStart < K; innerBlockStart += KCB) {
+      const bool initBlockWithZero = innerBlockStart == 0;
+
       for(int m = 0; m < MCBActual; m++) {
         const float* aPtr   = A + (rowBlockStart + m) * K + innerBlockStart;
         uint8_t* aQuantPtr = aQuant + m * KCB;
@@ -64,7 +63,7 @@ void gemmInt8Packed(const float* A, const int8_t* B, const float* bias, float* C
       for(int colBlockStart = 0; colBlockStart < N; colBlockStart += NCB) {
         int offsetB = innerBlockStart * N + KCB * colBlockStart;
 
-        computeBlockSwitch<IS, N, K>(aPtrs, B + offsetB, cPtrsInt32, MCBActual);
+        computeBlockSwitch<IS, N, K>(aPtrs, B + offsetB, cPtrsInt32, MCBActual, initBlockWithZero);
 
         for(int m = 0; m < MCBActual; m++)
           cPtrsInt32[m] += NCB;
@@ -96,6 +95,14 @@ template <InstructionSet IS>
 void gemmInt8Packed(const float* A, const int8_t* B, const float* bias, float* C, int M, int N, int K) {
   if (N == 512 && K == 512) {
     gemmInt8Packed<IS, 512, 512>(A, B, bias, C, M);
+  } else if (N == 1024 && K == 1024) {
+    gemmInt8Packed<IS, 1024, 1024>(A, B, bias, C, M);
+  } else if (N == 4096 && K == 1024) {
+    gemmInt8Packed<IS, 4096, 1024>(A, B, bias, C, M);
+  } else if (N == 3072 && K == 1024) {
+    gemmInt8Packed<IS, 3072, 1024>(A, B, bias, C, M);
+  } else if (N == 1024 && K == 4096) {
+    gemmInt8Packed<IS, 1024, 4096>(A, B, bias, C, M);
   } else if (N == 8192 && K == 512) {
     gemmInt8Packed<IS, 8192, 512>(A, B, bias, C, M);
   } else if (N == 512 && K == 8192) {
@@ -104,6 +111,8 @@ void gemmInt8Packed(const float* A, const int8_t* B, const float* bias, float* C
     gemmInt8Packed<IS, 1024, 512>(A, B, bias, C, M);
   } else if (N == 512 && K == 1024) {
     gemmInt8Packed<IS, 512, 1024>(A, B, bias, C, M);
+  } else if (N == 32000 && K == 512) {
+    gemmInt8Packed<IS, 32000, 512>(A, B, bias, C, M);
   } else {
     ABORT("Unsupported matrix dimensions <{}, {}>", N, K);
   }

@@ -1,54 +1,24 @@
 #pragma once
 
-#include <cstring>
-#include <cassert>
-#include <iostream>
-#include <vector>
-#include <cmath>
-
-#if defined(__x86_64__) || defined(_M_X64)
-#ifdef _MSC_VER
-#include <intrin.h>
-#else
-#include <cpuid.h>
-#endif
-
-#include <immintrin.h>
-#include <emmintrin.h>
-#endif
-
-#if defined(__aarch64__)
-#include <arm_neon.h>
-#endif
-
-#include <type_traits>
-#include <algorithm>
-#include <limits>
-
 #include "common/logging.h"
+#include "tensors/cpu/cpu_info.h"
+
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstring>
+#include <iostream>
+#include <limits>
+#include <type_traits>
+#include <vector>
 
 namespace marian {
 namespace cpu {
 namespace mjdgemm {
 
-/**
- * @brief Enumeration of supported instruction sets.
- */
-enum class InstructionSet : int {
-  None = 1,
-#if defined(__x86_64__) || defined(_M_X64)
-  SSE4_2 = 2,
-  AVX = 3,
-  AVX2 = 4,
-  AVX512 = 5
-#elif defined(__aarch64__)
-  NEON = 2
-#endif
-};
-
 #define compute_case(M) \
   case M: \
-    computeBlock<IS, N, K, M>(blockA, blockB, blockC); \
+    computeBlock<IS, N, K, M>(blockA, blockB, blockC, initBlockWithZero); \
     break;
 
 /**
@@ -57,7 +27,6 @@ enum class InstructionSet : int {
 template <InstructionSet IS>
 struct BlockingFactors {};
 
-#if defined(__x86_64__) || defined(_M_X64)
 template <>
 struct BlockingFactors<InstructionSet::AVX512> {
   static constexpr int NCB  = 32;
@@ -66,8 +35,8 @@ struct BlockingFactors<InstructionSet::AVX512> {
   static constexpr int RI   = 4;
   static constexpr int VLEN = 16;
 
-  static constexpr int MCB  = 56;
-  static constexpr int MR   = 14;
+  static constexpr int MR   = 8; // this seems to benefit from tuning
+  static constexpr int MCB  = 48;
 };
 
 template <>
@@ -80,7 +49,7 @@ struct BlockingFactors<InstructionSet::AVX2> {
 
   // test on real AVX2 machine
   static constexpr int MR  = 4;
-  static constexpr int MCB = 56;
+  static constexpr int MCB = 48;
 };
 
 template <>
@@ -108,9 +77,7 @@ struct BlockingFactors<InstructionSet::SSE4_2> {
   static constexpr int MR  = 1;
   static constexpr int MCB = 16;
 };
-#endif
 
-#if defined(__aarch64__)
 template <>
 struct BlockingFactors<InstructionSet::NEON> {
   static constexpr int NCB = 32;
@@ -123,7 +90,6 @@ struct BlockingFactors<InstructionSet::NEON> {
   static constexpr int MR  = 1;
   static constexpr int MCB = 56;
 };
-#endif
 
 template <>
 struct BlockingFactors<InstructionSet::None> {
@@ -149,123 +115,6 @@ struct QuantizationParams {
   const int32_t* colOffsetsB{nullptr};
   size_t packSizeB{0};
 };
-
-#if defined(__x86_64__) || defined(_M_X64)
-
-#ifdef _MSC_VER
-#define CPUID(info, x) __cpuidex(info, x, 0)
-#else
-#define CPUID(info, x) __cpuid_count(x, 0, info[0], info[1], info[2], info[3])
-#endif
-
-/**
- * @brief Checks if AVX-512 is supported on the current CPU.
- *
- * @return True if AVX-512 is supported, false otherwise.
- */
-static inline bool isAVX512Supported() {
-  int info[4];
-  CPUID(info, 7);
-  return (info[1] & ((int)1 << 16)) != 0; // Check EBX register (info[1]) for AVX-512 support
-}
-
-/**
- * @brief Checks if AVX2 is supported on the current CPU.
- *
- * @return True if AVX2 is supported, false otherwise.
- */
-static inline bool isAVX2Supported() {
-  int info[4];
-  CPUID(info, 7);
-  return (info[1] & ((int)1 << 5)) != 0; // Check EBX register (info[1]) for AVX2 support
-}
-
-/**
- * @brief Checks if AVX is supported on the current CPU.
- *
- * @return True if AVX is supported, false otherwise.
- */
-static inline bool isAVXSupported() {
-  int info[4];
-  CPUID(info, 1);
-  return (info[2] & ((int)1 << 28)) != 0; // Check ECX register (info[2]) for AVX support
-}
-
-/**
- * @brief Checks if SSE4.2 is supported on the current CPU.
- *
- * @return True if SSE4.2 is supported, false otherwise.
- */
-static inline bool isSSE4_2Supported() {
-  int info[4];
-  CPUID(info, 1);
-  return (info[2] & ((int)1 << 20)) != 0; // Check ECX register (info[2]) for SSE4.2 support
-}
-
-#endif // defined(__x86_64__) || defined(_M_X64)
-
-/**
- * @brief Gets the highest supported instruction set on the current CPU.
- *
- * This function checks the highest supported instruction set on the current CPU and returns it.
- * It also allows overriding the detected instruction set via the environment variable MJD_ENABLE_INSTRUCTIONS.
- *
- * @return The highest supported instruction set.
- */
-static inline InstructionSet getSupportedInstructionSet() {
-  // before testing, check the value of the environment variable
-  // MJD_ENABLE_INSTRUCTIONS and return the corresponding instruction set
-
-  char* env = std::getenv("MJD_ENABLE_INSTRUCTIONS");
-  InstructionSet requested = InstructionSet::None;
-
-  if(env) {
-    std::string instrSet(env);
-#if defined(__aarch64__)
-    if(instrSet == "NEON")
-      requested = InstructionSet::NEON;
-#else
-    if(instrSet == "AVX512")
-      requested = InstructionSet::AVX512;
-    else if(instrSet == "AVX2")
-      requested = InstructionSet::AVX2;
-    else if(instrSet == "AVX")
-      requested = InstructionSet::AVX;
-    else if(instrSet == "SSE4_2")
-      requested = InstructionSet::SSE4_2;
-#endif
-    else if((instrSet == "None") || (instrSet == "NONE"))
-      requested = InstructionSet::None;
-    else
-      ABORT("Unknown requested instruction set {}", env);
-
-    LOG(warn, "mjdgemm: Requested instructions via MJD_ENABLE_INSTRUCTIONS={}", env);
-  }
-
-  InstructionSet highest = InstructionSet::None;
-
-#if defined(__x86_64__) || defined(_M_X64)
-  if(isAVX512Supported())
-    highest = InstructionSet::AVX512;
-  else if(isAVX2Supported())
-    highest = InstructionSet::AVX2;
-  else if(isAVXSupported())
-    highest = InstructionSet::AVX;
-  else if(isSSE4_2Supported())
-    highest = InstructionSet::SSE4_2;
-  else
-    highest = InstructionSet::None;
-#endif
-
-#if defined(__aarch64__)
-  highest = InstructionSet::NEON;
-#endif
-
-  ABORT_IF(requested != InstructionSet::None && static_cast<int>(requested) > static_cast<int>(highest),
-          "mjdgemm: Instructions selected via MJD_ENABLE_INSTRUCTIONS={} not available on this machine", env);
-
-  return env ? requested : highest;
-}
 
 /**
  * @brief Packs the matrix B into a more cache-friendly format.
@@ -317,7 +166,7 @@ void packB(const int8_t* B, int8_t* packedB) {
   }
 }
 
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(COMPILE_FOR_INTEL)
 
 /**
  * @brief Prints the contents of a 128-bit integer register.
@@ -370,7 +219,7 @@ void print512(__m512i v) {
   std::cout << std::endl;
 }
 
-#elif defined(__aarch64__)
+#elif defined(COMPILE_FOR_ARM)
 /**
  * @brief Prints the contents of a 128-bit integer register of type int8x16_t.
  *

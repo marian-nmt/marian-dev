@@ -286,7 +286,9 @@ public:
     // via interpolating by a selector. In marian eosId is used for padding, so this works everywhere and eos for unfinished hyps means
     // free decoding or sampling.
     WordIndex eosId = batch_->back()->vocab()->getEosId().toWordIndex();
-    auto interpol = eq(cast(forceIndices, scores->value_type()), (float)eosId);
+
+    // we need to compare to posIndices and not forceIndices since we might map arbitrary values to the eosId
+    auto interpol = eq(cast(posIndices, scores->value_type()), (float)eosId);
     return interpol * scores + (1.f - interpol) * forcedScores;
   }
 

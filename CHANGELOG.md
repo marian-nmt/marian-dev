@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Do not use shortlist-mapped values to check for force-decoding criterion
 - Collapsing beam in force-decoding for beam > 1 and LSH
 - Various small fixes for ARM compilation
 - Fixed compilation with clang 16.0.6

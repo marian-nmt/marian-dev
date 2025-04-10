@@ -165,7 +165,7 @@ void ModelWeights::load() {
         try {
           mmap_.reset(new mio::mmap_source(fileName_));
           binary::loadItems(mmap_->data(), items_, /*mapped=*/true);
-        } catch(const MarianRuntimeException& e) {
+        } catch(const std::runtime_error& e) { // use runtime_error to catch mmap errors from mio and MarianRuntimeException
           if(mmapMode_ == MmapMode::RequiredMmap)
             ABORT("Could not memory-map file '{}': {}", fileName_, e.what());
           else

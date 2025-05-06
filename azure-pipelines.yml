@@ -20,12 +20,16 @@ parameters:
   displayName: Disable Linux builds
   type: boolean
   default: false
+- name: disableWindows
+  displayName: Disable Windows builds
+  type: boolean
+  default: false
 - name: disableMacOS
   displayName: Disable MacOS builds
   type: boolean
   default: false
-- name: disableWindows
-  displayName: Disable Windows builds
+- name: disableInstall
+  displayName: Disable library install build
   type: boolean
   default: false
 
@@ -70,7 +74,7 @@ variables:
   - name: MKL_URL
     value: "https://mariandev.blob.core.windows.net/public/ci/mkl-2020.1-windows-static.zip"
   - name: VCPKG_COMMIT
-    value: 2023.11.20
+    value: 2025.04.09
   - name: VCPKG_DIR
     value: "$(Build.SourcesDirectory)/vcpkg"
   - name: VCPKG_PACKAGES
@@ -91,6 +95,7 @@ stages:
     cancelTimeoutInMinutes: 1
     condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableWindows }}, false) )
     displayName: Windows
+    timeoutInMinutes: 120
 
     strategy:
       matrix:
@@ -245,17 +250,18 @@ stages:
     cancelTimeoutInMinutes: 1
     condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableLinux }}, false) )
     displayName: Ubuntu
-    timeoutInMinutes: 120
+    timeoutInMinutes: 180
 
     # Minimal tested configurations for marian-dev v1.11 and C++17:
     # * Ubuntu 16.04, GCC 7.5, CMake 3.10.2, CUDA 9.2 (probably GCC 6 would work too)
     # * Ubuntu 18.04, GCC 7.5, CMake 3.12.2, CUDA 10.0
+    # Note that Ubuntu 20.04 is no longer available on Azure-hosted machines
     strategy:
       matrix:
         ################################################################
         # Ubuntu CPU-only build
         "CPU-only":
-          image: ubuntu-20.04
+          image: ubuntu-22.04
           boost: true
           cpu: true
           gpu: false
@@ -267,12 +273,12 @@ stages:
           static: true
         # Ubuntu GPU-only build
         "GPU-only":
-          image: ubuntu-20.04
+          image: ubuntu-22.04
           boost: true
           cpu: false
           gpu: true
-          cuda: 11.1
-          gcc: 9
+          cuda: 11.7
+          gcc: 11
           unit_tests: false
           examples: false
           pymarian: true
@@ -294,21 +300,6 @@ stages:
           pymarian: true
           static: false
         ################################################################
-        # Ubuntu 20.04 supports CUDA 11+
-        "20.04 CUDA 11.1 gcc-9":
-          image: ubuntu-20.04
-          boost: false
-          cpu: true
-          gpu: true
-          cuda: 11.1
-          gcc: 9
-          # static cause large binaries so we turn off tests and examples
-          unit_tests: false
-          examples: false
-          pymarian: false
-          static: true
-        ################################################################
-        # Ubuntu 16.04 is no longer available on Azure-hosted machines
 
     pool:
       vmImage: $(image)
@@ -407,6 +398,7 @@ stages:
       workingDirectory: build
 
     - bash: |
+        set -x
         python3 -m pip install build/pymarian-*.whl
         python3 -m pymarian -v
       displayName: Build Pymarian
@@ -474,11 +466,11 @@ stages:
   ######################################################################
   - job: BuildInstall
     cancelTimeoutInMinutes: 1
-    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableLinux }}, false) )
+    condition: and( eq(${{ parameters.disableAllBuilds }}, false), eq(${{ parameters.disableInstall }}, false) )
     displayName: Linux CPU library install
 
     pool:
-      vmImage: ubuntu-20.04
+      vmImage: ubuntu-22.04
 
     steps:
     - checkout: self
@@ -494,7 +486,10 @@ stages:
 
     # The following packages are already installed on Azure-hosted runners: build-essential openssl libssl-dev
     # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
-    - bash: sudo apt-get install -y libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
+    - bash: |
+        set -v
+        sudo apt-get install -y libunwind-dev libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
+        sudo apt-get install -y gcc-9 g++-9
       displayName: Install packages
 
     # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html
@@ -540,6 +535,7 @@ stages:
       workingDirectory: install
 
     - bash: |
+        set -x
         python3 -m pip install build/pymarian-*.whl
         python3 -m pymarian -v
       displayName: Build Pymarian
@@ -556,6 +552,7 @@ stages:
     cancelTimeoutInMinutes: 1
     condition: eq(${{ parameters.disableAllTests }}, false)
     displayName: Windows CPU+FBGEMM
+    timeoutInMinutes: 120
 
     pool:
       vmImage: windows-2019
@@ -700,7 +697,7 @@ stages:
     displayName: Linux CPU+FBGEMM
 
     pool:
-      vmImage: ubuntu-latest
+      vmImage: ubuntu-22.04
 
     steps:
     # Due to multiple checkouts this will be commonly cloned into D:\a\1\s\marian-dev
@@ -719,8 +716,9 @@ stages:
     # No need to install libprotobuf{17,10,9v5} on Ubuntu {20,18,16}.04 because it is installed together with libprotobuf-dev
     # Installing libunwind-dev fixes a bug in 2204 (the libunwind-14 and libunwind-dev conflict)
     - bash: |
-        sudo apt-get install -y libunwind-dev
-        sudo apt-get install -y libgoogle-perftools-dev libprotobuf-dev protobuf-compiler gcc-9 g++-9
+        set -v
+        sudo apt-get install -y libunwind-dev libgoogle-perftools-dev libprotobuf-dev protobuf-compiler
+        sudo apt-get install -y gcc-9 g++-9
       displayName: Install packages
 
     # https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html

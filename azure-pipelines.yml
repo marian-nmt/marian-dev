@@ -501,15 +501,27 @@ stages:
         sudo apt-get install -y --no-install-recommends intel-mkl-64bit-2020.0-088
       displayName: Install MKL
 
-    - bash: /usr/bin/gcc-9 --version
-      displayName: Print GCC version
+    # Install newest version of CMake
+    - bash: |
+        set -v
+        wget https://github.com/Kitware/CMake/releases/download/v4.0.2/cmake-4.0.2-linux-x86_64.tar.gz
+        tar zxvf cmake-4.0.2-linux-x86_64.tar.gz
+        ./cmake-4.0.2-linux-x86_64/bin/cmake --version
+      displayName: Install CMake 4.0
 
     - bash: |
         mkdir -p install
         mkdir -p build
         cd build
+        set -v
+        # compare the system-installed CMake version with the newer version
+        cmake --version
+        ../cmake-4.0.2-linux-x86_64/bin/cmake --version
+        # check GCC exact version
+        /usr/bin/gcc-9 --version
+        # run cmake
         CC=/usr/bin/gcc-9 CXX=/usr/bin/g++-9 \
-        cmake .. \
+        ../cmake-4.0.2-linux-x86_64/bin/cmake .. \
           -DCMAKE_INSTALL_PREFIX=../install \
           -DCMAKE_BUILD_TYPE=slim \
           -DCOMPILE_LIBRARY_ONLY=on \
@@ -519,7 +531,6 @@ stages:
           -DUSE_SENTENCEPIECE=on \
           -DPYMARIAN=on \
           -DPYTHON_EXECUTABLE=python3
-
       displayName: Configure CMake
 
     - bash: make -j3 install

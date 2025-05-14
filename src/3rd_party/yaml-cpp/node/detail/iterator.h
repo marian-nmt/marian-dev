@@ -3,7 +3,7 @@
 
 #if defined(_MSC_VER) ||                                            \
     (defined(__GNUC__) && (__GNUC__ == 3 && __GNUC_MINOR__ >= 4) || \
-     (__GNUC__ >= 4))  // GCC supports "pragma once" correctly since 3.4
+     (__GNUC__ >= 4))
 #pragma once
 #endif
 
@@ -13,8 +13,20 @@
 #include <cstddef>
 #include <iterator>
 
+#ifdef __GNUC__
+  #pragma GCC diagnostic push
+  #if defined(__has_warning)
+    #if __has_warning("-Wdeprecated-declarations")
+      #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    #endif
+  #else
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  #endif
+#endif
+
 namespace YAML {
 namespace detail {
+
 struct iterator_value;
 
 template <typename V>
@@ -85,7 +97,12 @@ class iterator_base : public std::iterator<std::forward_iterator_tag, V,
   base_type m_iterator;
   shared_memory_holder m_pMemory;
 };
-}
-}
+
+#ifdef __GNUC__
+  #pragma GCC diagnostic pop
+#endif
+
+} // namespace detail
+} // namespace YAML
 
 #endif  // VALUE_DETAIL_ITERATOR_H_62B23520_7C8E_11DE_8A39_0800200C9A66

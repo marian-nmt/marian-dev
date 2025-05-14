@@ -29,7 +29,19 @@
 
 #ifndef PATHIE_ENTRY_ITERATOR_HPP
 #define PATHIE_ENTRY_ITERATOR_HPP
+
 #include <iterator>
+
+#ifdef __GNUC__
+  #pragma GCC diagnostic push
+  #if defined(__has_warning)
+    #if __has_warning("-Wdeprecated-declarations")
+      #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    #endif
+  #else
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  #endif
+#endif
 
 namespace Pathie {
 
@@ -112,8 +124,13 @@ namespace Pathie {
 
     const Path* mp_directory; ///< Path requested to read from.
     void* mp_cur; ///< Native handle to the opened directory.
-    Path* mp_cur_path; ///< Path instance of the path pointed to by mp_cur (only a pointer to allow forward-declaration of Path).
+    Path* mp_cur_path; ///< Path instance of the path pointed to by mp_cur.
   };
+
 }
+
+#ifdef __GNUC__
+  #pragma GCC diagnostic pop
+#endif
 
 #endif /* PATHIE_ENTRY_ITERATOR_HPP */

@@ -16,8 +16,20 @@
 #include <utility>
 #include <vector>
 
+#ifdef __GNUC__
+#  pragma GCC diagnostic push
+#  if defined(__has_warning)
+#    if __has_warning("-Wdeprecated-declarations")
+#      pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#    endif
+#  else
+#    pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#  endif
+#endif
+
 namespace YAML {
 namespace detail {
+
 struct iterator_type {
   enum value { None, Sequence, Map };
 };
@@ -171,6 +183,10 @@ class node_iterator_base
   SeqIter m_seqIt;
   MapIter m_mapIt, m_mapEnd;
 };
+
+#ifdef __GNUC__
+#  pragma GCC diagnostic pop
+#endif
 
 typedef node_iterator_base<node> node_iterator;
 typedef node_iterator_base<const node> const_node_iterator;

@@ -13,7 +13,10 @@ else ()
   set(Tcmalloc_NAMES tcmalloc_minimal tcmalloc)
 endif ()
 
-find_library(Tcmalloc_LIBRARY NAMES ${Tcmalloc_NAMES})
+find_library(Tcmalloc_LIBRARY
+             NAMES ${Tcmalloc_NAMES}
+             PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64 /usr/lib/x86_64-linux-gnu
+             )
 
 if (Tcmalloc_INCLUDE_DIR AND Tcmalloc_LIBRARY)
   set(Tcmalloc_FOUND TRUE)

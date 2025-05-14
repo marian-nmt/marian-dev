@@ -9,17 +9,21 @@
 
 // Even when compiling with clang, __GNUC__ may be defined, so
 // we need to add some extra checks to avoid compile errors with
-// respect to -Wsuggest-override.
+// respect to -Wsuggest-override and deprecation warnings.
 #ifdef __GNUC__
 #  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wunused-value"
 #  if defined(__has_warning)
+#    if __has_warning("-Wdeprecated-declarations")
+#      pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#    endif
 #    if __has_warning("-Wsuggest-override")
 #      pragma GCC diagnostic ignored "-Wsuggest-override"
 #    endif
 #  else
+#    pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #    pragma GCC diagnostic ignored "-Wsuggest-override"
 #  endif
+#  pragma GCC diagnostic ignored "-Wunused-value"
 #endif
 
 #include "3rd_party/pathie-cpp/include/path.hpp"  // @TODO: update to latest Pathie

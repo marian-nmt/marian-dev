@@ -332,7 +332,9 @@ endif(GENERATE_MARIAN_INSTALL_TARGETS)
 
 
 if(PYMARIAN)
-  # python libs which use different version of tcmalloc (e.g. pandas) can cause segfaults, so we disable it
+  # this property must be set **before** including pybind11
+  # otherwise pybind will intervene with our own python version detection
+  set(PYBIND11_NOPYTHON On)
   include_directories(3rd_party/pybind11/include)
   add_subdirectory(3rd_party/pybind11)
   include(PythonModules)

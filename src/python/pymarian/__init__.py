@@ -1,6 +1,7 @@
 import logging
 from itertools import islice
 from pathlib import Path
+import sys
 from typing import Iterator, List, Optional, Tuple, Union
 
 import _pymarian
@@ -46,8 +47,8 @@ class Evaluator(_pymarian.Evaluator):
     @classmethod
     def new(
         cls,
-        model_file: Path,
-        vocab_file: Path = None,
+        model_file: Union[Path, str],
+        vocab_file: Union[Path, str] = None,
         devices: Optional[List[int]] = None,
         width=Defaults.FLOAT_PRECISION,
         mini_batch=Defaults.MINI_BATCH,
@@ -76,8 +77,8 @@ class Evaluator(_pymarian.Evaluator):
         :return: iterator of scores
         """
 
-        assert model_file.exists(), f'Model file {model_file} does not exist'
-        assert vocab_file.exists(), f'Vocab file {vocab_file} does not exist'
+        assert Path(model_file).exists(), f'Model file {model_file} does not exist'
+        assert Path(vocab_file).exists(), f'Vocab file {vocab_file} does not exist'
         assert like in Defaults.MODEL_TYPES, f'Unknown model type: {like}'
         n_inputs = len(Defaults.MODEL_TYPES[like])
         vocabs = [vocab_file] * n_inputs
@@ -97,7 +98,7 @@ class Evaluator(_pymarian.Evaluator):
             cpu_threads=cpu_threads,
             average=average,
         )
-        if kwargs.pop('fp16'):
+        if kwargs.pop('fp16', False):
             kwargs['fp16'] = ''  # empty string for flag; i.e, "--fp16" and not "--fp16=true"
 
         # TODO: remove this when c++ bindings supports iterator
@@ -171,3 +172,15 @@ class Embedder(_pymarian.Embedder):
         """
         cli_string += ' ' + kwargs_to_cli(**kwargs)
         super().__init__(cli_string.stip())
+
+
+def help(*vargs):
+    """print help text"""
+    args = []
+    args += vargs
+    if '--help' not in args and '-h' not in args:
+        args.append('--help')
+    # note: this will print to stdout
+    _pymarian.main(args)
+    # do not exit, as this is a library function
+

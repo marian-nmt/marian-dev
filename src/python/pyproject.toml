@@ -33,10 +33,11 @@ dependencies = [
   "pyyaml",
   "tqdm",
   "requests",
-  "huggingface-hub==0.23.1",
+  "huggingface-hub",
 ]
 
 [project.scripts]
+pymarian = "pymarian.__main__:main"
 pymarian-eval = "pymarian.eval:main"
 pymarian-qtdemo = "pymarian.qtdemo:main"
 pymarian-mtapi = "pymarian.mtapi_server:main"
@@ -47,7 +48,8 @@ demos = [
   "flask",
   "sacremoses",
   "pyqt5",
-  "sentence-splitter@git+https://github.com/mediacloud/sentence-splitter",
+  # we cant release this as a dependency because it's not on pypi
+#  "sentence-splitter@git+https://github.com/mediacloud/sentence-splitter",
 ]
 
 

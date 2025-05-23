@@ -400,7 +400,7 @@ stages:
     - bash: |
         set -x
         python3 -m pip install build/pymarian-*.whl
-        python3 -m pymarian -v
+        python3 -m pymarian --version
       displayName: Build Pymarian
       condition: eq(variables.pymarian, true)
 
@@ -548,7 +548,7 @@ stages:
     - bash: |
         set -x
         python3 -m pip install build/pymarian-*.whl
-        python3 -m pymarian -v
+        python3 -m pymarian --version
       displayName: Build Pymarian
 
 

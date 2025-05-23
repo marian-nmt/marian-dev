@@ -8,7 +8,12 @@ on:
 
 jobs:
   build-macos:
-    name: MacOS CPU-only
+    strategy:
+      matrix:
+        include:
+          - name: "pymarian=false"
+            pymarian: false
+    name: "MacOS CPU-only ${{ matrix.name }}"
     runs-on: macos-12
 
     steps:
@@ -33,7 +38,8 @@ jobs:
           -DCOMPILE_SERVER=off \
           -DCOMPILE_TESTS=on \
           -DUSE_FBGEMM=on \
-          -DUSE_SENTENCEPIECE=on
+          -DUSE_SENTENCEPIECE=on \
+          -DPYMARIAN=${{matrix.pymarian}}
 
     - name: Compile
       working-directory: build
@@ -52,8 +58,12 @@ jobs:
         ls -hlv $(find . -maxdepth 1 -type f -perm +ugo+x \( -name "marian*" -o -name "spm*" \))
 
     - name: Install PyMarian
+      working-directory: build
+      if: matrix.pymarian == true
       run: |
+        echo "Wheels built: " && ls -lh pymarian*.whl
         python3 -m pip install --upgrade pip setuptools wheel pytest
-        CMAKE_ARGS="" python3 -m pip install -v .
-        python3 -m pymarian -v
-        MARIAN_QUIET=YES python3 -m pytest -vs src/python/tests
+        python3 -m pip install -v pymarian*.whl
+        python3 -m pymarian --version
+        pymarian-eval --version
+        pymarian --version

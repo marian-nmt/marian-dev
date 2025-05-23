@@ -144,7 +144,7 @@ stages:
 
     - bash: |
         python3 -m pip install build/pymarian-*.whl
-        python3 -m pymarian -v
+        python3 -m pymarian --version
         python3 -m pip install pytest
         python3 -m pytest src/python/tests/regression
       displayName: Pymarian Install and Test

@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Make ALIBI slopes absolute
 - Fixed compilation issues with CMake 4.0
 - Use `std::runtime_error` to catch more types of mmap errors
 - Do not use shortlist-mapped values to check for force-decoding criterion

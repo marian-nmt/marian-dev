@@ -194,11 +194,26 @@ cmake --build build -j
 ls build/pymarian*.whl
 ```
 
-### Upload to PyPI
-```bash
-twine upload -r testpypi build/*.whl
+### Release Pymarian to PyPI
 
-twine upload -r pypi build/*.whl
+Releasing Pymarian on PyPI is a two step process: 
+1. Building maximally compatible package
+2. Uploading to PyPI
+
+#### 1. Build Pymarian for Public Release
+We want to ensure the Pymarian is compatible with many versions of Python and operating systems.
+Currently we support Linux builds only. For compatibility across Linux distros, we should use an envrionment with older GLIBC, which is achieved using docker.
+
+Run `bash build.sh` to build the wheels for linux. Inspect `build-manylinux.sh` for the actual build script that runs inside docker environment.
+
+#### 2. Upload to PyPI
+
+```bash
+# pip install twine # if required
+
+twine upload -r testpypi $MARIAN_ROOT/build-pymarian/manylinux/*.whl
+
+twine upload -r pypi $MARIAN_ROOT/build-pymarian/manylinux/*.whl
 ```
 
 __Initial Setup:__ create `~/.pypirc` with following:

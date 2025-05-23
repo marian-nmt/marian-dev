@@ -48,6 +48,7 @@ pingme.txt
 # CMake files
 build
 build-*
+!build*.sh
 # pymarian wheels
 dist/
 tmp

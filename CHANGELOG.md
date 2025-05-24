@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- Light-weight encryption for CPU-based models
 - Updates to pymarian: building for multiple python versions; disabling tcmalloc; hosting gated COMETs on HuggingFace
 - Scripts for building _manylinux_ compatible wheel files (a requirement for publishing wheels on PyPI)
 - Add "pymarian" CLI, a proxy to "marian" binary, but made available in PATH after "pip install pymarian"
-
-### Added
 - Faster ARM64 matmul in `mjdgemm` using `vdotq_s32` instrinsics
 - `mjdgemm` as a FBGEMM replacement, also SSE4.2 support and ARM support for 8bit avx512-style packed FBGEMM matrices
 - Conpilation om Android

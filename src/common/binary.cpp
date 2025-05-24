@@ -5,6 +5,11 @@
 #include "common/types.h"
 #include "tensors/cpu/integer_common.h"
 
+#if USE_SSL
+#include "common/config.h"
+#include "common/crypt.h"
+#endif
+
 #include <string>
 
 namespace marian {
@@ -29,19 +34,39 @@ const T* get(const void*& current, uint64_t num = 1) {
 
 void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
   uint64_t binaryFileVersion = *get<uint64_t>(current);
-  ABORT_IF(binaryFileVersion != BINARY_FILE_VERSION,
-           "Binary file versions do not match: {} (file) != {} (expected)",
-           binaryFileVersion,
-           BINARY_FILE_VERSION);
 
-  uint64_t numHeaders = *get<uint64_t>(current); // number of item headers that follow
-  const Header* headers = get<Header>(current, numHeaders); // read that many headers
+  const void *headerCurrent = nullptr;
+
+  bool encrypted = false;
+  std::string decryptedHeader;
+  if(binaryFileVersion == BINARY_FILE_VERSION) {
+    headerCurrent = current;
+#if USE_SSL
+  } else if(binaryFileVersion == BINARY_FILE_VERSION_WITH_ENCRYPTION) {
+    LOG(info, "Loading encrypted model");
+    encrypted = true;
+    uint64_t headerLen = *get<uint64_t>(current);
+    std::string encryptedHeader(get<char>(current, headerLen), headerLen);
+    std::string encryptionKey = Config::encryptionKey;
+    ABORT_IF(encryptionKey.empty(), "No encryption key provided or set");
+
+    decryptedHeader = marian::crypt::decrypt_aes_256_gcm(encryptedHeader, encryptionKey);
+    headerCurrent = decryptedHeader.data();
+#endif
+  } else {
+    ABORT("Unknown binary file version {}", binaryFileVersion);
+  }
+
+  ABORT_IF(headerCurrent == nullptr, "Header not loaded");
+
+  uint64_t numHeaders = *get<uint64_t>(headerCurrent); // number of item headers that follow
+  const Header* headers = get<Header>(headerCurrent, numHeaders); // read that many headers
 
   // prepopulate items with meta data from headers
   items.resize(numHeaders);
   for(int i = 0; i < numHeaders; ++i) {
     items[i].type = (Type)headers[i].type;
-    items[i].name = get<char>(current, headers[i].nameLength);
+    items[i].name = get<char>(headerCurrent, headers[i].nameLength);
     items[i].mapped = mapped;
   }
 
@@ -49,9 +74,12 @@ void loadItems(const void* current, std::vector<io::Item>& items, bool mapped) {
   for(int i = 0; i < numHeaders; ++i) {
     uint64_t len = headers[i].shapeLength;
     items[i].shape.resize(len);
-    const int* arr = get<int>(current, len); // read shape
+    const int* arr = get<int>(headerCurrent, len); // read shape
     std::copy(arr, arr + len, items[i].shape.begin()); // copy to Item::shape
   }
+
+  if(!encrypted)
+    current = headerCurrent;
 
   // move by offset bytes, aligned to 256-bytes boundary
   uint64_t offset = *get<uint64_t>(current);
@@ -91,17 +119,8 @@ void loadItems(const std::string& fileName, std::vector<io::Item>& items) {
   // Read file into buffer
   uint64_t fileSize = filesystem::fileSize(fileName);
   std::vector<char> buf(fileSize);
-// @TODO: check this again:
-#if 1 // for some reason, the #else branch fails with "file not found" in the *read* operation (open succeeds)
-  FILE *f = fopen(fileName.c_str(), "rb");
-  ABORT_IF(f == nullptr, "Error {} ('{}') opening file '{}'", errno, strerror(errno), fileName);
-  auto rc = fread(buf.data(), sizeof(*buf.data()), buf.size(), f);
-  ABORT_IF(rc != buf.size(), "Error {} ('{}') reading file '{}'", errno, strerror(errno), fileName);
-  fclose(f);
-#else
   io::InputFileStream in(fileName);
   in.read(buf.data(), buf.size());
-#endif
 
   // Load items from buffer without mapping
   loadItems(buf.data(), items, false);
@@ -129,51 +148,109 @@ io::Item getItem(const std::string& fileName, const std::string& varName) {
   return io::Item();
 }
 
-void saveItems(const std::string& fileName,
-               const std::vector<io::Item>& items) {
-  io::OutputFileStream out(fileName);
-  uint64_t pos = 0;
 
-  uint64_t binaryFileVersion = BINARY_FILE_VERSION;
-  pos += out.write(&binaryFileVersion);
+// append binary data to a vector of chars based on the type
+template <typename T>
+void append(std::string& buf, const T* ptr, size_t num = 1) {
+  buf.append(reinterpret_cast<const char*>(ptr), num * sizeof(T));
+}
 
+std::string createBinaryHeader(std::vector<const io::Item*>& items) {
+  std::string buffer;
+
+#if USE_SSL
+  std::string encryptionKey = Config::encryptionKey;
+  bool encrypted = !encryptionKey.empty();
+
+  if(encrypted) {
+    // if encrypted shuffle items to avoid leaking order of parameters
+    // use cryptographically secure random number generator
+    marian::crypt::OpenSSLRNG rng;
+    // this will change the order of items outside of this function, too, as intended.
+    std::shuffle(items.begin(), items.end(), rng);
+  }
+#else
+  bool encrypted = false;
+#endif
+
+  uint64_t binaryFileVersion = encrypted ? BINARY_FILE_VERSION_WITH_ENCRYPTION : BINARY_FILE_VERSION;
+  append(buffer, &binaryFileVersion);
+
+  std::string headerBuffer;
   std::vector<Header> headers;
   for(const auto& item : items) {
-    headers.push_back(Header{item.name.size() + 1,
-                             (uint64_t)item.type,
-                             item.shape.size(),
-                             item.bytes.size()}); // binary item size with padding, will be 256-byte-aligned
+    headers.push_back(Header{item->name.size() + 1,
+                             (uint64_t)item->type,
+                             item->shape.size(),
+                             item->bytes.size()}); // binary item size with padding, will be 256-byte-aligned
   }
 
   uint64_t headerSize = headers.size();
-  pos += out.write(&headerSize);
-  pos += out.write(headers.data(), headers.size());
+  append(headerBuffer, &headerSize);
+  append(headerBuffer, headers.data(), headers.size());
 
   // Write out all names
-  for(const auto& item : items) {
-    pos += out.write(item.name.data(), item.name.size() + 1);
-  }
+  for(const auto& item : items)
+    append(headerBuffer, item->name.data(), item->name.size() + 1);
+
   // Write out all shapes
-  for(const auto& item : items) {
-    pos += out.write(item.shape.data(), item.shape.size());
+  for(const auto& item : items)
+    append(headerBuffer, item->shape.data(), item->shape.size());
+
+  if(encrypted) {
+#if USE_SSL
+    LOG(info, "Saving encrypted model");
+    std::string encryptedHeaderBuffer = marian::crypt::encrypt_aes_256_gcm(headerBuffer, encryptionKey);
+    uint64_t encryptedHeaderSize = encryptedHeaderBuffer.size();
+    append(buffer, &encryptedHeaderSize);
+    append(buffer, encryptedHeaderBuffer.data(), encryptedHeaderBuffer.size());
+#else
+    ABORT("Encryption requested but not supported");
+#endif
+  } else {
+    append(buffer, headerBuffer.data(), headerBuffer.size());
   }
+
+  return buffer;
+}
+
+void saveItems(const std::string& fileName,
+               const std::vector<io::Item>& items) {
+  io::OutputFileStream out(fileName);
+
+  // create a vector of pointers to items and shuffle them (pointers, not items, to avoid copying the data)
+  std::vector<const io::Item*> weakItems;
+  for(auto& item : items)
+    weakItems.push_back(&item);
+
+  std::string headerBuffer = createBinaryHeader(weakItems);
+
+  uint64_t pos = 0;
+  pos += out.write(headerBuffer.data(), headerBuffer.size());
 
   // align to next 256-byte boundary
   uint64_t nextpos = ((pos + sizeof(uint64_t)) / 256 + 1) * 256;
   uint64_t offset = nextpos - pos - sizeof(uint64_t);
 
+  // Write offset
   pos += out.write(&offset);
+  // Write padding
   for(uint64_t i = 0; i < offset; i++) {
     char padding = 0;
     pos += out.write(&padding);
   }
 
   // Write out all values
-  for(const auto& item : items)
-    pos += out.write(item.data(), item.bytes.size()); // writes out data with padding, keeps 256-byte boundary.
-                                                      // Amazingly this is binary-compatible with V1 and aligned and
-                                                      // non-aligned models can be read with the same procedure.
-                                                      // No version-bump required. Gets 5-8% of speed back when mmapped.
+  for(const auto& item : weakItems) {
+    ABORT_IF(item->bytes.size() % 256 != 0,
+          "Binary item size ({}) is not 256-byte aligned for tensor {}",
+          item->bytes.size(),
+          item->name);
+    pos += out.write(item->data(), item->bytes.size()); // writes out data with padding, keeps 256-byte boundary.
+                                                        // Amazingly this is binary-compatible with V1 and aligned and
+                                                        // non-aligned models can be read with the same procedure.
+                                                        // No version-bump required. Gets 5-8% of speed back when mmapped.
+  }
 }
 
 }  // namespace binary

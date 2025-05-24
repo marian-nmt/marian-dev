@@ -4,6 +4,11 @@
 #include "onnx/expression_graph_onnx_exporter.h"
 #include "layers/lsh.h"
 #include "data/shortlist.h"
+
+#if USE_SSL
+#include "common/crypt.h"
+#endif
+
 #include <sstream>
 
 int main(int argc, char** argv) {
@@ -32,6 +37,9 @@ int main(int argc, char** argv) {
     cli->add<std::vector<std::string>>("--vocabs,-V", "Vocabulary file, required for ONNX export");
     cli->add<std::vector<std::string>>("--shortlist,-s", "Shortlist conversion: filePath firstNum bestNum threshold");
     cli->add<std::string>("--dump-shortlist,-d", "Binary shortlist dump path","lex.bin");
+#if USE_SSL
+    cli->add<std::string>("--encryption-key-path", "Path to file with encryption key of model file", "");
+#endif
     cli->parse(argc, argv);
     options->merge(config);
   }
@@ -54,6 +62,13 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+#if USE_SSL
+  if(options->hasAndNotEmpty("encryption-key-path")) {
+    std::string encryptionKeyPath = options->get<std::string>("encryption-key-path");
+    Config::encryptionKey = crypt::read_file_sha256(encryptionKeyPath);
+  }
+#endif
+
   auto modelFrom = options->get<std::string>("from");
   auto modelTo = options->get<std::string>("to");
 
@@ -74,7 +89,6 @@ int main(int argc, char** argv) {
   Type saveGemmType = typeFromString(options->get<std::string>("gemm-type", "float32"));
 
   LOG(info, "Outputting {}, precision: {}", modelTo, saveGemmType);
-
 
   auto modelFile = New<io::ModelWeights>(modelFrom, io::MmapMode::DontMmap);
   YAML::Node config = modelFile->getYamlFromModel();

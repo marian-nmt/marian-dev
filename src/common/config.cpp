@@ -16,6 +16,9 @@ namespace marian {
 // @TODO: keep seed in a single place, now it is kept here and in Config/Options
 size_t Config::seed = (size_t)time(0);
 
+#if USE_SSL
+std::string Config::encryptionKey = "";
+#endif
 
 Config::Config(ConfigParser const& cp) {
   initialize(cp);

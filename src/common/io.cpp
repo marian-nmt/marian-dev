@@ -149,6 +149,7 @@ std::unique_ptr<std::lock_guard<std::mutex>> ModelWeights::scopedLockGuard() con
 }
 
 void ModelWeights::load() {
+
   auto optionalLock = scopedLockGuard();
 
   if(loaded_)
@@ -232,13 +233,19 @@ void addMetaToItems(const std::string& meta,
   Item item;
   item.name = varName;
 
-  // increase size by 1 to add \0
-  item.shape = Shape({(int)meta.size() + 1});
+  size_t metaSize = meta.size() + 1; // increase size by 1 to add \0
+  // pad to full 256-byte block
+  size_t paddedSize = ((metaSize + 255) / 256) * 256;
+
+  // create shape with size of padded meta
+  item.shape = Shape({(int)paddedSize});
 
   item.bytes.resize(item.shape.elements());
   std::copy(meta.begin(), meta.end(), item.bytes.begin());
-  // set string terminator
-  item.bytes.back() = '\0';
+  
+  // set string terminator for every padded byte
+  for(size_t i = metaSize; i < paddedSize; ++i)
+    item.bytes[i] = '\0';
 
   item.type = Type::int8;
 

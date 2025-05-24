@@ -41,6 +41,10 @@ class Config {
 public:
   static size_t seed;
 
+#if USE_SSL
+  static std::string encryptionKey;
+#endif
+
   typedef YAML::Node YamlNode;
 
   Config(ConfigParser const& cp);
@@ -120,7 +124,7 @@ Ptr<Options> parseOptions(int argc,
                           bool validate = true);
 
 /**
- * Parse the command line options. 
+ * Parse the command line options.
  * Same as above, but args provided as C++ string object, space-delimited. This is used for instance
  * in the python bindings as a simple string-based interface.
  *
@@ -130,7 +134,7 @@ Ptr<Options> parseOptions(int argc,
  *
  * @return parsed options
  */
-Ptr<Options> parseOptions(const std::string& args, 
+Ptr<Options> parseOptions(const std::string& args,
                           cli::mode mode,
                           bool validate = true);
 

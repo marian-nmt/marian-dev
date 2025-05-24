@@ -23,6 +23,10 @@
 #endif
 #endif
 
+#if USE_SSL
+#include "common/crypt.h"
+#endif
+
 namespace marian {
 
 // TODO: Move this to CLIWrapper and allow to mark options as paths in the same place they are
@@ -850,6 +854,11 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   addSuboptionsULR(cli);
 #endif
 
+#if USE_SSL
+  cli.add<std::string>("--encryption-key-path",
+      "Path to file with encryption key of model file", "");
+#endif
+
   cli.switchGroup(previous_group);
   // clang-format on
 }
@@ -1373,6 +1382,13 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
       cli_.updateConfig(config,
                         cli::OptionPriority::CommandLine,
                         "Could not update --after with value from --after-updates");
+  }
+#endif
+
+#if USE_SSL
+  if(get<std::string>("encryption-key-path") != "") {
+    const std::string keyPath = get<std::string>("encryption-key-path");
+    Config::encryptionKey = crypt::read_file_sha256(keyPath);
   }
 #endif
 

@@ -2,6 +2,7 @@
 #include "translator/beam_search.h"
 #include "translator/translator.h"
 #include "common/timer.h"
+
 #ifdef _WIN32
 #include <Windows.h>
 #endif

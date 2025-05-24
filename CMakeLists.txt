@@ -41,6 +41,7 @@ option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
 option(DETERMINISTIC "Try to make training results as deterministic as possible (e.g. for testing)" OFF)
 option(PYMARIAN "Build Pymarian package which is based on pybind11" OFF)
+option(USE_OPENSSL "Use OpenSSL library" OFF)
 
 # fbgemm and sentencepiece are both defined with "non-local" installation targets (the source projects don't define them,
 # so we define them in src\3rd_party\CMakeLists.txt), but that isn't supported until CMake 3.12. Prior to CMake 3.12,
@@ -353,6 +354,13 @@ endif()
 
 # Find packages
 set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
+
+# check if openssl is explicitly requested
+if(USE_OPENSSL)
+  find_package(OpenSSL REQUIRED)
+  set(EXT_LIBS ${EXT_LIBS} OpenSSL::SSL OpenSSL::Crypto)
+  add_compile_definitions(USE_SSL=1)
+endif()
 
 ###############################################################################
 if(COMPILE_CUDA)

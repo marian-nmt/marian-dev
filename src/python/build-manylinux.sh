@@ -12,13 +12,16 @@ MARIAN_ROOT="$( cd "$MYDIR/../.." && pwd )"
 # assume this directory is mounted in the docker container
 cd $MARIAN_ROOT
 
+# install openSSL 1.1
+yum install -y openssl11-devel openssl11-static
+
 #MKL is not in docker image
 # yum-config-manager --add-repo https://yum.repos.intel.com/setup/intelproducts.repo
 yum-config-manager --add-repo https://yum.repos.intel.com/mkl/setup/intel-mkl.repo
 rpm --import https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
 yum install -y intel-mkl-64bit-2020.4-912
 
-# TODO: build a docker image with MKL and mamba installed
+# TODO: build a docker image with MKL, openSSL and mamba installed
 
 COMPILE_CUDA=1
 PY_VERSIONS="$(echo 3.{12,11,10,9,8})"
@@ -81,16 +84,17 @@ fi
 mkdir -p $build_dir
 cd $build_dir
 
-#CMAKE_FLAGS="-DPYMARIAN=on -DCMAKE_BUILD_TYPE=Release -DUSE_STATIC_LIBS=on -DUSE_FBGEMM=on"
-CMAKE_FLAGS="-DPYMARIAN=on -DCMAKE_BUILD_TYPE=Slim -DUSE_STATIC_LIBS=on -DUSE_FBGEMM=on"
+#CMAKE_FLAGS="-DPYMARIAN=ON -DCMAKE_BUILD_TYPE=Release -DUSE_STATIC_LIBS=ON -DUSE_FBGEMM=ON"
+CMAKE_FLAGS="-DBUILD_ARCH=x86-64 -DCOMPILE_AVX2=OFF -DCOMPILE_AVX512=OFF -DPYMARIAN=ON -DCMAKE_BUILD_TYPE=Slim -DUSE_STATIC_LIBS=ON -DUSE_FBGEMM=ON"
+CMAKE_OPENSSL_FLAGS="-DOPENSSL_ROOT_DIR=/usr/lib64/openssl11 -DOPENSSL_INCLUDE_DIR=/usr/include/openssl11 -DUSE_OPENSSL=ON"
 # for cuda support
 if [[ $COMPILE_CUDA -eq 1 ]]; then
-    CMAKE_FLAGS+=" -DCOMPILE_CUDA=on -DCOMPILE_PASCAL=ON -DCOMPILE_VOLTA=ON -DCOMPILE_TURING=ON -DCOMPILE_AMPERE=ON -DCOMPILE_AMPERE_RTX=ON"
+    CMAKE_FLAGS+=" -DCOMPILE_CUDA=ON -DCOMPILE_PASCAL=ON -DCOMPILE_VOLTA=ON -DCOMPILE_TURING=ON -DCOMPILE_AMPERE=ON -DCOMPILE_AMPERE_RTX=ON"
 else
-    CMAKE_FLAGS+=" -DCOMPILE_CUDA=off -DCOMPILE_CPU=on"
+    CMAKE_FLAGS+=" -DCOMPILE_CUDA=OFF -DCOMPILE_CPU=ON"
 fi
 
-cmake .. $CMAKE_FLAGS
+cmake .. $CMAKE_OPENSSL_FLAGS $CMAKE_FLAGS
 make -j
 ls -lh pymarian*.whl
 

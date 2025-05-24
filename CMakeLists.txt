@@ -357,6 +357,9 @@ set(EXT_LIBS ${EXT_LIBS} ${CMAKE_DL_LIBS})
 
 # check if openssl is explicitly requested
 if(USE_OPENSSL)
+  if(USE_STATIC_LIBS)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+  endif()
   find_package(OpenSSL REQUIRED)
   set(EXT_LIBS ${EXT_LIBS} OpenSSL::SSL OpenSSL::Crypto)
   add_compile_definitions(USE_SSL=1)

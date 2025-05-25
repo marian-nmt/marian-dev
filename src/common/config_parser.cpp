@@ -1386,7 +1386,7 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate) 
 #endif
 
 #if USE_SSL
-  if(mode_ == cli::model::translating && get<std::string>("encryption-key-path") != "") {
+  if(mode_ == cli::mode::translation && get<std::string>("encryption-key-path") != "") {
     const std::string keyPath = get<std::string>("encryption-key-path");
     Config::encryptionKey = crypt::read_file_sha256(keyPath);
   }

@@ -13,19 +13,14 @@ inline void hammingTopKUnrollWarp(int queryOffset, const Parameters& parameters,
   static_assert(numBits % 64 == 0, "LSH hash size must be a multiple of 64");
 
   // counter to keep track of seen hamming distances
-  std::array<std::array<DistType, numBits>, warpSize> counter;
+  std::array<std::array<DistType, numBits>, warpSize> counter = { {{0}} };
   // buffer the distances for query vector warpRowId to all weight weight vectors codeRowId
-  std::array<std::array<DistType, NumCodeRows>, warpSize> distBuffer;
+  std::array<std::array<DistType, NumCodeRows>, warpSize> distBuffer = { {{0}} };
   // minimal distances per query
-  std::array<DistType, warpSize> minDist;
+  std::array<DistType, warpSize> minDist = {DistType(numBits)};
 
   constexpr int StepsStatic = BytesPerVector / sizeof(ChunkType);
   ChunkType* codeRow = (ChunkType*)parameters.codeRows;
-
-  for(int warpRowId = 0; warpRowId < warpSize; warpRowId++) {
-    std::fill(counter[warpRowId].begin(), counter[warpRowId].end(), 0);
-    minDist[warpRowId] = (DistType)numBits;
-  }
 
   for(IndexType codeRowId = 0; codeRowId < (IndexType)NumCodeRows; ++codeRowId, codeRow += StepsStatic) {
     ChunkType* queryRow = (ChunkType*)parameters.queryRows;
@@ -134,24 +129,19 @@ inline void hammingTopKUnrollWarp(int queryOffset, const Parameters& parameters,
   // we make these static and thread_local to avoid re-allocating them for every warp. In the unrolled version
   // we can use std::array which is stack allocated and does not need to be thread_local.
   // Counter to keep track of seen hamming distances
-  static thread_local std::vector<std::vector<DistType>> counter(warpSize, std::vector<DistType>(numBits));
-  counter.resize(warpSize);
 
-  // Buffer the distances for query vector warpRowId to all weight vectors codeRowId
-  static thread_local std::vector<std::vector<DistType>> distBuffer(warpSize, std::vector<DistType>(numCodeRows));
-  distBuffer.resize(warpSize);
+  // counter to keep track of seen hamming distances
+  std::array<std::array<DistType, numBits>, warpSize> counter = { {{0}} };
+  // buffer the distances for query vector warpRowId to all weight vectors codeRowId
+  static thread_local std::array<std::vector<DistType>, warpSize> distBuffer;
+  // minimal distances per query
+  std::array<DistType, warpSize> minDist = { DistType(numBits) };
 
-  // Minimal distances per query
-  static thread_local std::vector<DistType> minDist(warpSize);
-  minDist.resize(warpSize);
+  for(auto& vec : distBuffer)
+    vec.assign(numCodeRows, 0);
 
   constexpr int StepsStatic = bytesPerVector / sizeof(ChunkType);
   ChunkType* codeRow = (ChunkType*)parameters.codeRows;
-
-  for(int warpRowId = 0; warpRowId < warpSize; warpRowId++) {
-    std::fill(counter[warpRowId].begin(), counter[warpRowId].end(), 0);
-    minDist[warpRowId] = (DistType)numBits;
-  }
 
   for(IndexType codeRowId = 0; codeRowId < (IndexType)numCodeRows; ++codeRowId, codeRow += StepsStatic) {
     ChunkType* queryRow = (ChunkType*)parameters.queryRows;
@@ -252,6 +242,10 @@ inline void hammingTopK(const Parameters& parameters, const GatherFn& gather) {
     unrolled::hammingTopKUnroll<IS, 32000,  64>(parameters, gather);
   } else if(parameters.numCodeRows == 32000 && parameters.bytesPerVector == 1024 / 8) {
     unrolled::hammingTopKUnroll<IS, 32000, 128>(parameters, gather);
+  } else if(parameters.numCodeRows == 64000 && parameters.bytesPerVector ==  512 / 8) {
+    unrolled::hammingTopKUnroll<IS, 64000,  64>(parameters, gather);
+  } else if(parameters.numCodeRows == 64000 && parameters.bytesPerVector == 1024 / 8) {
+    unrolled::hammingTopKUnroll<IS, 64000, 128>(parameters, gather);
   } else if(parameters.bytesPerVector ==  512 / 8) {
     dynamic::hammingTopKUnroll<IS, 64>(parameters, gather);
   } else if(parameters.bytesPerVector == 1024 / 8) {

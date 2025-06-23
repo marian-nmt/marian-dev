@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - New experimental layer framework for Transformer-like models.
 
 ### Fixed
+- Fixed LSH for sizes other than 32K and 64K vocabs, make 64K vocabs an optimized template
 - Only check encryption-file-path for translation
 - Make ALIBI slopes absolute
 - Fixed compilation issues with CMake 4.0

@@ -44,7 +44,21 @@ inline marian::Shape adapt<float32x8>(const marian::Shape& shape) {
   return x8Shape;
 }
 #endif
+
+#ifdef __AVX512F__
+// as above, but for a stride of 16, since we are processing 16 floats at once
+template <>
+inline marian::Shape adapt<float32x16>(const marian::Shape& shape) {
+  ABORT_IF(shape[-1] % 16 != 0,
+           "Last dim ({}) is not a multiple of 16 while converting to Tensor<float32x16>",
+           shape[-1]);
+
+  marian::Shape x16Shape = shape;
+  x16Shape.set(-1, shape[-1] / 16);
+  return x16Shape;
+}
 #endif
+#endif // __CUDACC__
 
 #if COMPILE_FP16
 // as above, but for a stride of 2, since we are processing 2 half floats at once. Works on GPU.

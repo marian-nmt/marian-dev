@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- Added avx512 types and functional path.
+- Small optimisation on AVX and SSE instruction path.
 ### Added
 - Added encryption support to pymarian
 - Light-weight encryption for CPU-based models

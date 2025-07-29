@@ -69,6 +69,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Implemented fully correct version of GELU instead of using bad approximatin via Swish.
 - Handle copying from fp32 or fp16 embeddings in embedder mode correctly.
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
+- Cmake builds where the `CPUINFO` is blank.
 
 ### Changed
 - Globally set mkl_set_num_threads(1)

@@ -201,7 +201,7 @@ static void CollectCallStack(size_t skipLevels, bool makeFunctionNamesStandOut, 
 
 #else // Linux
 
-    unsigned int MAX_NUM_FRAMES = 1024;
+    constexpr unsigned int MAX_NUM_FRAMES = 1024;
     void* backtraceAddresses[MAX_NUM_FRAMES];
     unsigned int numFrames = backtrace(backtraceAddresses, MAX_NUM_FRAMES);
     char** symbolList = backtrace_symbols(backtraceAddresses, numFrames);
@@ -234,7 +234,7 @@ static void CollectCallStack(size_t skipLevels, bool makeFunctionNamesStandOut, 
 
             // Mangled name is now in [beginName, beginOffset) and caller offset in [beginOffset, beginAddress).
             int status = 0;
-            unsigned int MAX_FUNCNAME_SIZE = 4096;
+            constexpr unsigned int MAX_FUNCNAME_SIZE = 4096;
             size_t funcNameSize = MAX_FUNCNAME_SIZE;
             char funcName[MAX_FUNCNAME_SIZE]; // working buffer
             const char* ret = abi::__cxa_demangle(beginName, funcName, &funcNameSize, &status);

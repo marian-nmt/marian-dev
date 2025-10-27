@@ -69,7 +69,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Implemented fully correct version of GELU instead of using bad approximatin via Swish.
 - Handle copying from fp32 or fp16 embeddings in embedder mode correctly.
 - Correct defaults for factored embeddings such that shared library use works (move out of config.h/cpp).
-
+- Potential vulnerability in zlib
 ### Changed
 - Globally set mkl_set_num_threads(1)
 - Refactoring of model loading, mmapping happens now opportunistically, --mmap-models for decoding forces mmap and croaks if not possible.

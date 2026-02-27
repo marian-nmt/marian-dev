@@ -17,8 +17,14 @@
 #pragma GCC diagnostic pop
 #endif
 
+#ifdef USE_LOCAL_SENTENCEPIECE
 #include "sentencepiece/src/sentencepiece_processor.h"
 #include "sentencepiece/src/sentencepiece_trainer.h"
+#else
+#include <sentencepiece_processor.h>
+#include <sentencepiece_trainer.h>
+#endif
+
 #include "unicode_conversions.h"
 
 namespace marian {
@@ -71,7 +77,16 @@ public:
       for(size_t i = 0; i < vocabSize; i++)
         vocab_str.push_back(utf16_to_utf8(utf16string(vocab[i])));
 
+#ifdef USE_LOCAL_SENTENCEPIECE
       m_processor->SetVocabulary(vocab_str);
+#else
+      std::vector<std::string_view> vocab_views;
+      vocab_views.reserve(vocab_str.size());
+      for (const auto& s : vocab_str) {
+        vocab_views.emplace_back(s);
+      }
+      m_processor->SetVocabulary(vocab_views);
+#endif
     }
     checkStatus(status, "loading");
   }

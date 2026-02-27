@@ -36,7 +36,8 @@ option(USE_MKL "Compile with MKL support" ON)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
 option(USE_LOCAL_NCCL "Use the local NCCL library from git submodule (about version 2.8.3). Might need for legacy build." OFF)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
+option(USE_SENTENCEPIECE "Use SentencePiece" ON)
+option(USE_LOCAL_SENTENCEPIECE "Use the local SentencePiece from git submodule (about 1.9.4, with bugs)" OFF)
 option(USE_TCMALLOC "Use TCMALLOC if available" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
@@ -342,9 +343,38 @@ endif()
 # Downloading SentencePiece if requested and set to compile with it.
 # Requires all the dependencies imposed by SentencePiece
 if(USE_SENTENCEPIECE)
+  
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
   LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
-  set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+  if (USE_LOCAL_SENTENCEPIECE)
+    set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+  else(USE_LOCAL_SENTENCEPIECE)
+    # NOTE(OR FALSE): tried an OR TRUE and it seems to have linked fine, but
+    # didn't test it. (OR TRUE because I couldn't try full USE_STATIC_LIBS due
+    # to not having static CUDA libs around). No guarantees (where does it get
+    # protobuf entries from, for example?).
+    if(USE_STATIC_LIBS OR FALSE)
+      set(_sentencepiece_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+      if(WIN32)
+        # not sure, didn't try
+        list(INSERT CMAKE_FIND_LIBRARY_SUFFIXES 0 .lib .a)
+      else()
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+      endif()
+    endif()
+
+    find_library(LIB_sentencepiece NAMES sentencepiece)
+    find_library(LIB_sentencepiece_train NAMES sentencepiece_train)
+    if (NOT LIB_sentencepiece OR NOT LIB_sentencepiece_train)
+      message(FATAL_ERROR "Could not find sentencepiece (did you want to specify -DUSE_LOCAL_SENTENCEPIECE=ON?)")
+    endif()
+    message(STATUS "Sentencepiece found: ${LIB_sentencepiece}, ${LIB_sentencepiece_train}")
+    set(EXT_LIBS ${EXT_LIBS} ${LIB_sentencepiece} ${LIB_sentencepiece_train})
+    if(USE_STATIC_LIBS OR FALSE)
+      # Restore
+      set(CMAKE_FIND_LIBRARY_SUFFIXES ${_sentencepiece_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
+    endif()
+  endif(USE_LOCAL_SENTENCEPIECE)
 endif()
 
 if(USE_ONNX)
@@ -526,14 +556,11 @@ if(CUDA_FOUND)
       message(FATAL_ERROR "cuLIBOS library not found")
     endif()
     # CUDA 10.1 introduces cublasLt library that is required on static build.
-    # It seems at least on CUDA 12.8 it is not a separate library, but part of cublas?
     if (CUDA_VERSION VERSION_EQUAL "10.1" OR CUDA_VERSION VERSION_GREATER "10.1")
       if (DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP)
         find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 NO_DEFAULT_PATH)
       else(DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP)
-        # Not sure why the forcing was necessary at 11, but at least on a current setup, where the library might not be in the CUDA_TOOLKIT_ROOT_DIR,
-        # the NO_DEFAULT_PATH would prevent picking it up. For example, nix-flake based build will supply all the build-inputs (lib dependencies)
-        # through the CMAKE_LIBRARY_PATH and CMAKE_INCLUDE_PATH env variables.
+        # NOTE: didn't test this path, not sure if/how cublasLt is statically bundled separately.
         find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
       endif()
       if(NOT CUDA_cublasLt_LIBRARY)

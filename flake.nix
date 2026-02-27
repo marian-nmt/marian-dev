@@ -28,6 +28,9 @@
             pkgs.gcc
             pkgs.git
             pkgs.sentencepiece
+            #(pkgs.sentencepiece.override {
+            #  stdenv = pkgs.gcc14Stdenv;
+            #})
             pkgs.gperftools # for tcmalloc
             pkgs.cudaPackages.nccl  # NOTE(USE_LOCAL_NCCL): would not be needed for the local option
             pkgs.cudaPackages.libcublas

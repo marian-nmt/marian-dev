@@ -15,7 +15,7 @@ namespace marian {
 namespace gpu {  
 
 // small operator to compute the row id of an element in a 2d tensor
-class ProjectToRow : public thrust::unary_function<int, int> {
+class ProjectToRow {
 private:
   int cols_;
 

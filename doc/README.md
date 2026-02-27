@@ -27,6 +27,73 @@ Then set up a Python environment and install modules:
 
 Documentation building should also work on Windows, but it has not been tested.
 
+### Building using Nix
+
+On existing Linux systems, install the [nix package
+manager](https://nixos.org/download/). Then in the checkout directory where
+`flake.nix` and `flake.lock` are found, execute
+
+```
+nix \
+    --extra-experimental-features nix-command \
+    --extra-experimental-features flakes \
+    develop
+
+```
+
+which would drop you in a development shell, with all the library dependencies
+and environment variables prepared. It might need to compile some of those
+dependencies first, so you might want to drink a tea in the meantime.
+
+The build is mostly deterministic, thanks to the `flake.lock` mechanism that
+pins the inputs and build environment, which helps to avoid surprises.
+
+#### Running nix-built binaries with the system CUDA driver.
+
+Bit of context first, jump to the last paragraph for the TLDR. For CUDA, there
+are two sets of libraries: the CUDA runtime, and the CUDA driver. The CUDA
+runtime (somewhat ill-named, we might call it userland maybe?) are the helper
+libraries, for example cublas or cusparse (`libcu...so.x`). While the CUDA
+driver is mostly `libcublas.so.1` (and in some cases
+`libnvidia-ptxjitcompiler.so.1`).
+
+The choice of CUDA runtime (or userland) version depends on the
+application (here, Marian), and the CUDA runtime level it wants to code
+against (in case of Marian, at least CUDA 9).
+
+But the CUDA driver library is tightly coupled to your kernel and GPU, and is
+not something that a given application would know upfront. So a CUDA
+application would either link to a stub driver (inspectable via ldd) and expect
+a run-time override (for example via `LD_PRELOAD` or `LD_LIBRARY_PATH`), or
+not even register a dynamic dependency upfront, but rather try to load it
+dynamically after program startup (latter is what we would observe with the
+nix-built marian).
+
+Now, nix will build binaries that are linked against very specific shared
+libraries (in the nix store) to avoid dependency hell. The built marian
+executables indeed link against the CUDA libraries sourced via nixpgs.
+
+But, the nix-build has no chance to know link against the right CUDA driver
+library. So it doesn't. Which results in an obscure crash if you run the built
+executables.
+
+So, to run [Nix CUDA on non-NixOS
+systems](https://danieldk.eu/Software/Nix/Nix-CUDA-on-non-NixOS-systems),
+the most straightforward solution is to symlink the CUDA driver libraries into
+a separate directory, and pass that directory in `LD_LIBRARY_PATH`. (Note,
+passing the whole of `/usr/lib64` or similar is not recommended, since it would
+override the specific nix-linked libraries too).
+
+```
+mkdir /run/nvidia-libs
+ln -s /usr/lib64/libcuda.so.1 /run/nvidia-libs/
+LD_LIBRARY_PATH=/run/nvidia-libs marian ...
+
+```
+
+(In case a crash occurs, either prefix with `LD_DEBUG=libs` or `strace` and see
+what library was searched and where before the crash. But using above method,
+there wouldn't be any crash.)
 
 ## Generation
 

@@ -158,7 +158,7 @@ include(ExternalProject)
 
 set(INSTALLS "") # this will contain a list of 3rd part dependencies that we install locally
 if(CUDA_FOUND)
-  if(USE_NCCL)
+  if(USE_NCCL AND USE_LOCAL_NCCL)
 
     # disables compilation for sm_30 to avoid ptxas warning... that is general Kepler support. But K80s are supported for instance by sm_35
 
@@ -206,7 +206,7 @@ if(CUDA_FOUND)
     add_dependencies(nccl nccl_install)
     set(INSTALLS ${INSTALLS} nccl_install)
 
-  endif(USE_NCCL)
+  endif(USE_NCCL AND USE_LOCAL_NCCL)
 endif(CUDA_FOUND)
 
 # @TODO: do the same for SentencePiece, Protobuf etc.

@@ -18,6 +18,9 @@
       shell = { pkgs }:
           # nvcc 12.8 supports up to gcc 14, so downgrading to it.
           # See https://discourse.nixos.org/t/how-to-select-a-specific-version-of-gcc-within-a-flake-nix/23372/4
+          #
+          # NOTE(USE_LOCAL_NCCL): compiling with the bundled nccl requires gcc13Stdenv, downgrade if you would like
+          # to use that option.
           (pkgs.mkShell.override {stdenv = pkgs.gcc14Stdenv;}){
 
           buildInputs = [
@@ -26,7 +29,7 @@
             pkgs.git
             pkgs.sentencepiece
             pkgs.gperftools # for tcmalloc
-            #pkgs.cudaPackages.nccl  # for now we disabled NCCL, see below
+            pkgs.cudaPackages.nccl  # NOTE(USE_LOCAL_NCCL): would not be needed for the local option
             pkgs.cudaPackages.libcublas
             pkgs.cudaPackages.libcusparse
             pkgs.cudaPackages.cuda_nvcc
@@ -59,7 +62,7 @@
             #  -DCOMPILE_AMPERE_RTX=ON  \
             cmake -DCMAKE_BUILD_TYPE=Release \
               -DBUILD_SHARED_LIBS=true \
-              -DUSE_NCCL=OFF \
+              -DUSE_NCCL=ON \
               -DDISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP=OFF \
               ..
             make -j

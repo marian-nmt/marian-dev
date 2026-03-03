@@ -63,8 +63,10 @@ set(INTEL_ROOT ${INTEL_ROOT_DEFAULT} CACHE PATH "Folder contains intel libs")
 find_path(MKL_ROOT include/mkl.h
   PATHS $ENV{MKLROOT} ${INTEL_ROOT}/mkl ${INTEL_ROOT}/oneapi/mkl/latest
   DOC "Folder contains MKL")
+message(STATUS "MKL_ROOT ${MKL_ROOT}")
 
 find_path(MKL_INCLUDE_DIR NAMES mkl.h HINTS ${MKL_ROOT}/include /usr/include/mkl)
+message(STATUS "MKL_INCLUDE_DIR ${MKL_INCLUDE_DIR}")
 
 find_library(MKL_INTERFACE_LIBRARY
              NAMES ${INT_LIB}
@@ -73,6 +75,8 @@ find_library(MKL_INTERFACE_LIBRARY
                    ${MKL_ROOT}/lib/intel64_win
                    ${INTEL_ROOT}/mkl/lib/intel64
                    ${INTEL_ROOT}/oneapi/mkl/latest/lib)
+                 message(STATUS "INT_LIB ${INT_LIB}")
+message(STATUS "MKL_INTERFACE_LIBRARY ${MKL_INTERFACE_LIBRARY}")
 
 find_library(MKL_SEQUENTIAL_LAYER_LIBRARY
              NAMES ${SEQ_LIB}

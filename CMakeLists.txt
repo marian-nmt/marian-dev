@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 if (POLICY CMP0074)
@@ -35,13 +35,17 @@ option(USE_FBGEMM "Use FBGEMM" OFF)
 option(USE_MKL "Compile with MKL support" ON)
 option(USE_MPI "Use MPI library" OFF)
 option(USE_NCCL "Use NCCL library" ON)
-option(USE_SENTENCEPIECE "Download and compile SentencePiece" ON)
+option(USE_LOCAL_NCCL "Use the local NCCL library from git submodule (about version 2.8.3). Might need for legacy build." OFF)
+option(USE_SENTENCEPIECE "Use SentencePiece" ON)
+option(USE_LOCAL_SENTENCEPIECE "Use the local SentencePiece from git submodule (about 1.9.4, with bugs)" OFF)
 option(USE_TCMALLOC "Use TCMALLOC if available" ON)
 option(USE_STATIC_LIBS "Link statically against non-system libs" OFF)
 option(GENERATE_MARIAN_INSTALL_TARGETS "Generate Marian install targets (requires CMake 3.12+)" OFF)
 option(DETERMINISTIC "Try to make training results as deterministic as possible (e.g. for testing)" OFF)
 option(PYMARIAN "Build Pymarian package which is based on pybind11" OFF)
 option(USE_OPENSSL "Use OpenSSL library" OFF)
+# Note: if you can't find cublasLt, turn this parameter OFF, and optionally modify this CMake config to look for it at a specific directory.
+option(DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP "Disable using automatic discovery of cublasLt library (for historic reason)" ON)
 
 # fbgemm and sentencepiece are both defined with "non-local" installation targets (the source projects don't define them,
 # so we define them in src\3rd_party\CMakeLists.txt), but that isn't supported until CMake 3.12. Prior to CMake 3.12,
@@ -339,9 +343,38 @@ endif()
 # Downloading SentencePiece if requested and set to compile with it.
 # Requires all the dependencies imposed by SentencePiece
 if(USE_SENTENCEPIECE)
+  
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTENCEPIECE")
   LIST(APPEND CUDA_NVCC_FLAGS -DUSE_SENTENCEPIECE; )
-  set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+  if (USE_LOCAL_SENTENCEPIECE)
+    set(EXT_LIBS ${EXT_LIBS} sentencepiece sentencepiece_train)
+  else(USE_LOCAL_SENTENCEPIECE)
+    # NOTE(OR FALSE): tried an OR TRUE and it seems to have linked fine, but
+    # didn't test it. (OR TRUE because I couldn't try full USE_STATIC_LIBS due
+    # to not having static CUDA libs around). No guarantees (where does it get
+    # protobuf entries from, for example?).
+    if(USE_STATIC_LIBS OR FALSE)
+      set(_sentencepiece_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+      if(WIN32)
+        # not sure, didn't try
+        list(INSERT CMAKE_FIND_LIBRARY_SUFFIXES 0 .lib .a)
+      else()
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+      endif()
+    endif()
+
+    find_library(LIB_sentencepiece NAMES sentencepiece)
+    find_library(LIB_sentencepiece_train NAMES sentencepiece_train)
+    if (NOT LIB_sentencepiece OR NOT LIB_sentencepiece_train)
+      message(FATAL_ERROR "Could not find sentencepiece (did you want to specify -DUSE_LOCAL_SENTENCEPIECE=ON?)")
+    endif()
+    message(STATUS "Sentencepiece found: ${LIB_sentencepiece}, ${LIB_sentencepiece_train}")
+    set(EXT_LIBS ${EXT_LIBS} ${LIB_sentencepiece} ${LIB_sentencepiece_train})
+    if(USE_STATIC_LIBS OR FALSE)
+      # Restore
+      set(CMAKE_FIND_LIBRARY_SUFFIXES ${_sentencepiece_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
+    endif()
+  endif(USE_LOCAL_SENTENCEPIECE)
 endif()
 
 if(USE_ONNX)
@@ -383,12 +416,25 @@ if(USE_STATIC_LIBS)
   endif()
 endif()
 
+# NOTE(deprecation): the FindCUDA is deprecated, see "cmake --help-policy CMP0146"
+#
+# But for now we keep it, just need to manually add cuBLASLt.
+#
 find_package(CUDA "9.0") # TODO: only enable FP16-related options for compute_70 and higher.
 if(CUDA_FOUND)
   # CUDA >= 10.0 requires CMake >= 3.12.2
   if((CUDA_VERSION VERSION_EQUAL "10.0" OR CUDA_VERSION VERSION_GREATER "10.0") AND (CMAKE_VERSION VERSION_LESS "3.12.2"))
       message(WARNING "On some Unix systems CUDA 10.0+ requires CMake 3.12.2+; you use CMake ${CMAKE_VERSION}")
   endif()
+
+  # cuBLASLt, at least on nix, is packaged together with cublas.
+  # Not sure where was this change introduced, or if it is related to how it is done generally.
+  #if(CUDA_VERSION VERSION_EQUAL "12.8" OR CUDA_VERSION VERSION_GREATER "12.8")
+  #  message(STATUS "Befare adding cublasLt: CUDA_CUBLAS_LIBRARIES=${CUDA_CUBLAS_LIBRARIES}")
+  #  find_library(CUBLASLT NAMES cublasLt)
+  #  set(CUDA_CUBLAS_LIBRARIES ${CUDA_CUBLAS_LIBRARIES} ${CUBLASLT})
+  #  message(STATUS "Updated CUDA_CUBLAS_LIBRARIES libs to ${CUDA_CUBLAS_LIBRARIES}")
+  #endif()
 
   # We want to compile as many targets as possible but different CUDA versions support different targets.
   # Let's instead enable options based on what cuda version we have.
@@ -424,6 +470,30 @@ if(CUDA_FOUND)
     option(COMPILE_AMPERE_RTX  "Compile GPU version with SM86 support" ON)
     LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
   endif()
+  if(CUDA_VERSION VERSION_EQUAL "12.6" OR CUDA_VERSION VERSION_GREATER "12.6")
+    option(COMPILE_KEPLER      "Compile GPU version with SM35 support" OFF) # deprecated for CUDA 11
+    option(COMPILE_MAXWELL     "Compile GPU version with SM50 support" OFF) # deprecated for CUDA 11
+    option(COMPILE_PASCAL      "Compile GPU version with SM60 support" ON)
+    option(COMPILE_VOLTA       "Compile GPU version with SM70 support" ON)
+    option(COMPILE_TURING      "Compile GPU version with SM75 support" ON)
+    option(COMPILE_AMPERE      "Compile GPU version with SM80 support" ON)
+    option(COMPILE_AMPERE_RTX  "Compile GPU version with SM86 support" ON)
+    option(COMPILE_BLACKWELL_100 "Compile GPU version with SM100 support" ON)
+    LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
+  endif()
+  if(CUDA_VERSION VERSION_EQUAL "12.8" OR CUDA_VERSION VERSION_GREATER "12.8")
+    option(COMPILE_KEPLER      "Compile GPU version with SM35 support" OFF) # deprecated for CUDA 11
+    option(COMPILE_MAXWELL     "Compile GPU version with SM50 support" OFF) # deprecated for CUDA 11
+    option(COMPILE_PASCAL      "Compile GPU version with SM60 support" ON)
+    option(COMPILE_VOLTA       "Compile GPU version with SM70 support" ON)
+    option(COMPILE_TURING      "Compile GPU version with SM75 support" ON)
+    option(COMPILE_AMPERE      "Compile GPU version with SM80 support" ON)
+    option(COMPILE_AMPERE_RTX  "Compile GPU version with SM86 support" ON)
+    option(COMPILE_BLACKWELL_100 "Compile GPU version with SM100 support" ON)
+    option(COMPILE_BLACKWELL_120 "Compile GPU version with SM120 support" ON)
+    LIST(APPEND COMPUTE -Wno-deprecated-gpu-targets)
+  endif()
+
 
   message(STATUS "CUDA_VERSION=${CUDA_VERSION}; CUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}")
   if(COMPILE_KEPLER)
@@ -460,6 +530,18 @@ if(CUDA_FOUND)
         LIST(APPEND COMPUTE -gencode=arch=compute_86,code=sm_86; -gencode=arch=compute_86,code=compute_86) # Ampere RTX GPUs
     endif(COMPILE_AMPERE_RTX)
   endif()
+  if(CUDA_VERSION VERSION_EQUAL "12.6" OR CUDA_VERSION VERSION_GREATER "12.6")
+    if(COMPILE_BLACKWELL_100)
+        message(STATUS "Compiling code for Blackwell (CUDA 12.6+, SM100) GPUs")
+        LIST(APPEND COMPUTE -gencode=arch=compute_100,code=sm_100; -gencode=arch=compute_100,code=compute_100)
+    endif(COMPILE_BLACKWELL_100)
+  endif()
+  if(CUDA_VERSION VERSION_EQUAL "12.8" OR CUDA_VERSION VERSION_GREATER "12.8")
+    if(COMPILE_BLACKWELL_120)
+        message(STATUS "Compiling code for Blackwell (CUDA 12.8+, SM120) GPUs")
+        LIST(APPEND COMPUTE -gencode=arch=compute_120,code=sm_120; -gencode=arch=compute_120,code=compute_120)
+    endif(COMPILE_BLACKWELL_120)
+  endif()
 
   if(USE_STATIC_LIBS)
     set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_cusparse_LIBRARY})
@@ -473,31 +555,41 @@ if(CUDA_FOUND)
     elseif(NOT WIN32)
       message(FATAL_ERROR "cuLIBOS library not found")
     endif()
-    # CUDA 10.1 introduces cublasLt library that is required on static build
-    if ((CUDA_VERSION VERSION_EQUAL "10.1" OR CUDA_VERSION VERSION_GREATER "10.1"))
-      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+    # CUDA 10.1 introduces cublasLt library that is required on static build.
+    if (CUDA_VERSION VERSION_EQUAL "10.1" OR CUDA_VERSION VERSION_GREATER "10.1")
+      if (DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP)
+        find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 NO_DEFAULT_PATH)
+      else(DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP)
+        # NOTE: didn't test this path, not sure if/how cublasLt is statically bundled separately.
+        find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+      endif()
       if(NOT CUDA_cublasLt_LIBRARY)
-        message(FATAL_ERROR "cuBLASLt library not found")
+        message(FATAL_ERROR "cuBLASLt library not found (consider passing -DDISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP=OFF). -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}")
       endif()
       set(EXT_LIBS ${EXT_LIBS} ${CUDA_cublasLt_LIBRARY})
       set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_cublasLt_LIBRARY})
     endif()
     message(STATUS "Found CUDA libraries: ${CUDA_LIBS}")
   else(USE_STATIC_LIBS)
-  set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
     # We actually only need cublasLt here after cuda 11. Marian will work fine without it pre cuda 11. We want to force CMake to use the cublas
     # version that ships with CUDA 11 so we force the search to occur inside of the cuda toolkit directory.
+    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
     set(CUDA_LIBS ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
-    if ((CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0"))
-      find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 NO_DEFAULT_PATH)
+    if (CUDA_VERSION VERSION_EQUAL "11.0" OR CUDA_VERSION VERSION_GREATER "11.0")
+      if (DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP)
+        find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 NO_DEFAULT_PATH)
+      else(DISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP)
+        # Not sure why the forcing was necessary at 11, but at least on a current setup, where the library might not be in the CUDA_TOOLKIT_ROOT_DIR,
+        # the NO_DEFAULT_PATH would prevent picking it up. For example, nix-flake based build will supply all the build-inputs (lib dependencies)
+        # through the CMAKE_LIBRARY_PATH and CMAKE_INCLUDE_PATH env variables.
+        find_library(CUDA_cublasLt_LIBRARY NAMES cublasLt PATHS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64)
+      endif()
       if(NOT CUDA_cublasLt_LIBRARY)
-        message(FATAL_ERROR "cuBLASLt library not found. -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}")
+        message(FATAL_ERROR "cuBLASLt library not found (consider passing -DDISABLE_CUBLASLT_DEFAULT_PATH_LOOKUP=OFF). -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}")
       endif()
       set(EXT_LIBS ${EXT_LIBS} ${CUDA_cublasLt_LIBRARY})
       set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_cublasLt_LIBRARY})
     endif()
-    set(EXT_LIBS ${EXT_LIBS} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
-    message(STATUS "Found CUDA libraries: ${CUDA_LIBS}")
   endif(USE_STATIC_LIBS)
 
   if(USE_CUDNN)
@@ -518,8 +610,19 @@ if(CUDA_FOUND)
   endif()
 
   if(USE_NCCL)
-    add_library(nccl STATIC IMPORTED)
-    set(EXT_LIBS ${EXT_LIBS} nccl)
+    if (USE_LOCAL_NCCL)
+      add_library(nccl STATIC IMPORTED)
+      message(STATUS "Using local bundled nccl library")
+      set(EXT_LIBS ${EXT_LIBS} nccl)
+    else()
+      find_library(CUDA_nccl_LIBRARY NAMES nccl)
+      if(NOT CUDA_nccl_LIBRARY)
+        message(FATAL_ERROR "CUDA NCCL library not found")
+      endif()
+      message(STATUS "Found CUDA NCCL library: ${CUDA_nccl_LIBRARY}")
+      set(CUDA_LIBS ${CUDA_LIBS} ${CUDA_nccl_LIBRARY})
+      set(EXT_LIBS ${EXT_LIBS} ${CUDA_nccl_LIBRARY})
+    endif()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_NCCL")
     LIST(APPEND CUDA_NVCC_FLAGS -DUSE_NCCL; )
   endif(USE_NCCL)
@@ -527,6 +630,8 @@ if(CUDA_FOUND)
   if(USE_STATIC_LIBS)
     set(CMAKE_FIND_LIBRARY_SUFFIXES ${_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
   endif()
+
+  message(STATUS "Found CUDA libraries: ${CUDA_LIBS}")
 
 else(CUDA_FOUND)
   message("

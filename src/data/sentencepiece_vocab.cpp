@@ -1,8 +1,13 @@
 #include "data/vocab_base.h"
 
 #ifdef USE_SENTENCEPIECE
+#ifdef USE_LOCAL_SENTENCEPIECE
 #include "sentencepiece/src/sentencepiece_processor.h"
 #include "sentencepiece/src/sentencepiece_trainer.h"
+#else
+#endif
+#include <sentencepiece_processor.h>
+#include <sentencepiece_trainer.h>
 #endif
 
 #include "common/config.h"

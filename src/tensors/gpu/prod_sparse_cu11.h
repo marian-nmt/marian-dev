@@ -22,6 +22,16 @@ struct TypedSparseGemm {
 static cudaDataType getCudaDataType(const float*) { return CUDA_R_32F; };
 static cudaDataType getCudaDataType(const half*)  { return CUDA_R_16F; };
 
+// SpMM compute type. hipSPARSE accumulates in fp32 and rejects HIP_R_16F as the
+// SpMM compute type, so use 32F on HIP for both element types.
+#if defined(USE_HIP)
+static cudaDataType getSpMMComputeType(const float*) { return CUDA_R_32F; };
+static cudaDataType getSpMMComputeType(const half*)  { return CUDA_R_32F; };
+#else
+static cudaDataType getSpMMComputeType(const float* p) { return getCudaDataType(p); };
+static cudaDataType getSpMMComputeType(const half* p)  { return getCudaDataType(p); };
+#endif
+
 #if 0
 static void CSRProdSwapped(marian::Tensor C,
                            Ptr<Allocator> allocator,
@@ -96,7 +106,7 @@ static void CSRProdSwapped(marian::Tensor C,
                                          descD,
                                          &beta,
                                          descC,
-                                         getCudaDataType(C->data<ElementType>()),
+                                         getSpMMComputeType(C->data<ElementType>()),
                                          algorithm,
                                          &bufferSize));
   if(bufferSize > 0) {
@@ -109,7 +119,7 @@ static void CSRProdSwapped(marian::Tensor C,
                                 descD,
                                 &beta,
                                 descC,
-                                getCudaDataType(C->data<ElementType>()),
+                                getSpMMComputeType(C->data<ElementType>()),
                                 algorithm,
                                 buffer->data<uint8_t>()));
     allocator->free(buffer);
@@ -193,7 +203,7 @@ static void CSRProd(marian::Tensor C,
                                          descD,
                                          &beta,
                                          descC,
-                                         getCudaDataType(C->data<ElementType>()),
+                                         getSpMMComputeType(C->data<ElementType>()),
                                          algorithm,
                                          &bufferSize));
   if(bufferSize > 0) {
@@ -206,7 +216,7 @@ static void CSRProd(marian::Tensor C,
                                 descD,
                                 &beta,
                                 descC,
-                                getCudaDataType(C->data<ElementType>()),
+                                getSpMMComputeType(C->data<ElementType>()),
                                 algorithm,
                                 buffer->data<uint8_t>()));
     allocator->free(buffer);

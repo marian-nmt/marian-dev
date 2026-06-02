@@ -15,6 +15,23 @@
 #include <cublasLt.h>
 #endif
 
+// cublasGemmEx takes a cudaDataType in its compute-type slot; hipblasGemmEx
+// takes a hipblasComputeType_t there. Map the slot accordingly so the CUDA
+// call sites stay byte-identical while HIP gets the right enum.
+#if defined(USE_HIP)
+#define MARIAN_GEMM_COMPUTE_32F HIPBLAS_COMPUTE_32F
+#define MARIAN_GEMM_COMPUTE_16F HIPBLAS_COMPUTE_16F
+// hipblasGemmBatchedEx takes (const void* A[], ... void* C[]); cublas takes
+// (const void* const A[], ... void* const C[]). Cast accordingly per platform.
+#define MARIAN_GEMM_BATCH_IN(p)  ((const void**)(p))
+#define MARIAN_GEMM_BATCH_OUT(p) ((void**)(p))
+#else
+#define MARIAN_GEMM_COMPUTE_32F CUDA_R_32F
+#define MARIAN_GEMM_COMPUTE_16F CUDA_R_16F
+#define MARIAN_GEMM_BATCH_IN(p)  ((void* const*)(p))
+#define MARIAN_GEMM_BATCH_OUT(p) ((void**)(p))
+#endif
+
 namespace marian {
 
 namespace gpu {
@@ -43,7 +60,13 @@ int getAlignmentUpTo256(const void *ptr) {
 // has been passed into the function call and seem to ignore setMathMode. Here we query the used math mode
 // to choose the algorithm.
 static bool tensorOpsEnabled(cublasHandle_t cublasHandle) {
-#if CUDA_VERSION >= 9000
+#if defined(USE_HIP)
+  // gfx90a drives its matrix cores from the GEMM data/compute types directly;
+  // there is no cublas-style tensor-op math toggle (CUBLAS_TENSOR_OP_MATH /
+  // SetMathMode returns "not supported"). Always use the default algorithm.
+  (void)cublasHandle;
+  return false;
+#elif CUDA_VERSION >= 9000
   cublasMath_t actual = CUBLAS_DEFAULT_MATH;
   cublasGetMathMode(cublasHandle, &actual);
   return actual == CUBLAS_TENSOR_OP_MATH;
@@ -54,7 +77,10 @@ static bool tensorOpsEnabled(cublasHandle_t cublasHandle) {
 
 static void setTensorMode(cublasHandle_t cublasHandle) {
   cublasHandle; // fool warnings
-#if CUDA_VERSION >= 9000
+#if defined(USE_HIP)
+  // No-op on HIP: see tensorOpsEnabled().
+  (void)cublasHandle;
+#elif CUDA_VERSION >= 9000
   static int mode = 0;  // 1: use TC; -1: do not use TC; 0: not set yet
   if (mode == 0) { // multi-thread note: this is sort-of thread-safe, since multiple threads would determine the same value
     const char* var = getenv("ENABLE_CUBLAS_TENSOR_OP_MATH_FP32");
@@ -83,7 +109,9 @@ static void setTensorMode(cublasHandle_t cublasHandle) {
 
 static void unsetTensorMode(cublasHandle_t cublasHandle) {
   cublasHandle; // fool warnings
-#if CUDA_VERSION >= 9000
+#if defined(USE_HIP)
+  (void)cublasHandle;
+#elif CUDA_VERSION >= 9000
   CUBLAS_CHECK(cublasSetMathMode(cublasHandle, CUBLAS_DEFAULT_MATH));
 #endif
 }
@@ -115,7 +143,7 @@ struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specializati
                                 A, CUDA_R_32F, lda,
                                 B, CUDA_R_32F, ldb, beta,
                                 C, CUDA_R_32F, ldc,
-                                CUDA_R_32F, algorithm));
+                                MARIAN_GEMM_COMPUTE_32F, algorithm));
     else // don't lose the "else"
   #endif
       CUBLAS_CHECK(cublasSgemm(handle, transa, transb,
@@ -145,10 +173,10 @@ struct TypedGemm</*ElementType=*/float, /*ComputeType=*/float> { // specializati
     if(computeCapability.major >= 5)
       CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb,
                                        m, n, k, alpha,
-                                       (void* const*)Aarray, CUDA_R_32F, lda,
-                                       (void* const*)Barray, CUDA_R_32F, ldb, beta,
-                                       (void**)Carray, CUDA_R_32F, ldc, batchCount,
-                                       CUDA_R_32F, algorithm));
+                                       MARIAN_GEMM_BATCH_IN(Aarray), CUDA_R_32F, lda,
+                                       MARIAN_GEMM_BATCH_IN(Barray), CUDA_R_32F, ldb, beta,
+                                       MARIAN_GEMM_BATCH_OUT(Carray), CUDA_R_32F, ldc, batchCount,
+                                       MARIAN_GEMM_COMPUTE_32F, algorithm));
     else // don't lose the "else"
   #endif
       CUBLAS_CHECK(cublasSgemmBatched(handle, transa, transb,
@@ -181,7 +209,7 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/half> { // specialization
                               A, CUDA_R_16F, lda,
                               B, CUDA_R_16F, ldb, beta,
                               C, CUDA_R_16F, ldc,
-                              CUDA_R_16F, algorithm)); // @TODO: review algorithm
+                              MARIAN_GEMM_COMPUTE_16F, algorithm)); // @TODO: review algorithm
   }
 
   static void batchedGemm(cublasHandle_t handle,
@@ -200,10 +228,10 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/half> { // specialization
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
     CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb,
                                      m, n, k, alpha,
-                                     (void* const*)Aarray, CUDA_R_16F, lda,
-                                     (void* const*)Barray, CUDA_R_16F, ldb, beta,
-                                     (void**)Carray, CUDA_R_16F, ldc, batchCount,
-                                     CUDA_R_16F, algorithm));
+                                     MARIAN_GEMM_BATCH_IN(Aarray), CUDA_R_16F, lda,
+                                     MARIAN_GEMM_BATCH_IN(Barray), CUDA_R_16F, ldb, beta,
+                                     MARIAN_GEMM_BATCH_OUT(Carray), CUDA_R_16F, ldc, batchCount,
+                                     MARIAN_GEMM_COMPUTE_16F, algorithm));
   }
 };
 
@@ -228,7 +256,7 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/float> { // specializatio
                               A, CUDA_R_16F, lda,
                               B, CUDA_R_16F, ldb, beta,
                               C, CUDA_R_16F, ldc,
-                              CUDA_R_32F, algorithm)); // use 32-bit compute type for accumulation
+                              MARIAN_GEMM_COMPUTE_32F, algorithm)); // use 32-bit compute type for accumulation
   }
 
   static void batchedGemm(cublasHandle_t handle,
@@ -247,10 +275,10 @@ struct TypedGemm</*ElementType=*/half, /*ComputeType=*/float> { // specializatio
     auto algorithm = tensorOpsEnabled(handle) ? CUBLAS_GEMM_DEFAULT_TENSOR_OP : CUBLAS_GEMM_DEFAULT;
     CUBLAS_CHECK(cublasGemmBatchedEx(handle, transa, transb,
                                      m, n, k, alpha,
-                                     (void* const*)Aarray, CUDA_R_16F, lda,
-                                     (void* const*)Barray, CUDA_R_16F, ldb, beta,
-                                     (void**)Carray, CUDA_R_16F, ldc, batchCount,
-                                     CUDA_R_32F, algorithm)); // use 32-bit compute type for accumulation
+                                     MARIAN_GEMM_BATCH_IN(Aarray), CUDA_R_16F, lda,
+                                     MARIAN_GEMM_BATCH_IN(Barray), CUDA_R_16F, ldb, beta,
+                                     MARIAN_GEMM_BATCH_OUT(Carray), CUDA_R_16F, ldc, batchCount,
+                                     MARIAN_GEMM_COMPUTE_32F, algorithm)); // use 32-bit compute type for accumulation
   }
 };
 #endif
@@ -590,7 +618,13 @@ static cublasStatus_t cublasLtAffineHelper(cublasLtHandle_t ltHandle, cublasOper
   cublasLtMatmulHeuristicResult_t heuristicResult = {};
 
   cublasLtEpilogue_t epilogue = do_relu? CUBLASLT_EPILOGUE_RELU_BIAS: CUBLASLT_EPILOGUE_BIAS;
+#if defined(USE_HIP)
+  // hipBLASLt accumulates in fp32 for both fp16 and fp32 inputs; HIPBLAS_COMPUTE_16F
+  // is rejected (INVALID_VALUE) by hipblasLtMatmulDescCreate. Always use 32F.
+  cublasComputeType_t computeType = HIPBLAS_COMPUTE_32F;
+#else
   cublasComputeType_t computeType = matrixType == CUDA_R_32F? CUBLAS_COMPUTE_32F_FAST_16F: CUBLAS_COMPUTE_16F;
+#endif
 
   // If the bias is not aligned, just matmul and invoke custom epilogue later. 
   // cublas fails with a misalignment error if this condition is not true.
@@ -598,7 +632,13 @@ static cublasStatus_t cublasLtAffineHelper(cublasLtHandle_t ltHandle, cublasOper
     epilogue = CUBLASLT_EPILOGUE_DEFAULT;
   }
 
+#if defined(USE_HIP)
+  // hipBLASLt's desc scale type must be HIP_R_32F regardless of the matrix data
+  // type (which is carried on the layouts below); HIP_R_16F here is rejected.
+  CUBLAS_CHECK(cublasLtMatmulDescCreate(&operationDesc, computeType, HIP_R_32F));
+#else
   CUBLAS_CHECK(cublasLtMatmulDescCreate(&operationDesc, computeType, matrixType));
+#endif
   CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transA, sizeof(transA)));
   CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transB, sizeof(transB)));
   CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue)));
@@ -617,10 +657,18 @@ static cublasStatus_t cublasLtAffineHelper(cublasLtHandle_t ltHandle, cublasOper
 
   CUBLAS_CHECK(cublasLtMatmulPreferenceCreate(&preference));
   CUBLAS_CHECK(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize)));
+#if !defined(USE_HIP)
+  // hipBLASLt has no MIN_ALIGNMENT_{A,B,C,D}_BYTES preference attributes; it
+  // honors the alignment of the matrix pointers directly. These calls exist
+  // only to filter cuBLASLt algos that need 256-byte-aligned slices, so they
+  // are simply omitted on HIP.
   CUBLAS_CHECK(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_A_BYTES, &alignmentA, sizeof(alignmentA)));
   CUBLAS_CHECK(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_B_BYTES, &alignmentB, sizeof(alignmentB)));
   CUBLAS_CHECK(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_C_BYTES, &alignmentC, sizeof(alignmentC)));
   CUBLAS_CHECK(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_D_BYTES, &alignmentC, sizeof(alignmentC)));
+#else
+  (void)alignmentA; (void)alignmentB; (void)alignmentC;
+#endif
   CUBLAS_CHECK(cublasLtMatmulAlgoGetHeuristic(ltHandle, operationDesc, Adesc, Bdesc, Cdesc, Cdesc, preference, 1, &heuristicResult, &returnedResults));
 
   cublasStatus_t opStatus = cublasLtMatmul(ltHandle, operationDesc, alpha, A, Adesc, B, Bdesc, beta, C, Cdesc, C, Cdesc, 
@@ -684,7 +732,11 @@ void affineTyped(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tenso
 
   auto backend = std::static_pointer_cast<gpu::Backend>(C->getBackend());
   auto cublasHandle = backend->getCublasHandle();
+#if defined(USE_HIP)
+  auto ltHandle = backend->getCublasLtHandle(); // hipBLASLt uses a dedicated handle
+#else
   auto ltHandle = (cublasLtHandle_t)backend->getCublasHandle(); // A cublas handle encapsulates an lt handle
+#endif
 
   size_t numWorkSpaceElts = 8192; // Allows for cublasLt to perform split-K gemms. This is chosen to be at least
                                   // 16 KiB for float16 which is large enough to prevent alloc failed errors

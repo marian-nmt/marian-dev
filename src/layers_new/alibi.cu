@@ -142,7 +142,14 @@ __global__ void gAlibiGrad(
   const int HEAD_DIM = 2;
 
   // compute single element derivative for slopes and biases
+#if defined(USE_HIP)
+  // rocThrust's thrust::tuple / thrust::tie are not device-callable in this
+  // context; use a trivial POD pair instead (same values, no host/device gap).
+  struct SlopeBias { float slope; float bias; };
+  auto dJ_dxy = [&](int headIdx, int colIdx) -> SlopeBias {
+#else
   auto dJ_dxy = [&](int headIdx, int colIdx) -> thrust::tuple<float, float> {
+#endif
     // get the location for one head
     headShape5.dims(colIdx, dims5);
     dims5[HEAD_DIM] = headIdx;
@@ -207,7 +214,11 @@ __global__ void gAlibiGrad(
         if(colIdx < cols) {
           float dslopes = 0, dbiases = 0;
           // get the element-wise derivative
+#if defined(USE_HIP)
+          { auto _sb = dJ_dxy(headIdx, colIdx); dslopes = _sb.slope; dbiases = _sb.bias; }
+#else
           thrust::tie(dslopes, dbiases) = dJ_dxy(headIdx, colIdx);
+#endif
           // accumulate by thread id
           sharedSlopes(threadIdx.x) += dslopes;
           sharedBiases(threadIdx.x) += dbiases;

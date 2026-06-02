@@ -16,7 +16,10 @@
 #include <functional>
 #include <type_traits>
 
-#ifndef __CUDACC__ // NVCC is very unreliable when it comes to CPU intrinsics, we hide them completely from NVCC-compiled code
+// hipcc (like nvcc) is unreliable with x86 CPU intrinsics in device-enabled
+// TUs, so treat __HIPCC__ the same as __CUDACC__ for the host-intrinsics and
+// FP16 steering below.
+#if !defined(__CUDACC__) && !defined(__HIPCC__) // NVCC is very unreliable when it comes to CPU intrinsics, we hide them completely from NVCC-compiled code
   #ifndef ARM
     #include <immintrin.h>
   #else
@@ -24,7 +27,7 @@
   #endif
 #endif
 
-#ifdef __CUDACC__ // nvcc is compiling this code
+#if defined(__CUDACC__) || defined(__HIPCC__) // nvcc/hipcc is compiling this code
 #include <cuda.h> // required to see CUDA_VERSION
 #if (CUDA_VERSION > 9000 && (__CUDA_ARCH__ >= 600 || !defined(__CUDA_ARCH__)))
 #define COMPILE_FP16 1 // we are in GPU code and we know what to do with FP16 code
@@ -172,7 +175,7 @@ struct intgemm8avx512      { int8_t x;  };
 struct intgemm8avx512vnni  { int8_t x;  };
 
 
-#ifndef __CUDACC__ // vectorized types not available from .cu files
+#if !defined(__CUDACC__) && !defined(__HIPCC__) // vectorized types not available from .cu files
 
 // @TODO: check what intrinsics are actually available.
 struct float32x4 {
@@ -247,6 +250,13 @@ public:
   DEVICE halfx2(const __half2& h2) : h2_(h2) {}
   DEVICE halfx2(const __half& h) : h2_(h, h) {}
   DEVICE halfx2(const __half& h1, const __half& h2) : h2_(h1, h2) {}
+#if defined(USE_HIP)
+  // On HIP both __half and __half2 are implicitly constructible from a scalar,
+  // so halfx2(1.f) is ambiguous between the two single-arg ctors above. An
+  // explicit float ctor (splat to both lanes, same as the __half overload)
+  // resolves the call. Not present on CUDA where __half2 has no scalar ctor.
+  DEVICE halfx2(float f) : h2_(__float2half(f), __float2half(f)) {}
+#endif
 
   DEVICE_INLINE operator const __half2&() const { return h2_; }
   DEVICE_INLINE operator __half2&() { return h2_; }

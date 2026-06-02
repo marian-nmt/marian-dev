@@ -12,6 +12,11 @@ if(NOT MSVC)
       pooling
       # transformer_new
   )
+  # pooling exercises the cuDNN convolution/pooling path, which is not ported to
+  # MIOpen in this pass (USE_CUDNN=OFF); drop it from the HIP build.
+  if(USE_HIP)
+    list(REMOVE_ITEM APP_TESTS pooling)
+  endif()
 
   foreach(test ${APP_TESTS})
     add_executable("test_${test}" "${test}.cpp")
@@ -21,6 +26,11 @@ if(NOT MSVC)
     else(CUDA_FOUND)
       target_link_libraries("test_${test}" marian ${EXT_LIBS})
     endif(CUDA_FOUND)
+
+    if(USE_HIP)
+      target_compile_options("test_${test}" PRIVATE ${MARIAN_HIP_COMPAT_CXX_FLAGS})
+      target_include_directories("test_${test}" PRIVATE ${MARIAN_HIP_COMPAT_INCLUDE_DIRS})
+    endif()
 
     set_target_properties("test_${test}" PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   endforeach(test)

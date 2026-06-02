@@ -3520,7 +3520,7 @@ __global__ void HammmingAndSort(const uint32_t *weightHash,
     // counts
     uint32_t countIdx = dist - minVal;
     assert(countIdx < range);
-#if __CUDA_ARCH__ >= 600
+#if (__CUDA_ARCH__ >= 600) || defined(__HIP_DEVICE_COMPILE__)
     atomicAdd_block(&sharedCounts[countIdx], 1);
 #endif
     dimIdx += blockDim.x;
@@ -3569,7 +3569,7 @@ __global__ void HammmingAndSort(const uint32_t *weightHash,
       uint32_t prevOutIdx;
 // Not supported in Maxwells or older
 // Not supported in Maxwells or older
-#if __CUDA_ARCH__ >= 600
+#if (__CUDA_ARCH__ >= 600) || defined(__HIP_DEVICE_COMPILE__)
       prevOutIdx = atomicAdd_block(&outIdx, (uint32_t) -1);
 #else
       prevOutIdx = 0;

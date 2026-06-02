@@ -174,6 +174,18 @@ else()
   set(MJDGEMM_OBJECTS ${MJDGEMM_OBJECTS} $<TARGET_OBJECTS:marian_sse4_2> $<TARGET_OBJECTS:marian_avx2> $<TARGET_OBJECTS:marian_avx512>)
 endif(ARM)
 
+# On HIP, force-include the compat header and add hip_compat/ROCm includes to
+# Marian's own host targets (only these -- not the gnu++11 3rd_party libs) so
+# host TUs that touch the GPU runtime/curand/fp16 behind CUDA_FOUND compile.
+if(USE_HIP)
+  foreach(_t marian marian_neon marian_sse4_2 marian_avx2 marian_avx512)
+    if(TARGET ${_t})
+      target_compile_options(${_t} PRIVATE ${MARIAN_HIP_COMPAT_CXX_FLAGS})
+      target_include_directories(${_t} PRIVATE ${MARIAN_HIP_COMPAT_INCLUDE_DIRS})
+    endif()
+  endforeach()
+endif()
+
 # add the mjdgemm objects to the marian library if MJDGEMM_OBJECTS is not empty
 if(NOT MJDGEMM_OBJECTS STREQUAL "")
   target_sources(marian PRIVATE ${MJDGEMM_OBJECTS})
@@ -242,6 +254,9 @@ if(CUDA_FOUND)
     STATIC)
 
   target_compile_options(marian_cuda PRIVATE ${ALL_WARNINGS})
+  if(USE_HIP)
+    target_compile_options(marian_cuda PRIVATE ${MARIAN_HIP_NO_WARN})
+  endif()
   # make sure all local dependencies are installed first before this is built
   add_dependencies(marian_cuda 3rd_party_installs)
 
@@ -305,6 +320,10 @@ if (NOT COMPILE_LIBRARY_ONLY)
   if(CUDA_FOUND)
     target_link_libraries(${exec} marian_cuda)
   endif(CUDA_FOUND)
+  if(USE_HIP)
+    target_compile_options(${exec} PRIVATE ${MARIAN_HIP_COMPAT_CXX_FLAGS})
+    target_include_directories(${exec} PRIVATE ${MARIAN_HIP_COMPAT_INCLUDE_DIRS})
+  endif()
   set_target_properties(${exec} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   endforeach(exec)
 endif(NOT COMPILE_LIBRARY_ONLY)

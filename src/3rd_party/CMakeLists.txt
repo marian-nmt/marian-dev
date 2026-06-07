@@ -146,10 +146,17 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set_property(TARGET SQLiteCpp APPEND_STRING PROPERTY COMPILE_FLAGS
       " -Wno-implicit-int-float-conversion")
   endif()
-  set_property(TARGET libyaml-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
-    " -fPIC -Wno-unused-value")
-  set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
-    " -fPIC -Wno-unused-value")
+  if(NOT WIN32)
+    set_property(TARGET libyaml-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -fPIC -Wno-unused-value")
+    set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -fPIC -Wno-unused-value")
+  else()
+    set_property(TARGET libyaml-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -Wno-unused-value")
+    set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -Wno-unused-value")
+  endif()
 endif()
 
 include_directories(./zlib)

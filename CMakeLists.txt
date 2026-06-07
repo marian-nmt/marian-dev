@@ -186,6 +186,16 @@ else(MSVC)
     message(FATAL_ERROR "FATAL ERROR: Compiling Marian requires at least g++ 5.0, your version is ${CMAKE_CXX_COMPILER_VERSION}")
   endif()
 
+  # On Windows with non-MSVC (Clang) we still need Shlwapi for pathie-cpp (PathMatchSpecW).
+  if(WIN32)
+    find_library(SHLWAPI Shlwapi.lib)
+    if(SHLWAPI)
+      set(EXT_LIBS ${EXT_LIBS} ${SHLWAPI})
+    else()
+      set(EXT_LIBS ${EXT_LIBS} Shlwapi)
+    endif()
+  endif()
+
   # Detect support CPU instrinsics for the current platform. This will
   # only by used with BUILD_ARCH=native. For overridden BUILD_ARCH we
   # force intrinsics as set in the options.
@@ -290,6 +300,14 @@ else(MSVC)
     list(APPEND ALL_WARNINGS -Wsuggest-override -Wno-int-in-bool-context)
   endif()
 
+  # On Windows with Clang, -Wstring-plus-int fires for Windows API integer concatenation
+  # in spdlog (e.g. "str" + GetLastError()), and -Wunused-private-field fires for
+  # threadpool.h's bound field (Clang false positive on field used only in lambda).
+  # Silence pre-existing 3rd-party warnings rather than patching each file.
+  if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND ALL_WARNINGS -Wno-string-plus-int -Wno-unused-private-field)
+  endif()
+
   if(CMAKE_COMPILER_IS_GNUCC)
     # these flags are not known to clang
     set(CMAKE_GCC_FLAGS "-Wl,--no-as-needed")
@@ -303,7 +321,18 @@ else(MSVC)
     set(M64_FLAG "-m64")
   endif()
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++17 ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  if(WIN32)
+    set(FPIC_FLAG "")
+    # Windows Unicode API: ExceptionWithCallStack.cpp uses LoadLibrary(L"...") which
+    # requires UNICODE so that LoadLibrary maps to LoadLibraryW (wide-char variant).
+    # -D_DLL -D_MT with --dependent-lib=msvcrt requests the dynamic MSVC CRT (same
+    # as the /MD flag in MSVC) so that clang++ and lld-link pick up msvcrt.lib.
+    set(WIN32_UNICODE_FLAGS "-DWIN32 -D_WINDOWS -DUNICODE -D_UNICODE -D_DLL -D_MT -Xclang --dependent-lib=msvcrt")
+  else()
+    set(FPIC_FLAG "-fPIC")
+    set(WIN32_UNICODE_FLAGS "")
+  endif()
+  set(CMAKE_CXX_FLAGS                 "-std=c++17 ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} ${FPIC_FLAG} ${WIN32_UNICODE_FLAGS} ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -313,7 +342,7 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 " ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS                 " ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} ${FPIC_FLAG} ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -322,8 +351,9 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
-  # set -march for all builds except iOS cross compilation
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # set -march for all builds except iOS cross compilation.
+  # The original guard excluded Clang, but Clang supports -march= fine; include it.
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
   endif()
@@ -436,7 +466,7 @@ if(USE_HIP)
   # clang/hipcc is stricter than nvcc; silence warnings on pre-existing,
   # nvcc-clean Marian code. Applied after the project's ${ALL_WARNINGS} (which
   # carries -Wall -Wextra -Werror) so these -Wno- flags win.
-  set(MARIAN_HIP_NO_WARN -Wno-dangling-else -Wno-misleading-indentation -Wno-unused-variable -Wno-unused-but-set-variable -Wno-pass-failed)
+  set(MARIAN_HIP_NO_WARN -Wno-dangling-else -Wno-misleading-indentation -Wno-unused-variable -Wno-unused-but-set-variable -Wno-pass-failed -Wno-string-plus-int)
 
   # Drive the CUDA path's "GPU sources found" switch; cuda_add_library() below
   # is provided as a shim macro for the HIP build.

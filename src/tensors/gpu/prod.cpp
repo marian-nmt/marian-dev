@@ -700,13 +700,28 @@ static cublasStatus_t cublasLtAffineTyped(cublasLtHandle_t ltHandle, cublasOpera
                               workspace, workspaceSizeBytes, do_relu, stream);
 }
 
+#if defined(_WIN32) && defined(USE_HIP)
+// On Windows + ROCm (TheRock 7.14), libhipblaslt.dll's
+// hipblasLtMatmulAlgoGetHeuristic faults inside Tensile's FP8 type-check for
+// every Affine call (all data types), so the fused GEMM+bias matmul-descriptor
+// path is unusable here. Plain hipblasGemmEx/hipblasSgemm work, so compute the
+// affine as a plain Prod followed by the existing broadcast BiasAdd (with the
+// same optional ReLU epilogue) -- this is exactly the pre-CUDA-11 fallback
+// below and produces identical results. Linux/CUDA keep the hipBLASLt path.
+template <typename T>
+void affineTyped(marian::Tensor C, Ptr<Allocator> /*allocator*/, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
+                  bool transA, bool transB, T beta, T scalar, bool do_relu) {
+  ProdTyped<T, T>(C, A, B, transA, transB, beta, scalar);
+  BiasAdd(C, bias, do_relu);
+}
+#else
 template <typename T>
 void affineTyped(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tensor& A, const marian::Tensor& B, const marian::Tensor& bias,
                   bool transA, bool transB, T beta, T scalar, bool do_relu) {
 
   CUDA_CHECK(cudaSetDevice((int)C->getDeviceId().no));
   T alpha = scalar;
-    
+
   int m = A->shape().elements() / A->shape().back();
   int k = A->shape().back();
   if(transA)
@@ -766,13 +781,14 @@ void affineTyped(marian::Tensor C, Ptr<Allocator> allocator, const marian::Tenso
                                    workspaceSizeBytes,
                                    do_relu,
                                    stream));
-  
+
   allocator->free(workspace);
 }
+#endif
 
 // This version is needed so that Windows doesn't complain when compiling CUDA < 11. Otherwise, the ifdef could be inside of one
 // definition of Affine.
-void Affine(marian::Tensor C, 
+void Affine(marian::Tensor C,
             Ptr<Allocator> allocator, 
             const marian::Tensor& A, 
             const marian::Tensor& B, 
@@ -782,15 +798,21 @@ void Affine(marian::Tensor C,
   // we launch a custom epilogue if the bias does not meet the alignment requirement.           
   if(C->type() == Type::float32) {
     affineTyped<float>(C, allocator, A, B, bias, transA, transB, beta, scalar, do_relu);
+#if !(defined(_WIN32) && defined(USE_HIP))
+    // The Windows + ROCm affineTyped already applies the bias via BiasAdd; the
+    // misalignment fallback below is only for the hipBLASLt/cublasLt epilogue path.
     if((uintptr_t)bias->data<float>() % REQUIRED_BIAS_ALIGNMENT != 0) {
-      BiasAdd(C, bias, do_relu);              
+      BiasAdd(C, bias, do_relu);
     }
+#endif
 #if COMPILE_FP16
   } else if(C->type() == Type::float16) {
     affineTyped<half>(C, allocator, A, B, bias, transA, transB, __float2half(beta), __float2half(scalar), do_relu);
+#if !(defined(_WIN32) && defined(USE_HIP))
     if((uintptr_t)bias->data<half>() % REQUIRED_BIAS_ALIGNMENT != 0) {
-      BiasAdd(C, bias, do_relu);              
+      BiasAdd(C, bias, do_relu);
     }
+#endif
 #endif
   } else {
     ABORT("Affine not implemented for type {}", C->type());

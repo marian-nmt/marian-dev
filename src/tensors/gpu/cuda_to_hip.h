@@ -1,6 +1,6 @@
 #pragma once
 
-// MOAT ROCm/HIP compatibility shim for Marian.
+// ROCm/HIP compatibility shim for Marian.
 //
 // This is the ONLY file (plus the forwarding headers under hip_compat/) that
 // knows about HIP. It is force-included on every HIP translation unit via

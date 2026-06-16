@@ -416,7 +416,7 @@ endif()
 
 if(USE_HIP)
   ###########################################################################
-  # ROCm/HIP path (MOAT port). Retargets the GPU backend at AMD GPUs. The
+  # ROCm/HIP path. Retargets the GPU backend at AMD GPUs. The
   # CUDA branch below is left byte-identical and is taken when USE_HIP=OFF.
   ###########################################################################
   if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
@@ -471,7 +471,7 @@ if(USE_HIP)
   # Drive the CUDA path's "GPU sources found" switch; cuda_add_library() below
   # is provided as a shim macro for the HIP build.
   set(CUDA_FOUND TRUE)
-  message(STATUS "MOAT HIP port: CMAKE_HIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}")
+  message(STATUS "HIP port: CMAKE_HIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}")
 
   # cupoch-style shim: emulate the legacy FindCUDA cuda_add_library() by adding
   # a normal library and marking the GPU TUs (.cu and the mixed .cpp) as HIP.

@@ -1,5 +1,5 @@
 #pragma once
-// MOAT HIP shim: <cusparse.h> -> hipSPARSE. Aliases the generic-API cuSPARSE
+// HIP shim: <cusparse.h> -> hipSPARSE. Aliases the generic-API cuSPARSE
 // symbols Marian's prod_sparse_cu11.h and backend.h use.
 #include <hipsparse/hipsparse.h>
 #include <hip/library_types.h> // hipDataType / HIP_R_* used as cudaDataType

@@ -1,5 +1,5 @@
 #pragma once
-// MOAT HIP shim: <cublasLt.h> -> hipBLASLt. Aliases the cublasLt symbols
+// HIP shim: <cublasLt.h> -> hipBLASLt. Aliases the cublasLt symbols
 // Marian's affine+bias+ReLU epilogue (prod.cpp) uses. The MIN_ALIGNMENT_*_BYTES
 // preference attributes do not exist in hipBLASLt and are dropped at the call
 // site under USE_HIP, not aliased here.

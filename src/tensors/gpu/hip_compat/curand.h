@@ -1,5 +1,5 @@
 #pragma once
-// MOAT HIP shim: <curand.h> -> hipRAND. Aliases the cuRAND host-generator
+// HIP shim: <curand.h> -> hipRAND. Aliases the cuRAND host-generator
 // symbols Marian's rand.cpp uses.
 #include <hiprand/hiprand.h>
 

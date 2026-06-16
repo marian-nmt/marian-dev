@@ -1,5 +1,5 @@
 #pragma once
-// MOAT HIP shim: <cublas_v2.h> -> hipBLAS. Aliases the cuBLAS symbols Marian
+// HIP shim: <cublas_v2.h> -> hipBLAS. Aliases the cuBLAS symbols Marian
 // uses (prod.cpp, prod_sparse.cpp, backend.h) to their hipBLAS equivalents.
 #include <hipblas/hipblas.h>
 

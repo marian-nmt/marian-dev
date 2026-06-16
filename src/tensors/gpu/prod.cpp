@@ -17,7 +17,7 @@
 
 // cublasGemmEx takes a cudaDataType in its compute-type slot; hipblasGemmEx
 // takes a hipblasComputeType_t there. Map the slot accordingly so the CUDA
-// call sites stay byte-identical while HIP gets the right enum.
+// call sites stay unchanged while HIP gets the right enum.
 #if defined(USE_HIP)
 #define MARIAN_GEMM_COMPUTE_32F HIPBLAS_COMPUTE_32F
 #define MARIAN_GEMM_COMPUTE_16F HIPBLAS_COMPUTE_16F

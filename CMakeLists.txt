@@ -417,7 +417,7 @@ endif()
 if(USE_HIP)
   ###########################################################################
   # ROCm/HIP path. Retargets the GPU backend at AMD GPUs. The
-  # CUDA branch below is left byte-identical and is taken when USE_HIP=OFF.
+  # CUDA branch below is left unchanged and is taken when USE_HIP=OFF.
   ###########################################################################
   if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
     set(CMAKE_HIP_ARCHITECTURES "gfx90a" CACHE STRING "AMD GPU architectures to compile for" FORCE)

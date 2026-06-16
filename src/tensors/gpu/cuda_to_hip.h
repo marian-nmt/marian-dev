@@ -7,7 +7,7 @@
 // CMAKE_HIP_FLAGS (-include .../cuda_to_hip.h) so the aliases and steering
 // macros below are visible before any other include, regardless of per-file
 // include order. On an NVIDIA build this file is never compiled (it is only
-// pulled in under USE_HIP), so the CUDA path is byte-identical.
+// pulled in under USE_HIP), so the CUDA path is unchanged.
 
 #if defined(__HIPCC__) || defined(USE_HIP)
 

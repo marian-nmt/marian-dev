@@ -419,9 +419,9 @@ if(USE_HIP)
   # ROCm/HIP path. Retargets the GPU backend at AMD GPUs. The
   # CUDA branch below is left unchanged and is taken when USE_HIP=OFF.
   ###########################################################################
-  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
-    set(CMAKE_HIP_ARCHITECTURES "gfx90a" CACHE STRING "AMD GPU architectures to compile for" FORCE)
-  endif()
+  # enable_language(HIP) honors an explicit -DCMAKE_HIP_ARCHITECTURES,
+  # otherwise auto-detects the host GPU(s), and errors on a build host with no
+  # AMD GPU.
   enable_language(HIP)
 
   if(NOT DEFINED ROCM_PATH)

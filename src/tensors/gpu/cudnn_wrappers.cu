@@ -26,15 +26,15 @@ namespace marian {
  * The cuDNN implementation follows unchanged below.
  *****************************************************************************/
 
-#define MIOPEN_CALL(x)                  \
-  do {                                  \
-    miopenStatus_t _s = (x);            \
-    if(_s != miopenStatusSuccess) {     \
-      printf("Error (%d) at %s:%d\n",   \
-             (int)_s,                   \
-             __FILE__,                  \
-             __LINE__);                 \
-    }                                   \
+#define MIOPEN_CALL(x)                     \
+  do {                                     \
+    miopenStatus_t _s = (x);               \
+    if(_s != miopenStatusSuccess) {        \
+      printf("Error (%s) at %s:%d\n",      \
+             miopenGetErrorString(_s),     \
+             __FILE__,                     \
+             __LINE__);                    \
+    }                                      \
   } while(0)
 
 DeviceBuffer allocateDeviceBuffer(size_t bytes) {

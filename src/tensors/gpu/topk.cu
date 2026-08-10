@@ -7,7 +7,7 @@
 #include <thrust/functional.h>
 #include <thrust/sort.h>
 
-#if CUDA_VERSION >= 11000
+#if CUDA_VERSION >= 11000 && !defined(USE_HIP)
 #include <cub/cub.cuh>
 #endif
 
@@ -106,6 +106,23 @@ __global__ void gMaxElement(IndexType* binIndices, // out: top-k positions
     // We are done with the first sweep and have populated shared memory, time to wait for the other threads and reduce it all
     __syncthreads();
 
+    // Reduce over shared memory.
+#if defined(USE_HIP)
+    // On AMD wave64 the low 32 lanes of a wavefront are NOT lockstep, so the
+    // classic warp-synchronous unrolled tail below 32 lanes (with no barrier
+    // and non-volatile shared memory) races and yields a non-deterministic
+    // argmax. Run the __syncthreads()-synchronized tree all the way to s>0; the
+    // compare order is identical and correct on any wave size.
+    for(int s = (blockDim.x >> 1); s > 0; s >>= 1) {
+      if(tid < s && tid + s < end) {
+        if(sharedValues[tid + s] > sharedValues[tid]) {
+          sharedIndices[tid] = sharedIndices[tid + s];
+          sharedValues[tid]  = sharedValues[tid + s];
+        }
+      }
+      __syncthreads();
+    }
+#else
     // Reduce over shared memory, here per loop until we hit the last 32 unreduced elements
     for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
       if(tid < s && tid + s < end) {
@@ -126,6 +143,7 @@ __global__ void gMaxElement(IndexType* binIndices, // out: top-k positions
     UNROLL_MAXARG_LOOP(4, end);
     UNROLL_MAXARG_LOOP(2, end);
     UNROLL_MAXARG_LOOP(1, end);
+#endif
 
     // OK, we are done with the reduction and in the first thread
     if(tid == 0) {
@@ -212,6 +230,17 @@ __global__ void gMaxElementUpdate(IndexType* binIndices, // memory for bin indic
 
     __syncthreads();
 
+#if defined(USE_HIP)
+    for(int s = (blockDim.x >> 1); s > 0; s >>= 1) {
+      if(tid < s && tid + s < num_bins) {
+        if(sharedValues[tid + s] > sharedValues[tid]) {
+          sharedValues[tid] = sharedValues[tid + s];
+          sharedIndices[tid] = sharedIndices[tid + s];
+        }
+      }
+      __syncthreads();
+    }
+#else
     for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
       if(tid < s && tid + s < num_bins) {
         if(sharedValues[tid + s] > sharedValues[tid]) {
@@ -228,6 +257,7 @@ __global__ void gMaxElementUpdate(IndexType* binIndices, // memory for bin indic
     UNROLL_MAXARG_LOOP(4, num_bins);
     UNROLL_MAXARG_LOOP(2, num_bins);
     UNROLL_MAXARG_LOOP(1, num_bins);
+#endif
 
     if(tid == 0) {
       bestBinCost = sharedValues[0];
@@ -288,6 +318,17 @@ __global__ void gMaxElementUpdate(IndexType* binIndices, // memory for bin indic
 
       __syncthreads();
 
+#if defined(USE_HIP)
+      for(int s = (blockDim.x >> 1); s > 0; s >>= 1) {
+        if(tid < s && tid + s < end) {
+          if(sharedValues[tid + s] > sharedValues[tid]) {
+            sharedIndices[tid] = sharedIndices[tid + s];
+            sharedValues[tid] = sharedValues[tid + s];
+          }
+        }
+        __syncthreads();
+      }
+#else
       for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
         if(tid < s && tid + s < end) {
           if(sharedValues[tid + s] > sharedValues[tid]) {
@@ -304,6 +345,7 @@ __global__ void gMaxElementUpdate(IndexType* binIndices, // memory for bin indic
       UNROLL_MAXARG_LOOP(4, end);
       UNROLL_MAXARG_LOOP(2, end);
       UNROLL_MAXARG_LOOP(1, end);
+#endif
 
       if(tid == 0) {
         binIndices[bestBinCostIdx] = sharedIndices[0];
@@ -387,7 +429,7 @@ void TopK(Tensor outVal, Tensor outInd, Ptr<Allocator> allocator, const Tensor i
 // this function uses cub::DeviceSegmentedRadixSort::SortPairs to sort each row separately
 template <typename T>
 void TypedSortCUB(Ptr<Allocator> allocator, Tensor outVal, Tensor outInd, const Tensor in, bool descending) {
-#if CUDA_VERSION >= 11000
+#if CUDA_VERSION >= 11000 && !defined(USE_HIP)
   int cols = in->shape()[-1];
   int rows = in->shape().elements() / cols;
 
@@ -463,7 +505,11 @@ void TypedSortThrust(Tensor outVal, Tensor outInd, const Tensor in, bool descend
   auto sortRow = [=] (int rowIdx) {
         // currently use default stream
     cudaStream_t stream = 0;
+#if defined(USE_HIP)
+    auto exec = thrust::hip::par.on(stream);
+#else
     auto exec = thrust::cuda::par.on(stream);
+#endif
 
     auto outValRow = outValData + rowIdx * cols; // pointer to row in output value tensor
     auto outIndRow = outIndData + rowIdx * cols; // pointer to row in output index tensor
@@ -492,9 +538,10 @@ void TypedSortThrust(Tensor outVal, Tensor outInd, const Tensor in, bool descend
 
 template <typename T>
 void TypedSort(Ptr<Allocator> allocator, Tensor outVal, Tensor outInd, const Tensor in, bool descending) {
-#if CUDA_VERSION < 11000
+#if CUDA_VERSION < 11000 || defined(USE_HIP)
     // CUDA_VERSION < 11000 doesn't include <cub/cub.cuh> and hence cub::DeviceSegmentedRadixSort::SortPairs
-    // we use thrust::sort_by_key instead which is slower
+    // we use thrust::sort_by_key instead which is slower. On HIP we take the
+    // rocThrust path too (CUB is not ported here; Sort() is only used by tests).
     TypedSortThrust<T>(outVal, outInd, in, descending);
 #else
     TypedSortCUB<T>(allocator, outVal, outInd, in, descending);

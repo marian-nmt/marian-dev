@@ -22,6 +22,11 @@ if(NOT MSVC)
       target_link_libraries("test_${test}" marian ${EXT_LIBS})
     endif(CUDA_FOUND)
 
+    if(USE_HIP)
+      target_compile_options("test_${test}" PRIVATE ${MARIAN_HIP_COMPAT_CXX_FLAGS})
+      target_include_directories("test_${test}" PRIVATE ${MARIAN_HIP_COMPAT_INCLUDE_DIRS})
+    endif()
+
     set_target_properties("test_${test}" PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   endforeach(test)
 endif(NOT MSVC)

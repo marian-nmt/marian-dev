@@ -16,7 +16,8 @@ Named in honour of Marian Rejewski, a Polish mathematician and cryptologist.
 Main features:
 
 - Efficient pure C++ implementation
-- Fast multi-GPU training and GPU/CPU translation
+- Fast multi-GPU training and GPU/CPU translation, on NVIDIA GPUs through CUDA
+  and on AMD GPUs through ROCm (configure with `-DUSE_HIP=on`)
 - State-of-the-art NMT architectures: deep RNN and transformer
 - Permissive open source license (MIT)
 - [more detail...](https://marian-nmt.github.io/features)

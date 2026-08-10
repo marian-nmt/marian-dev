@@ -12,6 +12,8 @@
 
 // clang-format on
 
+#include <type_traits>
+
 namespace marian {
 namespace gpu {
 
@@ -21,6 +23,23 @@ struct TypedSparseGemm {
 
 static cudaDataType getCudaDataType(const float*) { return CUDA_R_32F; };
 static cudaDataType getCudaDataType(const half*)  { return CUDA_R_16F; };
+
+#if defined(USE_HIP)
+// hipSPARSE has no uniform half-precision SpMM. Half operands are accepted only
+// by its mixed-precision mode, which pairs a half sparse matrix and a half dense
+// operand with a float result matrix and float alpha/beta. A half product
+// therefore accumulates into a float scratch matrix that is cast back into C,
+// and every scalar handed to SpMM is a float whatever the element type is.
+using ScalarType = float;
+static constexpr bool resultNeedsCast() { return !std::is_same<ElementType, float>::value; }
+static cudaDataType getSpMMComputeType(const float*) { return CUDA_R_32F; };
+static cudaDataType getSpMMComputeType(const half*)  { return CUDA_R_32F; };
+#else
+using ScalarType = ElementType;
+static constexpr bool resultNeedsCast() { return false; }
+static cudaDataType getSpMMComputeType(const float* p) { return getCudaDataType(p); };
+static cudaDataType getSpMMComputeType(const half* p)  { return getCudaDataType(p); };
+#endif
 
 #if 0
 static void CSRProdSwapped(marian::Tensor C,
@@ -96,7 +115,7 @@ static void CSRProdSwapped(marian::Tensor C,
                                          descD,
                                          &beta,
                                          descC,
-                                         getCudaDataType(C->data<ElementType>()),
+                                         getSpMMComputeType(C->data<ElementType>()),
                                          algorithm,
                                          &bufferSize));
   if(bufferSize > 0) {
@@ -109,7 +128,7 @@ static void CSRProdSwapped(marian::Tensor C,
                                 descD,
                                 &beta,
                                 descC,
-                                getCudaDataType(C->data<ElementType>()),
+                                getSpMMComputeType(C->data<ElementType>()),
                                 algorithm,
                                 buffer->data<uint8_t>()));
     allocator->free(buffer);
@@ -159,7 +178,21 @@ static void CSRProd(marian::Tensor C,
   ABORT_IF(numOffsets != rowsS, "Unexpected number of rows in CSR argument");
   ABORT_IF(S_values->shape() != S_indices->shape(), "CSR values and indices must have the same size");
 
-  ElementType alpha = 1.0;
+  ScalarType alpha = 1.0;
+  ScalarType betaScalar = (ScalarType)beta;
+
+  // Matrix the product is written into. Normally C itself; with an element type
+  // SpMM cannot write directly it is a scratch matrix folded back into C below.
+  marian::Tensor result = C;
+  MemoryPiece::PtrType resultMemory;
+  if constexpr(resultNeedsCast()) {
+    resultMemory = allocator->alloc<float>((size_t)rowsC * colsC);
+    result = TensorBase::New(resultMemory, marian::Shape({rowsC, colsC}), Type::float32, C->getBackend());
+    if(betaScalar == (ScalarType)0.f)
+      result->set(0.f);
+    else
+      gpu::CopyCast(result, C); // beta scales what C already holds, so seed the accumulator with it
+  }
 
   cusparseSpMatDescr_t descS;
   cusparseDnMatDescr_t descD;
@@ -180,8 +213,9 @@ static void CSRProd(marian::Tensor C,
                                      denseOrder));
   CUSPARSE_CHECK(cusparseCreateDnMat(&descC,
                                      rowsC, colsC, /*ld=*/colsC,
-                                     C->data<ElementType>(),
-                                     getCudaDataType(C->data<ElementType>()),
+                                     result->data<uint8_t>(),
+                                     result->type() == Type::float32 ? CUDA_R_32F
+                                                                     : getCudaDataType(C->data<ElementType>()),
                                      denseOrder));
 
   size_t bufferSize = 0;
@@ -191,30 +225,38 @@ static void CSRProd(marian::Tensor C,
                                          &alpha,
                                          descS,
                                          descD,
-                                         &beta,
+                                         &betaScalar,
                                          descC,
-                                         getCudaDataType(C->data<ElementType>()),
+                                         getSpMMComputeType(C->data<ElementType>()),
                                          algorithm,
                                          &bufferSize));
-  if(bufferSize > 0) {
-    MemoryPiece::PtrType buffer = allocator->alloc<uint8_t>(bufferSize);
-    CUSPARSE_CHECK(cusparseSpMM(cusparseHandle,
-                                transS ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                &alpha,
-                                descS,
-                                descD,
-                                &beta,
-                                descC,
-                                getCudaDataType(C->data<ElementType>()),
-                                algorithm,
-                                buffer->data<uint8_t>()));
+  // An implementation that needs no scratch space reports a zero buffer size;
+  // the multiplication still has to run.
+  MemoryPiece::PtrType buffer;
+  if(bufferSize > 0)
+    buffer = allocator->alloc<uint8_t>(bufferSize);
+  CUSPARSE_CHECK(cusparseSpMM(cusparseHandle,
+                              transS ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE,
+                              CUSPARSE_OPERATION_NON_TRANSPOSE,
+                              &alpha,
+                              descS,
+                              descD,
+                              &betaScalar,
+                              descC,
+                              getSpMMComputeType(C->data<ElementType>()),
+                              algorithm,
+                              buffer ? buffer->data<uint8_t>() : nullptr));
+  if(buffer)
     allocator->free(buffer);
-  }
 
   CUSPARSE_CHECK(cusparseDestroySpMat(descS));
   CUSPARSE_CHECK(cusparseDestroyDnMat(descD));
   CUSPARSE_CHECK(cusparseDestroyDnMat(descC));
+
+  if constexpr(resultNeedsCast()) {
+    gpu::CopyCast(C, result);
+    allocator->free(resultMemory);
+  }
 }
 
 static void CSRProd(marian::Tensor C,

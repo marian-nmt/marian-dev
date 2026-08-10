@@ -20,6 +20,7 @@ set(BUILD_ARCH native CACHE STRING "Compile for this CPU architecture.")
 option(COMPILE_ANDROID, "Compile Android version" OFF)
 option(COMPILE_CPU "Compile CPU version" ON)
 option(COMPILE_CUDA "Compile GPU version" ON)
+option(USE_HIP "Target AMD GPUs via ROCm/HIP instead of NVIDIA CUDA" OFF)
 option(COMPILE_EXAMPLES "Compile examples" OFF)
 option(COMPILE_SERVER "Compile marian-server" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
@@ -185,6 +186,16 @@ else(MSVC)
     message(FATAL_ERROR "FATAL ERROR: Compiling Marian requires at least g++ 5.0, your version is ${CMAKE_CXX_COMPILER_VERSION}")
   endif()
 
+  # On Windows with non-MSVC (Clang) we still need Shlwapi for pathie-cpp (PathMatchSpecW).
+  if(WIN32)
+    find_library(SHLWAPI Shlwapi.lib)
+    if(SHLWAPI)
+      set(EXT_LIBS ${EXT_LIBS} ${SHLWAPI})
+    else()
+      set(EXT_LIBS ${EXT_LIBS} Shlwapi)
+    endif()
+  endif()
+
   # Detect support CPU instrinsics for the current platform. This will
   # only by used with BUILD_ARCH=native. For overridden BUILD_ARCH we
   # force intrinsics as set in the options.
@@ -289,6 +300,14 @@ else(MSVC)
     list(APPEND ALL_WARNINGS -Wsuggest-override -Wno-int-in-bool-context)
   endif()
 
+  # On Windows with Clang, -Wstring-plus-int fires for Windows API integer concatenation
+  # in spdlog (e.g. "str" + GetLastError()), and -Wunused-private-field fires for
+  # threadpool.h's bound field (Clang false positive on field used only in lambda).
+  # Silence pre-existing 3rd-party warnings rather than patching each file.
+  if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND ALL_WARNINGS -Wno-string-plus-int -Wno-unused-private-field)
+  endif()
+
   if(CMAKE_COMPILER_IS_GNUCC)
     # these flags are not known to clang
     set(CMAKE_GCC_FLAGS "-Wl,--no-as-needed")
@@ -302,7 +321,18 @@ else(MSVC)
     set(M64_FLAG "-m64")
   endif()
 
-  set(CMAKE_CXX_FLAGS                 "-std=c++17 ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  if(WIN32)
+    set(FPIC_FLAG "")
+    # Windows Unicode API: ExceptionWithCallStack.cpp uses LoadLibrary(L"...") which
+    # requires UNICODE so that LoadLibrary maps to LoadLibraryW (wide-char variant).
+    # -D_DLL -D_MT with --dependent-lib=msvcrt requests the dynamic MSVC CRT (same
+    # as the /MD flag in MSVC) so that clang++ and lld-link pick up msvcrt.lib.
+    set(WIN32_UNICODE_FLAGS "-DWIN32 -D_WINDOWS -DUNICODE -D_UNICODE -D_DLL -D_MT -Xclang --dependent-lib=msvcrt")
+  else()
+    set(FPIC_FLAG "-fPIC")
+    set(WIN32_UNICODE_FLAGS "")
+  endif()
+  set(CMAKE_CXX_FLAGS                 "-std=c++17 ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} ${FPIC_FLAG} ${WIN32_UNICODE_FLAGS} ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_CXX_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_CXX_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -312,7 +342,7 @@ else(MSVC)
   set(CMAKE_CXX_FLAGS_PROFUSE         "${CMAKE_CXX_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
   # these need to be set separately
-  set(CMAKE_C_FLAGS                 " ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} -fPIC ${DISABLE_GLOBALLY} ${INTRINSICS}")
+  set(CMAKE_C_FLAGS                 " ${M64_FLAG} -pthread ${CMAKE_GCC_FLAGS} ${FPIC_FLAG} ${DISABLE_GLOBALLY} ${INTRINSICS}")
   set(CMAKE_C_FLAGS_RELEASE         "-O3 -funroll-loops -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_DEBUG           "-O0 -g ${CMAKE_RDYNAMIC_FLAG}")
   set(CMAKE_C_FLAGS_SLIM            "-O3 -funroll-loops -DNDEBUG")
@@ -321,8 +351,9 @@ else(MSVC)
   set(CMAKE_C_FLAGS_PROFGEN         "${CMAKE_C_FLAGS_RELEASE} -fprofile-generate -fprofile-correction")
   set(CMAKE_C_FLAGS_PROFUSE         "${CMAKE_C_FLAGS_RELEASE} -fprofile-use -fprofile-correction")
 
-  # set -march for all builds except iOS cross compilation
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # set -march for all builds except iOS cross compilation.
+  # The original guard excluded Clang, but Clang supports -march= fine; include it.
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_ARCH}")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -march=${BUILD_ARCH}")
   endif()
@@ -382,6 +413,103 @@ if(USE_STATIC_LIBS)
     set(CMAKE_FIND_LIBRARY_SUFFIXES .a _static.a)
   endif()
 endif()
+
+if(USE_HIP)
+  ###########################################################################
+  # ROCm/HIP path. Retargets the GPU backend at AMD GPUs. The
+  # CUDA branch below is left unchanged and is taken when USE_HIP=OFF.
+  ###########################################################################
+  # enable_language(HIP) honors an explicit -DCMAKE_HIP_ARCHITECTURES,
+  # otherwise auto-detects the host GPU(s), and errors on a build host with no
+  # AMD GPU.
+  enable_language(HIP)
+
+  if(NOT DEFINED ROCM_PATH)
+    if(DEFINED ENV{ROCM_PATH})
+      set(ROCM_PATH $ENV{ROCM_PATH})
+    else()
+      set(ROCM_PATH "/opt/rocm")
+    endif()
+  endif()
+  list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH} ${ROCM_PATH}/lib/cmake)
+
+  find_package(hip REQUIRED)
+  find_package(hipblas REQUIRED)
+  find_package(hipblaslt REQUIRED)
+  find_package(hipsparse REQUIRED)
+  find_package(hiprand REQUIRED)
+  find_package(rocthrust REQUIRED)
+
+  # Link the math libraries; rocThrust/hipCUB stay header-only on the default
+  # include path (do NOT link roc::rocthrust/hip::device PUBLIC -- that injects
+  # -x hip / --offload-arch into host .cpp TUs).
+  set(CUDA_LIBS roc::hipblas roc::hipblaslt roc::hipsparse hip::hiprand)
+  set(EXT_LIBS ${EXT_LIBS} ${CUDA_LIBS})
+
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCUDA_FOUND -DUSE_HIP -D__HIP_PLATFORM_AMD__")
+
+  # MIOpen is ROCm's deep-learning primitives library and stands in for cuDNN.
+  # It drives the same CUDNN-gated convolution and pooling code.
+  if(USE_CUDNN)
+    find_package(miopen REQUIRED)
+    set(EXT_LIBS ${EXT_LIBS} MIOpen)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCUDNN")
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DCUDNN")
+  endif(USE_CUDNN)
+
+  # Collectives come from RCCL, which ships with ROCm and keeps NCCL's API and
+  # names. The vendored NCCL submodule is neither built nor needed here; the
+  # nccl.h include in the communicator resolves through hip_compat/ below.
+  if(USE_NCCL)
+    find_package(rccl REQUIRED)
+    set(EXT_LIBS ${EXT_LIBS} roc::rccl)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_NCCL")
+  endif(USE_NCCL)
+
+  set(MARIAN_HIP_COMPAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/tensors/gpu/hip_compat")
+  set(MARIAN_HIP_COMPAT_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/src/tensors/gpu/cuda_to_hip.h")
+
+  # Some host .cpp TUs (e.g. tensors/rand.cpp) call the GPU runtime/curand
+  # behind CUDA_FOUND. The marian library target (only -- not 3rd_party, which
+  # builds at gnu++11 and would choke on the HIP headers) gets the compat header
+  # force-included and hip_compat/ROCm on its include path so those host TUs see
+  # the cuda*->hip* aliases and __half/CUDA_VERSION. Applied to the target in
+  # src/CMakeLists.txt via these variables.
+  set(MARIAN_HIP_COMPAT_CXX_FLAGS -include ${MARIAN_HIP_COMPAT_HEADER})
+  set(MARIAN_HIP_COMPAT_INCLUDE_DIRS ${MARIAN_HIP_COMPAT_DIR} ${ROCM_PATH}/include)
+
+  # Force-include the compat header on every HIP TU so the cuda*->hip* aliases
+  # and the CUDA_VERSION steering precede all other includes.
+  set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DCUDA_FOUND -DUSE_HIP -std=c++17 -ffp-contract=on -include ${MARIAN_HIP_COMPAT_HEADER} -Wno-unused-result -Wno-deprecated -Wno-pragmas -Wno-unused-value")
+  # clang/hipcc is stricter than nvcc; silence warnings on pre-existing,
+  # nvcc-clean Marian code. Applied after the project's ${ALL_WARNINGS} (which
+  # carries -Wall -Wextra -Werror) so these -Wno- flags win.
+  set(MARIAN_HIP_NO_WARN -Wno-dangling-else -Wno-misleading-indentation -Wno-unused-variable -Wno-unused-but-set-variable -Wno-pass-failed -Wno-string-plus-int)
+
+  # Drive the CUDA path's "GPU sources found" switch; cuda_add_library() below
+  # is provided as a shim macro for the HIP build.
+  set(CUDA_FOUND TRUE)
+  message(STATUS "HIP port: CMAKE_HIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}")
+
+  # cupoch-style shim: emulate the legacy FindCUDA cuda_add_library() by adding
+  # a normal library and marking the GPU TUs (.cu and the mixed .cpp) as HIP.
+  macro(cuda_add_library target)
+    set(_hip_srcs)
+    foreach(_arg ${ARGN})
+      if(_arg STREQUAL "STATIC" OR _arg STREQUAL "SHARED" OR _arg STREQUAL "MODULE")
+        set(_hip_libtype ${_arg})
+      else()
+        list(APPEND _hip_srcs ${_arg})
+      endif()
+    endforeach()
+    add_library(${target} ${_hip_libtype} ${_hip_srcs})
+    set_source_files_properties(${_hip_srcs} PROPERTIES LANGUAGE HIP)
+    set_target_properties(${target} PROPERTIES HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}")
+    target_include_directories(${target} PRIVATE ${MARIAN_HIP_COMPAT_DIR})
+    target_link_libraries(${target} ${CUDA_LIBS})
+  endmacro()
+
+else(USE_HIP)
 
 find_package(CUDA "9.0") # TODO: only enable FP16-related options for compute_70 and higher.
 if(CUDA_FOUND)
@@ -538,6 +666,8 @@ OR compile the CPU-only version of Marian with
 ")
   message(FATAL_ERROR "FATAL ERROR: No suitable CUDA library found.")
 endif(CUDA_FOUND)
+
+endif(USE_HIP)
 
 else(COMPILE_CUDA)
   message(WARNING "COMPILE_CUDA=off : Building only CPU version")

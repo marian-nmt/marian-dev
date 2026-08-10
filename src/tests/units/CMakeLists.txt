@@ -25,5 +25,10 @@ foreach(test ${UNIT_TESTS})
     target_compile_options("run_${test}" PUBLIC /wd4305)
   endif(MSVC)
 
+  if(USE_HIP)
+    target_compile_options("run_${test}" PRIVATE ${MARIAN_HIP_COMPAT_CXX_FLAGS})
+    target_include_directories("run_${test}" PRIVATE ${MARIAN_HIP_COMPAT_INCLUDE_DIRS})
+  endif()
+
   add_test(NAME ${test} COMMAND "run_${test}")
 endforeach(test)

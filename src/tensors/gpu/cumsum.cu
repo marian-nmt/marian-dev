@@ -59,7 +59,11 @@ void TypedBatchedScan(Tensor out, const Tensor in, bool reverse, bool exclusive,
   thrust::device_ptr<T>       outData(out->data<T>());
 
   // currently use default stream
+  #if defined(USE_HIP)
+  auto exec    = thrust::hip::par;
+#else
   auto exec    = thrust::cuda::par;
+#endif
   auto equalOp = thrust::equal_to<int>();
   auto accOp   = AccFunctorWrapper<Functor, T>(accOpFunctor);
 
@@ -107,7 +111,11 @@ T typedMaxElement(const Tensor in) {
   thrust::device_ptr<const T> inData(in->data<T>());
 
   // currently use default stream
+#if defined(USE_HIP)
+  auto exec = thrust::hip::par;
+#else
   auto exec = thrust::cuda::par;
+#endif
 
   return *thrust::max_element(exec, inData, inData + in->size());
 }

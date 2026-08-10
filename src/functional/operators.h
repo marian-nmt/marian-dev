@@ -216,7 +216,8 @@ struct Ops<double> {
 // will still be compiled into the binary by cpu-side gcc/g++
 // __CUDACC__ is defined when compiling with NVCC regardless of device type
 // __CUDA_ARCH__ is defined when compiling device (GPU) code
-#ifndef __CUDACC__
+// hipcc defines __HIPCC__ instead of __CUDACC__; treat it the same here.
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 #ifndef ARM
 #include "3rd_party/sse_mathfun.h"
 #else
@@ -476,9 +477,9 @@ struct Ops<float32x8> {
 } // end namespace functional
 } // end namespace marian
 #endif
-#endif // of "#ifndef __CUDACC__"
+#endif // of "#if !defined(__CUDACC__) && !defined(__HIPCC__)"
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
 #if COMPILE_FP16
 
 namespace marian {
@@ -763,8 +764,8 @@ UNARY(sReLUBack,   ReLUback,  Ops<ElementType>::reluBack(x));
 BINARY(sPReLU,     PReLU,     Ops<ElementType>::prelu(x, y));
 BINARY(sPReLUBack, PReLUback, Ops<ElementType>::preluBack(x, y));
 
-#ifdef __CUDACC__
-// only visible by nvcc
+#if defined(__CUDACC__) || defined(__HIPCC__)
+// only visible by nvcc/hipcc
 
 DEVICE_INLINE uint32_t gf2u(float f32) {
   // binary cast, bits stay the same

@@ -146,10 +146,17 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set_property(TARGET SQLiteCpp APPEND_STRING PROPERTY COMPILE_FLAGS
       " -Wno-implicit-int-float-conversion")
   endif()
-  set_property(TARGET libyaml-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
-    " -fPIC -Wno-unused-value")
-  set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
-    " -fPIC -Wno-unused-value")
+  if(NOT WIN32)
+    set_property(TARGET libyaml-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -fPIC -Wno-unused-value")
+    set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -fPIC -Wno-unused-value")
+  else()
+    set_property(TARGET libyaml-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -Wno-unused-value")
+    set_property(TARGET pathie-cpp APPEND_STRING PROPERTY COMPILE_FLAGS
+      " -Wno-unused-value")
+  endif()
 endif()
 
 include_directories(./zlib)
@@ -157,7 +164,9 @@ include_directories(./zlib)
 include(ExternalProject)
 
 set(INSTALLS "") # this will contain a list of 3rd part dependencies that we install locally
-if(CUDA_FOUND)
+# The vendored NCCL is an NVIDIA-only build. On AMD GPUs the collectives come
+# from RCCL, which the top-level CMakeLists finds in ROCm instead.
+if(CUDA_FOUND AND NOT USE_HIP)
   if(USE_NCCL)
 
     # disables compilation for sm_30 to avoid ptxas warning... that is general Kepler support. But K80s are supported for instance by sm_35
@@ -207,7 +216,7 @@ if(CUDA_FOUND)
     set(INSTALLS ${INSTALLS} nccl_install)
 
   endif(USE_NCCL)
-endif(CUDA_FOUND)
+endif()
 
 # @TODO: do the same for SentencePiece, Protobuf etc.
 # make clean will clean "${CMAKE_BINARY_DIR}/local"

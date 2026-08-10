@@ -1,6 +1,6 @@
 #pragma once
 
-#ifdef __CUDACC__  // Compiling with NVCC, host or device code
+#if defined(__CUDACC__) || defined(__HIPCC__)  // Compiling with NVCC/hipcc, host or device code
 
 #include <cuda.h>
 #define HOST __host__

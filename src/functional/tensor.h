@@ -16,7 +16,7 @@ inline marian::Shape adapt(const marian::Shape& shape) {
   return shape;
 }
 
-#ifndef __CUDACC__ // vectorized types not available from .cu files
+#if !defined(__CUDACC__) && !defined(__HIPCC__) // vectorized types not available from .cu files
 
 // modify last shape dimension to automatically map to a larger stride. We are moving now by 4 floats
 // at once and need to stop earlier. This is a shallow typecast to bascially an array of 4 floats.

@@ -42,6 +42,9 @@ template struct Get<float>;
 template struct Get<double>;
 template struct Get<std::string>;
 
+// the convolution layer reads kernel dimensions, paddings and strides as pairs
+template struct Get<std::pair<int, int>>;
+
 // specialization for vector of simple types
 template struct Get<std::vector<bool>>;
 template struct Get<std::vector<int>>;

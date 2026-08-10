@@ -78,6 +78,21 @@ __global__ void gMaxElement(float* d_out,
 
     __syncthreads();
 
+#if defined(USE_HIP)
+    // AMD wave64: the low 32 lanes of a wavefront are not lockstep, so the
+    // warp-synchronous unrolled tail below races on non-volatile shared memory
+    // and gives a non-deterministic argmax -- which here silently corrupts the
+    // beam-search top-k. Run the __syncthreads()-synchronized tree to s>0.
+    for(int s = (blockDim.x >> 1); s > 0; s >>= 1) {
+      if(tid < s && tid + s < end) {
+        if(sdata[tid + s] > sdata[tid]) {
+          sdata[tid] = sdata[tid + s];
+          indices[tid] = indices[tid + s];
+        }
+      }
+      __syncthreads();
+    }
+#else
     for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
       if(tid < s && tid + s < end) {
         if(sdata[tid + s] > sdata[tid]) {
@@ -94,6 +109,7 @@ __global__ void gMaxElement(float* d_out,
     UNROLL_MAXARG_LOOP(4, end);
     UNROLL_MAXARG_LOOP(2, end);
     UNROLL_MAXARG_LOOP(1, end);
+#endif
 
     if(tid == 0) {
       d_out[blockIdx.x + batchIdx * gridDim.x] = sdata[0];
@@ -170,6 +186,17 @@ __global__ void gMaxElementUpdate(float* binCosts,
 
     __syncthreads();
 
+#if defined(USE_HIP)
+    for(int s = (blockDim.x >> 1); s > 0; s >>= 1) {
+      if(tid < s && tid + s < num_bins) {
+        if(sdata[tid + s] > sdata[tid]) {
+          sdata[tid] = sdata[tid + s];
+          indices[tid] = indices[tid + s];
+        }
+      }
+      __syncthreads();
+    }
+#else
     for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
       if(tid < s && tid + s < num_bins) {
         if(sdata[tid + s] > sdata[tid]) {
@@ -186,6 +213,7 @@ __global__ void gMaxElementUpdate(float* binCosts,
     UNROLL_MAXARG_LOOP(4, num_bins);
     UNROLL_MAXARG_LOOP(2, num_bins);
     UNROLL_MAXARG_LOOP(1, num_bins);
+#endif
 
     if(tid == 0) {
       bestBinCost = sdata[0];
@@ -242,6 +270,17 @@ __global__ void gMaxElementUpdate(float* binCosts,
 
     __syncthreads();
 
+#if defined(USE_HIP)
+    for(int s = (blockDim.x >> 1); s > 0; s >>= 1) {
+      if(tid < s && tid + s < batchFirstElements[batchIdx + 1]) {
+        if(sdata[tid + s] > sdata[tid]) {
+          sdata[tid] = sdata[tid + s];
+          indices[tid] = indices[tid + s];
+        }
+      }
+      __syncthreads();
+    }
+#else
     for(int s = (blockDim.x >> 1); s > 32; s >>= 1) {
       if(tid < s && tid + s < batchFirstElements[batchIdx + 1]) {
         if(sdata[tid + s] > sdata[tid]) {
@@ -258,6 +297,7 @@ __global__ void gMaxElementUpdate(float* binCosts,
     UNROLL_MAXARG_LOOP(4, batchFirstElements[batchIdx + 1]);
     UNROLL_MAXARG_LOOP(2, batchFirstElements[batchIdx + 1]);
     UNROLL_MAXARG_LOOP(1, batchFirstElements[batchIdx + 1]);
+#endif
 
     if(tid == 0) {
       binCosts[bestBinCostIdx] = sdata[0];

@@ -76,6 +76,8 @@ using cudaDataType_t = hipDataType;
 #define cudaGetDeviceProperties hipGetDeviceProperties
 #define cudaDeviceGetAttribute  hipDeviceGetAttribute
 #define cudaDeviceSynchronize hipDeviceSynchronize
+#define cudaStreamCreate      hipStreamCreate
+#define cudaStreamDestroy     hipStreamDestroy
 #define cudaStreamSynchronize hipStreamSynchronize
 #define cudaGetLastError      hipGetLastError
 #define cudaGetErrorString    hipGetErrorString

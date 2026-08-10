@@ -448,6 +448,15 @@ if(USE_HIP)
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCUDA_FOUND -DUSE_HIP -D__HIP_PLATFORM_AMD__")
 
+  # Collectives come from RCCL, which ships with ROCm and keeps NCCL's API and
+  # names. The vendored NCCL submodule is neither built nor needed here; the
+  # nccl.h include in the communicator resolves through hip_compat/ below.
+  if(USE_NCCL)
+    find_package(rccl REQUIRED)
+    set(EXT_LIBS ${EXT_LIBS} roc::rccl)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_NCCL")
+  endif(USE_NCCL)
+
   set(MARIAN_HIP_COMPAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/tensors/gpu/hip_compat")
   set(MARIAN_HIP_COMPAT_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/src/tensors/gpu/cuda_to_hip.h")
 

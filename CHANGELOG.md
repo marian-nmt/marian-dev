@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added support for AMD GPUs via ROCm, enabled with `-DUSE_HIP=on` and the target architectures in `-DCMAKE_HIP_ARCHITECTURES` (e.g. `gfx90a`, `gfx1100`); the GPU backend then builds against hipBLAS, hipBLASLt, hipSPARSE, hipRAND, rocThrust, MIOpen (`-DUSE_CUDNN=on`) and RCCL (`-DUSE_NCCL=on`) in place of their CUDA counterparts. The NVIDIA build is unchanged.
 - Added encryption support to pymarian
 - Light-weight encryption for CPU-based models
 - Updates to pymarian: building for multiple python versions; disabling tcmalloc; hosting gated COMETs on HuggingFace

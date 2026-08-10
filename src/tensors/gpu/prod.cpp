@@ -687,8 +687,19 @@ static cublasStatus_t cublasLtAffineTyped(cublasLtHandle_t ltHandle, cublasOpera
                                           int m, int n, int k, const half *alpha, const half *A, int lda, const half *B,
                                           int ldb, const half *beta, half *C, int ldc, const half* bias, 
                                           half* workspace, size_t workspaceSizeBytes, bool do_relu, cudaStream_t stream) {
-  return cublasLtAffineHelper(ltHandle, transA, transB, CUDA_R_16F, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, bias, 
+#if defined(USE_HIP)
+  // The descriptor's scale type is 32F on HIP even for half matrices (see
+  // cublasLtAffineHelper), and the scale type is what dictates how wide a value
+  // the library reads through these pointers. Widen them to match, or the
+  // matmul scales by whatever four bytes happen to follow a two-byte half.
+  float alphaScale = (float)*alpha;
+  float betaScale  = (float)*beta;
+  return cublasLtAffineHelper(ltHandle, transA, transB, CUDA_R_16F, m, n, k, &alphaScale, A, lda, B, ldb, &betaScale, C, ldc, bias,
                               workspace, workspaceSizeBytes, do_relu, stream);
+#else
+  return cublasLtAffineHelper(ltHandle, transA, transB, CUDA_R_16F, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, bias,
+                              workspace, workspaceSizeBytes, do_relu, stream);
+#endif
 }
 
 static cublasStatus_t cublasLtAffineTyped(cublasLtHandle_t ltHandle, cublasOperation_t transA, cublasOperation_t transB,

@@ -448,6 +448,15 @@ if(USE_HIP)
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCUDA_FOUND -DUSE_HIP -D__HIP_PLATFORM_AMD__")
 
+  # MIOpen is ROCm's deep-learning primitives library and stands in for cuDNN.
+  # It drives the same CUDNN-gated convolution and pooling code.
+  if(USE_CUDNN)
+    find_package(miopen REQUIRED)
+    set(EXT_LIBS ${EXT_LIBS} MIOpen)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCUDNN")
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -DCUDNN")
+  endif(USE_CUDNN)
+
   # Collectives come from RCCL, which ships with ROCm and keeps NCCL's API and
   # names. The vendored NCCL submodule is neither built nor needed here; the
   # nccl.h include in the communicator resolves through hip_compat/ below.

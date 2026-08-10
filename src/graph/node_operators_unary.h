@@ -1358,7 +1358,11 @@ public:
                  padWidth,
                  strideHeight,
                  strideWidth,
-                 mode) {}
+                 mode) {
+    // Pooling shrinks its input, so the node cannot keep the shape UnaryNodeOp
+    // gave it; ConvolutionOp asks its wrapper the same question.
+    pooling_.getOutputShape(x->shape(), shape_);
+  }
 
   NodeOps forwardOps() override {
     return {NodeOp(pooling_.forward(child(0)->val(), val_))};

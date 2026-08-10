@@ -12,11 +12,6 @@ if(NOT MSVC)
       pooling
       # transformer_new
   )
-  # pooling exercises the cuDNN convolution/pooling path, which is not ported to
-  # MIOpen in this pass (USE_CUDNN=OFF); drop it from the HIP build.
-  if(USE_HIP)
-    list(REMOVE_ITEM APP_TESTS pooling)
-  endif()
 
   foreach(test ${APP_TESTS})
     add_executable("test_${test}" "${test}.cpp")

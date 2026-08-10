@@ -185,10 +185,10 @@ static void CSRProd(marian::Tensor C,
   // SpMM cannot write directly it is a scratch matrix folded back into C below.
   marian::Tensor result = C;
   MemoryPiece::PtrType resultMemory;
-  if(resultNeedsCast()) {
+  if constexpr(resultNeedsCast()) {
     resultMemory = allocator->alloc<float>((size_t)rowsC * colsC);
     result = TensorBase::New(resultMemory, marian::Shape({rowsC, colsC}), Type::float32, C->getBackend());
-    if(betaScalar == (ScalarType)0)
+    if(betaScalar == (ScalarType)0.f)
       result->set(0.f);
     else
       gpu::CopyCast(result, C); // beta scales what C already holds, so seed the accumulator with it
@@ -253,7 +253,7 @@ static void CSRProd(marian::Tensor C,
   CUSPARSE_CHECK(cusparseDestroyDnMat(descD));
   CUSPARSE_CHECK(cusparseDestroyDnMat(descC));
 
-  if(resultNeedsCast()) {
+  if constexpr(resultNeedsCast()) {
     gpu::CopyCast(C, result);
     allocator->free(resultMemory);
   }

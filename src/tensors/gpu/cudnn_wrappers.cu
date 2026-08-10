@@ -455,9 +455,15 @@ void PoolingWrapper::backward(Tensor x, Tensor xGrad, Tensor y, Tensor yGrad) {
   const float beta = 0.0f;
 
   // As with the convolution gradients, the accumulating form is a pooling
-  // backward into staging plus a tensor add.
-  DeviceBuffer staging
-      = allocateDeviceBuffer(xGrad->shape().elements() * sizeof(float));
+  // backward into staging plus a tensor add. The buffer is a cached member for
+  // consistency with that path, but the wrapper lives on its node and the
+  // graph drops it for the next batch, so per batch nothing is saved: the
+  // allocation still happens once per pooling node, and the free moves from
+  // the end of backward to node teardown.
+  ensureBuffer(gradStaging_,
+               gradStagingSize_,
+               xGrad->shape().elements() * sizeof(float));
+  void* staging = gradStaging_.get();
 
   MIOPEN_CALL(miopenPoolingBackward(cudnnHandle_,
                                     poolingDesc_,
@@ -470,9 +476,9 @@ void PoolingWrapper::backward(Tensor x, Tensor xGrad, Tensor y, Tensor yGrad) {
                                     x->data(),
                                     &beta,
                                     xDesc,
-                                    staging.get(),
+                                    staging,
                                     workspace_.get()));
-  addInPlace(cudnnHandle_, xDesc, xGrad->data(), staging.get());
+  addInPlace(cudnnHandle_, xDesc, xGrad->data(), staging);
 
   MIOPEN_CALL(miopenDestroyTensorDescriptor(xDesc));
   MIOPEN_CALL(miopenDestroyTensorDescriptor(yDesc));

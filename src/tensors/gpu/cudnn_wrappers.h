@@ -151,6 +151,8 @@ protected:
   // the workspace has to outlive the forward call.
   DeviceBuffer workspace_;
   size_t workspaceSize_{0};
+  DeviceBuffer gradStaging_;
+  size_t gradStagingSize_{0};
 #endif
 };
 }  // namespace marian
